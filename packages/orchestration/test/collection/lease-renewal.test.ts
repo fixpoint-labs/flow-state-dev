@@ -595,7 +595,39 @@ describe("startLeaseRenewal — what stops it and what does not", () => {
     expect(renew).not.toHaveBeenCalled();
   });
 
-  it("hands the lease-loss signal to the work it wraps", async () => {
+  it("hands the work a signal that is ALREADY composed", async () => {
+    // The callback gets `options.signal` OR lease loss, whichever fires first,
+    // so the caller has nothing left to combine. Handing over the bare lease
+    // signal would be the trap: `options.signal` stops the driver and not the
+    // work, so a worker given only the lease signal keeps running and keeps
+    // spending after its request is cancelled — against a claim it is no
+    // longer renewing.
+    const h = harness();
+    const task = await claimed(h, 30_000);
+    const timer = fakeTimer();
+    const request = new AbortController();
+    let seen: AbortSignal | undefined;
+
+    await withLeaseRenewal({
+      collection: h.collection,
+      ticket: ticketForClaim("tasks", task),
+      claimedTask: task,
+      signal: request.signal,
+      now: h.now,
+      timer: timer.timer,
+      run: async (signal) => {
+        seen = signal;
+      },
+    });
+
+    expect(seen).toBeInstanceOf(AbortSignal);
+    expect(seen!.aborted).toBe(false);
+    // Cancelling the REQUEST reaches the work, not just the driver.
+    request.abort();
+    expect(seen!.aborted).toBe(true);
+  });
+
+  it("hands over the lease signal alone when no ambient signal was given", async () => {
     const h = harness();
     const task = await claimed(h, 30_000);
     const timer = fakeTimer();
@@ -607,12 +639,13 @@ describe("startLeaseRenewal — what stops it and what does not", () => {
       claimedTask: task,
       now: h.now,
       timer: timer.timer,
-      run: async (leaseLost) => {
-        seen = leaseLost;
+      run: async (signal) => {
+        seen = signal;
       },
     });
 
     expect(seen).toBeInstanceOf(AbortSignal);
+    expect(seen!.aborted).toBe(false);
   });
 });
 

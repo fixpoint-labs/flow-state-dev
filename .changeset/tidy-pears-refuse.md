@@ -2,6 +2,7 @@
 "@flow-state-dev/orchestration": minor
 "@flow-state-dev/patterns": minor
 "@flow-state-dev/core": minor
+"@flow-state-dev/engine": patch
 ---
 
 A job whose worker dies now comes back on its own.
@@ -86,3 +87,10 @@ dispatches. `.work()`, `.workIf()` and `.forEachBackground()` deliberately run
 under the request's background signal so they outlive a disconnected client;
 they now run under that signal composed with the step's, so they still stop when
 the step's own signal fires.
+
+**Cancellation now reaches deeper into a request.** An execution scope inherits
+the background signal from its parent scope rather than re-reading the
+request's, so a signal added to a subtree keeps applying at any nesting depth
+instead of being dropped one level down. Background work still survives
+transport teardown exactly as before — the change is that a subtree which was
+told to stop now actually stops, generators included.

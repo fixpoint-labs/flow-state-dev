@@ -319,15 +319,29 @@ export function startLeaseRenewal(options: LeaseRenewalOptions): LeaseRenewalDri
  * {@link startLeaseRenewal} directly and `stop()` in a `finally` that closes
  * after the settlement, which is what every first-party seam does.
  *
- * `run` receives the lease-loss signal. Compose it with the request's rather
- * than substituting it, so a cancelled request still stops the work.
+ * **`run` receives the signal already composed** — `options.signal` (when you
+ * passed one) *or* lease loss, whichever fires first. Hand it straight to the
+ * work; there is nothing left to combine.
+ *
+ * It hands over the composition rather than the bare lease signal because the
+ * narrower one is a trap in this exact shape. `options.signal` stops the
+ * *driver*, not the work, so a caller given only the lease signal writes a
+ * worker that keeps running and keeps spending after its request is cancelled,
+ * against a claim it is no longer renewing. That is not a mistake a reader
+ * makes by ignoring the contract — it is the one they make by following the
+ * shape of the arguments. The helper holds both signals already, so it is the
+ * right place for the composition to happen once instead of at every call site.
  */
 export async function withLeaseRenewal<T>(
-  options: LeaseRenewalOptions & { run: (leaseLost: AbortSignal) => Promise<T> }
+  options: LeaseRenewalOptions & { run: (signal: AbortSignal) => Promise<T> }
 ): Promise<T> {
   const driver = startLeaseRenewal(options);
+  const signal =
+    options.signal === undefined
+      ? driver.signal
+      : AbortSignal.any([options.signal, driver.signal]);
   try {
-    return await options.run(driver.signal);
+    return await options.run(signal);
   } finally {
     driver.stop();
   }

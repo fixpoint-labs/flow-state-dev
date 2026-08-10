@@ -71,7 +71,11 @@ export type TaskWriteDeclineReason =
  *
  * Three variants, and all three are load-bearing:
  *
- * - `recorded` — a task field changed and a `task-change` item was emitted.
+ * - `recorded` — a task field changed. Every verb that moves a task through its
+ *   lifecycle also emits a `task-change` item; `renewLease` is the one
+ *   exception and emits none, because a renewal is not a lifecycle change — the
+ *   task did not move, the holder only said "still here". Do not wait on a
+ *   `task-change` to observe a renewal; read `leaseUntil`.
  * - `unchanged` — the desired state already held, so nothing was written and no
  *   `task-change` item was emitted. This is a **task-level** outcome: on the
  *   resource backing the underlying `updateState` still runs, so a
@@ -101,9 +105,29 @@ export type TaskWriteOutcome =
 /** Options for `claim` — let the dispatcher narrow eligibility and tweak ordering. */
 export interface ClaimOptions {
   /**
-   * Per-task predicate. The substrate iterates `pending` candidates in
-   * `order`, then CAS-claims the first that passes `eligibility`. Default:
-   * accepts every pending task whose `deps` are all `completed`.
+   * Per-task predicate that **narrows** the substrate's candidates. It does not
+   * replace them: the substrate admits a task first, then CAS-claims the first
+   * admitted task that also passes this. Default: no narrowing.
+   *
+   * **The candidate set is no longer `pending` only (FIX-1005).** It is every
+   * task the substrate considers claimable, which since lease-based recovery
+   * includes an `in_progress` row whose lease has run out — a task whose worker
+   * died. So the predicate sees both, and the obvious-looking assertion is the
+   * one thing not to write here:
+   *
+   * ```ts
+   * // WRONG since FIX-1005 — silently opts out of abandoned-job recovery.
+   * eligibility: (t) => t.status === "pending" && t.assignee === "researcher"
+   *
+   * // Right: narrow on what you care about, and leave claimability alone.
+   * eligibility: (t) => t.assignee === "researcher"
+   * ```
+   *
+   * A status assertion compiles, reads correctly, and quietly makes stranded
+   * jobs unrecoverable for that dispatcher, because the row it must match is
+   * `in_progress`. Claimability is the substrate's call — `isClaimable` — and
+   * composing rather than replacing is what stops the newest invariant being
+   * the one most easily switched off by accident.
    */
   eligibility?: (task: Task) => boolean;
   /**
