@@ -174,6 +174,9 @@ call, and `startLeaseRenewal` returns a `{ signal, stop }` driver for work that
 spans several steps. Both renew in the background while the work runs, keep one
 renewal in flight at a time, and stop when the signal you hand them aborts.
 Both also give you a second signal that fires the moment the claim is lost.
+Settle the task inside `withLeaseRenewal`'s `run`: it stops renewing the moment
+`run` returns, so a `complete()` or `fail()` issued after it is a fenced write
+on a lease nobody is keeping alive.
 
 A worker composed as several steps reaches its driver through
 `currentLeaseRenewal()`. Wrap the block that claims the task in
