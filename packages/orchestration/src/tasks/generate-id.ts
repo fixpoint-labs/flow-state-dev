@@ -1,12 +1,16 @@
 /**
- * The substrate's id minter — one implementation, two callers.
+ * The substrate's task-id minter.
  *
- * Task ids (`collection/internal.ts`) and write-provenance token ids
- * (`write-provenance.ts`) need the same thing: a value that is unique within a
- * process without a dependency on `crypto`. It lives here rather than being
- * inlined twice because two copies of an id generator drift, and because
- * `write-provenance.ts` cannot import `collection/internal.ts` — that module
- * imports back from it for a fresh task's initial provenance.
+ * Task ids (`collection/internal.ts`) are the one caller: a value that is
+ * unique within a process without a dependency on `crypto`, never persisted
+ * for cross-process comparison. Write-provenance token ids
+ * (`write-provenance.ts`) used to share this — they no longer do, because a
+ * receipt id is persisted (in `task.writeLog`) and compared across processes
+ * by `didWriteLand`, which this generator's per-process counter and 24-bit
+ * random tail cannot guarantee against a collision on. That id is minted with
+ * `crypto.randomUUID()` instead. Task ids stay on this generator — that
+ * scheme is pre-existing and changing its format is a separate compatibility
+ * question.
  */
 
 let counter = 0;

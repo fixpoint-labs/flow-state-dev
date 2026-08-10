@@ -53,7 +53,6 @@
  * therefore the *"cannot tell"* signal, not evidence a write did not land —
  * which is why {@link didWriteLand} is three-valued and never a boolean.
  */
-import { generateId } from "./generate-id";
 import type { Task, TaskWriteReceipt } from "./schema/task";
 
 /**
@@ -149,7 +148,15 @@ export interface TaskWriteToken {
  */
 export function beginTaskWrite(task: Task | undefined): TaskWriteToken {
   return {
-    id: generateId("tw"),
+    // crypto.randomUUID(), not generateId(): the receipt id is persisted (in
+    // task.writeLog) and compared across processes by didWriteLand's
+    // membership arm, the same basis on which incarnationId was hardened.
+    // generateId's own header says nothing about it compares across
+    // machines — its counter is per-process and its random tail is only 24
+    // bits, so two processes can mint the same value, and a collision here
+    // makes membership return a confident `true` for a write that never
+    // landed.
+    id: `tw_${crypto.randomUUID()}`,
     sinceRevision: task?.revision,
     incarnationId: task?.incarnationId,
   };
