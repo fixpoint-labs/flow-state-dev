@@ -27,13 +27,15 @@ import {
 } from "../../src/task-board/blocks/record-result";
 import {
   createSequencerBackedTaskCollection,
-  openLeaseRenewalScope,
-  stampLeaseRenewal,
   startLeaseRenewal,
   ticketForClaim,
   type RenewalTimer,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import {
+  openLeaseRenewalScope,
+  stampLeaseRenewal,
+} from "../../src/tasks/lease-renewal-scope";
 import { createFakeSequencerState } from "../helpers";
 
 /**

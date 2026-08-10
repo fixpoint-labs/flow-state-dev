@@ -19,12 +19,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   classifierDispatcher,
   createSequencerBackedTaskCollection,
-  currentLeaseRenewal,
-  stampLeaseRenewal,
   startLeaseRenewal,
   ticketForClaim,
   withLeaseRenewal,
-  withLeaseRenewalScope,
   DEFAULT_MAX_ABANDONMENTS,
   MIN_RENEWAL_DELAY_MS,
   RENEWAL_DIVISOR,
@@ -32,6 +29,11 @@ import {
   type Task,
   type TaskCollectionRef,
 } from "../../src/tasks";
+import {
+  withLeaseRenewalScope,
+  stampLeaseRenewal,
+  currentLeaseRenewal,
+} from "../../src/tasks/lease-renewal-scope";
 import { hasClaimableTask } from "../../src/task-board/shared";
 import { createFakeSequencerState } from "../helpers";
 

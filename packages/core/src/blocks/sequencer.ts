@@ -1239,17 +1239,6 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             // A replayed child is injected, not dispatched, so it has no
             // settle to report — see `childWillReplay`.
             const replayed = childWillReplay(ctx, path);
-            // Resolved per dispatch, not at definition time — the signal is a
-            // runtime fact (which claim this iteration holds), so a step
-            // composed once and run many times gets its own each turn.
-            //
-            // Skipped on replay for the same reason the hook below is: there is
-            // no dispatch to run under. The resolver reads live runtime state
-            // (`currentLeaseRenewal()` and the like), and on a resume that state
-            // belongs to the original run — so calling it can throw where the
-            // cached output would have been returned, and any resolver that is
-            // not a pure read would run again on every re-entry.
-            const extraSignal = replayed ? undefined : resolveAbortSignal?.(ctx);
             // `finally`, so it also runs on the one exit no composed handler
             // sees: a `SuspensionError`, which bypasses `.rescue()` by design.
             // The outcome is reported because those exits are not
@@ -1257,6 +1246,18 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             // `StepOptions.onSettled`.
             let outcome: StepOutcome = "returned";
             try {
+              // Resolved INSIDE the guard, per dispatch. The signal is a runtime
+              // fact (which claim this iteration holds), so a step composed once
+              // and run many times gets its own each turn — and a resolver that
+              // throws is a failed dispatch like any other. Resolving above the
+              // `try` would skip `onSettled` entirely on that path, leaking
+              // whatever a preceding setup step established, against a contract
+              // that promises every exit.
+              //
+              // Skipped on replay for the same reason the hook is: there is no
+              // dispatch to run under. The resolver reads live runtime state,
+              // and on a resume that state belongs to the original run.
+              const extraSignal = replayed ? undefined : resolveAbortSignal?.(ctx);
               const result = await runChild(
                 ctx,
                 { block, connector },
@@ -1314,11 +1315,11 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             // dispatched has nothing to settle (see `StepOptions.onSettled`).
             // A replayed child is the same situation one layer over.
             const replayed = childWillReplay(ctx, path);
-            // Same gating as `.step` — a replayed child has no dispatch for the
-            // resolver to describe.
-            const extraSignal = replayed ? undefined : resolveAbortSignal?.(ctx);
             let outcome: StepOutcome = "returned";
             try {
+              // Inside the guard, and gated on replay, for the reasons `.step`
+              // above spells out. This dispatch path carries its own copy.
+              const extraSignal = replayed ? undefined : resolveAbortSignal?.(ctx);
               const result = await runChild(
                 ctx,
                 { block, connector },

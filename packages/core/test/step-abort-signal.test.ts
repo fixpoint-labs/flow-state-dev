@@ -758,3 +758,63 @@ describe("the abortSignal RESOLVER is skipped on replay too", () => {
     ).toEqual({ aborted: false });
   });
 });
+
+
+describe("a THROWING abortSignal resolver still settles the step", () => {
+  // The resolver is part of the dispatch, so a throw from it is a failed
+  // dispatch — not a reason for the step to vanish without reporting. Resolving
+  // it above the guard skipped `onSettled` entirely on that path, which leaks
+  // whatever a preceding setup step established: the lease renewal a `.tap`
+  // started keeps renewing an `in_progress` task with nothing left to stop it.
+  //
+  // Both dispatch paths carry their own copy of this ordering.
+
+  const explode = () => {
+    throw new Error("resolver exploded");
+  };
+
+  it(".step — onSettled fires, classified as threw", async () => {
+    const outcomes: string[] = [];
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() }).step(reportsAbort, {
+      abortSignal: explode,
+      onSettled: (_ctx, outcome) => outcomes.push(outcome),
+    });
+
+    await expect(runForTest(seq, null, createMockContext())).rejects.toThrow(
+      "resolver exploded"
+    );
+    expect(outcomes).toEqual(["threw"]);
+  });
+
+  it(".stepIf — same", async () => {
+    const outcomes: string[] = [];
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() })
+      .map(() => ({ go: true }))
+      .stepIf((out: { go: boolean }) => out.go, reportsAbort, {
+        abortSignal: explode,
+        onSettled: (_ctx, outcome) => outcomes.push(outcome),
+      });
+
+    await expect(runForTest(seq, null, createMockContext())).rejects.toThrow(
+      "resolver exploded"
+    );
+    expect(outcomes).toEqual(["threw"]);
+  });
+
+  it("does not swallow the resolver's error", async () => {
+    // The hook runs, and the original failure still surfaces — releasing is not
+    // recovering.
+    let calls = 0;
+    const seq = sequencer({ name: "s", inputSchema: z.unknown() }).step(reportsAbort, {
+      abortSignal: explode,
+      onSettled: () => {
+        calls += 1;
+      },
+    });
+
+    await expect(runForTest(seq, null, createMockContext())).rejects.toThrow(
+      "resolver exploded"
+    );
+    expect(calls).toBe(1);
+  });
+});

@@ -82,11 +82,8 @@ import {
   getOrCreateTaskCollection,
   isDefinedTaskCollection,
   onTaskChangeFor,
-  currentLeaseRenewal,
   resolveTaskCapDefaults,
-  stampLeaseRenewal,
   startLeaseRenewal,
-  withLeaseRenewalScope,
   ticketForClaim,
   type DefinedTaskCollection,
   type TaskCapOptions,
@@ -96,6 +93,12 @@ import {
   type TaskWorker,
   type TaskWorkerRegistry,
 } from "../tasks";
+// The Node-only async-context seam — see `tasks/lease-renewal-scope`.
+import {
+  currentLeaseRenewal,
+  stampLeaseRenewal,
+  withLeaseRenewalScope,
+} from "../tasks/lease-renewal-scope";
 import {
   createTaskBoardCapability,
   type TaskBoardCapabilityAccessor,

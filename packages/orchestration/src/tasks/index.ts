@@ -172,13 +172,15 @@ export {
 // Lease renewal (FIX-1005) — the worker half of durable-job recovery. Exported
 // so a caller driving `claim` itself renews the lease it holds; a claimed row
 // nobody renews is one the next drain takes back.
+//
+// The DRIVER only. The per-worker `AsyncLocalStorage` seam
+// (`openLeaseRenewalScope` / `withLeaseRenewalScope` / `stampLeaseRenewal` /
+// `currentLeaseRenewal`) is exported from the package's MAIN entry instead:
+// it needs `node:async_hooks`, and this subpath is published browser-safe
+// (`docs/architecture/items.md`). See `test/tasks-subpath-browser-safe.spec.ts`.
 export {
   startLeaseRenewal,
   withLeaseRenewal,
-  openLeaseRenewalScope,
-  withLeaseRenewalScope,
-  stampLeaseRenewal,
-  currentLeaseRenewal,
   RENEWAL_DIVISOR,
   MIN_RENEWAL_DELAY_MS,
   type LeaseRenewalDriver,

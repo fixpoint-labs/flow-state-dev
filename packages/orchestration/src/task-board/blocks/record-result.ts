@@ -35,7 +35,8 @@
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { currentLeaseRenewal, type TaskCollectionRef } from "../../tasks";
+import { type TaskCollectionRef } from "../../tasks";
+import { currentLeaseRenewal } from "../../tasks/lease-renewal-scope";
 import { taskBoardWorkerBodyStateSchema } from "../schemas";
 
 /**
