@@ -108,6 +108,9 @@ export interface RuntimeConfig {
  * logic has one home.
  */
 export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
+  // Both boundary points funnel through here, so a host that never builds a
+  // router is validated too.
+  assertMaxWorkstreamListLimit(options.maxWorkstreamListLimit);
   return {
     modelResolver: options.modelResolver,
     voiceProvider: options.voiceProvider,
@@ -133,6 +136,30 @@ export function createRuntimeConfig(options: RuntimeConfig): RuntimeConfig {
  * size: each row resolves its status from the request store.
  */
 export const DEFAULT_MAX_WORKSTREAM_LIST_LIMIT = 100;
+
+/**
+ * Validate a host's `maxWorkstreamListLimit` at construction, throwing on a
+ * value that cannot bound anything.
+ *
+ * Loud rather than silently ignored: this number is a safety cap, and every
+ * bad value fails in a direction that looks like it worked. `Infinity` and
+ * `NaN` make the upper-bound comparison vacuous, so the route would accept an
+ * arbitrarily large page and the amplification the cap exists to bound goes
+ * unbounded. Zero or a negative would be handed to the store as a page size.
+ * `NaN` in particular is what `Number(process.env.X)` produces from a typo,
+ * which is exactly how this option will usually be set.
+ */
+export function assertMaxWorkstreamListLimit(limit: number | undefined): void {
+  if (limit === undefined) return;
+  if (!Number.isSafeInteger(limit) || limit < 1) {
+    throw new Error(
+      `maxWorkstreamListLimit must be a positive safe integer, received ${String(limit)}. ` +
+        "It caps how many workstream rows one read may return, and a value that " +
+        "cannot be compared against (Infinity, NaN) or cannot be a page size " +
+        "(zero, negative) would leave the read unbounded rather than capped."
+    );
+  }
+}
 
 /** Stale-request sweeper cadence (ms) when the host configures none. */
 export const DEFAULT_STALE_SWEEP_INTERVAL_MS = 30_000;

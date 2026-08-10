@@ -43,25 +43,22 @@ import {
 const DEFAULT_STATE_PAGE_LIMIT = 100;
 
 /**
- * Rows one background-work read asks for when the caller names no preference.
+ * The background-work read asks for one page, never for the whole history.
  *
- * Stated here rather than inherited from the server's default, so the number
- * the docs quote is the number the hook actually gets and cannot drift if that
- * default changes. This is a cap, not a fetch size — a session with three
- * workstreams still returns three rows.
+ * The axis is re-read on every interaction, so paging to exhaustion would make
+ * an ordinary turn cost a number of requests that grows with the
+ * conversation's history. Rows come back newest-first, so what a longer
+ * history loses off the end is the oldest finished work, never work that just
+ * started.
  *
- * The axis is deliberately one page: it is re-read on every interaction, and
- * paging to exhaustion would make an ordinary turn cost a number of requests
- * that grows with the conversation's history. Rows come back newest-first, so
- * what a longer history loses off the end is the oldest finished work, never
- * work that just started.
- *
- * An app that runs more background work than this raises it via
- * `workstreams: { limit }`. The ceiling is the workstream route's own maximum:
- * it rejects anything higher, and `react` cannot import that constant from
- * `engine` across the package boundary.
+ * How large that page is belongs to the **server**, which is why no default
+ * appears here. The route's maximum is configurable per deployment and the
+ * hook cannot see it, so a number hardcoded on this side would be rejected
+ * outright by any deployment that set a smaller ceiling — turning an ordinary
+ * mount into a 400 and an empty axis. Sending nothing lets the route apply its
+ * own default, which is always within its own bounds. An app that wants a
+ * specific page says so with `workstreams: { limit }` and owns the result.
  */
-const DEFAULT_WORKSTREAM_PAGE_SIZE = 100;
 
 /**
  * Items subscription configuration for useSession.
@@ -78,16 +75,19 @@ export type SessionItemsOptions =
  */
 export type SessionWorkstreamsOptions = {
   /**
-   * Rows each read asks for, newest first. Defaults to 100.
+   * Rows each read asks for, newest first. Omitted by default, which lets the
+   * server apply its own page size.
    *
-   * Raise it when a conversation runs more background work than that — the
-   * list is all-time history, not just what is currently running, so it grows
-   * with everything the conversation has ever started. Anything past this many
-   * rows is not reachable from the hook.
+   * Set it when a conversation runs more background work than that page holds
+   * — the list is all-time history, not just what is currently running, so it
+   * grows with everything the conversation has ever started, and anything past
+   * one page is not reachable from the hook.
    *
-   * The server enforces its own maximum and rejects a larger value with a 400.
-   * That maximum defaults to 100, so going above it also means raising
-   * `maxWorkstreamListLimit` on the server.
+   * The server caps this and rejects a larger value with a 400, which surfaces
+   * as `workstreamsStale` rather than rows. The cap defaults to 100 and is
+   * raised with `maxWorkstreamListLimit` on the server, so a value above what
+   * the deployment permits is a misconfiguration on the app's side, not a
+   * silent truncation.
    */
   limit?: number;
 };
@@ -200,11 +200,11 @@ export type SessionView = {
    * anything that keeps it up to date on its own. It is re-read on mount, at
    * the start of every action, and whenever the app calls `refresh()`.
    *
-   * The most recent entries, newest first — 100 by default, raised with
-   * `workstreams: { limit }`. This is all-time history rather than only what
-   * is running now, so it grows with everything the conversation has ever
-   * started; past the limit the oldest finished work falls off the end and is
-   * not reachable from here.
+   * One page of the most recent entries, newest first, sized by the server
+   * unless the app names a page with `workstreams: { limit }`. This is
+   * all-time history rather than only what is running now, so it grows with
+   * everything the conversation has ever started; past one page the oldest
+   * finished work falls off the end and is not reachable from here.
    *
    * A row's `status` is absent until its work has run anything, and `"active"`
    * means only *not finished* — never render it as "running", "working" or
@@ -393,9 +393,9 @@ export function useSession(
   // Read off as a primitive rather than memoizing the options object: callers
   // pass `workstreams` as an inline literal, so a new object identity every
   // render would re-create `refreshWorkstreams` and re-fire the mount read on
-  // every render.
-  const workstreamLimit =
-    options?.workstreams?.limit ?? DEFAULT_WORKSTREAM_PAGE_SIZE;
+  // every render. `undefined` when the app named no page — see the note on the
+  // read below for why nothing is substituted here.
+  const workstreamLimit = options?.workstreams?.limit;
 
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [snapshot, setSnapshot] = useState<SessionStateSnapshotResponse | null>(null);
@@ -592,9 +592,12 @@ export function useSession(
     const sequence = ++workstreamSequenceRef.current;
 
     try {
-      const rows = await sessionClient.listWorkstreams(sessionId, {
-        limit: workstreamLimit
-      });
+      const rows = await sessionClient.listWorkstreams(
+        sessionId,
+        // Omitted entirely when the app named no page, so the route applies
+        // its own default rather than being handed a number this side guessed.
+        workstreamLimit === undefined ? undefined : { limit: workstreamLimit }
+      );
 
       // Superseded: we are now reading a different session, or the same
       // session from a different backend.

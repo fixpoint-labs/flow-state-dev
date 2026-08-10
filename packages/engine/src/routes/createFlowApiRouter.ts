@@ -16,6 +16,7 @@ import type { TracingLevel } from "@flow-state-dev/core";
 import type { StoreRegistry } from "../stores/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import {
+  assertMaxWorkstreamListLimit,
   createRuntimeConfig,
   resolveStaleSweep,
   type RuntimeConfig
@@ -183,6 +184,17 @@ export type CreateFlowApiRouterOptions = {
    * with caller-supplied input.
    */
   publicReentrySources?: readonly string[];
+
+  /**
+   * Largest `limit` the workstream listing route accepts. Default 100.
+   *
+   * Raise it for deployments whose conversations run more background work
+   * than that: the list a client reads is all-time history, so any fixed
+   * ceiling eventually hides the oldest finished work. Raise it deliberately —
+   * each row resolves its status from the request store and clients re-read
+   * the list on every interaction, so a larger ceiling costs more per turn.
+   */
+  maxWorkstreamListLimit?: number;
 
   /**
    * Enable the privileged read-only debug endpoint surface under
@@ -437,6 +449,9 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   // here is a security assumption, and a production 404 is the wrong place to
   // discover the option did nothing.
   assertPublicReentrySources(runtimeConfig.publicReentrySources);
+  // Same reasoning one option over: a cap that cannot bound anything reads as
+  // configured and behaves as absent.
+  assertMaxWorkstreamListLimit(runtimeConfig.maxWorkstreamListLimit);
 
   const handlers = createFlowRouteHandlers({
     ...options,

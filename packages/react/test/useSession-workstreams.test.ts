@@ -133,7 +133,7 @@ describe("useSession workstreams axis (FIX-1012)", () => {
     expect(sessionClientMock.listWorkstreams).toHaveBeenCalledTimes(1);
     expect(sessionClientMock.listWorkstreams).toHaveBeenCalledWith(
       "sess1",
-      expect.anything()
+      undefined
     );
     expect(result.current.workstreams).toEqual([]);
     expect(result.current.workstreamsStale).toBe(false);
@@ -318,16 +318,15 @@ describe("useSession workstreams axis (FIX-1012)", () => {
     expect(result.current.workstreams[0]?.status).toBe("completed");
   });
 
-  it("asks for a bounded page rather than inheriting whatever the server defaults to", async () => {
+  it("names no page size of its own, so a deployment's smaller ceiling cannot reject the read", async () => {
     await mountSession();
 
-    // The number the docs quote has to be the number the hook asks for. Left
-    // unspecified, the page size is whatever the server's default happens to
-    // be, so the documented bound could drift without anything here failing.
-    expect(sessionClientMock.listWorkstreams).toHaveBeenCalledWith(
-      "sess1",
-      expect.objectContaining({ limit: 100 })
-    );
+    // The route's maximum is configurable and this side cannot see it. Any
+    // number hardcoded here is one a deployment can set its ceiling below, and
+    // the route answers an over-limit `limit` with a 400 rather than clamping
+    // — so an ordinary mount would return no rows at all on that deployment.
+    const [, listOptions] = sessionClientMock.listWorkstreams.mock.calls[0] ?? [];
+    expect(listOptions?.limit).toBeUndefined();
   });
 
   it("asks for the caller's limit, because the default is too small for a large orchestration", async () => {

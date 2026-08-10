@@ -1125,6 +1125,52 @@ describe("paging", () => {
     expect(((await res.json()) as { error: string }).error).toContain(name);
   });
 
+  it("takes the ceiling straight from the public constructor", async () => {
+    // Passed as an object literal rather than the spread the neighbouring
+    // tests use, so this reads the way a host actually writes it.
+    //
+    // It does NOT prove the option is *declared* on
+    // `CreateFlowApiRouterOptions`: this package typechecks `src/**/*` only,
+    // so no excess-property check ever runs over this file, and an undeclared
+    // option would reach the runtime here while being unsettable by any host
+    // writing normal TypeScript. That half is guarded by review, not by CI.
+    const registry = createFlowRegistry();
+    registry.register(openFlow("chat"));
+    const stores = createInMemoryStores();
+    const router = createFlowApiRouter({
+      registry,
+      stores,
+      maxWorkstreamListLimit: 500
+    });
+
+    await seedChildren(stores, 3);
+    const res = await call(router, ["sessions", "parent", "workstreams"], {
+      query: "limit=500"
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it.each([
+    ["Infinity", Number.POSITIVE_INFINITY],
+    ["NaN", Number.NaN],
+    ["zero", 0],
+    ["a negative", -1],
+    ["a fraction", 2.5]
+  ])("refuses %s as a ceiling at construction", (_label, value) => {
+    // Every one of these fails in the direction that looks like it worked:
+    // Infinity and NaN make the bound comparison vacuous, so the cap is gone
+    // rather than set. NaN is what `Number(process.env.X)` yields from a typo.
+    const registry = createFlowRegistry();
+    registry.register(openFlow("chat"));
+    expect(() =>
+      createFlowApiRouter({
+        registry,
+        stores: createInMemoryStores(),
+        maxWorkstreamListLimit: value
+      })
+    ).toThrow(/maxWorkstreamListLimit/);
+  });
+
   it("accepts a limit above the built-in ceiling when the host raises it", async () => {
     // The list is all-time history, so a deployment running large
     // orchestrations outgrows any fixed ceiling. Raising it is the operator's

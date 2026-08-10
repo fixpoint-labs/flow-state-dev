@@ -184,9 +184,9 @@ The parameter defaults to `unknown`, so untyped call sites are unchanged.
 
 `ReadonlyArray<WorkstreamSummary>` of the background work running under this session — one entry per body of work, carrying `{ id, parentSessionId, createdAt, updatedAt, topic?, coordinate?, status? }`. Empty for a session that never started any. Separate from `items`: background work is not part of the conversation, and no result is folded into the transcript. An app that wants a finished result to appear in the chat writes that itself.
 
-Carries the most recent entries, newest first — 100 by default. This list is all-time history, not just what is running now, so it grows with everything the conversation has ever started. A conversation that runs more background work than the limit keeps showing the newest; the oldest finished work falls off the end and is not reachable from the hook.
+Carries one page of the most recent entries, newest first. This list is all-time history, not just what is running now, so it grows with everything the conversation has ever started. A conversation that runs more background work than one page keeps showing the newest; the oldest finished work falls off the end and is not reachable from the hook.
 
-Set it with `workstreams: { limit }`:
+The page size is the server's, so the hook works against any deployment without being told what that is. Ask for a specific one with `workstreams: { limit }`:
 
 ```tsx
 const session = useSession(sessionId, {
@@ -195,7 +195,7 @@ const session = useSession(sessionId, {
 });
 ```
 
-The server enforces its own maximum and rejects a larger value with a 400. That maximum defaults to 100, so asking for more than that also means raising `maxWorkstreamListLimit` on the server. Both halves are deliberate: this list is re-read on every interaction, so a bigger page costs more on every turn, and the deployment paying that cost is the one that gets to choose it.
+The server caps that value and rejects a larger one with a 400, which the hook surfaces as `workstreamsStale` rather than rows. The cap defaults to 100 and is raised with `maxWorkstreamListLimit` on the server — so asking for more than the deployment permits is a misconfiguration you hear about, not a silent truncation.
 
 Current as of the reader's last interaction. It is re-read on mount, at the start of each action, and on `refresh()` — nothing keeps it current while the user waits, so a job started elsewhere appears on the next action or refresh.
 
