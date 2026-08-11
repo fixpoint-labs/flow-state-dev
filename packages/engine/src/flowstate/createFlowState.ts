@@ -55,15 +55,26 @@ const MAX_DETACHED_DRAIN_ROUNDS = 32;
 const MAX_NAMED_TRUNCATED_CHILDREN = 5;
 
 /**
- * Grace given to a cancelled child to unwind before the stores close.
+ * Most time a cancelled child gets to unwind before the stores close.
  *
  * An aborted run throws at its next await and writes a terminal record, and that
  * write needs the adapters still open — cancelling and closing in the same tick
- * would trade a run that never finished for one that half-wrote. Short, because
- * this is the tail of an already-expired budget and a child that ignores its
- * abort signal must not be able to extend shutdown indefinitely.
+ * would trade a run that never finished for one that half-wrote.
+ *
+ * A **cap on a slice of the drain budget**, not an addition to it: the reserve
+ * is carved out of `detachedDrainTimeoutMs` so the option stays a true ceiling.
  */
 const DETACHED_ABORT_UNWIND_MS = 2_000;
+
+/**
+ * Fraction of the drain budget reserved for unwinding cancelled children.
+ *
+ * A quarter: waiting for work to finish is the point and unwinding is its tail,
+ * so the reserve must never dominate. It matters most on a small budget, where a
+ * flat 2s reserve would leave no time to wait at all — at 1.5s it reserves
+ * 375ms and still spends 1.125s waiting.
+ */
+const DETACHED_UNWIND_BUDGET_SHARE = 4;
 
 /**
  * Default ceiling on how long `dispose()` waits for in-process detached work.
@@ -380,18 +391,35 @@ class InternalFlowState<TSettings extends object>
     if (this.#detachedChildren.size === 0) return;
 
     const budgetMs = resolveDetachedDrainTimeout(this.#options.detachedDrainTimeoutMs);
+    const startedAt = Date.now();
     // ONE deadline for the whole drain, not one per round. A per-round budget
     // multiplies by the round cap, so a slow-but-progressing spawn chain could
     // still hold shutdown for many minutes.
-    const deadline = Date.now() + budgetMs;
-    const startedAt = Date.now();
+    const deadline = startedAt + budgetMs;
+    // Cancellation needs time INSIDE the budget, not after it. An aborted run
+    // throws at its next await and writes a terminal record, and that write
+    // needs the adapters still open — so the unwind is carved out of the
+    // deadline rather than added to it. Added, the option stopped being a
+    // ceiling: `0` (documented as immediate shutdown) still waited the full
+    // unwind, and the 30s default ran to ~32s before any cleanup began.
+    //
+    // A fraction, capped: the wait is the point and the unwind is its tail, so
+    // reserving a quarter keeps the reserve from ever dominating a small budget
+    // while the cap keeps a large one from reserving absurdly long. At `0` both
+    // terms are `0`, so nothing waits and nothing unwinds — which is what the
+    // option says it does.
+    const unwindMs = Math.min(
+      DETACHED_ABORT_UNWIND_MS,
+      Math.floor(budgetMs / DETACHED_UNWIND_BUDGET_SHARE)
+    );
+    const waitDeadline = deadline - unwindMs;
 
     for (
       let round = 0;
       this.#detachedChildren.size > 0 && round < MAX_DETACHED_DRAIN_ROUNDS;
       round += 1
     ) {
-      const remainingMs = deadline - Date.now();
+      const remainingMs = waitDeadline - Date.now();
       if (remainingMs <= 0) break;
 
       const pending = [...this.#detachedChildren];
@@ -425,7 +453,7 @@ class InternalFlowState<TSettings extends object>
     }
 
     if (this.#detachedChildren.size > 0) {
-      await this.#cancelOutstandingChildren(Date.now() - startedAt, budgetMs);
+      await this.#cancelOutstandingChildren(deadline, startedAt, budgetMs);
     }
   }
 
@@ -448,10 +476,18 @@ class InternalFlowState<TSettings extends object>
    *
    * The brief unwind wait afterwards is what makes the cancel worth doing: an
    * aborted run throws at its next await and writes a terminal record, and that
-   * write needs the stores still open. Bounded, so a child that ignores its
-   * signal cannot re-open the hang this method exists to close.
+   * write needs the stores still open. It runs against the SAME deadline the
+   * wait phase did, so the whole drain — waiting, cancelling and unwinding —
+   * fits inside `detachedDrainTimeoutMs` rather than overrunning it by a
+   * constant. A child that ignores its abort signal therefore cannot re-open the
+   * hang this method exists to close, and a `0` budget cancels and returns
+   * without waiting at all.
    */
-  async #cancelOutstandingChildren(elapsedMs: number, budgetMs: number): Promise<void> {
+  async #cancelOutstandingChildren(
+    deadline: number,
+    startedAt: number,
+    budgetMs: number
+  ): Promise<void> {
     const abandoned = [...this.#detachedChildren];
 
     for (const child of abandoned) {
@@ -460,12 +496,17 @@ class InternalFlowState<TSettings extends object>
       abortRequest(child.requestId);
     }
 
+    // Whatever is left of the budget, which is the slice reserved for exactly
+    // this. Never negative — `settledWithin` treats `0` as "one tick, then give
+    // up", so an exhausted budget still yields to let a just-aborted run reach
+    // its rejection rather than skipping the unwind entirely.
+    const unwindMs = Math.max(0, deadline - Date.now());
     await settledWithin(
       Promise.allSettled(abandoned.map((child) => child.finished)),
-      DETACHED_ABORT_UNWIND_MS
+      unwindMs
     );
 
-    this.#reportTruncatedChildren(abandoned, elapsedMs, budgetMs);
+    this.#reportTruncatedChildren(abandoned, Date.now() - startedAt, budgetMs);
   }
 
   /**
@@ -746,28 +787,33 @@ class InternalFlowState<TSettings extends object>
    * A start operation already on the config is never overwritten either: a
    * deployment that wired its own is the more specific answer.
    *
-   * And a process that has already asked for a router is left exactly as it is
-   * today — see the guard below.
+   * ## Why this runs regardless of whether a router is coming
+   *
+   * There are exactly two installers in the framework — this one and
+   * `createFlowRouteHandlers` — and only this one registers children for the
+   * shutdown drain. An earlier version skipped this whenever a router had
+   * already been asked for, on the reasoning that the router would install its
+   * own and "the HTTP path is already covered". It is covered for *dispatch* and
+   * not for *tracking*: the router's operation carries no `onDispatched`, so on
+   * the ordinary Next.js / `serve()` path an HTTP-started Workstream never
+   * entered `#detachedChildren` and `dispose()` drained an empty set while a
+   * child was still writing. The bound was real, tested, and inert exactly where
+   * most deployments live.
+   *
+   * So the ordering is made to decide it rather than a flag. `#doInit` awaits
+   * `#runtime()` — and therefore this method — *before* it builds the router,
+   * and `createFlowApiRouter` copies `requestHost` onto its own config with a
+   * spread, so the router inherits this operation and its own "install only when
+   * absent" contract leaves it alone. The tracked installer wins wherever a
+   * `FlowState` owns the config; the untracked one now only runs for a direct
+   * `createFlowApiRouter` caller, which has no `dispose()` to drain and so has
+   * nothing to track for.
    */
   #wireDetachedStart(runtime: FlowStateRuntime, workerMode: WorkerMode): void {
     const requestHost = runtime.runtimeConfig.requestHost;
     if (requestHost === undefined) return;
     if (requestHost.startOperation !== undefined) return;
     if (workerMode === "worker-only") return;
-    // A router was asked for BEFORE the runtime resolved (`ready()` /
-    // `getRouter()` as the entry point — Next.js, `serve()`), so
-    // `createFlowRouteHandlers` wires its own host's operation and the HTTP path
-    // is already covered. Leaving that case untouched keeps this change to the
-    // topology it is about.
-    //
-    // The reverse order — `getRuntime()` first, then a router (`fsdev serve`'s
-    // bind guard, `fsdev dev`'s banner) — DOES wire here, and the operation
-    // stays. `createFlowApiRouter` copies `requestHost` onto its own config with
-    // a spread, so it inherits this one and its "carried through untouched"
-    // contract leaves it alone, exactly as it would a worker's. Nothing is taken
-    // away from the shared config afterwards: it is the only object a colocated
-    // worker or a direct `runAction` ever reads.
-    if (this.#routerRequested) return;
 
     const dispatcher = this.#options.dispatcher ?? this.#workerDispatcher;
 

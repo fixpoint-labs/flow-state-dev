@@ -391,6 +391,52 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     }
   );
 
+  it(
+    "detachedDrainTimeoutMs is a true ceiling — including the documented 0",
+    { timeout: 20_000 },
+    async () => {
+      // A budget the drain cannot possibly satisfy, so the only thing under test
+      // is how long shutdown takes to give up.
+      const measure = async (budget: number): Promise<number> => {
+        const observed: Observed = { children: [] };
+        const flow = detachingFlow(`runtime-ceiling-${budget}`, observed, {
+          coreNeverSettles: true
+        });
+        const state = createFlowState({
+          flows: { detaching: flow },
+          stores: { default: { primary: inMemoryStores() } },
+          modelResolver: markerResolver("app-default"),
+          detachedDrainTimeoutMs: budget
+        });
+        const runtime = await state.getRuntime();
+        await runLikeCli(runtime, flow, "s_parent");
+        expect(observed.start).toMatchObject({ ok: true });
+
+        const startedAt = Date.now();
+        const restore = console.error;
+        console.error = () => {};
+        try {
+          await state.dispose();
+        } finally {
+          console.error = restore;
+        }
+        return Date.now() - startedAt;
+      };
+
+      // `0` is documented as immediate shutdown. Waiting the unwind grace on top
+      // of the budget made that simply false — it took ~2s.
+      const immediate = await measure(0);
+      expect(immediate).toBeLessThan(500);
+
+      // And a real budget is not budget + a constant. 1000ms of ceiling means
+      // ~1000ms, not ~3000ms.
+      const bounded = await measure(1_000);
+      expect(bounded).toBeLessThan(2_000);
+      // Sanity: it did actually wait, rather than the ceiling being vacuous.
+      expect(bounded).toBeGreaterThanOrEqual(500);
+    }
+  );
+
   it("the drain survives a queued concurrency policy instead of wedging on it", async () => {
     const observed: Observed = { children: [] };
     const flow = detachingFlow("runtime-drain-queued", observed, {
@@ -540,7 +586,53 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     expect(observed.error ?? "").toMatch(/concurren|reject/i);
   });
 
-  it("a router-first init is left exactly as it was — the router wires its own", async () => {
+  it("drains a Workstream started over HTTP on the router-first path", async () => {
+    const observed: Observed = { children: [] };
+    // Slow enough to be provably mid-flight when the response comes back.
+    const flow = detachingFlow("router-first-drain", observed, { coreDelayMs: 60 });
+
+    const state = createFlowState({
+      flows: { detaching: flow },
+      stores: { default: { primary: inMemoryStores() } },
+      modelResolver: markerResolver("app-default")
+    });
+
+    // The ordinary production topology: the router IS the entry point, so
+    // nothing resolves the runtime first. Next.js route handlers and `serve()`
+    // both land here, which makes this the path most deployments are on.
+    const router = await state.getRouter();
+
+    const res = await router.POST(
+      new Request("http://localhost/api/flows/router-first-drain/actions/launch", {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "text/event-stream" },
+        body: JSON.stringify({ userId: USER_ID, sessionId: "s_http", input: {} })
+      }),
+      { params: { path: ["router-first-drain", "actions", "launch"] } }
+    );
+    const reader = res.body?.getReader();
+    while (reader !== undefined) {
+      const { done } = await reader.read();
+      if (done) break;
+    }
+
+    expect(observed.start).toMatchObject({ ok: true });
+    // The launching request returned first — detachment working, and the window
+    // in which shutdown used to close the stores under the child.
+    expect(observed.children).toEqual([]);
+
+    await state.dispose();
+
+    // THE ASSERTION. When the router installed its own untracked start
+    // operation, this child was never registered for the drain: `dispose()`
+    // drained an empty set, returned immediately, and closed the stores while
+    // the child was still running. Asserting that `onDispatched` is wired would
+    // not have caught it — only asking whether the work actually survived does.
+    expect(observed.children).toHaveLength(1);
+    expect(observed.children[0]!.input).toEqual({ note: "detached-payload" });
+  });
+
+  it("a router-first init puts the TRACKED operation on the shared config", async () => {
     const observed: Observed = { children: [] };
     const flow = detachingFlow("router-first", observed);
 
@@ -550,13 +642,19 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
       modelResolver: markerResolver("app-default")
     });
 
-    // Next.js / `serve()` order: the router is the entry point, so
-    // `createFlowRouteHandlers` covers the HTTP path and this change stays out
-    // of that topology entirely.
+    // Next.js / `serve()` order: the router is the entry point.
     await state.getRouter();
     const runtime = await state.getRuntime();
 
-    expect(runtime.runtimeConfig.requestHost?.startOperation).toBeUndefined();
+    // This assertion is INVERTED from what it was, deliberately. It used to
+    // assert `undefined` here — pinning that a router-first init was left to
+    // `createFlowRouteHandlers` — and that was pinning the defect: the router's
+    // operation carries no child tracking, so shutdown drained an empty set on
+    // the topology most deployments run. The invariant worth holding is that
+    // wherever a FlowState owns the config, the operation on it is the tracked
+    // one, and that this is the object a colocated worker and a direct
+    // `runAction` read.
+    expect(runtime.runtimeConfig.requestHost?.startOperation).toBeDefined();
 
     await state.dispose();
   });
