@@ -35,7 +35,10 @@ import {
   renderContent,
   type ResourceFlowLike,
 } from "../resources/internal";
-import { sessionResourceScopeId } from "../resources/lineage-scope";
+import {
+  readSessionScopeWithLineage,
+  sessionKeyScopeId,
+} from "../resources/lineage-scope";
 
 type ResourceRouteContext = {
   registry: FlowRegistry;
@@ -245,9 +248,10 @@ export async function handleCreateCollectionItem(
 
   const content = typeof body.content === "string" ? body.content : undefined;
 
-  // FIX-1068: state and content must land at the SAME address, so both take the
-  // collection's own scopeId — the lineage root when it is shared to workstreams.
-  const scopeId = sessionResourceScopeId(session, config, ctx.tenantId);
+  // FIX-1068: state and content must land at the SAME address, and that address
+  // belongs to whichever declaration owns this KEY — not to the collection the
+  // route names, which may be a broader pattern that merely accepts it.
+  const scopeId = sessionKeyScopeId(session, flow.resources, storageKey, ctx.tenantId);
 
   // Win the key first, then write content. `expectedVersion: 0` is
   // create-if-absent, so a loser returns below without ever reaching
@@ -346,9 +350,9 @@ export async function handleUpdateResourceContent(
   if (!matchesPattern(config.pattern, storageKey)) {
     storageKey = resolveCollectionKey(config.pattern, route.topic);
   }
-  // FIX-1068: a collection declared `sharedToWorkstream` stores at the lineage
-  // root, so read and write address the same place a block would.
-  const scopeId = sessionResourceScopeId(session, config, ctx.tenantId);
+  // FIX-1068: addressed by the key's owner, so read and write land where a
+  // block would rather than where the named route would.
+  const scopeId = sessionKeyScopeId(session, flow.resources, storageKey, ctx.tenantId);
   const existing = await ctx.stores.resourceState.get("session", scopeId, storageKey);
   if (existing === undefined) {
     return jsonResponse(404, { error: `Item "${route.topic}" not found in "${route.ref}"` });
@@ -460,11 +464,15 @@ export async function handleListCollectionState(
     // whole scope. An empty prefix (e.g. `[topic]/observations`) falls back to
     // getAll.
     const keyPrefix = getPatternPrefix(config.pattern);
-    const scopeId = sessionResourceScopeId(session, config, ctx.tenantId);
+    // FIX-1068: a prefix spans both buckets when a narrower private collection
+    // sits under a shared one, so this is the same lineage-merged read the
+    // execution path performs — per-key ownership, not one address for the lot.
     persisted = toBareStates(
-      keyPrefix
-        ? await ctx.stores.resourceState.getByPrefix("session", scopeId, `${keyPrefix}/`)
-        : await ctx.stores.resourceState.getAll("session", scopeId)
+      await readSessionScopeWithLineage(session, flow.resources, ctx.tenantId, (scopeId) =>
+        keyPrefix
+          ? ctx.stores.resourceState.getByPrefix("session", scopeId, `${keyPrefix}/`)
+          : ctx.stores.resourceState.getAll("session", scopeId)
+      )
     );
   } else {
     // User/org scope: resolve the persisted record via the shared scope
@@ -560,7 +568,7 @@ export async function handleGetCollectionItemState(
     value = toBareState(
       await ctx.stores.resourceState.get(
         "session",
-        sessionResourceScopeId(session, config, ctx.tenantId),
+        sessionKeyScopeId(session, flow.resources, storageKey, ctx.tenantId),
         storageKey
       )
     );
@@ -740,7 +748,7 @@ export async function handleDeleteCollectionItem(
   // the window closed is this route's own: a DELETE issued from an already
   // stale client view still reads the live row here and removes it. A
   // caller-supplied precondition is separate surface (FIX-1006).
-  const scopeId = sessionResourceScopeId(session, config, ctx.tenantId);
+  const scopeId = sessionKeyScopeId(session, flow.resources, storageKey, ctx.tenantId);
   const existing = await ctx.stores.resourceState.get("session", scopeId, storageKey);
   const removed = await ctx.stores.resourceState.delete(
     "session",

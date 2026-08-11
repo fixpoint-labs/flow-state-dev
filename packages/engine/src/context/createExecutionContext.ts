@@ -82,6 +82,7 @@ import {
   resolveResourceIsolation,
   resolveResourceScopeId,
   resolveSessionStorageKey,
+  resolveLineageScopeId,
   tenantMatches
 } from "../stores/scope-keys";
 import { resourceStorageKeys } from "../resources/storage-keys";
@@ -654,13 +655,22 @@ export async function createExecutionContext<
   // record persisted before the field existed, so `== null` reads both the
   // absent and the store-nulled form (BP-030).
   const lineageRootSessionId = sessionRecord.lineageRootSessionId ?? undefined;
-  // Storage form of the same address. `sessionKey` when this session is the
-  // root, so an unshared resource and a shared one agree there and a lineage
-  // that never spawned a child stores exactly where it always did.
-  const lineageRootSessionKey =
-    lineageRootSessionId === undefined
-      ? sessionKey
-      : resolveSessionStorageKey(lineageRootSessionId, options.tenantId);
+  // Storage form of the same address, conjoined with the lineage's OWNER.
+  //
+  // Not the bare root session key: session ids are caller-chosen and a session
+  // can be deleted, so a descendant addressing a bare root id can be pointed at
+  // a session someone else later created under that id. `userId` is
+  // authoritative here — the binding check above throws unless it equals
+  // `sessionRecord.userId` — and `tenantId` likewise. See
+  // `resolveLineageScopeId` for why this is an address and not a check.
+  //
+  // The root computes the SAME address from its own id, which is what keeps a
+  // parent and its descendants on one bucket.
+  const lineageRootSessionKey = resolveLineageScopeId({
+    rootSessionId: lineageRootSessionId ?? sessionId,
+    userId,
+    tenantId: options.tenantId
+  });
 
   const resolvedOrgKey =
     resolvedOrgId !== undefined
@@ -1264,6 +1274,12 @@ export async function createExecutionContext<
     user: new Set<string>(),
     org: new Set<string>()
   };
+  /**
+   * One coverage entry: the bucket a prefix scan actually read, plus the prefix.
+   * `\n` cannot occur in a scopeId, so the join is unambiguous.
+   */
+  const coverageToken = (scopeId: string, keyPrefix: string): string =>
+    `${scopeId}\n${keyPrefix}`;
   // Negative cache for lazy single-row reads: a key confirmed absent by a
   // `resourceState.get` returning undefined. Caps each missing key at one store
   // round-trip per request instead of re-reading on every `get`/`getOptional`.
@@ -1304,9 +1320,19 @@ export async function createExecutionContext<
   // under a prefix already bulk-loaded via `getByPrefix` — the whole prefix is
   // materialized, so an absent key is definitively absent. Prefixes end in `/`
   // (or are `""`, the whole-scope load), so `startsWith` is the coverage test.
+  //
+  // Coverage is per BUCKET, not per prefix. A prefix scan reads one scopeId, and
+  // ownership filtering means it may legitimately return nothing for keys a
+  // sibling declaration owns at a different address (FIX-1068). Recording the
+  // bare prefix would claim coverage the scan never had, and the next lazy read
+  // of such a key would answer "absent" for a row that exists.
   const isMissAuthoritative = (scope: ContentScopeType, storageKey: string): boolean => {
-    for (const prefix of loadedCollectionPrefixes[scope]) {
-      if (storageKey.startsWith(prefix)) return true;
+    const scopeId = resolveResourceStorageScopeId(scope, storageKey);
+    if (scopeId === undefined) return false;
+    for (const token of loadedCollectionPrefixes[scope]) {
+      const split = token.indexOf("\n");
+      if (token.slice(0, split) !== scopeId) continue;
+      if (storageKey.startsWith(token.slice(split + 1))) return true;
     }
     return false;
   };
@@ -1323,7 +1349,11 @@ export async function createExecutionContext<
       if (isExternalResourceCollection(config)) continue;
       if (!isCollectionConfig(config)) continue;
       const prefix = getPatternPrefix(config.pattern);
-      loadedCollectionPrefixes[scope].add(prefix === "" ? "" : `${prefix}/`);
+      const scanned = resolveConfigScopeId(scope, config);
+      if (scanned === undefined) continue;
+      loadedCollectionPrefixes[scope].add(
+        coverageToken(scanned, prefix === "" ? "" : `${prefix}/`)
+      );
     }
   };
   seedLoadedPrefixes("session", sessionFlowLevelConfigs);
@@ -1398,13 +1428,15 @@ export async function createExecutionContext<
         return { fetched, durationMs };
       },
       async getByPrefix(keyPrefix: string): Promise<LazyLoadOutcome> {
-        if (loadedCollectionPrefixes[scope].has(keyPrefix)) return { fetched: false, durationMs: 0 };
         // FIX-735: the collection's prefix resolves to its isolation bucket.
         const scopeId = resolveResourceStorageScopeId(scope, keyPrefix)!;
+        if (loadedCollectionPrefixes[scope].has(coverageToken(scopeId, keyPrefix))) {
+          return { fetched: false, durationMs: 0 };
+        }
         let fetched = false;
         let durationMs = 0;
         await runSingleFlight(`${scope}:prefix:${keyPrefix}`, async () => {
-          if (loadedCollectionPrefixes[scope].has(keyPrefix)) return;
+          if (loadedCollectionPrefixes[scope].has(coverageToken(scopeId, keyPrefix))) return;
           const started = Date.now();
           // Same ownership re-check as the eager waves: a lazy collection is
           // fetched by prefix too, so a broad prefix sweeps up keys a narrower
@@ -1430,7 +1462,7 @@ export async function createExecutionContext<
             ...withoutDeleted(content, deletedContentKeys[scope]),
             ...contentRef.current
           };
-          loadedCollectionPrefixes[scope].add(keyPrefix);
+          loadedCollectionPrefixes[scope].add(coverageToken(scopeId, keyPrefix));
         });
         return { fetched, durationMs };
       }
@@ -1525,7 +1557,7 @@ export async function createExecutionContext<
             }
             const started = Date.now();
             await applyLoad();
-            loadedCollectionPrefixes[scope].add(keyPrefix);
+            loadedCollectionPrefixes[scope].add(coverageToken(scopeId, keyPrefix));
             loadSourceByToken.set(`${scope}:prefix:${keyPrefix}`, source);
             recordResourceLoad({
               storageKey: keyPrefix, scope, source, durationMs: Date.now() - started, cacheHit: false

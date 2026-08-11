@@ -39,7 +39,20 @@ import {
   handleCreateCollectionItem,
   handleListCollectionState
 } from "../src/routes/resource-routes";
+import { resolveLineageScopeId } from "../src/stores/scope-keys";
 import type { SessionRecord, StoreRegistry } from "../src/stores/types";
+
+/**
+ * The storage address a shared resource resolves to for `rootId`'s lineage.
+ *
+ * Computed, not hardcoded: the address conjoins the owner so a root id
+ * recreated under a different user cannot name the same bucket. That makes it
+ * not a session key, and a literal here would only assert the derivation
+ * against itself.
+ */
+function lineageAddr(rootId: string): string {
+  return resolveLineageScopeId({ rootSessionId: rootId, userId: "u_1", tenantId: undefined });
+}
 
 /** Shared across the lineage — the resource under test. */
 const board = defineResource({
@@ -140,11 +153,17 @@ describe("FIX-1068: sharedToWorkstream resources across a session lineage", () =
     const parentAgain = await contextFor(stores, "s_root");
     expect(parentAgain.resources.board.state.note).toBe("from child");
 
-    // Physically one row, stored under the root's key.
-    const atRoot = toBareStates(await stores.resourceState.getAll("session", "s_root"));
-    expect(atRoot).toHaveProperty("board");
-    const atChild = toBareStates(await stores.resourceState.getAll("session", "s_child"));
-    expect(atChild).not.toHaveProperty("board");
+    // Physically one row, at the lineage's address — and at neither session's
+    // own key, which is what keeps it out of reach of a recreated id.
+    expect(
+      toBareStates(await stores.resourceState.getAll("session", lineageAddr("s_root")))
+    ).toHaveProperty("board");
+    expect(
+      toBareStates(await stores.resourceState.getAll("session", "s_root"))
+    ).not.toHaveProperty("board");
+    expect(
+      toBareStates(await stores.resourceState.getAll("session", "s_child"))
+    ).not.toHaveProperty("board");
   });
 
   it("keeps an unshared session resource private to each session", async () => {
@@ -204,13 +223,15 @@ describe("FIX-1068: sharedToWorkstream resources across a session lineage", () =
     const parent = await contextFor(stores, "s_root");
     expect(parent.resources.board.state.note).toBe("from depth 2");
 
-    // One row at the root — not one at each layer.
+    // One row for the lineage — not one per layer.
     expect(
-      toBareStates(await stores.resourceState.getAll("session", "s_child"))
-    ).not.toHaveProperty("board");
-    expect(
-      toBareStates(await stores.resourceState.getAll("session", "s_grandchild"))
-    ).not.toHaveProperty("board");
+      toBareStates(await stores.resourceState.getAll("session", lineageAddr("s_root")))
+    ).toHaveProperty("board");
+    for (const id of ["s_child", "s_grandchild"]) {
+      expect(
+        toBareStates(await stores.resourceState.getAll("session", lineageAddr(id)))
+      ).not.toHaveProperty("board");
+    }
   });
 
   it("shares collection instances across the lineage", async () => {
@@ -233,10 +254,10 @@ describe("FIX-1068: sharedToWorkstream resources across a session lineage", () =
     ).list();
     expect(seen.map((t) => t.state.title)).toEqual(["review"]);
 
-    const atRoot = toBareStates(
-      await stores.resourceState.getByPrefix("session", "s_root", "tasks/")
+    const atLineage = toBareStates(
+      await stores.resourceState.getByPrefix("session", lineageAddr("s_root"), "tasks/")
     );
-    expect(Object.keys(atRoot)).toContain("tasks/t1");
+    expect(Object.keys(atLineage)).toContain("tasks/t1");
   });
 
   it("treats a child persisted before the root field existed as its own root", async () => {
@@ -254,23 +275,36 @@ describe("FIX-1068: sharedToWorkstream resources across a session lineage", () =
     expect(legacy.resources.board.state.note).toBe("");
 
     await legacy.resources.board.patchState({ note: "legacy" });
+    // Its own lineage, not its parent's — two rows at two addresses, and the
+    // parent's is untouched by the child's write.
     expect(
-      toBareStates(await stores.resourceState.getAll("session", "s_legacy"))
-    ).toHaveProperty("board");
+      toBareStates(await stores.resourceState.getAll("session", lineageAddr("s_legacy"))).board
+    ).toEqual({ note: "legacy" });
+    expect(
+      toBareStates(await stores.resourceState.getAll("session", lineageAddr("s_root"))).board
+    ).toEqual({ note: "parent" });
   });
 
-  it("stores a shared resource under the session's own key when it is the root", async () => {
-    // A lineage that never spawned a workstream must store exactly where it
-    // always did — the flag changes nothing for a top-level session.
+  it("keeps a shared resource out of the session's own key even at the root", async () => {
+    // The lineage address is its own namespace, deliberately: a session key is
+    // reachable by anyone who recreates that id, so a shared resource must not
+    // live at one even when the session IS the root. An UNSHARED resource is
+    // untouched by that and still keys exactly where it always did — which is
+    // what makes this change free for every flow already in production.
     const stores = createInMemoryStores();
     await seedSession(stores, "s_solo");
 
     const ctx = await contextFor(stores, "s_solo");
     await ctx.resources.board.patchState({ note: "solo" });
+    await ctx.resources.scratch.patchState({ note: "private" });
 
-    expect(toBareStates(await stores.resourceState.getAll("session", "s_solo"))).toHaveProperty(
-      "board"
-    );
+    const atSessionKey = toBareStates(await stores.resourceState.getAll("session", "s_solo"));
+    expect(atSessionKey).not.toHaveProperty("board");
+    expect(atSessionKey).toHaveProperty("scratch");
+
+    expect(
+      toBareStates(await stores.resourceState.getAll("session", lineageAddr("s_solo")))
+    ).toHaveProperty("board");
   });
 
   it("reads a child's session scope over HTTP the way execution resolves it", async () => {
@@ -320,9 +354,10 @@ describe("FIX-1068: sharedToWorkstream resources across a session lineage", () =
     );
     expect(created.status).toBe(201);
 
-    // Both halves of the instance landed at the root.
-    expect(await stores.resourceState.get("session", "s_root", "tasks/t1")).toBeDefined();
-    expect(await stores.content.get("session", "s_root", "tasks/t1")).toBe("the body");
+    // Both halves of the instance landed at the lineage address, together.
+    const addr = lineageAddr("s_root");
+    expect(await stores.resourceState.get("session", addr, "tasks/t1")).toBeDefined();
+    expect(await stores.content.get("session", addr, "tasks/t1")).toBe("the body");
     expect(await stores.resourceState.get("session", "s_child", "tasks/t1")).toBeUndefined();
 
     // And listing from either session returns it.

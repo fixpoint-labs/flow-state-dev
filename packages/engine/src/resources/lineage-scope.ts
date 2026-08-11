@@ -15,13 +15,15 @@
  */
 import type { ResourceCollectionConfig } from "@flow-state-dev/core/types";
 import { getPatternPrefix } from "@flow-state-dev/core/types";
-import { resolveSessionStorageKey } from "../stores/scope-keys";
+import { resolveLineageScopeId, toBareSessionId } from "../stores/scope-keys";
 import { resourceStorageKeys } from "./storage-keys";
 
 /** The session-record fields lineage addressing reads. */
 export type LineageSession = {
   /** Tenant-namespaced session storage key — the scopeId for unshared resources. */
   id: string;
+  /** The session's owner. Authoritative — it is the stored record's own field. */
+  userId: string;
   /** Bare id of the lineage root; `null`/absent when this session is the root. */
   lineageRootSessionId?: string | null;
 };
@@ -49,9 +51,47 @@ export function sessionResourceScopeId(
   config: SharedFlag | undefined,
   tenantId: string | undefined
 ): string {
-  const root = session.lineageRootSessionId;
-  if (config?.sharedToWorkstream !== true || root == null) return session.id;
-  return resolveSessionStorageKey(root, tenantId);
+  if (config?.sharedToWorkstream !== true) return session.id;
+  return lineageScopeId(session, tenantId);
+}
+
+/**
+ * Storage `scopeId` for one concrete session-scope storage KEY.
+ *
+ * Use this — not {@link sessionResourceScopeId} — wherever the key is
+ * addressable through a declaration that does not own it. A route names a
+ * collection by ref, and a broad pattern accepts keys a narrower sibling owns
+ * (`tasks/**` accepts `tasks/meta/a` while `tasks/meta/*` owns it), so reading
+ * the addressed declaration's flag sends the request to the wrong session. The
+ * key's owner is the only thing that decides, and it is decided here by the same
+ * `resolveOwnershipFlag` execution uses.
+ */
+export function sessionKeyScopeId(
+  session: LineageSession,
+  flowResources: unknown,
+  storageKey: string,
+  tenantId: string | undefined
+): string {
+  const { buckets } = sessionOwnership(flowResources);
+  return resolveOwnershipFlag(buckets, storageKey) === true
+    ? lineageScopeId(session, tenantId)
+    : session.id;
+}
+
+/**
+ * The lineage address for this session — the same one `createExecutionContext`
+ * resolves. Conjoins the owner, so a root id recreated under a different user
+ * names a different bucket (see `resolveLineageScopeId`).
+ */
+function lineageScopeId(session: LineageSession, tenantId: string | undefined): string {
+  return resolveLineageScopeId({
+    // Bare id, recovered from the namespaced key — the tenant is already a
+    // component of the lineage address, so including it twice would differ from
+    // what `createExecutionContext` derives.
+    rootSessionId: session.lineageRootSessionId ?? toBareSessionId(session.id, tenantId),
+    userId: session.userId,
+    tenantId
+  });
 }
 
 /**
@@ -151,19 +191,22 @@ export async function readSessionScopeWithLineage<T>(
   tenantId: string | undefined,
   readAll: (scopeId: string) => Promise<Record<string, T>>
 ): Promise<Record<string, T>> {
-  const root = session.lineageRootSessionId;
-  if (root == null) return readAll(session.id);
-
   const { buckets, anyShared } = sessionOwnership(flowResources);
+  // Nothing shared means one bucket, which is every flow that never asked for
+  // this. The second read below is not paid for by flows that don't use it.
   if (!anyShared) return readAll(session.id);
 
   // Ownership, not "matches some shared prefix" — a private declaration beside
   // a shared one keeps the keys it owns.
   const isShared = (key: string): boolean => resolveOwnershipFlag(buckets, key) === true;
 
-  const [own, atRoot] = await Promise.all([
+  // Both buckets, whether or not this session has an ancestor: the lineage
+  // address is its own namespace, so a ROOT session's shared rows are not at
+  // its session key either. Reading only `session.id` there would return an
+  // empty shared resource for the very session that owns it.
+  const [own, atLineage] = await Promise.all([
     readAll(session.id),
-    readAll(resolveSessionStorageKey(root, tenantId))
+    readAll(lineageScopeId(session, tenantId))
   ]);
 
   const merged: Record<string, T> = {};
@@ -171,7 +214,7 @@ export async function readSessionScopeWithLineage<T>(
     if (isShared(key)) continue;
     merged[key] = value;
   }
-  for (const [key, value] of Object.entries(atRoot)) {
+  for (const [key, value] of Object.entries(atLineage)) {
     if (isShared(key)) merged[key] = value;
   }
   return merged;

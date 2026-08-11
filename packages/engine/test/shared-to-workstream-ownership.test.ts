@@ -35,6 +35,12 @@ import { describe, expect, it } from "vitest";
 import { createExecutionContext, createFlowRegistry, createInMemoryStores } from "../src";
 import { getPersistedData } from "../src/resources/internal";
 import { handleGetSessionState } from "../src/routes/state-routes";
+import {
+  handleDeleteCollectionItem,
+  handleGetCollectionItemState,
+  handleListCollectionState
+} from "../src/routes/resource-routes";
+import { resolveLineageScopeId } from "../src/stores/scope-keys";
 import type { FlowInstance } from "@flow-state-dev/core";
 import type { SessionRecord, StoreRegistry } from "../src/stores/types";
 
@@ -227,4 +233,181 @@ describe("FIX-1068: a private prefix nested under a shared one owns its keys", (
       expect(data?.content["tasks/meta/a"]).toBe("child body");
     });
   }
+});
+
+
+/**
+ * The collection CRUD routes address storage themselves, and they picked the
+ * bucket from the ADDRESSED COLLECTION'S declaration rather than from the
+ * concrete key. A key can be addressed through a broader collection than the one
+ * that owns it — `tasks/meta/a` reached through `tasks/**` — so the declaration
+ * says "shared" while the longest-prefix rule assigns the key to the child.
+ *
+ * The same defect as the whole-scope read, one layer out: `get` and `list`
+ * exposed the root's row, and `delete` removed it.
+ */
+describe("FIX-1068: collection routes address the key's owner, not the route's declaration", () => {
+  // `expose` so the read routes return a projection rather than the
+  // "no client.data configured" hint — otherwise the assertions below could not
+  // see WHICH row came back, which is the whole question.
+  const grants = {
+    content: { read: true, create: true, update: true, delete: true },
+    state: { read: true },
+    expose: ["note"]
+  } as never;
+
+  const shared = defineResourceCollection({
+    pattern: "tasks/**",
+    scope: "session",
+    sharedToWorkstream: true,
+    stateSchema: noteSchema,
+    client: grants
+  });
+  const priv = defineResourceCollection({
+    pattern: "tasks/meta/*",
+    scope: "session",
+    stateSchema: noteSchema,
+    client: grants
+  });
+  const routeFlow = defineFlow({
+    kind: "route-ownership-flow",
+    actions: { run: { inputSchema: z.string(), block: noop } },
+    resources: { shared, priv }
+  })();
+
+  async function seeded() {
+    const stores = createInMemoryStores();
+    const registry = createFlowRegistry();
+    registry.register(routeFlow);
+    await seedSession(stores, routeFlow, "s_root");
+    await seedSession(stores, routeFlow, "s_child", "s_root", "s_root");
+
+    const lineage = resolveLineageScopeId({
+      rootSessionId: "s_root",
+      userId: "u_1",
+      tenantId: undefined
+    });
+    // The root's private row sits at the root's own session key, the child's at
+    // the child's. Only the child's is the child's to see.
+    await stores.resourceState.set("session", "s_root", "tasks/meta/a", { note: "root meta" }, "any");
+    await stores.resourceState.set("session", "s_child", "tasks/meta/a", { note: "child meta" }, "any");
+    // A genuinely shared row, so the fix has to stay correct rather than just
+    // stop reading the root.
+    await stores.resourceState.set("session", lineage, "tasks/open", { note: "shared row" }, "any");
+    return { stores, registry };
+  }
+
+  it("get-state on a broad route returns the child's own row", async () => {
+    const r = await seeded();
+    const res = await handleGetCollectionItemState(
+      new Request("http://x/sessions/s_child/resources/shared/state"),
+      {
+        kind: "get_collection_item_state",
+        sessionId: "s_child",
+        ref: "shared",
+        topic: "tasks/meta/a"
+      } as never,
+      { registry: r.registry, stores: r.stores }
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { storageKey?: string; clientData?: unknown };
+    expect(body.storageKey).toBe("tasks/meta/a");
+    expect(body.clientData).toEqual({ note: "child meta" });
+  });
+
+  it("delete on a broad route removes the child's row and leaves the root's", async () => {
+    const r = await seeded();
+    const res = await handleDeleteCollectionItem(
+      new Request("http://x/sessions/s_child/resources/shared/x", { method: "DELETE" }),
+      {
+        kind: "delete_collection_item",
+        sessionId: "s_child",
+        ref: "shared",
+        topic: "tasks/meta/a"
+      } as never,
+      { registry: r.registry, stores: r.stores }
+    );
+    expect(res.status).toBe(200);
+    expect(await r.stores.resourceState.get("session", "s_child", "tasks/meta/a")).toBeUndefined();
+    // The root's row is another session's data and must be untouched.
+    expect(await r.stores.resourceState.get("session", "s_root", "tasks/meta/a")).toBeDefined();
+  });
+
+  it("list returns the lineage-merged view execution reads", async () => {
+    const r = await seeded();
+    const res = await handleListCollectionState(
+      new Request("http://x/sessions/s_child/resources/shared/state"),
+      { kind: "list_collection_state", sessionId: "s_child", ref: "shared" } as never,
+      { registry: r.registry, stores: r.stores }
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      items: Array<{ storageKey: string; clientData?: unknown }>;
+    };
+    const keys = body.items.map((i) => i.storageKey).sort();
+    // The shared row from the lineage, and the child's OWN private row — never
+    // the root's private one.
+    expect(keys).toEqual(["tasks/meta/a", "tasks/open"]);
+    expect(body.items.find((i) => i.storageKey === "tasks/meta/a")?.clientData).toEqual({
+      note: "child meta"
+    });
+  });
+});
+
+
+/**
+ * A filtered scan is not authoritative coverage for the keys it filtered out.
+ *
+ * Ownership filtering made the eager scans correct about what they RETURN, and
+ * left the bookkeeping claiming what they COVER. A shared `tasks/**` scan reads
+ * only the lineage bucket, but recorded `tasks/` as materialized outright — so a
+ * later lazy read of `tasks/meta/a`, which the child owns in its own bucket, saw
+ * the key under a loaded prefix and returned an authoritative miss without ever
+ * querying. A row that exists reads as absent.
+ */
+describe("FIX-1068: a filtered scan does not cover another bucket's keys", () => {
+  const shared = defineResourceCollection({
+    pattern: "tasks/**",
+    scope: "session",
+    sharedToWorkstream: true,
+    stateSchema: noteSchema
+  });
+  // Lazy, so it is NOT part of the eager wave — its rows are fetched on first
+  // access, which is the read the stale coverage suppresses.
+  const priv = defineResourceCollection({
+    pattern: "tasks/meta/*",
+    scope: "session",
+    prefetchMode: "lazy",
+    stateSchema: noteSchema
+  });
+  const coverageFlow = defineFlow({
+    kind: "coverage-flow",
+    actions: { run: { inputSchema: z.string(), block: noop } },
+    resources: { shared, priv }
+  })();
+
+  it("still finds a lazily-read row the child owns under a shared prefix", async () => {
+    const stores = createInMemoryStores();
+    await seedSession(stores, coverageFlow, "s_root");
+    await seedSession(stores, coverageFlow, "s_child", "s_root", "s_root");
+
+    // The child's own row, in the child's own bucket.
+    await stores.resourceState.set(
+      "session",
+      "s_child",
+      "tasks/meta/a",
+      { note: "child meta" },
+      "any"
+    );
+
+    const child = await contextFor(stores, coverageFlow, "s_child");
+    const instance = await (
+      child.resources.priv as unknown as {
+        getOptional(key: string): Promise<{ state: { note: string } } | undefined>;
+      }
+    ).getOptional("a");
+
+    expect(instance).toBeDefined();
+    expect(instance?.state.note).toBe("child meta");
+  });
 });
