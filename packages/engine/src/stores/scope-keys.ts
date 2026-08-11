@@ -135,11 +135,19 @@ export function resolveLineageScopeId(input: {
   userId: string;
   /** The tenant the lineage belongs to, if multi-tenant. */
   tenantId: string | undefined;
+  /**
+   * The root's incarnation nonce. Separates a recreated session id from the one
+   * it replaced, so a new conversation cannot land on a deleted lineage's bucket
+   * while that lineage's descendants are still writing to it. Absent on records
+   * predating the field, which keeps their address unchanged (BP-030).
+   */
+  rootGeneration: string | undefined;
 }): string {
   const material = [
     framed(input.tenantId),
     framed(input.userId),
-    framed(input.rootSessionId)
+    framed(input.rootSessionId),
+    framed(input.rootGeneration)
   ].join("|");
   const digest = createHash("sha256").update(material, "utf8").digest("hex");
   return `${LINEAGE_ID_PREFIX}${digest.slice(0, 32)}`;

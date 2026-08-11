@@ -178,6 +178,9 @@ export async function handleCreateSession(
     tags: asStringArray(body.tags),
     metadata: asObject(body.metadata),
     state: initialState,
+    // Minted per record, so recreating a deleted id yields a new lineage
+    // address rather than inheriting the old conversation's rows (FIX-1068).
+    lineageGeneration: generateId("gen"),
     version: 0,
     createdAt: now,
     updatedAt: now,

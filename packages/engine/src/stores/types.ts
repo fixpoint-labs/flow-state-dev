@@ -69,6 +69,30 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    */
   lineageRootSessionId?: string;
   /**
+   * Nonce identifying THIS INCARNATION of this session id (FIX-1068).
+   *
+   * Session ids are caller-chosen and a session can be deleted, so one id names
+   * different conversations over time. The lineage address is derived from the
+   * root's id, and without something separating incarnations a recreated root
+   * lands on the deleted one's bucket — where descendants of the OLD lineage may
+   * still be running and writing. Two live lineages sharing a bucket is not a
+   * hygiene problem, which is why this is minted rather than inferred.
+   *
+   * Stamped once at record creation and never rewritten. Absent on records
+   * written before this field existed, which the address reads as an empty
+   * component (BP-030) — those keep the address they already had.
+   */
+  lineageGeneration?: string;
+  /**
+   * The {@link SessionRecord.lineageGeneration} of this session's lineage ROOT,
+   * inherited at spawn (FIX-1068). Undefined on a root, which uses its own.
+   *
+   * Carried rather than looked up for the same reason
+   * {@link SessionRecord.lineageRootSessionId} is: a resource read must not have
+   * to load the root record.
+   */
+  lineageRootGeneration?: string;
+  /**
    * Human-readable name for the body of work a detached child session was
    * started for (FIX-1010). Stamped by the detached-start writer
    * (`context/create-request-host.ts`) from the routing seed the child key was

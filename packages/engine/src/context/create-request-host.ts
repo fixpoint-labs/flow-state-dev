@@ -27,6 +27,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { SessionRecord, StoreRegistry } from "../stores/types";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
+import { generateId } from "../utils/generate-id";
 import { deriveChildSessionId, evaluateAdoption } from "./detached-child";
 import { evaluateLivenessGate, type LivenessGateInputs } from "./liveness-gate";
 import { readLiveness } from "./liveness-read";
@@ -86,6 +87,12 @@ export type RequestHostInputs = {
      * the same root rather than re-deriving it by walking parents.
      */
     lineageRootSessionId?: string;
+    /**
+     * The incarnation nonce of the running session's lineage root (FIX-1068).
+     * Inherited by the child so a recreated root id cannot put two live lineages
+     * on one bucket.
+     */
+    lineageRootGeneration?: string;
   };
   /** Absent when this process executes requests but cannot start one. */
   startOperation?: DetachedStartOperation;
@@ -201,6 +208,13 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         // field: both mean "the running session is the root", never "the root is
         // null" (BP-030).
         lineageRootSessionId: identity.lineageRootSessionId ?? identity.sessionId,
+        // Inherited wholesale: the child addresses the ROOT's incarnation, not
+        // its own. Absent when the parent predates the field, which keeps the
+        // lineage on the address it already had (BP-030).
+        ...(identity.lineageRootGeneration !== undefined
+          ? { lineageRootGeneration: identity.lineageRootGeneration }
+          : {}),
+        lineageGeneration: generateId("gen"),
         // Canonical labels, stamped here and only here (FIX-1010). They are
         // taken from the seed **this call already consumed to derive the child
         // key**, not from `args.record` below — which is why a caller cannot

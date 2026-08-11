@@ -603,6 +603,9 @@ export async function createExecutionContext<
       orgId: options.orgId,
       tenantId: options.tenantId,
       state: (options.sessionState ?? {}) as TSessionState,
+      // Minted here and never rewritten — this is what separates this
+      // conversation from a later one that reuses the id (FIX-1068).
+      lineageGeneration: generateId("gen"),
       resources: normalizeScopeResources(sessionResourceConfigs, undefined),
       version: 0,
       createdAt: now,
@@ -655,6 +658,11 @@ export async function createExecutionContext<
   // record persisted before the field existed, so `== null` reads both the
   // absent and the store-nulled form (BP-030).
   const lineageRootSessionId = sessionRecord.lineageRootSessionId ?? undefined;
+  // The incarnation of the lineage ROOT: inherited when this session is a
+  // descendant, its own when it is the root. Absent on records predating the
+  // field, which leaves their address exactly as it was (BP-030).
+  const lineageRootGeneration =
+    sessionRecord.lineageRootGeneration ?? sessionRecord.lineageGeneration ?? undefined;
   // Storage form of the same address, conjoined with the lineage's OWNER.
   //
   // Not the bare root session key: session ids are caller-chosen and a session
@@ -669,7 +677,8 @@ export async function createExecutionContext<
   const lineageRootSessionKey = resolveLineageScopeId({
     rootSessionId: lineageRootSessionId ?? sessionId,
     userId,
-    tenantId: options.tenantId
+    tenantId: options.tenantId,
+    rootGeneration: lineageRootGeneration
   });
 
   const resolvedOrgKey =
@@ -736,7 +745,8 @@ export async function createExecutionContext<
             tenantId: options.tenantId,
             orgId: resolvedOrgId,
             sessionId,
-            lineageRootSessionId
+            lineageRootSessionId,
+            lineageRootGeneration
           },
           startOperation: options.requestHost.startOperation,
           parentTask: options.requestHost.parentTask,
@@ -1078,17 +1088,52 @@ export async function createExecutionContext<
     return owned;
   };
 
+  /**
+   * Rows a session-scoped resource held BEFORE it was marked
+   * `sharedToWorkstream` (FIX-1068).
+   *
+   * Turning the flag on moves a resource from this session's own key to the
+   * lineage address. A resource already carrying data in a deployed app would
+   * otherwise read empty the moment the flag ships — not because anything was
+   * lost, but because nothing looks where it still is. So a shared key with no
+   * row at the lineage address falls back to this session's own key, which is
+   * exactly where the pre-adoption copy lives.
+   *
+   * Read-only and one-directional: the next write lands at the lineage address
+   * and the stale copy stops being consulted. Nothing is deleted, so a rollback
+   * finds its data where it left it.
+   */
+  const adoptionFallback = async <T>(
+    scope: ContentScopeType,
+    scopeId: string,
+    loaded: Record<string, T>,
+    sub: Record<string, ResourceConfig | ResourceCollectionConfig>,
+    read: (scopeId: string, sub: Record<string, ResourceConfig | ResourceCollectionConfig>) => Promise<Record<string, T>>
+  ): Promise<Record<string, T>> => {
+    if (scope !== "session" || scopeId !== lineageRootSessionKey) return loaded;
+    if (scopeId === sessionKey) return loaded; // nothing moved
+    const prior = retainOwnedKeys(scope, sessionKey, await read(sessionKey, sub));
+    const merged: Record<string, T> = {};
+    for (const [key, value] of Object.entries(prior)) merged[key] = value;
+    for (const [key, value] of Object.entries(loaded)) merged[key] = value;
+    return merged;
+  };
+
   const loadScopeStateByBuckets = async (
     scope: ContentScopeType,
     configs: Record<string, ResourceConfig | ResourceCollectionConfig>
   ): Promise<Record<string, VersionedResourceState>> => {
     const groups = partitionConfigsByScopeId(scope, configs);
+    const readState = (id: string, sub: Record<string, ResourceConfig | ResourceCollectionConfig>) =>
+      loadDeclaredResourceState(stores.resourceState, scope, id, sub);
     const results = await Promise.all(
       [...groups].map(async ([scopeId, sub]) =>
-        retainOwnedKeys(
+        adoptionFallback(
           scope,
           scopeId,
-          await loadDeclaredResourceState(stores.resourceState, scope, scopeId, sub)
+          retainOwnedKeys(scope, scopeId, await readState(scopeId, sub)),
+          sub,
+          readState
         )
       )
     );
@@ -1100,12 +1145,16 @@ export async function createExecutionContext<
     configs: Record<string, ResourceConfig | ResourceCollectionConfig>
   ): Promise<Record<string, string>> => {
     const groups = partitionConfigsByScopeId(scope, configs);
+    const readContent = (id: string, sub: Record<string, ResourceConfig | ResourceCollectionConfig>) =>
+      loadDeclaredScopeContent(stores.content, scope, id, sub);
     const results = await Promise.all(
       [...groups].map(async ([scopeId, sub]) =>
-        retainOwnedKeys(
+        adoptionFallback(
           scope,
           scopeId,
-          await loadDeclaredScopeContent(stores.content, scope, scopeId, sub)
+          retainOwnedKeys(scope, scopeId, await readContent(scopeId, sub)),
+          sub,
+          readContent
         )
       )
     );
@@ -1521,10 +1570,16 @@ export async function createExecutionContext<
       const subConfig = { [storageKey]: config };
 
       const applyLoad = async (): Promise<void> => {
-        const [stateSeed, contentSeed] = await Promise.all([
+        // FIX-1068: the same ownership re-check the eager waves and the lazy
+        // prefix loader perform. A collection loads by PREFIX, so a broad scan at
+        // one bucket returns keys a narrower sibling owns at another — seeding
+        // those here would shadow the child-owned row for the rest of the request.
+        const [rawState, rawContent] = await Promise.all([
           loadDeclaredResourceState(stores.resourceState, scope, scopeId, subConfig),
           loadDeclaredScopeContent(stores.content, scope, scopeId, subConfig)
         ]);
+        const stateSeed = retainOwnedKeys(scope, scopeId, rawState);
+        const contentSeed = retainOwnedKeys(scope, scopeId, rawContent);
         // Same precedence as the state merge below: a key already in the cache
         // keeps the version it was first observed at.
         for (const [key, version] of Object.entries(toVersions(stateSeed))) {
@@ -1545,13 +1600,13 @@ export async function createExecutionContext<
         if (mode === "lazy") continue; // lazy collections fetch via async accessor
         const prefix = getPatternPrefix(config.pattern);
         const keyPrefix = prefix === "" ? "" : `${prefix}/`;
-        if (loadedCollectionPrefixes[scope].has(keyPrefix)) {
+        if (loadedCollectionPrefixes[scope].has(coverageToken(scopeId, keyPrefix))) {
           recordResourceLoad({ storageKey: keyPrefix, scope, source, durationMs: 0, cacheHit: true });
           continue;
         }
         tasks.push(
           runSingleFlight(`${scope}:prefix:${keyPrefix}`, async () => {
-            if (loadedCollectionPrefixes[scope].has(keyPrefix)) {
+            if (loadedCollectionPrefixes[scope].has(coverageToken(scopeId, keyPrefix))) {
               recordResourceLoad({ storageKey: keyPrefix, scope, source, durationMs: 0, cacheHit: true });
               return;
             }

@@ -168,7 +168,8 @@ describe("FIX-1068: a recreated root id under a different owner is a different a
         tenantId: undefined,
         orgId: undefined,
         sessionId: ROOT_ID,
-        lineageRootSessionId: undefined
+        lineageRootSessionId: undefined,
+        lineageRootGeneration: (await stores.session.get(ROOT_ID))?.lineageGeneration
       },
       startOperation: async () => ({ requestId: "req_child" }),
       liveness: {}
@@ -182,5 +183,75 @@ describe("FIX-1068: a recreated root id under a different owner is a different a
     await child.resources.notes.patchState({ body: "from the workstream" });
     const parentAgain = await contextFor(stores, ROOT_ID, "u_alice", "req_4");
     expect(parentAgain.resources.notes.state.body).toBe("from the workstream");
+  });
+});
+
+
+/**
+ * FIX-1068: two incarnations of one session id are two lineages.
+ *
+ * Deleting a session frees its id, and the same account can create it again. The
+ * address is derived from the root's id, so without something separating
+ * incarnations the new conversation lands on the deleted one's bucket. Same
+ * owner, so nothing leaks across accounts — but the OLD lineage's descendants
+ * are still alive and still writing there, and two live lineages sharing one
+ * bucket corrupt each other rather than merely surprising someone.
+ *
+ * The incarnation nonce is minted per record and inherited by descendants, so
+ * the surviving child keeps addressing the lineage it was spawned into.
+ */
+describe("FIX-1068: a recreated session id is a new lineage", () => {
+  it("keeps a surviving descendant off the recreated session's bucket", async () => {
+    const stores = createInMemoryStores();
+    const registry = createFlowRegistry();
+    registry.register(flow);
+
+    await createSession(stores, registry, ROOT_ID, "u_alice");
+    const first = await contextFor(stores, ROOT_ID, "u_alice", "req_1");
+    await first.resources.notes.patchState({ body: "first conversation" });
+
+    const { host } = createRequestHost({
+      stores,
+      flow: spawnableFlow,
+      identity: {
+        userId: "u_alice",
+        tenantId: undefined,
+        orgId: undefined,
+        sessionId: ROOT_ID,
+        lineageRootSessionId: undefined,
+        lineageRootGeneration: (await stores.session.get(ROOT_ID))?.lineageGeneration
+      },
+      startOperation: async () => ({ requestId: "req_child" }),
+      liveness: {}
+    });
+    const spawned = await host.startDetached({ seed: { topic: "research" }, input: {} });
+    if (!spawned.ok) throw new Error(`spawn refused: ${spawned.refused}`);
+    const childId = spawned.sessionId;
+
+    // The conversation is deleted; its background work keeps running.
+    const deleted = await handleDeleteSession(
+      new Request(`http://x/sessions/${ROOT_ID}`, { method: "DELETE" }),
+      { kind: "delete_session", flowKind: flow.kind, sessionId: ROOT_ID },
+      { registry, stores }
+    );
+    expect(deleted.status).toBe(204);
+
+    // The same person starts a new conversation and reuses the id.
+    await createSession(stores, registry, ROOT_ID, "u_alice");
+    const second = await contextFor(stores, ROOT_ID, "u_alice", "req_2");
+
+    // The new conversation must start empty — it is not a continuation of the
+    // deleted one, and the old lineage's rows are not its to read.
+    expect(second.resources.notes.state.body).toBe("");
+
+    await second.resources.notes.patchState({ body: "second conversation" });
+
+    // The surviving descendant writes into the lineage it belongs to, and that
+    // write must not land on the new conversation's rows.
+    const child = await contextFor(stores, childId, "u_alice", "req_3");
+    await child.resources.notes.patchState({ body: "from the old lineage" });
+
+    const secondAgain = await contextFor(stores, ROOT_ID, "u_alice", "req_4");
+    expect(secondAgain.resources.notes.state.body).toBe("second conversation");
   });
 });

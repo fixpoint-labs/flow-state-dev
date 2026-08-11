@@ -26,6 +26,10 @@ export type LineageSession = {
   userId: string;
   /** Bare id of the lineage root; `null`/absent when this session is the root. */
   lineageRootSessionId?: string | null;
+  /** This session's own incarnation nonce. Used when it is the lineage root. */
+  lineageGeneration?: string | null;
+  /** The lineage root's incarnation nonce, inherited at spawn. */
+  lineageRootGeneration?: string | null;
 };
 
 /** The declaration fields that decide where a session-scoped resource stores. */
@@ -90,7 +94,9 @@ function lineageScopeId(session: LineageSession, tenantId: string | undefined): 
     // what `createExecutionContext` derives.
     rootSessionId: session.lineageRootSessionId ?? toBareSessionId(session.id, tenantId),
     userId: session.userId,
-    tenantId
+    tenantId,
+    // The ROOT's incarnation: inherited on a descendant, its own on a root.
+    rootGeneration: session.lineageRootGeneration ?? session.lineageGeneration ?? undefined
   });
 }
 
