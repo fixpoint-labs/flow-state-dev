@@ -1,10 +1,10 @@
 ---
-name: em-mode
-description: Run an epic with an engineering-manager posture — you are the EM who owns the engineering decisions, and the user is the product manager who owns the business ones. Composes epic-lifecycle unchanged and carries only the delta - which decisions you absorb instead of escalating, and how findings and status are framed. Use when the user asks for "EM mode", asks you to run an epic without bottlenecking on their approval, or wants engineering forks decided rather than handed up.
+name: epic-em
+description: Run an epic with an engineering-manager posture — you are the EM who owns the engineering decisions, and the user is the product manager who owns the business ones. Composes epic-lifecycle unchanged and carries only the delta - which decisions you absorb instead of escalating, and how findings and status are framed. Use when the user asks for "epic-em" or "EM mode", asks you to run an epic without bottlenecking on their approval, or wants engineering forks decided rather than handed up.
 argument-hint: "<epic issue ID, or the related issue IDs to run under one epic, e.g. FIX-1 FIX-2 FIX-3>"
 ---
 
-# EM Mode
+# Epic EM
 
 Running an epic drops the user into the engineer's chair more often than the process
 intends. A worker hits a fork its spec didn't settle — where a guard belongs, which of two
@@ -13,7 +13,7 @@ the user answers. Each one is individually reasonable and none of them is a call
 owner should be making. Meanwhile progress comes back as phases and PR numbers, which is
 engineering status wearing the clothes of a report.
 
-EM mode fixes the traffic, not the gates. **You are the engineering manager**: the
+`epic-em` fixes the traffic, not the gates. **You are the engineering manager**: the
 engineering decisions are yours to make and record. **The user is the product manager**:
 they own what we're building, for whom, and what we've promised. Their job is to be
 unblocked by you, not consulted by you.
@@ -27,9 +27,9 @@ unblocked by you, not consulted by you.
 
 ## Which decisions move — and which don't
 
-Five things reach the human across an epic. **EM mode moves one and a half of them.**
+Five things reach the human across an epic. **`epic-em` moves one and a half of them.**
 
-| Reaches the human today | Under EM mode |
+| Reaches the human today | Under `epic-em` |
 |---|---|
 | **Epic objective gate** | **Unchanged — theirs.** "Is this body of work worth doing" is the definitional product question |
 | **Per-issue spec approval** | **Unchanged — theirs.** See below; this is the one worth arguing about |
@@ -49,7 +49,7 @@ is the traffic *between* the gates, and that is what this skill removes.
 
 ### 1. You decide the engineering forks
 
-A worker escalating a fork is asking its manager, and under EM mode you are the manager.
+A worker escalating a fork is asking its manager, and under `epic-em` you are the manager.
 The default is that **you answer it and the row keeps moving**. Two things go up instead:
 
 - **Product-critical** — it changes what a customer gets, what we have promised them, what
@@ -99,7 +99,7 @@ manufacture a paragraph out of phase transitions.
 
 **This is a framing change over material you already hold** — the objective, which rows are
 terminal, which gates are open. It is **not** a licence to read a diff or a review thread to
-enrich a summary. That prohibition is a correctness rule, not a cost one, and EM mode does
+enrich a summary. That prohibition is a correctness rule, not a cost one, and `epic-em` does
 not touch it ([`orchestration.md`](../../../docs/contributing/orchestration.md) → "PR events
 are wake signals, not work items").
 
@@ -118,7 +118,7 @@ exhibiting, and restating it here would create the second copy this skill exists
   gate is a release, spec approvals are independent per issue, and a blocker is yours to
   resolve or sequence.
 
-EM mode's contribution is that the posture is **standing for the whole run** rather than
+`epic-em`'s contribution is that the posture is **standing for the whole run** rather than
 re-derived at each ask, and that the entry test for handing the user mechanism is the narrow
 one in delta 1 rather than a judgment made fresh every time.
 
