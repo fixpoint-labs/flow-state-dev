@@ -282,6 +282,14 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   // The guard is therefore load-bearing rather than defensive: it is what makes
   // "the owner installs it, and this only fills a gap no owner exists for" true
   // instead of two installers racing to define one field.
+  //
+  // **Do not delete this block to make the ownership rule tidier.** It looks
+  // redundant precisely because it never fires in a `createFlowState`
+  // deployment, which is every deployment you are likely to be reading this
+  // from. Removing it silently drops detached work for anyone mounting this
+  // router in their own server without a `FlowState` — a supported embedding —
+  // and `integration-tests`' `task-board-detached-handoff` scenario, which
+  // drives `createFlowApiRouter` directly, is the thing that will tell you.
   if (
     runtimeConfig.requestHost !== undefined &&
     runtimeConfig.requestHost.startOperation === undefined
