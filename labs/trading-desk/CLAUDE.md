@@ -285,11 +285,10 @@ sticks (ref-guarded, mirroring the auto-follow idiom).
   persists a thinned `{ date, close }` series + provenance `source`. Only the
   SUBJECT's series at `SUMMARY_PRICE_RANGE` reaches the spine; a peer/benchmark
   or off-range probe stays on the args-keyed cache, so it can never be persisted
-  mislabeled as the subject's chart (real-money gate). A genuine provider miss
-  still yields an empty-bars slice, which IS persisted with `source:
-  "unavailable"` and degrades to `ChartEmpty`. A true miss (nothing on the spine)
-  leaves the resource null AND warns with the reason (FIX-782) — a missing chart
-  is diagnosable from the trace, never silent. Tested in
+  mislabeled as the subject's chart (real-money gate). Three outcomes, kept
+  distinct: bars persist; a provider miss persists an empty-bars slice tagged
+  `source: "unavailable"` (degrades to `ChartEmpty`); nothing on the spine leaves
+  the resource null and warns with the reason. Tested in
   `test/store-price-history.spec.ts`.
 - **Real-money gates:** no fabricated numbers, `dataQuality` chips for
   provenance, missing metrics shown as `—`/gap (never invented), a stopped run

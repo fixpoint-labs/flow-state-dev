@@ -8,25 +8,19 @@
  *      and patches the `priceHistory` resource, thinning each bar to
  *      { date, close } and echoing the provenance `source`. This is what lets
  *      the Summary draw a real series with zero re-run.
- *   2. When the spine field is absent (the analyst never populated it) the tap
- *      leaves the resource null — it never fetches (no extra network), never
- *      substitutes fixture data (BP-020), so the Summary degrades to
- *      trade-levels-only rather than showing a fake line — AND it says why.
- *      A chart that vanishes must be diagnosable from the run's trace; the
- *      silent `return` is what made an 85%-miss corpus unexplainable after the
- *      fact, which is the whole of FIX-782.
- *   3. Only the SUBJECT's series at the summary range may become the chart. A
- *      peer/benchmark probe or an off-range probe stays on the args-keyed
- *      process cache and never reaches the spine — so it can never be persisted
- *      mislabeled as the subject's price history (real-money provenance gate).
- *      These two are the regression guard on the tempting "just widen the spine
- *      gate so the tap always finds something" fix: widening it would make
- *      `getOrPatchState` hand a caller another ticker's — or another range's —
- *      bars.
- *   4. A miss and a genuine provider gap are DIFFERENT states. An "unavailable"
- *      fetch still yields a bars array (empty), so it is persisted with its
- *      provenance and degrades via `ChartEmpty` — it must not be warned about
- *      as a missing spine, and it must not be dropped.
+ *   2. When the spine field is absent the tap leaves the resource null — never
+ *      fetching, never substituting fixture data (BP-020) — AND says why. A
+ *      chart that vanishes must be diagnosable from the run's trace; the silent
+ *      `return` is what made the filed miss corpus unexplainable after the fact.
+ *   3. Only the SUBJECT's series at the summary range may become the chart, so a
+ *      peer or off-range probe can never be persisted mislabeled as the
+ *      subject's price history (real-money provenance gate). These two are the
+ *      regression guard on the tempting "just widen the spine gate so the tap
+ *      always finds something" fix, which would hand a caller another ticker's —
+ *      or another range's — bars.
+ *   4. A miss and a genuine provider gap are DIFFERENT states: an "unavailable"
+ *      fetch yields an empty bars array, which is persisted with its provenance
+ *      rather than warned about or dropped.
  *
  * Driven through `testFlow` against an in-memory store, then the persisted
  * single-resource state is read back via `stores.resourceState.getAll`.

@@ -43,13 +43,11 @@ export const storePriceHistory = handler({
   },
   execute: async (_input, ctx) => {
     const { ticker } = ctx.session.state;
-    // Typed off the spine's OWN schema (not a hand-rolled shape) — which makes
-    // `bars` required whenever `priceBars` is set, so absence is the only miss.
+    // Typed off the spine's OWN schema, which requires `bars` whenever
+    // `priceBars` is set — so absence is the only miss, and needs no second
+    // guard (pinned by the `spine boundary` test).
     const payload: TechnicalDataState["priceBars"] =
       ctx.resources.technicalData.state.priceBars;
-    // Leave the resource null on a miss, but say WHY on the way out: the bare
-    // `return` is what made a vanished chart indistinguishable, after the fact,
-    // from a provider that genuinely had no bars.
     if (payload === undefined) {
       console.warn(
         `[trading-desk] store-price-history: no price series persisted for ${ticker} — no \`priceBars\` on the session technical spine: the technical analyst's get_price_history never wrote it (its step errored, or it fetched a ticker/range other than ${ticker} at ${SUMMARY_PRICE_RANGE}). Summary falls back to trade levels.`,
