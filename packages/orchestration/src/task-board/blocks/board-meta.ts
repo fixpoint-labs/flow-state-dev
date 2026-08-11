@@ -35,6 +35,7 @@ import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { TaskCollectionRef } from "../../tasks";
 import { anyRetryDeniedByBudget, sumGrantedRetries } from "../../tasks/collection/internal";
+import { isHandedOff, type RunsElsewhere } from "../shared";
 
 /** Component-item type emitted by both board-meta blocks. */
 export const TASK_BOARD_META_COMPONENT_TYPE = "task-board-meta";
@@ -43,6 +44,18 @@ export interface BoardMetaOptions {
   name: string;
   collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
   collectionId: string;
+}
+
+export interface BoardMetaCompletedOptions extends BoardMetaOptions {
+  /**
+   * Rows whose work is routed to a Workstream (FIX-982) — the same predicate
+   * the board hands its exit question, and for the same reason it has to be the
+   * same one. See {@link isHandedOff}.
+   *
+   * Absent for every board that declares nothing detached, which is what keeps
+   * the reason this block reports bit-for-bit what it was for those boards.
+   */
+  runsElsewhere?: RunsElsewhere;
 }
 
 /**
@@ -77,14 +90,34 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
  *
  * `terminationReason` distinguishes a clean drain (`"all-completed"`)
  * from a board that exited with non-`completed` tasks remaining
- * (`"blocked-by-failures"`), and from one the collection's cumulative
- * retry budget stopped (`"retry-budget-exhausted"`, FIX-948). The first
- * two are purely structural — `counts.completed === counts.total` — so
- * they work identically for all `onIdle` modes (FIX-626). Note: in
- * `onIdle: "wait"` mode an early-firing `shouldExit` while tasks are
- * still `in_progress` / `pending` will report `"blocked-by-failures"`
- * even though nothing actually failed; users overriding termination can
- * read `counts` directly to disambiguate.
+ * (`"blocked-by-failures"`), from one the collection's cumulative
+ * retry budget stopped (`"retry-budget-exhausted"`, FIX-948), and from
+ * one that exited because it handed its remaining work to a Workstream
+ * (`"handed-off"`, FIX-1074). Note: in `onIdle: "wait"` mode an
+ * early-firing `shouldExit` while tasks are still `in_progress` /
+ * `pending` will report `"blocked-by-failures"` even though nothing
+ * actually failed; users overriding termination can read `counts`
+ * directly to disambiguate.
+ *
+ * ## Why hand-off needs a reason of its own
+ *
+ * The structural test is `counts.completed === counts.total`, and a detached
+ * board that did exactly what it was built to do fails it: the row it handed
+ * over is still `in_progress`, owned by a Workstream. So every successful
+ * detached drain announced itself as `"blocked-by-failures"` — permanently,
+ * since no later drain re-emits this item once the child settles. The feature
+ * whose entire point is that background work is *visible* was reporting its own
+ * success as a terminal failure.
+ *
+ * Reusing `"all-completed"` would be the same defect facing the other way: a
+ * consumer reads it as "nothing left to do" and stops watching while a child is
+ * still working. The honest answer is a third thing, so it is a third value.
+ *
+ * A board is `"handed-off"` only when **every** remaining non-`completed` row is
+ * handed off. One errored row alongside them is a board that had failures, and
+ * `"blocked-by-failures"` still says so. When the reason is `"handed-off"`,
+ * `counts.in_progress` is exactly the number of rows still running elsewhere —
+ * there is no other kind of remaining row left for it to count.
  *
  * The retry reason is read from a persisted DENIAL MARKER on the tasks,
  * never inferred from `counts.retries === maxTotalRetries` — that
@@ -94,8 +127,8 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
  * task on the board and no retry ever denied. A termination reason that
  * can lie is worse than no new reason at all.
  */
-export function createBoardMetaCompleted(options: BoardMetaOptions) {
-  const { name, collection: collectionFactory, collectionId } = options;
+export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
+  const { name, collection: collectionFactory, collectionId, runsElsewhere } = options;
   return handler({
     name,
     // Substrate-internal meta-emitter. The task-board-meta
@@ -125,14 +158,25 @@ export function createBoardMetaCompleted(options: BoardMetaOptions) {
       // set themselves. `?? null` tolerates a custom `TaskCollectionRef`
       // predating this field at runtime; `null` means no limit is in force.
       const maxTotalRetries = collection.maxTotalRetries ?? null;
+      // Evaluated against the collection's own clock, because the lease the
+      // hand-off test reads was stamped against it by the claim write — the
+      // same reason every other reader of that deadline takes it from here.
+      const now = collection.now();
+      const remaining = all.filter((task) => task.status !== "completed");
+      const allRemainingHandedOff =
+        remaining.length > 0 &&
+        remaining.every((task) => isHandedOff(task, now, runsElsewhere));
       const terminationReason:
         | "all-completed"
         | "blocked-by-failures"
-        | "retry-budget-exhausted" = anyRetryDeniedByBudget(all)
+        | "retry-budget-exhausted"
+        | "handed-off" = anyRetryDeniedByBudget(all)
         ? "retry-budget-exhausted"
-        : counts.completed === counts.total
+        : remaining.length === 0
           ? "all-completed"
-          : "blocked-by-failures";
+          : allRemainingHandedOff
+            ? "handed-off"
+            : "blocked-by-failures";
       ctx.emit.component(
         TASK_BOARD_META_COMPONENT_TYPE,
         { collectionId, status: "completed", terminationReason, counts, maxTotalRetries },

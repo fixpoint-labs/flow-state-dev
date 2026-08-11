@@ -87,25 +87,33 @@ A workstream's `id` is a session id, so every session read works on it, and a wo
 
 Having its own session is also what it costs you. A workstream keeps its own state, its own history, and its own session-scoped resources, and none of those are the parent conversation's. What the two do share is the user: user- and org-scoped data is the same data on both sides, because a workstream runs as the same user on the same flow. Anything narrower than that has to be handed over when the work starts, or reported back when it finishes.
 
-This is what the task board's detached workers run in. A board can declare that a worker's tasks belong outside the request that claimed them:
+A task board is the usual way to start one. A board is a list of tasks plus a set of named workers that claim them. Wrap one of those workers in `{ worker, dispatch }` and its tasks go to a workstream instead of running in the request that claimed them:
 
 ```ts
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
+
+const diligenceTasks = defineTaskCollection({ id: "diligence-tasks", scope: "user" });
 
 const board = taskBoard({
-  name: "issue-work",
-  boardId: "issue-work",            // required once anything is detached
-  collection: workBoardCollection,  // must be a defineTaskCollection()
+  name: "diligence",
+  boardId: "diligence",
+  collection: diligenceTasks,
   workers: {
-    summarize: summarizeBlock,      // a bare block still means inline
-    implement: { worker: implementBlock, dispatch: { mode: "detached" } },
+    investigate: { worker: investigateBlock, dispatch: { mode: "detached" } },
+    verify: { worker: verifyBlock, dispatch: { mode: "detached" } },
+    summarize: summarizeBlock, // a bare block runs inline, in the request that claimed the task
   },
+  initialTasks: [
+    { id: "filings", goal: "Read the Q3 filings", assignee: "investigate", metadata: { topic: "acme" } },
+    { id: "calls", goal: "Summarize the analyst calls", assignee: "investigate", metadata: { topic: "acme" } },
+  ],
 });
 ```
 
-The drain claims the task, hands it to a workstream, and returns. The workstream re-reads the row, checks the claim is still the one it was sent for, runs the worker, and settles the task itself. Tasks that share a `topic` land in the same workstream and continue one history; a task with no topic falls back to its own id, so continuity is opted into rather than accidental.
+`boardId` is required once anything on the board is detached, and the collection has to be a `defineTaskCollection()`. The workstream settles its task after the request that claimed it is gone, so the collection it settles against has to outlive that request too. Both are checked when the board is built, not when the first detached task arrives.
 
-The `boardId` is required as soon as anything is detached, because it's hashed into the child session's id — renaming it re-keys work already in flight. A durable collection is required for the same reason the id is: the row has to outlive the request that claimed it.
+Tasks are seeded here to keep the example in one piece. A task added later with `addTask` carries the same `assignee` and `metadata` fields.
 
 Two bounds are worth knowing before you reach for this.
 
@@ -113,9 +121,17 @@ Two bounds are worth knowing before you reach for this.
 
 **On serverless without a queue adapter, the work is bounded by the function.** Detached work runs inside the invocation that started it, so the function's maximum duration is the ceiling. Add a queue adapter and it moves to a worker process, where it isn't.
 
-Starting a workstream is server-side only — `ctx.requestHost.startDetached`, from inside a running request. There's no HTTP endpoint for it, by design.
+### Which tasks share a workstream
 
-Read next: **[Background work](/docs/server/background-work)** for the HTTP surface, its paging, what `status` does and doesn't tell you, and what a stock server does about starting one; **[Client overview](/docs/client/overview#background-work)** for reading it from an app; and **[Durable execution](/docs/advanced/durable-execution)** for what happens to a run that was interrupted.
+A workstream is one `boardId`, one worker, one topic. A task matching an earlier task on all three lands in the workstream that task is already using and continues its history. Differ in any one and the task gets a workstream of its own.
+
+`filings` and `calls` above match on all three, so they run in one workstream: two runs in the same session, and `listSessionRequests` on that workstream returns both. Change `calls` to `assignee: "verify"` and the two split into a workstream each. Two boards with different `boardId`s split the same way, even on the same topic.
+
+A task with no topic, or a blank one, falls back to its own task id. So a task that doesn't ask for continuity always gets a workstream to itself, and two tasks that both left the topic off never share one by accident. Set a topic when a worker should pick up where it left off on the same body of work: one research thread, one issue, one document. Leave it off when each task starts cold.
+
+Starting a workstream is server-side only. There's no client call for it.
+
+Read next: **[Background work](/docs/server/background-work)** for the HTTP surface, its paging, what `status` does and doesn't tell you, and the access rules the listing endpoint applies; **[Client overview](/docs/client/overview#background-work)** for reading it from an app; and **[Durable execution](/docs/advanced/durable-execution)** for what happens to a run that was interrupted.
 
 ## Nearby, and often confused
 

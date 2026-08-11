@@ -194,7 +194,7 @@ describe("taskBoard wires assignee immutability onto its collection", () => {
     const boardHandle = taskBoard({
       name,
       boardId: "wired-detached",
-      collection: defineTaskCollection({ id: "wired-detached-coll", scope: "session" }),
+      collection: defineTaskCollection({ id: "wired-detached-coll", scope: "user" }),
       workers: {
         implement: { worker: workerBlock("wired-impl"), dispatch: { mode: "detached" } },
       },
@@ -283,7 +283,12 @@ describe("assignee immutability is a property of the shared ledger", () => {
   }
 
   it("declines through a sibling board that shares the ledger and declares nothing detached", async () => {
-    const ledger = defineTaskCollection({ id: "shared-ledger-a", scope: "session" });
+    // User-scoped, and every detached fixture below matches: a board with a
+    // detached worker is refused at construction on a session-scoped collection,
+    // because a Workstream runs in its own session and would resolve an empty
+    // ledger. Scope is incidental to the freeze policy under test here — what
+    // matters is that two boards share one ledger.
+    const ledger = defineTaskCollection({ id: "shared-ledger-a", scope: "user" });
 
     taskBoard({
       name: "detached-owner-a",
@@ -314,7 +319,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
   it("declines through a sibling declared BEFORE the detached board", async () => {
     // Order reversed. A policy captured at board-construction time passes the
     // case above and fails this one, so the two are not redundant.
-    const ledger = defineTaskCollection({ id: "shared-ledger-b", scope: "session" });
+    const ledger = defineTaskCollection({ id: "shared-ledger-b", scope: "user" });
 
     const sibling = taskBoard({
       name: "sibling-b",
@@ -410,7 +415,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
   it("does not freeze when a detached worker is refused for its session state", async () => {
     // The second refusal that fires on a durable board, so the deferral cannot
     // be satisfied by special-casing the missing-boardId check alone.
-    const ledger = defineTaskCollection({ id: "shared-ledger-f", scope: "session" });
+    const ledger = defineTaskCollection({ id: "shared-ledger-f", scope: "user" });
     const statefulWorker = handler({
       name: "stateful-impl-f",
       inputSchema: taskWorkerInputSchema,
@@ -450,7 +455,7 @@ describe("assignee immutability is a property of the shared ledger", () => {
   it("does not leak the policy to a different ledger", async () => {
     // Identity is the declaration object, not the collection id or the mere fact
     // that some board somewhere is detached. A second ledger must be untouched.
-    const detachedLedger = defineTaskCollection({ id: "shared-ledger-d", scope: "session" });
+    const detachedLedger = defineTaskCollection({ id: "shared-ledger-d", scope: "user" });
     const otherLedger = defineTaskCollection({ id: "other-ledger-d", scope: "session" });
 
     taskBoard({
