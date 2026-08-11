@@ -131,6 +131,11 @@ export type StartDetachedInput = {
  *   is nothing to dispatch into. Resolution never falls through to `flow.actions`.
  * - `no-start-operation` — this process executes requests but was not wired to
  *   start one. Normally a construction-time failure; this is the residual case.
+ * - `board-not-routable` — the dispatch names a task board this flow declares no
+ *   binding for, so the child would resolve a workstream core with nowhere to
+ *   send it. Raised here rather than discovered at the child's dispatch because
+ *   here the caller still holds its claim and can settle the row; there, the row
+ *   is already handed over and stalls until lease recovery.
  *
  * Note there is **no bound-related refusal**. This seam makes "a running request
  * starts another request" expressible, and ships no ceiling on it. A spend brake
@@ -139,7 +144,8 @@ export type StartDetachedInput = {
 export type StartDetachedRefusal =
   | "key-occupied"
   | "no-workstream-core"
-  | "no-start-operation";
+  | "no-start-operation"
+  | "board-not-routable";
 
 /**
  * Outcome of {@link RequestHost.startDetached}. `adopted` distinguishes a child
