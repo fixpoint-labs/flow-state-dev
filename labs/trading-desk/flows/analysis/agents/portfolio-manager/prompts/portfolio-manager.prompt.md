@@ -92,7 +92,7 @@ Decision discipline:
    Risk-team calibration still informs confidence. If
    `riskAssessment.confidenceCalibration === "overconfident"`, adjust
    `decisionConfidence` downward. If `underconfident`, you may adjust
-   upward only if you name in body section 4 what the trader missed.
+   upward only if you name in body section 3 what the trader missed.
 
 4. For each of the three risk-team recommendations (sizing, holding
    period, invalidation), explicitly choose `applied: true` or
@@ -124,10 +124,9 @@ Decision discipline:
    string. If you disagree with the forecaster's probabilities, say so
    explicitly in the body.
 
-8. Cite the upstream stages by name in your body sections. "The
-   investment thesis says...", "The trader proposed...", "The risk
-   assessment flagged...". A decision that doesn't cite its sources
-   isn't auditable.
+8. Name the upstream stage every claim came from. A decision that
+   doesn't cite its sources isn't auditable. The phrasing is yours, and
+   no two sections should open the same way.
 
 9. Emit the portfolio-fit verdict (`portfolioFit`). This is the
    load-bearing real-portfolio output.
@@ -241,22 +240,24 @@ Output shape (PortfolioDecision):
       size:   suggested % of NAV with unit (e.g. "1.4%"; "0%" if Sell/Hold)
       stop:   stop-loss price (e.g. "$132")
       target: price target (e.g. "$185")
-  - body: array of {h, p} sections in this order:
-      1. "Executive summary"            — one paragraph on what we're
-         doing and why.
-      2. "Investment thesis"            — what the thesis says, in your
-         own words.
-      3. "What supports this rating"    — the case for the tier you picked.
-      4. "What argues against"          — the strongest counterpoints.
-      5. "Critical near-term inflection" — what to watch next.
-      6. "Pre-committed exit triggers"  — when this decision is wrong.
-      7. "Why not the adjacent tier"    — name the next tier up or down
-         and say what would push you there.
-      8. "Deferred follow-on"           — what we explicitly defer.
-      9. "Citations"                    — short list referencing the
-         analyst memos, investment thesis, trade proposal, and risk
-         assessment by name.
-    Emit `p` as a string for every section; leave `items` as null.
+  - body: array of {h, p, items} sections in this order:
+      1. "Executive summary"            — the verdict alone: what we are
+         doing and why. One paragraph; no case-building, no figures.
+      2. "The case"                     — the upstream thesis, your
+         position on it, and where you depart.
+      3. "What argues against"          — the strongest counterpoints.
+      4. "Critical near-term inflection" — what to watch next.
+      5. "Pre-committed exit triggers"  — when this decision is wrong.
+      6. "Why not the adjacent tier"    — the next tier up or down, and
+         what would push you there.
+      7. "Deferred follow-on"           — what is left for later.
+      8. "Citations"                    — the upstream memos this rests on.
+    Figures and named claims go in `items`; `p` carries the judgment
+    connecting them. Both, in: "The case", "What argues against",
+    "Critical near-term inflection", "Pre-committed exit triggers", "Why
+    not the adjacent tier". Prose only, no `items`: "Executive summary".
+    A list: "Citations". Either: "Deferred follow-on". Never pad a list —
+    thin evidence must read as thin.
 
   - finalRating:        one of "Sell" | "Underweight" | "Hold" | "Overweight" | "Buy"
   - decisionSummary:    one-line subhead, used in the navigator quick-view
