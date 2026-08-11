@@ -214,15 +214,49 @@ export function createInboundTransportHost(
    * the run can stall — but it is not a failure to start, and the handle the
    * caller gets back is honest either way. So it is logged, not raised.
    */
+  /**
+   * Emit a diagnostic without letting it become the failure it was describing.
+   *
+   * A `RuntimeLogger` is adapter- or app-supplied, so `warn`/`error` are
+   * arbitrary code that can throw. Both callers here are on a path where that
+   * throw would be read as something else entirely: one runs before a detached
+   * dispatch has materialized, where `createDetachedStartOperation` reads a
+   * synchronous throw as "nothing was started" and settles the row — so a failed
+   * log line would report work as never started when the only thing that failed
+   * was the logging. The other is the containment inside
+   * `registerBackgroundWork`, where a throwing logger would escape the very
+   * helper that exists to stop a throw escaping.
+   *
+   * `console.error` deliberately, and not through the logger: the logger is what
+   * just failed.
+   */
+  const logSafely = (
+    logger: RuntimeConfig["logger"],
+    level: "warn" | "error",
+    message: string,
+    context: Record<string, unknown>
+  ): void => {
+    try {
+      logRuntimeEvent(logger ?? DEFAULT_RUNTIME_LOGGER, level, message, context);
+    } catch (error) {
+      console.error("[flow-state] runtime logger threw", error);
+    }
+  };
+
   const registerBackgroundWork = (
     finished: Promise<unknown>,
-    context: { requestId: string; flowKind?: string }
+    context: { requestId: string; flowKind?: string },
+    /**
+     * The hook for THIS dispatch. Defaults to the host's, which is right for
+     * every seam that has no per-request config of its own.
+     */
+    hook: RuntimeConfig["onBackgroundWork"] = onBackgroundWork
   ): void => {
-    if (onBackgroundWork === undefined) return;
+    if (hook === undefined) return;
     try {
-      onBackgroundWork(finished);
+      hook(finished);
     } catch (error) {
-      logRuntimeEvent(
+      logSafely(
         runtimeConfig.logger,
         "error",
         "[flow-state] onBackgroundWork threw; the run was started but is not registered as background work",
@@ -296,8 +330,8 @@ export function createInboundTransportHost(
       envelope.runtimeConfig !== undefined &&
       envelope.runtimeConfig.modelResolver !== runtimeConfig.modelResolver
     ) {
-      logRuntimeEvent(
-        dispatchRuntimeConfig.logger ?? DEFAULT_RUNTIME_LOGGER,
+      logSafely(
+        dispatchRuntimeConfig.logger,
         "warn",
         `[flow-state] the model override on this run does NOT apply to background work ` +
           `dispatched to a queue: request "${requestId}" (flow "${envelope.flowKind}") will ` +
@@ -633,10 +667,22 @@ export function createInboundTransportHost(
     // Contained by `registerBackgroundWork`, because this is the ONLY thing left
     // in `dispatch` that can throw synchronously and the run has already been
     // started above — see that helper for why an escaping throw is damaging.
-    registerBackgroundWork(finished, {
-      requestId,
-      flowKind: dispatchEnvelope.flowKind
-    });
+    //
+    // Taken from `dispatchRuntimeConfig`, not from the host's construction-time
+    // config, and on a freeze-after-response platform that distinction is the
+    // difference between the child finishing and the child stalling. The run
+    // executes under the dispatch config; the keep-alive hook is what holds the
+    // process open for it. Read the host's instead and a detached child launched
+    // by a request whose config carries its own `after()` / `waitUntil` hands
+    // `finished` to the wrong scope — or to nothing — and the platform freezes
+    // the container the moment the parent responds, with the child mid-run.
+    // Every other per-dispatch value here already resolves this way
+    // (`voiceProvider`, `logger`); this one did not.
+    registerBackgroundWork(
+      finished,
+      { requestId, flowKind: dispatchEnvelope.flowKind },
+      dispatchRuntimeConfig.onBackgroundWork
+    );
 
     // The HTTP 202 path awaits `accepted`, not `finished`, so a fire-and-forget
     // external dispatch can leave `finished` unobserved. Mark it handled to

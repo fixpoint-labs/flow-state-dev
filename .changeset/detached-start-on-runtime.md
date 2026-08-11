@@ -9,4 +9,6 @@ A host that started background work in its own process stays open until that wor
 
 Interrupted-request detection now runs on every runtime initialization rather than only when an HTTP router is built, so a run abandoned by a stopped process is marked `interrupted` by the next start even on hosts that never serve HTTP. Honours the existing `detectInterruptedOnStartup` option.
 
+On freeze-after-response platforms, a detached child is now registered with the keep-alive hook (`after()` / `waitUntil`) from the request that launched it rather than the one the host was constructed with, so a child launched under a request-scoped hook runs to completion instead of stalling when the parent responds.
+
 A CLI `--model` override covers the generators that run in the command's own process. Background work dispatched to a queue runs under the worker's own model configuration, and the CLI now says so on stderr at each dispatch that loses the override.

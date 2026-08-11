@@ -1175,6 +1175,142 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
   });
 
   /**
+   * A detached child's keep-alive hook comes from the LAUNCHING request's
+   * config, not the host's.
+   *
+   * On a freeze-after-response platform (`after()` / `waitUntil`) the hook is
+   * what holds the container open. The child already executes under the
+   * launching request's config; if the hook is taken from the host's
+   * construction-time config instead, `finished` is handed to the wrong scope —
+   * or to nothing — and the platform freezes the moment the parent responds,
+   * with the child mid-run. Silent, and only on the platforms where background
+   * work matters most.
+   *
+   * Asserted on the PER-REQUEST hook specifically. "Some hook was called" passes
+   * whichever config it came from and would not have caught this.
+   */
+  it("hands a detached child to the launching request's keep-alive hook", async () => {
+    const observed: Observed = { children: [] };
+    const flow = detachingFlow("keepalive-scope", observed, { coreDelayMs: 30 });
+
+    const hostRegistered: Promise<unknown>[] = [];
+    const perRequestRegistered: Promise<unknown>[] = [];
+
+    const state = createFlowState({
+      flows: { detaching: flow },
+      stores: { default: { primary: inMemoryStores() } },
+      modelResolver: markerResolver("app-default"),
+      onBackgroundWork: (p) => {
+        hostRegistered.push(p);
+      }
+    });
+
+    const runtime = await state.getRuntime();
+
+    // The shape a request-scoped platform hook arrives in: derived onto the
+    // config the launching request runs under, after the host was built.
+    await runAction({
+      flow,
+      actionName: "launch",
+      input: {},
+      userId: USER_ID,
+      sessionId: "s_parent",
+      stores: runtime.stores,
+      runtimeConfig: {
+        ...runtime.runtimeConfig,
+        onBackgroundWork: (p: Promise<unknown>) => {
+          perRequestRegistered.push(p);
+        }
+      }
+    });
+
+    await until(() => observed.start !== undefined, "the child to be dispatched");
+    expect(observed.start).toMatchObject({ ok: true });
+
+    // THE ASSERTION: the request's own hook got the child, and the host's did
+    // not. The parent runs through `runAction` directly, so nothing but the
+    // child reaches either hook.
+    expect(perRequestRegistered).toHaveLength(1);
+    expect(hostRegistered).toHaveLength(0);
+
+    // And it is the child's real work, not some other promise: the child is
+    // still running when the hook is handed it, which is the whole point.
+    await until(() => observed.children.length === 1, "the child to finish");
+
+    await state.dispose();
+  });
+
+  /**
+   * A diagnostic must not be able to stop the work from starting.
+   *
+   * The model-override warning fires synchronously inside `dispatch`, before
+   * materialization and before the enqueue. `createDetachedStartOperation` reads
+   * a synchronous throw from `dispatch` as "nothing was started" and settles the
+   * caller's row accordingly — so a `RuntimeLogger.warn` that throws reports the
+   * work as never started when the only thing that failed was the logging.
+   */
+  it("starts detached work even when the override warning's logger throws", async () => {
+    const observed: Observed = { children: [] };
+    const flow = detachingFlow("warn-throws", observed);
+
+    const dispatched: string[] = [];
+    const worker = {
+      mode: "dispatch-only",
+      createDispatcher: () => ({
+        dispatch: async (envelope: { requestId: string }) => {
+          dispatched.push(envelope.requestId);
+          return { requestId: envelope.requestId };
+        }
+      }),
+      startWorker: () => ({ close: async () => undefined })
+    } as unknown as WorkerAdapter;
+
+    const state = createFlowState({
+      flows: { detaching: flow },
+      stores: { default: { primary: inMemoryStores() } },
+      modelResolver: markerResolver("app-default"),
+      worker
+    });
+
+    const runtime = await state.getRuntime();
+
+    const restore = console.error;
+    console.error = () => {};
+    try {
+      await runAction({
+        flow,
+        actionName: "launch",
+        input: {},
+        userId: USER_ID,
+        sessionId: "s_parent",
+        stores: runtime.stores,
+        runtimeConfig: {
+          ...runtime.runtimeConfig,
+          // A different resolver is what arms the warning — the same condition
+          // `fsdev run --model` creates against a queue-configured app.
+          modelResolver: markerResolver("cli-override"),
+          logger: {
+            warn: () => {
+              throw new Error("logger exploded");
+            }
+          }
+        }
+      });
+    } finally {
+      console.error = restore;
+    }
+
+    await until(() => observed.start !== undefined, "the dispatch to settle");
+
+    // THE ASSERTION: the work started and reached the queue. Unguarded, the
+    // throw escapes `dispatch` and the caller is told nothing was started.
+    expect(observed.start).toMatchObject({ ok: true });
+    expect(dispatched).toHaveLength(1);
+
+    await state.dispose();
+  });
+
+  /**
    * A logger that throws must not strand the backend it was describing.
    *
    * The drain's waiting notice goes through a HOST-SUPPLIED `RuntimeLogger`.
