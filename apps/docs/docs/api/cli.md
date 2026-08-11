@@ -22,7 +22,7 @@ fsdev run my-agent chat -i '{"message": "Hello!"}'
 |------|-------------|
 | `-i, --input <json>` | Inline JSON input |
 | `-f, --input-file <path>` | JSON input from file |
-| `-m, --model <model>` | Override model for all generator blocks |
+| `-m, --model <model>` | Override model for generator blocks that run in this process. See [Model overrides](/docs/cli/overview#model-overrides) |
 | `-s, --session <id>` | Session ID for reuse across invocations |
 | `--seed-session <json\|path>` | Seed session-level state (JSON or file path) |
 | `--seed-user <json\|path>` | Seed user-level state |
@@ -82,7 +82,7 @@ fsdev dev
 | `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |
 | `--no-config` | Ignore any config and force directory discovery |
 | `--dotenv <path>` | Load a specific `.env` file before the cwd `.env.local` walk-up (repeatable, resolved from cwd) |
-| `-m, --model <model>` | Override model for all generator blocks. Errors if a config is loaded. |
+| `-m, --model <model>` | Override model for generator blocks that run in this process. See [Model overrides](/docs/cli/overview#model-overrides). Errors if a config is loaded. |
 | `--no-open` | Don't open the browser automatically |
 
 **Requires:** `@flow-state-dev/devtool` installed (provides the pre-built UI assets).
@@ -141,7 +141,7 @@ fsdev chat hello-chat chat
 | Flag | Description |
 |------|-------------|
 | `-s, --session <id>` | Resume an engine session for the initially bound flow. Requires a bound target. |
-| `-m, --model <model>` | Override model for all generator blocks |
+| `-m, --model <model>` | Override model for generator blocks that run in this process. See [Model overrides](/docs/cli/overview#model-overrides) |
 | `-u, --user <id>` | Engine identity for sessions and turns (default: `cli-user`) |
 | `--flow-dir <path>` | Override flow discovery root (repeatable). Errors if a config is loaded. |
 | `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |

@@ -37,6 +37,7 @@ Selected options:
 | `errorCapture` | `(event: ErrorCaptureEvent) => void \| Promise<void>` | Opt-in, block-aware sink for routing runtime block failures to Sentry, Datadog, etc. See [Error capture](/docs/advanced/error-capture). |
 | `onBackgroundWork` | `(p) => void` | Serverless keep-alive, e.g. `(p) => after(() => p)`. |
 | `defaultSseHeartbeatMs` | `number` | Wire-level SSE heartbeat cadence. |
+| `detachedDrainTimeoutMs` | `number` | Ceiling on how long `dispose()` waits for in-process background work. Default `30000`. `0` skips the wait. See [Shutdown](#shutdown). |
 
 Construction is synchronous and validates config (empty `stores`, unknown `defaultProfile`) by throwing `FlowStateConfigError`. Stores initialize lazily on first `getRouter()` / `ready()`.
 
@@ -50,7 +51,7 @@ interface FlowState<TSettings extends object = FlowStateSettings> {
   getRouter(): Promise<FlowApiRouter>;
   /** Eager warmup. Idempotent. */
   ready(): Promise<void>;
-  /** Dispose pooled resources across every declared adapter. */
+  /** Drain in-process background work, close the worker, release pooled resources. */
   dispose(): Promise<void>;
   /** The active profile name. */
   readonly activeProfile: string;
@@ -64,6 +65,20 @@ interface FlowState<TSettings extends object = FlowStateSettings> {
   };
 }
 ```
+
+#### Shutdown
+
+`dispose()` runs in order:
+
+1. Waits for background work still running in this process. Work handed to a queue runs in another process and is never waited for.
+2. Bounds that wait with `detachedDrainTimeoutMs`, default 30000 ms. It's a ceiling, not a target: work that finishes sooner is not delayed. `0` means don't wait at all.
+3. Cancels whatever is still running when the budget runs out, and gives it a brief window, inside that same budget rather than added to it, to unwind.
+4. Reports the request ids and session ids it gave up on, on stderr. That report prints even when the runtime's logger is silenced, since work may have been left unfinished.
+5. Closes the worker and releases pooled resources across every declared store adapter.
+
+Shutdown does not write a terminal status on background work's behalf. It cancels the work; it does not mark those records finished, failed, or aborted. For what the cancelled work leaves in the task board and the request log, and how each recovers, see [What a stopped process leaves behind](../server/background-work.md#what-a-stopped-process-leaves-behind).
+
+`fsdev run` and `fsdev chat` shut down through the same path. See [Waiting for in-process work](../cli/overview.md#waiting-for-in-process-work).
 
 ### `StoreAdapter`
 
