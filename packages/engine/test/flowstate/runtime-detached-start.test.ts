@@ -58,6 +58,8 @@ function detachingFlow(
   observed: Observed,
   options: {
     coreDelayMs?: number;
+    /** The parent keeps running after detaching, so it keeps holding its key. */
+    launcherDelayMs?: number;
     /** The child never finishes — a run blocked on something external. */
     coreNeverSettles?: boolean;
     concurrency?: { policy: "queue" | "reject" | "allow"; key: "user" | "session" };
@@ -73,6 +75,11 @@ function detachingFlow(
           seed: { topic: "background" },
           input: { note: "detached-payload" }
         });
+        // Keep running, and therefore keep holding this request's concurrency
+        // key, so a child queued behind it is still queued at shutdown.
+        if (options.launcherDelayMs !== undefined) {
+          await new Promise((resolve) => setTimeout(resolve, options.launcherDelayMs));
+        }
       } catch (err) {
         observed.error = err instanceof Error ? err.message : String(err);
       }
@@ -587,6 +594,66 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     expect(warnings[0]).toContain("detached request(s) to finish before shutdown");
   });
 
+  it("a child cancelled while QUEUED never starts, even at a 0 ceiling", async () => {
+    const observed: Observed = { children: [] };
+    const flow = detachingFlow("queued-cancel", observed, {
+      // The child queues behind the key its own parent holds. Until it leaves
+      // the queue, `runAction` has not registered an abort controller, so a
+      // cancel had nothing to find — and the run could wake AFTER dispose and
+      // start against closed adapters.
+      concurrency: { policy: "queue", key: "user" },
+      // The parent outlives the 202, so the key is still held at dispose.
+      launcherDelayMs: 400
+    });
+
+    const state = createFlowState({
+      flows: { detaching: flow },
+      stores: { default: { primary: inMemoryStores() } },
+      modelResolver: markerResolver("app-default"),
+      // Immediate shutdown: the ceiling wins, so nothing is waited for. The
+      // cancel still has to APPLY — it is a decision the queued waiter re-reads,
+      // not a wait, which is what lets both hold at once.
+      detachedDrainTimeoutMs: 0
+    });
+
+    // The parent must go through the HOST to claim a concurrency key at all —
+    // `runAction` (what `fsdev run` does) is unarbitrated, so a child dispatched
+    // from it never queues and the window under test never opens.
+    const router = await state.getRouter();
+    const res = await router.POST(
+      new Request("http://localhost/api/flows/queued-cancel/actions/launch", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userId: USER_ID, sessionId: "s_http", input: {} })
+      }),
+      { params: { path: ["queued-cancel", "actions", "launch"] } }
+    );
+    // 202: the route acks and the parent keeps running, still holding the key.
+    expect(res.status).toBe(202);
+
+    await until(() => observed.start !== undefined, "the child to be dispatched");
+    expect(observed.start).toMatchObject({ ok: true });
+    // Queued, not started — the parent still holds the key.
+    expect(observed.children).toEqual([]);
+
+    const restore = console.error;
+    console.error = () => {};
+    try {
+      await state.dispose();
+    } finally {
+      console.error = restore;
+    }
+
+    // Wait PAST the parent's remaining hold (400ms), so the key is genuinely
+    // released and the queued child gets its chance to run. A shorter wait than
+    // the hold makes this vacuous — the child would not have started either way.
+    await new Promise((resolve) => setTimeout(resolve, 900));
+
+    // If cancellation only reached started runs, this is where the queued child
+    // wakes up and executes against stores `dispose()` has already closed.
+    expect(observed.children).toEqual([]);
+  });
+
   it("the child inherits the CALLER's runtime config, not the host's", async () => {
     const observed: Observed = { children: [] };
     const flow = detachingFlow("runtime-config-inherit", observed);
@@ -670,8 +737,11 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     // flow — policy belongs to the flow, not to whichever host took the
     // dispatch.
     expect(observed.children).toEqual([]);
-    // The refusal surfaced to the block rather than vanishing.
-    expect(observed.error ?? "").toMatch(/concurren|reject/i);
+    // The refusal reaches the block as a RETURNED value, not a throw: the host
+    // refuses synchronously before dispatching, so the caller still owns the
+    // work and can settle its own row rather than leaving it to lease recovery.
+    expect(observed.start).toMatchObject({ ok: false, refused: "dispatch-rejected" });
+    expect(observed.error).toBeUndefined();
   });
 
   it("drains a Workstream started over HTTP on the router-first path", async () => {

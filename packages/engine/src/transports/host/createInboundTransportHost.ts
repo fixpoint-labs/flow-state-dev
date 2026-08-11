@@ -20,6 +20,10 @@ import { resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
 import { logRuntimeEvent, summarizeForLog } from "../../execution/logging";
+import {
+  deregisterAbortController,
+  registerAbortController
+} from "../../execution/abort-registry";
 import { generateId } from "../../utils/generate-id";
 import {
   ConcurrencyQueueTimeoutError,
@@ -330,6 +334,15 @@ export function createInboundTransportHost(
       };
 
       if (decision.policy === "queue" && decision.key !== undefined) {
+        // Registered HERE rather than left to `runAction`, because between this
+        // dispatch and the run's own registration the request is real,
+        // discoverable, and cancellable by anyone reading the store — and yet
+        // has no controller for `abortRequest` to find. `runAction` re-registers
+        // (overwriting this one) when it actually starts, which is the same
+        // last-write-wins hand-off the enqueue-time record already uses, so this
+        // adds a window rather than a second registry to keep in sync. The
+        // `finally` below removes it on every exit, started or not.
+        const queuedAbort = registerAbortController(requestId);
         // A `queue` run's start is deferred behind the key, so `dispatchLocal`
         // (which registers `activeRequests` and writes the request record) has
         // not run when this handle is returned. Materialize a discoverable
@@ -408,10 +421,27 @@ export function createInboundTransportHost(
                 (queuedHeartbeat as unknown as { unref: () => void }).unref();
               }
             }
-            return gateStart(() => {
+            return gateStart(async () => {
               // `runAction` re-registers and starts its own heartbeat timer from
               // here, so the host's stewardship of the entry ends exactly here.
               stopQueuedHeartbeat();
+              // Cancelled while it sat in the queue, so do not start it now.
+              //
+              // A queued run is the one dispatch that exists without an abort
+              // controller: `runAction` registers that, and `runAction` has not
+              // been called yet. So `abortRequest` finds nothing and returns
+              // false, and a cancel issued in this window — shutdown's drain is
+              // the reachable one — silently does not apply. Waking up after
+              // `dispose()` and starting a run against closed adapters is a
+              // corrupting outcome rather than an untidy one, so the wait is
+              // registered (above) and the decision is re-read here, at the last
+              // moment before anything runs (FIX-1077).
+              if (queuedAbort.signal.aborted) {
+                await terminateUnenqueuedRequest(stores, requestId);
+                throw new Error(
+                  `Request "${requestId}" was cancelled before it left the concurrency queue`
+                );
+              }
               return startRun();
             }).catch(async (error: unknown) => {
               if (error instanceof ConcurrencyQueueTimeoutError) {
@@ -420,7 +450,14 @@ export function createInboundTransportHost(
               throw error;
             });
           })
-          .finally(stopQueuedHeartbeat);
+          .finally(() => {
+            stopQueuedHeartbeat();
+            // Whoever registered it removes it, on every exit — started,
+            // cancelled, or timed out — so the pre-start window cannot leak
+            // controllers into a long-lived process. Idempotent with
+            // `runAction`'s own deregistration on the path where it did start.
+            deregisterAbortController(requestId);
+          });
       } else {
         finished = gateStart(startRun);
         // A start that never happens (the gate threw on the way in) must fail
