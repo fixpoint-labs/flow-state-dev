@@ -9,8 +9,16 @@
  * The output schema lives inline here because only one generator emits
  * the shape; the Phase 3 writer imports the type back from this file to
  * project the commit. BP-016: every field is required, `metrics` is a
- * fixed-shape object, `rating` / `direction` / `holdingPeriod` are enums
- * of literals, and `nullable` is never reached for output fields.
+ * fixed-shape object, and `rating` / `direction` / `holdingPeriod` are enums
+ * of literals. The four price levels and `citations` are `.nullable()`, which
+ * is strict-compatible and already covered by the strict-compatibility case.
+ *
+ * FIX-780: the levels come in two stance-specific pairs — a directional call
+ * carries `stopPrice` / `targetPrice`, a flat call carries
+ * `reassessBelowPrice` / `invalidateAbovePrice`, and neither carries the other.
+ * The schema lets the model emit either pair; the trader's commit handler is
+ * what enforces the stance (`lib/trade-levels.ts`), because a prompt
+ * instruction is a request and this is a record.
  */
 import { generator, sequencer } from "@flow-state-dev/core";
 import { definePromptFile } from "@flow-state-dev/core/prompt-file";
@@ -28,20 +36,31 @@ export const tradeProposalOutputSchema = z.object({
   label: z.string(),
   headline: z.string(),
   rating: z.enum(["long", "short", "flat"]),
+  // FIX-780 — the display row carries no level entries. Its level keys ARE
+  // level names, so they follow the one labeling rule like every other surface,
+  // and the commit handler derives them from the typed fields below rather than
+  // asking the model to restate them (`tradeLevelMetricEntries`).
   metrics: z.object({
     direction: z.string(),
     size: z.string(),
-    stop: z.string(),
-    target: z.string(),
     conviction: z.string(),
   }),
   body: z.array(thesisSection),
-  // Typed extension fields — machine-readable mirror of the display
-  // `metrics` row, consumed by Phase 4 (risk) and Phase 5 (PM).
+  // Typed extension fields — the machine-readable levels of record, consumed by
+  // Phase 4 (risk) and Phase 5 (PM) and projected into the decision snapshot.
   direction: z.enum(["long", "short", "flat"]),
   sizePct: z.number().min(0).max(10),
-  stopPrice: z.number().positive(),
-  targetPrice: z.number().positive(),
+  // FIX-780 — the two pairs. A directional call fills the trade pair, a flat
+  // call fills the monitoring pair, and the unused pair is null. Nullable
+  // rather than required because a flat call has no stop to invent: the clause
+  // that forced it to was the bug. The stance gate at commit is what makes this
+  // binding.
+  stopPrice: z.number().positive().nullable(),
+  targetPrice: z.number().positive().nullable(),
+  /** Flat only: below this price the name is worth another look. */
+  reassessBelowPrice: z.number().positive().nullable(),
+  /** Flat only: above this price, standing aside was wrong. */
+  invalidateAbovePrice: z.number().positive().nullable(),
   holdingPeriod: z.enum(["days", "weeks", "months", "quarters"]),
   invalidationCriteria: z.array(z.string()),
   dependsOn: z.array(z.string()),

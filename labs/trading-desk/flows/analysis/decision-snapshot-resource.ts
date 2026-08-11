@@ -41,8 +41,16 @@ export const decisionSnapshotStateSchema = z.object({
   // `entryPrice` is reserved null until a price-history resource exists; see the
   // PM commit handler's sourcing note (the Summary feature lands that resource).
   entryPrice: z.number().nullable().default(null),
+  // FIX-780 — the levels come in two stance-specific pairs and a snapshot holds
+  // at most one: `stopPrice` / `targetPrice` on a directional call,
+  // `reassessBelowPrice` / `invalidateAbovePrice` on a flat one (there is no
+  // position to stop out of). Outcome tracking scores a flat call against the
+  // monitoring names. A snapshot written before FIX-780 has no monitoring keys —
+  // it is read as a pre-fix record by shape, not repaired (`lib/trade-levels.ts`).
   stopPrice: z.number().nullable().default(null),
   targetPrice: z.number().nullable().default(null),
+  reassessBelowPrice: z.number().nullable().default(null),
+  invalidateAbovePrice: z.number().nullable().default(null),
   sizePct: z.number().nullable().default(null),
   holdingPeriod: z
     .enum(["days", "weeks", "months", "quarters"])
@@ -119,6 +127,8 @@ export const decisionSnapshotResource = defineResource({
       "entryPrice",
       "stopPrice",
       "targetPrice",
+      "reassessBelowPrice",
+      "invalidateAbovePrice",
       "sizePct",
       "holdingPeriod",
       "mandateId",

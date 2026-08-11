@@ -204,8 +204,16 @@ export const memoStateSchema = z.object({
   // Read by Phase 4+ to reason about the proposed trade.
   direction: z.enum(["long", "short", "flat"]).nullable().default(null),
   sizePct: z.number().nullable().default(null),
+  // FIX-780 — two stance-specific pairs of price levels, and a memo carries at
+  // most one of them: the trade pair on a directional call, the monitoring pair
+  // on a flat one. The trader's commit handler enforces that (`levelsForStance`);
+  // every reader names them through `lib/trade-levels.ts` rather than
+  // hard-coding "stop" / "target". A memo written before FIX-780 has no
+  // monitoring keys at all — reads must tolerate the missing key, not just null.
   stopPrice: z.number().nullable().default(null),
   targetPrice: z.number().nullable().default(null),
+  reassessBelowPrice: z.number().nullable().default(null),
+  invalidateAbovePrice: z.number().nullable().default(null),
   holdingPeriod: z
     .enum(["days", "weeks", "months", "quarters"])
     .nullable()

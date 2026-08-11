@@ -845,6 +845,20 @@ function checkDecisionConsistency(bundle: RunArtifactsBundle, c: Checks, memos: 
       ["sizePct", snapshot.sizePct, trader.sizePct ?? null],
       ["stopPrice", snapshot.stopPrice, trader.stopPrice ?? null],
       ["targetPrice", snapshot.targetPrice, trader.targetPrice ?? null],
+      // FIX-780 — the flat run's monitoring pair mirrors like any other level.
+      // `?? null` collapses the pre-FIX-780 missing key to the absence the
+      // snapshot records for it, so a legacy run reads as agreeing rather than
+      // as drift.
+      [
+        "reassessBelowPrice",
+        snapshot.reassessBelowPrice,
+        trader.reassessBelowPrice ?? null,
+      ],
+      [
+        "invalidateAbovePrice",
+        snapshot.invalidateAbovePrice,
+        trader.invalidateAbovePrice ?? null,
+      ],
     ];
     for (const [name, a, b] of numPairs) {
       const ok = (a == null && b == null) || (typeof a === "number" && typeof b === "number" && approx(a, b));

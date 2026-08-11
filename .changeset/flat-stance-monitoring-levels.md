@@ -1,0 +1,14 @@
+---
+---
+
+Internal (`labs/trading-desk`, a private package — no published surface changes): a report that decides NOT to take a position no longer records its two watch levels as a stop-loss and a profit target (FIX-780).
+
+**The defect.** When the desk stood aside, the trader still wrote down the level that would make the stock worth another look and the level that would prove standing aside was wrong — and the record had nowhere to put them except `stopPrice` / `targetPrice`. So a report reading "Hold, no position" also read `stop $320 / target $195`: a short setup with the stop above the target, on a flat call. Ten of the thirteen stored runs are flat, so that was the common report rather than an edge case, and it ran deeper than the screen — the same mislabeled pair reached the risk personas and the portfolio manager as `Stop: $320`, so the desk's own later stages reasoned about a stop on a position that did not exist.
+
+**The fix.** A flat call now records `reassessBelowPrice` and `invalidateAbovePrice`, and records no stop and no target, because there is no position to stop out of. A directional call is unchanged. The trader's commit handler is what makes the stance binding rather than the prompt: a proposal that fills in the wrong pair loses those numbers instead of having them stored under names it did not write them as. Showing nothing is honest; showing a stop on a position the desk did not take is not. The prompt clause that *required* a flat call to emit a stop and a target is deleted.
+
+**One rule names every level.** `flows/analysis/lib/trade-levels.ts` is the single convergence point — the Summary's levels list, the price-overlay legend, the decision one-liner, and the trade-proposal prompt block Phases 4 and 5 read all go through it, so a fifth surface cannot invent a third spelling. Components map the level's `kind` to a colour and never to a name.
+
+**Reports written before this are relabeled, never re-interpreted.** A flat record carrying trade levels and no monitoring levels is detected by data shape and shows its two numbers unlabeled and ascending, under a caption that names the pair rather than either one. Nothing in an old record says which number was which, so any rule that assigned names would be a guess wearing a stored value's authority. Old reports say less than they used to, and say it truthfully.
+
+**The disclosure is one entry in the report's existing provenance notice, not a new marker.** This change renders no banner of its own — it derives the flag and exports the reason string that the single `ReportProvenanceNotice` takes in its reason list. That component was built to take a list so a later fix adds an entry rather than a second banner, and two stacked "this report predates a fix" markers read worse to a reader than either alone.

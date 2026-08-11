@@ -17,6 +17,7 @@ import type { PortfolioContextInput } from "../flow-schema";
 import type { LensConvergenceState } from "../agents/lenses/lens-convergence-resource";
 import type { RewardToRiskState } from "../reward-to-risk-resource";
 import type { RiskMandate } from "./risk-mandate";
+import { buildTradeLevelModel } from "./trade-levels";
 import type { ThesisRecord } from "@/domain/portfolio/schema/thesis-schema";
 import {
   timeHorizonCategoryFor,
@@ -60,7 +61,18 @@ export function formatMemoBlock(label: string, memo: any): string {
   return lines.join("\n");
 }
 
-/** Render the Phase 3 trade-proposal memo's typed extension fields. */
+/**
+ * Render the Phase 3 trade-proposal memo's typed extension fields.
+ *
+ * This block is what the Phase 4 risk personas and the Phase 5 PM actually read,
+ * so its level lines are named by the shared rule (`lib/trade-levels.ts`), not
+ * spelled here (FIX-780 decision 2). Before that rule existed, a flat proposal
+ * reached the risk officers as "Stop: $320 / Target: $195" and the desk's own
+ * later stages reasoned about a stop on a position that did not exist.
+ *
+ * Only the casing is this surface's own: prompt field names are capitalised
+ * here, the same name the screen shows in lower case.
+ */
 export function formatTradeProposalExtensions(memo: any): string {
   if (memo === undefined || memo === null) {
     return "(no trade proposal available)";
@@ -68,8 +80,29 @@ export function formatTradeProposalExtensions(memo: any): string {
   const lines: string[] = [];
   if (memo.direction != null) lines.push(`Direction: ${memo.direction}`);
   if (memo.sizePct != null) lines.push(`Size (% NAV): ${memo.sizePct}`);
-  if (memo.stopPrice != null) lines.push(`Stop: $${memo.stopPrice}`);
-  if (memo.targetPrice != null) lines.push(`Target: $${memo.targetPrice}`);
+  const levels = buildTradeLevelModel({
+    direction: memo.direction ?? null,
+    stopPrice: memo.stopPrice,
+    targetPrice: memo.targetPrice,
+    reassessBelowPrice: memo.reassessBelowPrice,
+    invalidateAbovePrice: memo.invalidateAbovePrice,
+  });
+  if (levels.predatesLabelingFix) {
+    // Reachable when a session written before FIX-780 is resumed and re-runs a
+    // later phase against its stored trader memo. Nothing in that memo says
+    // which number was which, so it is passed through unnamed rather than
+    // guessed at — the same call the screen makes for a legacy report.
+    lines.push(
+      `Levels recorded: ${levels.rows.map((r) => `$${r.value}`).join(", ")}`,
+      "(this proposal predates the flat-stance labeling fix — the desk cannot say which level is which, so do not read them as a stop and a target)",
+    );
+  } else {
+    for (const row of levels.rows) {
+      lines.push(
+        `${row.label.charAt(0).toUpperCase()}${row.label.slice(1)}: $${row.value}`,
+      );
+    }
+  }
   if (memo.holdingPeriod != null)
     lines.push(`Holding period: ${memo.holdingPeriod}`);
   if (

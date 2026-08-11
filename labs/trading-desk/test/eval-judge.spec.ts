@@ -82,6 +82,8 @@ function completedBundle(): RunArtifactsBundle {
     sizePct: 4,
     stopPrice: 100,
     targetPrice: 150,
+    reassessBelowPrice: null,
+    invalidateAbovePrice: null,
     holdingPeriod: "quarters",
     decidedAt: SECRET_TS,
     mandateVerdict: "clears",

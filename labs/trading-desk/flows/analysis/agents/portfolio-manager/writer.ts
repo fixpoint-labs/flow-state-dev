@@ -119,6 +119,8 @@ export const commitPortfolioManagerMemo = handler({
           dependsOn?: string[] | null;
           stopPrice?: number | null;
           targetPrice?: number | null;
+          reassessBelowPrice?: number | null;
+          invalidateAbovePrice?: number | null;
           sizePct?: number | null;
           holdingPeriod?: DecisionSnapshotState["holdingPeriod"];
         }
@@ -483,8 +485,14 @@ export const commitPortfolioManagerMemo = handler({
           ? traderDirection
           : null,
       entryPrice: null, // TODO(outcome-tracking): source from price-history resource
+      // FIX-780 — mirror all four level fields verbatim from the trader memo,
+      // which the trader's own commit already gated by stance. The snapshot
+      // never re-derives them: a mirror that disagreed with the memo is exactly
+      // what the eval invariant checks for.
       stopPrice: traderState?.stopPrice ?? null,
       targetPrice: traderState?.targetPrice ?? null,
+      reassessBelowPrice: traderState?.reassessBelowPrice ?? null,
+      invalidateAbovePrice: traderState?.invalidateAbovePrice ?? null,
       sizePct: traderState?.sizePct ?? null,
       holdingPeriod: traderState?.holdingPeriod ?? null,
       // Risk-mandate decision (FIX-752) — the FIX-614 sensitivity-benchmark

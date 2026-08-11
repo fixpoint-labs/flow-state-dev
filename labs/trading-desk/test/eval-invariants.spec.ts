@@ -96,6 +96,8 @@ function summary(overrides: Partial<RunSummary> = {}): RunSummary {
     sizePct: 4,
     stopPrice: 100,
     targetPrice: 150,
+    reassessBelowPrice: null,
+    invalidateAbovePrice: null,
     holdingPeriod: "quarters",
     decidedAt: "2026-06-25T00:00:00.000Z",
     mandateVerdict: GATES.verdict,
@@ -205,6 +207,8 @@ function healthyBundle(): RunArtifactsBundle {
       entryPrice: null,
       stopPrice: 100,
       targetPrice: 150,
+      reassessBelowPrice: null,
+      invalidateAbovePrice: null,
       sizePct: 4,
       holdingPeriod: "quarters",
       mandateId: "balanced",
@@ -245,6 +249,69 @@ describe("checkRun — healthy bundle", () => {
     expect(hardFails, JSON.stringify(hardFails, null, 2)).toHaveLength(0);
     expect(report.hard.failed).toBe(0);
     expect(report.hard.passed).toBeGreaterThan(5);
+  });
+});
+
+/**
+ * FIX-780 — the snapshot↔trader mirror covers all four level fields, so a flat
+ * run's monitoring pair is checked for drift exactly like a directional run's
+ * stop and target. Without this the two new fields could silently disagree
+ * between the memo and the durable decision record, which is the record outcome
+ * tracking will later score a flat call against.
+ */
+describe("checkRun — snapshot ↔ trader level mirrors (FIX-780)", () => {
+  /** Turn the healthy bundle's directional run into a flat one. */
+  function flatBundle(): RunArtifactsBundle {
+    const b = healthyBundle();
+    const trader = b.memos.find(
+      (m) => m.key === ALL_MEMO_KEYS.trader.collectionKey,
+    )!.state as MemoState;
+    Object.assign(trader, {
+      direction: "flat",
+      sizePct: 0,
+      stopPrice: null,
+      targetPrice: null,
+      reassessBelowPrice: 195,
+      invalidateAbovePrice: 320,
+    });
+    Object.assign(b.decisionSnapshot!, {
+      direction: "flat",
+      sizePct: 0,
+      stopPrice: null,
+      targetPrice: null,
+      reassessBelowPrice: 195,
+      invalidateAbovePrice: 320,
+    });
+    return b;
+  }
+
+  it("passes for a flat run whose monitoring levels mirror", () => {
+    expect(
+      byId(checkRun(flatBundle()).checks, "decision-consistency/snapshot-trader")
+        ?.status,
+    ).toBe("pass");
+  });
+
+  it("fails when the snapshot's monitoring level drifts from the trader memo", () => {
+    const b = flatBundle();
+    b.decisionSnapshot!.invalidateAbovePrice = 999;
+    expect(
+      byId(checkRun(b).checks, "decision-consistency/snapshot-trader")?.status,
+    ).toBe("fail");
+  });
+
+  it("passes for a legacy run whose trader memo has no monitoring keys at all", () => {
+    // BP-030: the pre-FIX-780 corpus. The memo's absent key and the snapshot's
+    // null are the same absence, so this must read as agreement, not drift.
+    const b = healthyBundle();
+    const trader = b.memos.find(
+      (m) => m.key === ALL_MEMO_KEYS.trader.collectionKey,
+    )!.state as MemoState;
+    delete (trader as Record<string, unknown>).reassessBelowPrice;
+    delete (trader as Record<string, unknown>).invalidateAbovePrice;
+    expect(
+      byId(checkRun(b).checks, "decision-consistency/snapshot-trader")?.status,
+    ).toBe("pass");
   });
 });
 

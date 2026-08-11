@@ -59,6 +59,8 @@ function bundle(sessionId: string): RunArtifactsBundle {
       sizePct: 4,
       stopPrice: 100,
       targetPrice: 150,
+      reassessBelowPrice: null,
+      invalidateAbovePrice: null,
       holdingPeriod: "quarters",
       decidedAt: "2026-06-25T00:00:00.000Z",
       mandateVerdict: "clears",

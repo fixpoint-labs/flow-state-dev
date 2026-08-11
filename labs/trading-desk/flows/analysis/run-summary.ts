@@ -73,8 +73,13 @@ export const runSummaryStateSchema = z.object({
   targetWeightPct: z.number().nullable().default(null),
   direction: z.enum(["long", "short", "flat"]).nullable().default(null),
   sizePct: z.number().nullable().default(null),
+  // FIX-780 — two stance-specific pairs; a summary carries at most one. A flat
+  // run has no stop and no target, so a consumer reading `stopPrice` alone sees
+  // absence rather than a monitoring level wearing a trade name.
   stopPrice: z.number().nullable().default(null),
   targetPrice: z.number().nullable().default(null),
+  reassessBelowPrice: z.number().nullable().default(null),
+  invalidateAbovePrice: z.number().nullable().default(null),
   holdingPeriod: z
     .enum(["days", "weeks", "months", "quarters"])
     .nullable()
@@ -201,6 +206,8 @@ export function buildRunSummary(input: BuildRunSummaryInput): RunSummary {
     sizePct: decision?.sizePct ?? null,
     stopPrice: decision?.stopPrice ?? null,
     targetPrice: decision?.targetPrice ?? null,
+    reassessBelowPrice: decision?.reassessBelowPrice ?? null,
+    invalidateAbovePrice: decision?.invalidateAbovePrice ?? null,
     holdingPeriod: decision?.holdingPeriod ?? null,
     decidedAt: decision?.decidedAt ?? null,
 

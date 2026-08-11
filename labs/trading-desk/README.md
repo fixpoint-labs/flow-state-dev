@@ -130,10 +130,21 @@ Phase 3 — trader synthesis:
 - **Single-shot structured synthesis** — one trader generator, no loop.
   Reads the Phase 2 `InvestmentThesis` and writes a typed `TradeProposal`.
 - **Typed extension fields** — `direction`, `sizePct`, `stopPrice`,
-  `targetPrice`, `holdingPeriod`, `invalidationCriteria`, `dependsOn`.
+  `targetPrice`, `reassessBelowPrice`, `invalidateAbovePrice`,
+  `holdingPeriod`, `invalidationCriteria`, `dependsOn`.
   These keep the trader's output auditable rather than opaque LLM JSON,
   and let Phase 4 (risk) and Phase 5 (PM) read structured values without
   parsing strings.
+- **A stance carries exactly one pair of price levels.** A `long` or `short`
+  proposal records `stopPrice` + `targetPrice`. A `flat` proposal — the desk
+  standing aside — records `reassessBelowPrice` (below this, the name is worth
+  another look) + `invalidateAbovePrice` (above this, standing aside was wrong),
+  and records no stop and no target, because there is no position to stop out
+  of. The trader's commit handler enforces this, not the prompt: a proposal that
+  fills the wrong pair loses those numbers rather than storing them under names
+  it did not write them as. Every surface that shows a level — the Summary, the
+  chart legend, and the prompt block Phases 4 and 5 read — names it through the
+  one rule in `flows/analysis/lib/trade-levels.ts`.
 - **Cost-preset gates prompt depth** — the cheap preset reads the thesis
   and its extension fields only; the full preset adds the nine analyst
   memos and the full bull/bear debate transcript.

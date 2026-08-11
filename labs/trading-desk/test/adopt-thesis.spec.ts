@@ -35,6 +35,8 @@ const completedSnapshot: DecisionSnapshotState = {
   entryPrice: null,
   stopPrice: 120,
   targetPrice: 180,
+  reassessBelowPrice: null,
+  invalidateAbovePrice: null,
   sizePct: 4,
   holdingPeriod: "quarters",
   mandateId: null,
@@ -109,6 +111,55 @@ describe("adoptThesis action", () => {
     ]);
     // Report linkage captured automatically.
     expect(thesis.sourceSessionId).toBe(sessionId);
+  });
+
+  /**
+   * FIX-780 §9 — adopting a FLAT report. There is no position, so there is no
+   * stop and no target, and therefore no price tripwire. The existing null
+   * guards deliver this with no new code; this test is what proves the flat
+   * snapshot shape actually reaches them, and that the monitoring levels do NOT
+   * quietly become a stop (turning them into tripwires belongs with outcome
+   * tracking, FIX-763 — not here).
+   */
+  it("adopts a flat report with no price levels and no price tripwire", async () => {
+    const sessionId = "run_nvda_flat";
+    const result = await testFlow({
+      flow: analysisFlow,
+      action: "adoptThesis",
+      userId: USER_ID,
+      sessionId,
+      stores,
+      input: {},
+      seed: {
+        session: {
+          state: { ticker: "NVDA", date: "2026-05-06", runComplete: true },
+          resources: {
+            tradingDeskDecisionSnapshot: {
+              ...completedSnapshot,
+              finalRating: "Hold" as const,
+              direction: "flat" as const,
+              sizePct: 0,
+              stopPrice: null,
+              targetPrice: null,
+              reassessBelowPrice: 195,
+              invalidateAbovePrice: 320,
+            },
+            "memos/p3/trader": {
+              status: "published",
+              agentName: "trader",
+              invalidationCriteria: ["A weekly close above $320."],
+            },
+          },
+        },
+      },
+    });
+
+    expect(result.status).toBe("completed");
+    const thesis = (await thesesOf(stores))["theses/NVDA"];
+    expect(thesis.stopPrice).toBeNull();
+    expect(thesis.targetPrice).toBeNull();
+    // A tripwire here would be a stop on a position the desk did not take.
+    expect(thesis.tripwires).toEqual([]);
   });
 
   it("throws when there is no completed decision to adopt", async () => {
