@@ -27,7 +27,8 @@ unblocked by you, not consulted by you.
 
 ## Which decisions move — and which don't
 
-Five things reach the human across an epic. **`epic-em` moves one and a half of them.**
+Five things reach the human across an epic. **`epic-em` moves one of them and splits a
+second; the other three are untouched.**
 
 | Reaches the human today | Under `epic-em` |
 |---|---|
@@ -47,19 +48,49 @@ is the traffic *between* the gates, and that is what this skill removes.
 
 ## The three deltas
 
-### 1. You decide the engineering forks
+### 1. You own the engineering forks
 
 A worker escalating a fork is asking its manager, and under `epic-em` you are the manager.
-The default is that **you answer it and the row keeps moving**. Two things go up instead:
+The default is that **the answer is yours and the row keeps moving**. Two things go up
+instead:
 
 - **Product-critical** — it changes what a customer gets, what we have promised them, what
   it costs them, or when they get it.
 - **Architecturally critical** — it sets the shape everything after it copies, or it is
   expensive to reverse: a shipped contract, a persisted format, a public export, a new
-  dependency.
+  dependency. The reversibility half of that test is
+  [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md) → "What
+  being wrong costs"; the list is here because a coordinator has to apply it mid-wake.
 
 Everything else is yours. Naming, layering, local structure, which helper, sequencing, where
 a guard sits, how a test is shaped, whether to split a PR — decide it, don't relay it.
+
+**Owning the decision is not doing the research.** Decide from what the worker reported. When
+that isn't enough — the answer lives in a spec, a diff, or the code — **dispatch a worker to
+go get it and decide on the return**, which is what `epic-lifecycle` → "Gates & autonomy"
+already prescribes for a fork the coordinator can't settle. Opening the artifact yourself is
+the one thing this posture must never license
+([`orchestration.md`](../../../docs/contributing/orchestration.md) → "The coordinator
+dispatches; it never does the work"). Guessing from thin `blocker` text is the other failure
+mode, and it is the more expensive one: it buys a wake and pays for it in rework.
+
+**This overrides step 4 — for engineering blockers only.** `epic-lifecycle` step 4 surfaces
+every gate *and every blocker*. Under `epic-em` an engineering blocker skips that surfacing:
+you decide it, record it at step 3, and it reaches the user as one line in the report rather
+than as an ask. **Gates are untouched** — every row in the table above still surfaces at step
+4 exactly as written.
+
+**Two blockers stay the user's no matter what the test says.** Both are rows `epic-lifecycle`
+step 3 parks for a reason the product/architectural test cannot see:
+
+- **`"POC returned INCONCLUSIVE"`** — an evidence run tried to settle the claim and could
+  not. That is the precise moment it stops being an engineering call, which is why
+  `orchestration.md` hands it back to the human: a fabricated verdict is worse than an
+  unsettled debate, because it ends the debate wrongly.
+- **An epic-level `unsettled` claim** — the same thing one altitude up, with no row to be
+  local to. It goes to `epic.answers` and an `epic-agent` fold, unchanged.
+
+Absorbing either would take exactly the decisions the process most wants escalated.
 
 **Record the answer through the mechanism that already exists.** Append it to the row's
 `blockerResolutions` and clear `blocker`, exactly as `epic-lifecycle` step 3 describes for
@@ -82,10 +113,13 @@ The cap
 cap") parks an issue at twelve rounds and asks the user to pick a direction. Four of the
 five available answers — keep going, take a position on the thread that keeps reopening,
 re-examine the approach, split the remainder into a follow-up — are engineering judgments.
-**Take them.** Record the answer and reset `prFeedbackRounds` to `0` as step 3 requires.
+**Take them**, under delta 1's dispatch rule: if picking between them needs the threads read,
+dispatch the row's worker to read them rather than reading them here. Record the answer and
+reset `prFeedbackRounds` to `0` as step 3 requires.
 
-The fifth, **merge as-is and handle the rest separately**, ships a known gap to customers.
-That one goes up, framed as the gap and its cost rather than as a review that went long.
+**The fifth is the user's, always: merge as-is and handle the rest separately.** It ships a
+known gap to customers, which is a product call wearing a review-process costume. Surface it
+as the gap and what it costs, never as a review that went long.
 
 ### 3. Report outcomes, not phases
 
@@ -106,17 +140,12 @@ are wake signals, not work items").
 ## What is already the default — don't re-implement it
 
 Most of what "EM level instructions" implies is documented behaviour you should already be
-exhibiting, and restating it here would create the second copy this skill exists to avoid:
-
-- **The engineer/product-owner contract, the six-part ask, and the recommendation you always
-  give** — [`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md).
-- **Not asking when you shouldn't** — the implementer's call, an answer derivable from the
-  spec, a coin flip with near-zero cost. Same file, "When not to ask at all".
-- **Gates as business decisions, batched under one `Need your sign-off` heading, hardest
-  first** — `epic-lifecycle` step 4.
-- **Never idling on a pending gate** — `epic-lifecycle` → "Gates & autonomy": a satisfied
-  gate is a release, spec approvals are independent per issue, and a blocker is yours to
-  resolve or sequence.
+exhibiting: the engineer/product-owner contract, the six-part ask, the recommendation you
+always give, and not asking when you shouldn't
+([`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md)); gates
+written as business decisions and batched hardest-first (`epic-lifecycle` step 4); and never
+idling on a pending gate (`epic-lifecycle` → "Gates & autonomy"). Restating any of it here
+would create the second copy this skill exists to avoid.
 
 `epic-em`'s contribution is that the posture is **standing for the whole run** rather than
 re-derived at each ask, and that the entry test for handing the user mechanism is the narrow
