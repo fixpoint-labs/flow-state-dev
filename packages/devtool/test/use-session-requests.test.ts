@@ -35,6 +35,9 @@ describe("useSessionRequests — interrupted-sweep gating", () => {
     recoveryClientMock.checkInterrupted.mockReset().mockResolvedValue(undefined);
     devToolState.config = { userId: "devuser" };
     devToolState.autoRecoverInterrupted = false;
+    // Restored here rather than at the end of the one test that swaps it, so a
+    // failing assertion cannot leak the replacement client into its neighbours.
+    devToolState.sessionClient = sessionClientMock;
   });
 
   it("does not sweep interrupted requests when autoRecoverInterrupted is false", async () => {
@@ -82,6 +85,9 @@ describe("useSessionRequests — switching sessions", () => {
     recoveryClientMock.checkInterrupted.mockReset().mockResolvedValue(undefined);
     devToolState.config = { userId: "devuser" };
     devToolState.autoRecoverInterrupted = false;
+    // Restored here rather than at the end of the one test that swaps it, so a
+    // failing assertion cannot leak the replacement client into its neighbours.
+    devToolState.sessionClient = sessionClientMock;
   });
 
   it("drops the previous session's rows before the new session's read lands", async () => {
@@ -98,6 +104,29 @@ describe("useSessionRequests — switching sessions", () => {
     // and the new session's response — the whole window the leak lived in.
     sessionClientMock.listSessionRequests.mockReturnValueOnce(new Promise(() => {}));
     rerender({ sessionId: "sess_child" });
+
+    expect(result.current.requests).toEqual([]);
+  });
+
+  it("drops the previous backend's rows when the client is rebuilt under the same session", async () => {
+    // `DevToolProvider` rebuilds `sessionClient` when `baseUrl` or the bearer
+    // token changes. The session id can stay exactly the same across that, so a
+    // reset keyed on the session id alone never runs and the previous backend's
+    // rows stay on screen — rows live mode will pick an in-progress request out
+    // of and try to stream through the new client.
+    const parentRow = { id: "req_old_backend", status: "in_progress" };
+    sessionClientMock.listSessionRequests.mockResolvedValue([parentRow]);
+
+    const { result, rerender } = renderHook(() => useSessionRequests("sess_1"));
+    await waitFor(() => expect(result.current.requests).toEqual([parentRow]));
+
+    // Same session, different backend. The replacement read is held open so the
+    // window between the swap and its response is the whole of the assertion.
+    const replacementClient = {
+      listSessionRequests: vi.fn().mockReturnValue(new Promise(() => {})),
+    };
+    devToolState.sessionClient = replacementClient as never;
+    rerender();
 
     expect(result.current.requests).toEqual([]);
   });

@@ -176,26 +176,21 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
   // reasoning for why identity is compared by value rather than through a
   // mutable cell; this hook and `use-session-requests` had drifted into two
   // different wrong answers to the same question.
-  const fence = useReadFence([sessionId, sessionClient]);
-
-  // Declared BEFORE the fetch effect so it runs first on the same commit: the
-  // previous session's rows are dropped before the new session's read starts.
   //
-  // `isLoading` is reset here for the same reason, and here rather than on the
-  // no-session path: retiring an identity retires its spinner, whichever way
-  // the identity changed. A read still in flight will decline to clear the flag
-  // once its identity is stale — correctly, it no longer owns it — so if this
-  // did not, a `true` left by the old identity would have no owner at all.
-  // Ordering makes it safe for an ordinary session switch: this effect and the
-  // fetch effect run in the same commit, this one first, and `refresh` sets the
-  // flag back to `true` synchronously before its first `await`, so the pair
-  // batches into one render — `true` for a real session, `false` for none.
-  useEffect(() => {
+  // The reset rides the same identity, so the two cannot disagree about what
+  // "the identity changed" means. `isLoading` is cleared here rather than on the
+  // no-session path: retiring an identity retires its spinner, whichever way the
+  // identity changed. A read still in flight will decline to clear the flag once
+  // its identity is stale — correctly, it no longer owns it — so if this did
+  // not, a `true` left by the old identity would have no owner at all. Safe for
+  // an ordinary switch because this clear and `refresh`'s synchronous `true`
+  // land in one commit and batch: `true` for a real session, `false` for none.
+  const fence = useReadFence([sessionId, sessionClient], () => {
     setWorkstreams([]);
     setError(null);
     setTruncated(false);
     setIsLoading(false);
-  }, [sessionId, sessionClient]);
+  });
 
   const refresh = useCallback(async () => {
     // `null` means this callback was built for a session since left — an

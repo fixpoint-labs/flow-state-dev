@@ -19,7 +19,10 @@ export function useSessionRequests(sessionId: string | null) {
   // Shared with `use-workstreams` rather than restated: this hook previously
   // ASSIGNED its own ref inside the read, so a callback the panel handed to a
   // view that has since unmounted rewrote the guard for every reader.
-  const fence = useReadFence([sessionId, sessionClient]);
+  const fence = useReadFence([sessionId, sessionClient], () => {
+    setRequests([]);
+    setError(null);
+  });
 
   const refresh = useCallback(async () => {
     const stillCurrent = fence.begin();
@@ -64,13 +67,6 @@ export function useSessionRequests(sessionId: string | null) {
     config.userId,
     autoRecoverInterrupted,
   ]);
-
-  // Drop the previous session's rows before the new session's read lands. Runs
-  // before the fetch effect below, which shares its dependency.
-  useEffect(() => {
-    setRequests([]);
-    setError(null);
-  }, [sessionId]);
 
   useEffect(() => {
     void refresh();

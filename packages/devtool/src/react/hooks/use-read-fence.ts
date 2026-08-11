@@ -53,7 +53,7 @@
  * }, [fence, sessionId, sessionClient]);
  * ```
  */
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 /** Element-wise, so a fresh array literal of the same values still matches. */
 function sameIdentity(a: readonly unknown[], b: readonly unknown[]): boolean {
@@ -75,7 +75,43 @@ export type ReadFence = {
   begin: () => (() => boolean) | null;
 };
 
-export function useReadFence(identity: readonly unknown[]): ReadFence {
+export function useReadFence(
+  identity: readonly unknown[],
+  /**
+   * Drop whatever belonged to the identity just left — rows, errors, spinners.
+   *
+   * Owned here rather than left to each caller's own effect, because "what is
+   * the identity" and "what do I clear when it changes" are the same question
+   * and answering it twice is how they diverge: these two hooks had already
+   * done exactly that, one keyed on `[sessionId, sessionClient]` and the other
+   * on `[sessionId]`, so rebuilding the client under an unchanged session left
+   * the previous backend's rows on screen.
+   *
+   * Exposing the identity for callers to key their own effect on would not have
+   * closed it — a deps array must be statically sized, so each caller would
+   * still be writing a list that has to agree with this one by hand.
+   *
+   * Runs on mount too (clearing already-empty state, which costs nothing), and
+   * before the caller's fetch effect, since `useReadFence` is called above it.
+   * That ordering is load-bearing where a caller sets a spinner synchronously:
+   * the clear and the new read's set land in one commit and batch.
+   */
+  onRetired?: () => void
+): ReadFence {
+  // Held in a ref so the effect below can key on the identity alone. A fresh
+  // closure every render is expected; putting it in the deps would re-run the
+  // reset on every render instead of on every identity change.
+  const onRetiredRef = useRef(onRetired);
+  onRetiredRef.current = onRetired;
+
+  useEffect(
+    () => {
+      onRetiredRef.current?.();
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    identity
+  );
+
   // The identity in play, mirrored during render so it is current by the time
   // any callback runs — no effect ordering to reason about.
   const currentRef = useRef(identity);
