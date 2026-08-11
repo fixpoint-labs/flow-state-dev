@@ -32,7 +32,7 @@ This repo uses Changesets for release coordination. Do not edit a root `changelo
 **On every PR with user-facing impact:**
 
 1. Run `pnpm changeset`. Pick the affected publishable package(s).
-2. Pre-1.0: choose `patch` for non-breaking, `minor` for breaking. Never `major`.
+2. Pre-1.0: select `patch` for non-breaking, `minor` for new capabilities or breaking changes. Never `major`.
 3. Write a single user-facing sentence describing the change. Multi-paragraph or migration notes are fine when warranted.
 4. Commit the generated `.changeset/<name>.md` file with the PR.
 
