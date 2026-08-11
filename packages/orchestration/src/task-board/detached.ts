@@ -39,7 +39,7 @@
  * cannot see is how a guard becomes a silent no-op, which is the failure class
  * this whole issue exists to remove.
  */
-import type { TaskWorker, TaskWorkerRegistry } from "../tasks";
+import type { Task, TaskWorker, TaskWorkerRegistry } from "../tasks";
 import { coordinateLabel, type WorkerCoordinate } from "./coordinate";
 import type { TaskBoardBacking } from "./index";
 
@@ -193,6 +193,69 @@ export function resolveWorkerSlots(config: {
     ...(defaultWorker !== undefined ? { defaultWorker } : {}),
     slots,
     detached: slots.filter((slot) => slot.detached),
+  };
+}
+
+/**
+ * Build the board's "this row's work runs in a Workstream" test (FIX-982), or
+ * `undefined` when the board declared nothing detached.
+ *
+ * **Derived from the board's own declarations plus the row's `assignee`, and
+ * that is the durable part.** The tempting alternative is to read the row's
+ * `claimedBy.sessionId` and call it detached when it differs from the drain's
+ * own session — but nothing ever makes it differ. `claimedBy` is written only
+ * by `applyClaimToTask`, inside `claim()`, and the Workstream never claims:
+ * its start gate re-mints a ticket from the row it verified. So a handed-off
+ * row still carries the session of the PARENT that claimed it, and a comparison
+ * against the drain's own session is equal by construction — a test that reads
+ * as a hand-off check and excludes nothing, on every board, forever.
+ *
+ * The assignee is a sound basis precisely because a detached board freezes it:
+ * `setAssignee` declines `immutable-assignee` there, since the assignee is what
+ * the routing coordinate derives from and the child session is keyed off that
+ * coordinate at dispatch. So the value this reads cannot move under it, and it
+ * survives a restart and a second drain over the same board with no run state
+ * to rebuild.
+ *
+ * Resolution mirrors the runner's `coordinateForTask` — uniform, then a
+ * declared assignee, then the floor — so the drain and the Workstream agree on
+ * which worker a row belongs to. `undefined` for an all-inline board keeps
+ * every existing board on the `count()` path it always used.
+ *
+ * @param slots EVERY resolved slot, not just the detached ones. The floor case
+ *   is defined by the assignees it is *not*, so a detached-only list would read
+ *   an inline registry worker as unrouted and send it to the floor.
+ */
+export function detachedTaskPredicate(
+  slots: readonly ResolvedWorkerSlot[]
+): ((task: Task) => boolean) | undefined {
+  if (!slots.some((slot) => slot.detached)) return undefined;
+
+  // A uniform board routes every row to its one worker, so the row never needs
+  // reading.
+  if (slots.some((slot) => slot.detached && slot.coordinate.kind === "uniform")) {
+    return () => true;
+  }
+
+  const declared = new Set<string>();
+  const detachedAssignees = new Set<string>();
+  let floorDetached = false;
+  for (const slot of slots) {
+    if (slot.coordinate.kind === "assignee") {
+      declared.add(slot.coordinate.name);
+      if (slot.detached) detachedAssignees.add(slot.coordinate.name);
+    }
+    if (slot.coordinate.kind === "floor" && slot.detached) floorDetached = true;
+  }
+
+  return (task: Task): boolean => {
+    // `Set.has` rather than a bare index, for the reason the drain and the
+    // runner both use one: `assignee` reaches the board from a model-facing
+    // tool, and an index would resolve an inherited `Object.prototype` member.
+    if (task.assignee !== undefined && declared.has(task.assignee)) {
+      return detachedAssignees.has(task.assignee);
+    }
+    return floorDetached;
   };
 }
 

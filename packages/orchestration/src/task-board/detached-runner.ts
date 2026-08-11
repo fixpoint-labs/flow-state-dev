@@ -41,6 +41,7 @@
  * ticket already carries, so it costs no extra read.
  */
 import { sequencer, utility } from "@flow-state-dev/core";
+import type { DefinedCapability } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import type { WorkstreamDispatchInput } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -130,6 +131,19 @@ export interface BuildDetachedRunnerOptions {
    * the slots and route a dispatch at a worker with no binding.
    */
   detached: readonly ResolvedWorkerSlot[];
+  /**
+   * The board's own resource declarations — the same `uses` the drain carries
+   * (FIX-982).
+   *
+   * **The runner is a second action root, not a step under the drain.** A
+   * detached dispatch enters here directly, so nothing the drain installed is
+   * in scope: without this the durable ledger resolves as a freshly-declared,
+   * empty collection and the start gate rejects every dispatch with "no such
+   * row on board" — the row is there, this execution simply never declared the
+   * resource holding it. Failing that way is what makes it worth naming: the
+   * message reads as a stale claim, and the claim is perfectly current.
+   */
+  uses?: readonly DefinedCapability[];
 }
 
 /**
@@ -171,7 +185,7 @@ function coordinateForTask(
 export function buildDetachedRunner(
   options: BuildDetachedRunnerOptions
 ): BlockDefinition<any, any> | undefined {
-  const { name, boardId, collection: collectionFactory, detached } = options;
+  const { name, boardId, collection: collectionFactory, detached, uses } = options;
   if (detached.length === 0) return undefined;
 
   // The same recorders the inline drain composes, bound to this board's
@@ -233,6 +247,9 @@ export function buildDetachedRunner(
   return sequencer({
     name: `${name}-workstream-runner`,
     stateSchema: detachedRunnerStateSchema,
+    // Same declarations the drain carries — see `uses` on the options type for
+    // why a second action root has to repeat them.
+    ...(uses !== undefined ? { uses } : {}),
   })
     .tap(async (dispatch: WorkstreamDispatchInput, ctx) =>
       // Same first-statement discipline the drain's worker body uses: the lease

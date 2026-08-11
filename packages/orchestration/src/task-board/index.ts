@@ -135,6 +135,7 @@ import {
 } from "./flow-policy-wiring";
 import {
   assertDetachedBoardSupported,
+  detachedTaskPredicate,
   resolveWorkerSlots,
   type ResolvedWorkerSlot,
   type TaskWorkerDispatch,
@@ -224,6 +225,7 @@ export { currentWorkerClaim } from "./flow-policy-wiring";
 export type { BoardRunFlowState } from "./flow-policy-wiring";
 export {
   assertDetachedBoardSupported,
+  detachedTaskPredicate,
   isTaskWorkerEntry,
   resolveWorkerSlot,
   resolveWorkerSlots,
@@ -831,11 +833,17 @@ export function taskBoard<
     onError,
   });
 
+  // One predicate, built once and handed to BOTH halves of the exit question
+  // (FIX-982). Building it per call site is how the wake test and the exit
+  // check drifted apart before, so they are given the same value or neither.
+  const runsElsewhere = detachedTaskPredicate(resolvedWorkers.slots);
+
   const checkBoard = createCheckBoard({
     name: `${name}-worker-check-board`,
     collection: collectionFactory,
     onIdle,
     shouldExit,
+    ...(runsElsewhere !== undefined ? { runsElsewhere } : {}),
   });
 
   // Worker body: the worker block runs directly (BP-011 conformance —
@@ -993,7 +1001,11 @@ export function taskBoard<
         (items) =>
           cell.collection === undefined
             ? false
-            : whenBoardClaimable(cell.collection, { onIdle, shouldExit })(items),
+            : whenBoardClaimable(cell.collection, {
+                onIdle,
+                shouldExit,
+                ...(runsElsewhere !== undefined ? { runsElsewhere } : {}),
+              })(items),
         // Long timeout: a quiet board still wakes on task-change items.
         // The timeout is the upper bound on starvation if the wake
         // signal is somehow missed — the worker's outer `loopBack`
@@ -1099,6 +1111,9 @@ export function taskBoard<
       boardId,
       collection: collectionFactory,
       detached: resolvedWorkers.detached,
+      // The runner is reached by a detached dispatch, not through the drain,
+      // so it has to declare the board's durable collection itself.
+      ...(drainUses !== undefined ? { uses: drainUses } : {}),
     });
     if (runner !== undefined) {
       declareWorkstreamBindings(

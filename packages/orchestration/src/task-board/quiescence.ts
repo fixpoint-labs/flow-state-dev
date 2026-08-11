@@ -15,12 +15,32 @@
  *
  * Verdicts:
  *
- * - `drained` — every task reached a terminal status. Dominates the others.
+ * - `drained` — nothing is left for THIS drain to wait on. Dominates the
+ *   others.
  * - `blocked` — no worker is producing state changes and no `pending` task can
  *   be claimed (every remaining one has a non-`completed` dep), so continuing
  *   would spin forever. `complete-or-blocked` only.
  * - `exit` — `onIdle: "wait"` and the caller's `shouldExit` said to stop.
  * - `continue` — there is still something to wait on.
+ *
+ * ## "for this drain" is the FIX-982 change, and it is not a widening
+ *
+ * `drained` used to mean "every task reached a terminal status", which was the
+ * same sentence as the one above while every worker ran inside the claiming
+ * request. A board declaring `dispatch: { mode: "detached" }` breaks that
+ * equivalence: the hand-off leaves the row `in_progress`, owned by a Workstream
+ * that settles it from its own session, and the launching request has no more
+ * work to do on it. Counting it kept that request parked in `idleWait` until
+ * the child finished — the whole point of detaching, undone by the exit
+ * question.
+ *
+ * So the classifier now takes `runsElsewhere` and both of its counting arms
+ * honour it. It is supplied by the board from its own detached declarations,
+ * and is `undefined` for every board that declares none — an inline board's
+ * `in_progress` row still holds the drain open, unchanged and deliberately so.
+ * What a detached row is NOT is claimable: `hasClaimableTask` reads the
+ * substrate's lease, so a handed-off row stays invisible to the wake test until
+ * its lease actually lapses, which is when it genuinely is recoverable work.
  *
  * The exit check maps a non-`continue` verdict straight onto its `reason`. The
  * wake test needs one thing more: a board can hold newly claimable work while
@@ -30,7 +50,12 @@
  * claimable disjunct is deliberate and load-bearing, not redundant.
  */
 import type { TaskCollectionRef } from "../tasks";
-import { hasClaimableTask, inFlightCount } from "./shared";
+import {
+  activeWorkerCount,
+  hasClaimableTask,
+  inFlightCount,
+  type RunsElsewhere,
+} from "./shared";
 
 /** What the board's exit question currently answers. See the file header. */
 export type BoardQuiescence = "drained" | "blocked" | "exit" | "continue";
@@ -39,6 +64,16 @@ export interface BoardQuiescenceOptions {
   onIdle: "wait" | "complete" | "complete-or-blocked";
   /** `onIdle: "wait"` only — the caller's own termination test. */
   shouldExit?: (collection: TaskCollectionRef) => boolean;
+  /**
+   * Rows a Workstream is running rather than this drain (FIX-982). Omitted by
+   * every board that declares nothing detached, which is what keeps this
+   * classifier's answer for those boards bit-for-bit what it was.
+   *
+   * Passed to **both** callers by the board that built them, never defaulted
+   * per call site — the two answering this question differently is the exact
+   * drift this module was collapsed to remove.
+   */
+  runsElsewhere?: RunsElsewhere;
 }
 
 /**
@@ -53,10 +88,11 @@ export function boardQuiescence(
   if (options.onIdle === "wait") {
     return options.shouldExit?.(collection) === true ? "exit" : "continue";
   }
-  // Drained dominates: every task reached a terminal status.
-  if (inFlightCount(collection) === 0) return "drained";
+  // Drained dominates: every task reached a terminal status, or was handed to
+  // a Workstream that this drain is not the one waiting on.
+  if (inFlightCount(collection, options.runsElsewhere) === 0) return "drained";
   if (options.onIdle === "complete") return "continue";
-  return collection.count({ status: ["in_progress", "awaiting_review"] }) === 0 &&
+  return activeWorkerCount(collection, options.runsElsewhere) === 0 &&
     !hasClaimableTask(collection)
     ? "blocked"
     : "continue";
