@@ -873,3 +873,5 @@ step. So:
   epic to get parallelism — run those as independent `issue-lifecycle` sessions.
 - Composes `issue-lifecycle` (one lifecycle definition, reused per issue). It does
   not reimplement the lifecycle.
+- **A standing engineering-manager posture over this skill — engineering forks decided
+  rather than surfaced — is [`epic-em`](../epic-em/SKILL.md).** Opt-in, and it moves no gate.
