@@ -265,6 +265,98 @@ describe("useWorkstreams — a superseded walk stops working", () => {
   });
 });
 
+describe("useWorkstreams — a callback outliving its identity", () => {
+  /** A listing that ends after one page, so a walk terminates. */
+  function onePage(rows: WorkstreamSummary[]) {
+    return async (_id: string, opts: { offset: number }) =>
+      opts.offset === 0 ? rows : [];
+  }
+
+  it("refuses a refresh invoked from a closure made for a previous session", async () => {
+    // The panel hands `refresh` to children. An operator changes sessions while
+    // a suspension approval is still outstanding, and the unmounted view later
+    // invokes the callback it captured — which names the OLD session.
+    //
+    // Reading the guard late while capturing the identity early is what let
+    // that through: the closure took whatever generation was current at
+    // invocation, so it always agreed with itself and wrote the previous
+    // session's rows over the workspace now on screen.
+    sessionClientMock.listWorkstreams.mockImplementation(onePage([row("dsx_parent")]));
+
+    const { result, rerender } = renderHook(
+      ({ sessionId }: { sessionId: string }) => useWorkstreams(sessionId),
+      { initialProps: { sessionId: "sess_parent" } }
+    );
+    await waitFor(() =>
+      expect(result.current.workstreams.map((w) => w.id)).toEqual(["dsx_parent"])
+    );
+
+    // Captured while the parent was open.
+    const staleRefresh = result.current.refresh;
+
+    sessionClientMock.listWorkstreams.mockImplementation(onePage([row("dsx_child")]));
+    rerender({ sessionId: "sess_child" });
+    await waitFor(() =>
+      expect(result.current.workstreams.map((w) => w.id)).toEqual(["dsx_child"])
+    );
+
+    const callsBefore = sessionClientMock.listWorkstreams.mock.calls.length;
+    sessionClientMock.listWorkstreams.mockImplementation(onePage([row("dsx_stale")]));
+    await act(async () => {
+      await staleRefresh();
+    });
+
+    expect(result.current.workstreams.map((w) => w.id)).toEqual(["dsx_child"]);
+    // And it should not have gone to the network at all — a read it may not
+    // write is a read worth not making.
+    expect(sessionClientMock.listWorkstreams.mock.calls.length).toBe(callsBefore);
+  });
+
+  it("does not let a stale callback retire the current identity's in-flight read", async () => {
+    // The hazard the fix itself could introduce. The sequence number is shared
+    // across identities, so a stale closure that takes one would supersede a
+    // legitimate read already in flight for the session on screen — trading a
+    // wrong write for a silently dropped one.
+    let resolveChild!: (rows: WorkstreamSummary[]) => void;
+
+    sessionClientMock.listWorkstreams.mockImplementation(onePage([row("dsx_parent")]));
+    const { result, rerender } = renderHook(
+      ({ sessionId }: { sessionId: string }) => useWorkstreams(sessionId),
+      { initialProps: { sessionId: "sess_parent" } }
+    );
+    await waitFor(() =>
+      expect(result.current.workstreams.map((w) => w.id)).toEqual(["dsx_parent"])
+    );
+    const staleRefresh = result.current.refresh;
+
+    // The child's read is held open.
+    sessionClientMock.listWorkstreams.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveChild = resolve as (rows: WorkstreamSummary[]) => void;
+        })
+    );
+    rerender({ sessionId: "sess_child" });
+    await waitFor(() => expect(resolveChild).toBeDefined());
+
+    // The stale callback fires while it is outstanding.
+    await act(async () => {
+      await staleRefresh();
+    });
+
+    // The child's read comes back and must still be the one that lands.
+    sessionClientMock.listWorkstreams.mockImplementation(
+      async (_id: string, opts: { offset: number }) => (opts.offset === 0 ? [] : [])
+    );
+    await act(async () => {
+      resolveChild([row("dsx_child")]);
+      await Promise.resolve();
+    });
+
+    expect(result.current.workstreams.map((w) => w.id)).toEqual(["dsx_child"]);
+  });
+});
+
 describe("useWorkstreams — superseded reads", () => {
   it("clears the spinner when the session goes away while a read is in flight", async () => {
     // Retiring an identity has to retire its SPINNER too, and the fence that

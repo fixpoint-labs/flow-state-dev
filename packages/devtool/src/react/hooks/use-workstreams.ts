@@ -171,37 +171,49 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
   // Two guards, because the two hazards are different — the contract in
   // `docs/architecture/server-and-client.md` ("Reads are guarded twice").
   //
-  // GENERATION advances whenever the read identity changes: the session id, or
-  // the session client, which the context rebuilds when `baseUrl` or the bearer
-  // token changes. It retires a response from a superseded identity — a read
-  // for the parent conversation landing after the user descended into a
-  // Workstream would otherwise relabel the parent's background work as the
-  // child's.
+  // IDENTITY retires a response belonging to a superseded read: the session id,
+  // or the session client, which the context rebuilds when `baseUrl` or the
+  // bearer token changes. A read for the parent conversation landing after the
+  // user descended into a Workstream would otherwise relabel the parent's
+  // background work as the child's.
   //
   // SEQUENCE orders reads WITHIN one identity. The mount read, a manual
-  // Refresh and a focus revalidation share a generation and can be in flight
+  // Refresh and a focus revalidation name the same session and can be in flight
   // together, so an older response arriving last would overwrite newer rows —
-  // regressing a row that has since completed back to active. Session identity
-  // alone cannot see that, because both reads name the same session. Only the
-  // most recently STARTED read may write, on either outcome.
-  const generationRef = useRef(0);
+  // regressing a row that has since completed back to active. Identity alone
+  // cannot see that, because both reads name the same session. Only the most
+  // recently STARTED read may write, on either outcome.
+  //
+  // Identity is compared BY VALUE rather than through a generation counter, and
+  // that is the whole of the difference from the obvious implementation. A
+  // counter has to be read somewhere, and both timings are wrong: read it when
+  // `refresh` RUNS and a callback outliving its session adopts whatever
+  // generation is current, agrees with itself, and writes the old session's
+  // rows over the new one. Read it when `refresh` is CREATED and every read
+  // fails instead — `useCallback` recomputes during render while the bump would
+  // live in an effect, so a freshly made callback captures the previous value
+  // and never matches. Comparing the identity a closure was built for against
+  // the identity in play has no such timing: both sides are values, and a stale
+  // closure necessarily holds a stale one.
+  const currentSessionIdRef = useRef(sessionId);
+  const currentClientRef = useRef(sessionClient);
+  currentSessionIdRef.current = sessionId;
+  currentClientRef.current = sessionClient;
   const seqRef = useRef(0);
 
   // Declared BEFORE the fetch effect so it runs first on the same commit: the
-  // previous session's rows are dropped before the new session's read starts,
-  // and the generation bump retires anything still in flight for the old one.
+  // previous session's rows are dropped before the new session's read starts.
   //
   // `isLoading` is reset here for the same reason, and here rather than on the
   // no-session path: retiring an identity retires its spinner, whichever way
   // the identity changed. A read still in flight will decline to clear the flag
-  // once its generation is stale — correctly, it no longer owns it — so if this
+  // once its identity is stale — correctly, it no longer owns it — so if this
   // did not, a `true` left by the old identity would have no owner at all.
   // Ordering makes it safe for an ordinary session switch: this effect and the
   // fetch effect run in the same commit, this one first, and `refresh` sets the
   // flag back to `true` synchronously before its first `await`, so the pair
   // batches into one render — `true` for a real session, `false` for none.
   useEffect(() => {
-    generationRef.current += 1;
     setWorkstreams([]);
     setError(null);
     setTruncated(false);
@@ -209,7 +221,19 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
   }, [sessionId, sessionClient]);
 
   const refresh = useCallback(async () => {
-    const generation = generationRef.current;
+    // The identity this callback was built for, still the one in play?
+    const isCurrentIdentity = () =>
+      currentSessionIdRef.current === sessionId &&
+      currentClientRef.current === sessionClient;
+
+    // Checked BEFORE taking a sequence number, not after. A callback the panel
+    // handed to a view that has since unmounted can still be invoked — an
+    // approval resolving against a session the operator has left. Such a call
+    // has no read to make, and taking a sequence number on the way out would
+    // supersede a legitimate read already in flight for the session on screen,
+    // trading a wrong write for a silently dropped one.
+    if (!isCurrentIdentity()) return;
+
     const seq = ++seqRef.current;
     // Superseded by a read that has STARTED, not merely by one that has already
     // landed. Fencing on "nothing newer has been applied yet" leaves a hole on
@@ -217,8 +241,7 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
     // flight passes that fence, sets `error`, and the newer success then writes
     // rows without clearing it — a stale failure banner sitting over fresh data.
     // Both paths share this fence, because the asymmetry was the bug.
-    const stillCurrent = () =>
-      generationRef.current === generation && seq === seqRef.current;
+    const stillCurrent = () => isCurrentIdentity() && seq === seqRef.current;
 
     if (!sessionId) {
       if (!stillCurrent()) return;
