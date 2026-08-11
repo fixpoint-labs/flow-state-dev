@@ -80,6 +80,22 @@ export function BackgroundWorkPanel({ session, flowKind }: BackgroundWorkPanelPr
   // invisible until the user sends another message, because the hook's own
   // re-read happens at the START of an action. Guarded on the actual
   // true → false transition, so a re-render never triggers a second read.
+  //
+  // **Demo debt — do not copy this into an application.** The Workstream axis
+  // has a pinned read budget: ONE `listWorkstreams` read per turn, taken by
+  // `useSession` at action start. That budget is a contract
+  // (`docs/architecture/server-and-client.md`), and it is why the DevTool's own
+  // panel reads one page plus a sentinel instead of walking the index. This
+  // effect adds a second read at stream end, which doubles the axis read for
+  // every turn on this page — the price paid here for the first filed job
+  // being visible without further user action.
+  //
+  // The intended fix is a framework opt-in rather than an app-level effect:
+  // `useSession` grows an explicit `workstreams: { refreshOnTerminal: true }`,
+  // refreshing from the terminal branch it already has, so the pinned budget
+  // stays the default and the second read becomes a named choice. Until that
+  // lands, this is a reference demo teaching a pattern it should not — hence
+  // the comment rather than the silence.
   const wasStreaming = useRef(isStreaming);
   useEffect(() => {
     const finished = wasStreaming.current && !isStreaming;

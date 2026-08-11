@@ -82,9 +82,16 @@ export function RequestGroupRenderer({ items, isStreaming, statusMessage, isFini
 
     return (
       <RequestGroup
-        // Position included, because one request can own several segments (see
-        // `groupItemsByRequest`) and React needs the key unique among siblings.
-        key={`${group.requestId}:${index}`}
+        // Keyed on the segment's FIRST ITEM, not its position. One request can
+        // own several segments (see `groupItemsByRequest`), so `requestId`
+        // alone is not unique among siblings — but position is not stable:
+        // re-emitting an earlier keyed item under a new `requestId` re-splits
+        // the stream and shifts every later segment's index, which remounts
+        // them and resets their expanded task plans and tool groups. An item id
+        // is unique across the stream and stays with its segment, so a segment
+        // that did not change keeps its identity. Falls back to position for
+        // the empty-segment case, which `groupItemsByRequest` does not produce.
+        key={group.items[0]?.id ?? `${group.requestId}:${index}`}
         group={group}
         isLast={isLast}
         isStreaming={isStreaming}

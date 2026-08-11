@@ -45,8 +45,8 @@ const BOARD_ID = "kitchen-sink-background-work";
 /** The one assignee this board routes to, and the coordinate its Workstreams are addressed by. */
 const ASSIGNEE = "brief";
 
-/** Longest topic label we put on a Workstream row. Keeps the panel's rows readable. */
-const TOPIC_MAX_LENGTH = 60;
+/** Longest display label we render for a filed row. Never used for routing. */
+const LABEL_MAX_LENGTH = 60;
 
 /** What a filed request carries to its worker. */
 const briefRequestSchema = z.object({ request: z.string() });
@@ -65,24 +65,42 @@ export const backgroundWorkLedger = defineTaskCollection({
 });
 
 /**
- * One-line label for a filed request, used as the Workstream's `topic`.
+ * The Workstream's `topic` — a **routing identity**, not a label.
  *
- * Two turns that ask the same thing land on the same Workstream and continue
- * its history, which is the substrate's adoption path rather than an accident —
- * the child session id is derived from this label.
+ * Whitespace-normalized and otherwise complete. `deriveChildSessionId` hashes
+ * this together with the board's routing key, so it is the value that decides
+ * which child session a task lands in. Two turns asking the same thing land on
+ * the same Workstream and continue its history, which is the substrate's
+ * adoption path rather than an accident.
+ *
+ * **Never truncate this.** It used to be cut to 60 characters and reused as the
+ * display label, which meant two different prompts sharing their first 59
+ * characters derived the *same* Workstream and the panel showed one row mixing
+ * both jobs. The task board frames its coordinates by length
+ * (`orchestration/task-board/coordinate.ts`) precisely so two distinct
+ * addresses can never alias; truncating the other half of the identity at the
+ * app layer gave that back. Display truncation belongs at the render edge —
+ * see {@link labelFor} and the panel's `truncate` class.
  */
-function topicFor(message: string): string {
-  const oneLine = message.replace(/\s+/g, " ").trim();
-  return oneLine.length > TOPIC_MAX_LENGTH
-    ? `${oneLine.slice(0, TOPIC_MAX_LENGTH - 1)}…`
-    : oneLine;
+function routingTopicFor(message: string): string {
+  return message.replace(/\s+/g, " ").trim();
+}
+
+/** One-line display label. Display only — never an input to routing. */
+function labelFor(topic: string): string {
+  return topic.length > LABEL_MAX_LENGTH
+    ? `${topic.slice(0, LABEL_MAX_LENGTH - 1)}…`
+    : topic;
 }
 
 /** Row shape the report reads. Narrow on purpose — it renders, it does not steer. */
 type ReportedTask = {
+  id: string;
   goal: string;
   status: string;
   output: unknown;
+  /** True once this row has been reported to the user on an earlier turn. */
+  reported: boolean;
 };
 
 /** Render one finished row's output, whatever shape the worker settled it with. */
@@ -157,17 +175,19 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
     inputSchema: z.object({ message: z.string() }),
     uses: [board.capability],
     execute: async (input, ctx) => {
-      const topic = topicFor(input.message);
+      const topic = routingTopicFor(input.message);
       await ctx.cap["background-work"].addTask({
         goal: input.message,
-        title: topic,
+        // Display only. The full `topic` below is the routing identity.
+        title: labelFor(topic),
         assignee: ASSIGNEE,
         input: { request: input.message },
         // `metadata.topic` is what the spawn seeds the Workstream's routing
-        // with, and it becomes the child session's display label.
+        // with — the value hashed into the child session id. Full, never
+        // truncated; see `routingTopicFor`.
         metadata: { topic },
       });
-      ctx.emit.status(`Filed background work: ${topic}`);
+      ctx.emit.status(`Filed background work: ${labelFor(topic)}`);
     },
   });
 
@@ -184,16 +204,28 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
     outputSchema: z.string(),
     uses: [board.capability],
     execute: async (input, ctx) => {
-      const handles = await ctx.cap["background-work"].listTasks();
+      // One ref, several reads and a write per delivered row — the accessor
+      // sugar re-hydrates the durable collection per call, so `tasks()` once is
+      // the documented shape for this.
+      const board = await ctx.cap["background-work"].tasks();
+      const handles = await board.list();
       const rows = handles.map(
         (task): ReportedTask => ({
+          id: task.id,
           goal: task.goal,
           status: task.status,
           output: task.output,
+          reported: task.metadata?.["reportedAtMs"] != null,
         }),
       );
 
-      const finished = rows.filter((row) => row.status === "completed");
+      // Terminal rows this conversation has ALREADY told the user about are not
+      // news. The ledger is durable and `list()` returns all of it, so without
+      // this every later turn re-reports every finished job and the reply grows
+      // with the whole session's history. `== null` rather than a truthiness
+      // check: a row filed before this marker existed has no key at all
+      // (BP-030), and it is marked below after being reported once.
+      const finished = rows.filter((row) => row.status === "completed" && !row.reported);
       const running = rows.filter(
         (row) => row.status === "pending" || row.status === "in_progress",
       );
@@ -202,11 +234,12 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
       // a row that failed inside this very turn is the one thing this reply
       // must not do.
       const broken = rows.filter(
-        (row) => row.status === "errored" || row.status === "cancelled",
+        (row) =>
+          (row.status === "errored" || row.status === "cancelled") && !row.reported,
       );
 
       const parts = [
-        `Filed **${topicFor(input.message)}** as background work. It runs in its own ` +
+        `Filed **${labelFor(routingTopicFor(input.message))}** as background work. It runs in its own ` +
           `workstream, so this turn is done — open the Background work panel to watch it, ` +
           `or ask me again in a moment and I'll report what came back.`,
       ];
@@ -221,6 +254,13 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
 
       for (const row of broken) {
         parts.push(`---\n\n**Background work did not run:** ${row.goal} (${row.status}).`);
+      }
+
+      // Mark what this reply just delivered, so a later turn does not say it
+      // again. Written AFTER the reply is assembled and only for the rows that
+      // are in it. `patchMetadata` merges, so the row's `topic` survives.
+      for (const row of [...finished, ...broken]) {
+        await board.patchMetadata(row.id, { reportedAtMs: Date.now() });
       }
 
       const reply = parts.join("\n\n");
