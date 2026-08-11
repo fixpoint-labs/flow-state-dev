@@ -296,6 +296,38 @@ sticks (ref-guarded, mirroring the auto-follow idiom).
   dedicated card (not extra `ConvictionStrip` dots) so the per-lens dataGap,
   dissenters, and robustness framing survive. Phase 6 `alignment` is labeled
   **"Thesis alignment"**, never "portfolio fit".
+- **Rendered-or-documented, no silent drops (FIX-1060).** A structured field the
+  pipeline stores must reach the screen or carry a stated reason it does not — a
+  field computed and then dropped at the aggregate → renderer boundary reads to
+  the user as analysis that never ran. Two drop points, both closed: fields the
+  aggregate carried but no component read (`rmStance`,
+  `trade.invalidationCriteria`), and fields the aggregate never picked up at all
+  (RM `keyRisks` / `keyOpportunities` / `unresolvedDisagreements`, risk
+  `confidenceCalibration` / `calibrationRationale` / `recommendedAdjustments`,
+  PM `absoluteRating` / `relativeRating`). The RM's verdict is now a
+  **`ResearchSynthesisBlock`** under the conviction strip — stance, conviction,
+  and the unresolved disagreements that are the desk's answer to "where do the
+  analysts still diverge?", which one dot on an axis cannot say. The trader's
+  invalidation criteria travel with the trade levels in BOTH places levels appear
+  (the decision header and the no-chart fallback), via one shared
+  `InvalidationList`. Every added read is null-safe in the same direction as the
+  rest of the surface: absent stays absent, never a defaulted verdict — a
+  fabricated "calibrated" asserts a review nobody performed. `aggregate.ts`'s
+  `rmStance` is gone, widened into `researchSynthesis`; no computed-but-unused
+  field is left behind.
+  **A third drop point is a RENDER GATE, not a missing read** — a field that
+  reaches its component and is then hidden by a condition belonging to a
+  different participant. The trader publishes in Phase 3 and the PM in Phase 5,
+  so nesting the trade block inside `decision !== null` hid the trader's stored
+  stop, target, and invalidation criteria for the whole window between them, and
+  worst on runs where the price chart was already drawing those same levels. The
+  trade block is therefore a SIBLING of the decision block in
+  `decision-header.tsx`, labeled "trader proposal" so it can never be read as the
+  PM's call. When threading a field here, check what gates the component it lands
+  in, not only that the aggregate carries it. The structured lists all render
+  through one `LabeledBulletList` (an empty list renders nothing, so an absent
+  list cannot become empty chrome, and one gate cannot drift from another);
+  a panel's own top-level section headings keep their `h3` altitude.
 
 ## Portfolio view
 
