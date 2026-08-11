@@ -319,6 +319,51 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     expect(latestDispatchedId()).toBeNull();
   });
 
+  it("keeps a pending dispatch when a suspension resolves in the same session", async () => {
+    // The panel's two work-starting callbacks share one fence. `handleResumed`
+    // has no read to make — it only needs to know whether it still speaks for
+    // the session on screen — so it asks `isCurrent`. Asking through `begin`
+    // instead would take a sequence number, and that number is what decides
+    // which of two racing READS of the same data may write. Consuming one for a
+    // question retires the dispatch awaiting its response, and the request the
+    // operator just started is dropped on the floor: no stream selected, no
+    // error, in a session that never changed.
+    //
+    // Note what is NOT asserted here: which id wins. Two distinct requests the
+    // operator started are not two answers to one question, so the fence has no
+    // opinion between them and last write wins, as it would with no fence at
+    // all. What the fence owes is that neither is silently discarded.
+    let resolveDispatch!: (value: unknown) => void;
+    sendAction.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveDispatch = resolve;
+      })
+    );
+
+    await act(async () => render(<DevToolPanel userId="u1" />));
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("send-stub"));
+    });
+
+    // A suspension the operator approved earlier comes back while the dispatch
+    // is still in flight. Same session throughout — nothing has gone stale.
+    await act(async () => {
+      fireEvent.mouseDown(screen.getByRole("tab", { name: "Suspensions" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText("resume-stub"));
+    });
+    expect(latestDispatchedId()).toBe("req_dispatched");
+
+    await act(async () => {
+      resolveDispatch({ request: { id: "req_from_send" } });
+      await Promise.resolve();
+    });
+
+    expect(latestDispatchedId()).toBe("req_from_send");
+  });
+
   it("clears dispatchedRequestId when the session changes, so live mode can follow the new one", async () => {
     const { rerender } = await act(async () => render(<DevToolPanel userId="u1" />));
 

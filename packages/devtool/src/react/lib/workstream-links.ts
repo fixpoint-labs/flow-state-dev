@@ -244,7 +244,19 @@ function couldRun(workstream: WorkstreamSummary, task: Task): boolean {
   const worker = decodeWorkstreamCoordinate(workstream.coordinate)?.worker;
   if (worker === undefined || !worker.startsWith("assignee:")) return true;
   const assignee = task.assignee;
-  if (assignee == null || assignee.length === 0) return false;
+  // `== null` and nothing more. The absence that routes a row away from an
+  // assignee coordinate is `undefined` (and `null` from a store that writes
+  // one, BP-030) — NOT the empty string, which is a name like any other:
+  // registry keys come from `Object.entries` with no length check, `assignee`
+  // is a bare `z.string()`, and `coordinate.ts` says in as many words that
+  // assignee names are unrestricted. `boardId` is length-checked where it is
+  // declared; this deliberately is not.
+  //
+  // So a board declaring `workers: { "": … }` routes a row carrying
+  // `assignee: ""` to `{ kind: "assignee", name: "" }`, which frames to
+  // `assignee|0:` and decodes back to `assignee:`. Rejecting that on length
+  // called a real route impossible and blanked the link in both directions.
+  if (assignee == null) return false;
   return worker === `assignee:${assignee}`;
 }
 

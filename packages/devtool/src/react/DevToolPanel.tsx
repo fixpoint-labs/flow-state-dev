@@ -535,11 +535,17 @@ function PanelContent({ className }: { className?: string }) {
       // has been left. Installing that request id would put the previous
       // session's continuation in front of the live stream.
       //
-      // A read fence cannot reach this. That guards whether a RESPONSE may be
-      // written; the damage here is state writes and a forced reconnect, which
-      // happen before any read. One question, asked once, at the boundary the
-      // staleness actually crosses — so anything added to this callback later
-      // is covered by construction.
+      // `isCurrent`, NOT `begin`. There is no read here — the damage is state
+      // writes and a forced reconnect, which happen before anything is
+      // fetched — so all this wants is the question. Asking it through `begin`
+      // also takes a sequence number, and that number is what arbitrates reads
+      // of the SAME data racing each other: consuming one here retired the
+      // dispatch awaiting its response a few lines up, discarding a request id
+      // the operator had just asked for in a session that never changed.
+      //
+      // One question, asked once, at the boundary the staleness actually
+      // crosses — so anything added to this callback later is covered by
+      // construction.
       //
       // Guarded here rather than in `SuspensionsView` because the only signal
       // the child has is its own mounted-ness, which is a PROXY for session
@@ -548,7 +554,7 @@ function PanelContent({ className }: { className?: string }) {
       // check. `useResumeSuspension` is no better a home: unlike
       // `useContinueRequest`, which carries an owner token for exactly this, it
       // takes no session and could not tell.
-      if (sessionFence.begin() === null) return;
+      if (!sessionFence.isCurrent()) return;
       setActiveRequestId(requestId);
       setDispatchedRequestId(requestId);
       // Force a reconnect: the id is unchanged (same-request continuation), so

@@ -72,6 +72,25 @@ export type ReadFence = {
    */
   holds: (candidate: readonly unknown[]) => boolean;
   /**
+   * Is the identity THIS fence was built for still the one in play?
+   *
+   * The question on its own, costing nothing. For a caller that has no read to
+   * make and only needs to know whether it is speaking for the current identity
+   * — a click handler that resumed on the far side of an `await`, say.
+   *
+   * Separate from `begin` because the sequence number is a scarce, shared
+   * thing. A caller that only wants the answer used to have to call `begin`,
+   * and taking a sequence number it had no read to use SUPERSEDES whatever read
+   * is genuinely in flight, so an unrelated question would discard a good
+   * response. `begin` is the door for reads; this is the door for questions.
+   *
+   * Same comparison as `holds`, but against the identity the caller was BUILT
+   * with rather than one it passes in — so it cannot be answered by restating
+   * the tuple at the call site, which is the hand-maintained duplicate this
+   * whole module exists to remove.
+   */
+  isCurrent: () => boolean;
+  /**
    * Open a read. Returns the predicate for "may this result still be written",
    * or `null` when the caller was built for an identity that is no longer in
    * play — in which case there is no read to make.
@@ -80,6 +99,9 @@ export type ReadFence = {
    * ordering is load-bearing: the sequence is shared across identities, so a
    * stale caller taking one would supersede a legitimate read already in flight
    * for the identity on screen, trading a wrong write for a dropped one.
+   *
+   * Call it only when there is a read. Every non-read caller is a latent
+   * version of the bug in the paragraph above; `isCurrent` is what they want.
    */
   begin: () => (() => boolean) | null;
 };
@@ -155,17 +177,19 @@ export function useReadFence(
   return useMemo<ReadFence>(
     () => {
       const mine = identity;
+      const isCurrent = () =>
+        !retiredRef.current && sameIdentity(mine, currentRef.current);
       return {
         holds: (candidate) =>
           !retiredRef.current && sameIdentity(candidate, currentRef.current),
+        isCurrent,
+        // Written as "ask the question, then claim a slot" rather than as two
+        // copies of the comparison, so the ordering the doc calls load-bearing
+        // is visible in the code and the two cannot drift apart.
         begin: () => {
-          if (retiredRef.current) return null;
-          if (!sameIdentity(mine, currentRef.current)) return null;
+          if (!isCurrent()) return null;
           const seq = ++seqRef.current;
-          return () =>
-            !retiredRef.current &&
-            sameIdentity(mine, currentRef.current) &&
-            seq === seqRef.current;
+          return () => isCurrent() && seq === seqRef.current;
         },
       };
     },

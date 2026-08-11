@@ -290,6 +290,52 @@ describe("linkWorkstreamsToTasks", () => {
     expect(byWorkstream.size).toBe(0);
   });
 
+  it("links a task whose assignee is the empty string, which is a legal worker name", () => {
+    // The empty string is a NAME, not an absence, and the whole chain accepts
+    // it: a registry is read with `Object.entries` and length-checks no key,
+    // `assignee` is a bare `z.string().optional()`, and `coordinate.ts` states
+    // that assignee names are unrestricted (`boardId`, next to it, IS
+    // length-checked — so this is a choice, not an oversight). A board
+    // declaring `workers: { "": … }` therefore routes this row to
+    // `{ kind: "assignee", name: "" }`, framed as `assignee|0:`.
+    //
+    // Folding it in with "no assignee" made the one thing the routing rule
+    // forbids and a route the rule permits look identical, and blanked the link
+    // in both directions for work that really did run there.
+    const ws = workstream({
+      id: "dsx_blank",
+      topic: "FIX-1",
+      coordinate: coordinate("issue-work", assigneeKey("")),
+    });
+
+    const { byTask, byWorkstream } = linkWorkstreamsToTasks(
+      [ws],
+      [board("issues", [task({ id: "task-a", assignee: "", metadata: { topic: "FIX-1" } })])]
+    );
+
+    expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(ws);
+    expect(byWorkstream.get("dsx_blank")?.map((l) => l.task.id)).toEqual(["task-a"]);
+  });
+
+  it("keeps the empty-string worker distinct from a differently named one", () => {
+    // The pairing above must come from the names matching, not from the check
+    // having been dropped: a `""` row against an `implement` Workstream is the
+    // same contradiction as any other mismatch.
+    const ws = workstream({
+      id: "dsx_impl",
+      topic: "FIX-1",
+      coordinate: coordinate("issue-work", assigneeKey("implement")),
+    });
+
+    const { byTask, byWorkstream } = linkWorkstreamsToTasks(
+      [ws],
+      [board("issues", [task({ id: "task-a", assignee: "", metadata: { topic: "FIX-1" } })])]
+    );
+
+    expect(byTask.size).toBe(0);
+    expect(byWorkstream.size).toBe(0);
+  });
+
   // The two sides' silences mean different things, and the pair below keeps them
   // apart on purpose. A COORDINATE that names no worker is ignorance and stays
   // eligible; a TASK with no assignee, against a coordinate that DOES name one,
