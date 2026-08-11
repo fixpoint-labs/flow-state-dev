@@ -25,6 +25,18 @@
  * and `get_company_profile` retries inside the fan-out exactly as before. An
  * unresolved identity must never stop a run or drop discovery results — the
  * check degrades to honest "unverified", never to a false negative.
+ *
+ * **"Absent" has to mean absent, which takes more than a try/catch.** A missing
+ * fixture throws and is caught below, but a live double-provider failure does
+ * NOT: `loadCompanyProfile` resolves normally with the `source: "unavailable"`
+ * sentinel. Persisting that is indistinguishable, to every later reader, from a
+ * resolved answer — `getOrPatchState` counts any stored value as a hit — so the
+ * analyst's own call would never retry, and one transient blip during the
+ * warm-up would leave the entity check `"unchecked"` for the WHOLE run. A
+ * warm-up that caches its own failure is worse than no warm-up. The compute
+ * therefore returns `undefined` on that sentinel, which `getOrPatchState` leaves
+ * unstored — the same rule `RecoverySupersededError` follows in
+ * `critical-financials-recovery.ts`: a non-answer never occupies a spine slot.
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -42,9 +54,17 @@ export const resolveSubjectEntity = handler({
   execute: async (_input, ctx) => {
     const { ticker, date } = ctx.session.state;
     try {
-      await ctx.resources.profileData.getOrPatchState("companyProfile", () =>
-        loadCompanyProfile({ ticker, date }, pickMode(ctx)),
-      );
+      await ctx.resources.profileData.getOrPatchState("companyProfile", async () => {
+        const profile = await loadCompanyProfile({ ticker, date }, pickMode(ctx));
+        // A failed load must not occupy the spine slot. `loadCompanyProfile`
+        // RESOLVES with the `"unavailable"` sentinel when both providers fail
+        // (`Promise.allSettled` swallows their rejections), so the try/catch
+        // below never sees it — and `getOrPatchState` treats any stored value as
+        // a hit, which would make the analyst's later call skip its fetch and
+        // inherit this run's transient blip. Returning `undefined` stores
+        // nothing, leaving the field absent exactly as the header promises.
+        return profile.source === "unavailable" ? undefined : profile;
+      });
     } catch {
       // Fail soft — see the file header.
     }

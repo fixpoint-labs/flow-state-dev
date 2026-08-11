@@ -45,6 +45,23 @@ vi.mock("@flow-state-dev/tools/search", async (importOriginal) => {
 import { resolveProvider } from "@flow-state-dev/tools/search";
 const mockResolveProvider = vi.mocked(resolveProvider);
 
+// Both profile providers, so a live-mode warm-up can be failed deterministically.
+// `loadCompanyProfile` RESOLVES with the `unavailable` sentinel when both miss —
+// it does not throw — which is the path the tap has to refuse to persist.
+vi.mock("@/lib/providers/finnhub", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/providers/finnhub")>();
+  return { ...actual, hasFinnhubKey: vi.fn(() => false) };
+});
+vi.mock("@/lib/providers/yahoo", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/providers/yahoo")>();
+  return {
+    ...actual,
+    fetchYahooCompanyProfile: vi.fn(async () => {
+      throw new Error("yahoo unreachable");
+    }),
+  };
+});
+
 const flow = defineFlow({
   kind: "trading-desk-entity-check-test",
   actions: {
@@ -348,6 +365,31 @@ describe("resolveSubjectEntity tap", () => {
     expect(run.error).toBeUndefined();
     const resources = toBareStates(await stores.resourceState.getAll("session", sessionId));
     const spine = resources["profileData"] as { companyProfile?: unknown } | undefined;
+    expect(spine?.companyProfile).toBeUndefined();
+  });
+
+  it("does not cache a failed warm-up as a resolved profile", async () => {
+    // Both providers down. `loadCompanyProfile` RESOLVES with the `unavailable`
+    // sentinel rather than throwing, so the tap's try/catch never sees it.
+    // Persisting it would be a cached absence: `getOrPatchState` counts any
+    // stored value as a hit, so the profile analyst's own call inside the
+    // fan-out would skip its fetch and inherit a transient blip — leaving the
+    // entity check `unchecked` for every result in the run.
+    const stores = createInMemoryStores();
+    const sessionId = "entity-warm-provider-outage";
+    const run = await testFlow({
+      flow,
+      action: "resolveEntity",
+      userId: "test-user",
+      sessionId,
+      stores,
+      input: {},
+      seed: { session: { state: stateFor("live", "NVDA") } },
+    });
+    expect(run.error).toBeUndefined();
+    const resources = toBareStates(await stores.resourceState.getAll("session", sessionId));
+    const spine = resources["profileData"] as { companyProfile?: unknown } | undefined;
+    // Absent, not an `unavailable` sentinel — so the later call still retries.
     expect(spine?.companyProfile).toBeUndefined();
   });
 });
