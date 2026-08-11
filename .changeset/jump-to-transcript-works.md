@@ -20,4 +20,9 @@ handler means the button is not rendered at all — so a re-opened historical
 report, whose transcript items were never persisted, shows a clean header
 rather than a control that silently does nothing.
 
+Jumping also stops the transcript from auto-following a live run, so a reader
+who navigates to an agent stays there while output keeps streaming in. Scrolling
+back to the bottom resumes following, and a new run starts following again on
+its own.
+
 Internal lab app; no published package changes.
