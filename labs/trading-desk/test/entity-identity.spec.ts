@@ -143,9 +143,11 @@ describe("textMentionsEntity", () => {
     expect(publisherIsSubject("corporate.target.com", target)).toBe(true);
   });
 
-  it("lets two ordinary tokens verify together", () => {
-    // No single token of `American Financial Group` identifies it, but a snippet
-    // carrying two of them is naming the company, not writing generic prose.
+  it("lets two ordinary tokens verify only when they are adjacent", () => {
+    // No single token of `American Financial Group` identifies it. Two of them
+    // side by side name the company; two of them merely PRESENT somewhere in the
+    // text do not — `text` is the concatenated title + snippet + URL of one
+    // result, so co-occurrence spans unrelated sentences.
     const afg = subjectEntityFromProfile("AFG", {
       source: "finnhub",
       name: "American Financial Group Inc",
@@ -153,7 +155,44 @@ describe("textMentionsEntity", () => {
     expect(textMentionsEntity("American Financial posted a record quarter", afg)).toBe(
       true,
     );
+    // The counterexample that falsified the co-occurrence rule: macro prose about
+    // consumers and rates, about no issuer at all, carrying both name tokens far
+    // apart. Under a bag-of-words pair rule this verified as evidence about AFG —
+    // contaminated prose reaching the prompt through the guard meant to stop it.
+    expect(
+      textMentionsEntity(
+        "American consumers face financial pressure as rates rise",
+        afg,
+      ),
+    ).toBe(false);
+    // One ordinary token alone is still not enough (the pre-existing rule).
     expect(textMentionsEntity("the American consumer is holding up", afg)).toBe(false);
+    // Adjacency is order-agnostic — a name gets written back-to-front often
+    // enough ("Financial American Group Inc" in a filings index).
+    expect(textMentionsEntity("Financial American Group filed an 8-K", afg)).toBe(true);
+    // A repeated SINGLE ordinary token is one name token twice, not two of them.
+    expect(
+      textMentionsEntity("American American Airlines cut its outlook", afg),
+    ).toBe(false);
+    // A URL slug that names the company still verifies — the normalizer splits
+    // on the hyphens, so the run stays contiguous.
+    expect(
+      textMentionsEntity("Q3 results https://ex.com/american-financial-group-q3", afg),
+    ).toBe(true);
+  });
+
+  it("still verifies a distinctive token with no adjacency requirement", () => {
+    // The adjacency rule is scoped to ORDINARY tokens. A category noun like
+    // `semiconductor` stays distinctive and carries the name on its own —
+    // demoting it would cost `ON Semiconductor` name verification entirely,
+    // since `ON` only matches upper-case.
+    const on = subjectEntityFromProfile("ON", {
+      source: "finnhub",
+      name: "ON Semiconductor Corporation",
+    }) as SubjectEntity;
+    expect(
+      textMentionsEntity("a semiconductor supplier raised guidance", on),
+    ).toBe(true);
   });
 });
 

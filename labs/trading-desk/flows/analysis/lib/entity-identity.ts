@@ -50,8 +50,9 @@ const GENERIC_NAME_TOKENS = new Set([
  *
  * These are not dropped from the token set (a name that is entirely ordinary
  * words still HAS an identity — see `entityNameTokens`); they are demoted at
- * match time: an ordinary token verifies only in the company of a second name
- * token, never alone. `textMentionsEntity` owns that rule.
+ * match time: an ordinary token verifies only ADJACENT to a second ordinary name
+ * token, never alone and never merely co-occurring somewhere in the same text.
+ * `textMentionsEntity` owns that rule.
  *
  * The line is deliberately drawn at DIFFERENT-MEANING collisions, not at
  * category nouns. `semiconductor` stays distinctive: a snippet using it is at
@@ -203,17 +204,27 @@ function casedTokenRun(text: string): string {
 /**
  * True when `text` names the subject — the ticker as a standalone token, a
  * distinctive token of the company name, or two of its ordinary-word tokens
- * together. Substring matching is deliberately avoided (token equality only),
- * so `marks` does not match `marketwatch`.
+ * ADJACENT to one another. Substring matching is deliberately avoided (token
+ * equality only), so `marks` does not match `marketwatch`.
  *
  * **An ordinary-word name token never verifies alone.** `Target Corporation`
  * reduces to `target`, and "the analyst raises the price target" is prose about
  * any issuer at all; accepting it would verify a Tesla article as evidence about
- * Target. `energy`, `growth`, `capital`, `first` behave the same way. Requiring
- * a second name token costs recall on issuers whose entire name is one ordinary
- * word — a genuine article that names such a company only in lower case, and
- * carries neither the uppercase ticker nor a first-party domain, now drops. The
- * alternative is worse in the direction this guard exists to close.
+ * Target. `energy`, `growth`, `capital`, `first` behave the same way.
+ *
+ * **Nor do two of them verify by merely co-occurring.** `text` here is the
+ * concatenated title + snippet + URL of one search result, so "somewhere in this
+ * text" spans unrelated sentences. `American Financial Group` reduces to
+ * `american` + `financial`, and "American consumers face financial pressure as
+ * rates rise" carries both while being about neither — bag-of-words
+ * co-occurrence is not evidence the prose is about the issuer. So the two must
+ * appear as a CONTIGUOUS run: `american financial` verifies, `american … financial`
+ * does not. Order is not required (a name is written back-to-front often enough),
+ * adjacency is. This costs recall on an article that splits the name across other
+ * words, and on issuers whose entire name is one ordinary word — a genuine
+ * article naming such a company only in lower case, carrying neither the
+ * uppercase ticker nor a first-party domain, drops. The alternative is worse in
+ * the direction this guard exists to close.
  *
  * **The ticker match is case-SENSITIVE; the name match is not.** Plenty of
  * tickers are ordinary words — `ON`, `IT`, `ALL`, `CAT`, `KEY`, `GAP`. Matching
@@ -225,9 +236,13 @@ function casedTokenRun(text: string): string {
  * company unnamed in both title and snippet — and that item is weak evidence
  * anyway. `$NVDA` matches for free: `$` is a token delimiter.
  *
- * Name tokens stay case-insensitive: they are 4+ characters and stripped of
- * corporate-form boilerplate, so they do not collide with ordinary prose the way
- * a two-letter symbol does.
+ * Name tokens stay case-insensitive: a company is named in real coverage in
+ * whatever case the outlet's style demands, so requiring an exact case would drop
+ * most genuine mentions. Plenty of them DO collide with ordinary prose — being
+ * 4+ characters and stripped of corporate-form boilerplate does not save
+ * `target`, `financial`, or `energy`, which is why `ORDINARY_NAME_TOKENS` exists.
+ * Casing could not separate them anyway: a headline capitalizes "Price Target".
+ * The adjacency rule above is what handles that collision, not the case rule.
  */
 export function textMentionsEntity(text: string, subject: SubjectEntity): boolean {
   // Padded-token-run for the ticker so a dotted class share (`BRK.B` → `BRK B`)
@@ -236,16 +251,29 @@ export function textMentionsEntity(text: string, subject: SubjectEntity): boolea
   if (tickerRun.trim() !== "" && casedTokenRun(text).includes(tickerRun)) return true;
   const normalized = normalizeEntityName(text);
   if (normalized === "") return false;
-  const tokens = new Set(normalized.split(" "));
-  let ordinaryMatches = 0;
+  // Ordered, because the ordinary-token rule is about adjacency; the set is the
+  // membership index over the same sequence.
+  const textTokens = normalized.split(" ");
+  const tokens = new Set(textTokens);
+  const matchedOrdinary = new Set<string>();
   for (const t of subject.nameTokens) {
     if (!tokens.has(t)) continue;
     // A distinctive token carries the name on its own; an ordinary one only
-    // counts toward the pair.
+    // counts toward an adjacent pair.
     if (!ORDINARY_NAME_TOKENS.has(t)) return true;
-    ordinaryMatches += 1;
+    matchedOrdinary.add(t);
   }
-  return ordinaryMatches >= 2;
+  if (matchedOrdinary.size < 2) return false;
+  // Two DISTINCT ordinary name tokens, side by side. A repeated single token is
+  // one token of the name twice over, not two of them.
+  for (let i = 1; i < textTokens.length; i += 1) {
+    const prev = textTokens[i - 1] as string;
+    const cur = textTokens[i] as string;
+    if (prev !== cur && matchedOrdinary.has(prev) && matchedOrdinary.has(cur)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
