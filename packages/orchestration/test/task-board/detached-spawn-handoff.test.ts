@@ -58,6 +58,13 @@ function drive(options: {
   startDetached: () => Promise<StartDetachedResult>;
   /** Fail the state write matching this predicate, as a store outage would. */
   failWriteWhen?: (updates: Record<string, unknown>) => boolean;
+  /** Drive the spawn with this payload instead of the default. */
+  payload?: TaskWorkerInput;
+  /**
+   * Run while the release write is in flight — the window between the payload
+   * being validated and the dispatch being built.
+   */
+  duringRelease?: () => void;
 }) {
   const timeline: string[] = [];
   let state: { currentClaim?: TaskClaimTicket } = { currentClaim: CLAIM };
@@ -80,17 +87,24 @@ function drive(options: {
         if (options.failWriteWhen?.(updates) === true) {
           throw new Error("state store unavailable");
         }
+        if (label === "release") options.duringRelease?.();
         state = { ...state, ...updates };
       },
     },
     requestHost: { startDetached },
   } as unknown as BlockContext;
 
+  const payload = options.payload ?? PAYLOAD;
+
   return {
     timeline,
     startDetached,
     claimAfter: () => state.currentClaim,
-    run: () => runForTest(spawn, PAYLOAD as never, ctx),
+    /** The dispatch envelope the spawn actually handed to the host. */
+    dispatched: () =>
+      (startDetached.mock.calls[0]?.[0] as { input: { payload: TaskWorkerInput } } | undefined)
+        ?.input.payload,
+    run: () => runForTest(spawn, payload as never, ctx),
   };
 }
 
@@ -164,5 +178,78 @@ describe("the parent releases its claim before the dispatch it cannot take back"
     await expect(harness.run()).rejects.toThrow(/dispatch host unreachable/);
 
     expect(harness.claimAfter()).toBeUndefined();
+  });
+});
+
+describe("the dispatched payload is the same value whichever way it is delivered", () => {
+  /** A payload whose `input` reaches one object from two places. */
+  function aliasedPayload(): TaskWorkerInput {
+    const shared = { seen: 0 };
+    return {
+      taskId: "t1",
+      goal: "do the background thing",
+      attempts: 1,
+      input: { first: shared, second: shared },
+    };
+  }
+
+  /** What the child receives on each deployment path, from one dispatch. */
+  function delivered(dispatchedPayload: TaskWorkerInput) {
+    return {
+      // In-process: the runtime hands the child this very object graph.
+      inProcess: dispatchedPayload,
+      // External dispatcher: the envelope is serialized on its way to a worker.
+      external: JSON.parse(JSON.stringify(dispatchedPayload)) as TaskWorkerInput,
+    };
+  }
+
+  const aliased = (p: TaskWorkerInput): boolean => {
+    const bag = p.input as { first: unknown; second: unknown };
+    return bag.first === bag.second;
+  };
+
+  it("delivers the same aliasing to the child on both paths", async () => {
+    // BOTH paths are exercised, because this is exactly the claim that passes
+    // when only one is checked. A payload referencing one object twice is legal
+    // JSON, so the gate permits it — but a queue's round trip turns the two
+    // references into two independent objects while the in-process path keeps
+    // them as one. A worker that mutates through one reference, or compares two
+    // by identity, then behaves differently by deployment mode with nothing
+    // announcing it.
+    const harness = drive({ startDetached: accepted, payload: aliasedPayload() });
+    await expect(harness.run()).resolves.toMatchObject({ detached: true });
+
+    const { inProcess, external } = delivered(harness.dispatched()!);
+
+    // The outcome: the two modes agree. Asserted as an equality between the
+    // paths rather than against a hardcoded expectation, so it cannot pass by
+    // pinning whichever behaviour one path happens to have.
+    expect(aliased(inProcess)).toBe(aliased(external));
+    expect(inProcess).toEqual(external);
+
+    // And they agree on the round-tripped shape — the alias is resolved before
+    // dispatch, not left for the transport to resolve or not.
+    expect(aliased(inProcess)).toBe(false);
+  });
+
+  it("sends the payload that was validated, not one mutated afterwards", async () => {
+    // The release write is awaited, so without a snapshot the graph stays
+    // mutable between `assertJsonSafe` and the dispatch that carries it. The
+    // thing that was checked must be the thing that was sent.
+    const payload = aliasedPayload();
+    const harness = drive({
+      startDetached: accepted,
+      payload,
+      duringRelease: () => {
+        (payload.input as { first: { seen: number } }).first.seen = 999;
+        (payload.input as Record<string, unknown>).injected = "after validation";
+      },
+    });
+
+    await expect(harness.run()).resolves.toMatchObject({ detached: true });
+
+    const sent = harness.dispatched()!.input as Record<string, unknown>;
+    expect(sent.injected).toBeUndefined();
+    expect((sent.first as { seen: number }).seen).toBe(0);
   });
 });

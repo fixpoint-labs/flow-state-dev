@@ -123,6 +123,29 @@ export function createSpawnDetached(options: SpawnDetachedOptions) {
         label: `[task-board] "${boardId}" detached payload for task "${claim.taskId}"`,
       });
 
+      // Take the round trip HERE, so both deployment modes send the same value.
+      //
+      // An external dispatcher serializes the envelope on its way to the worker;
+      // the in-process path hands the child the very object graph this block is
+      // holding. That difference is observable whenever a payload references one
+      // object from two places — legal JSON, which is why the gate above permits
+      // it, and which the round trip resolves into two independent copies. Left
+      // to the transport, the child sees one shared object in-process and two
+      // copies under a queue, so a worker that mutates through one reference, or
+      // compares two by identity, behaves differently by deployment mode with
+      // nothing anywhere announcing it.
+      //
+      // Doing it once, here, also closes a smaller gap for free: `patchState`
+      // below is awaited, so without this the graph just validated stays mutable
+      // — by a concurrent step, or by anything holding a reference — between the
+      // check and the dispatch. Snapshotting makes the value that was checked the
+      // value that is sent.
+      //
+      // Safe to do unconditionally because `assertJsonSafe` has already refused
+      // everything a round trip would silently change (a Date, a Map, a class
+      // instance, a function); what remains round-trips to an equal value.
+      const snapshot = JSON.parse(JSON.stringify(payload)) as TaskWorkerInput;
+
       const seed = workstreamRoutingSeed({
         boardId,
         coordinate,
@@ -135,8 +158,8 @@ export function createSpawnDetached(options: SpawnDetachedOptions) {
         // continues the first's history only when the whole address matches.
         // Absent or blank falls back to the task id, so continuity is opted into
         // rather than accidental.
-        ...(typeof payload.metadata?.topic === "string"
-          ? { topic: payload.metadata.topic }
+        ...(typeof snapshot.metadata?.topic === "string"
+          ? { topic: snapshot.metadata.topic }
           : {}),
         topicFallback: claim.taskId,
       });
@@ -158,7 +181,7 @@ export function createSpawnDetached(options: SpawnDetachedOptions) {
         ...(claim.incarnationId !== undefined
           ? { incarnationId: claim.incarnationId }
           : {}),
-        payload,
+        payload: snapshot,
       };
 
       // Release BEFORE the point of no return — see the file header. A failure

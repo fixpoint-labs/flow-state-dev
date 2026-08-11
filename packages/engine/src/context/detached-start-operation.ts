@@ -132,7 +132,44 @@ export function createDetachedStartOperation(
     // holds the child's `finished`, so without this a registration failure is
     // swallowed and the parent reports success; with it, the parent's request
     // carries the failure at the moment it happened.
-    if (handle.accepted !== undefined) await handle.accepted;
+    //
+    // A REJECTED acceptance is reported as not-started, for the same reason a
+    // synchronous refusal is: the caller still owns the work and can settle it,
+    // where a throw leaves it holding nothing it can act on. Note this is the
+    // OPPOSITE correction to the one above and on the same axis — there a
+    // synchronous throw turned out to reach here from after the start and had to
+    // stop being read as a refusal; here a rejection that always comes from
+    // before it should start being read as one (FIX-982, FIX-1095).
+    //
+    // What makes that safe is narrower than "no child can be running", so it is
+    // written out rather than asserted. Under an external dispatcher `accepted`
+    // rejects from exactly one place: the enqueue-time chain in `dispatch`, whose
+    // `catch` awaits `terminateUnenqueuedRequest` BEFORE rethrowing. So by the
+    // time this rejection is observable the request record is already terminal.
+    // Two of that chain's three failure sources — the `activeRequests` register
+    // and the request-record write — reject before the dispatcher is called at
+    // all, so no job exists. The third is the enqueue itself, and there the host
+    // cannot know whether a job landed: a queue write that commits and loses its
+    // ack rejects with the job live.
+    //
+    // The row survives that residue anyway, because settling it is fenced
+    // elsewhere. A child that did land re-reads the row at the Workstream start
+    // gate, which refuses unless `attempts`, `createdAt`, `incarnationId`, the
+    // lease AND `status === "in_progress"` all still hold — so once the caller
+    // fails the row, a late child is refused rather than allowed to settle it.
+    // What is NOT closed is the window before that settle commits, where a child
+    // could pass the gate first; that is the same "claimed but not yet started"
+    // modelling FIX-1070 left open, and it is the lease's shape to change.
+    if (handle.accepted !== undefined) {
+      try {
+        await handle.accepted;
+      } catch (error) {
+        return {
+          notStarted: true,
+          reason: error instanceof Error ? error.message : String(error)
+        };
+      }
+    }
 
     return { requestId: handle.requestId };
   };
