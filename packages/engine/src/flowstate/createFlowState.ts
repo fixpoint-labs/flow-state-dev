@@ -29,6 +29,8 @@ import {
   createDetachedStartOperation,
   type DispatchedDetachedChild
 } from "../context/detached-start-operation";
+import type { DetachedStartOperation } from "../context/create-request-host";
+import type { StoreRegistry } from "../stores/types";
 import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
 import { isInProcessDispatcher } from "../transports/host/in-process-dispatcher";
 import { createConcurrencyArbiter } from "../transports/concurrency/arbiter";
@@ -213,8 +215,8 @@ class InternalFlowState<TSettings extends object>
   /**
    * In-process detached children still running, drained by `dispose()`.
    *
-   * Only ever populated by the start operation `#wireDetachedStart` installs —
-   * a queue-backed child runs in another process and is not this one's to wait
+   * Only ever populated by the start operation `#installDetachedStart` installs
+   * — a queue-backed child runs in another process and is not this one's to wait
    * for. Entries remove themselves when they settle, so a long-lived server does
    * not accumulate them.
    */
@@ -228,13 +230,12 @@ class InternalFlowState<TSettings extends object>
   /**
    * The one concurrency arbiter every host in this process shares (FIX-1077).
    *
-   * A runtime-first init can build two hosts — the one `#wireDetachedStart`
-   * closes the start operation over, and the router's later on. Each would
-   * otherwise own a private keyed gate, so a Workstream spawned by an HTTP
-   * request could start under a `user`/`session` key its own parent still held:
-   * a declared `queue` policy silently not serialising, or a `reject` policy
-   * silently admitting. Policy is a property of the flow, not of whichever host
-   * happened to take the dispatch.
+   * Two hosts exist in a router deployment — the one the detached start
+   * operation is built over, and the router's. Each would otherwise own a
+   * private keyed gate, so a Workstream spawned by an HTTP request could start
+   * under a `user`/`session` key its own parent still held: a declared `queue`
+   * policy silently not serialising, or a `reject` policy silently admitting.
+   * Policy is a property of the flow, not of whichever host took the dispatch.
    */
   readonly #arbiter = createConcurrencyArbiter();
 
@@ -721,6 +722,10 @@ class InternalFlowState<TSettings extends object>
 
     this.#resolvedRuntimeConfig = runtimeConfig;
 
+    // BEFORE the worker wiring and before any router exists, so every later copy
+    // of `requestHost` carries it. See `#installDetachedStart`.
+    this.#installDetachedStart(runtimeConfig, stores);
+
     const runtime: FlowStateRuntime = {
       registry: this.#registry,
       stores,
@@ -744,90 +749,93 @@ class InternalFlowState<TSettings extends object>
       }
     }
 
-    this.#wireDetachedStart(runtime, workerMode);
-
     return runtime;
   }
 
   /**
-   * Give a router-less deployment a detached start operation (FIX-1077).
+   * Install the detached start operation on the SHARED runtime config, once.
    *
-   * `createFlowRouteHandlers` was the only thing that ever assigned one, so a
-   * process that resolves its runtime through `getRuntime()` and never asks for
-   * a router — `fsdev run` and `fsdev chat`, the tool `AGENTS.md` names as the
-   * DEFAULT way to verify a flow change — met `no-start-operation` on every
-   * detached dispatch. A flow that detaches simply could not be exercised
-   * through the path everyone is told to reach for first.
+   * ## Why this is the only installer that matters
    *
-   * Three things make this the same wiring the router does, not a parallel one:
+   * `startOperation` is a mutation of an object that exists in more than one
+   * copy, and that is the whole bug class this method closes. `createFlowApiRouter`
+   * does not mutate the config it is given — it builds a fresh `requestHost`
+   * literal (`{ ...base.requestHost, staleThresholdMs, staleSweepIntervalMs }`).
+   * That spread is a **fork**: anything stamped after it is router-local by
+   * construction. `createFlowRouteHandlers` then stamped the operation onto that
+   * fork, which nobody else holds — so the object handed to
+   * `worker.startWorker(runtime)` never got one, and a colocated queue worker
+   * running a detached board met `no-start-operation`.
    *
-   * - **The seam is the SHARED `runtimeConfig.requestHost` object**, mutated
-   *   rather than replaced. `dispatchLocal` spreads the config per request and a
-   *   spread copies the *reference*, so one assignment reaches every request
-   *   this runtime serves — including the child's own, which is what lets
-   *   detached work detach again.
-   * - **The chicken-and-egg is broken by a closure**, exactly as the router
-   *   breaks it: the operation dispatches through a host, and the host reads the
-   *   config that carries the operation. Constructing the host first and
-   *   stamping onto the config it already captured needs no second pass.
-   * - **It runs after the worker wiring above**, so the host inherits the same
-   *   effective dispatcher the router would give it. Stamping earlier would have
-   *   pinned the in-process dispatcher into a deployment whose work belongs on a
-   *   queue.
+   * Installing here, at config construction, inverts it: the shared object
+   * carries the operation from birth, so the router's fork and the worker's
+   * reference both inherit it by spread and there is nothing left to stamp
+   * afterwards. The same move `#buildRuntime` already documents for the rest of
+   * the seam ("belongs on the SHARED config, not on the router's copy of it"),
+   * finally applied to the field that was left behind.
    *
-   * ## What it deliberately does not cover
+   * ## Lazy, because the host is the expensive part
    *
-   * A `worker-only` process has no inbound transport by construction and no
-   * dispatcher to hand a job to — `createDispatcher` is skipped for it above. A
-   * host built here would fall back to in-process dispatch and quietly run
-   * detached work inside the worker instead of enqueuing it, which is worse than
-   * refusing. Its start operation is a queue-backed enqueue owned by the adapter
-   * that owns the queue, so it keeps refusing `no-start-operation` by name.
+   * The operation dispatches through an `InboundTransportHost`, and a deployment
+   * that never detaches should not pay to build one. Deferring construction to
+   * the first call also removes the ordering constraint that forced the previous
+   * version to run *after* the worker wiring: the dispatcher is read when the
+   * call happens, by which time `#workerDispatcher` and any router are resolved.
+   * Installing eagerly at construction and resolving lazily at use is what lets
+   * one assignment be both early enough for every copy and late enough for every
+   * dependency.
    *
-   * A start operation already on the config is never overwritten either: a
+   * ## Every topology, including `worker-only`
+   *
+   * An earlier version skipped `worker-only` on the reasoning that a host built
+   * there would run detached work in-process instead of enqueuing it. That is
+   * true and it is better than refusing: the colocated and worker-only bullmq
+   * topologies are documented as supported, and a topology that claims support
+   * while refusing detached work is not supporting it. The child runs on the
+   * worker rather than through the queue, so it is not durable the way an
+   * enqueued job is — a queue-backed start operation owned by the queue's own
+   * adapter remains the better answer (FIX-1069), and this is what the feature
+   * does until that exists rather than nothing at all.
+   *
+   * A start operation already on the config is still never overwritten: a
    * deployment that wired its own is the more specific answer.
-   *
-   * ## Why this runs regardless of whether a router is coming
-   *
-   * There are exactly two installers in the framework — this one and
-   * `createFlowRouteHandlers` — and only this one registers children for the
-   * shutdown drain. An earlier version skipped this whenever a router had
-   * already been asked for, on the reasoning that the router would install its
-   * own and "the HTTP path is already covered". It is covered for *dispatch* and
-   * not for *tracking*: the router's operation carries no `onDispatched`, so on
-   * the ordinary Next.js / `serve()` path an HTTP-started Workstream never
-   * entered `#detachedChildren` and `dispose()` drained an empty set while a
-   * child was still writing. The bound was real, tested, and inert exactly where
-   * most deployments live.
-   *
-   * So the ordering is made to decide it rather than a flag. `#doInit` awaits
-   * `#runtime()` — and therefore this method — *before* it builds the router,
-   * and `createFlowApiRouter` copies `requestHost` onto its own config with a
-   * spread, so the router inherits this operation and its own "install only when
-   * absent" contract leaves it alone. The tracked installer wins wherever a
-   * `FlowState` owns the config; the untracked one now only runs for a direct
-   * `createFlowApiRouter` caller, which has no `dispose()` to drain and so has
-   * nothing to track for.
    */
-  #wireDetachedStart(runtime: FlowStateRuntime, workerMode: WorkerMode): void {
-    const requestHost = runtime.runtimeConfig.requestHost;
+  #installDetachedStart(runtimeConfig: RuntimeConfig, stores: StoreRegistry): void {
+    const requestHost = runtimeConfig.requestHost;
     if (requestHost === undefined) return;
     if (requestHost.startOperation !== undefined) return;
-    if (workerMode === "worker-only") return;
 
+    let operation: DetachedStartOperation | undefined;
+    requestHost.startOperation = (spec) => {
+      operation ??= this.#buildDetachedStartOperation(runtimeConfig, stores);
+      return operation(spec);
+    };
+  }
+
+  /**
+   * Build the host and the operation it dispatches through, on first use.
+   *
+   * Split from the install so everything it reads — the worker's dispatcher, the
+   * shared arbiter — is resolved by the time it runs, rather than captured at a
+   * moment when the worker adapter has not been consulted yet.
+   */
+  #buildDetachedStartOperation(
+    runtimeConfig: RuntimeConfig,
+    stores: StoreRegistry
+  ): DetachedStartOperation {
     const dispatcher = this.#options.dispatcher ?? this.#workerDispatcher;
 
     const host = createInboundTransportHost({
-      registry: runtime.registry,
-      stores: runtime.stores,
+      registry: this.#registry,
+      stores,
       // Never consulted by `dispatch` — a detached envelope carries a
       // server-derived principal — but it is what the router would pass, so the
       // host is not subtly different from the one HTTP gets.
       resolvePrincipal:
         this.#options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
-      runtimeConfig: runtime.runtimeConfig,
+      runtimeConfig,
       dispatcher,
-      // Shared with the router's host — see `#arbiter`.
+      // One arbiter across every host in the process — see `#arbiter`.
       arbiter: this.#arbiter
     });
 
@@ -836,35 +844,21 @@ class InternalFlowState<TSettings extends object>
     // The drain exists because truncating in-process work strands it: nothing
     // else is holding the run, so a closed store mid-write leaves a task row
     // `in_progress` forever. An externally dispatched child is a different
-    // situation on both counts.
+    // situation: the enqueue is confirmed before `startDetached` returns, so
+    // there is no half-written row to strand, and `finished` there resolves only
+    // when some worker completes the job — waiting would block `dispose()` on a
+    // process this one does not control, indefinitely in a topology where the
+    // workers live elsewhere.
     //
-    // What is already true when `startDetached` returns: the external branch of
-    // `dispatch` resolves `accepted` only after the enqueue-time record and
-    // registry entry commit AND `dispatcher.dispatch()` resolves, and it sets no
-    // `started`, so the start operation awaits exactly that. The hand-off is
-    // therefore complete and discoverable before this process could exit — there
-    // is no half-written row to strand.
-    //
-    // What is NOT ours to assert: that the job then survives and runs. That is
-    // the dispatcher's contract and the deployment's, not the framework's —
-    // `isInProcessDispatcher` tests for `dispatchLocal`, which says nothing about
-    // durability, and even a durable queue may have no worker consuming it right
-    // now. Which is the operative point: `finished` here resolves only when some
-    // worker completes the job, so waiting would block `dispose()` on a process
-    // this one does not control, indefinitely and by design in a topology where
-    // the workers live elsewhere. A queue nobody is draining is a normal
-    // operational state, not a fault, and shutdown must not be hostage to it.
-    //
-    // Keyed on the effective DISPATCHER rather than on `worker.mode`, because
-    // the two genuinely disagree: `options.dispatcher` (mutually exclusive with
+    // Keyed on the effective DISPATCHER rather than on `worker.mode`, because the
+    // two genuinely disagree: `options.dispatcher` (mutually exclusive with
     // `worker`, so `mode` reads as its `colocated` default) can be external, and
     // a custom dispatcher exposing `dispatchLocal` is local whatever the mode
     // says. `isInProcessDispatcher` is the host's own test, shared so this and
-    // the dispatch branch cannot come to different conclusions about the same
-    // dispatcher.
+    // the dispatch branch cannot come to different conclusions.
     const runsHere = isInProcessDispatcher(dispatcher);
 
-    requestHost.startOperation = createDetachedStartOperation({
+    return createDetachedStartOperation({
       host,
       ...(runsHere
         ? { onDispatched: (child: DispatchedDetachedChild) => this.#trackDetachedChild(child) }

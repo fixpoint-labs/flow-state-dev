@@ -257,30 +257,31 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     arbiter: options.arbiter
   });
 
-  // Close the last loop in the detached seam (FIX-982 P3a). `startDetached`
-  // prepares the child session and then hands off to a host start operation; up
-  // to now nothing supplied one, so the verb refused `no-start-operation` and
-  // detached work was declarable but never runnable.
+  // The LAST-RESORT installer, and only that (FIX-1077).
   //
-  // Mutated onto the shared `requestHost` object rather than set on a fresh
-  // config, and that is what makes it reach anything: the host above captured
-  // this config, `dispatchLocal` spreads it per request, and a spread copies the
-  // *reference* to `requestHost` — so one assignment here is visible to every
-  // request the host serves, including a worker's. It is the same mechanism
-  // `#doInit` already uses to land the sweep cadence on a running worker.
+  // This used to be the only one, with a comment claiming the assignment reached
+  // "every request the host serves, including a worker's" because a spread
+  // copies the `requestHost` *reference*. True of this function's own input;
+  // false of the path that mattered. `createFlowApiRouter` hands us a config
+  // whose `requestHost` it has already rebuilt as a fresh literal
+  // (`{ ...base.requestHost, staleThresholdMs, staleSweepIntervalMs }`), and
+  // that spread is a fork — so anything stamped here lands on a copy nobody
+  // else holds. The object `createFlowState` gives `worker.startWorker` never
+  // saw it, so a colocated queue worker running a detached board met
+  // `no-start-operation`; and because this operation carries no child tracking,
+  // an HTTP-started Workstream was invisible to the shutdown drain.
   //
-  // The chicken-and-egg is real and this is the resolution: the operation
-  // dispatches through the host, so it cannot exist until the host does, and the
-  // host reads the config that carries it. A closure over `host` breaks the
-  // cycle without a second construction pass.
+  // `createFlowState` now installs on the shared config before any fork exists,
+  // so in every deployment it owns, the operation is already present here and
+  // the guard below skips. What remains is the case it cannot own: a DIRECT
+  // `createFlowApiRouter` caller, which has no `FlowState`, no worker, and no
+  // `dispose()` to drain — there the router's own config is the only object
+  // there is, so installing on it forks nothing and is the only way the caller
+  // gets the capability at all.
   //
-  // Only when the host wired none. A start operation supplied from outside — a
-  // worker process that starts detached work through its own queue, a test
-  // observing what gets started — is the more specific answer, and the router's
-  // own contract for this seam is that those are "carried through untouched".
-  // Overwriting one would silently redirect a deployment's detached dispatch
-  // back through the local host, which is exactly the kind of quiet substitution
-  // that only shows up in the deployment shape nobody tested.
+  // The guard is therefore load-bearing rather than defensive: it is what makes
+  // "the owner installs it, and this only fills a gap no owner exists for" true
+  // instead of two installers racing to define one field.
   if (
     runtimeConfig.requestHost !== undefined &&
     runtimeConfig.requestHost.startOperation === undefined

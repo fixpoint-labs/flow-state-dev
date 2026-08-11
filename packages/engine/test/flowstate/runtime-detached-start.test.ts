@@ -210,31 +210,119 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     await state.dispose();
   });
 
-  it("OUT OF SCOPE: a worker-only process still refuses by name", async () => {
+  it("launches a Workstream from inside a COLOCATED queue worker", async () => {
+    const observed: Observed = { children: [] };
+    const flow = detachingFlow("colocated-worker-launch", observed);
+
+    // The runtime the worker adapter is handed — the object `startWorker` keeps
+    // and runs every job against. `createFlowApiRouter` rebuilds `requestHost`
+    // as a fresh literal, so anything the router stamped never reached here.
+    let workerRuntime: FlowStateRuntime | undefined;
+    const worker = {
+      mode: "colocated",
+      // A colocated queue, closed the whole way round: the dispatcher "enqueues"
+      // and the worker in this same process picks the job up and runs it. A stub
+      // that only returns a handle would leave the child forever unconsumed and
+      // could never show a Workstream launching, which is the point here.
+      createDispatcher: (runtime: FlowStateRuntime) => ({
+        dispatch: async (envelope: {
+          requestId: string;
+          flowKind: string;
+          actionName: string;
+          input: unknown;
+          userId: string;
+          sessionId?: string;
+          source?: string;
+        }) => {
+          const target = runtime.registry.get(envelope.flowKind)!;
+          const finished = runAction({
+            flow: target,
+            actionName: envelope.actionName as never,
+            input: envelope.input,
+            userId: envelope.userId,
+            sessionId: envelope.sessionId,
+            source: envelope.source,
+            stores: runtime.stores,
+            runtimeConfig: runtime.runtimeConfig
+          });
+          return { requestId: envelope.requestId, finished };
+        }
+      }),
+      startWorker: (runtime: FlowStateRuntime) => {
+        workerRuntime = runtime;
+        return { close: async () => undefined };
+      }
+    } as unknown as WorkerAdapter;
+
+    const state = createFlowState({
+      flows: { detaching: flow },
+      stores: { default: { primary: inMemoryStores() } },
+      modelResolver: markerResolver("app-default"),
+      worker
+    });
+
+    // The documented colocated setup builds a router; the worker consumes the
+    // queue in the same process.
+    await state.getRouter();
+    const captured = workerRuntime;
+    expect(captured).toBeDefined();
+
+    // The parent action exactly as the QUEUE WORKER runs it: against the
+    // captured runtime, under the worker's own transport source. This is the
+    // path nothing on this epic had ever exercised — every other test runs
+    // in-process or replays a captured envelope.
+    await runAction({
+      flow,
+      actionName: "launch",
+      input: {},
+      userId: USER_ID,
+      sessionId: "s_worker",
+      source: "bullmq",
+      stores: captured!.stores,
+      runtimeConfig: captured!.runtimeConfig
+    });
+
+    // Before this, the worker met `no-start-operation`: the only installer wrote
+    // to the router's fork of `requestHost`, which this object is not.
+    expect(observed.error).toBeUndefined();
+    expect(observed.start).toMatchObject({ ok: true });
+
+    // And the observable that matters — a Workstream actually launched and ran,
+    // not merely that an operation was installed on a runtime.
+    await until(() => observed.children.length === 1, "the Workstream to run");
+    expect(observed.children[0]!.sessionId).not.toBe("s_worker");
+
+    await state.dispose();
+  });
+
+  it("launches a Workstream from a worker-only process too", async () => {
     const observed: Observed = { children: [] };
     const flow = detachingFlow("worker-only-detached", observed);
 
     const state = createFlowState({
       flows: { detaching: flow },
       stores: { default: { primary: inMemoryStores() } },
-      modelResolver: (() => undefined) as never,
+      modelResolver: markerResolver("app-default"),
       worker: stubWorker("worker-only")
     });
 
     const runtime = await state.getRuntime();
     await runLikeCli(runtime, flow, "s_parent");
 
-    // No inbound transport and no dispatcher: a host built here would fall back
-    // to in-process dispatch and run detached work inside the worker instead of
-    // enqueuing it. Refusing is the honest answer, and the queue's own adapter
-    // owns the fix.
+    // This assertion is INVERTED from what it was. It used to pin the refusal —
+    // on the reasoning that a `worker-only` process has no dispatcher, so a host
+    // built for it runs detached work in-process instead of enqueuing it. That
+    // remains true and it is still better than refusing: the colocated and
+    // worker-only queue topologies are documented as supported, and refusing
+    // detached work in one of them is not supporting it.
+    //
+    // The cost is real and named: the child runs on this worker rather than
+    // through the queue, so it is not durable the way an enqueued job is. A
+    // queue-backed start operation owned by the queue's own adapter is the
+    // better answer (FIX-1069); this is what the feature does until that exists.
     expect(observed.error).toBeUndefined();
-    expect(observed.start).toEqual({
-      ok: false,
-      refused: "no-start-operation",
-      detail: expect.any(String)
-    });
-    expect(observed.children).toEqual([]);
+    expect(observed.start).toMatchObject({ ok: true });
+    await until(() => observed.children.length === 1, "the Workstream to run");
 
     await state.dispose();
   });
