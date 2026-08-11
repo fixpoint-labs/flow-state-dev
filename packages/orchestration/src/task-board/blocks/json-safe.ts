@@ -136,11 +136,23 @@ export function assertJsonSafe(
     //   returns a `Date` on its second call, ships a payload this gate never
     //   saw — so what was validated is not what crosses.
     //
+    // Two more are checked here that are not about a property escaping the walk
+    // at all, but about its ATTRIBUTES not surviving. `JSON.parse` rebuilds
+    // every property as an ordinary one, so a NON-WRITABLE or NON-CONFIGURABLE
+    // property arrives writable and configurable: the value crosses, the
+    // guarantee does not, and a payload that could not be modified before it was
+    // sent can be after. That is the same silent change as the branches above,
+    // one level down from the value — and no exception is made on the argument
+    // that a guarantee matters less than a value, because a gate that admits one
+    // exception invites the next.
+    //
     // Checked on every object for the reason the symbol check is, arrays
     // included: an array's own non-index property is dropped whether or not it
     // is enumerable, and the extras check below sees only the enumerable ones.
-    // An array's `length` is non-enumerable by specification rather than by
-    // anyone's declaration, which is the one exemption.
+    // An array's indices are properties too, so `Object.freeze([1, 2])` is
+    // caught here rather than sliding past on `Array.isArray`. An array's
+    // `length` is non-enumerable and non-configurable by specification rather
+    // than by anyone's declaration, which is the one exemption.
     const descriptors = Object.getOwnPropertyDescriptors(obj);
     for (const key of Object.keys(descriptors)) {
       if (key === "length" && Array.isArray(node)) continue;
@@ -156,6 +168,21 @@ export function assertJsonSafe(
         throw new Error(
           `${options.label} is not JSON-safe: ${joinPath(path)}.${key} is a non-enumerable ` +
             `property, which is dropped entirely. Make it enumerable, or omit it.`
+        );
+      }
+      if (descriptor.writable === false) {
+        throw new Error(
+          `${options.label} is not JSON-safe: ${joinPath(path)}.${key} is a non-writable ` +
+            `property, and arrives writable. The value crosses and the guarantee does not, with ` +
+            `nothing on either side saying so. Send it as an ordinary property, and re-freeze on ` +
+            `the far side if the worker needs it read-only.`
+        );
+      }
+      if (!descriptor.configurable) {
+        throw new Error(
+          `${options.label} is not JSON-safe: ${joinPath(path)}.${key} is a non-configurable ` +
+            `property, and arrives configurable — redefinable and deletable where the one that ` +
+            `was sent was neither. Send it as an ordinary property.`
         );
       }
     }

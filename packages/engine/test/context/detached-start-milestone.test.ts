@@ -19,8 +19,17 @@
  * seam waits for it, propagates its rejection, and does not hang when a
  * dispatcher offers none.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { declareWorkstreamBindings } from "@flow-state-dev/core/types";
+import type { BlockDefinition, FlowInstance } from "@flow-state-dev/core/types";
 import { createDetachedStartOperation } from "../../src/context/detached-start-operation";
+import {
+  createFlowRegistry,
+  createInboundTransportHost,
+  createInMemoryStores,
+  defaultBodyUserIdPrincipalResolver
+} from "../../src";
 import type { DispatchHandle, InboundTransportHost } from "../../src/transports/types";
 
 const SPEC = {
@@ -97,5 +106,87 @@ describe("a detached start waits for the dispatch to be accepted", () => {
       notStarted: true,
       reason: "concurrency key already held"
     });
+  });
+});
+
+describe("not-started is reserved for a throw that happened before any child existed", () => {
+  const BOARD_ID = "hook-board";
+  const COORDINATE = "assignee|9:implement";
+
+  /**
+   * A flow whose workstream core routes `BOARD_ID` at a runner that records the
+   * fact it ran, so "a child existed" is an observation rather than an argument.
+   */
+  function flowWithRunner(kind: string, ran: string[]): FlowInstance {
+    const runner = handler({
+      name: "runner",
+      execute: () => {
+        ran.push("runner");
+        return null;
+      }
+    }) as unknown as BlockDefinition<never, never>;
+
+    const drain = sequencer({ name: "drain" }).tap(
+      handler({ name: "work", execute: () => undefined })
+    );
+    declareWorkstreamBindings(drain, [
+      {
+        boardId: BOARD_ID,
+        coordinateKey: COORDINATE,
+        worker: handler({ name: "implement", execute: () => null }) as unknown as BlockDefinition<
+          never,
+          never
+        >,
+        runner
+      }
+    ]);
+
+    return defineFlow({
+      kind,
+      actions: { run: { block: drain } }
+    } as never)({ id: kind }) as unknown as FlowInstance;
+  }
+
+  const dispatchInput = {
+    boardId: BOARD_ID,
+    coordinateKey: COORDINATE,
+    taskId: "t1",
+    attempt: 0,
+    createdAt: 1_700_000_000_000,
+    payload: { taskId: "t1" }
+  };
+
+  it("reports the child started when the host's background-work hook throws after it began", async () => {
+    // The premise the not-started result rests on is that `host.dispatch` cannot
+    // throw synchronously once a child exists. `onBackgroundWork` — the
+    // adapter-supplied keep-alive hook (Next `after()`, Vercel `waitUntil`),
+    // which throws synchronously when called outside a request scope — is
+    // invoked by `dispatch` AFTER the in-process run has been started. Reported
+    // as not-started, the caller restores its claim and fails a row whose child
+    // is still running and still trying to settle it: two writers, one row.
+    const ran: string[] = [];
+    const registry = createFlowRegistry();
+    registry.register(flowWithRunner("hook-throws", ran));
+
+    const host = createInboundTransportHost({
+      registry,
+      stores: createInMemoryStores(),
+      resolvePrincipal: defaultBodyUserIdPrincipalResolver,
+      runtimeConfig: {
+        onBackgroundWork: () => {
+          throw new Error("after() was called outside a request scope");
+        }
+      }
+    });
+
+    const started = await createDetachedStartOperation({ host })({
+      ...SPEC,
+      flowKind: "hook-throws",
+      input: dispatchInput
+    });
+
+    // The child really did start — so "not started" would be a false report.
+    await vi.waitFor(() => expect(ran).toEqual(["runner"]));
+    expect(started).not.toHaveProperty("notStarted");
   });
 });
