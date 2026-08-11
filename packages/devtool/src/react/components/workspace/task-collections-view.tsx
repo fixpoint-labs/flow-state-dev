@@ -10,44 +10,45 @@
  * including cancelled/errored, and the latest TaskChangeKind. The polished
  * `<TaskPlan />` renderer is what apps embed in their chat UI; this panel is
  * for debugging the substrate itself.
+ *
+ * A task whose worker was declared detached is run by a Workstream rather than
+ * by the request you are looking at, so its row carries a link into that
+ * Workstream (FIX-1071). The link is derived, absent for most tasks, and never
+ * something the row is gated on — see `lib/workstream-links`.
  */
 import { useMemo } from "react";
-import type { OutputItem } from "@flow-state-dev/core/items";
-import { ClipboardList, Eye } from "lucide-react";
+import type { WorkstreamSummary } from "@flow-state-dev/client";
+import { ClipboardList, Eye, Layers } from "lucide-react";
 import {
-  TASK_BOARD_META_COMPONENT,
-  TASK_CHANGE_COMPONENT,
+  groupCollections,
   type BoardMeta,
-  type Task,
-  type TaskChangeKind,
-  type TaskStatus,
+  type CollectionView,
+  type ResolvedTask,
+  type TaskStreamItem,
 } from "../../lib/task-collection-state";
+import { linkWorkstreamsToTasks, taskLinkKey } from "../../lib/workstream-links";
 import { EmptyState } from "../shared/empty-state";
 import { Badge } from "../ui/badge";
 import { JsonViewer } from "../shared/json-viewer";
 
-type CollectionView = {
-  id: string;
-  boardMeta: BoardMeta;
-  /** Latest task entry per id, sorted by createdAt asc. */
-  tasks: ResolvedTask[];
-};
-
-type ResolvedTask = {
-  task: Task;
-  kind?: TaskChangeKind;
-  prevStatus?: TaskStatus;
-  /** Number of `task-change` items observed for this task. */
-  changeCount: number;
-};
-
 type Props = {
   /** Flat list of items the user is currently inspecting (across all requests). */
-  items: ReadonlyArray<OutputItem | import("../../lib/item-types").DevtoolItem>;
+  items: ReadonlyArray<TaskStreamItem>;
+  /**
+   * The open session's background work, so a task run by one can say so.
+   * Omitted (or empty) leaves every row exactly as it was.
+   */
+  workstreams?: readonly WorkstreamSummary[];
+  /** Open the Workstream running a task. Absent hides the link. */
+  onOpenWorkstream?: (workstream: WorkstreamSummary) => void;
 };
 
-export function TaskCollectionsView({ items }: Props) {
+export function TaskCollectionsView({ items, workstreams, onOpenWorkstream }: Props) {
   const collections = useMemo(() => groupCollections(items), [items]);
+  const byTask = useMemo(
+    () => linkWorkstreamsToTasks(workstreams ?? [], collections).byTask,
+    [workstreams, collections]
+  );
 
   if (collections.length === 0) {
     return (
@@ -61,13 +62,26 @@ export function TaskCollectionsView({ items }: Props) {
   return (
     <div className="flex flex-col gap-3 p-3">
       {collections.map((collection) => (
-        <CollectionCard key={collection.id} collection={collection} />
+        <CollectionCard
+          key={collection.id}
+          collection={collection}
+          byTask={byTask}
+          onOpenWorkstream={onOpenWorkstream}
+        />
       ))}
     </div>
   );
 }
 
-function CollectionCard({ collection }: { collection: CollectionView }) {
+function CollectionCard({
+  collection,
+  byTask,
+  onOpenWorkstream,
+}: {
+  collection: CollectionView;
+  byTask: Map<string, WorkstreamSummary>;
+  onOpenWorkstream?: (workstream: WorkstreamSummary) => void;
+}) {
   const counts = collection.boardMeta.counts;
   const total = counts?.total ?? collection.tasks.length;
 
@@ -105,13 +119,19 @@ function CollectionCard({ collection }: { collection: CollectionView }) {
               <th className="py-1.5 font-medium">Goal</th>
               <th className="py-1.5 font-medium">Status</th>
               <th className="py-1.5 font-medium">Assignee</th>
+              <th className="py-1.5 font-medium">Workstream</th>
               <th className="py-1.5 font-medium">Latest kind</th>
               <th className="px-3 py-1.5 font-medium text-right">Details</th>
             </tr>
           </thead>
           <tbody>
             {collection.tasks.map((entry) => (
-              <TaskRow key={entry.task.id} entry={entry} />
+              <TaskRow
+                key={entry.task.id}
+                entry={entry}
+                workstream={byTask.get(taskLinkKey(collection.id, entry.task.id))}
+                onOpenWorkstream={onOpenWorkstream}
+              />
             ))}
           </tbody>
         </table>
@@ -120,7 +140,15 @@ function CollectionCard({ collection }: { collection: CollectionView }) {
   );
 }
 
-function TaskRow({ entry }: { entry: ResolvedTask }) {
+function TaskRow({
+  entry,
+  workstream,
+  onOpenWorkstream,
+}: {
+  entry: ResolvedTask;
+  workstream?: WorkstreamSummary;
+  onOpenWorkstream?: (workstream: WorkstreamSummary) => void;
+}) {
   const { task } = entry;
   return (
     <tr className="border-b border-slate-800/50 align-top hover:bg-slate-900/40">
@@ -134,6 +162,12 @@ function TaskRow({ entry }: { entry: ResolvedTask }) {
         <StatusPill status={task.status} />
       </td>
       <td className="py-1.5 pr-2 text-slate-400">{task.assignee ?? "—"}</td>
+      <td className="py-1.5 pr-2">
+        <WorkstreamLink
+          workstream={workstream}
+          onOpen={onOpenWorkstream}
+        />
+      </td>
       <td className="py-1.5 pr-2 text-slate-400">
         <span className="font-mono text-[10px]">
           {entry.kind ?? "—"}
@@ -161,6 +195,47 @@ function TaskRow({ entry }: { entry: ResolvedTask }) {
         </details>
       </td>
     </tr>
+  );
+}
+
+/**
+ * The Workstream running this task, if one is.
+ *
+ * Renders `—` rather than nothing when there is none, which is the majority
+ * case: an inline worker runs inside the request you are already looking at, so
+ * "no Workstream" is the normal answer and not a gap in the data.
+ */
+function WorkstreamLink({
+  workstream,
+  onOpen,
+}: {
+  workstream?: WorkstreamSummary;
+  onOpen?: (workstream: WorkstreamSummary) => void;
+}) {
+  if (workstream === undefined) {
+    return <span className="text-slate-600">—</span>;
+  }
+
+  const label = workstream.topic ?? workstream.id;
+  if (onOpen === undefined) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] text-slate-400">
+        <Layers className="h-3 w-3" aria-hidden />
+        {label}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(workstream)}
+      title={`Open workstream ${workstream.id}`}
+      className="inline-flex items-center gap-1 rounded border border-slate-800 bg-slate-900/60 px-1.5 py-0.5 text-[10px] text-sky-300 hover:border-slate-700 hover:bg-slate-800"
+    >
+      <Layers className="h-3 w-3" aria-hidden />
+      <span className="max-w-[10rem] truncate">{label}</span>
+    </button>
   );
 }
 
@@ -214,107 +289,4 @@ function CountsRibbon({ counts }: { counts: NonNullable<BoardMeta["counts"]> }) 
       )}
     </div>
   );
-}
-
-// ---------------------------------------------------------------------------
-// Item-stream → CollectionView
-// ---------------------------------------------------------------------------
-
-type TaskChangeData = {
-  collectionId?: string;
-  taskId?: string;
-  kind?: TaskChangeKind;
-  task?: Task;
-  prevStatus?: TaskStatus;
-};
-
-type TaskBoardMetaData = {
-  collectionId?: string;
-  status?: string;
-  counts?: BoardMeta["counts"];
-};
-
-function groupCollections(items: ReadonlyArray<OutputItem | import("../../lib/item-types").DevtoolItem>): CollectionView[] {
-  const byId = new Map<
-    string,
-    {
-      id: string;
-      boardMeta: BoardMeta;
-      tasksById: Map<string, ResolvedTask>;
-    }
-  >();
-
-  // Forward iteration so `tasksById` ends with the latest entry per task and
-  // `boardMeta` reflects the latest meta. Forward also lets us track the
-  // total number of changes per task (for the `×N` ribbon).
-  for (const item of items) {
-    if (item.type !== "component") continue;
-    const component = (item as { component?: string }).component;
-    const data = (item as { data?: unknown }).data;
-
-    if (component === TASK_CHANGE_COMPONENT) {
-      const change = data as TaskChangeData;
-      if (
-        typeof change.collectionId !== "string" ||
-        typeof change.taskId !== "string" ||
-        change.task === undefined
-      ) {
-        continue;
-      }
-      const bucket = ensureBucket(byId, change.collectionId);
-      const prior = bucket.tasksById.get(change.taskId);
-      bucket.tasksById.set(change.taskId, {
-        task: change.task,
-        kind: change.kind,
-        prevStatus: change.prevStatus,
-        changeCount: (prior?.changeCount ?? 0) + 1,
-      });
-      continue;
-    }
-
-    if (component === TASK_BOARD_META_COMPONENT) {
-      const meta = data as TaskBoardMetaData;
-      if (typeof meta.collectionId !== "string") continue;
-      const bucket = ensureBucket(byId, meta.collectionId);
-      bucket.boardMeta = {
-        status: meta.status,
-        counts: meta.counts,
-      };
-    }
-  }
-
-  const result: CollectionView[] = [];
-  for (const { id, boardMeta, tasksById } of byId.values()) {
-    const tasks = [...tasksById.values()].sort((a, b) => {
-      const at = a.task.createdAt ?? 0;
-      const bt = b.task.createdAt ?? 0;
-      if (at !== bt) return at - bt;
-      return a.task.id.localeCompare(b.task.id);
-    });
-    result.push({ id, boardMeta, tasks });
-  }
-  return result.sort((a, b) => a.id.localeCompare(b.id));
-}
-
-function ensureBucket(
-  map: Map<
-    string,
-    {
-      id: string;
-      boardMeta: BoardMeta;
-      tasksById: Map<string, ResolvedTask>;
-    }
-  >,
-  id: string,
-) {
-  let bucket = map.get(id);
-  if (bucket === undefined) {
-    bucket = {
-      id,
-      boardMeta: {},
-      tasksById: new Map(),
-    };
-    map.set(id, bucket);
-  }
-  return bucket;
 }

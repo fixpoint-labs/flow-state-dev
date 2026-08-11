@@ -65,3 +65,66 @@ describe("useSessionRequests — interrupted-sweep gating", () => {
     expect(sessionClientMock.listSessionRequests).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Switching sessions (FIX-1071).
+ *
+ * These rows are not only rendered — live mode picks its SSE subscription
+ * target out of them. Carrying the previous session's rows across a switch
+ * therefore makes the panel attach to a request in the session the user just
+ * left, and render that request's items under the newly opened one. Descending
+ * into a Workstream while the conversation that started it is still running is
+ * the reliable way to hit it.
+ */
+describe("useSessionRequests — switching sessions", () => {
+  beforeEach(() => {
+    sessionClientMock.listSessionRequests.mockReset().mockResolvedValue([]);
+    recoveryClientMock.checkInterrupted.mockReset().mockResolvedValue(undefined);
+    devToolState.config = { userId: "devuser" };
+    devToolState.autoRecoverInterrupted = false;
+  });
+
+  it("drops the previous session's rows before the new session's read lands", async () => {
+    const parentRow = { id: "req_parent", status: "in_progress" };
+    sessionClientMock.listSessionRequests.mockResolvedValueOnce([parentRow]);
+
+    const { result, rerender } = renderHook(
+      ({ sessionId }: { sessionId: string }) => useSessionRequests(sessionId),
+      { initialProps: { sessionId: "sess_parent" } }
+    );
+    await waitFor(() => expect(result.current.requests).toEqual([parentRow]));
+
+    // A read that never resolves stands in for the window between the switch
+    // and the new session's response — the whole window the leak lived in.
+    sessionClientMock.listSessionRequests.mockReturnValueOnce(new Promise(() => {}));
+    rerender({ sessionId: "sess_child" });
+
+    expect(result.current.requests).toEqual([]);
+  });
+
+  it("ignores a read that resolves after the session moved on", async () => {
+    let resolveParent!: (rows: unknown[]) => void;
+    sessionClientMock.listSessionRequests.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveParent = resolve as (rows: unknown[]) => void;
+      })
+    );
+
+    const { result, rerender } = renderHook(
+      ({ sessionId }: { sessionId: string }) => useSessionRequests(sessionId),
+      { initialProps: { sessionId: "sess_parent" } }
+    );
+
+    sessionClientMock.listSessionRequests.mockResolvedValueOnce([]);
+    rerender({ sessionId: "sess_child" });
+
+    // The parent's read comes back late. Applying it would put the previous
+    // session's in-progress request back in front of live mode.
+    resolveParent([{ id: "req_parent", status: "in_progress" }]);
+    await waitFor(() =>
+      expect(sessionClientMock.listSessionRequests).toHaveBeenCalledTimes(2)
+    );
+
+    expect(result.current.requests).toEqual([]);
+  });
+});

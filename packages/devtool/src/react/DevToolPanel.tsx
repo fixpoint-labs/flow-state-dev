@@ -8,8 +8,9 @@
  * `userIdControl="host"` so the panel doesn't expose its own userId editor.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Copy, PanelLeft, User } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Copy, Layers, PanelLeft, User } from "lucide-react";
 import type { OutputItem } from "@flow-state-dev/core/items";
+import type { WorkstreamSummary } from "@flow-state-dev/client";
 
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
@@ -26,6 +27,7 @@ import { SettingsSheet } from "./components/navigator/settings-sheet";
 import { StreamView, type RequestGroup } from "./components/workspace/stream-view";
 import { TraceView } from "./components/workspace/trace-view";
 import { TaskCollectionsView } from "./components/workspace/task-collections-view";
+import { WorkstreamsView } from "./components/workspace/workstreams-view";
 import { SuspensionsView } from "./components/workspace/suspensions-view";
 import { ActionBar } from "./components/workspace/action-bar";
 import { LiveSwitch } from "./components/workspace/live-switch";
@@ -42,7 +44,9 @@ import { useReplay } from "./hooks/use-replay";
 import { useContinueRequest } from "./hooks/use-continue-request";
 import { useLiveMode } from "./hooks/use-live-mode";
 import { useFocusRevalidate } from "./hooks/use-focus-revalidate";
+import { useWorkstreams } from "./hooks/use-workstreams";
 import { pickFurthestStatus } from "./lib/request-status";
+import { shortSessionId } from "./lib/utils";
 
 const NAV_EXPANDED_WIDTH = 300;
 const NAV_COLLAPSED_WIDTH = 64;
@@ -122,6 +126,15 @@ function PanelContent({ className }: { className?: string }) {
   }, [stickySession, activeSessionId, setActiveSession]);
 
   const { requests, refresh: refreshRequests } = useSessionRequests(effectiveSessionId);
+  // Owned here rather than inside the Workstreams tab: the Tasks tab draws a
+  // link per task from the same rows, and each row costs the server a
+  // request-store lookup, so the list is fetched once and shared.
+  const {
+    workstreams,
+    isLoading: workstreamsLoading,
+    error: workstreamsError,
+    refresh: refreshWorkstreams,
+  } = useWorkstreams(effectiveSessionId);
   const { sendAction, isSending, lastResponse } = useActionDispatch();
 
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
@@ -137,9 +150,15 @@ function PanelContent({ className }: { className?: string }) {
 
   const { replayState, isReplaying, replayFull, replayFromCursor, simulateReconnect, clearReplay } = useReplay();
 
-  // Reset transient state when switching sessions.
+  // Reset transient state when switching sessions. The two item maps are keyed
+  // by request id, so they never collide across sessions — but the synthetic
+  // group `requestGroups` appends for an `activeRequestId` that is not in
+  // `requests` reads straight out of them, which is how the session left behind
+  // keeps rendering its items under the newly opened one.
   useEffect(() => {
     setActiveRequestId(null);
+    setLiveItems(new Map());
+    setLiveRawItems(new Map());
     clearReplay();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveSessionId]);
@@ -175,8 +194,11 @@ function PanelContent({ className }: { className?: string }) {
   // sessionRefreshKey themselves.
   const refreshActiveSession = useCallback(() => {
     void refreshRequests();
+    // Background work is never streamed into this session, so nothing else
+    // brings the Workstream list current — it has to ride the same refresh.
+    void refreshWorkstreams();
     setStateRefreshKey((k) => k + 1);
-  }, [refreshRequests]);
+  }, [refreshRequests, refreshWorkstreams]);
 
   // Bring the open session current when the developer returns to the DevTool
   // (tab visible again or window refocused), so out-of-band changes show up
@@ -329,6 +351,54 @@ function PanelContent({ className }: { className?: string }) {
     }
     return groups;
   }, [requests, liveItems, liveRawItems, activeRequestId, lastResponse, streamState, streamStatus, streamRequestId]);
+
+  // The sessions we descended through to reach the open one, outermost first,
+  // with the open session itself last. Empty while looking at a session picked
+  // from the navigator.
+  //
+  // A Workstream IS a session, so opening one just swaps `activeSessionId` and
+  // every tab follows — which is the point, and also why the trail exists: once
+  // swapped, nothing on screen would otherwise say the workspace has left the
+  // conversation the navigator still highlights. Nesting is real (a Workstream
+  // can start its own), so this is a stack rather than a single parent.
+  const [descent, setDescent] = useState<Array<{ id: string; label: string }>>([]);
+  // The session id `descent` describes. Any other id arriving in
+  // `effectiveSessionId` came from the navigator or the sticky restore — a
+  // fresh pick, not a step in this descent — so the trail is dropped.
+  const descentSessionRef = useRef<string | null>(effectiveSessionId);
+
+  useEffect(() => {
+    if (descentSessionRef.current === effectiveSessionId) return;
+    descentSessionRef.current = effectiveSessionId;
+    setDescent([]);
+  }, [effectiveSessionId]);
+
+  const handleOpenWorkstream = useCallback(
+    (workstream: WorkstreamSummary) => {
+      const from = effectiveSessionId;
+      if (from === null || from === workstream.id) return;
+      setDescent((prev) => [
+        ...(prev.length > 0 ? prev : [{ id: from, label: shortSessionId(from) }]),
+        { id: workstream.id, label: workstream.topic ?? shortSessionId(workstream.id) },
+      ]);
+      descentSessionRef.current = workstream.id;
+      setActiveSession(workstream.id);
+    },
+    [effectiveSessionId, setActiveSession],
+  );
+
+  const handleReturnTo = useCallback(
+    (index: number) => {
+      const entry = descent[index];
+      if (entry === undefined) return;
+      // Returning to the outermost session is leaving the descent entirely — a
+      // one-crumb trail would claim we are still inside something.
+      setDescent(index === 0 ? [] : descent.slice(0, index + 1));
+      descentSessionRef.current = entry.id;
+      setActiveSession(entry.id);
+    },
+    [descent, setActiveSession],
+  );
 
   const handleSendAction = useCallback(
     async (action: string, input: unknown) => {
@@ -524,9 +594,18 @@ function PanelContent({ className }: { className?: string }) {
                 <TabsTrigger value="stream">Stream</TabsTrigger>
                 <TabsTrigger value="trace">Trace</TabsTrigger>
                 <TabsTrigger value="tasks">Tasks</TabsTrigger>
+                <TabsTrigger value="workstreams">
+                  Workstreams
+                  {workstreams.length > 0 && (
+                    <span className="ml-1.5 rounded bg-slate-800 px-1 text-[10px] tabular-nums text-slate-400">
+                      {workstreams.length}
+                    </span>
+                  )}
+                </TabsTrigger>
                 <TabsTrigger value="suspensions">Suspensions</TabsTrigger>
               </TabsList>
               <div className="flex items-center gap-3 min-w-0">
+                <DescentTrail descent={descent} onReturnTo={handleReturnTo} />
                 <SessionIdBadge sessionId={effectiveSessionId} />
                 {(liveStatus !== "idle" || showToggle) && (
                   <LiveSwitch
@@ -564,6 +643,21 @@ function PanelContent({ className }: { className?: string }) {
               <TaskCollectionsView
                 key={effectiveSessionId ?? "none"}
                 items={requestGroups.flatMap((g) => g.items)}
+                workstreams={workstreams}
+                onOpenWorkstream={handleOpenWorkstream}
+              />
+            </TabsContent>
+
+            <TabsContent value="workstreams" className="flex-1 min-h-0 m-0">
+              <WorkstreamsView
+                key={effectiveSessionId ?? "none"}
+                sessionId={effectiveSessionId}
+                workstreams={workstreams}
+                isLoading={workstreamsLoading}
+                error={workstreamsError}
+                onRefresh={() => void refreshWorkstreams()}
+                items={requestGroups.flatMap((g) => g.items)}
+                onOpen={handleOpenWorkstream}
               />
             </TabsContent>
 
@@ -613,6 +707,55 @@ function PanelContent({ className }: { className?: string }) {
       </div>
     </div>
     </TraceLookupProvider>
+  );
+}
+
+/**
+ * Where in a chain of Workstreams the workspace currently is, and the way back
+ * out. Renders nothing at the top level, which is where most sessions stay.
+ *
+ * Only ancestors are clickable — the last crumb is the open session, and the
+ * whole point of the trail is that the navigator's highlight no longer says
+ * which one that is.
+ */
+function DescentTrail({
+  descent,
+  onReturnTo,
+}: {
+  descent: ReadonlyArray<{ id: string; label: string }>;
+  onReturnTo: (index: number) => void;
+}) {
+  if (descent.length === 0) return null;
+
+  return (
+    <nav
+      aria-label="Workstream trail"
+      className="flex min-w-0 items-center gap-1 text-[10px] text-slate-500"
+    >
+      <Layers className="h-3 w-3 shrink-0" aria-hidden />
+      {descent.map((entry, index) => {
+        const isCurrent = index === descent.length - 1;
+        return (
+          <span key={entry.id} className="flex min-w-0 items-center gap-1">
+            {index > 0 && <span className="text-slate-700">/</span>}
+            {isCurrent ? (
+              <span className="max-w-[10rem] truncate text-slate-300">
+                {entry.label}
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onReturnTo(index)}
+                title={`Back to ${entry.id}`}
+                className="max-w-[10rem] truncate hover:text-slate-200 hover:underline"
+              >
+                {entry.label}
+              </button>
+            )}
+          </span>
+        );
+      })}
+    </nav>
   );
 }
 
