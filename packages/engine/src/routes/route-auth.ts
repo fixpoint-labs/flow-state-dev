@@ -21,6 +21,7 @@ import type {
 import { PrincipalResolutionError } from "../transports/errors";
 import { isDefaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import { pickPrincipalResolver } from "../transports/auth/pickPrincipalResolver";
+import { tenantMatches } from "../stores/scope-keys";
 import { jsonResponse, loadTenantSession } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 
@@ -230,6 +231,11 @@ export async function authorizeManagementRoute(
     case "request": {
       const record = await ctx.stores.request.get(subject.requestId);
       if (record !== undefined) {
+        if (!tenantMatches(record.tenantId, ctx.tenantId)) {
+          return {
+            denied: jsonResponse(404, { error: "Request not found" })
+          };
+        }
         flowKind = record.flowKind;
         owner = record.userId;
         sessionId = record.sessionId;
@@ -243,6 +249,11 @@ export async function authorizeManagementRoute(
       // letting it through unchecked.
       const active = await ctx.stores.activeRequests.get(subject.requestId);
       if (active === undefined) return ALLOWED;
+      if (!tenantMatches(active.tenantId, ctx.tenantId)) {
+        return {
+          denied: jsonResponse(404, { error: "Request not found" })
+        };
+      }
       flowKind = active.flowKind;
       owner = active.userId;
       sessionId = active.sessionId;
