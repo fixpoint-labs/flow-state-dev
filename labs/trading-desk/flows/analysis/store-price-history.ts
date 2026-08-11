@@ -7,12 +7,12 @@
  * summary range) via `getOrPatchState`. No extra network call, no `block.run()`
  * (BP-011), no warm-cache dependency.
  *
- * It is a `.tap()`: no output, no `return input` (BP-012/BP-014). On any miss
- * (spine field absent, payload missing bars) it leaves the resource `null` so
- * the Summary's price panel degrades to a trade-levels-only view — it never
- * substitutes or invents a series (BP-020 / real-money provenance gate) — and
- * it WARNS with the reason, so a missing chart is diagnosable from the run's
- * trace instead of being inferred from its absence.
+ * It is a `.tap()`: no output, no `return input` (BP-012/BP-014). On a miss
+ * (nothing on the spine) it leaves the resource `null` so the Summary's price
+ * panel degrades to a trade-levels-only view — it never substitutes or invents
+ * a series (BP-020 / real-money provenance gate) — and it WARNS with the
+ * reason, so a missing chart is diagnosable from the run's trace instead of
+ * being inferred from its absence.
  *
  * A miss and a genuine provider gap are different states and stay so: an
  * "unavailable" fetch still yields a bars array (empty), so it is PERSISTED
@@ -25,7 +25,11 @@ import {
   priceHistoryResource,
   type PriceHistorySlice,
 } from "./price-history-resource";
-import { technicalDataResource, SUMMARY_PRICE_RANGE } from "./technical-data-resource";
+import {
+  technicalDataResource,
+  SUMMARY_PRICE_RANGE,
+  type TechnicalDataState,
+} from "./technical-data-resource";
 import { sessionStateSchema } from "./state";
 
 export const storePriceHistory = handler({
@@ -39,28 +43,23 @@ export const storePriceHistory = handler({
   },
   execute: async (_input, ctx) => {
     const { ticker } = ctx.session.state;
-    const payload = ctx.resources.technicalData.state.priceBars as
-      | { source?: string; range?: string; bars?: Array<{ date: string; close: number }> }
-      | undefined;
-    // Leave the resource null on any miss — the chart degrades cleanly — but say
-    // WHY on the way out. The bare `return` here made a run whose chart silently
-    // vanished indistinguishable, after the fact, from a run whose provider
-    // genuinely had no bars; the reason line is what makes the two tellable
-    // apart in a trace (`fsdev run` captures stderr) without re-running.
-    if (payload === undefined || payload.bars === undefined) {
-      const reason =
-        payload === undefined
-          ? `no \`priceBars\` on the session technical spine — the technical analyst's get_price_history never wrote it (its step errored, or it fetched a ticker/range other than ${ticker} at ${SUMMARY_PRICE_RANGE})`
-          : "the spine's `priceBars` payload carries no `bars` array";
+    // Typed off the spine's OWN schema (not a hand-rolled shape) — which makes
+    // `bars` required whenever `priceBars` is set, so absence is the only miss.
+    const payload: TechnicalDataState["priceBars"] =
+      ctx.resources.technicalData.state.priceBars;
+    // Leave the resource null on a miss, but say WHY on the way out: the bare
+    // `return` is what made a vanished chart indistinguishable, after the fact,
+    // from a provider that genuinely had no bars.
+    if (payload === undefined) {
       console.warn(
-        `[trading-desk] store-price-history: no price series persisted for ${ticker} — ${reason}. Summary falls back to trade levels.`,
+        `[trading-desk] store-price-history: no price series persisted for ${ticker} — no \`priceBars\` on the session technical spine: the technical analyst's get_price_history never wrote it (its step errored, or it fetched a ticker/range other than ${ticker} at ${SUMMARY_PRICE_RANGE}). Summary falls back to trade levels.`,
       );
       return;
     }
     const slice: PriceHistorySlice = {
       ticker,
-      range: payload.range ?? "",
-      source: payload.source ?? "unavailable",
+      range: payload.range,
+      source: payload.source,
       bars: payload.bars.map((b) => ({ date: b.date, close: b.close })),
     };
     await ctx.resources.priceHistory.patchState(slice);

@@ -39,12 +39,17 @@ import { testFlow } from "@flow-state-dev/testing";
 import { storePriceHistory } from "../flows/analysis/store-price-history";
 import { get_price_history } from "../flows/analysis/tools/data/get_price_history";
 import { priceHistoryResource } from "../flows/analysis/price-history-resource";
-import { technicalDataResource } from "../flows/analysis/technical-data-resource";
+import {
+  technicalDataResource,
+  SUMMARY_PRICE_RANGE,
+} from "../flows/analysis/technical-data-resource";
 import { sessionStateSchema } from "../flows/analysis/state";
 
 /**
  * Test-only writer: plant a payload directly on the technical spine, standing
- * in for a Phase 1 fetch whose provider came back empty.
+ * in for a Phase 1 fetch whose provider came back empty. `bars` is optional
+ * ONLY so a test can attempt the malformed write the tap deliberately does not
+ * guard against (see the boundary test below).
  */
 const seedSpineBars = handler({
   name: "seed-spine-bars",
@@ -52,12 +57,16 @@ const seedSpineBars = handler({
     source: z.string(),
     ticker: z.string(),
     range: z.string(),
-    bars: z.array(z.object({ date: z.string(), close: z.number() })),
+    bars: z.array(z.object({ date: z.string(), close: z.number() })).optional(),
   }),
   outputSchema: z.void(),
   resources: { technicalData: technicalDataResource },
   execute: async (input, ctx) => {
-    await ctx.resources.technicalData.patchState({ priceBars: input });
+    await ctx.resources.technicalData.patchState({
+      priceBars: input as NonNullable<
+        Parameters<typeof ctx.resources.technicalData.patchState>[0]
+      >["priceBars"],
+    });
   },
 });
 
@@ -219,7 +228,12 @@ describe("storePriceHistory tap", () => {
     // the tap persists NOTHING and says so.
     const slice = await readSlice(stores, sessionId);
     expect(slice == null).toBe(true);
-    expect(warnings.lines()).toHaveLength(1);
+    const lines = warnings.lines();
+    expect(lines).toHaveLength(1);
+    // The reason names the SUBJECT, never the peer that was probed — a line
+    // reading "AAPL" would be the mislabel this gate exists to prevent.
+    expect(lines[0]).toContain("NVDA");
+    expect(lines[0]).not.toContain("AAPL");
   });
 
   it("off-range probe: a non-summary range never becomes the subject's chart", async () => {
@@ -253,7 +267,11 @@ describe("storePriceHistory tap", () => {
 
     const slice = await readSlice(stores, sessionId);
     expect(slice == null).toBe(true);
-    expect(warnings.lines()).toHaveLength(1);
+    const lines = warnings.lines();
+    expect(lines).toHaveLength(1);
+    // The reason names the range the chart actually needs (1mo), so a reader
+    // can tell this from "the analyst never ran" — the 1y probe did run.
+    expect(lines[0]).toContain(SUMMARY_PRICE_RANGE);
   });
 
   it("provider gap: an empty-bars slice is persisted with its provenance, not warned away", async () => {
@@ -291,5 +309,46 @@ describe("storePriceHistory tap", () => {
     expect(slice?.bars).toEqual([]);
     // A real gap is already self-describing via `source` — no miss warning.
     expect(warnings.lines()).toHaveLength(0);
+  });
+
+  it("spine boundary: a bars-less payload never reaches the spine, so present always means usable", async () => {
+    const stores = createInMemoryStores();
+    const sessionId = "prices-barsless";
+    const warnings = captureWarnings();
+
+    // Why this test exists: the tap checks only for an ABSENT `priceBars`, with
+    // no second guard for a present-but-bars-less payload. That is safe only
+    // because the spine's own schema requires `bars` — the resource boundary
+    // drops such a patch outright. Pinning it here means loosening that schema
+    // fails loudly instead of turning the tap's `payload.bars.map` into a
+    // mid-run TypeError.
+    const seeded = await testFlow({
+      flow: priceFlow,
+      action: "seedSpine",
+      userId: "test-user",
+      sessionId,
+      stores,
+      input: { source: "yahoo", ticker: "NVDA", range: "1mo" },
+      seed: { session: { state: { ...baseState, dataSource: "live" as const } } },
+    });
+    expect(seeded.error).toBeUndefined();
+
+    // The malformed payload was rejected at the boundary — the spine is empty.
+    const spine = toBareStates(await stores.resourceState.getAll("session", sessionId));
+    expect(spine["technicalData"]).toBeUndefined();
+
+    // So the tap sees a plain absence and degrades exactly as it does on a miss.
+    const result = await testFlow({
+      flow: priceFlow,
+      action: "storePrices",
+      userId: "test-user",
+      sessionId,
+      stores,
+      input: {},
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe("completed");
+    expect(await readSlice(stores, sessionId)).toBeUndefined();
+    expect(warnings.lines()).toHaveLength(1);
   });
 });
