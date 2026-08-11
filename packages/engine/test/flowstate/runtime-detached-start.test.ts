@@ -1,24 +1,33 @@
 /**
- * A router-less deployment can start detached work (FIX-1077).
+ * Every topology a `FlowState` owns can start detached work (FIX-1077).
  *
  * `createFlowRouteHandlers` was the only thing that ever assigned
- * `runtimeConfig.requestHost.startOperation`. A process that resolves its
- * runtime through `getRuntime()` and never asks for a router — `fsdev run` and
- * `fsdev chat`, which `AGENTS.md` names as the DEFAULT way to verify a flow
- * change — therefore met `no-start-operation` on every detached dispatch. The
- * team's primary verification tool was structurally blind to detached work.
+ * `runtimeConfig.requestHost.startOperation`, and it assigned it to the fresh
+ * `requestHost` literal `createFlowApiRouter` had already forked — an object
+ * nobody else held. So the operation reached HTTP requests and nothing else:
+ * `fsdev run` and `fsdev chat` (which `AGENTS.md` names as the DEFAULT way to
+ * verify a flow change) had none, and neither did the runtime handed to a
+ * colocated queue worker.
  *
- * These tests drive the runtime the way `fsdev run` does: `getRuntime()`, then
- * `runAction` against `runtime.stores` with the runtime's config SPREAD (the CLI
- * overrides the logger and model resolver that way). The spread is part of the
- * subject, not incidental — the seam only reaches a request because a spread
- * copies the `requestHost` *reference*.
+ * `createFlowState` now installs it on the SHARED config at construction, before
+ * any fork exists, so every later copy inherits it. These tests exercise the
+ * topologies that inheritance is supposed to reach — and they drive each one the
+ * way its real host does, because that is the only thing that distinguishes
+ * "the wiring is present" from "the topology works":
  *
- * Both directions are pinned (BP-035):
- *  - the in-process case starts a real child request, in this process;
- *  - `worker-only` — which has no inbound transport and no dispatcher by
- *    construction — still refuses `no-start-operation` BY NAME, because its
- *    start operation is a queue-backed enqueue owned by the queue's adapter.
+ *  - `runAction` against `runtime.stores` with the config SPREAD, as `fsdev run`
+ *    does — the spread is part of the subject, since the seam only reaches a
+ *    request because a spread copies the `requestHost` *reference*;
+ *  - a real HTTP POST through the router, for the parent to hold a concurrency
+ *    key (`runAction` is unarbitrated, so a child dispatched from it never
+ *    queues);
+ *  - a colocated queue worker, with its dispatcher closing the loop the way a
+ *    real adapter does.
+ *
+ * `worker-only` starts detached work too, rather than refusing it — see the
+ * reasoning on that test. The child runs on the worker instead of the queue, so
+ * it is not durable; it IS tracked for the shutdown drain, because it is
+ * in-process work. Those two properties are independent.
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
