@@ -175,42 +175,23 @@ export interface DispatchHandle {
    *   read can still miss it; the entry that recovery and the sweeper key off is
    *   what has landed.
    *
-   * **Acceptance is discoverability, not safety.** Setup continues after it and
-   * can still fail without recording anything — a caller handing over ownership
-   * of work wants {@link DispatchHandle.started}.
+   * **Acceptance is discoverability, not safety, and it is not trying to be.**
+   * Setup continues after it and can still fail without recording anything. What
+   * protects a caller that handed over durable work is that work's own lease:
+   * if the run dies at any point — during setup, mid-execution, or by the
+   * process going away — the lease lapses and the owner recovers the row. That
+   * is the designed recovery path for every way a child can die, and no dispatch
+   * milestone improves on it.
+   *
+   * What acceptance buys is therefore *visibility*, not safety: a
+   * fire-and-forget caller holds no `finished`, so without this a registration
+   * failure is silent and the row waits out its lease with nothing anywhere
+   * saying why. With it, the failure surfaces where it happened.
    *
    * Optional on the type because a custom dispatcher may not distinguish
    * acceptance from completion. Every dispatcher this package ships does.
    */
   readonly accepted?: Promise<void>;
-  /**
-   * Resolves once the request has entered execution — past every setup step
-   * that can fail *silently* (FIX-982). Rejects with the run's own error when
-   * setup dies there instead.
-   *
-   * The window this closes is specific. Between registration and execution the
-   * run updates the session's `latestRequestId`, emits its opening status
-   * events, builds an execution context that loads the flow's eager resources,
-   * and runs the flow's `request.onStarted` hook. A failure anywhere in there
-   * writes no terminal record and deregisters the entry on the way out, so the
-   * request leaves no trace at all — while a failure after it is a durable
-   * `failed`.
-   *
-   * That is why this is separate from `accepted` rather than replacing it. An
-   * HTTP ack wants the cheap milestone: waiting here would hold the response
-   * across author-supplied resource loads and lifecycle hooks of unbounded
-   * duration. A caller that releases something on the strength of the dispatch
-   * — a detached spawn letting go of a claimed task — needs the sound one, and
-   * pays for it.
-   *
-   * **Set only when this call also starts the run**, which is the in-process
-   * dispatcher with no `queue` policy in force. A queued or externally
-   * dispatched run starts later by design, so promising execution would mean
-   * promising to wait out the queue; those leave it `undefined` and a caller
-   * falls back to `accepted`, keeping FIX-1070's documented hand-off gap
-   * exactly as wide as it already is rather than widening it.
-   */
-  readonly started?: Promise<void>;
 }
 
 /**

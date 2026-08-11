@@ -27,8 +27,10 @@ rather than at the first restart:
   session's id
 - the collection must be durable (`defineTaskCollection()`); request, sequencer,
   and caller-supplied factory backings are refused
-- a detached worker may not declare `sessionStateSchema`, since detached workers
-  share one execution flow
+- a detached worker may not declare `sessionStateSchema` anywhere in its
+  composition, since detached workers share one execution flow. A schema declared
+  by a step inside the worker collides exactly as one on the block handed to the
+  board does, and the refusal names the inner block when that is where it is
 - the collection may not be `scope: "session"`. A Workstream runs in its own
   session, so a session-scoped ledger resolves empty there and the child never
   finds the row it was dispatched for — declare it `scope: "user"` or
@@ -80,6 +82,12 @@ one. `onError: "fail"` was ignored for detached workers — a failing worker
 recorded the row errored and its Workstream request still reported success, so
 anything reading background work by run status saw a success for failed work.
 `"skip"` remains the default and is unchanged.
+
+A dispatch the host refuses outright — a flow-level `reject` concurrency policy
+whose key the launching request already holds — now settles its task instead of
+leaving it. The refusal happens before any background work exists, so the
+request that was handing the task over still owns it and fails it; previously
+the row stayed outstanding until its lease ran down.
 
 Two bounds worth knowing. Work is settled by the Workstream, which must be able
 to address the board it settles against, so a board whose rows a detached worker

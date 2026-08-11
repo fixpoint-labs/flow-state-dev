@@ -48,11 +48,25 @@ const GIT_BINARY_SNIFF_BYTES = 8000;
  * does) is never even opened.
  *
  * Adding a format here is a deliberate choice: only add one where a NUL is
- * always a mistake rather than sometimes the payload.
+ * always a mistake rather than sometimes the payload. The key is a *format*,
+ * and a format goes in whether or not the repo happens to track one today —
+ * `.jsx` and `.cjs` have never had a file. Listing a format's siblings up front
+ * is what keeps the guard from silently going quiet the day someone adds the
+ * first `.cts`.
+ *
+ * Deliberately absent, and why:
+ *   - `.png` and any other binary format — the reason this is an allowlist.
+ *   - `.ofx` / `.qfx` — third-party import fixtures, where a malformed byte is
+ *     plausibly the thing under test rather than a mistake.
+ *   - `.example` (`.env*.example`) — a naming convention, not a format.
+ *   - `LICENSE` and the `.claude/*` symlinks — extensionless, so an
+ *     extension-keyed allowlist cannot reach them at all.
  */
 const SOURCE_EXTENSIONS = new Set([
   ".ts",
   ".tsx",
+  ".mts",
+  ".cts",
   ".js",
   ".jsx",
   ".mjs",
@@ -60,11 +74,15 @@ const SOURCE_EXTENSIONS = new Set([
   ".json",
   ".md",
   ".mdx",
+  ".mdc",
   ".css",
   ".yml",
   ".yaml",
   ".html",
-  ".sh"
+  ".svg",
+  ".sql",
+  ".sh",
+  ".py"
 ]);
 
 /** Every file git tracks, NUL-delimited so paths with spaces survive. */

@@ -3,27 +3,21 @@
  * (FIX-982).
  *
  * `dispatchLocal` calls `runAction`, which is async — so it returns while the
- * run is still at its first await. The handle alone is not evidence of
- * anything, and the two things a caller might want to know are not the same
- * fact:
+ * run is still at its first await, with the `activeRequests` write issued and
+ * not committed. `accepted` says that write landed and the request is
+ * discoverable. That is all it says, and all it is trying to say: setup
+ * continues after it and can still fail without recording anything.
  *
- * - **`accepted`** — the request is registered and discoverable. One write.
- *   This is what an HTTP ack needs, and it must stay cheap: waiting any longer
- *   would hold the response across author-supplied work.
- * - **`started`** — the run reached execution. Between the two it still writes
- *   the session's `latestRequestId`, emits its opening events, builds a context
- *   that loads the flow's eager resources, and runs `request.onStarted`. A
- *   failure anywhere in there records nothing terminal and deregisters the
- *   entry on the way out, so the request leaves no trace — while a failure
- *   after it is a durable `failed`.
+ * What makes that acceptable is that acceptance was never what protects the
+ * work. A caller handing over a durable row is protected by that row's lease —
+ * a child that dies at any point leaves a lease nobody renews, and the next
+ * drain recovers it. What acceptance buys is that a dead child is *visible*: a
+ * fire-and-forget caller holds no `finished`, so without it a registration
+ * failure is swallowed and the dispatch reports success.
  *
- * The distinction is load-bearing for the caller that has no `finished` to fall
- * back on. A detached spawn releases a claimed task on the strength of the
- * dispatch; if it releases on `accepted` and setup then dies, nothing settles
- * the row, nothing records the failure, and the task reads as live background
- * work that is simply not moving until lease recovery finds it. So the tests
- * below fail a *real* step of the run after registration has committed, rather
- * than stubbing the boundary itself.
+ * So these pin discoverability and the rejection, and deliberately pin no later
+ * milestone. `integration-tests` holds the companion — a child that dies before
+ * taking ownership, and the drain that recovers its row.
  */
 import { describe, it, expect } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
@@ -192,127 +186,5 @@ describe("in-process dispatch separates acceptance from completion", () => {
     await expect(handle.accepted).rejects.toThrow(/registry write failed/);
     await expect(handle.finished).rejects.toThrow(/registry write failed/);
     expect(h.ranCount()).toBe(0);
-  });
-});
-
-describe("in-process dispatch reports execution separately from acceptance", () => {
-  it("reaches started after accepted, and still while the run is in flight", async () => {
-    const h = buildHost();
-    const handle = h.host.dispatch(h.envelope);
-
-    expect(handle.started).toBeDefined();
-
-    // Order, not just presence: `started` is a strictly later fact, and a
-    // `started` that resolved with `accepted` would be the same promise wearing
-    // a second name — it would carry none of the setup window it exists to
-    // cover.
-    const order: string[] = [];
-    handle.accepted!.then(() => order.push("accepted"));
-    handle.started!.then(() => order.push("started"));
-
-    const first = await Promise.race([
-      handle.started!.then(() => "started" as const),
-      handle.finished.then(() => "finished" as const),
-      wait(500).then(() => "neither" as const)
-    ]);
-    // Still in flight: the block is parked, so this is execution having begun
-    // rather than the run having ended.
-    expect(first).toBe("started");
-    expect(order).toEqual(["accepted", "started"]);
-    expect(h.ranCount()).toBe(1);
-
-    h.release();
-    await handle.finished;
-  });
-
-  it("rejects started when setup fails after the request was already accepted", async () => {
-    // THE WINDOW. Registration commits, so the request is discoverable and
-    // `accepted` resolves — and then a real setup step fails. Nothing writes a
-    // terminal record for it and the entry is deregistered on the way out, so a
-    // caller that let go of work on `accepted` has handed it to a request that
-    // now leaves no trace at all.
-    //
-    // The failing step is the session read `runAction` performs immediately
-    // after registering, to update `latestRequestId`. An ordinary store outage,
-    // not a contrived one.
-    const h = buildHost({
-      onSessionGet: async () => {
-        throw new Error("session store unavailable");
-      }
-    });
-
-    const handle = h.host.dispatch(h.envelope);
-
-    // Accepted: the write that makes the request discoverable did land.
-    await expect(handle.accepted).resolves.toBeUndefined();
-
-    // But execution was never reached, and that is what a caller handing over
-    // ownership has to learn.
-    await expect(handle.started).rejects.toThrow(/session store unavailable/);
-    await expect(handle.finished).rejects.toThrow(/session store unavailable/);
-    expect(h.ranCount()).toBe(0);
-
-    // The trace the window leaves behind, pinned so the cost of getting this
-    // wrong stays visible: no terminal record, and the entry gone.
-    const record = await h.stores.request.get(handle.requestId);
-    expect(record).toBeUndefined();
-    expect(await h.stores.activeRequests.get(handle.requestId)).toBeUndefined();
-  });
-
-  it("offers no started signal for a queued run, which cannot start inside this call", async () => {
-    // A `queue` policy defers the start behind a concurrency key. Promising
-    // execution there would mean promising to wait out the queue — and for a
-    // detached child keyed on `user`, waiting for a run that cannot start until
-    // its own caller returns. So the signal is absent and the caller falls back
-    // to acceptance.
-    const registry = createFlowRegistry();
-    const stores = createInMemoryStores();
-    let releaseRun: () => void = () => {};
-    const runGate = new Promise<void>((resolve) => {
-      releaseRun = resolve;
-    });
-
-    registry.register(
-      defineFlow({
-        kind: "queued-start",
-        actions: {
-          run: {
-            concurrency: "queue",
-            inputSchema: z.object({ value: z.string() }),
-            block: handler<{ value: string }, { ok: true }>({
-              name: "queued-start-run",
-              execute: async () => {
-                await runGate;
-                return { ok: true };
-              }
-            })
-          }
-        }
-      })({ id: "queued-start" })
-    );
-
-    const host = createInboundTransportHost({
-      registry,
-      stores,
-      resolvePrincipal: defaultBodyUserIdPrincipalResolver,
-      runtimeConfig: {}
-    });
-
-    const handle = host.dispatch({
-      source: "http" as const,
-      flowKind: "queued-start",
-      action: "run",
-      input: { value: "a" },
-      sessionId: "s_queued",
-      principal: { userId: "u_1" }
-    });
-
-    expect(handle.started).toBeUndefined();
-    // Acceptance is still offered — the enqueue-time writes are its own,
-    // earlier milestone.
-    await expect(handle.accepted).resolves.toBeUndefined();
-
-    releaseRun();
-    await handle.finished;
   });
 });

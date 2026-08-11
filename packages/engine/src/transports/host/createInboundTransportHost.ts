@@ -236,9 +236,6 @@ export function createInboundTransportHost(
     // committed (in-process `queue`), or the run's own `activeRequests`
     // registration committed (in-process, FIX-982).
     let accepted: Promise<void> | undefined;
-    // Set only where this call also STARTS the run, so it can promise execution
-    // without promising to wait out a queue (FIX-982). See `DispatchHandle`.
-    let started: Promise<void> | undefined;
     if ("dispatchLocal" in effectiveDispatcher) {
       // The in-process milestones, held here rather than read off the handle
       // because `gateStart` owns *when* the run is started and the handle does
@@ -250,16 +247,9 @@ export function createInboundTransportHost(
         markAccepted = resolve;
         failAccepted = reject;
       });
-      let markStarted: () => void = () => {};
-      let failStarted: (error: unknown) => void = () => {};
-      const inProcessStarted = new Promise<void>((resolve, reject) => {
-        markStarted = resolve;
-        failStarted = reject;
-      });
-      // Handled unconditionally: these are discarded on the `queue` path and
+      // Handled unconditionally: this is discarded on the `queue` path and
       // ignored by every caller that only wants `finished`.
       void inProcessAccepted.catch(() => {});
-      void inProcessStarted.catch(() => {});
 
       const startRun = (): Promise<ExecutionResult> => {
         const handle = (effectiveDispatcher as InProcessDispatcher).dispatchLocal(
@@ -274,7 +264,6 @@ export function createInboundTransportHost(
           }
         );
         handle.accepted?.then(markAccepted, failAccepted);
-        handle.started?.then(markStarted, failStarted);
         return handle.finished;
       };
 
@@ -373,21 +362,10 @@ export function createInboundTransportHost(
       } else {
         finished = gateStart(startRun);
         // A start that never happens (the gate threw on the way in) must fail
-        // both milestones rather than leave them pending forever. Once the run
-        // has passed them this is already settled and every arm is a no-op.
+        // acceptance rather than leave it pending forever. Once the run has
+        // registered this is already settled and both arms are no-ops.
         finished.then(markAccepted, failAccepted);
-        finished.then(markStarted, failStarted);
         accepted = inProcessAccepted;
-        // Only this branch starts the run inline, and the exclusion of the
-        // `queue` branch is a deadlock guard rather than a latency preference.
-        // A detached dispatch takes the flow-level policy, so `queue` keyed on
-        // `user` puts the child behind its own parent's in-flight request: a
-        // caller awaiting the child's execution would be waiting for a run that
-        // cannot start until the caller returns. An external dispatcher leaves
-        // it unset for the milder version of the same reason. Both fall back to
-        // acceptance, which is FIX-1070's documented hand-off gap rather than a
-        // new one.
-        started = inProcessStarted;
       }
     } else {
       // External dispatchers (BullMQ, etc.) run in a separate process and only
@@ -490,8 +468,7 @@ export function createInboundTransportHost(
       responseEmitter,
       liveStream,
       finished: finished as Promise<ExecutionResult>,
-      accepted,
-      started
+      accepted
     };
   };
 
