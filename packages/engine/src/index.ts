@@ -1,4 +1,6 @@
 export { createExecutionContext } from "./context/createExecutionContext";
+export { ensureSessionRecord } from "./context/ensure-session-record";
+export type { SessionRecordSeed } from "./context/ensure-session-record";
 export type {
   CreateExecutionContextOptions,
   ExecutionContext,

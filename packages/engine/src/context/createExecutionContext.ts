@@ -60,6 +60,7 @@ import type { ModelResolver, ReplayLog } from "@flow-state-dev/core";
 import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestWorkPool } from "../execution/request-work-pool";
 import { createRequestHost } from "./create-request-host";
+import { ensureSessionRecord } from "./ensure-session-record";
 import { resolveActionCore } from "../execution/resolve-action-core";
 import { isTraceObservabilityEnabled, errorDetailsWithCause } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
@@ -594,45 +595,35 @@ export async function createExecutionContext<
     await stores.user.set(userRecord.id, userRecord, "any");
   }
 
-  let sessionRecord = loadedSession;
-  if (sessionRecord === undefined) {
-    sessionRecord = {
+  // Created through the one path that mints the lineage id and writes
+  // create-if-absent (FIX-1068), so this request cannot overwrite a concurrent
+  // first action and cannot invent a second address for the same session.
+  let sessionRecord =
+    loadedSession ??
+    ((await ensureSessionRecord(stores, sessionKey, () => ({
       id: sessionKey,
       flowKind: flow.kind,
       userId,
       orgId: options.orgId,
       tenantId: options.tenantId,
       state: (options.sessionState ?? {}) as TSessionState,
-      // Minted once, here, and never rewritten. This is the address every
-      // shared resource in this session resolves to (FIX-1068).
-      lineageId: generateId("lin"),
       resources: normalizeScopeResources(sessionResourceConfigs, undefined),
       version: 0,
       createdAt: now,
       updatedAt: now,
       journal: []
-    };
-    // Create-if-absent, not an unconditional write. Two first actions on one
-    // new session both find nothing and both create; an unconditional write
-    // lets the loser overwrite the winner, and each carries a DIFFERENT
-    // `lineageId` — so the loser's shared writes land at an address nothing
-    // ever reads again. The winner's record is authoritative for both.
-    const created = await stores.session.set(sessionRecord.id, sessionRecord, "absent");
-    if (!created.ok) {
-      const winner =
-        created.conflict.currentValue ?? (await stores.session.get(sessionRecord.id));
-      if (winner === undefined) {
-        // Tombstoned between the read and the write. The store contract requires
-        // a caller to treat that as deleted and stop, never as "reuse my copy".
-        throw new Error(
-          `Session "${sessionId}" was deleted while this request was starting it`
-        );
-      }
-      sessionRecord = winner as typeof sessionRecord;
-    }
-  } else {
-    ensureJournalDefaults(sessionRecord);
+    }))) as typeof loadedSession & object);
 
+  ensureJournalDefaults(sessionRecord);
+
+  // The binding checks run HERE, on one path, rather than inside the
+  // already-existed branch. A request that loses the create race adopts the
+  // WINNER's record — which it did not build and whose identity it has not
+  // checked — so a branch-local check would let a losing request run against
+  // another principal's or another tenant's session. Running them
+  // unconditionally costs a comparison on the branch that built the record
+  // itself, where they pass by construction, and that is the cheaper mistake.
+  {
     // userId mismatch — closes a long-standing gap. The loaded session record's
     // userId is authoritative; a request claiming a different identity would
     // route this user's actions against another user's data.

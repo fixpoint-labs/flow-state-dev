@@ -25,15 +25,14 @@ export interface EnsureWebhookSessionArgs {
 }
 
 /** Create the session row for a webhook delivery if it doesn't already exist. */
+import { ensureSessionRecord } from "../../context/ensure-session-record";
+
 export async function ensureSessionForWebhook(args: EnsureWebhookSessionArgs): Promise<void> {
   const { stores, sessionId, flowKind, principal, provider, eventType } = args;
-  const existing = await stores.session.get(sessionId);
-  if (existing !== undefined) return;
-
+  // One creation path (FIX-1068): it mints the lineage id and writes
+  // create-if-absent, neither of which this resolver should be deciding.
   const now = Date.now();
-  await stores.session.set(
-    sessionId,
-    {
+  await ensureSessionRecord(stores, sessionId, () => ({
       id: sessionId,
       flowKind,
       userId: principal.userId,
@@ -48,7 +47,5 @@ export async function ensureSessionForWebhook(args: EnsureWebhookSessionArgs): P
         provider,
         ...(eventType !== null ? { eventType } : {})
       }
-    },
-    "any"
-  );
+  }));
 }
