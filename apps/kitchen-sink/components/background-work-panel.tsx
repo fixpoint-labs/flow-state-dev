@@ -90,12 +90,14 @@ export function BackgroundWorkPanel({ session, flowKind }: BackgroundWorkPanelPr
   // every turn on this page — the price paid here for the first filed job
   // being visible without further user action.
   //
-  // The intended fix is a framework opt-in rather than an app-level effect:
-  // `useSession` grows an explicit `workstreams: { refreshOnTerminal: true }`,
-  // refreshing from the terminal branch it already has, so the pinned budget
-  // stays the default and the second read becomes a named choice. Until that
-  // lands, this is a reference demo teaching a pattern it should not — hence
-  // the comment rather than the silence.
+  // The intended fix is a framework opt-in rather than an app-level effect,
+  // tracked as **FIX-1109**: `useSession` grows an explicit
+  // `workstreams: { refreshOnTerminal: true }`, refreshing from the terminal
+  // branch it already has (`onRequestStatus`), so the pinned budget stays the
+  // default and the second read becomes a named choice. When FIX-1109 lands,
+  // delete this effect and pass that option instead. Until then, this is a
+  // reference demo teaching a pattern it should not — hence the comment rather
+  // than the silence.
   const wasStreaming = useRef(isStreaming);
   useEffect(() => {
     const finished = wasStreaming.current && !isStreaming;
