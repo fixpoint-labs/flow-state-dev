@@ -1123,6 +1123,9 @@ export function taskBoard<
       boardId,
       collection: collectionFactory,
       detached: resolvedWorkers.detached,
+      // The board's failure policy decides the Workstream's outcome exactly as
+      // it decides the drain's, so it is threaded rather than re-chosen here.
+      onError,
       // The runner is reached by a detached dispatch, not through the drain,
       // so it has to declare the board's durable collection itself.
       ...(drainUses !== undefined ? { uses: drainUses } : {}),
