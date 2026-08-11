@@ -103,6 +103,12 @@ export type RequestHostInputs = {
     orgId: string | undefined;
     /** The running request's session — the parent of anything it spawns. */
     sessionId: string;
+    /**
+     * The lineage the running session belongs to (FIX-1068). Inherited by the
+     * child verbatim, which is the whole of what makes parent and descendant
+     * address one bucket — there is nothing to re-derive and nothing to agree on.
+     */
+    lineageId: string;
   };
   /** Absent when this process executes requests but cannot start one. */
   startOperation?: DetachedStartOperation;
@@ -222,7 +228,8 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       {
         userId: identity.userId,
         tenantId: identity.tenantId,
-        parentSessionId: identity.sessionId
+        parentSessionId: identity.sessionId,
+        lineageId: identity.lineageId
       },
       args.seed
     );
@@ -274,6 +281,9 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),
         ...(identity.orgId !== undefined ? { orgId: identity.orgId } : {}),
         parentSessionId: identity.sessionId,
+        // Inherited verbatim. Not a hash, not a re-derivation — the same
+        // value, so parent and child address one bucket by construction (FIX-1068).
+        lineageId: identity.lineageId,
         // Canonical labels, stamped here and only here (FIX-1010). They are
         // taken from the seed **this call already consumed to derive the child
         // key**, not from `args.record` below — which is why a caller cannot

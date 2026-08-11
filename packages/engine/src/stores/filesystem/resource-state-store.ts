@@ -55,7 +55,7 @@
 import { cloneValue } from "@flow-state-dev/core/helpers";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type {
-  ContentScopeType,
+  StorageScopeType,
   ExpectedVersion,
   ResourceStateStore,
   SetResult,
@@ -116,7 +116,7 @@ export function createFilesystemResourceStateStore(rootDir: string): ResourceSta
   // Per-key, per-store-instance mutex. Distinct keys never contend, so a
   // busy scope does not serialize behind one hot resource.
   const gate = createKeyedAsyncGate();
-  const lockKey = (scopeType: ContentScopeType, scopeId: string, resourceKey: string): string =>
+  const lockKey = (scopeType: StorageScopeType, scopeId: string, resourceKey: string): string =>
     JSON.stringify([scopeType, scopeId, resourceKey]);
 
   /** Live rows only, projected to the public read shape. */

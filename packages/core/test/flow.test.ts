@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineFlow, generator, handler, sequencer } from "../src";
 import { defineResource } from "../src/types/resource";
+import { defineResourceCollection } from "../src/types/resource-collection";
 import { createMockContext, runForTest } from "./helpers";
 describe("defineFlow", () => {
   it("fails closed when removed middleware is passed to a flow", () => {
@@ -651,6 +652,58 @@ describe("defineFlow", () => {
           resources: { a: resA, b: resB }
         })({ id: "y" })
       ).not.toThrow();
+    });
+
+    // FIX-1068: a flow-level declaration overrides a block's under the same
+    // accessor. Silently moving a resource between the running session and the
+    // lineage that way breaks the block that declared it — a detached board
+    // claims rows in one place while its Workstream reads an empty ledger.
+    it("rejects a flow-level override that changes sharedToWorkstream", () => {
+      const blockLedger = defineResourceCollection({
+        pattern: "tasks/**",
+        scope: "session",
+        sharedToWorkstream: true,
+        stateSchema: z.object({})
+      });
+      const flowLedger = defineResourceCollection({
+        pattern: "tasks/**",
+        scope: "session",
+        stateSchema: z.object({})
+      });
+      const worker = handler({
+        name: "worker",
+        resources: { ledger: blockLedger },
+        execute: () => "ok"
+      });
+
+      expect(() =>
+        defineFlow({
+          kind: "override-shared",
+          actions: { run: { inputSchema: z.any(), block: worker } },
+          resources: { ledger: flowLedger }
+        })({ id: "override-shared" })
+      ).toThrow(/sharedToWorkstream/);
+    });
+
+    // FIX-1068: `defineResource` guards this too, but a resource can reach a
+    // flow without passing through it, so the flow-build check has to stand on
+    // its own — otherwise a user-scoped resource carrying the flag would build
+    // clean and mean nothing at runtime.
+    it("rejects sharedToWorkstream on a non-session-scoped resource at flow build", () => {
+      const shared = {
+        ref: "leaked",
+        scope: "user" as const,
+        sharedToWorkstream: true,
+        stateSchema: z.object({})
+      };
+
+      expect(() =>
+        defineFlow({
+          kind: "shared-outside-session",
+          actions: {},
+          resources: { shared: shared as never }
+        })({ id: "shared-outside-session" })
+      ).toThrow(/sharedToWorkstream: true on a user-scoped resource/);
     });
   });
 

@@ -352,21 +352,37 @@ sitting on boards with different `boardId`s, get separate Workstreams. A task
 with no topic, or a blank one, falls back to its own id, so continuity is
 something you opt into rather than something that happens by accident.
 
-Two bounds are worth knowing before you reach for this:
+**The board must be addressable from the child session**, because the Workstream
+settles its own task. Session scope resolves against the *current* session, so a
+session-scoped board hydrates empty inside a Workstream unless it declares
+`sharedToWorkstream: true`:
 
-- **The board must be addressable from the child session.** The Workstream
-  settles its own task, and resource scope resolves against the *current*
-  session — so a session-scoped board hydrates empty inside a Workstream and
-  cannot be settled. Scope a detached board to `user` or `org`.
-- **Serverless without a queue adapter.** Detached work runs inside the
-  invocation that started it and is bounded by that function's maximum duration.
-  With a queue adapter it moves to a worker process and is not.
-- **The claim has to survive the wait before the child starts.** A claim carries
-  a lease (two minutes by default), and nothing extends it until the worker is
-  actually running. A Workstream that starts after its lease has run out does
-  nothing at all — the task is already back in the queue, and the next drain
-  picks it up. A deep queue backlog in front of the child is where this shows
-  up, and the board's lease is not configurable today.
+```ts
+const todos = defineTaskCollection({
+  id: "todos",
+  scope: "session",
+  sharedToWorkstream: true,
+  stateSchema: z.object({ topic: z.string() }),
+});
+```
+
+That gives the ledger one identity across the session lineage — the dispatching
+session and every Workstream under it settle against the same rows. `user` and
+`org` scope need nothing extra; they already span every session the principal
+touches. Sharing does not serialize: two Workstreams writing one board is
+ordinary same-resource contention, fenced by the store's `expectedVersion` check
+and nothing more.
+
+**The claim has to survive the wait before the child starts.** A claim carries a
+lease (two minutes by default), and nothing extends it until the worker is
+actually running. A Workstream that starts after its lease has run out does
+nothing at all — the task is already back in the queue, and the next drain picks
+it up. A deep queue backlog in front of the child is where this shows up, and the
+board's lease is not configurable today.
+
+**Serverless without a queue adapter** is the last bound. Detached work runs
+inside the invocation that started it and is bounded by that function's maximum
+duration. With a queue adapter it moves to a worker process and is not.
 
 ### goalSeekLoop
 

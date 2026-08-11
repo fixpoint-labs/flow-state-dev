@@ -237,7 +237,7 @@ createInboundTransportConformanceTests({
         },
         stores: {
           ...(host.stores as object),
-          session: { get: async () => undefined, set: async () => undefined },
+          session: { get: async () => undefined, set: async () => ({ ok: true as const }) },
         },
       }) as ReturnType<typeof createMockTransportHost>;
       const adapter = createChatTransportAdapter({

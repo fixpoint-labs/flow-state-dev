@@ -31,6 +31,7 @@ import {
 } from "../stores/scope-keys";
 import { isResourceConfig } from "../routes/route-utils";
 import { resourceStorageKeys } from "./storage-keys";
+import { readSessionScopeWithLineage } from "./lineage-scope";
 import {
   isResourceTemplate,
   parseResourceTemplate,
@@ -192,9 +193,16 @@ export async function getPersistedData(
   if (!tenantMatches(session.tenantId, tenantId)) return undefined;
 
   if (scope === "session") {
+    // FIX-1068: a resource declared `sharedToWorkstream` lives at the lineage
+    // root, so the scope this session reads is its own rows with the shared
+    // keys taken from there — the same view execution resolves.
     const [resources, content] = await Promise.all([
-      ctx.stores.resourceState.getAll("session", session.id).then(toBareStates),
-      ctx.stores.content.getAll("session", session.id)
+      readSessionScopeWithLineage(session, flow.resources, tenantId, (scopeType, scopeId) =>
+        ctx.stores.resourceState.getAll(scopeType, scopeId).then(toBareStates)
+      ),
+      readSessionScopeWithLineage(session, flow.resources, tenantId, (scopeType, scopeId) =>
+        ctx.stores.content.getAll(scopeType, scopeId)
+      )
     ]);
     return { resources, content };
   }

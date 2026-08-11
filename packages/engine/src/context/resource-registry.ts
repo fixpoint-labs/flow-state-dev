@@ -41,6 +41,7 @@ import { applyGetOrPatchState, isTraceObservabilityEnabled } from "@flow-state-d
 import { createResourceEdgeApi } from "@flow-state-dev/core/graph";
 import type {
   ContentScopeType,
+  StorageScopeType,
   ContentStore,
   ResourceStateStore,
   VersionedResourceState
@@ -339,7 +340,7 @@ export function resolveStringContentTemplates(
  */
 export async function loadDeclaredScopeContent(
   content: ContentStore,
-  scopeType: ContentScopeType,
+  scopeType: StorageScopeType,
   scopeId: string,
   configs: Record<string, ResourceConfig | ResourceCollectionConfig>
 ): Promise<Record<string, string>> {
@@ -398,7 +399,7 @@ export async function loadDeclaredScopeContent(
  */
 export async function loadDeclaredResourceState(
   resourceState: ResourceStateStore,
-  scopeType: ContentScopeType,
+  scopeType: StorageScopeType,
   scopeId: string,
   configs: Record<string, ResourceConfig | ResourceCollectionConfig>
 ): Promise<Record<string, VersionedResourceState>> {

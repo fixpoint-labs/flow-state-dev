@@ -1,6 +1,7 @@
 /**
  * `fsdev run <flowKind> <action>` command — executes a flow action with streaming NDJSON output.
  */
+import { ensureSessionRecord } from "@flow-state-dev/engine";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve, isAbsolute } from "node:path";
 import type { Command } from "commander";
@@ -286,7 +287,9 @@ export async function executeRunCommand(
           updatedAt: Date.now(),
         }, "any");
       } else {
-        await stores.session.set(sessionId, {
+        // One creation path (FIX-1068) — it mints the lineage id, which a
+        // seeded CLI session needs as much as any other.
+        await ensureSessionRecord(stores, sessionId, () => ({
           id: sessionId,
           flowKind: flowKind,
           userId: "cli-user",
@@ -295,7 +298,7 @@ export async function executeRunCommand(
           createdAt: Date.now(),
           updatedAt: Date.now(),
           journal: [],
-        }, "any");
+        }));
       }
     }
 

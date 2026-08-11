@@ -49,7 +49,7 @@ function makeHost(flows: FlowInstance[]): RecordingHost {
       get: (kind: string) => flows.find((f) => f.kind === kind),
     },
     stores: {
-      session: { get: async () => undefined, set: async () => undefined },
+      session: { get: async () => undefined, set: async () => ({ ok: true as const }) },
     },
     logger: { warn, error, info: vi.fn(), debug: vi.fn() },
     dispatch(envelope: InboundRequestEnvelope) {
@@ -241,7 +241,7 @@ describe("dispatchChatEvent — concurrency reject", () => {
         get: (kind: string) => flows.find((f) => f.kind === kind),
       },
       stores: {
-        session: { get: async () => undefined, set: async () => undefined },
+        session: { get: async () => undefined, set: async () => ({ ok: true as const }) },
       },
       logger: { warn: vi.fn(), error, info, debug: vi.fn() },
       dispatch() {

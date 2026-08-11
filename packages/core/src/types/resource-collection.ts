@@ -57,6 +57,14 @@ export type ResourceCollectionConfig<TState extends JsonObject = JsonObject> = {
    * `ResourceConfig.flowIsolation`. Rejected at session scope.
    */
   flowIsolation?: boolean;
+  /**
+   * Give this session-scoped collection ONE identity across the whole session
+   * lineage (FIX-1068). Same semantics as `ResourceConfig.sharedToWorkstream`,
+   * applied to every instance: a session and the background child sessions it
+   * spawns resolve the collection against the lineage root, so they read and
+   * write one instance set. Session-scope only; rejected at user/org scope.
+   */
+  sharedToWorkstream?: boolean;
   stateSchema: ZodTypeAny;
   maxInstances?: number;
   eviction?: EvictionPolicy;
@@ -282,6 +290,13 @@ export function defineResourceCollection<
   if (config.flowIsolation === true && config.scope === "session") {
     throw new Error(
       `defineResourceCollection() rejects flowIsolation:true on session-scoped collections — sessions are intrinsically flow-bound`
+    );
+  }
+
+  if (config.sharedToWorkstream === true && config.scope !== "session") {
+    throw new Error(
+      `defineResourceCollection() rejects sharedToWorkstream:true on ${config.scope}-scoped collections — ` +
+        `${config.scope} scope already spans every session in a lineage`
     );
   }
 

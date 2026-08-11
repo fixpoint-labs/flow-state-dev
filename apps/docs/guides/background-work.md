@@ -85,7 +85,9 @@ const runs = first === undefined ? [] : await sessions.listSessionRequests(first
 
 A workstream's `id` is a session id, so every session read works on it, and a workstream that files work of its own has workstreams too.
 
-Having its own session is also what it costs you. A workstream keeps its own state, its own history, and its own session-scoped resources, and none of those are the parent conversation's. What the two do share is the user: user- and org-scoped data is the same data on both sides, because a workstream runs as the same user on the same flow. Anything narrower than that has to be handed over when the work starts, or reported back when it finishes.
+Having its own session is also what it costs you. A workstream keeps its own state, its own history, and its own session-scoped resources, and none of those are the parent conversation's. What the two share without asking is the user: user- and org-scoped data is the same data on both sides, because a workstream runs as the same user on the same flow.
+
+For anything narrower, hand it over as input when the work starts and report it back when the work finishes. A session-scoped resource has a second route: mark it `sharedToWorkstream` and the conversation and every workstream under it resolve one copy of it. Session state has no such route; it is private to each session either way. See [State vs Resources](/docs/resources/storage#session-scope-and-background-work).
 
 A task board is the usual way to start one. A board is a list of tasks plus a set of named workers that claim them. Wrap one of those workers in `{ worker, dispatch }` and its tasks go to a workstream instead of running in the request that claimed them:
 
@@ -117,7 +119,7 @@ Tasks are seeded here to keep the example in one piece. A task added later with 
 
 Two bounds are worth knowing before you reach for this.
 
-**The board has to be reachable from the child session.** The workstream settles its own task, and resource scope resolves against whichever session is running — so a session-scoped board hydrates empty inside a workstream and has nothing to settle. Scope a detached board to `user` or `org`.
+**The board has to be reachable from the child session.** The workstream settles its own task, and resource scope resolves against whichever session is running — so a session-scoped board hydrates empty inside a workstream and has nothing to settle. Give the collection `sharedToWorkstream: true` and the whole lineage settles against one ledger. `user` and `org` scope need nothing extra.
 
 **On serverless without a queue adapter, the work is bounded by the function.** Detached work runs inside the invocation that started it, so the function's maximum duration is the ceiling. Add a queue adapter and it moves to a worker process, where it isn't.
 

@@ -5,12 +5,12 @@
  * Content is stored as TEXT in a dedicated table, separate from scope record JSONB.
  */
 
-import type { ContentStore, ContentScopeType } from "@flow-state-dev/engine";
+import type { ContentStore, StorageScopeType } from "@flow-state-dev/engine";
 import type { QueryExecutor } from "./types";
 
 export function createPostgresContentStore(executor: QueryExecutor): ContentStore {
   return {
-    async get(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<string | undefined> {
+    async get(scopeType: StorageScopeType, scopeId: string, resourceKey: string): Promise<string | undefined> {
       const result = await executor.query(
         "SELECT content FROM resource_content WHERE scope_type = $1 AND scope_id = $2 AND resource_key = $3",
         [scopeType, scopeId, resourceKey]
@@ -18,7 +18,7 @@ export function createPostgresContentStore(executor: QueryExecutor): ContentStor
       return result.rows[0]?.content as string | undefined;
     },
 
-    async set(scopeType: ContentScopeType, scopeId: string, resourceKey: string, content: string): Promise<void> {
+    async set(scopeType: StorageScopeType, scopeId: string, resourceKey: string, content: string): Promise<void> {
       await executor.query(
         `INSERT INTO resource_content (scope_type, scope_id, resource_key, content)
          VALUES ($1, $2, $3, $4)
@@ -27,14 +27,14 @@ export function createPostgresContentStore(executor: QueryExecutor): ContentStor
       );
     },
 
-    async delete(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<void> {
+    async delete(scopeType: StorageScopeType, scopeId: string, resourceKey: string): Promise<void> {
       await executor.query(
         "DELETE FROM resource_content WHERE scope_type = $1 AND scope_id = $2 AND resource_key = $3",
         [scopeType, scopeId, resourceKey]
       );
     },
 
-    async getAll(scopeType: ContentScopeType, scopeId: string): Promise<Record<string, string>> {
+    async getAll(scopeType: StorageScopeType, scopeId: string): Promise<Record<string, string>> {
       const result = await executor.query(
         "SELECT resource_key, content FROM resource_content WHERE scope_type = $1 AND scope_id = $2",
         [scopeType, scopeId]
@@ -47,7 +47,7 @@ export function createPostgresContentStore(executor: QueryExecutor): ContentStor
     },
 
     async getByPrefix(
-      scopeType: ContentScopeType,
+      scopeType: StorageScopeType,
       scopeId: string,
       keyPrefix: string
     ): Promise<Record<string, string>> {
@@ -66,7 +66,7 @@ export function createPostgresContentStore(executor: QueryExecutor): ContentStor
       return entries;
     },
 
-    async deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void> {
+    async deleteAll(scopeType: StorageScopeType, scopeId: string): Promise<void> {
       await executor.query(
         "DELETE FROM resource_content WHERE scope_type = $1 AND scope_id = $2",
         [scopeType, scopeId]

@@ -21,7 +21,7 @@
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type {
   ResourceStateStore,
-  ContentScopeType,
+  StorageScopeType,
   ExpectedVersion,
   ResourceStateRow,
   SetResult,
@@ -35,7 +35,7 @@ type RawRow = { state: JsonObject; version: number | string; lifecycle: string }
 export function createPostgresResourceStateStore(executor: QueryExecutor): ResourceStateStore {
   /** Read the row and parse it into the shape the shared contract logic takes. */
   const readRow = async (
-    scopeType: ContentScopeType,
+    scopeType: StorageScopeType,
     scopeId: string,
     resourceKey: string
   ): Promise<ResourceStateRow | undefined> => {
@@ -127,7 +127,7 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
 
   return {
     async get(
-      scopeType: ContentScopeType,
+      scopeType: StorageScopeType,
       scopeId: string,
       resourceKey: string
     ): Promise<VersionedResourceState | undefined> {
@@ -137,7 +137,7 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
     },
 
     async set(
-      scopeType: ContentScopeType,
+      scopeType: StorageScopeType,
       scopeId: string,
       resourceKey: string,
       state: JsonObject,
@@ -216,7 +216,7 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
     },
 
     async delete(
-      scopeType: ContentScopeType,
+      scopeType: StorageScopeType,
       scopeId: string,
       resourceKey: string,
       expectedVersion: ExpectedVersion
@@ -288,7 +288,7 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
     },
 
     async getAll(
-      scopeType: ContentScopeType,
+      scopeType: StorageScopeType,
       scopeId: string
     ): Promise<Record<string, VersionedResourceState>> {
       const result = await executor.query(
@@ -307,7 +307,7 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
     },
 
     async getByPrefix(
-      scopeType: ContentScopeType,
+      scopeType: StorageScopeType,
       scopeId: string,
       keyPrefix: string
     ): Promise<Record<string, VersionedResourceState>> {
@@ -330,7 +330,7 @@ export function createPostgresResourceStateStore(executor: QueryExecutor): Resou
       return entries;
     },
 
-    async deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void> {
+    async deleteAll(scopeType: StorageScopeType, scopeId: string): Promise<void> {
       // Scope purge: one bulk lifecycle mark, retaining every version. Not a
       // DELETE — the retained versions are what stop a straggler from the
       // previous generation matching a row in the next one.

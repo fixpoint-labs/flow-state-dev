@@ -64,6 +64,16 @@ export interface DefineTaskCollectionOptions<
   /** Intrinsic scope the collection lives in — `"session"`, `"user"`, or `"org"`. */
   scope: ResourceScope;
   /**
+   * Give a `session`-scoped board ONE ledger across the session lineage
+   * (FIX-1068), so the Workstream a detached worker runs in settles against the
+   * same rows the dispatching session holds. Without it a session-scoped board
+   * hydrates empty inside a Workstream and the task cannot be settled.
+   *
+   * Session-scope only — `defineResourceCollection` rejects it at user/org
+   * scope, where the ledger already spans every session the principal touches.
+   */
+  sharedToWorkstream?: boolean;
+  /**
    * Schema for each task's `input` payload. Optional; defaults to
    * `z.unknown()`. This is the typed payload a worker receives, not the whole
    * task — the rest of the `Task` envelope is validated automatically.
@@ -99,6 +109,9 @@ export function defineTaskCollection<
     pattern: `${options.id}/**`,
     scope: options.scope,
     stateSchema: envelope,
+    ...(options.sharedToWorkstream !== undefined
+      ? { sharedToWorkstream: options.sharedToWorkstream }
+      : {}),
     ...(options.maxInstances !== undefined
       ? { maxInstances: options.maxInstances }
       : {}),

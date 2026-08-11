@@ -385,9 +385,10 @@ export function assertDetachedBoardSupported(options: {
   // **One condition, deliberately.** A session-scoped collection becomes
   // REACHABLE FROM ITS WORKSTREAM the moment it resolves to the lineage root
   // rather than to the running session, because parent and child then address
-  // the same rows. When a declaration can say that, this refusal narrows to
-  // "session-scoped AND not resolving to the lineage root" — a change to the
-  // predicate on this line, not to the shape of the guard.
+  // the same rows. `sharedToWorkstream` is the declaration that says exactly
+  // that, so the refusal is "session-scoped AND not resolving to the lineage
+  // root" — the flag is not an override of this rule, it is the thing the rule
+  // was always asking about.
   //
   // Reachable is all it becomes, and the word is chosen against the obvious
   // looser one: it says the child can FIND the row, not that the claim on it is
@@ -396,12 +397,13 @@ export function assertDetachedBoardSupported(options: {
   // child's first breath) applies to a lineage-rooted board exactly as it does
   // to a user- or org-scoped one. It is also the runner's own wording, so this
   // build-time refusal and the runtime stale-claim error name the same thing.
-  if (collection?.scope === "session") {
+  if (collection?.scope === "session" && collection.sharedToWorkstream !== true) {
     throw new Error(
       `[task-board] "${name}" declares detached workers (${declared}) on a session-scoped ` +
         `collection — a Workstream runs in its own session, so it would resolve an empty ledger ` +
-        `and never find the row it was dispatched for. Declare the collection \`scope: "user"\` ` +
-        `or \`scope: "org"\` so the child can address the same rows the board claimed.`
+        `and never find the row it was dispatched for. Add \`sharedToWorkstream: true\` so the ` +
+        `ledger resolves to the lineage root and the child addresses the same rows the board ` +
+        `claimed, or declare the collection \`scope: "user"\` or \`scope: "org"\`.`
     );
   }
 
