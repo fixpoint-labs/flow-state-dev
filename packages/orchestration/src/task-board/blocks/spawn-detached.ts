@@ -113,11 +113,18 @@ export function createSpawnDetached(options: SpawnDetachedOptions) {
         coordinateKey: coordKey,
         taskId: claim.taskId,
         // The claim's identity, carried so the Workstream's start gate can
-        // VERIFY it against the row — not so it can trust it. Both fields come
+        // VERIFY it against the row — not so it can trust it. Every field comes
         // off the ticket the board minted from the row it claimed, never off
         // anything a caller supplied.
         attempt: claim.attempt,
         createdAt: claim.createdAt,
+        // Spread conditionally, because the payload beside it has to clear a
+        // gate that rejects a present key holding `undefined` by name. Absent
+        // means the claimed row carried no nonce, which the start gate reads as
+        // "cannot tell" rather than as a mismatch.
+        ...(claim.incarnationId !== undefined
+          ? { incarnationId: claim.incarnationId }
+          : {}),
         payload,
       };
 

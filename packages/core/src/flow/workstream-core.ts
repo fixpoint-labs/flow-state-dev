@@ -49,12 +49,16 @@ import type { WorkstreamBindings } from "../types/workstream";
  * supplies identity. A task author names a topic and an assignee and nothing
  * here.
  *
- * `attempt` and `createdAt` are the claim's identity, and they are carried so
- * the runner's start gate can verify them against the row rather than trust
- * them: they say *which* claim this dispatch believes it is running, and the
- * gate decides whether that is still true. `createdAt` is what makes it an
- * identity check rather than a counter check — a task deleted and recreated
- * under the same id inside the claim→spawn window cannot pass one.
+ * `attempt`, `createdAt` and `incarnationId` are the claim's identity, and they
+ * are carried so the runner's start gate can verify them against the row rather
+ * than trust them: they say *which* claim this dispatch believes it is running,
+ * and the gate decides whether that is still true.
+ *
+ * `incarnationId` is what makes it an identity check rather than a counter
+ * check — a task deleted and recreated under the same id inside the
+ * claim→spawn window resets `attempts`, and a replacement created in the same
+ * millisecond carries the same `createdAt`, so neither of the other two tells
+ * the two rows apart.
  */
 export type WorkstreamDispatchInput = {
   /** Which board's ledger this dispatch settles against. */
@@ -67,6 +71,16 @@ export type WorkstreamDispatchInput = {
   readonly attempt: number;
   /** The claimed row's creation stamp. Verified, never trusted. */
   readonly createdAt: number;
+  /**
+   * The claimed row's incarnation nonce — which *instance* of this task id the
+   * dispatch was addressed to. Verified, never trusted.
+   *
+   * Optional, and it stays optional: an envelope persisted before this field
+   * shipped has none, and a row written by a `TaskCollectionRef` that maintains
+   * no provenance has none either. A gate compares it only when both sides
+   * carry one (BP-030).
+   */
+  readonly incarnationId?: string;
   /** The materialized worker input, packed at claim time. */
   readonly payload: unknown;
 };
@@ -85,6 +99,11 @@ export const workstreamDispatchInputSchema = z.object({
   taskId: z.string().min(1),
   attempt: z.number().int().nonnegative(),
   createdAt: z.number(),
+  // Optional so an envelope enqueued by the previous version still parses
+  // rather than failing at the boundary during a rolling deploy (BP-030). The
+  // gate treats absence as "cannot tell", so a legacy envelope keeps exactly
+  // the protection it had.
+  incarnationId: z.string().optional(),
   payload: z.unknown(),
 });
 

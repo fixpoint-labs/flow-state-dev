@@ -38,9 +38,16 @@
  * honour it. It is supplied by the board from its own detached declarations,
  * and is `undefined` for every board that declares none — an inline board's
  * `in_progress` row still holds the drain open, unchanged and deliberately so.
- * What a detached row is NOT is claimable: `hasClaimableTask` reads the
- * substrate's lease, so a handed-off row stays invisible to the wake test until
- * its lease actually lapses, which is when it genuinely is recoverable work.
+ *
+ * **The exclusion holds only while the row's lease does.** `runsElsewhere` says
+ * where a row's work belongs; the lease says whether anyone is on it, and a
+ * claimant that died before its child ever started leaves a row that is
+ * detached by routing and abandoned in fact. So `countWaitable` requires both,
+ * and a lapsed detached row goes back to holding the drain open until it is
+ * reclaimed. That also keeps this classifier agreeing with the wake test either
+ * side of the lapse: `hasClaimableTask` reads the same lease, so before the
+ * lapse a handed-off row is invisible to both, and after it the wake test stirs
+ * a worker into an exit check that no longer calls the board drained.
  *
  * The exit check maps a non-`continue` verdict straight onto its `reason`. The
  * wake test needs one thing more: a board can hold newly claimable work while
@@ -65,9 +72,13 @@ export interface BoardQuiescenceOptions {
   /** `onIdle: "wait"` only — the caller's own termination test. */
   shouldExit?: (collection: TaskCollectionRef) => boolean;
   /**
-   * Rows a Workstream is running rather than this drain (FIX-982). Omitted by
-   * every board that declares nothing detached, which is what keeps this
-   * classifier's answer for those boards bit-for-bit what it was.
+   * Rows whose work is *routed* to a Workstream rather than this drain
+   * (FIX-982). Omitted by every board that declares nothing detached, which is
+   * what keeps this classifier's answer for those boards bit-for-bit what it
+   * was.
+   *
+   * Routing alone does not excuse a row from the count — the row's lease has to
+   * still be held. See `countWaitable` in `shared.ts`.
    *
    * Passed to **both** callers by the board that built them, never defaulted
    * per call site — the two answering this question differently is the exact

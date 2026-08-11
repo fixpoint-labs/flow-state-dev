@@ -23,6 +23,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createSequencerBackedTaskCollection,
+  DEFAULT_LEASE_DURATION_MS,
   type TaskCollectionRef,
 } from "../../src/tasks";
 import { boardQuiescence, type BoardQuiescence } from "../../src/task-board/quiescence";
@@ -188,15 +189,22 @@ async function boardWithRows(
     assignee?: string;
     /** Omitted leaves the row `pending`. */
     drive?: "claim" | "park";
-  }[]
+  }[],
+  /**
+   * Where the collection's clock sits when the classifier reads it. Defaults to
+   * the instant the rows were built, so every lease taken above is still live;
+   * push it past a lease to model a worker that stopped renewing.
+   */
+  readAt: () => number = () => BOARD_NOW
 ): Promise<TaskCollectionRef> {
+  let now = BOARD_NOW;
   const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({
     tasks: {},
   });
   const collection = createSequencerBackedTaskCollection({
     collectionId: "tasks",
     sequencer,
-    now: () => BOARD_NOW,
+    now: () => now,
   });
   for (const spec of specs) {
     await collection.addTask({
@@ -210,8 +218,15 @@ async function boardWithRows(
     await collection.claim("w1", { eligibility: (task) => task.id === spec.id });
     if (spec.drive === "park") await collection.awaitReview(spec.id);
   }
+  now = readAt();
   return collection;
 }
+
+/**
+ * A clock far enough past every lease this file takes that no row can still be
+ * held. `DEFAULT_LEASE_DURATION_MS` is the span the claim write stamps.
+ */
+const AFTER_EVERY_LEASE = () => BOARD_NOW + DEFAULT_LEASE_DURATION_MS + 1;
 
 /**
  * A row handed to a Workstream must not hold its launching request open
@@ -308,6 +323,44 @@ describe("boardQuiescence - work handed to a Workstream", () => {
 
     expect(boardQuiescence(collection, options)).toBe("continue");
   });
+
+  it.each(onIdles)(
+    "onIdle %s: a detached row nobody is holding any more is this drain's work again",
+    async (onIdle) => {
+      // The exclusion is "running elsewhere", and `runsElsewhere` alone cannot
+      // say that: it reads the board's declarations and the row's assignee, and
+      // both are just as true of a row NOBODY is running. A claimant that died
+      // between `claim()` and the child's first breath leaves exactly this row
+      // — `in_progress`, detached assignee, no worker anywhere — and so does a
+      // child that was accepted and then died.
+      //
+      // What it costs is the worker loop's exit: `claimTask` runs before
+      // `checkBoard`, so a worker parked in `idleWait` when the deadline passes
+      // wakes on the now-claimable row and hits `checkBoard` NEXT — which,
+      // reading the row as still running elsewhere, ends the loop before it can
+      // circle back and reclaim it. The board reports `drained` holding a
+      // claimed row nothing will settle.
+      //
+      // No persisted "the hand-off was accepted" mark distinguishes those
+      // states, whichever side of the spawn it is written on: before, and it is
+      // present for a hand-off that never happened; after, and a crash between
+      // acceptance and the write leaves it absent for one that did — and it
+      // says nothing at all about a child that started and then died. The lease
+      // is the fact that EXPIRES, so it is the one that can answer.
+      const collection = await boardWithRows(
+        [{ id: "a", drive: "claim" }],
+        AFTER_EVERY_LEASE
+      );
+      const options = { onIdle, runsElsewhere: allDetached };
+
+      expect(boardQuiescence(collection, options)).toBe("continue");
+      // ...and it is reclaimable, so the sleeper must be stirred to take it —
+      // which is also the drift guard. `hasClaimableTask` reads this same
+      // lapsed lease, so a classifier that ignored it would wake a worker and
+      // then tell it the board was drained.
+      expect(whenBoardClaimable(collection, options)([])).toBe(true);
+    }
+  );
 
   it("does not report a handed-off board as blocked", async () => {
     // `blocked` means "nothing is producing state changes and nothing can be

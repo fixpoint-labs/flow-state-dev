@@ -16,9 +16,11 @@ Reading a conversation's jobs takes two calls. Ask the conversation for its
 jobs, then ask any one job for its history.
 
 Starting one is not something the HTTP API does. A job's session is created from
-inside a running request, through `ctx.requestHost.startDetached`, and the
-shipped HTTP router wires no start operation, so that call refuses
-`no-start-operation` there.
+inside a running request, through `ctx.requestHost.startDetached`. The shipped
+HTTP router supplies the start operation that call needs, so a job started this
+way runs on the same server that accepted the request — no extra wiring. Supply
+your own `requestHost.startOperation` and yours is used instead, which is how a
+deployment sends background work to a separate worker tier.
 
 ## Listing a conversation's jobs
 
