@@ -150,15 +150,15 @@ export async function handleGetSessionState(
   // `sharedToWorkstream` taken from the lineage root instead — the same view a
   // block resolves through `ctx.resources`.
   const [sessionContent, userContent, orgContent] = await Promise.all([
-    readSessionScopeWithLineage(session, flow.resources, ctx.tenantId, (scopeId) =>
-      ctx.stores.content.getAll("session", scopeId)
+    readSessionScopeWithLineage(session, flow.resources, ctx.tenantId, (scopeType, scopeId) =>
+      ctx.stores.content.getAll(scopeType, scopeId)
     ),
     mergeScopeReads(userScopeIds.map((id) => ctx.stores.content.getAll("user", id))),
     mergeScopeReads(orgScopeIds.map((id) => ctx.stores.content.getAll("org", id)))
   ]);
   const [sessionState, userState, orgState] = await Promise.all([
-    readSessionScopeWithLineage(session, flow.resources, ctx.tenantId, (scopeId) =>
-      ctx.stores.resourceState.getAll("session", scopeId).then(toBareStates)
+    readSessionScopeWithLineage(session, flow.resources, ctx.tenantId, (scopeType, scopeId) =>
+      ctx.stores.resourceState.getAll(scopeType, scopeId).then(toBareStates)
     ),
     mergeScopeReads(
       userScopeIds.map((id) => ctx.stores.resourceState.getAll("user", id).then(toBareStates))

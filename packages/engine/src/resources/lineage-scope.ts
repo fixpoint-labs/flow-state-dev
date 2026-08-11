@@ -16,6 +16,7 @@
 import type { ResourceCollectionConfig } from "@flow-state-dev/core/types";
 import { getPatternPrefix } from "@flow-state-dev/core/types";
 import { resourceStorageKeys } from "./storage-keys";
+import type { StorageScopeType } from "../stores/types";
 
 /** The session-record fields lineage addressing reads. */
 export type LineageSession = {
@@ -86,7 +87,30 @@ export function sessionKeyScopeId(
  * names a different bucket (see `resolveLineageScopeId`).
  */
 function lineageScopeId(session: LineageSession): string {
-  return session.lineageId ?? session.id;
+  // Prefixed for the same reason `createExecutionContext` prefixes it: the
+  // fallback must never equal the session key, or unshared resources become
+  // indistinguishable from lineage ones.
+  return session.lineageId ?? `lin_${session.id}`;
+}
+
+/**
+ * The scope kind a resolved session-scope address stores under (FIX-1068).
+ *
+ * The lineage bucket is not in the session namespace: session scope ids are
+ * caller-chosen and nothing validates them, so a lineage address sharing that
+ * space would be one a caller could occupy by picking the right session id.
+ * Its own scope kind makes that unaddressable rather than merely unguessable.
+ */
+export function sessionStorageScope(
+  session: LineageSession,
+  scopeId: string
+): StorageScopeType {
+  // No exception for the legacy fallback, where the lineage id happens to equal
+  // the session key: `createExecutionContext` puts that bucket in the lineage
+  // namespace too, and the two paths reading one address differently is the
+  // failure this module exists to prevent. Same id, different namespace, so
+  // shared and unshared rows stay apart even there.
+  return scopeId === lineageScopeId(session) ? "lineage" : "session";
 }
 
 /**
@@ -184,12 +208,12 @@ export async function readSessionScopeWithLineage<T>(
   session: LineageSession,
   flowResources: unknown,
   tenantId: string | undefined,
-  readAll: (scopeId: string) => Promise<Record<string, T>>
+  readAll: (scopeType: StorageScopeType, scopeId: string) => Promise<Record<string, T>>
 ): Promise<Record<string, T>> {
   const { buckets, anyShared } = sessionOwnership(flowResources);
   // Nothing shared means one bucket, which is every flow that never asked for
   // this. The second read below is not paid for by flows that don't use it.
-  if (!anyShared) return readAll(session.id);
+  if (!anyShared) return readAll("session", session.id);
 
   // Ownership, not "matches some shared prefix" — a private declaration beside
   // a shared one keeps the keys it owns.
@@ -200,8 +224,8 @@ export async function readSessionScopeWithLineage<T>(
   // its session key either. Reading only `session.id` there would return an
   // empty shared resource for the very session that owns it.
   const [own, atLineage] = await Promise.all([
-    readAll(session.id),
-    readAll(lineageScopeId(session))
+    readAll("session", session.id),
+    readAll(sessionStorageScope(session, lineageScopeId(session)), lineageScopeId(session))
   ]);
 
   const merged: Record<string, T> = {};

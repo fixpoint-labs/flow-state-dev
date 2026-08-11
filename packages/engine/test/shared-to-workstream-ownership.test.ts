@@ -288,7 +288,7 @@ describe("FIX-1068: collection routes address the key's owner, not the route's d
     await stores.resourceState.set("session", "s_child", "tasks/meta/a", { note: "child meta" }, "any");
     // A genuinely shared row, so the fix has to stay correct rather than just
     // stop reading the root.
-    await stores.resourceState.set("session", lineage, "tasks/open", { note: "shared row" }, "any");
+    await stores.resourceState.set("lineage", lineage, "tasks/open", { note: "shared row" }, "any");
     return { stores, registry };
   }
 

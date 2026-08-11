@@ -197,11 +197,11 @@ export async function getPersistedData(
     // root, so the scope this session reads is its own rows with the shared
     // keys taken from there — the same view execution resolves.
     const [resources, content] = await Promise.all([
-      readSessionScopeWithLineage(session, flow.resources, tenantId, (scopeId) =>
-        ctx.stores.resourceState.getAll("session", scopeId).then(toBareStates)
+      readSessionScopeWithLineage(session, flow.resources, tenantId, (scopeType, scopeId) =>
+        ctx.stores.resourceState.getAll(scopeType, scopeId).then(toBareStates)
       ),
-      readSessionScopeWithLineage(session, flow.resources, tenantId, (scopeId) =>
-        ctx.stores.content.getAll("session", scopeId)
+      readSessionScopeWithLineage(session, flow.resources, tenantId, (scopeType, scopeId) =>
+        ctx.stores.content.getAll(scopeType, scopeId)
       )
     ]);
     return { resources, content };

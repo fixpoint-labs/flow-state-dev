@@ -699,11 +699,40 @@ function validateFlowResources(
  */
 function mergeFlowResourceMap(
   flowResources: AnyResources,
-  blockResources: DeclaredResources | undefined
+  blockResources: DeclaredResources | undefined,
+  flowKind: string
 ): DeclaredResources | undefined {
   if (flowResources === undefined && blockResources === undefined) return undefined;
   if (flowResources === undefined) return { ...blockResources };
   if (blockResources === undefined) return { ...flowResources };
+
+  // An override that silently changes WHERE a resource stores is never what an
+  // author meant (FIX-1068). `sharedToWorkstream` decides whether a
+  // session-scoped resource resolves against the running session or against the
+  // lineage, and a block that declared it — a task board binding its ledger, for
+  // instance — built its durability on that answer. Overriding the flag through
+  // an accessor-name collision leaves the block claiming rows in one place while
+  // the work that must read them looks in another: a parent claims a task in its
+  // own session and the Workstream resolves an empty ledger, which is a silent
+  // loop rather than an error. Refused by name, so the author can see which two
+  // declarations disagree.
+  for (const [accessor, blockEntry] of Object.entries(blockResources)) {
+    const flowEntry = (flowResources as DeclaredResources)[accessor];
+    if (flowEntry === undefined || flowEntry === blockEntry) continue;
+    const blockShared = (blockEntry as { sharedToWorkstream?: boolean }).sharedToWorkstream === true;
+    const flowShared = (flowEntry as { sharedToWorkstream?: boolean }).sharedToWorkstream === true;
+    if (blockShared === flowShared) continue;
+    throw new Error(
+      `Resource "${accessor}" in flow "${flowKind}": the flow-level declaration sets ` +
+        `sharedToWorkstream: ${flowShared}, but a block declared the same accessor with ` +
+        `sharedToWorkstream: ${blockShared}. A flow-level declaration overrides a block's, so ` +
+        `this would move the resource between the running session and the lineage without the ` +
+        `block knowing — a detached task board would claim rows in one place while its ` +
+        `Workstream reads an empty ledger and loops. Make the two agree, or give one a ` +
+        `distinct accessor name.`
+    );
+  }
+
   // Block resources first, flow overrides on top.
   return { ...blockResources, ...flowResources };
 }
@@ -940,7 +969,7 @@ function createFlowInstance(
       );
     }
   }
-  const mergedResources = mergeFlowResourceMap(flowOwnResources, blockResources);
+  const mergedResources = mergeFlowResourceMap(flowOwnResources, blockResources, kind);
 
   if (mergedResources !== undefined) {
     validateFlowResources(mergedResources, kind, isolateUserState, isolateOrgState);

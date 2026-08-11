@@ -152,7 +152,7 @@ describe("FIX-1068: sharedToWorkstream resources across a session lineage", () =
     // Physically one row, at the lineage's address — and at neither session's
     // own key, which is what keeps it out of reach of a recreated id.
     expect(
-      toBareStates(await stores.resourceState.getAll("session", lineageAddr("s_root")))
+      toBareStates(await stores.resourceState.getAll("lineage", lineageAddr("s_root")))
     ).toHaveProperty("board");
     expect(
       toBareStates(await stores.resourceState.getAll("session", "s_root"))
@@ -221,11 +221,11 @@ describe("FIX-1068: sharedToWorkstream resources across a session lineage", () =
 
     // One row for the lineage — not one per layer.
     expect(
-      toBareStates(await stores.resourceState.getAll("session", lineageAddr("s_root")))
+      toBareStates(await stores.resourceState.getAll("lineage", lineageAddr("s_root")))
     ).toHaveProperty("board");
     for (const id of ["s_child", "s_grandchild"]) {
       expect(
-        toBareStates(await stores.resourceState.getAll("session", lineageAddr(id)))
+        toBareStates(await stores.resourceState.getAll("lineage", lineageAddr(id)))
       ).not.toHaveProperty("board");
     }
   });
@@ -251,7 +251,7 @@ describe("FIX-1068: sharedToWorkstream resources across a session lineage", () =
     expect(seen.map((t) => t.state.title)).toEqual(["review"]);
 
     const atLineage = toBareStates(
-      await stores.resourceState.getByPrefix("session", lineageAddr("s_root"), "tasks/")
+      await stores.resourceState.getByPrefix("lineage", lineageAddr("s_root"), "tasks/")
     );
     expect(Object.keys(atLineage)).toContain("tasks/t1");
   });
@@ -274,10 +274,10 @@ describe("FIX-1068: sharedToWorkstream resources across a session lineage", () =
     // Its own lineage, not its parent's — two rows at two addresses, and the
     // parent's is untouched by the child's write.
     expect(
-      toBareStates(await stores.resourceState.getAll("session", "s_legacy")).board
+      toBareStates(await stores.resourceState.getAll("lineage", "lin_s_legacy")).board
     ).toEqual({ note: "legacy" });
     expect(
-      toBareStates(await stores.resourceState.getAll("session", lineageAddr("s_root"))).board
+      toBareStates(await stores.resourceState.getAll("lineage", lineageAddr("s_root"))).board
     ).toEqual({ note: "parent" });
   });
 
@@ -299,7 +299,7 @@ describe("FIX-1068: sharedToWorkstream resources across a session lineage", () =
     expect(atSessionKey).toHaveProperty("scratch");
 
     expect(
-      toBareStates(await stores.resourceState.getAll("session", lineageAddr("s_solo")))
+      toBareStates(await stores.resourceState.getAll("lineage", lineageAddr("s_solo")))
     ).toHaveProperty("board");
   });
 
@@ -352,8 +352,8 @@ describe("FIX-1068: sharedToWorkstream resources across a session lineage", () =
 
     // Both halves of the instance landed at the lineage address, together.
     const addr = lineageAddr("s_root");
-    expect(await stores.resourceState.get("session", addr, "tasks/t1")).toBeDefined();
-    expect(await stores.content.get("session", addr, "tasks/t1")).toBe("the body");
+    expect(await stores.resourceState.get("lineage", addr, "tasks/t1")).toBeDefined();
+    expect(await stores.content.get("lineage", addr, "tasks/t1")).toBe("the body");
     expect(await stores.resourceState.get("session", "s_child", "tasks/t1")).toBeUndefined();
 
     // And listing from either session returns it.

@@ -38,6 +38,7 @@ import {
 import {
   readSessionScopeWithLineage,
   sessionKeyScopeId,
+  sessionStorageScope,
 } from "../resources/lineage-scope";
 
 type ResourceRouteContext = {
@@ -257,7 +258,7 @@ export async function handleCreateCollectionItem(
   // create-if-absent, so a loser returns below without ever reaching
   // `ContentStore`, and its 409 is terminal — never retried into an overwrite.
   const inserted = await ctx.stores.resourceState.set(
-    "session",
+    sessionStorageScope(session, scopeId),
     scopeId,
     storageKey,
     initialState,
@@ -292,7 +293,7 @@ export async function handleCreateCollectionItem(
   // All three are pinned by tests in `resource-collection-routes.test.ts`.
   // Client-facing guidance: `apps/docs` -> resources / client access.
   if (content !== undefined) {
-    await ctx.stores.content.set("session", scopeId, storageKey, content);
+    await ctx.stores.content.set(sessionStorageScope(session, scopeId), scopeId, storageKey, content);
   }
 
   return jsonResponse(201, { topic: topic.trim() });
@@ -353,13 +354,13 @@ export async function handleUpdateResourceContent(
   // FIX-1068: addressed by the key's owner, so read and write land where a
   // block would rather than where the named route would.
   const scopeId = sessionKeyScopeId(session, flow.resources, storageKey, ctx.tenantId);
-  const existing = await ctx.stores.resourceState.get("session", scopeId, storageKey);
+  const existing = await ctx.stores.resourceState.get(sessionStorageScope(session, scopeId), scopeId, storageKey);
   if (existing === undefined) {
     return jsonResponse(404, { error: `Item "${route.topic}" not found in "${route.ref}"` });
   }
 
   // Write to ContentStore (the canonical content location during execution).
-  await ctx.stores.content.set("session", scopeId, storageKey, content);
+  await ctx.stores.content.set(sessionStorageScope(session, scopeId), scopeId, storageKey, content);
 
   return jsonResponse(200, { ref: route.ref, topic: route.topic });
 }
@@ -468,10 +469,10 @@ export async function handleListCollectionState(
     // sits under a shared one, so this is the same lineage-merged read the
     // execution path performs — per-key ownership, not one address for the lot.
     persisted = toBareStates(
-      await readSessionScopeWithLineage(session, flow.resources, ctx.tenantId, (scopeId) =>
+      await readSessionScopeWithLineage(session, flow.resources, ctx.tenantId, (scopeType, scopeId) =>
         keyPrefix
-          ? ctx.stores.resourceState.getByPrefix("session", scopeId, `${keyPrefix}/`)
-          : ctx.stores.resourceState.getAll("session", scopeId)
+          ? ctx.stores.resourceState.getByPrefix(scopeType, scopeId, `${keyPrefix}/`)
+          : ctx.stores.resourceState.getAll(scopeType, scopeId)
       )
     );
   } else {
@@ -567,7 +568,7 @@ export async function handleGetCollectionItemState(
   } else if (scope === "session") {
     value = toBareState(
       await ctx.stores.resourceState.get(
-        "session",
+        sessionStorageScope(session, sessionKeyScopeId(session, flow.resources, storageKey, ctx.tenantId)),
         sessionKeyScopeId(session, flow.resources, storageKey, ctx.tenantId),
         storageKey
       )
@@ -749,9 +750,9 @@ export async function handleDeleteCollectionItem(
   // stale client view still reads the live row here and removes it. A
   // caller-supplied precondition is separate surface (FIX-1006).
   const scopeId = sessionKeyScopeId(session, flow.resources, storageKey, ctx.tenantId);
-  const existing = await ctx.stores.resourceState.get("session", scopeId, storageKey);
+  const existing = await ctx.stores.resourceState.get(sessionStorageScope(session, scopeId), scopeId, storageKey);
   const removed = await ctx.stores.resourceState.delete(
-    "session",
+    sessionStorageScope(session, scopeId),
     scopeId,
     storageKey,
     existing?.version ?? 0
@@ -766,7 +767,7 @@ export async function handleDeleteCollectionItem(
   // around: a recreation landing between these two statements loses its content
   // to this delete. `ContentStore` is last-write-wins by decision, so no state
   // predicate fences it, and closing it is cross-record atomicity (FIX-854).
-  await ctx.stores.content.delete("session", scopeId, storageKey);
+  await ctx.stores.content.delete(sessionStorageScope(session, scopeId), scopeId, storageKey);
 
   return jsonResponse(200, { ref: route.ref, topic: route.topic });
 }

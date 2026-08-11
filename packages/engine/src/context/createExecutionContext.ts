@@ -680,7 +680,12 @@ export async function createExecutionContext<
   // its own lineage, keyed by its session storage key — safe because a recreated
   // session always gets a record that carries the field, so two records can
   // never both land on one fallback id (BP-030).
-  const lineageId = sessionRecord.lineageId ?? sessionKey;
+  // Prefixed, so the fallback can never EQUAL the session key. The storage
+  // scope is decided by comparing a resolved address against this value, and if
+  // an unstamped session's lineage id were its session key the two would be
+  // indistinguishable — routing unshared resources into the lineage namespace
+  // along with the shared ones.
+  const lineageId = sessionRecord.lineageId ?? `lin_${sessionKey}`;
 
   const resolvedOrgKey =
     resolvedOrgId !== undefined
@@ -1141,7 +1146,7 @@ export async function createExecutionContext<
   ): Promise<Record<string, VersionedResourceState>> => {
     const groups = partitionConfigsByScopeId(scope, configs);
     const readState = (id: string, sub: Record<string, ResourceConfig | ResourceCollectionConfig>) =>
-      loadDeclaredResourceState(stores.resourceState, scope, id, sub);
+      loadDeclaredResourceState(stores.resourceState, storageScopeOf(scope, id), id, sub);
     const results = await Promise.all(
       [...groups].map(async ([scopeId, sub]) =>
         adoptionFallback(
@@ -1162,7 +1167,7 @@ export async function createExecutionContext<
   ): Promise<Record<string, string>> => {
     const groups = partitionConfigsByScopeId(scope, configs);
     const readContent = (id: string, sub: Record<string, ResourceConfig | ResourceCollectionConfig>) =>
-      loadDeclaredScopeContent(stores.content, scope, id, sub);
+      loadDeclaredScopeContent(stores.content, storageScopeOf(scope, id), id, sub);
     const results = await Promise.all(
       [...groups].map(async ([scopeId, sub]) =>
         adoptionFallback(
@@ -1471,8 +1476,8 @@ export async function createExecutionContext<
           if (storageKey in stateRef.current) return;
           const started = Date.now();
           const [row, content] = await Promise.all([
-            stores.resourceState.get(scope, scopeId, storageKey),
-            stores.content.get(scope, scopeId, storageKey)
+            stores.resourceState.get(storageScopeOf(scope, scopeId), scopeId, storageKey),
+            stores.content.get(storageScopeOf(scope, scopeId), scopeId, storageKey)
           ]);
           durationMs = Date.now() - started;
           fetched = true;
@@ -1507,8 +1512,8 @@ export async function createExecutionContext<
           // fetched by prefix too, so a broad prefix sweeps up keys a narrower
           // sibling owns at a different address.
           const [rawRows, rawContent] = await Promise.all([
-            stores.resourceState.getByPrefix(scope, scopeId, keyPrefix),
-            stores.content.getByPrefix(scope, scopeId, keyPrefix)
+            stores.resourceState.getByPrefix(storageScopeOf(scope, scopeId), scopeId, keyPrefix),
+            stores.content.getByPrefix(storageScopeOf(scope, scopeId), scopeId, keyPrefix)
           ]);
           const rows = retainOwnedKeys(scope, scopeId, rawRows);
           const content = retainOwnedKeys(scope, scopeId, rawContent);
@@ -1591,8 +1596,8 @@ export async function createExecutionContext<
         // one bucket returns keys a narrower sibling owns at another — seeding
         // those here would shadow the child-owned row for the rest of the request.
         const [rawState, rawContent] = await Promise.all([
-          loadDeclaredResourceState(stores.resourceState, scope, scopeId, subConfig),
-          loadDeclaredScopeContent(stores.content, scope, scopeId, subConfig)
+          loadDeclaredResourceState(stores.resourceState, storageScopeOf(scope, scopeId), scopeId, subConfig),
+          loadDeclaredScopeContent(stores.content, storageScopeOf(scope, scopeId), scopeId, subConfig)
         ]);
         const stateSeed = retainOwnedKeys(scope, scopeId, rawState);
         const contentSeed = retainOwnedKeys(scope, scopeId, rawContent);
@@ -1776,8 +1781,8 @@ export async function createExecutionContext<
             intent,
             signal: options.backgroundSignal,
             persist: (next, expectedVersion) =>
-              stores.resourceState.set(scope, scopeId, key, next, expectedVersion),
-            reread: () => stores.resourceState.get(scope, scopeId, key)
+              stores.resourceState.set(storageScopeOf(scope, scopeId), scopeId, key, next, expectedVersion),
+            reread: () => stores.resourceState.get(storageScopeOf(scope, scopeId), scopeId, key)
           });
         } catch (err) {
           // A lost create still taught us something: the store reported the
@@ -1839,7 +1844,7 @@ export async function createExecutionContext<
         // only re-delete something it has already been told it does not own.
         const expectedVersion = versionRef.current[key] ?? 0;
         const result = await stores.resourceState.delete(
-          scope,
+          storageScopeOf(scope, scopeId),
           scopeId,
           key,
           expectedVersion
@@ -1903,14 +1908,14 @@ export async function createExecutionContext<
         const scopeId = resolveResourceStorageScopeId(scope, key);
         if (scopeId === undefined) return;
         if (contentRef.current[key] === content) return;
-        await stores.content.set(scope, scopeId, key, content);
+        await stores.content.set(storageScopeOf(scope, scopeId), scopeId, key, content);
         contentRef.current[key] = content;
       },
       deleteResourceContentKey: async (key: string): Promise<void> => {
         const scopeId = resolveResourceStorageScopeId(scope, key);
         // Load-state check, as in `deleteResourceKey` above.
         if (scopeId === undefined || !(key in contentRef.current)) return;
-        await stores.content.delete(scope, scopeId, key);
+        await stores.content.delete(storageScopeOf(scope, scopeId), scopeId, key);
         delete contentRef.current[key];
         deletedContentKeys[scope].add(key);
       }

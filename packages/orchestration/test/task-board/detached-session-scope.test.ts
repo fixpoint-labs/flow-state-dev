@@ -132,7 +132,17 @@ describe("FIX-1068: session-scoped detached boards", () => {
       updatedAt: ts,
       journal: []
     };
-    await stores.session.set("s_parent", { ...base, id: "s_parent" } as SessionRecord, "any");
+    // Both records carry the SAME minted lineage — which is exactly the state
+    // `startDetached` writes (it copies the parent's id onto the child, pinned
+    // by request-host-lineage-root.test.ts). Seeding it here keeps this test on
+    // its own subject: given a correctly stamped Workstream, does the board's
+    // ledger actually resolve across the two sessions.
+    const LINEAGE = "lin_shared";
+    await stores.session.set(
+      "s_parent",
+      { ...base, id: "s_parent", lineageId: LINEAGE } as SessionRecord,
+      "any"
+    );
     // The child a detached spawn would create: same flow kind, parented to the
     // conversation, and carrying its lineage root.
     await stores.session.set(
@@ -141,7 +151,7 @@ describe("FIX-1068: session-scoped detached boards", () => {
         ...base,
         id: "ws_child",
         parentSessionId: "s_parent",
-        lineageRootSessionId: "s_parent"
+        lineageId: LINEAGE
       } as SessionRecord,
       "any"
     );
