@@ -87,23 +87,31 @@ Every other value is how the job's last run ended:
 
 | Value | Meaning |
 |---|---|
-| `completed` | The run finished |
-| `failed` | The run ended with an error |
+| `completed` | The run finished. Not the same as the work succeeding |
+| `failed` | The run itself ended with an error. A worker error doesn't always reach it |
 | `aborted` | Cancelled |
 | `incomplete` | Stopped short of finishing, usually on a budget |
 
-`completed` says the run finished, not that the work came out right. A job doing
-a task board's work runs that board's worker, and a worker that throws always
-marks its own task `errored`. What that does to the run around it is the board's
-`onError` setting. On the default, `"skip"`, the run finishes and the job reads
+A job doing a task board's work runs that board's worker, and a worker that
+throws records the failure on its own task. What that does to the run around it
+is the board's
+[`onError`](../orchestration/task-board.md#concurrency-and-error-handling)
+setting. On the default, `"skip"`, the run finishes and the job reads
 `completed`. On `"fail"` the error propagates and the job reads `failed`.
 
 So a board left on the default reports a job that succeeded for work that broke.
-The task carries the failure in both cases, which makes the board the thing to
-watch when the question is whether the work came out right, and the job's status
-the thing to watch when the question is whether anything is still running. See
-[Concurrency and error
-handling](../orchestration/task-board.md#concurrency-and-error-handling).
+The task carries the failure under either setting, which makes the board the
+thing to watch when the question is whether the work came out right, and the
+job's status the thing to watch when the question is whether anything is still
+running. A failed task reads `errored`, with the message in its [`error`
+field](../orchestration/task-substrate.md#the-task-record).
+
+That write goes through the worker's claim on the task, so it lands only while
+the task is still the worker's to write. One cancelled in the meantime, or
+completed by the worker itself earlier in the run, or handed to another worker
+after the claim lapsed, keeps the status it already has and records nothing. See
+[Recording a result that may no longer
+apply](../orchestration/task-substrate.md#recording-a-result-that-may-no-longer-apply).
 
 A job with no runs yet has no `status` field at all. Absence means "nothing has
 run", which is different from any of the values above.
