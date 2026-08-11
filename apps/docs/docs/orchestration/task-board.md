@@ -232,7 +232,7 @@ A delegation board catches a bad assignee earlier than that. Its roster is the s
 - `maxTotalRetries` (default `50`) — how many failure retries the board may authorize in total, across every task. See [Bounding the retries](#bounding-the-retries).
 - `maxIterations` — safety cap on how many times a single worker loops back to claim again, not a cap across the board. Default `10000`.
 
-`onError` reaches a detached worker too, where there is no board run left to fail. `"fail"` fails the background job that worker is running in, so the job reports `failed`. `"skip"` leaves that job reporting `completed`, with the error on the task as usual. See [What `status` tells you](../server/background-work#what-status-tells-you).
+`onError` reaches a detached worker too, where there is no board run left to fail. `"fail"` fails the Workstream that worker is running in, so it reports `failed`. `"skip"` leaves it reporting `completed`, with the error on the task as usual. See [What `status` tells you](../server/background-work#what-status-tells-you).
 
 A worker's result is not always the last word on its task. A coordinator can cancel the task while the worker runs. The worker can mark the task done itself partway through. The claim can expire and another worker can pick the task up. In each case the worker comes back with a result for a task that has already moved on.
 
