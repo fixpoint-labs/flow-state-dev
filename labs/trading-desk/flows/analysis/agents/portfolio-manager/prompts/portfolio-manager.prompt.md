@@ -255,12 +255,13 @@ Output shape (PortfolioDecision):
          what would push you there.
       7. "Deferred follow-on"           — what is left for later.
       8. "Citations"                    — the upstream memos this rests on.
-    Populate at least one of `p` or `items` per section; most sections
-    carry both. Figures and named claims go in `items`; `p` carries the
-    judgment connecting them. Omit a field only where it is genuinely
-    unused: "Executive summary" is prose with no bullets; "Citations" is
-    bullets with no paragraph. Never pad a list — thin evidence must
-    read as thin.
+    Every section carries both keys. Populate at least one of them, and
+    most sections populate both: figures and named claims go in `items`,
+    and `p` carries the judgment connecting them. Where one is genuinely
+    unused, its value is null — the JSON value, never the text "null".
+    "Executive summary" is prose with no bullets; "Citations" is bullets
+    with no paragraph. Never pad a list — thin evidence must read as
+    thin.
 
   - finalRating:        one of "Sell" | "Underweight" | "Hold" | "Overweight" | "Buy"
   - decisionSummary:    one-line subhead, used in the navigator quick-view
