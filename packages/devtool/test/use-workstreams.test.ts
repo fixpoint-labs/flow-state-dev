@@ -164,6 +164,107 @@ describe("useWorkstreams — reading the whole list", () => {
   });
 });
 
+describe("useWorkstreams — a superseded walk stops working", () => {
+  /** Every page request made, held open so the walk can be stepped one at a time. */
+  type PendingRead = {
+    sessionId: string;
+    offset: number;
+    resolve: (rows: WorkstreamSummary[]) => void;
+  };
+
+  function armSteppableReads(): PendingRead[] {
+    const pending: PendingRead[] = [];
+    sessionClientMock.listWorkstreams.mockImplementation(
+      (sessionId: string, opts: { offset: number }) =>
+        new Promise((resolve) => {
+          pending.push({
+            sessionId,
+            offset: opts.offset,
+            resolve: resolve as (rows: WorkstreamSummary[]) => void,
+          });
+        })
+    );
+    return pending;
+  }
+
+  it("stops issuing pages once its walk has been retired", async () => {
+    // The fence answers "may this result be written". Whether the WORK should
+    // continue is a different question, and the walk never asked it: a retired
+    // walk kept paging to the cap — about 20 sequential requests on a busy
+    // session, up to 500 under a host with `maxWorkstreamListLimit: 1`, each
+    // dragging a per-row status lookup behind it, all of it discarded on
+    // arrival.
+    const pending = armSteppableReads();
+
+    const { rerender } = renderHook(
+      ({ sessionId }: { sessionId: string }) => useWorkstreams(sessionId),
+      { initialProps: { sessionId: "sess_parent" } }
+    );
+    await waitFor(() => expect(pending).toHaveLength(1));
+
+    // First page lands full, so the walk wants another.
+    await act(async () => {
+      pending[0]!.resolve(page(0, 25));
+    });
+    await waitFor(() => expect(pending).toHaveLength(2));
+
+    // The user leaves. The replacement read starts for the new session.
+    rerender({ sessionId: "sess_child" });
+    await waitFor(() =>
+      expect(pending.some((read) => read.sessionId === "sess_child")).toBe(true)
+    );
+
+    // The retired walk's outstanding page comes back, also full. It must not
+    // ask for another.
+    await act(async () => {
+      pending[1]!.resolve(page(25, 25));
+    });
+
+    expect(pending.filter((read) => read.sessionId === "sess_parent")).toHaveLength(2);
+  });
+
+  it("lands the surviving walk's rows, not the abandoned one's", async () => {
+    const pending = armSteppableReads();
+
+    const { result, rerender } = renderHook(
+      ({ sessionId }: { sessionId: string }) => useWorkstreams(sessionId),
+      { initialProps: { sessionId: "sess_parent" } }
+    );
+    await waitFor(() => expect(pending).toHaveLength(1));
+
+    await act(async () => {
+      pending[0]!.resolve(page(0, 25));
+    });
+    await waitFor(() => expect(pending).toHaveLength(2));
+
+    rerender({ sessionId: "sess_child" });
+    const child = await waitFor(() => {
+      const found = pending.find((read) => read.sessionId === "sess_child");
+      expect(found).toBeDefined();
+      return found!;
+    });
+
+    // Abandon the parent's walk and complete the child's.
+    await act(async () => {
+      pending[1]!.resolve(page(25, 25));
+      child.resolve([row("dsx_child")]);
+    });
+    const childTail = await waitFor(() => {
+      const found = pending.filter((read) => read.sessionId === "sess_child")[1];
+      expect(found).toBeDefined();
+      return found!;
+    });
+    await act(async () => {
+      childTail.resolve([]);
+    });
+
+    expect(result.current.workstreams.map((w) => w.id)).toEqual(["dsx_child"]);
+    // An abandoned walk read fewer rows than exist. Reporting that as a cap
+    // would tell the user their list is truncated when it was merely dropped.
+    expect(result.current.truncated).toBe(false);
+  });
+});
+
 describe("useWorkstreams — superseded reads", () => {
   it("clears the spinner when the session goes away while a read is in flight", async () => {
     // Retiring an identity has to retire its SPINNER too, and the fence that

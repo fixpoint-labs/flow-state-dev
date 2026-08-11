@@ -83,16 +83,37 @@ const MAX_WORKSTREAM_OFFSET = 10_000;
  * reaching the bound is not by itself evidence of a remainder — a final page
  * can land exactly on it — and the only thing that settles it is asking whether
  * a row follows, at the READ POSITION rather than at the row count.
+ *
+ * An ABANDONED walk answers neither. It returns `undefined` rather than a page,
+ * because it read fewer rows than exist and has no honest value for either
+ * field: `truncated: true` would tell the user their list is capped when it was
+ * merely dropped, and `truncated: false` would present a partial list as whole.
+ * A distinct return makes that unrepresentable instead of merely discouraged.
+ *
+ * ## Stopping is a different question from discarding
+ *
+ * The caller's fence decides whether a result may be WRITTEN. It cannot decide
+ * whether the work should CONTINUE, and asking it once at the end is how a
+ * retired walk went on issuing pages — up to twenty on a busy session, and up
+ * to five hundred under a host configured with `maxWorkstreamListLimit: 1`,
+ * each dragging a per-row status lookup behind it, all of it thrown away on
+ * arrival. `stillWanted` is threaded in rather than read off the hook's refs so
+ * this stays a function of its arguments.
  */
 async function fetchAllWorkstreams(
   sessionClient: SessionClient,
-  sessionId: string
-): Promise<{ rows: WorkstreamSummary[]; truncated: boolean }> {
+  sessionId: string,
+  stillWanted: () => boolean
+): Promise<{ rows: WorkstreamSummary[]; truncated: boolean } | undefined> {
   const rows: WorkstreamSummary[] = [];
   const seen = new Set<string>();
   let offset = 0;
 
   while (rows.length < MAX_WORKSTREAM_ROWS && offset < MAX_WORKSTREAM_OFFSET) {
+    // Checked before each SUBSEQUENT page, never before the first: a walk that
+    // gives up before reading anything leaves the panel with no completed read
+    // at all, which is a worse answer than a superseded one.
+    if (offset > 0 && !stillWanted()) return undefined;
     const page = await sessionClient.listWorkstreams(sessionId, { offset });
     // An empty page is the end of the list. It is also the terminating case if
     // the client's parent-mismatch filter ever drops a whole page — that is a
@@ -121,6 +142,9 @@ async function fetchAllWorkstreams(
   // "the list is this long" from "the list is longer" — the only case where the
   // loop's exit condition alone is wrong. It reads from the position the walk
   // actually reached, which duplicates may have pushed past the row count.
+  //
+  // The probe is a subsequent page like any other, so it is gated too.
+  if (!stillWanted()) return undefined;
   const beyond = await sessionClient.listWorkstreams(sessionId, { offset });
   return { rows, truncated: beyond.length > 0 };
 }
@@ -207,7 +231,11 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
     setIsLoading(true);
     setError(null);
     try {
-      const page = await fetchAllWorkstreams(sessionClient, sessionId);
+      const page = await fetchAllWorkstreams(sessionClient, sessionId, stillCurrent);
+      // `undefined` is a walk that stopped because it was retired, not a page.
+      // It holds a partial list and no meaningful `truncated`, so there is
+      // nothing here to write — and the fence below would refuse it anyway.
+      if (page === undefined) return;
       if (!stillCurrent()) return;
       setWorkstreams(page.rows);
       setTruncated(page.truncated);
