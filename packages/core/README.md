@@ -533,6 +533,8 @@ Every refusal is a named outcome you can branch on.
 
 Nothing on this interface names a store, a flow, a session record or a task row, and no operation takes an identity or a session id. A caller supplies a routing seed and the runtime derives the rest from the running request. Values read from another session cross as `unknown`, to be parsed with your own schema.
 
+`startDetached` takes the caller's bookkeeping two ways, and they are not interchangeable. `record` is a free-form bag that lands on the child session record. `provenance` is a closed, optional field for facts the *runtime* produced — today just `taskId` — and it is the only one stamped onto the detached request record, under `metadata.workstream`. Keeping `record` off that record is what lets a reader treat everything under `workstream` as server-written. Neither carries authority: nothing routes, authorizes, settles or fences on either.
+
 ## Key design decisions
 
 **Partial state schemas.** Each block declares only the state fields it touches. A counter block doesn't need to know about a preferences block's state. This keeps blocks reusable and self-documenting about their dependencies.

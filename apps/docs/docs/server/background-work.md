@@ -101,6 +101,31 @@ GET /api/flows/sessions/ws_9f2c1a/requests
 That returns the job's runs, with the item log for each when you ask for it
 (`?include_items=true`).
 
+Each run carries provenance the framework wrote:
+
+```json
+{
+  "source": "workstream",
+  "metadata": {
+    "workstream": {
+      "topic": "market-research",
+      "key": "…",
+      "taskId": "task_7f3"
+    }
+  }
+}
+```
+
+`topic` repeats the job's label. `taskId` names the task-board row the run was
+started for, so you can match a run back to a board row without keeping the
+board open beside it. It appears only when the job came from a task board, so
+read it with a `== null` guard.
+
+Read that bag as provenance only when `source` is `"workstream"`. An
+application can put whatever it likes in `metadata` on its own requests,
+including a key named `workstream`. `source` is different: the framework sets
+it, and no caller can.
+
 Jobs can nest. If a job files jobs of its own, calling `/workstreams` on its id
 returns them.
 

@@ -42,6 +42,51 @@ export type DetachedRoutingSeed = {
   readonly key?: string;
 };
 
+/**
+ * Server-derived facts about *what* a detached start is for, stamped onto the
+ * request record's `metadata.workstream` beside the routing seed.
+ *
+ * **Why this is a separate channel from `record`.** `StartDetachedInput` already
+ * carries the caller's own bag, and it deliberately never reaches the request
+ * record — a display field sourced from caller input reads as server truth once
+ * it is on the wire (BP-031 in spirit), so `record` stays on the child *session*
+ * record and `metadata.workstream` stays wholly server-assembled. Correlating a
+ * background run back to the row it came from needs a value the seam did not
+ * derive itself, and widening `record` to do it would collapse exactly the
+ * boundary that keeps `metadata.workstream` readable. So the category gets its
+ * own name instead, and the name is the contract: *put a fact here only when the
+ * runtime produced it.*
+ *
+ * **What that does and does not buy.** The seam cannot verify these — it has no
+ * board and no ledger, and `core` cannot name `orchestration`'s types. What
+ * makes them trustworthy is reach, not a check: `startDetached` is on the block
+ * context, so only flow-internal code calls it, and the one shipped caller (the
+ * task board's spawn block) takes the id off the claim ticket the board minted
+ * from the row it had already claimed. No transport, and no task author, can
+ * reach this.
+ *
+ * **It carries no authority**, exactly as `SessionRecord.topic` and `coordinate`
+ * carry none. Nothing routes, authorizes, settles or fences on it. The runner's
+ * start gate verifies `attempt` / `createdAt` / `incarnationId` off the dispatch
+ * *input* against the row it re-read, and never consults request metadata — so a
+ * wrong value here mislabels a record for a reader and grants nothing.
+ *
+ * Adding a member is a deliberate decision, like adding a verb to the seam: each
+ * one has to be server-derived at the point `startDetached` is called, and has
+ * to still decide nothing.
+ */
+export type DetachedProvenance = {
+  /**
+   * The durable row this run was spawned for.
+   *
+   * Required *within* `provenance` rather than optional: a provenance bag with
+   * no facts in it is not provenance, and two ways to say "unknown" (omit the
+   * field, or pass it holding nothing) is a distinction every reader would then
+   * have to know. Omit `provenance` itself instead.
+   */
+  readonly taskId: string;
+};
+
 /** Arguments to {@link RequestHost.startDetached}. */
 export type StartDetachedInput = {
   /** Routing seed the child key is derived from. */
@@ -50,6 +95,13 @@ export type StartDetachedInput = {
   readonly input?: unknown;
   /** Caller's own bookkeeping, persisted on the child session record. */
   readonly record?: Readonly<Record<string, unknown>>;
+  /**
+   * Server-derived provenance for the *request* record. Optional: a caller with
+   * no durable row behind it — anything spawning detached work that is not
+   * task-board work — omits it, and readers treat its absence as "not stated"
+   * (BP-030).
+   */
+  readonly provenance?: DetachedProvenance;
 };
 
 /**

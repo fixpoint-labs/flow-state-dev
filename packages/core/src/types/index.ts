@@ -26,6 +26,7 @@ export type {
 export { asRuntime } from "./block";
 
 export type {
+  DetachedProvenance,
   DetachedRoutingSeed,
   LivenessAnswers,
   ParentTaskOutcome,
