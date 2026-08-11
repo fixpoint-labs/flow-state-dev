@@ -40,13 +40,14 @@
  * caller waiting on `finished`. Consumers read the child's progress the durable
  * way: enumerate the parent's Workstreams, then that Workstream's requests.
  *
- * Fire-and-forget is exactly why the returned promise still waits for the host
- * to have **accepted** the dispatch. Nobody is holding the child's `finished`,
- * so a setup failure has nowhere to surface — the parent has already released
- * the task and returned, and the row sits `in_progress` until lease recovery
- * picks it up minutes later. Acceptance is the narrowest thing that rules that
- * out: it says the request is discoverable, so a later failure is a failure
- * something can see.
+ * Fire-and-forget is exactly why the returned promise still waits for the child
+ * to have **started executing**. Nobody is holding the child's `finished`, so a
+ * setup failure has nowhere to surface — the parent has already released the
+ * task and returned, and the row sits `in_progress` until lease recovery picks
+ * it up minutes later. Execution is the first point past which that cannot
+ * happen quietly: from there the run records its own terminal failure, and a
+ * detached run's failure additionally reaches the board's recorder, which
+ * settles the row.
  */
 import type { DetachedStartOperation } from "./create-request-host";
 import type { InboundTransportHost } from "../transports/types";
@@ -90,21 +91,27 @@ export function createDetachedStartOperation(
       responseEmitter: null,
     });
 
-    // Awaiting acceptance is what makes a `Started` result mean "discoverable"
-    // rather than "we intended to" — see `DispatchHandle.accepted` for what each
-    // dispatch path can honour. It matters most on the ordinary in-process path,
-    // which is where a detached spawn actually lands by default: `dispatchLocal`
-    // returns while `runAction` is still at its first await, so without this the
-    // parent would release the task it just handed over and report success while
-    // the child's registration could still fail — and it would fail into a
-    // `finished` nobody is holding, leaving the row `in_progress` until lease
-    // recovery. The guard stays because the field is optional on the contract; a
-    // custom dispatcher that does not distinguish acceptance may omit it.
+    // `started` FIRST, and `accepted` only as the fallback. The caller of this
+    // operation releases a claimed task on the strength of the result, so the
+    // milestone it needs is the one past which a failure cannot be silent —
+    // which is execution, not registration. Between the two the child still
+    // writes the session's `latestRequestId`, emits its opening events and
+    // builds a context that loads eager resources; a failure there records
+    // nothing, deregisters the entry, and rejects into a `finished` nobody is
+    // holding, leaving the row `in_progress` for lease recovery to find minutes
+    // later. See `DispatchHandle.started`.
     //
-    // `finished` is deliberately NOT awaited — awaiting it would make the
-    // launching request block on the detached work, which is the exact property
-    // detachment exists to remove.
-    if (handle.accepted !== undefined) await handle.accepted;
+    // The fallback is not a weaker version of the same thing, it is the only
+    // thing a deferred start can offer: a queued or externally dispatched child
+    // starts after this call returns, so waiting for its execution would mean
+    // waiting out the queue — which is the launching request blocking on
+    // detached work. Those paths keep FIX-1070's hand-off gap, unchanged.
+    //
+    // `finished` is deliberately NOT awaited on any path — awaiting it would
+    // make the launching request block on the detached work itself, which is the
+    // exact property detachment exists to remove.
+    const materialized = handle.started ?? handle.accepted;
+    if (materialized !== undefined) await materialized;
 
     return { requestId: handle.requestId };
   };
