@@ -3,8 +3,11 @@
  * risk memo (anything except the PM hero).
  *
  * Renders agent identity + role + jump-to-transcript button + headline +
- * metrics grid. The "jump to transcript →" button ships as a no-op tooltip
- * for FIX-575; scroll-to-event lands in a follow-on.
+ * metrics grid. The "jump to transcript →" control scrolls the transcript
+ * pane to this memo's originating event (FIX-1062). It is rendered ONLY when
+ * `onJumpToTranscript` is supplied — i.e. when the run actually has a
+ * transcript event for this agent — so the header never carries a clickable
+ * control that does nothing.
  */
 import type { ReactElement } from "react";
 import { ArrowRightToLine } from "lucide-react";
@@ -22,6 +25,11 @@ export type ThesisHeaderProps = {
   headline: string | null;
   rating: string | null;
   metrics: Record<string, string> | null;
+  /** Scrolls the transcript pane to this memo's first transcript event.
+   *  Omitted / null when the run has no such event — a re-opened historical
+   *  report whose items were never persisted, or a memo that published before
+   *  its row landed. The control is then not rendered at all. */
+  onJumpToTranscript?: (() => void) | null;
 };
 
 export function ThesisHeader({
@@ -30,6 +38,7 @@ export function ThesisHeader({
   headline,
   rating,
   metrics,
+  onJumpToTranscript,
 }: ThesisHeaderProps): ReactElement {
   const meta = AGENTS[agent];
   return (
@@ -49,19 +58,22 @@ export function ThesisHeader({
             </span>
           </div>
         </div>
-        <button
-          type="button"
-          title="scroll-to-event lands in a follow-on"
-          aria-label="Jump to transcript"
-          className={cn(
-            "inline-flex h-7 items-center gap-1 rounded-md px-2",
-            "border border-[color:var(--c-border)] text-[10.5px] uppercase tracking-wider",
-            "text-[color:var(--c-fg-faint)] hover:text-[color:var(--c-fg)]",
-          )}
-        >
-          jump to transcript
-          <ArrowRightToLine className="h-3 w-3" aria-hidden />
-        </button>
+        {onJumpToTranscript !== null && onJumpToTranscript !== undefined ? (
+          <button
+            type="button"
+            onClick={onJumpToTranscript}
+            title="Scroll the transcript to this memo's first event"
+            aria-label="Jump to transcript"
+            className={cn(
+              "inline-flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-md px-2",
+              "border border-[color:var(--c-border)] text-[10.5px] uppercase tracking-wider",
+              "text-[color:var(--c-fg-faint)] hover:text-[color:var(--c-fg)]",
+            )}
+          >
+            jump to transcript
+            <ArrowRightToLine className="h-3 w-3" aria-hidden />
+          </button>
+        ) : null}
       </div>
       {headline !== null && headline !== "" && (
         <p className="text-[14px] leading-snug text-[color:var(--c-fg)]">{headline}</p>
