@@ -19,12 +19,15 @@ import {
 import { resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys";
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
-import { logRuntimeEvent, summarizeForLog } from "../../execution/logging";
+import {
+  DEFAULT_RUNTIME_LOGGER,
+  logRuntimeEvent,
+  summarizeForLog
+} from "../../execution/logging";
 import {
   deregisterAbortController,
   registerAbortController
 } from "../../execution/abort-registry";
-import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent } from "../../execution/logging";
 import { generateId } from "../../utils/generate-id";
 import {
   ConcurrencyQueueTimeoutError,
@@ -131,7 +134,7 @@ export type CreateInboundTransportHostOptions = {
  * `failedAtMs` is stamped only for the failure, since it is the field readers
  * key on for "this broke"; an abort carries `updatedAt` and its status.
  */
-async function terminateUnenqueuedRequest(
+export async function terminateUnenqueuedRequest(
   stores: StoreRegistry,
   requestId: string,
   status: "failed" | "aborted" = "failed"

@@ -35,6 +35,7 @@ import { defineFlow, handler, requireRequestHost } from "@flow-state-dev/core";
 import type { ModelResolver, StartDetachedResult } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "../../src";
 import type { FlowStateRuntime, WorkerAdapter } from "../../src/flowstate/types";
+import type { StoreAdapter } from "../../src/stores/store-adapter";
 
 const USER_ID = "u_detached";
 
@@ -167,6 +168,55 @@ function stubWorkerWithNoConsumer(mode: WorkerAdapter["mode"]): WorkerAdapter {
     }),
     startWorker: () => ({ close: async () => undefined })
   } as WorkerAdapter;
+}
+
+/**
+ * A store adapter that really closes, like a pooled one.
+ *
+ * `inMemoryStores` has no `dispose`, so every write after shutdown quietly
+ * succeeds and a record left `in_progress` by a swallowed error is invisible.
+ * The finding this exists for turns on exactly that: a terminalizing write
+ * landing AFTER the adapter closed, its error swallowed by a best-effort
+ * `catch`, and the durable row never settling. Only a closeable adapter can
+ * show it.
+ */
+function closingStores(
+  inner: StoreAdapter
+): StoreAdapter & { raw: () => Record<string, unknown> } {
+  let closed = false;
+  // The un-guarded registry, so the TEST can still read after the adapter has
+  // closed to the runtime — otherwise the assertion trips over its own guard.
+  let rawRegistry: Record<string, unknown> = {};
+  const guard = <T extends object>(target: T): T =>
+    new Proxy(target, {
+      get(t, key) {
+        const value = (t as Record<string | symbol, unknown>)[key];
+        if (typeof value !== "function") return value;
+        return (...args: unknown[]) => {
+          if (closed) throw new Error(`[test] store closed: ${String(key)}()`);
+          return (value as (...a: unknown[]) => unknown).apply(t, args);
+        };
+      }
+    });
+
+  return {
+    capabilities: inner.capabilities,
+    resolve: async (slots) => {
+      const registry = await inner.resolve(slots);
+      rawRegistry = registry as Record<string, unknown>;
+      return Object.fromEntries(
+        Object.entries(registry).map(([slot, store]) => [
+          slot,
+          store === undefined ? store : guard(store as object)
+        ])
+      ) as typeof registry;
+    },
+    dispose: async () => {
+      closed = true;
+      await inner.dispose?.();
+    },
+    raw: () => rawRegistry
+  };
 }
 
 /** The `fsdev run` call shape: runtime config SPREAD, not passed by reference. */
@@ -673,6 +723,71 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     expect(record?.status).toBe("aborted");
     expect(record?.failedAtMs).toBeUndefined();
   });
+
+  it(
+    "settles a queued child's durable record before the stores close",
+    { timeout: 20_000 },
+    async () => {
+      const observed: Observed = { children: [] };
+      const flow = detachingFlow("queued-terminalize", observed, {
+        concurrency: { policy: "queue", key: "user" },
+        // The parent holds the key past shutdown, so the queued child's gate
+        // callback — where it would notice its own cancellation — never runs
+        // while the stores are open.
+        launcherDelayMs: 1_500
+      });
+
+      const adapter = closingStores(inMemoryStores());
+      const state = createFlowState({
+        flows: { detaching: flow },
+        stores: { default: { primary: adapter } },
+        modelResolver: markerResolver("app-default"),
+        detachedDrainTimeoutMs: 0
+      });
+
+      const router = await state.getRouter();
+      const runtime = await state.getRuntime();
+
+      const res = await router.POST(
+        new Request("http://localhost/api/flows/queued-terminalize/actions/launch", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ userId: USER_ID, sessionId: "s_http", input: {} })
+        }),
+        { params: { path: ["queued-terminalize", "actions", "launch"] } }
+      );
+      expect(res.status).toBe(202);
+
+      await until(() => observed.start !== undefined, "the child to be dispatched");
+      expect(observed.start).toMatchObject({ ok: true });
+
+      const childRequestId = (observed.start as { requestId?: string }).requestId!;
+
+      const restore = console.error;
+      console.error = () => {};
+      try {
+        await state.dispose();
+      } finally {
+        console.error = restore;
+      }
+
+      // Read through the raw registry, since the adapter is closed to callers.
+      const requests = adapter.raw().request as {
+        get: (id: string) => Promise<{ status?: string } | undefined>;
+      };
+      const record = await requests.get(childRequestId);
+
+      // THE ASSERTION. Leaving it to the waiter meant the record was only
+      // terminalized when the key released — after `dispose()` had closed the
+      // adapter — so the write threw, the best-effort catch swallowed it, and a
+      // request that will never run stayed `in_progress` forever.
+      expect(record?.status).toBe("aborted");
+
+      // And the child still never ran.
+      await new Promise((resolve) => setTimeout(resolve, 1_800));
+      expect(observed.children).toEqual([]);
+    }
+  );
 
   it("refuses to admit detached work once disposal has begun", async () => {
     const observed: Observed = { children: [] };
