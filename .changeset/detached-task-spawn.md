@@ -75,6 +75,12 @@ every other inherited member behave differently — the same identity loss the
 check already rejects class instances for. Spread it into a plain object before
 sending.
 
+A board's `onError` now decides a detached worker's outcome as it does an inline
+one. `onError: "fail"` was ignored for detached workers — a failing worker
+recorded the row errored and its Workstream request still reported success, so
+anything reading background work by run status saw a success for failed work.
+`"skip"` remains the default and is unchanged.
+
 Two bounds worth knowing. Work is settled by the Workstream, which must be able
 to address the board it settles against, so a board whose rows a detached worker
 reaches has to be scoped where the child can see it. And on a serverless host
