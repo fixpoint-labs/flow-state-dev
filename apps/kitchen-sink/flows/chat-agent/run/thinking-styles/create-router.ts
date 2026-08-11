@@ -31,6 +31,7 @@ import type { InstructionsSlot, PipelineConfig } from "./pipelines/config";
 import { createSupervisorPipeline } from "./pipelines/supervisor";
 import { createRoutedSpecialistsPipeline } from "./pipelines/routed-specialists";
 import { createEventedActorsPipeline } from "./pipelines/evented-actors";
+import { createBackgroundWorkPipeline } from "./pipelines/background-work";
 
 export interface ThinkingStyleRouterConfig {
   assistantGenerator: BlockDefinition<any, any>;
@@ -148,6 +149,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
   const routedSpecialistsPipeline = createRoutedSpecialistsPipeline(pipelineConfig);
   const eventedActorsPipeline = createEventedActorsPipeline(pipelineConfig);
   const debatePipeline = createDebatePipeline(pipelineConfig);
+  const backgroundWorkPipeline = createBackgroundWorkPipeline(pipelineConfig);
 
   // connectInput delegates through the original block's .run, so route
   // interception (e.g. testRouter) works transparently.
@@ -160,6 +162,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       routedSpecialistsPipeline,
       eventedActorsPipeline,
       debatePipeline,
+      backgroundWorkPipeline,
     ],
     execute: (input, ctx) => {
       const style = ctx.session.state.thinkingStyle as string | undefined;
@@ -174,6 +177,8 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
           return eventedActorsPipeline.connectInput(() => input);
         case "moderated-debate":
           return debatePipeline.connectInput(() => ({ question: input.message }));
+        case "background-work":
+          return backgroundWorkPipeline.connectInput(() => ({ message: input.message }));
         default:
           return defaultPipeline;
       }
@@ -188,5 +193,6 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     routedSpecialistsPipeline,
     eventedActorsPipeline,
     debatePipeline,
+    backgroundWorkPipeline,
   };
 }

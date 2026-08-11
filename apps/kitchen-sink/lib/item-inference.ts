@@ -21,9 +21,11 @@ type ContainerItem = OutputItem & { type: "container"; container?: string };
  * 3. task-board-meta with collectionId starting with `eventActors:` →
  *    evented-actors (the pattern wraps a taskBoard internally and that
  *    inner board emits its own meta items)
- * 4. task-board-meta with key including "supervisor" → supervisor
- * 5. supervisor block_trace → supervisor
- * 6. any task-board-meta → plan-and-execute (catch-all for the other
+ * 4. task-board-meta with the background-work ledger's collectionId →
+ *    background-work
+ * 5. task-board-meta with key including "supervisor" → supervisor
+ * 6. supervisor block_trace → supervisor
+ * 7. any task-board-meta → plan-and-execute (catch-all for the other
  *    taskBoard-backed pattern)
  */
 export function inferThinkingStyle(items: OutputItem[]): ThinkingStyle | null {
@@ -46,6 +48,13 @@ export function inferThinkingStyle(items: OutputItem[]): ThinkingStyle | null {
       i.data?.collectionId?.startsWith("eventActors:"),
     );
     if (isEventedActors) return "evented-actors";
+
+    // The background-work board is the only durable one on this flow, and its
+    // ledger id is the collection every one of its meta items names.
+    const isBackgroundWork = boardMetaItems.some(
+      (i) => i.data?.collectionId === "background-work",
+    );
+    if (isBackgroundWork) return "background-work";
 
     const isSupervisor = boardMetaItems.some((i) => i.key?.includes("supervisor"));
     return isSupervisor ? "supervisor" : "plan-and-execute";

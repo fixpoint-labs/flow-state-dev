@@ -20,6 +20,7 @@ import {
   ClipboardList,
   RadioIcon,
   Scale,
+  Hourglass,
   ChevronDownIcon,
 } from "lucide-react";
 import type { ThinkingStyleInput } from "@/flows/chat-agent/shared/schemas";
@@ -95,6 +96,15 @@ const STYLE_OPTIONS: StyleOption[] = [
       "Two agents argue opposing positions; a moderator drives the rounds, then a judge picks a winner",
     icon: Scale,
     color: "text-rose-500 dark:text-rose-400",
+  },
+  {
+    value: "background-work",
+    label: "Background Work",
+    shortLabel: "Background",
+    description:
+      "Hands the message to a workstream and replies without waiting; results arrive on a later turn",
+    icon: Hourglass,
+    color: "text-indigo-500 dark:text-indigo-400",
   },
 ];
 

@@ -29,6 +29,12 @@ type RequestGroup = {
 
 /**
  * Groups a flat items array into per-request segments, preserving order.
+ *
+ * Segments, not partitions: one request can own several of them. A keyed item
+ * is one logical entity across every request that re-emits it, so it keeps its
+ * first position in the stream while its `requestId` moves to the latest
+ * emitter — which splits the requests around it. That is why the render below
+ * cannot key on `requestId` alone.
  */
 function groupItemsByRequest(items: OutputItem[]): RequestGroup[] {
   const groups: RequestGroup[] = [];
@@ -76,7 +82,9 @@ export function RequestGroupRenderer({ items, isStreaming, statusMessage, isFini
 
     return (
       <RequestGroup
-        key={group.requestId}
+        // Position included, because one request can own several segments (see
+        // `groupItemsByRequest`) and React needs the key unique among siblings.
+        key={`${group.requestId}:${index}`}
         group={group}
         isLast={isLast}
         isStreaming={isStreaming}

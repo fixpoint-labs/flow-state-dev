@@ -119,6 +119,15 @@ const titleScript: MockGeneratorScriptEntry[] = [
   { when: alwaysTrue, then: { text: "E2E session" } },
 ];
 
+/**
+ * The detached worker's brief. It runs in a Workstream, not in the turn that
+ * filed it, so this text is the only thing that distinguishes "the background
+ * work ran" from "the row was created and nothing happened".
+ */
+const backgroundBriefScript: MockGeneratorScriptEntry[] = [
+  { when: alwaysTrue, then: { text: "Background brief complete." } },
+];
+
 export const thinkingStyleClassifierMock = mockGenerator({
   name: "thinking-style-classifier",
   script: thinkingStyleClassifierScript,
@@ -132,4 +141,9 @@ export const skillClassifierMock = mockGenerator({
 export const autoTitleMock = mockGenerator({
   name: "auto-title",
   script: titleScript,
+});
+
+export const backgroundBriefMock = mockGenerator({
+  name: "background-brief",
+  script: backgroundBriefScript,
 });

@@ -53,6 +53,11 @@ export const RESOLVED_THINKING_STYLES = [
   "routed-specialists",
   "evented-actors",
   "moderated-debate",
+  // Files the turn's message as background work and returns without answering
+  // it. Deliberately absent from the `auto` classifier's categories: handing a
+  // question to a Workstream instead of answering it is the caller's call, not
+  // a classification.
+  "background-work",
   "default",
 ] as const;
 

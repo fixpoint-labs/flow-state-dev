@@ -45,6 +45,7 @@ import { ArtifactPanel } from "@/components/artifact-panel";
 import { ArtifactDialog } from "@/components/artifact-dialog";
 import { ResizeHandle } from "@/components/resize-handle";
 import { SuggestionRow } from "@/components/suggestion-row";
+import { BackgroundWorkPanel } from "@/components/background-work-panel";
 import { VoiceToggle } from "@/components/voice-toggle";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
@@ -604,6 +605,9 @@ function ChatPanel({
       <div className="border-t">
         {session.items.length === 0 && <SuggestionRow onSuggestionClick={onSuggestionClick} disabled={isDisabled} />}
         <StuckRequestBanner session={session} />
+        {/* Outside the conversation, deliberately: a workstream's output is not
+            part of the transcript and nothing folds it in. */}
+        <BackgroundWorkPanel session={session} flowKind="chat-agent" />
         <ResumePrompt session={session} />
         <div className="mx-auto max-w-3xl px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 sm:px-4 sm:pb-4">
           <div className="mb-2 flex items-center gap-3">
