@@ -123,6 +123,38 @@ describe("textMentionsEntity", () => {
     // ...and by the distinctive name token, which stays case-insensitive.
     expect(textMentionsEntity("onsemi and other semiconductor names", on)).toBe(true);
   });
+
+  it("does not let an ordinary finance word carry a company name alone", () => {
+    // `Target Corporation` reduces to the single token `target`, which appears
+    // in coverage of every issuer there is ("raises the price target"). Treating
+    // it as a name match verifies a Tesla article as evidence about Target —
+    // the FIX-779 failure with the guard's own matching as the vector.
+    const target = subjectEntityFromProfile("TGT", {
+      source: "finnhub",
+      name: "Target Corporation",
+      website: "https://www.target.com",
+    }) as SubjectEntity;
+    expect(
+      textMentionsEntity("Tesla analyst raises the price target to $400", target),
+    ).toBe(false);
+    // The real thing still verifies by the uppercase ticker...
+    expect(textMentionsEntity("TGT comparable sales beat", target)).toBe(true);
+    // ...and by the first-party domain, which is why the recall cost is bounded.
+    expect(publisherIsSubject("corporate.target.com", target)).toBe(true);
+  });
+
+  it("lets two ordinary tokens verify together", () => {
+    // No single token of `American Financial Group` identifies it, but a snippet
+    // carrying two of them is naming the company, not writing generic prose.
+    const afg = subjectEntityFromProfile("AFG", {
+      source: "finnhub",
+      name: "American Financial Group Inc",
+    }) as SubjectEntity;
+    expect(textMentionsEntity("American Financial posted a record quarter", afg)).toBe(
+      true,
+    );
+    expect(textMentionsEntity("the American consumer is holding up", afg)).toBe(false);
+  });
 });
 
 describe("publisherIsSubject", () => {
@@ -145,5 +177,20 @@ describe("publisherIsSubject", () => {
     // The dot anchor is what separates a real subdomain from a suffix collision.
     expect(publisherIsSubject("evilnvidia.com", nvidia)).toBe(false);
     expect(publisherIsSubject("nvidia.com.attacker.net", nvidia)).toBe(false);
+  });
+
+  it("gives up the shortcut when the profile site is a page on a shared host", () => {
+    // A fund's site is a product page on its sponsor's domain. Reducing it to
+    // the bare host makes every sibling fund's page first-party evidence for
+    // this one — the family is not the member. So no host is resolved at all,
+    // and identity falls to the ticker, which does distinguish siblings.
+    const ivv = subjectEntityFromProfile("IVV", {
+      source: "yahoo",
+      name: "iShares Core S&P 500 ETF",
+      website: "https://www.ishares.com/us/products/239726/ishares-core-sp-500-etf",
+    }) as SubjectEntity;
+    expect(ivv.websiteHost).toBeNull();
+    expect(publisherIsSubject("ishares.com", ivv)).toBe(false);
+    expect(textMentionsEntity("IVV sees record inflows", ivv)).toBe(true);
   });
 });

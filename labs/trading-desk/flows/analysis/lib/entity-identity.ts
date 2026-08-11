@@ -41,16 +41,89 @@ const GENERIC_NAME_TOKENS = new Set([
   "ordinary",
 ]);
 
+/**
+ * Name tokens that also carry a routine, NON-COMPANY meaning in financial prose.
+ * `Target Corporation`'s only surviving token is `target`, and "raises the price
+ * target" appears in coverage of every issuer there is — so a lone `target` is
+ * not evidence that a snippet is about Target. Same for `energy`, `growth`,
+ * `capital`, `first`, `value`.
+ *
+ * These are not dropped from the token set (a name that is entirely ordinary
+ * words still HAS an identity — see `entityNameTokens`); they are demoted at
+ * match time: an ordinary token verifies only in the company of a second name
+ * token, never alone. `textMentionsEntity` owns that rule.
+ *
+ * The line is deliberately drawn at DIFFERENT-MEANING collisions, not at
+ * category nouns. `semiconductor` stays distinctive: a snippet using it is at
+ * least in the subject's own sector, which is the same adjacency the macro /
+ * market discovery exemption already accepts, and demoting it would cost real
+ * recall on issuers whose name IS the canonical industry term.
+ */
+const ORDINARY_NAME_TOKENS = new Set([
+  "advisors",
+  "american",
+  "brands",
+  "capital",
+  "communications",
+  "core",
+  "data",
+  "digital",
+  "energy",
+  "enterprises",
+  "equity",
+  "estate",
+  "finance",
+  "financial",
+  "first",
+  "general",
+  "global",
+  "growth",
+  "health",
+  "income",
+  "index",
+  "industries",
+  "management",
+  "market",
+  "markets",
+  "materials",
+  "media",
+  "national",
+  "partners",
+  "power",
+  "products",
+  "property",
+  "real",
+  "resources",
+  "sector",
+  "security",
+  "select",
+  "services",
+  "solutions",
+  "systems",
+  "target",
+  "technologies",
+  "technology",
+  "united",
+  "value",
+  "ventures",
+  "works",
+]);
+
 /** Lower-case, strip every non-alphanumeric run to a single space, trim. */
 export function normalizeEntityName(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
 /**
- * The distinctive tokens of a company name: 4+ characters, minus corporate-form
+ * The identifying tokens of a company name: 4+ characters, minus corporate-form
  * boilerplate. Returns an empty set for a name made only of short or generic
  * tokens (`XP Inc.`), which the caller must read as "no usable name signal"
  * rather than "matches nothing".
+ *
+ * Ordinary-word tokens (`target`, `energy`) are KEPT here and demoted at match
+ * time instead: they are part of the name, they just cannot carry it alone.
+ * Filtering them out here would instead make a name like `Target Corporation`
+ * resolve to no identity at all, turning the whole guard off for it.
  */
 export function entityNameTokens(name: string): Set<string> {
   return new Set(
@@ -69,7 +142,7 @@ export type SubjectEntity = {
   /** The company's own site hostname (`nvidia.com`), when the profile carries
    *  one — a first-party publisher is the subject by definition. */
   websiteHost: string | null;
-  /** Distinctive name tokens, precomputed. May be empty (short-token names). */
+  /** Identifying name tokens, precomputed. May be empty (short-token names). */
   nameTokens: Set<string>;
 };
 
@@ -98,11 +171,24 @@ export function subjectEntityFromProfile(
   };
 }
 
-/** Best-effort hostname, `www.` stripped. Null on an unparseable URL. */
+/**
+ * Best-effort hostname, `www.` stripped. Null on an unparseable URL — and null
+ * when the profile's site is a page WITHIN a host rather than the host itself.
+ *
+ * A fund's profile site is typically a product page on its sponsor's shared
+ * domain (`ishares.com/us/products/239726/…`). Reducing that to `ishares.com`
+ * would make every page about every other fund in the family first-party
+ * evidence for this one — the family is not the member. A path is the only
+ * signal available that the host is shared, so a profile carrying one gives up
+ * the publisher shortcut and falls back to ticker / name matching, which is
+ * what actually distinguishes one fund from its siblings.
+ */
 function hostOf(url: string | null): string | null {
   if (url === null || url === "") return null;
   try {
-    return new URL(url).hostname.replace(/^www\./, "").toLowerCase();
+    const parsed = new URL(url);
+    if (parsed.pathname !== "" && parsed.pathname !== "/") return null;
+    return parsed.hostname.replace(/^www\./, "").toLowerCase();
   } catch {
     return null;
   }
@@ -115,9 +201,19 @@ function casedTokenRun(text: string): string {
 }
 
 /**
- * True when `text` names the subject — the ticker as a standalone token, or
- * any distinctive token of the company name. Substring matching is deliberately
- * avoided (token equality only), so `marks` does not match `marketwatch`.
+ * True when `text` names the subject — the ticker as a standalone token, a
+ * distinctive token of the company name, or two of its ordinary-word tokens
+ * together. Substring matching is deliberately avoided (token equality only),
+ * so `marks` does not match `marketwatch`.
+ *
+ * **An ordinary-word name token never verifies alone.** `Target Corporation`
+ * reduces to `target`, and "the analyst raises the price target" is prose about
+ * any issuer at all; accepting it would verify a Tesla article as evidence about
+ * Target. `energy`, `growth`, `capital`, `first` behave the same way. Requiring
+ * a second name token costs recall on issuers whose entire name is one ordinary
+ * word — a genuine article that names such a company only in lower case, and
+ * carries neither the uppercase ticker nor a first-party domain, now drops. The
+ * alternative is worse in the direction this guard exists to close.
  *
  * **The ticker match is case-SENSITIVE; the name match is not.** Plenty of
  * tickers are ordinary words — `ON`, `IT`, `ALL`, `CAT`, `KEY`, `GAP`. Matching
@@ -141,8 +237,15 @@ export function textMentionsEntity(text: string, subject: SubjectEntity): boolea
   const normalized = normalizeEntityName(text);
   if (normalized === "") return false;
   const tokens = new Set(normalized.split(" "));
-  for (const t of subject.nameTokens) if (tokens.has(t)) return true;
-  return false;
+  let ordinaryMatches = 0;
+  for (const t of subject.nameTokens) {
+    if (!tokens.has(t)) continue;
+    // A distinctive token carries the name on its own; an ordinary one only
+    // counts toward the pair.
+    if (!ORDINARY_NAME_TOKENS.has(t)) return true;
+    ordinaryMatches += 1;
+  }
+  return ordinaryMatches >= 2;
 }
 
 /**
@@ -155,6 +258,9 @@ export function textMentionsEntity(text: string, subject: SubjectEntity): boolea
  * this, the most authoritative evidence the desk can get would be dropped as an
  * entity mismatch. The match is anchored on a leading dot, so `evilnvidia.com`
  * and `nvidia.com.attacker.net` are still third-party.
+ *
+ * Always false when the profile's site was a page on a shared host rather than
+ * a host of its own — see `hostOf`.
  */
 export function publisherIsSubject(
   publisher: string | null,
