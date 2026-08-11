@@ -430,6 +430,23 @@ function PanelContent({ className }: { className?: string }) {
     [descent, setActiveSession],
   );
 
+  // The Workstream axis is interaction-scoped
+  // (`docs/architecture/server-and-client.md`): it advances on every
+  // work-starting call, and on nothing else. The panel's paths, against the
+  // four that contract names, so the set is enumerated rather than rediscovered
+  // one report at a time:
+  //
+  // - `sendAction`          → `handleSendAction`   — refreshed.
+  // - `resumeSuspension`    → `handleResumed`      — refreshed.
+  // - `continueRequest`     → `handleContinue`     — refreshed.
+  // - `resumeLatestRequest` → NO EQUIVALENT. The top-level Resume button was
+  //   removed in FIX-865 as a strictly narrower case of the per-row Continue
+  //   above; `devtool-panel.test.tsx` pins its absence.
+  //
+  // Deliberately NOT refreshed: `handleReplayFull`, `handleReplayFromCursor`
+  // and `handleReconnect`. Replay re-streams a request that already ran — it
+  // starts no work and can create no Workstream, so a read there would be a
+  // request per inspection with nothing to find.
   const handleSendAction = useCallback(
     async (action: string, input: unknown) => {
       if (!activeFlowKind || !effectiveSessionId) return;
@@ -480,8 +497,18 @@ function PanelContent({ className }: { className?: string }) {
       // the stream's connect effect won't re-run on the id alone.
       setStreamReconnectToken((t) => t + 1);
       void refreshRequests();
+      // `resumeSuspension` on the contract's list of work-starting calls: a
+      // resumed run can reach a board and file background work, so the axis has
+      // to advance here too.
+      //
+      // Not start-anchored the way the dispatch is, because the panel does not
+      // own this dispatch — `SuspensionsView` does, and this is its success
+      // notification. That IS the earliest point the panel learns of it, which
+      // is the same principle applied where it can be: a local fact, read
+      // immediately, with nothing downstream able to skip it.
+      void refreshWorkstreams();
     },
-    [refreshRequests],
+    [refreshRequests, refreshWorkstreams],
   );
 
   // Per-row Continue action (FIX-865) — supersedes the legacy top-level
@@ -524,11 +551,24 @@ function PanelContent({ className }: { className?: string }) {
         liveItems.get(requestId) ??
         req?.items ??
         [];
+      // `continueRequest` on the contract's list, and start-anchored like the
+      // dispatch: a continuation resumes a run mid-flight, which can reach a
+      // board that dispatches detached work. Read before the call so a
+      // continuation that hangs or throws cannot skip it.
+      void refreshWorkstreams();
       void continueRequest(requestId, existingItems).catch((err) => {
         console.error("[devtool] continue failed", err);
       });
     },
-    [requests, liveItems, liveRawItems, streamState, streamRequestId, continueRequest],
+    [
+      requests,
+      liveItems,
+      liveRawItems,
+      streamState,
+      streamRequestId,
+      continueRequest,
+      refreshWorkstreams,
+    ],
   );
 
   const handleReplayFull = useCallback(

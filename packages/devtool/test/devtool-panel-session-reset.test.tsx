@@ -150,6 +150,14 @@ vi.mock("../src/react/components/workspace/action-bar", () => ({
   }) => <button onClick={() => onSendAction("run", {})}>send-stub</button>,
 }));
 
+// The third work-starting path: the per-row Continue action for an interrupted
+// request, which the panel hands to the stream view.
+vi.mock("../src/react/components/workspace/stream-view", () => ({
+  StreamView: ({ onContinue }: { onContinue: (requestId: string) => void }) => (
+    <button onClick={() => onContinue("req_interrupted")}>continue-stub</button>
+  ),
+}));
+
 import { DevToolPanel } from "../src/react/DevToolPanel";
 
 /** What the panel most recently told `useLiveMode`. */
@@ -197,6 +205,36 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
       resolveDispatch(null);
       await Promise.resolve();
     });
+  });
+
+  it("re-reads the Workstream axis when a suspension resolves", async () => {
+    // `resumeSuspension` in the contract's list. A resume restarts the run, and
+    // a restarted run can file background work — so the axis has to advance
+    // here for the same reason it does on a dispatch.
+    await act(async () => render(<DevToolPanel userId="u1" />));
+    await act(async () => {
+      fireEvent.mouseDown(screen.getByRole("tab", { name: "Suspensions" }));
+    });
+    refreshWorkstreams.mockClear();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("resume-stub"));
+    });
+
+    expect(refreshWorkstreams).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-reads the Workstream axis when an interrupted request is continued", async () => {
+    // `continueRequest` in the contract's list. A continuation resumes a run
+    // mid-flight, which can reach a board that dispatches detached work.
+    await act(async () => render(<DevToolPanel userId="u1" />));
+    refreshWorkstreams.mockClear();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("continue-stub"));
+    });
+
+    expect(refreshWorkstreams).toHaveBeenCalledTimes(1);
   });
 
   it("discards a dispatch that resolves after the user moved to another session", async () => {
