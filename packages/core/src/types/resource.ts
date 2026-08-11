@@ -184,6 +184,29 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
    * rules for collisions across flows.
    */
   flowIsolation?: boolean;
+  /**
+   * Give this session-scoped resource ONE identity across the whole session
+   * lineage (FIX-1068), so a session and every background child session it
+   * spawns — a Workstream, and a Workstream's own Workstreams — read and write
+   * the same resource through the ordinary resource API.
+   *
+   * Default `false`: a session-scoped resource resolves against the running
+   * session, so a child session hydrates its own empty copy. Set `true` and it
+   * resolves against the **lineage root** instead — the top-most session in the
+   * chain — which every session in that lineage agrees on.
+   *
+   * Session-scope only. `true` at `user` / `org` scope is rejected at build
+   * time: those scopes already span every session the same principal touches,
+   * so the flag would mean nothing there.
+   *
+   * **Sharing is not serialization.** Two children writing one shared resource
+   * is ordinary same-resource contention, fenced by the store's
+   * `expectedVersion` check like any other concurrent write. Nothing here
+   * queues, locks, or orders those writes.
+   *
+   * Session **state** is never shared — this flag reaches resources only.
+   */
+  sharedToWorkstream?: boolean;
   stateSchema: ZodTypeAny;
   default?: JsonValue;
   content?: string;
@@ -431,6 +454,13 @@ export function defineResource<
   if (config.flowIsolation === true && config.scope === "session") {
     throw new Error(
       `defineResource() rejects flowIsolation:true on session-scoped resources — sessions are intrinsically flow-bound`
+    );
+  }
+
+  if (config.sharedToWorkstream === true && config.scope !== "session") {
+    throw new Error(
+      `defineResource() rejects sharedToWorkstream:true on ${config.scope}-scoped resources — ` +
+        `${config.scope} scope already spans every session in a lineage`
     );
   }
 

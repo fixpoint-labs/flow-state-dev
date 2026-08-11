@@ -35,6 +35,7 @@ import {
   renderContent,
   type ResourceFlowLike,
 } from "../resources/internal";
+import { sessionResourceScopeId } from "../resources/lineage-scope";
 
 type ResourceRouteContext = {
   registry: FlowRegistry;
@@ -244,12 +245,16 @@ export async function handleCreateCollectionItem(
 
   const content = typeof body.content === "string" ? body.content : undefined;
 
+  // FIX-1068: state and content must land at the SAME address, so both take the
+  // collection's own scopeId — the lineage root when it is shared to workstreams.
+  const scopeId = sessionResourceScopeId(session, config, ctx.tenantId);
+
   // Win the key first, then write content. `expectedVersion: 0` is
   // create-if-absent, so a loser returns below without ever reaching
   // `ContentStore`, and its 409 is terminal — never retried into an overwrite.
   const inserted = await ctx.stores.resourceState.set(
     "session",
-    session.id,
+    scopeId,
     storageKey,
     initialState,
     0
@@ -283,7 +288,7 @@ export async function handleCreateCollectionItem(
   // All three are pinned by tests in `resource-collection-routes.test.ts`.
   // Client-facing guidance: `apps/docs` -> resources / client access.
   if (content !== undefined) {
-    await ctx.stores.content.set("session", session.id, storageKey, content);
+    await ctx.stores.content.set("session", scopeId, storageKey, content);
   }
 
   return jsonResponse(201, { topic: topic.trim() });
@@ -341,13 +346,16 @@ export async function handleUpdateResourceContent(
   if (!matchesPattern(config.pattern, storageKey)) {
     storageKey = resolveCollectionKey(config.pattern, route.topic);
   }
-  const existing = await ctx.stores.resourceState.get("session", session.id, storageKey);
+  // FIX-1068: a collection declared `sharedToWorkstream` stores at the lineage
+  // root, so read and write address the same place a block would.
+  const scopeId = sessionResourceScopeId(session, config, ctx.tenantId);
+  const existing = await ctx.stores.resourceState.get("session", scopeId, storageKey);
   if (existing === undefined) {
     return jsonResponse(404, { error: `Item "${route.topic}" not found in "${route.ref}"` });
   }
 
   // Write to ContentStore (the canonical content location during execution).
-  await ctx.stores.content.set("session", session.id, storageKey, content);
+  await ctx.stores.content.set("session", scopeId, storageKey, content);
 
   return jsonResponse(200, { ref: route.ref, topic: route.topic });
 }
@@ -452,10 +460,11 @@ export async function handleListCollectionState(
     // whole scope. An empty prefix (e.g. `[topic]/observations`) falls back to
     // getAll.
     const keyPrefix = getPatternPrefix(config.pattern);
+    const scopeId = sessionResourceScopeId(session, config, ctx.tenantId);
     persisted = toBareStates(
       keyPrefix
-        ? await ctx.stores.resourceState.getByPrefix("session", session.id, `${keyPrefix}/`)
-        : await ctx.stores.resourceState.getAll("session", session.id)
+        ? await ctx.stores.resourceState.getByPrefix("session", scopeId, `${keyPrefix}/`)
+        : await ctx.stores.resourceState.getAll("session", scopeId)
     );
   } else {
     // User/org scope: resolve the persisted record via the shared scope
@@ -548,7 +557,13 @@ export async function handleGetCollectionItemState(
       extCtx
     );
   } else if (scope === "session") {
-    value = toBareState(await ctx.stores.resourceState.get("session", session.id, storageKey));
+    value = toBareState(
+      await ctx.stores.resourceState.get(
+        "session",
+        sessionResourceScopeId(session, config, ctx.tenantId),
+        storageKey
+      )
+    );
   } else {
     // User/org scope: resolve via the shared scope resolver (honors
     // flowIsolation). A missing user/org record means the topic isn't present
@@ -725,10 +740,11 @@ export async function handleDeleteCollectionItem(
   // the window closed is this route's own: a DELETE issued from an already
   // stale client view still reads the live row here and removes it. A
   // caller-supplied precondition is separate surface (FIX-1006).
-  const existing = await ctx.stores.resourceState.get("session", session.id, storageKey);
+  const scopeId = sessionResourceScopeId(session, config, ctx.tenantId);
+  const existing = await ctx.stores.resourceState.get("session", scopeId, storageKey);
   const removed = await ctx.stores.resourceState.delete(
     "session",
-    session.id,
+    scopeId,
     storageKey,
     existing?.version ?? 0
   );
@@ -742,7 +758,7 @@ export async function handleDeleteCollectionItem(
   // around: a recreation landing between these two statements loses its content
   // to this delete. `ContentStore` is last-write-wins by decision, so no state
   // predicate fences it, and closing it is cross-record atomicity (FIX-854).
-  await ctx.stores.content.delete("session", session.id, storageKey);
+  await ctx.stores.content.delete("session", scopeId, storageKey);
 
   return jsonResponse(200, { ref: route.ref, topic: route.topic });
 }

@@ -652,6 +652,27 @@ describe("defineFlow", () => {
         })({ id: "y" })
       ).not.toThrow();
     });
+
+    // FIX-1068: `defineResource` guards this too, but a resource can reach a
+    // flow without passing through it, so the flow-build check has to stand on
+    // its own — otherwise a user-scoped resource carrying the flag would build
+    // clean and mean nothing at runtime.
+    it("rejects sharedToWorkstream on a non-session-scoped resource at flow build", () => {
+      const shared = {
+        ref: "leaked",
+        scope: "user" as const,
+        sharedToWorkstream: true,
+        stateSchema: z.object({})
+      };
+
+      expect(() =>
+        defineFlow({
+          kind: "shared-outside-session",
+          actions: {},
+          resources: { shared: shared as never }
+        })({ id: "shared-outside-session" })
+      ).toThrow(/sharedToWorkstream: true on a user-scoped resource/);
+    });
   });
 
   describe("scope client config normalization (FIX-505)", () => {

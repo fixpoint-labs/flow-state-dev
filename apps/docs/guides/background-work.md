@@ -85,7 +85,9 @@ const runs = first === undefined ? [] : await sessions.listSessionRequests(first
 
 A workstream's `id` is a session id, so every session read works on it, and a workstream that files work of its own has workstreams too.
 
-Having its own session is also what it costs you. A workstream keeps its own state, its own history, and its own session-scoped resources, and none of those are the parent conversation's. What the two do share is the user: user- and org-scoped data is the same data on both sides, because a workstream runs as the same user on the same flow. Anything narrower than that has to be handed over when the work starts, or reported back when it finishes.
+Having its own session is also what it costs you. A workstream keeps its own state, its own history, and its own session-scoped resources, and none of those are the parent conversation's. What the two share without asking is the user: user- and org-scoped data is the same data on both sides, because a workstream runs as the same user on the same flow.
+
+For anything narrower, hand it over as input when the work starts and report it back when the work finishes. A session-scoped resource has a second route: mark it `sharedToWorkstream` and the conversation and every workstream under it resolve one copy of it. Session state has no such route; it is private to each session either way. See [State vs Resources](/docs/resources/storage#session-scope-and-background-work).
 
 This is where the task board's detached workers are headed. A board can declare that a worker's tasks belong outside the request that claimed them, addressed by the board's `boardId` plus that worker's coordinate so a later run can still find the block that does the work. Such a board needs a durable collection and an explicit `boardId`, because that id is part of the child session's identity. That declaration is groundwork today: a worker declared detached is validated and routed, and then still runs inline, inside the claiming request.
 

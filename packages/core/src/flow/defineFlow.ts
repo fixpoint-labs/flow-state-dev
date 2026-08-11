@@ -572,6 +572,8 @@ function tupleKey(t: { scope: ResourceScope; ref: string; flowIsolation: boolean
  *     (always a hard error — would silently share storage).
  *   - `flowIsolation: true` on a session-scoped resource (semantically
  *     meaningless; almost certainly a confused author).
+ *   - `sharedToWorkstream: true` outside session scope (same reason: user and
+ *     org scope already span every session in a lineage).
  *
  * Same-accessor-key collisions are caught at the `mergeDeclaredResources`
  * layer; this layer only inspects effective tuples.
@@ -596,6 +598,14 @@ function validateFlowResources(
       throw new Error(
         `Resource "${accessor}" in flow "${flowKind}" sets flowIsolation: true on a ` +
         `session-scoped resource. Sessions are intrinsically flow-bound — drop the flag.`
+      );
+    }
+
+    if (entry.sharedToWorkstream === true && entry.scope !== "session") {
+      throw new Error(
+        `Resource "${accessor}" in flow "${flowKind}" sets sharedToWorkstream: true on a ` +
+        `${entry.scope}-scoped resource. That scope already spans every session in a ` +
+        `lineage — drop the flag.`
       );
     }
 

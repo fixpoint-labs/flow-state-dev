@@ -102,6 +102,30 @@ describe("defineResourceCollection", () => {
     ).toThrow("flowIsolation:true on session-scoped");
   });
 
+  it("rejects sharedToWorkstream:true outside session scope", () => {
+    // FIX-1068: user/org scope already spans every session in a lineage, so the
+    // flag there is a confused author rather than a stronger sharing rule.
+    expect(() =>
+      defineResourceCollection({
+        pattern: "files/*",
+        scope: "user",
+        sharedToWorkstream: true,
+        stateSchema: z.object({}),
+      })
+    ).toThrow("sharedToWorkstream:true on user-scoped");
+  });
+
+  it("allows sharedToWorkstream:true on session-scoped collections", () => {
+    expect(() =>
+      defineResourceCollection({
+        pattern: "files/*",
+        scope: "session",
+        sharedToWorkstream: true,
+        stateSchema: z.object({}),
+      })
+    ).not.toThrow();
+  });
+
   it("allows flowIsolation:true on user-scoped collections", () => {
     expect(() =>
       defineResourceCollection({

@@ -80,6 +80,12 @@ export type RequestHostInputs = {
     orgId: string | undefined;
     /** The running request's session — the parent of anything it spawns. */
     sessionId: string;
+    /**
+     * The running session's own lineage root, or `undefined` when it *is* the
+     * root (FIX-1068). Read off the running session record, so a child inherits
+     * the same root rather than re-deriving it by walking parents.
+     */
+    lineageRootSessionId?: string;
   };
   /** Absent when this process executes requests but cannot start one. */
   startOperation?: DetachedStartOperation;
@@ -185,6 +191,16 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),
         ...(identity.orgId !== undefined ? { orgId: identity.orgId } : {}),
         parentSessionId: identity.sessionId,
+        // The lineage root, stamped once at creation (FIX-1068). Inherited from
+        // the running session when it has one, otherwise the running session is
+        // itself the root. Every descendant therefore carries the same value, so
+        // a `sharedToWorkstream` resource resolves to one address across the
+        // whole chain without any read walking `parentSessionId`.
+        //
+        // `??`, so a store that nulls absent keys reads the same as an absent
+        // field: both mean "the running session is the root", never "the root is
+        // null" (BP-030).
+        lineageRootSessionId: identity.lineageRootSessionId ?? identity.sessionId,
         // Canonical labels, stamped here and only here (FIX-1010). They are
         // taken from the seed **this call already consumed to derive the child
         // key**, not from `args.record` below — which is why a caller cannot

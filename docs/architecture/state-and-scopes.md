@@ -473,7 +473,7 @@ The child inherits `flowKind`, `userId`, `tenantId` and `orgId`, and records `pa
 | Scope | In the child |
 |---|---|
 | `request` | Fresh — the child's own dispatch |
-| `session` | **A separate cell.** Own state blob, own items and history, own journal, own metadata, own session-scoped resources |
+| `session` | **A separate cell.** Own state blob, own items and history, own journal, own metadata, own session-scoped resources — except a resource declared `sharedToWorkstream` (below) |
 | `user` | **The parent's cell.** `userId` is inherited, and `isolateUserState` keys on `${userId}:${flowKind}` with `flowKind` inherited too — so isolated and shared both resolve to the record the parent reads |
 | `org` | The parent's cell, by the same reasoning |
 
@@ -488,7 +488,21 @@ Four channels, and none of them is shared session state:
 3. **`record` on `StartDetachedInput`** — caller bookkeeping persisted on the child session record. Metadata rather than state, and also frozen.
 4. **`parentTask()` / `settleParentTask()`** — one board row, server-stamped at spawn and closed over. Deliberately not a cross-session browser: one coordinate, one row.
 
-**There is no live read or write of the parent session's state from inside a child.** The request host is closed at four verbs and passes behaviour rather than handles — no type on it names a store, a session record or a task row. So the "own state" half of a workstream works today; the "connected to its parent" half is served only by something too wide (user scope) or something too narrow (a single task row). Closing that gap without adding a fifth scope is an open design question, not a decided contract.
+**There is no live read or write of the parent session's STATE from inside a child**, and none is planned. The request host is closed at four verbs and passes behaviour rather than handles — no type on it names a store, a session record or a task row.
+
+### Resources shared to the lineage (FIX-1068)
+
+Resources close the gap that state does not, and they close it without a cross-session seam. A session-scoped resource or collection declaring `sharedToWorkstream: true` resolves against the **lineage root** rather than the running session, so a parent and every descendant address one storage cell through the ordinary resource API. There is no new verb, no direction, and no cross-session read path: whether a resource is shared changes only where it stores.
+
+**Why the root and not the parent.** A workstream carries its parent's `flowKind` — `createRequestHost` writes `flowKind: flow.kind` and `evaluateAdoption` refuses a mismatch — so every session in a lineage declares the same resource set statically. A layer holding a shared resource its ancestors do not would require dynamic installation, which the resource contract does not offer. Resolving to the root is therefore both the simple rule and the correct one, and it makes a three-deep lineage hold one copy rather than two.
+
+**Where the root comes from.** `SessionRecord.lineageRootSessionId` is stamped once, at child creation, by `createRequestHost.startDetached`: the parent's root, or the parent itself when the parent has none. A resource read is then O(1) — no walk up `parentSessionId`. Absent means "I am the root", which covers every top-level session and every record persisted before the field existed, so a legacy child keeps the isolation it always had (BP-030; read it with `== null`). Only the detached-start writer sets it — the public session-create route does not, matching `parentSessionId` (BP-031).
+
+**Where resolution happens.** On the execution path, `resolveConfigScopeId` and `resolveResourceStorageScopeId` in `packages/engine/src/context/createExecutionContext.ts`. Both route the session scope on a `sharedToWorkstream` bucket map built the same way user/org build their `flowIsolation` buckets: singles by canonical storage key, collection instances by longest-matching prefix. Collections sharing a storage prefix must agree on the flag, refused at context construction like the `flowIsolation` case.
+
+The HTTP read/write routes need the same answer and derive it from `packages/engine/src/resources/lineage-scope.ts` — `sessionResourceScopeId` where a route already holds the resource's config, `readSessionScopeWithLineage` for the whole-scope reads (`getPersistedData`, the state route). The whole-scope read drops shared keys from the session's own rows before folding in the root's, so a child's view is exactly what a block resolves rather than a union of two sessions' resources.
+
+**Sharing does not imply serialization.** Two workstreams writing one shared resource is ordinary same-resource contention, governed by the `expectedVersion` + `SetResult` contract every `ResourceStateStore` adapter implements (FIX-992). Nothing queues, locks or orders those writes.
 
 ## Streaming Integration
 

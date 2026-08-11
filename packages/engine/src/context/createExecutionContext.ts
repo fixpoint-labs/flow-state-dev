@@ -646,6 +646,21 @@ export async function createExecutionContext<
   }
 
   const resolvedOrgId = sessionOrgId;
+
+  // The lineage root this session's `sharedToWorkstream` resources address
+  // (FIX-1068). Stamped on a child at creation by the detached-start writer; a
+  // record without it IS the root — true of every top-level session and of every
+  // record persisted before the field existed, so `== null` reads both the
+  // absent and the store-nulled form (BP-030).
+  const lineageRootSessionId = sessionRecord.lineageRootSessionId ?? undefined;
+  // Storage form of the same address. `sessionKey` when this session is the
+  // root, so an unshared resource and a shared one agree there and a lineage
+  // that never spawned a child stores exactly where it always did.
+  const lineageRootSessionKey =
+    lineageRootSessionId === undefined
+      ? sessionKey
+      : resolveSessionStorageKey(lineageRootSessionId, options.tenantId);
+
   const resolvedOrgKey =
     resolvedOrgId !== undefined
       ? resolveOrgStorageKey(resolvedOrgId, flow)
@@ -709,7 +724,8 @@ export async function createExecutionContext<
             userId,
             tenantId: options.tenantId,
             orgId: resolvedOrgId,
-            sessionId
+            sessionId,
+            lineageRootSessionId
           },
           startOperation: options.requestHost.startOperation,
           parentTask: options.requestHost.parentTask,
@@ -885,67 +901,91 @@ export async function createExecutionContext<
   const scopeIdentityId = (scope: ContentScopeType): string | undefined =>
     scope === "session" ? sessionKey : scope === "user" ? userId : resolvedOrgId;
 
-  // Per scope: which storage keys (singles) and collection prefixes are
-  // isolated. Built once from the full config maps so any read/write can map a
-  // key to its bucket. Session never isolates, so only user/org are tracked.
-  type IsolationBuckets = {
+  // Per scope: which storage keys (singles) and collection prefixes carry the
+  // scope's storage-routing flag. Built once from the full config maps so any
+  // read/write can map a key to its bucket.
+  //
+  // The flag means something different per scope, but routes identically:
+  // user/org route on `flowIsolation` (bare identity vs `${id}:${flowKind}`,
+  // FIX-735); session routes on `sharedToWorkstream` (this session vs the
+  // lineage root, FIX-1068).
+  type ScopeBuckets = {
     singles: Map<string, boolean>;
-    prefixes: Array<{ prefix: string; isolated: boolean }>;
+    prefixes: Array<{ prefix: string; flag: boolean }>;
   };
-  const buildIsolationBuckets = (scope: "user" | "org"): IsolationBuckets => {
-    const configs = scope === "user" ? userResourceConfigs : orgResourceConfigs;
+  const buildScopeBuckets = (
+    scope: ContentScopeType,
+    configs: Record<string, ResourceConfig | ResourceCollectionConfig>,
+    flagOf: (config: ResourceConfig | ResourceCollectionConfig) => boolean,
+    flagName: string
+  ): ScopeBuckets => {
     const keys = scopeStorageKeyMaps[scope];
     const singles = new Map<string, boolean>();
-    const prefixes: Array<{ prefix: string; isolated: boolean }> = [];
+    const prefixes: Array<{ prefix: string; flag: boolean }> = [];
     // FIX-735: collection storage is keyed by pattern prefix (load waves,
     // `getByPrefix`, single-flight tokens, and the loaded-prefix cache all key
     // on it). Two collections that share a prefix therefore share one storage
-    // slot and MUST share an isolation bucket — otherwise one would silently
-    // shadow the other's loads/writes. Patterns whose first segment is a
+    // slot and MUST share a bucket — otherwise one would silently shadow the
+    // other's loads/writes. Patterns whose first segment is a
     // parameter/wildcard collapse to the empty prefix (whole-scope scan), so
     // this most often bites two parameterized collections at one scope. Reject
     // the conflict loudly at setup rather than mis-route data.
-    const prefixIsolation = new Map<string, boolean>();
+    const prefixFlag = new Map<string, boolean>();
     for (const [accessor, config] of Object.entries(configs)) {
-      const isolated = resolveResourceIsolation(
-        (config as { flowIsolation?: boolean }).flowIsolation,
-        flow,
-        scope
-      );
+      const flag = flagOf(config);
       if (isCollectionConfig(config)) {
         const rawPrefix = getPatternPrefix(config.pattern);
         const keyPrefix = rawPrefix === "" ? "" : `${rawPrefix}/`;
-        const existing = prefixIsolation.get(keyPrefix);
-        if (existing !== undefined && existing !== isolated) {
+        const existing = prefixFlag.get(keyPrefix);
+        if (existing !== undefined && existing !== flag) {
           throw new Error(
             `Flow "${flow.kind}": ${scope}-scoped collections sharing storage prefix ` +
-              `"${keyPrefix || "(whole scope)"}" declare conflicting flowIsolation. ` +
-              `Collections that share a storage prefix must share an isolation bucket — ` +
-              `give them distinct static prefixes or matching flowIsolation (FIX-735).`
+              `"${keyPrefix || "(whole scope)"}" declare conflicting ${flagName}. ` +
+              `Collections that share a storage prefix must share a storage bucket — ` +
+              `give them distinct static prefixes or matching ${flagName} (FIX-735).`
           );
         }
-        prefixIsolation.set(keyPrefix, isolated);
-        prefixes.push({ prefix: keyPrefix, isolated });
+        prefixFlag.set(keyPrefix, flag);
+        prefixes.push({ prefix: keyPrefix, flag });
       } else {
-        singles.set(keys[accessor] ?? accessor, isolated);
+        singles.set(keys[accessor] ?? accessor, flag);
       }
     }
     return { singles, prefixes };
   };
-  const isolationBuckets: Record<"user" | "org", IsolationBuckets> = {
-    user: buildIsolationBuckets("user"),
-    org: buildIsolationBuckets("org")
+  const isolationFlagOf =
+    (scope: "user" | "org") =>
+    (config: ResourceConfig | ResourceCollectionConfig): boolean =>
+      resolveResourceIsolation((config as { flowIsolation?: boolean }).flowIsolation, flow, scope);
+  const sharedToWorkstreamFlagOf = (
+    config: ResourceConfig | ResourceCollectionConfig
+  ): boolean => (config as { sharedToWorkstream?: boolean }).sharedToWorkstream === true;
+  const scopeBuckets: Record<ContentScopeType, ScopeBuckets> = {
+    session: buildScopeBuckets(
+      "session",
+      sessionResourceConfigs,
+      sharedToWorkstreamFlagOf,
+      "sharedToWorkstream"
+    ),
+    user: buildScopeBuckets("user", userResourceConfigs, isolationFlagOf("user"), "flowIsolation"),
+    org: buildScopeBuckets("org", orgResourceConfigs, isolationFlagOf("org"), "flowIsolation")
   };
 
   // Resolve the per-resource storage `scopeId` from a (scope, config). Used by
   // the eager load waves and persist paths, which hold the config and so can
-  // read its `flowIsolation` directly (correct for collections, whose accessor
-  // is not a key prefix). `undefined` when the scope is absent this request.
+  // read its `flowIsolation` / `sharedToWorkstream` directly (correct for
+  // collections, whose accessor is not a key prefix). `undefined` when the scope
+  // is absent this request.
   const resolveConfigScopeId = (
     scope: ContentScopeType,
     config: ResourceConfig | ResourceCollectionConfig
   ): string | undefined => {
-    if (scope === "session") return sessionKey;
+    // FIX-1068: a session-scoped resource marked `sharedToWorkstream` addresses
+    // the lineage root, so a parent and its Workstreams resolve one resource.
+    // Everything else stays on the running session, unchanged.
+    if (scope === "session") {
+      return sharedToWorkstreamFlagOf(config) ? lineageRootSessionKey : sessionKey;
+    }
     const identityId = scopeIdentityId(scope);
     if (identityId === undefined) return undefined;
     const isolated = resolveResourceIsolation(
@@ -963,25 +1003,35 @@ export async function createExecutionContext<
   // *longest* declared prefix that owns them, so nested prefixes (e.g. `a/` and
   // `a/b/`) route to the right collection rather than the first one declared;
   // an undeclared key falls back to the flow-flag bucket.
+  const resolveBucketFlag = (scope: ContentScopeType, storageKey: string): boolean | undefined => {
+    const buckets = scopeBuckets[scope];
+    const single = buckets.singles.get(storageKey);
+    if (single !== undefined) return single;
+    let flag: boolean | undefined;
+    let bestLen = -1;
+    for (const p of buckets.prefixes) {
+      const matches = p.prefix === "" || storageKey.startsWith(p.prefix);
+      if (matches && p.prefix.length > bestLen) {
+        bestLen = p.prefix.length;
+        flag = p.flag;
+      }
+    }
+    return flag;
+  };
   const resolveResourceStorageScopeId = (
     scope: ContentScopeType,
     storageKey: string
   ): string | undefined => {
-    if (scope === "session") return sessionKey;
+    // FIX-1068: an undeclared session key falls back to `false` — the running
+    // session — which is the address it had before shared resources existed.
+    if (scope === "session") {
+      return resolveBucketFlag("session", storageKey) === true
+        ? lineageRootSessionKey
+        : sessionKey;
+    }
     const identityId = scopeIdentityId(scope);
     if (identityId === undefined) return undefined;
-    const buckets = isolationBuckets[scope];
-    let isolated = buckets.singles.get(storageKey);
-    if (isolated === undefined) {
-      let bestLen = -1;
-      for (const p of buckets.prefixes) {
-        const matches = p.prefix === "" || storageKey.startsWith(p.prefix);
-        if (matches && p.prefix.length > bestLen) {
-          bestLen = p.prefix.length;
-          isolated = p.isolated;
-        }
-      }
-    }
+    let isolated = resolveBucketFlag(scope, storageKey);
     if (isolated === undefined) {
       isolated = scope === "user" ? flow.isolateUserState : flow.isolateOrgState;
     }
@@ -989,10 +1039,11 @@ export async function createExecutionContext<
   };
 
   // Group a per-scope config subset by the storage scopeId each entry resolves
-  // to (at most two groups: shared + isolated). Lets the eager load waves issue
-  // one store read per bucket and merge. Empty when the scope is absent.
+  // to (at most two groups per scope: user/org split on `flowIsolation`,
+  // session on `sharedToWorkstream`). Lets the eager load waves issue one store
+  // read per bucket and merge. Empty when the scope is absent.
   const partitionConfigsByScopeId = (
-    scope: "user" | "org",
+    scope: ContentScopeType,
     configs: Record<string, ResourceConfig | ResourceCollectionConfig>
   ): Map<string, Record<string, ResourceConfig | ResourceCollectionConfig>> => {
     const groups = new Map<string, Record<string, ResourceConfig | ResourceCollectionConfig>>();
@@ -1007,7 +1058,7 @@ export async function createExecutionContext<
   };
 
   const loadScopeStateByBuckets = async (
-    scope: "user" | "org",
+    scope: ContentScopeType,
     configs: Record<string, ResourceConfig | ResourceCollectionConfig>
   ): Promise<Record<string, VersionedResourceState>> => {
     const groups = partitionConfigsByScopeId(scope, configs);
@@ -1020,7 +1071,7 @@ export async function createExecutionContext<
   };
 
   const loadScopeContentByBuckets = async (
-    scope: "user" | "org",
+    scope: ContentScopeType,
     configs: Record<string, ResourceConfig | ResourceCollectionConfig>
   ): Promise<Record<string, string>> => {
     const groups = partitionConfigsByScopeId(scope, configs);
@@ -1034,7 +1085,7 @@ export async function createExecutionContext<
 
   const wave1Start = Date.now();
   const [sessionContentFromStore, userContentFromStore, orgContentFromStore] = await Promise.all([
-    loadDeclaredScopeContent(stores.content, "session", sessionKey, sessionFlowLevelConfigs),
+    loadScopeContentByBuckets("session", sessionFlowLevelConfigs),
     loadScopeContentByBuckets("user", userFlowLevelConfigs),
     resolvedOrgId !== undefined
       ? loadScopeContentByBuckets("org", orgFlowLevelConfigs)
@@ -1060,7 +1111,7 @@ export async function createExecutionContext<
   // per-scope caches; in-execution reads/writes hit the cache and persist
   // per-key, never rewriting the whole scope record.
   const [sessionStateFromStore, userStateFromStore, orgStateFromStore] = await Promise.all([
-    loadDeclaredResourceState(stores.resourceState, "session", sessionKey, sessionFlowLevelConfigs),
+    loadScopeStateByBuckets("session", sessionFlowLevelConfigs),
     loadScopeStateByBuckets("user", userFlowLevelConfigs),
     resolvedOrgId !== undefined
       ? loadScopeStateByBuckets("org", orgFlowLevelConfigs)

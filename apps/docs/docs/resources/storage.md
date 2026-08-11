@@ -103,6 +103,35 @@ Quick rules:
 | Shared across users? | | | Yes |
 | Temporary working data? | Yes | | |
 
+### Session scope and background work
+
+Background work runs in a session of its own, hanging off the conversation that started it. Each session has its own session scope, so a session-scoped resource in a background job is a different resource from the one in the conversation, holding whatever that job put in it.
+
+To give a session-scoped resource one identity across a conversation and every job under it, mark it `sharedToWorkstream`:
+
+```ts
+const board = defineResource({
+  scope: "session",
+  sharedToWorkstream: true,
+  ref: "board",
+  stateSchema: z.object({
+    items: z.array(z.string()).default([]),
+  }),
+});
+```
+
+Both sides reach it through the ordinary resource API, `ctx.resources.board`, and read and write the same rows. There is no separate call for the parent's copy — there is one copy. Jobs nest, and the resource follows the whole chain: a job filed by a job resolves the same resource as the conversation at the top.
+
+The flag applies to collections too, and to session scope only. On a user- or org-scoped resource it's rejected when the flow is built, since those scopes already span every session the same user touches.
+
+What it won't do:
+
+**Share scope state.** Session state stays private to each session whether or not a resource beside it is shared. Hand state over as input when the work starts, or put it in a shared resource.
+
+**Serialize writes.** Two jobs writing one shared resource is ordinary concurrent access. Nothing queues or orders them, so fence it yourself if the writes can collide.
+
+**Reach sideways.** Sharing runs down one chain. Two conversations, and the jobs under each, hold separate resources.
+
 ## Client visibility
 
 Scope state is never directly visible to clients. You expose it through each scope's `client` block — `expose` for verbatim fields, `derived` for computed projections (the latter runs server-side):

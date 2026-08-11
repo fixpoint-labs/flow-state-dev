@@ -49,6 +49,26 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    */
   parentSessionId?: string;
   /**
+   * Bare id of the TOP-MOST session in this session's lineage (FIX-1068) — the
+   * ancestor a `sharedToWorkstream` resource resolves against, so every session
+   * in one chain addresses the same storage.
+   *
+   * Stamped once, at creation, by the detached-start writer
+   * (`context/create-request-host.ts`): a child's root is its parent's root, or
+   * the parent itself when the parent has none. That makes the lookup O(1) per
+   * resource read instead of a walk up `parentSessionId`, and it is safe to
+   * stamp because a child never changes parents.
+   *
+   * Absent means **"I am the root"** — true of every top-level session, and of
+   * every record persisted before this field existed. A store that nulls absent
+   * keys hands back `null`, so read it with `== null` (BP-030). A legacy child
+   * is therefore treated as its own root, which is exactly the behaviour it had
+   * before this field: its session-scoped resources stay its own.
+   *
+   * Bare, not tenant-namespaced, matching {@link SessionRecord.parentSessionId}.
+   */
+  lineageRootSessionId?: string;
+  /**
    * Human-readable name for the body of work a detached child session was
    * started for (FIX-1010). Stamped by the detached-start writer
    * (`context/create-request-host.ts`) from the routing seed the child key was
