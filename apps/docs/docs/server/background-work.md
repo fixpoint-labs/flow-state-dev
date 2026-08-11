@@ -41,7 +41,7 @@ and the response key, and means the same thing throughout this page.
       "id": "ws_9f2c1a",
       "parentSessionId": "sess_abc",
       "topic": "market-research",
-      "coordinate": "researcher",
+      "coordinate": "14:research-board|22:assignee|10:researcher",
       "status": "active",
       "createdAt": 1770000000000,
       "updatedAt": 1770000042000
@@ -58,24 +58,28 @@ and the response key, and means the same thing throughout this page.
 }
 ```
 
-`topic` names the body of work and `coordinate` names the worker handling it.
-Both are optional, as is `status`, so read them with `== null` guards rather
-than assuming every row carries them. A row with neither label is a child
+`topic` names the body of work and `coordinate` names where it runs. Work
+started from a task board, which is the usual way, gets a `coordinate` holding
+the board and the worker together in one encoded string. Compare it whole. The
+worker's name is visible inside it, but matching on that substring collides
+across boards.
+
+Both labels are optional, as is `status`, so read them with `== null` guards
+rather than assuming every row carries them. A row with neither label is a child
 session that isn't a background job.
 
-The two labels don't identify a job on their own. A job is one board, one
-worker, one topic, where a board is the server-side task list the work was filed
-on. No row carries the board, so two rows can share a `topic` and still be
-separate jobs, either because they were filed on different boards or because
-they route to different workers. Tasks matching on all three continue one job
-instead of starting another. See
+The pair is what identifies a job. A job is one board, one worker, one topic, so
+two rows sharing a `topic` are separate jobs whenever their `coordinate`s
+differ, whether that's a different board or a different worker, and tasks
+matching on all three continue one job instead of starting another. A row with a
+`topic` and no `coordinate` was addressed by topic alone, without a board. See
 [Which tasks share a workstream](/guides/background-work#which-tasks-share-a-workstream).
 
 ### What `status` tells you
 
-`active` means one thing: the job isn't finished. It covers a job waiting in a
-queue, a job running right now, and a job paused waiting for someone to approve
-something. The endpoint does not distinguish those. If you need to know which,
+`active` means the job isn't finished. It covers a job waiting in a queue, a job
+running right now, and a job paused waiting for someone to approve something.
+The endpoint does not distinguish those. If you need to know which,
 open the job and read its history, or read the task board the job is working
 from.
 
@@ -120,7 +124,7 @@ Each run's record carries a `metadata.workstream` bag:
   "metadata": {
     "workstream": {
       "topic": "market-research",
-      "key": "researcher",
+      "key": "14:research-board|22:assignee|10:researcher",
       "taskId": "task_7f3"
     }
   }
@@ -136,10 +140,10 @@ What you can rely on differs by field.
 
 `topic` and `key` are the address the run's session was derived from. Choosing
 them and choosing which session you get is the same choice, so they cannot
-disagree with the run they sit on. The `topic` and `coordinate` on the job's
-row in the listing above come from that same address. Treat `key` as opaque and
-compare it whole; work started from a task board encodes the board and the
-worker into it. `key` is absent when the job was addressed without one.
+disagree with the run they sit on. They are the same pair the listing returns as
+the job's `topic` and `coordinate`, so `key` is opaque here for the same reason
+it is there: compare it whole. `key` is absent when the job was addressed
+without one.
 
 `taskId` names the task-board row the run was started for, so you can match a
 run back to a board row without keeping the board open beside it. It holds what
