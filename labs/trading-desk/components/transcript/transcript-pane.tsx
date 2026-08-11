@@ -13,7 +13,13 @@
  *     intentionally suppressed from the transcript per the design — they
  *     surface only in the right pane.
  *
+ * The item → row projection itself is pure and lives in `transcript-rows.ts`,
+ * shared with `ThesesPane` so the memo header's jump control and this pane
+ * agree on which agents actually have an event (FIX-1062).
+ *
  * Auto-scrolls to the bottom on new items if the user is near the bottom.
+ * A `jumpTo` request from a memo header scrolls to that agent's first row
+ * instead, and stops the auto-follow so a live run doesn't yank it back.
  */
 "use client";
 
@@ -25,34 +31,27 @@ import { TxTool } from "./tx-tool";
 import { TxSpeak } from "./tx-speak";
 import { TxStruct } from "./tx-struct";
 import {
-  AGENTS,
-  type AgentName,
-} from "@/flows/analysis/registry";
+  buildTranscriptRows,
+  TX_AGENT_ANCHOR_ATTR,
+  type TranscriptRow,
+} from "./transcript-rows";
+import type { AgentName } from "@/flows/analysis/registry";
 import { cn } from "@/lib/utils";
+
+/** A request to scroll the transcript to one agent's originating event.
+ *  `nonce` makes a repeat click on the same memo a new request, so the jump
+ *  re-fires instead of being deduped away by referential equality. */
+export type TranscriptJump = {
+  agent: AgentName;
+  nonce: number;
+};
 
 type Props = {
   session: SessionView;
+  jumpTo?: TranscriptJump | null;
 };
 
-const PRIMARY_STRUCT_AGENTS = new Set<string>([
-  "researchManager",
-  "trader",
-  "portfolioManager",
-  "thesisValidator",
-]);
-
-const PHASE_1_ANALYST_AGENTS = new Set<string>([
-  "fundamentalsAnalyst",
-  "sentimentAnalyst",
-  "newsAnalyst",
-  "technicalAnalyst",
-  "companyProfileAnalyst",
-  "marketAnalyst",
-  "macroAnalyst",
-  "quantAnalyst",
-]);
-
-export function TranscriptPane({ session }: Props): ReactElement {
+export function TranscriptPane({ session, jumpTo }: Props): ReactElement {
   const items = session.items as OutputItem[];
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
@@ -80,7 +79,28 @@ export function TranscriptPane({ session }: Props): ReactElement {
     }
   }, [items.length]);
 
-  const rendered = useMemo(() => buildRows(items), [items]);
+  const rows = useMemo(() => buildTranscriptRows(items), [items]);
+
+  // Cross-pane jump (FIX-1062). Runs after commit, so on mobile — where this
+  // pane mounts only once the tab switches — the DOM is already there. A
+  // missing anchor is a silent no-op: the header only offers the control when
+  // `agentsWithTranscriptRows` says there is one, so this is belt-and-braces
+  // for the mid-stream case where the memo publishes before its row lands.
+  useEffect(() => {
+    if (jumpTo === null || jumpTo === undefined) return;
+    const container = scrollRef.current;
+    if (container === null) return;
+    const target = container.querySelector<HTMLElement>(
+      `[${TX_AGENT_ANCHOR_ATTR}="${jumpTo.agent}"]`,
+    );
+    if (target === null) return;
+    // The user navigated deliberately; a streaming run must not drag them back.
+    stickToBottomRef.current = false;
+    target.scrollIntoView({ block: "start", behavior: "smooth" });
+    // Move the reading position too, so the jump means something to a screen
+    // reader / keyboard user and not only to a sighted one.
+    target.focus({ preventScroll: true });
+  }, [jumpTo]);
 
   return (
     <section
@@ -96,103 +116,41 @@ export function TranscriptPane({ session }: Props): ReactElement {
         </h2>
       </div>
       <div ref={scrollRef} className="flex-1 overflow-y-auto py-2">
-        {rendered.length === 0 ? (
+        {rows.length === 0 ? (
           <p className="px-6 pt-8 text-center text-[12px] leading-relaxed text-[color:var(--c-fg-faint)]">
             Run an analysis to populate the transcript. Phase dividers, tool
             calls, and analyst speak rows will stream in live.
           </p>
         ) : (
-          rendered
+          rows.map((row) =>
+            row.isAgentAnchor && row.agent !== null ? (
+              <div
+                key={row.key}
+                {...{ [TX_AGENT_ANCHOR_ATTR]: row.agent }}
+                tabIndex={-1}
+                className="outline-none"
+              >
+                {renderRow(row)}
+              </div>
+            ) : (
+              <div key={row.key}>{renderRow(row)}</div>
+            ),
+          )
         )}
       </div>
     </section>
   );
 }
 
-function buildRows(items: OutputItem[]): ReactElement[] {
-  const rows: ReactElement[] = [];
-  // Group `message` items by stable id so streaming deltas update the same
-  // row rather than appending duplicates.
-  for (const item of items) {
-    if (item.transient === true) continue;
-    if (item.type === "container") {
-      const container = item as Extract<OutputItem, { type: "container" }>;
-      // Phase-divider containers: P1 ships `analyst-phase`; P2+ will ship
-      // `phase-2-debate`, `phase-3-trader`, etc. Match either shape.
-      const isPhaseDivider =
-        typeof container.component === "string" &&
-        (container.component === "analyst-phase" ||
-          container.component.startsWith("phase-"));
-      if (isPhaseDivider && container.label !== undefined) {
-        rows.push(<TxPhase key={`phase-${container.id}`} label={container.label} />);
-      }
-      continue;
-    }
-    if (item.type === "tool_output") {
-      const tool = item as Extract<OutputItem, { type: "tool_output" }>;
-      const argsStr = tool.toolCall?.arguments ?? "";
-      const argsPreview = oneLine(argsStr) || "(no args)";
-      const output = tool.output as Record<string, unknown> | undefined;
-      const source =
-        output !== undefined && typeof output.source === "string"
-          ? output.source
-          : undefined;
-      const bytes =
-        output !== undefined ? JSON.stringify(output).length : undefined;
-      rows.push(
-        <TxTool
-          key={tool.id}
-          agent={tool.agentName as AgentName | undefined}
-          toolName={tool.toolCall?.name ?? tool.blockName}
-          argsPreview={argsPreview}
-          status={tool.status}
-          source={source}
-          output={output}
-          bytes={bytes}
-          errorMessage={tool.error?.message}
-        />,
-      );
-      continue;
-    }
-    if (item.type === "message") {
-      const message = item as Extract<OutputItem, { type: "message" }>;
-      if (message.role !== "assistant") continue;
-      const agentName = message.agentName as AgentName | undefined;
-      if (agentName === undefined || AGENTS[agentName] === undefined) continue;
-      const text = message.content
-        .filter((c) => c.type === "output_text")
-        .map((c) => (c as { text: string }).text)
-        .join("");
-      if (text.length === 0 && message.status !== "in_progress") continue;
-      rows.push(
-        <TxSpeak
-          key={message.id}
-          agent={agentName}
-          text={text}
-          isStreaming={message.status === "in_progress"}
-        />,
-      );
-      continue;
-    }
-    if (item.type === "component") {
-      // Phase 2+ agents emit a `component: "thesis-card"` item carrying
-      // their structured output. Phase 1 analyst structured outputs are
-      // suppressed from the transcript per the design — they surface only
-      // in the right pane — so skip components emitted from analysts.
-      const cmp = item as Extract<OutputItem, { type: "component" }>;
-      if (cmp.component !== "thesis-card") continue;
-      const agentName = cmp.agentName;
-      if (agentName === undefined || PHASE_1_ANALYST_AGENTS.has(agentName)) continue;
-      if (!PRIMARY_STRUCT_AGENTS.has(agentName)) continue;
-      const meta = AGENTS[agentName as AgentName];
-      const label = meta?.role ?? agentName;
-      rows.push(<TxStruct key={cmp.id} label={label} data={cmp.data} />);
-      continue;
-    }
+function renderRow(row: TranscriptRow): ReactElement {
+  switch (row.kind) {
+    case "phase":
+      return <TxPhase label={row.label} />;
+    case "tool":
+      return <TxTool {...row.props} />;
+    case "speak":
+      return <TxSpeak {...row.props} />;
+    case "struct":
+      return <TxStruct {...row.props} />;
   }
-  return rows;
-}
-
-function oneLine(s: string): string {
-  return s.replace(/\s+/g, " ").trim().slice(0, 160);
 }

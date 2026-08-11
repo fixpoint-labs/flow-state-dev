@@ -19,6 +19,14 @@
  * the most-recently-published (or, failing that, currently-writing) memo.
  * `re-run` clears the manual-selection flag.
  *
+ * Jump to transcript (FIX-1062): a published memo header offers a control that
+ * scrolls the transcript pane to that agent's originating event. The pane owns
+ * only the "is there a target" half — `agentsWithTranscriptRows` over the same
+ * projection the transcript pane renders from — and delegates the navigation
+ * itself to `onJumpToTranscript`, because on mobile the transcript surface is
+ * unmounted until `app/page.tsx` switches tabs. No target and no handler mean
+ * no control, so the header can never carry a clickable no-op.
+ *
  * Tab switch (Slice 3): a Theses | Summary toggle sits above the doc area.
  * Theses is the existing sidebar+doc experience; Summary renders the
  * `<ReportSummary>` at-a-glance aggregate over the SAME already-loaded session
@@ -52,6 +60,7 @@ import { LensCard } from "./lens-card";
 import { ScenarioPanel } from "./scenario-panel";
 import { WritingSkeleton } from "./writing-skeleton";
 import { ReportSummary } from "@/components/summary/report-summary";
+import { agentsWithTranscriptRows } from "@/components/transcript/transcript-rows";
 import {
   AGENTS,
   ALL_MEMO_KEYS,
@@ -66,10 +75,15 @@ import {
 import type { MemoStatus } from "@/flows/analysis/resources";
 import { memosCollection } from "@/flows/analysis/resources";
 import type { ClientDataOf } from "@flow-state-dev/core";
+import type { OutputItem } from "@flow-state-dev/core/items";
 import { cn } from "@/lib/utils";
 
 type ThesesPaneProps = {
   session: SessionView;
+  /** Reveal the transcript surface (mobile) and scroll it to `agent`'s first
+   *  event. Omitted where no transcript surface is reachable — the memo header
+   *  then shows no jump control. */
+  onJumpToTranscript?: (agent: AgentName) => void;
 };
 
 /** The four phase-2b lens agents, derived READ-ONLY from the Slice-5
@@ -103,7 +117,10 @@ const PUBLISH_ORDER: ReadonlyArray<AnyMemoShortName> = [
   "thesisAlignment",
 ];
 
-export function ThesesPane({ session }: ThesesPaneProps): ReactElement {
+export function ThesesPane({
+  session,
+  onJumpToTranscript,
+}: ThesesPaneProps): ReactElement {
   const [selectedAgent, setSelectedAgent] = useState<AgentName | null>(null);
   const userSelectedRef = useRef(false);
   const [tab, setTab] = useState<"theses" | "summary">("theses");
@@ -164,6 +181,16 @@ export function ThesesPane({ session }: ThesesPaneProps): ReactElement {
     }
     return map;
   }, [memoItems]);
+
+  // Which agents actually have a transcript event to jump to. Derived from the
+  // SAME projection the transcript pane renders (BP-010: derived state via
+  // useMemo, not an effect), so the control is offered only where the jump
+  // will land. A re-opened report whose items were never persisted yields an
+  // empty set and no memo shows the control.
+  const jumpableAgents = useMemo(
+    () => agentsWithTranscriptRows(session.items as OutputItem[]),
+    [session.items],
+  );
 
   // Reset manual-selection flags only on a genuine re-run — a run STARTING
   // (streaming, 0 items) on a session that is NOT already complete. The
@@ -284,6 +311,12 @@ export function ThesesPane({ session }: ThesesPaneProps): ReactElement {
             session={session}
             agent={selectedAgent}
             status={statusForAgent(selectedAgent, memoStatus)}
+            onJumpToTranscript={
+              onJumpToTranscript !== undefined &&
+              jumpableAgents.has(selectedAgent)
+                ? () => onJumpToTranscript(selectedAgent)
+                : null
+            }
           />
         )}
       </div>
@@ -343,6 +376,8 @@ type MemoDocProps = {
   session: SessionView;
   agent: AgentName;
   status: MemoStatus | "unavailable";
+  /** Null when this memo has no transcript event to jump to. */
+  onJumpToTranscript: (() => void) | null;
 };
 
 // FIX-741: the client-data type is derived from the memos collection's
@@ -351,7 +386,12 @@ type MemoDocProps = {
 // projection/consumer mismatch is now a compile error.
 type MemoClientData = ClientDataOf<typeof memosCollection>;
 
-function MemoDoc({ session, agent, status }: MemoDocProps): ReactElement {
+function MemoDoc({
+  session,
+  agent,
+  status,
+  onJumpToTranscript,
+}: MemoDocProps): ReactElement {
   const shortName = shortNameForAgent(agent);
   const collectionKey =
     shortName !== undefined ? ALL_MEMO_KEYS[shortName].collectionKey : undefined;
@@ -438,6 +478,7 @@ function MemoDoc({ session, agent, status }: MemoDocProps): ReactElement {
         headline={data?.headline ?? null}
         rating={data?.rating ?? null}
         metrics={data?.metrics ?? null}
+        onJumpToTranscript={onJumpToTranscript}
       />
       {data?.body !== null && data?.body !== undefined && data.body.length > 0 && (
         <ThesisBody body={data.body} citations={data.citations ?? null} />
