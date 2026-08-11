@@ -133,6 +133,7 @@ function PanelContent({ className }: { className?: string }) {
     workstreams,
     isLoading: workstreamsLoading,
     error: workstreamsError,
+    truncated: workstreamsTruncated,
     refresh: refreshWorkstreams,
   } = useWorkstreams(effectiveSessionId);
   const { sendAction, isSending, lastResponse } = useActionDispatch();
@@ -155,8 +156,17 @@ function PanelContent({ className }: { className?: string }) {
   // group `requestGroups` appends for an `activeRequestId` that is not in
   // `requests` reads straight out of them, which is how the session left behind
   // keeps rendering its items under the newly opened one.
+  //
+  // `dispatchedRequestId` is cleared here too, and only here for this path. Its
+  // usual release is the terminal-status effect below, which never fires on a
+  // session switch: clearing `activeRequestId` disables the stream, so the
+  // status goes to `idle` rather than `completed`. Left set, it names a request
+  // in the session we just left, and `useLiveMode` only auto-subscribes when it
+  // is null — so live mode would silently ignore an in-progress request in the
+  // session the user just opened.
   useEffect(() => {
     setActiveRequestId(null);
+    setDispatchedRequestId(null);
     setLiveItems(new Map());
     setLiveRawItems(new Map());
     clearReplay();
@@ -351,6 +361,22 @@ function PanelContent({ className }: { className?: string }) {
     }
     return groups;
   }, [requests, liveItems, liveRawItems, activeRequestId, lastResponse, streamState, streamStatus, streamRequestId]);
+
+  // The flat item stream the Tasks and Workstreams tabs fold. Derived here
+  // rather than in the JSX because `flatMap` returns a NEW array on every
+  // render: computing it at each call site handed those panels a fresh `items`
+  // reference every time, so their own `useMemo`s recomputed even when the
+  // items were unchanged — which is the memo doing nothing at all.
+  //
+  // The fold itself deliberately stays inside each panel. `TabsContent` has no
+  // `forceMount`, so Radix unmounts the inactive tab and at most one of the two
+  // is ever mounted; lifting the fold here would instead run it on every
+  // `requestGroups` change no matter which tab is open, i.e. on every streamed
+  // item while the user is watching the Stream tab, for nothing.
+  const taskItems = useMemo(
+    () => requestGroups.flatMap((group) => group.items),
+    [requestGroups]
+  );
 
   // The sessions we descended through to reach the open one, outermost first,
   // with the open session itself last. Empty while looking at a session picked
@@ -642,7 +668,7 @@ function PanelContent({ className }: { className?: string }) {
             <TabsContent value="tasks" className="flex-1 min-h-0 m-0 overflow-auto">
               <TaskCollectionsView
                 key={effectiveSessionId ?? "none"}
-                items={requestGroups.flatMap((g) => g.items)}
+                items={taskItems}
                 workstreams={workstreams}
                 onOpenWorkstream={handleOpenWorkstream}
               />
@@ -655,8 +681,9 @@ function PanelContent({ className }: { className?: string }) {
                 workstreams={workstreams}
                 isLoading={workstreamsLoading}
                 error={workstreamsError}
+                truncated={workstreamsTruncated}
                 onRefresh={() => void refreshWorkstreams()}
-                items={requestGroups.flatMap((g) => g.items)}
+                items={taskItems}
                 onOpen={handleOpenWorkstream}
               />
             </TabsContent>

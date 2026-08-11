@@ -34,6 +34,7 @@ function renderView(props: Partial<React.ComponentProps<typeof WorkstreamsView>>
       workstreams={[]}
       isLoading={false}
       error={null}
+      truncated={false}
       onRefresh={onRefresh}
       items={[]}
       onOpen={onOpen}
@@ -125,5 +126,31 @@ describe("WorkstreamsView", () => {
 
     expect(screen.getByText("network down")).toBeInTheDocument();
     expect(screen.getByText("FIX-1")).toBeInTheDocument();
+  });
+
+  it("reads a null status as not-started rather than an empty badge", () => {
+    // A store that nulls absent keys hands back `null` where an older record
+    // has `undefined`. A strict `undefined` check renders the badge with no
+    // text in it, which looks like a status nobody can name (BP-030).
+    renderView({
+      workstreams: [
+        workstream({ id: "dsx_1", topic: "FIX-1", status: null as never }),
+      ],
+    });
+
+    expect(screen.getByText("not started")).toBeInTheDocument();
+  });
+
+  it("says so when the listing stopped at its bound", () => {
+    // The count beside a truncated list is the failure that matters: it reads
+    // as complete, so the newest background work looks like it does not exist.
+    renderView({
+      workstreams: [workstream({ id: "dsx_1", topic: "FIX-1" })],
+      truncated: true,
+    });
+
+    expect(
+      screen.getByText(/more background work than the panel reads in one go/i)
+    ).toBeInTheDocument();
   });
 });

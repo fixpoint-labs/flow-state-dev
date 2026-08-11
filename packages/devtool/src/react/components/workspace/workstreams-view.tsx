@@ -44,10 +44,16 @@ type Props = {
   workstreams: readonly WorkstreamSummary[];
   isLoading: boolean;
   error: string | null;
+  /**
+   * The listing stopped at its row bound with more still on the server. Shown,
+   * because a count beside a silently truncated list reads as complete.
+   */
+  truncated: boolean;
   onRefresh: () => void;
   /**
    * The open session's items, used only to name the board tasks a Workstream
    * covers. An empty list costs the panel nothing — every row still renders.
+   * The panel memoizes this list, so the folds below hold across renders.
    */
   items: ReadonlyArray<TaskStreamItem>;
   /** Open a Workstream in the workspace. */
@@ -59,6 +65,7 @@ export function WorkstreamsView({
   workstreams,
   isLoading,
   error,
+  truncated,
   onRefresh,
   items,
   onOpen,
@@ -78,6 +85,7 @@ export function WorkstreamsView({
       <div className="flex items-center gap-2 border-b border-slate-800 px-3 py-2">
         <span className="text-[10px] uppercase tracking-wide text-slate-500">
           {workstreams.length} workstream{workstreams.length === 1 ? "" : "s"}
+          {truncated && " (first)"}
         </span>
         <Button
           variant="outline"
@@ -91,6 +99,13 @@ export function WorkstreamsView({
 
       {error !== null && (
         <p className="px-3 py-2 text-xs text-red-400">{error}</p>
+      )}
+
+      {truncated && (
+        <p className="px-3 py-2 text-[11px] text-amber-400">
+          Showing the first {workstreams.length} workstreams. This session has
+          more background work than the panel reads in one go.
+        </p>
       )}
 
       {workstreams.length === 0 ? (
@@ -187,8 +202,12 @@ function WorkstreamRow({
         )}
       </td>
       <td className="py-1.5 pr-2">
-        {workstream.status === undefined ? (
+        {workstream.status == null ? (
           // Absence is not a status. The work exists and has run nothing.
+          // `== null` for the same reason `topic` and `coordinate` use it: a
+          // store that nulls absent keys hands back `null` where an older
+          // record has `undefined`, and both mean "no run yet" (BP-030). A
+          // strict `undefined` check renders `null` as an empty badge.
           <span className="text-[10px] italic text-slate-500">not started</span>
         ) : (
           <StatusBadge status={workstream.status} />

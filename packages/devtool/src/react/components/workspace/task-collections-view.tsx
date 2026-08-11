@@ -32,15 +32,18 @@ import { Badge } from "../ui/badge";
 import { JsonViewer } from "../shared/json-viewer";
 
 type Props = {
-  /** Flat list of items the user is currently inspecting (across all requests). */
+  /**
+   * Flat list of items the user is currently inspecting (across all requests).
+   * The panel memoizes this list, so the folds below hold across renders.
+   */
   items: ReadonlyArray<TaskStreamItem>;
   /**
    * The open session's background work, so a task run by one can say so.
    * Omitted (or empty) leaves every row exactly as it was.
    */
   workstreams?: readonly WorkstreamSummary[];
-  /** Open the Workstream running a task. Absent hides the link. */
-  onOpenWorkstream?: (workstream: WorkstreamSummary) => void;
+  /** Open the Workstream running a task. */
+  onOpenWorkstream: (workstream: WorkstreamSummary) => void;
 };
 
 export function TaskCollectionsView({ items, workstreams, onOpenWorkstream }: Props) {
@@ -79,8 +82,8 @@ function CollectionCard({
   onOpenWorkstream,
 }: {
   collection: CollectionView;
-  byTask: Map<string, WorkstreamSummary>;
-  onOpenWorkstream?: (workstream: WorkstreamSummary) => void;
+  byTask: ReadonlyMap<string, WorkstreamSummary>;
+  onOpenWorkstream: (workstream: WorkstreamSummary) => void;
 }) {
   const counts = collection.boardMeta.counts;
   const total = counts?.total ?? collection.tasks.length;
@@ -147,7 +150,7 @@ function TaskRow({
 }: {
   entry: ResolvedTask;
   workstream?: WorkstreamSummary;
-  onOpenWorkstream?: (workstream: WorkstreamSummary) => void;
+  onOpenWorkstream: (workstream: WorkstreamSummary) => void;
 }) {
   const { task } = entry;
   return (
@@ -210,22 +213,13 @@ function WorkstreamLink({
   onOpen,
 }: {
   workstream?: WorkstreamSummary;
-  onOpen?: (workstream: WorkstreamSummary) => void;
+  onOpen: (workstream: WorkstreamSummary) => void;
 }) {
   if (workstream === undefined) {
     return <span className="text-slate-600">—</span>;
   }
 
   const label = workstream.topic ?? workstream.id;
-  if (onOpen === undefined) {
-    return (
-      <span className="inline-flex items-center gap-1 text-[10px] text-slate-400">
-        <Layers className="h-3 w-3" aria-hidden />
-        {label}
-      </span>
-    );
-  }
-
   return (
     <button
       type="button"
