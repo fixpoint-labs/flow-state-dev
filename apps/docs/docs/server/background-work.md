@@ -22,6 +22,9 @@ way runs on the same server that accepted the request — no extra wiring. Suppl
 your own `requestHost.startOperation` and yours is used instead, which is how a
 deployment sends background work to a separate worker tier.
 
+In practice that means a task board with a worker declared detached. See [Work
+that outlives the turn](/guides/background-work#workstreams-a-job-with-its-own-session).
+
 ## Listing a conversation's jobs
 
 ```
@@ -59,6 +62,14 @@ and the response key, and means the same thing throughout this page.
 Both are optional, as is `status`, so read them with `== null` guards rather
 than assuming every row carries them. A row with neither label is a child
 session that isn't a background job.
+
+The two labels don't identify a job on their own. A job is one board, one
+worker, one topic, where a board is the server-side task list the work was filed
+on. No row carries the board, so two rows can share a `topic` and still be
+separate jobs, either because they were filed on different boards or because
+they route to different workers. Tasks matching on all three continue one job
+instead of starting another. See
+[Which tasks share a workstream](/guides/background-work#which-tasks-share-a-workstream).
 
 ### What `status` tells you
 

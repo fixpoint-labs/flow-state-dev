@@ -345,9 +345,12 @@ body of work. The turn that claimed the task returns while the worker keeps
 going; the Workstream re-reads the claimed row, verifies the claim is still
 current, runs the worker, and settles the task itself.
 
-Tasks that share a `topic` land in the same Workstream and continue one history.
-A task with no topic falls back to its own id, so continuity is something you opt
-into rather than something that happens by accident.
+A Workstream is one `boardId`, one worker, one `topic` (read from the task's
+`metadata.topic`). All three have to match for a task to continue an earlier
+task's history. Two tasks sharing a topic but routing to different workers, or
+sitting on boards with different `boardId`s, get separate Workstreams. A task
+with no topic, or a blank one, falls back to its own id, so continuity is
+something you opt into rather than something that happens by accident.
 
 Two bounds are worth knowing before you reach for this:
 
