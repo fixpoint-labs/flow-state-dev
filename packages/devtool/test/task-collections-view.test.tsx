@@ -39,17 +39,29 @@ const taskItem = {
   },
 } as never as TaskStreamItem;
 
-function renderTasks(truncation: Truncation) {
+function renderTasks(
+  truncation: Truncation,
+  workstreams: Parameters<typeof TaskCollectionsView>[0]["workstreams"] = []
+) {
   render(
     <TaskCollectionsView
       items={[taskItem]}
-      // No Workstream matches this task, which is the case under test.
-      workstreams={[]}
+      workstreams={workstreams}
       truncation={truncation}
       onOpenWorkstream={vi.fn()}
     />
   );
 }
+
+/** A Workstream that matches `task-a` by topic and worker. */
+const matching = {
+  id: "dsx_1",
+  parentSessionId: "sess_parent",
+  createdAt: 1,
+  updatedAt: 2,
+  topic: "FIX-1",
+  coordinate: "10:issue-work|20:assignee|9:implement",
+} as never;
 
 describe("TaskCollectionsView — an unmatched task", () => {
   it("says nothing is running it only when the whole listing was read", () => {
@@ -78,5 +90,28 @@ describe("TaskCollectionsView — an unmatched task", () => {
     const marker = screen.getByText("—?");
     expect(marker.getAttribute("title")).toMatch(/didn't come back/i);
     expect(marker.getAttribute("title")).not.toMatch(/more background work than the panel reads/i);
+  });
+});
+
+describe("TaskCollectionsView — a matched task", () => {
+  it("links plainly when the whole listing was read", () => {
+    renderTasks("complete", [matching]);
+
+    const link = screen.getByRole("button", { name: /FIX-1/ });
+    expect(link.getAttribute("title")).not.toMatch(/may not be the one/i);
+  });
+
+  it("marks the link unverified when part of the listing was not read", () => {
+    // The match is page-local: `resolveWorkstream` found exactly one candidate
+    // among the rows LOADED. An older unlisted Workstream sharing the topic and
+    // a compatible worker would fit too, and would belong to another board.
+    //
+    // Marked, not withheld — the link is a best-effort navigation affordance,
+    // and withholding it would delete the feature on any session big enough to
+    // page.
+    renderTasks("more", [matching]);
+
+    const link = screen.getByRole("button", { name: /FIX-1/ });
+    expect(link.getAttribute("title")).toMatch(/may not be the one running the task/i);
   });
 });

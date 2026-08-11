@@ -30,11 +30,21 @@ import { useReadFence } from "./use-read-fence";
 /**
  * What is known about rows beyond the page on screen.
  *
- * A union rather than a boolean because there are three answers, and the third
- * arrived through the error path: `complete` (this is the whole list), `more`
- * (a row follows it), `unknown` (the check itself failed). Calling the third
- * `false` would assert completeness nobody verified — the truncation lie in the
- * other direction.
+ * The SINGLE statement about how much of the index is known, and the only one a
+ * consumer needs. `complete` (this is the whole list), `more` (rows follow it),
+ * `unknown` (completeness was not established).
+ *
+ * `unknown` deliberately covers every way that can happen — the sentinel read
+ * failing, the listing read failing, and no read having landed yet. It used to
+ * cover only the first, with a failed read leaving this untouched at
+ * `"complete"` and raising `error` instead. That made trustworthiness two
+ * independent channels, and only a consumer holding BOTH could combine them
+ * correctly: the Workstreams tab did, the Tasks tab held one and reported a
+ * list it never received as verified whole. Three rounds of review each fixed
+ * the consumer in front of us while the split kept producing another.
+ *
+ * So `error` says a read failed and is for telling the operator so; it is not
+ * an input to any completeness decision. This is.
  */
 export type Truncation = "complete" | "more" | "unknown";
 
@@ -129,7 +139,7 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
   const [workstreams, setWorkstreams] = useState<WorkstreamSummary[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [truncation, setTruncation] = useState<Truncation>("complete");
+  const [truncation, setTruncation] = useState<Truncation>("unknown");
 
   // Guarded twice, per the contract in
   // `docs/architecture/server-and-client.md` ("Reads are guarded twice") —
@@ -163,7 +173,7 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
   const fence = useReadFence([sessionId, sessionClient], () => {
     setWorkstreams([]);
     setError(null);
-    setTruncation("complete");
+    setTruncation("unknown");
     setIsLoading(false);
     setHeldIdentity(null);
   });
@@ -214,6 +224,13 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
       setError(
         err instanceof Error ? err.message : "Failed to fetch workstreams"
       );
+      // The read did not land, so nothing about this list is established. Left
+      // alone, `truncation` kept whatever it said before — `"complete"` on a
+      // first load — and a consumer holding only that was told a list it never
+      // received was verified whole. `error` and `truncation` were two channels
+      // for one fact, and only a consumer holding both could combine them; this
+      // is the fact, stated once.
+      setTruncation("unknown");
     } finally {
       // Only the newest read for the current identity owns the spinner, so an
       // older read resolving late cannot clear it while a newer one is running.
@@ -234,7 +251,7 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
     workstreams: holdsCurrent ? workstreams : EMPTY_ROWS,
     isLoading: holdsCurrent ? isLoading : sessionId !== null,
     error: holdsCurrent ? error : null,
-    truncation: holdsCurrent ? truncation : "complete",
+    truncation: holdsCurrent ? truncation : "unknown",
     refresh,
   };
 }

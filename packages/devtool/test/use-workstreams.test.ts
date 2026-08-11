@@ -119,6 +119,35 @@ describe("useWorkstreams — reading one page", () => {
     expect(sessionClientMock.listWorkstreams).toHaveBeenCalledTimes(2);
   });
 
+  it("reports an unknown index when the read itself fails", async () => {
+    // The split-channel bug, stated at its source. `truncation` used to be left
+    // alone by the catch, so a first load that never landed reported the list
+    // as verified COMPLETE while `error` separately said it had failed. Only a
+    // consumer holding both could combine them — and the Tasks tab holds one,
+    // which is why it rendered a definitive "no workstream" for every task.
+    // Driven through a SUCCESSFUL read first, so `truncation` genuinely holds
+    // `"complete"` before the failure. A first-load failure would pass against
+    // the bug, because nothing had established completeness to begin with.
+    sessionClientMock.listWorkstreams.mockImplementation(
+      async (_id: string, opts?: { offset?: number }) =>
+        opts?.offset === undefined ? [row("dsx_1")] : []
+    );
+
+    const { result } = renderHook(() => useWorkstreams("sess_parent"));
+    await waitFor(() => expect(result.current.truncation).toBe("complete"));
+
+    sessionClientMock.listWorkstreams.mockRejectedValue(new Error("network down"));
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    expect(result.current.error).toBe("network down");
+    expect(result.current.truncation).toBe("unknown");
+    // The rows stay, because a failed re-read does not mean the list emptied —
+    // but nothing about its completeness survives.
+    expect(result.current.workstreams).toHaveLength(1);
+  });
+
   it("keeps a page whose sentinel failed, and says the check did not come back", async () => {
     // The sentinel's failure is not the page's failure. Letting it reject threw
     // away rows that had already arrived — nothing at all on a first load, or

@@ -69,6 +69,16 @@
  * A link is drawn only when exactly one candidate survives, and only when no
  * second board is contending for it.
  *
+ * That uniqueness is PAGE-LOCAL. The panel reads one page of the Workstream
+ * listing (a budget fixed in `docs/architecture/server-and-client.md`), so
+ * "exactly one candidate" means exactly one among the rows loaded — an older
+ * unlisted Workstream sharing the topic and a compatible worker would fit too.
+ * Nothing here can see that, and nothing here tries to: the caller knows how
+ * much of the index it holds, and the Tasks tab marks both a match and an
+ * absence as unverified whenever that is less than all of it. Withholding
+ * matches instead would delete the feature on any session large enough to
+ * page.
+ *
  * ## The bound: this pairing is best-effort, and cannot be made otherwise here
  *
  * Board ownership is not verifiable from what the server sends, so the match is

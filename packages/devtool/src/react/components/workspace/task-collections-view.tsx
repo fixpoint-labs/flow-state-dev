@@ -263,15 +263,35 @@ function WorkstreamLink({
   }
 
   const label = workstream.topic ?? workstream.id;
+  // A match is page-local. `resolveWorkstream` establishes that exactly one
+  // candidate IN THE LOADED PAGE fits; an older unlisted Workstream with the
+  // same topic and a compatible worker would fit too, and it would belong to a
+  // different board — the FIX-1088 class, where task events carry no board
+  // identity to settle it.
+  //
+  // Marked rather than withheld. The link is a documented best-effort
+  // navigation affordance, so a probably-right destination flagged as unchecked
+  // beats no destination at all; withholding would delete the feature on any
+  // session large enough to page.
+  const unverified = truncation !== "complete";
   return (
     <button
       type="button"
       onClick={() => onOpen(workstream)}
-      title={`Open workstream ${workstream.id}`}
-      className="inline-flex items-center gap-1 rounded border border-slate-800 bg-slate-900/60 px-1.5 py-0.5 text-[10px] text-sky-300 hover:border-slate-700 hover:bg-slate-800"
+      title={
+        unverified
+          ? `Open workstream ${workstream.id}. Matched against the workstreams listed; others were not read, so this may not be the one running the task.`
+          : `Open workstream ${workstream.id}`
+      }
+      className={`inline-flex items-center gap-1 rounded border bg-slate-900/60 px-1.5 py-0.5 text-[10px] hover:bg-slate-800 ${
+        unverified
+          ? "border-amber-500/40 text-amber-200/90 hover:border-amber-500/60"
+          : "border-slate-800 text-sky-300 hover:border-slate-700"
+      }`}
     >
       <Layers className="h-3 w-3" aria-hidden />
       <span className="max-w-[10rem] truncate">{label}</span>
+      {unverified && <span aria-hidden>?</span>}
     </button>
   );
 }
