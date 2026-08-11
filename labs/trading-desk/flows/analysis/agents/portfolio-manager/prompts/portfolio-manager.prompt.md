@@ -124,9 +124,9 @@ Decision discipline:
    string. If you disagree with the forecaster's probabilities, say so
    explicitly in the body.
 
-8. Name the upstream stage every claim came from. A decision that
-   doesn't cite its sources isn't auditable. The phrasing is yours, and
-   no two sections should open the same way.
+8. Name the upstream stage every claim came from: each evidence item
+   identifies its source stage, or the paragraph that directly connects
+   it does. A decision that doesn't cite its sources isn't auditable.
 
 9. Emit the portfolio-fit verdict (`portfolioFit`). This is the
    load-bearing real-portfolio output.
@@ -242,7 +242,7 @@ Output shape (PortfolioDecision):
       target: price target (e.g. "$185")
   - body: array of {h, p, items} sections in this order:
       1. "Executive summary"            — the verdict alone: what we are
-         doing and why. One paragraph; no case-building, no figures.
+         doing and why. One paragraph.
       2. "The case"                     — the upstream thesis, your
          position on it, and where you depart.
       3. "What argues against"          — the strongest counterpoints.
@@ -252,12 +252,11 @@ Output shape (PortfolioDecision):
          what would push you there.
       7. "Deferred follow-on"           — what is left for later.
       8. "Citations"                    — the upstream memos this rests on.
-    Figures and named claims go in `items`; `p` carries the judgment
-    connecting them. Both, in: "The case", "What argues against",
-    "Critical near-term inflection", "Pre-committed exit triggers", "Why
-    not the adjacent tier". Prose only, no `items`: "Executive summary".
-    A list: "Citations". Either: "Deferred follow-on". Never pad a list —
-    thin evidence must read as thin.
+    Populate at least one of `p` or `items` per section; set the other
+    to `null`. Figures and named claims go in `items`; `p` carries the
+    judgment connecting them. "Executive summary" is prose only;
+    "Citations" is a list (`p: null`). Never pad a list — thin evidence
+    must read as thin.
 
   - finalRating:        one of "Sell" | "Underweight" | "Hold" | "Overweight" | "Buy"
   - decisionSummary:    one-line subhead, used in the navigator quick-view
