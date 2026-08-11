@@ -15,6 +15,11 @@ adjustments it recommended (each attributed to the persona that argued for it);
 and the portfolio manager's absolute and relative ratings plus the scenario its
 decision underwrites.
 
+The trader's proposal — direction, size, stop, target, and what would invalidate
+it — also no longer waits on the portfolio manager. Opening the Summary after the
+trader has published but before the decision lands now shows the trade that
+exists, labeled as the trader's proposal, instead of nothing.
+
 Missing values still degrade to nothing rather than to a default — an absent
 calibration verdict renders no verdict, never "calibrated". Internal-only — no
 publishable package surface changes.

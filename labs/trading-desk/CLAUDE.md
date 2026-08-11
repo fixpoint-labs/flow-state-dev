@@ -315,6 +315,19 @@ sticks (ref-guarded, mirroring the auto-follow idiom).
   fabricated "calibrated" asserts a review nobody performed. `aggregate.ts`'s
   `rmStance` is gone, widened into `researchSynthesis`; no computed-but-unused
   field is left behind.
+  **A third drop point is a RENDER GATE, not a missing read** — a field that
+  reaches its component and is then hidden by a condition belonging to a
+  different participant. The trader publishes in Phase 3 and the PM in Phase 5,
+  so nesting the trade block inside `decision !== null` hid the trader's stored
+  stop, target, and invalidation criteria for the whole window between them, and
+  worst on runs where the price chart was already drawing those same levels. The
+  trade block is therefore a SIBLING of the decision block in
+  `decision-header.tsx`, labeled "trader proposal" so it can never be read as the
+  PM's call. When threading a field here, check what gates the component it lands
+  in, not only that the aggregate carries it. The structured lists all render
+  through one `LabeledBulletList` (an empty list renders nothing, so an absent
+  list cannot become empty chrome, and one gate cannot drift from another);
+  a panel's own top-level section headings keep their `h3` altitude.
 
 ## Portfolio view
 

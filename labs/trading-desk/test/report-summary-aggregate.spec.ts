@@ -18,6 +18,7 @@ import {
   buildReportSummary,
   stanceToAxis,
 } from "../components/summary/aggregate";
+import { shownRationale } from "../components/summary/risk-panel";
 import type { MemoState } from "../flows/analysis/resources";
 import type { ValuationSpineState } from "../flows/analysis/valuation-spine-resource";
 import type { AnyMemoShortName } from "../flows/analysis/registry";
@@ -513,62 +514,15 @@ describe("buildReportSummary — lens convergence (Slice 6)", () => {
  * FIX-1060 — the fields the report computed and then dropped on the floor
  * between the aggregate and the screen.
  *
- * The intent these encode is a completeness guarantee, not a formatting one: a
- * structured field the pipeline stored must reach the view model, because a
- * reader who cannot see the RM's unresolved disagreements or what invalidates
- * the trade reasonably concludes the desk never produced them. The two
- * failure modes this guards are opposite and both real-money:
- *
- *   - a stored field silently missing from the view model (the original bug), and
- *   - an ABSENT field materializing as a fabricated value — a defaulted
- *     "calibrated" verdict or a zero-filled adjustment asserts a review that
- *     never happened, which is worse than the gap it papers over.
- *
- * So every case below is asserted twice: fully populated, and fully absent.
+ * These encode a completeness guarantee, and it has two opposite failure modes,
+ * both real-money: a stored field silently missing from the view model (the
+ * original bug), and an ABSENT field materializing as a fabricated value — a
+ * defaulted "calibrated" verdict asserts a review that never happened, which is
+ * worse than the gap it papers over. The populated/absent round-trip pair at the
+ * bottom of this file is the contract for both directions; the cases here are
+ * the PARTIAL states it cannot express.
  */
 describe("buildReportSummary — research synthesis (FIX-1060)", () => {
-  it("reads the RM's stance, conviction, and all three structured lists", () => {
-    const summary = buildReportSummary(
-      mapOf([
-        [
-          "researchManager",
-          memo({
-            stance: "bullish",
-            conviction: 0.72,
-            keyRisks: ["Cap-ex digestion", "Customer concentration"],
-            keyOpportunities: ["Networking attach rate"],
-            unresolvedDisagreements: [
-              "Whether 2027 cap-ex is committed or aspirational",
-            ],
-          }),
-        ],
-      ]),
-      null,
-    );
-    expect(summary.researchSynthesis.stance).toBe("bullish");
-    expect(summary.researchSynthesis.conviction).toBe(0.72);
-    expect(summary.researchSynthesis.keyRisks).toEqual([
-      "Cap-ex digestion",
-      "Customer concentration",
-    ]);
-    expect(summary.researchSynthesis.keyOpportunities).toEqual([
-      "Networking attach rate",
-    ]);
-    // The divergence answer the Summary page was specified to give.
-    expect(summary.researchSynthesis.unresolvedDisagreements).toEqual([
-      "Whether 2027 cap-ex is committed or aspirational",
-    ]);
-  });
-
-  it("collapses an absent RM memo to nulls + empty lists — never a fabricated neutral stance", () => {
-    const synthesis = buildReportSummary(mapOf([]), null).researchSynthesis;
-    expect(synthesis.stance).toBeNull();
-    expect(synthesis.conviction).toBeNull();
-    expect(synthesis.keyRisks).toEqual([]);
-    expect(synthesis.keyOpportunities).toEqual([]);
-    expect(synthesis.unresolvedDisagreements).toEqual([]);
-  });
-
   it("collapses a published RM memo that left the lists unpublished to empty lists", () => {
     const synthesis = buildReportSummary(
       mapOf([["researchManager", memo({ stance: "neutral", conviction: 0.4 })]]),
@@ -581,53 +535,6 @@ describe("buildReportSummary — research synthesis (FIX-1060)", () => {
 });
 
 describe("buildReportSummary — risk verdict (FIX-1060)", () => {
-  const RECOMMENDED = {
-    sizing: {
-      direction: "smaller",
-      rationale: "Position sized ahead of an unhedged print.",
-      attributedTo: "conservative",
-    },
-    holdingPeriod: {
-      direction: "shorter",
-      rationale: "Thesis resolves at the next guide.",
-      attributedTo: "neutral",
-    },
-    invalidation: null,
-  } satisfies NonNullable<MemoState["recommendedAdjustments"]>;
-
-  it("reads calibration, its rationale, and the recommended adjustments verbatim", () => {
-    const summary = buildReportSummary(
-      mapOf([
-        [
-          "riskAssessment",
-          memo({
-            confidenceCalibration: "overconfident",
-            calibrationRationale:
-              "Confidence outruns the evidence on the 2027 ramp.",
-            recommendedAdjustments: RECOMMENDED,
-          }),
-        ],
-      ]),
-      null,
-    );
-    expect(summary.riskVerdict.confidenceCalibration).toBe("overconfident");
-    expect(summary.riskVerdict.calibrationRationale).toBe(
-      "Confidence outruns the evidence on the 2027 ramp.",
-    );
-    // Passed through as stored — the aggregate derives no adjustment and drops
-    // no axis, so an axis the risk memo left null stays null (the panel omits
-    // that row rather than showing "unchanged", which the memo did not say).
-    expect(summary.riskVerdict.recommendedAdjustments).toEqual(RECOMMENDED);
-    expect(summary.riskVerdict.recommendedAdjustments?.invalidation).toBeNull();
-  });
-
-  it("stays null when the risk memo is absent — never a defaulted 'calibrated'", () => {
-    const verdict = buildReportSummary(mapOf([]), null).riskVerdict;
-    expect(verdict.confidenceCalibration).toBeNull();
-    expect(verdict.calibrationRationale).toBeNull();
-    expect(verdict.recommendedAdjustments).toBeNull();
-  });
-
   it("stays null when the risk memo published critical risks but no calibration", () => {
     const verdict = buildReportSummary(
       mapOf([
@@ -652,29 +559,39 @@ describe("buildReportSummary — risk verdict (FIX-1060)", () => {
 });
 
 describe("buildReportSummary — trade invalidation criteria (FIX-1060)", () => {
-  it("carries the trader's invalidation criteria onto the trade block", () => {
+  /**
+   * The mid-run state that hid the criteria entirely: the trader has published
+   * (Phase 3) and the PM has not (Phase 5), so `decision` is null while the
+   * trade — stop, target, and what would invalidate it — is fully stored. The
+   * decision header must render the trade block from `trade` alone; nesting it
+   * under a non-null `decision` dropped stored analysis for the whole window
+   * between the two phases, including on runs whose price chart was already
+   * drawing the same stop and target lines.
+   */
+  it("carries a full trade with its invalidation criteria while the PM decision is still null", () => {
     const summary = buildReportSummary(
       mapOf([
         [
           "trader",
           memo({
             direction: "long",
-            sizePct: 3,
             stopPrice: 780,
             targetPrice: 1050,
-            holdingPeriod: "quarters",
             invalidationCriteria: [
               "Gross margin below 70% for two consecutive quarters",
-              "A top-three customer discloses an in-house replacement",
             ],
           }),
         ],
+        // The PM memo exists as a pending scaffold with no rating yet.
+        ["portfolioManager", memo({})],
       ]),
       null,
     );
+    expect(summary.decision).toBeNull();
+    expect(summary.trade?.stopPrice).toBe(780);
+    expect(summary.trade?.targetPrice).toBe(1050);
     expect(summary.trade?.invalidationCriteria).toEqual([
       "Gross margin below 70% for two consecutive quarters",
-      "A top-three customer discloses an in-house replacement",
     ]);
   });
 
@@ -695,32 +612,50 @@ describe("buildReportSummary — trade invalidation criteria (FIX-1060)", () => 
  * case fails; if it starts defaulting an absent field, the empty case fails.
  */
 describe("buildReportSummary — every previously-dropped field, populated and absent", () => {
+  const RECOMMENDED = {
+    sizing: {
+      direction: "smaller",
+      rationale: "Position sized ahead of an unhedged print.",
+      attributedTo: "conservative",
+    },
+    holdingPeriod: {
+      direction: "shorter",
+      rationale: "Thesis resolves at the next guide.",
+      attributedTo: "neutral",
+    },
+    // Left null by the risk memo — the axis the panel must omit rather than
+    // render as "unchanged", which the memo did not say.
+    invalidation: null,
+  } satisfies NonNullable<MemoState["recommendedAdjustments"]>;
+
   const FULL = mapOf([
     [
       "researchManager",
       memo({
         stance: "bearish",
         conviction: 0.55,
-        keyRisks: ["r"],
-        keyOpportunities: ["o"],
-        unresolvedDisagreements: ["d"],
+        keyRisks: ["Cap-ex digestion", "Customer concentration"],
+        keyOpportunities: ["Networking attach rate"],
+        unresolvedDisagreements: [
+          "Whether 2027 cap-ex is committed or aspirational",
+        ],
       }),
     ],
-    ["trader", memo({ direction: "short", invalidationCriteria: ["i"] })],
+    [
+      "trader",
+      memo({
+        direction: "short",
+        invalidationCriteria: [
+          "Gross margin below 70% for two consecutive quarters",
+        ],
+      }),
+    ],
     [
       "riskAssessment",
       memo({
         confidenceCalibration: "underconfident",
-        calibrationRationale: "why",
-        recommendedAdjustments: {
-          sizing: {
-            direction: "larger",
-            rationale: "r",
-            attributedTo: "aggressive",
-          },
-          holdingPeriod: null,
-          invalidation: null,
-        },
+        calibrationRationale: "Confidence lags the evidence on the 2027 ramp.",
+        recommendedAdjustments: RECOMMENDED,
       }),
     ],
     [
@@ -738,15 +673,28 @@ describe("buildReportSummary — every previously-dropped field, populated and a
     const s = buildReportSummary(FULL, null);
     expect(s.researchSynthesis.stance).toBe("bearish");
     expect(s.researchSynthesis.conviction).toBe(0.55);
-    expect(s.researchSynthesis.keyRisks).toEqual(["r"]);
-    expect(s.researchSynthesis.keyOpportunities).toEqual(["o"]);
-    expect(s.researchSynthesis.unresolvedDisagreements).toEqual(["d"]);
-    expect(s.trade?.invalidationCriteria).toEqual(["i"]);
+    expect(s.researchSynthesis.keyRisks).toEqual([
+      "Cap-ex digestion",
+      "Customer concentration",
+    ]);
+    expect(s.researchSynthesis.keyOpportunities).toEqual([
+      "Networking attach rate",
+    ]);
+    // The divergence answer the Summary page was specified to give.
+    expect(s.researchSynthesis.unresolvedDisagreements).toEqual([
+      "Whether 2027 cap-ex is committed or aspirational",
+    ]);
+    expect(s.trade?.invalidationCriteria).toEqual([
+      "Gross margin below 70% for two consecutive quarters",
+    ]);
     expect(s.riskVerdict.confidenceCalibration).toBe("underconfident");
-    expect(s.riskVerdict.calibrationRationale).toBe("why");
-    expect(s.riskVerdict.recommendedAdjustments?.sizing?.direction).toBe(
-      "larger",
+    expect(s.riskVerdict.calibrationRationale).toBe(
+      "Confidence lags the evidence on the 2027 ramp.",
     );
+    // Passed through as stored — the aggregate derives no adjustment and drops
+    // no axis.
+    expect(s.riskVerdict.recommendedAdjustments).toEqual(RECOMMENDED);
+    expect(s.riskVerdict.recommendedAdjustments?.invalidation).toBeNull();
     expect(s.decision?.absoluteRating).toBe("Hold");
     expect(s.decision?.relativeRating).toBe("Underweight");
     expect(s.decision?.primaryScenario).toBe("Cap-ex pause");
@@ -768,5 +716,34 @@ describe("buildReportSummary — every previously-dropped field, populated and a
       recommendedAdjustments: null,
     });
     expect(s.decision).toBeNull();
+  });
+});
+
+/**
+ * The risk panel's calibration section is gated on one helper so its heading and
+ * its body can't disagree. A blank rationale is the case that separates them: it
+ * is non-null (so a `!== null` heading gate opens) but unrenderable (so the body
+ * stays empty), which put a "Confidence calibration" heading over nothing —
+ * chrome asserting a review the risk memo did not publish.
+ */
+describe("shownRationale — the risk panel's calibration gate", () => {
+  it("treats a blank rationale as absent, so the section cannot open on it alone", () => {
+    expect(
+      shownRationale({
+        confidenceCalibration: null,
+        calibrationRationale: "",
+        recommendedAdjustments: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("returns a published rationale verbatim", () => {
+    expect(
+      shownRationale({
+        confidenceCalibration: "overconfident",
+        calibrationRationale: "Confidence outruns the evidence.",
+        recommendedAdjustments: null,
+      }),
+    ).toBe("Confidence outruns the evidence.");
   });
 });

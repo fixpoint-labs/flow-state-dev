@@ -7,13 +7,13 @@
  * block exists — its `unresolvedDisagreements`, which is the desk's own answer to
  * "where do the analysts still diverge?" A dot on an axis cannot say that.
  *
- * Every field is a stored RM memo field read through the aggregate. Each
- * sub-section renders only when its list is non-empty, and the whole block
- * renders nothing when the RM published none of it — an absent synthesis reads
- * as absent, never as an empty verdict.
+ * Every field is a stored RM memo field read through the aggregate. The whole
+ * block renders nothing when the RM published none of it — an absent synthesis
+ * reads as absent, never as an empty verdict.
  */
 import type { ReactElement } from "react";
 import type { ResearchSynthesis } from "./aggregate";
+import { LabeledBulletList } from "./labeled-bullet-list";
 import { cn } from "@/lib/utils";
 
 export type ResearchSynthesisBlockProps = {
@@ -75,34 +75,12 @@ export function ResearchSynthesisBlock({
       </div>
 
       {/* Divergence first: it is the question this block exists to answer. */}
-      <SynthesisList
+      <LabeledBulletList
         label="Unresolved disagreements"
         items={unresolvedDisagreements}
       />
-      <SynthesisList label="Key risks" items={keyRisks} />
-      <SynthesisList label="Key opportunities" items={keyOpportunities} />
+      <LabeledBulletList label="Key risks" items={keyRisks} />
+      <LabeledBulletList label="Key opportunities" items={keyOpportunities} />
     </section>
-  );
-}
-
-function SynthesisList({
-  label,
-  items,
-}: {
-  label: string;
-  items: ReadonlyArray<string>;
-}): ReactElement | null {
-  if (items.length === 0) return null;
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
-        {label}
-      </span>
-      <ul className="ml-3 list-disc text-[12px] leading-relaxed text-[color:var(--c-fg)]">
-        {items.map((item, i) => (
-          <li key={i}>{item}</li>
-        ))}
-      </ul>
-    </div>
   );
 }

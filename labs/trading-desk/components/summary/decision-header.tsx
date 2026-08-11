@@ -2,13 +2,15 @@
  * DecisionHeader — the Summary's top block: the PM 5-tier rating bar (PmHero
  * idiom), the model-implied rating + band with clamp flag, the absolute and
  * relative ratings, decision confidence, the scenario the decision underwrites,
- * a one-line trade summary with its invalidation criteria, and
- * agree/differ-with-trader.
+ * agree/differ-with-trader, and — as a sibling block, not nested under the
+ * decision — the trader's proposed trade with its invalidation criteria.
  *
  * Every figure traces to a stored PM/trader field via the aggregate. When the
  * PM memo has not published, it renders a "Decision pending" state rather than a
- * fabricated rating (real-money gate). The not-advice disclaimer is owned by the
- * persistent StatusBar, not duplicated here.
+ * fabricated rating (real-money gate); the trader's proposal still renders, so a
+ * Summary opened between Phase 3 and Phase 5 shows the trade that exists rather
+ * than nothing. The not-advice disclaimer is owned by the persistent StatusBar,
+ * not duplicated here.
  */
 import type { ReactElement } from "react";
 import type {
@@ -167,12 +169,6 @@ export function DecisionHeader({
             </p>
           ) : null}
 
-          {/* Trade one-liner + what would kill the trade */}
-          {trade !== null ? <TradeLine trade={trade} /> : null}
-          {trade !== null ? (
-            <InvalidationList criteria={trade.invalidationCriteria} />
-          ) : null}
-
           {decision.agreesWithTrader === true ? (
             <span className="text-[11px] text-[color:var(--c-live)]">
               ✓ agrees with trader
@@ -184,11 +180,52 @@ export function DecisionHeader({
           ) : null}
         </>
       )}
+
+      {/* The trader's proposal is a SIBLING of the decision block, never nested
+          inside it. The trader publishes in Phase 3 and the PM in Phase 5, so a
+          Summary opened in that window has a stored trade — with stop, target,
+          and what would invalidate it — while `decision` is still null. Nesting
+          this under the decision hid all of it, including on runs where the
+          price chart was already drawing the same stop and target lines. */}
+      <TradeBlock trade={trade} />
     </section>
   );
 }
 
-function TradeLine({ trade }: { trade: NonNullable<TradeLevels> }): ReactElement {
+/**
+ * The trader's proposed trade and what would kill it, attributed so it can never
+ * be read as the PM's decision — this block renders in the "Decision pending"
+ * state too, where it is the only trade content on the page.
+ */
+function TradeBlock({ trade }: { trade: TradeLevels }): ReactElement | null {
+  if (trade === null) return null;
+  const parts = tradeLineParts(trade);
+  const criteria = trade.invalidationCriteria ?? [];
+  if (parts.length === 0 && criteria.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
+        trader proposal
+      </span>
+      {parts.length > 0 ? (
+        <p className="font-mono text-[12px] text-[color:var(--c-fg)]">
+          {parts.join(" · ")}
+        </p>
+      ) : null}
+      <InvalidationList criteria={trade.invalidationCriteria} />
+    </div>
+  );
+}
+
+/**
+ * The trade one-liner's segments, in display order. An unpublished leg
+ * contributes no segment rather than a `—` placeholder, so an empty result means
+ * the trader published no levels at all.
+ */
+function tradeLineParts(
+  trade: NonNullable<TradeLevels>,
+): ReadonlyArray<string> {
   const parts: string[] = [];
   if (trade.direction !== null) parts.push(trade.direction.toUpperCase());
   // `sizePct` is "% of NAV as the trader proposed it" — labeled exactly that,
@@ -197,10 +234,5 @@ function TradeLine({ trade }: { trade: NonNullable<TradeLevels> }): ReactElement
   if (trade.stopPrice !== null) parts.push(`stop ${trade.stopPrice}`);
   if (trade.targetPrice !== null) parts.push(`target ${trade.targetPrice}`);
   if (trade.holdingPeriod !== null) parts.push(trade.holdingPeriod);
-  if (parts.length === 0) return <></>;
-  return (
-    <p className="font-mono text-[12px] text-[color:var(--c-fg)]">
-      {parts.join(" · ")}
-    </p>
-  );
+  return parts;
 }

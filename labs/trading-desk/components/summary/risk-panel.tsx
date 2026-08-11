@@ -5,10 +5,9 @@
  * PM's key dependencies.
  *
  * Reads only stored fields via the aggregate. Renders nothing when every section
- * is empty (no empty chrome). A null calibration renders no calibration line —
- * it is never defaulted to "calibrated", which would assert a review nobody
- * performed. The not-advice framing is carried by the persistent StatusBar
- * disclaimer.
+ * is empty (no empty chrome), and never defaults an unpublished calibration to
+ * "calibrated" — that would assert a review nobody performed. The not-advice
+ * framing is carried by the persistent StatusBar disclaimer.
  */
 import type { ReactElement } from "react";
 import type { RiskVerdict } from "./aggregate";
@@ -42,6 +41,19 @@ const CALIBRATION_CLASS: Record<
   underconfident: "text-[color:var(--c-warn)]",
 };
 
+/**
+ * The calibration rationale the panel will actually show, or null.
+ *
+ * One helper rather than two conditions, because the section header and the
+ * paragraph must agree: gating the header on `!== null` while the paragraph also
+ * rejected `""` put a "Confidence calibration" heading over an empty section
+ * whenever the risk memo emitted a blank rationale and no verdict.
+ */
+export function shownRationale(verdict: RiskVerdict): string | null {
+  const r = verdict.calibrationRationale;
+  return r === null || r === "" ? null : r;
+}
+
 const SEVERITY: Record<
   RiskPanelProps["criticalRisks"][number]["severity"],
   { glyph: string; label: string; cls: string }
@@ -60,9 +72,9 @@ export function RiskPanel({
     const entry = verdict.recommendedAdjustments?.[key] ?? null;
     return entry === null ? [] : [{ label, ...entry }];
   });
+  const rationale = shownRationale(verdict);
   const hasCalibration =
-    verdict.confidenceCalibration !== null ||
-    verdict.calibrationRationale !== null;
+    verdict.confidenceCalibration !== null || rationale !== null;
 
   if (
     criticalRisks.length === 0 &&
@@ -130,10 +142,9 @@ export function RiskPanel({
               {verdict.confidenceCalibration}
             </span>
           ) : null}
-          {verdict.calibrationRationale !== null &&
-          verdict.calibrationRationale !== "" ? (
+          {rationale !== null ? (
             <p className="text-[12px] leading-relaxed text-[color:var(--c-fg)]">
-              {verdict.calibrationRationale}
+              {rationale}
             </p>
           ) : null}
         </div>

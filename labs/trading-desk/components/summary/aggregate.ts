@@ -11,6 +11,12 @@
  * This file is the one place null-handling and the stance→axis mapping live,
  * which keeps the real-money trust gate honest: there is exactly one mapping
  * from stored stance labels to the convergence axis, and it is unit-tested.
+ *
+ * The completeness rule every read here follows — a stored field either reaches
+ * the screen or carries a stated reason it does not, and an absent field stays
+ * absent rather than acquiring a default — is stated once in the app guide
+ * (`labs/trading-desk/CLAUDE.md` → "Rendered-or-documented, no silent drops").
+ * Per-field JSDoc below says what a given field means, not that rule again.
  */
 import type { MemoState } from "@/flows/analysis/resources";
 import type { ValuationSpineState } from "@/flows/analysis/valuation-spine-resource";
@@ -70,8 +76,7 @@ export type TradeLevels = {
  *
  * `unresolvedDisagreements` is the load-bearing one: it is the desk's own answer
  * to "where do the analysts still diverge?", which a single dot on the
- * conviction strip cannot express. Absent lists collapse to `[]` so the block
- * omits its own sub-sections rather than rendering empty chrome.
+ * conviction strip cannot express.
  */
 export type ResearchSynthesis = {
   stance: "bullish" | "bearish" | "neutral" | null;
@@ -85,8 +90,7 @@ export type ResearchSynthesis = {
  * The Phase 4 risk-assessment memo's verdict fields that sit beside
  * `criticalRisks`: how well-calibrated the desk's confidence is, why, and the
  * adjustments the risk consolidator recommended (each attributed to the persona
- * that argued for it). Every field is null/absent when the risk memo did not
- * publish it — never defaulted to "calibrated" or an empty adjustment.
+ * that argued for it).
  */
 export type RiskVerdict = {
   confidenceCalibration: MemoState["confidenceCalibration"];
@@ -335,9 +339,7 @@ export function buildReportSummary(
     };
   });
 
-  // Research-manager synthesis verdict. The three lists are the RM's structured
-  // output; an unpublished list reads `[]` (the block omits that sub-section),
-  // never a placeholder row.
+  // Research-manager synthesis verdict.
   const rm = get("researchManager");
   const researchSynthesis: ResearchSynthesis = {
     stance: (rm?.stance ?? null) as ResearchSynthesis["stance"],
@@ -367,9 +369,7 @@ export function buildReportSummary(
   }));
   const keyDependencies = pm?.keyDependencies ?? [];
 
-  // The risk memo's calibration read + recommended adjustments. Read straight
-  // through: a null calibration stays null (the panel omits the line) rather
-  // than defaulting to "calibrated", which would assert a judgement nobody made.
+  // The risk memo's calibration read + recommended adjustments.
   const riskVerdict: RiskVerdict = {
     confidenceCalibration: risk?.confidenceCalibration ?? null,
     calibrationRationale: risk?.calibrationRationale ?? null,
