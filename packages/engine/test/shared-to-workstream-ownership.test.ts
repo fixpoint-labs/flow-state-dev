@@ -40,7 +40,6 @@ import {
   handleGetCollectionItemState,
   handleListCollectionState
 } from "../src/routes/resource-routes";
-import { resolveLineageScopeId } from "../src/stores/scope-keys";
 import type { FlowInstance } from "@flow-state-dev/core";
 import type { SessionRecord, StoreRegistry } from "../src/stores/types";
 
@@ -52,7 +51,7 @@ async function seedSession(
   flow: FlowInstance,
   id: string,
   parent?: string,
-  root?: string
+  lineage?: string
 ): Promise<void> {
   const ts = 1_700_000_000_000;
   await stores.session.set(
@@ -67,7 +66,7 @@ async function seedSession(
       updatedAt: ts,
       journal: [],
       ...(parent !== undefined ? { parentSessionId: parent } : {}),
-      ...(root !== undefined ? { lineageRootSessionId: root } : {})
+      ...(lineage !== undefined ? { lineageId: lineage } : {})
     } satisfies SessionRecord,
     "any"
   );
@@ -119,8 +118,8 @@ describe("FIX-1068: a shared EMPTY-prefix collection must not swallow private ke
     const stores = createInMemoryStores();
     const registry = createFlowRegistry();
     registry.register(flow);
-    await seedSession(stores, flow, "s_root");
-    await seedSession(stores, flow, "s_child", "s_root", "s_root");
+    await seedSession(stores, flow, "s_root", undefined, "lin_root");
+    await seedSession(stores, flow, "s_child", "s_root", "lin_root");
 
     const root = await contextFor(stores, flow, "s_root");
     await root.resources.scratch.patchState({ note: "root private" });
@@ -185,8 +184,8 @@ describe("FIX-1068: a private prefix nested under a shared one owns its keys", (
     const stores = createInMemoryStores();
     const registry = createFlowRegistry();
     registry.register(flow);
-    await seedSession(stores, flow, "s_root");
-    await seedSession(stores, flow, "s_child", "s_root", "s_root");
+    await seedSession(stores, flow, "s_root", undefined, "lin_root");
+    await seedSession(stores, flow, "s_child", "s_root", "lin_root");
 
     // Written directly so both sessions genuinely hold the same key — the
     // scan is what is under test, not the write routing.
@@ -279,14 +278,10 @@ describe("FIX-1068: collection routes address the key's owner, not the route's d
     const stores = createInMemoryStores();
     const registry = createFlowRegistry();
     registry.register(routeFlow);
-    await seedSession(stores, routeFlow, "s_root");
-    await seedSession(stores, routeFlow, "s_child", "s_root", "s_root");
+    await seedSession(stores, routeFlow, "s_root", undefined, "lin_root");
+    await seedSession(stores, routeFlow, "s_child", "s_root", "lin_root");
 
-    const lineage = resolveLineageScopeId({
-      rootSessionId: "s_root",
-      userId: "u_1",
-      tenantId: undefined
-    });
+    const lineage = "lin_root";
     // The root's private row sits at the root's own session key, the child's at
     // the child's. Only the child's is the child's to see.
     await stores.resourceState.set("session", "s_root", "tasks/meta/a", { note: "root meta" }, "any");
@@ -388,8 +383,8 @@ describe("FIX-1068: a filtered scan does not cover another bucket's keys", () =>
 
   it("still finds a lazily-read row the child owns under a shared prefix", async () => {
     const stores = createInMemoryStores();
-    await seedSession(stores, coverageFlow, "s_root");
-    await seedSession(stores, coverageFlow, "s_child", "s_root", "s_root");
+    await seedSession(stores, coverageFlow, "s_root", undefined, "lin_root");
+    await seedSession(stores, coverageFlow, "s_child", "s_root", "lin_root");
 
     // The child's own row, in the child's own bucket.
     await stores.resourceState.set(

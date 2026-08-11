@@ -112,7 +112,7 @@ describe("FIX-1068: a recreated root id under a different owner is a different a
         tenantId: undefined,
         orgId: undefined,
         sessionId: ROOT_ID,
-        lineageRootSessionId: undefined
+        lineageId: (await stores.session.get(ROOT_ID))!.lineageId!
       },
       startOperation: async () => ({ requestId: "req_child" }),
       liveness: {}
@@ -168,8 +168,7 @@ describe("FIX-1068: a recreated root id under a different owner is a different a
         tenantId: undefined,
         orgId: undefined,
         sessionId: ROOT_ID,
-        lineageRootSessionId: undefined,
-        lineageRootGeneration: (await stores.session.get(ROOT_ID))?.lineageGeneration
+        lineageId: (await stores.session.get(ROOT_ID))!.lineageId!
       },
       startOperation: async () => ({ requestId: "req_child" }),
       liveness: {}
@@ -218,8 +217,7 @@ describe("FIX-1068: a recreated session id is a new lineage", () => {
         tenantId: undefined,
         orgId: undefined,
         sessionId: ROOT_ID,
-        lineageRootSessionId: undefined,
-        lineageRootGeneration: (await stores.session.get(ROOT_ID))?.lineageGeneration
+        lineageId: (await stores.session.get(ROOT_ID))!.lineageId!
       },
       startOperation: async () => ({ requestId: "req_child" }),
       liveness: {}

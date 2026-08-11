@@ -27,7 +27,6 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { SessionRecord, StoreRegistry } from "../stores/types";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
-import { generateId } from "../utils/generate-id";
 import { deriveChildSessionId, evaluateAdoption } from "./detached-child";
 import { evaluateLivenessGate, type LivenessGateInputs } from "./liveness-gate";
 import { readLiveness } from "./liveness-read";
@@ -82,17 +81,11 @@ export type RequestHostInputs = {
     /** The running request's session — the parent of anything it spawns. */
     sessionId: string;
     /**
-     * The running session's own lineage root, or `undefined` when it *is* the
-     * root (FIX-1068). Read off the running session record, so a child inherits
-     * the same root rather than re-deriving it by walking parents.
+     * The lineage the running session belongs to (FIX-1068). Inherited by the
+     * child verbatim, which is the whole of what makes parent and descendant
+     * address one bucket — there is nothing to re-derive and nothing to agree on.
      */
-    lineageRootSessionId?: string;
-    /**
-     * The incarnation nonce of the running session's lineage root (FIX-1068).
-     * Inherited by the child so a recreated root id cannot put two live lineages
-     * on one bucket.
-     */
-    lineageRootGeneration?: string;
+    lineageId: string;
   };
   /** Absent when this process executes requests but cannot start one. */
   startOperation?: DetachedStartOperation;
@@ -146,7 +139,8 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       {
         userId: identity.userId,
         tenantId: identity.tenantId,
-        parentSessionId: identity.sessionId
+        parentSessionId: identity.sessionId,
+        lineageId: identity.lineageId
       },
       args.seed
     );
@@ -198,23 +192,9 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),
         ...(identity.orgId !== undefined ? { orgId: identity.orgId } : {}),
         parentSessionId: identity.sessionId,
-        // The lineage root, stamped once at creation (FIX-1068). Inherited from
-        // the running session when it has one, otherwise the running session is
-        // itself the root. Every descendant therefore carries the same value, so
-        // a `sharedToWorkstream` resource resolves to one address across the
-        // whole chain without any read walking `parentSessionId`.
-        //
-        // `??`, so a store that nulls absent keys reads the same as an absent
-        // field: both mean "the running session is the root", never "the root is
-        // null" (BP-030).
-        lineageRootSessionId: identity.lineageRootSessionId ?? identity.sessionId,
-        // Inherited wholesale: the child addresses the ROOT's incarnation, not
-        // its own. Absent when the parent predates the field, which keeps the
-        // lineage on the address it already had (BP-030).
-        ...(identity.lineageRootGeneration !== undefined
-          ? { lineageRootGeneration: identity.lineageRootGeneration }
-          : {}),
-        lineageGeneration: generateId("gen"),
+        // Inherited verbatim. Not a hash, not a re-derivation — the same
+        // value, so parent and child address one bucket by construction (FIX-1068).
+        lineageId: identity.lineageId,
         // Canonical labels, stamped here and only here (FIX-1010). They are
         // taken from the seed **this call already consumed to derive the child
         // key**, not from `args.record` below — which is why a caller cannot

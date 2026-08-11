@@ -15,7 +15,6 @@
  */
 import type { ResourceCollectionConfig } from "@flow-state-dev/core/types";
 import { getPatternPrefix } from "@flow-state-dev/core/types";
-import { resolveLineageScopeId, toBareSessionId } from "../stores/scope-keys";
 import { resourceStorageKeys } from "./storage-keys";
 
 /** The session-record fields lineage addressing reads. */
@@ -24,12 +23,11 @@ export type LineageSession = {
   id: string;
   /** The session's owner. Authoritative — it is the stored record's own field. */
   userId: string;
-  /** Bare id of the lineage root; `null`/absent when this session is the root. */
-  lineageRootSessionId?: string | null;
-  /** This session's own incarnation nonce. Used when it is the lineage root. */
-  lineageGeneration?: string | null;
-  /** The lineage root's incarnation nonce, inherited at spawn. */
-  lineageRootGeneration?: string | null;
+  /**
+   * The lineage this session belongs to (FIX-1068). Absent on a record written
+   * before the field existed, read as its own lineage keyed by `id` (BP-030).
+   */
+  lineageId?: string | null;
 };
 
 /** The declaration fields that decide where a session-scoped resource stores. */
@@ -56,7 +54,7 @@ export function sessionResourceScopeId(
   tenantId: string | undefined
 ): string {
   if (config?.sharedToWorkstream !== true) return session.id;
-  return lineageScopeId(session, tenantId);
+  return lineageScopeId(session);
 }
 
 /**
@@ -78,7 +76,7 @@ export function sessionKeyScopeId(
 ): string {
   const { buckets } = sessionOwnership(flowResources);
   return resolveOwnershipFlag(buckets, storageKey) === true
-    ? lineageScopeId(session, tenantId)
+    ? lineageScopeId(session)
     : session.id;
 }
 
@@ -87,17 +85,8 @@ export function sessionKeyScopeId(
  * resolves. Conjoins the owner, so a root id recreated under a different user
  * names a different bucket (see `resolveLineageScopeId`).
  */
-function lineageScopeId(session: LineageSession, tenantId: string | undefined): string {
-  return resolveLineageScopeId({
-    // Bare id, recovered from the namespaced key — the tenant is already a
-    // component of the lineage address, so including it twice would differ from
-    // what `createExecutionContext` derives.
-    rootSessionId: session.lineageRootSessionId ?? toBareSessionId(session.id, tenantId),
-    userId: session.userId,
-    tenantId,
-    // The ROOT's incarnation: inherited on a descendant, its own on a root.
-    rootGeneration: session.lineageRootGeneration ?? session.lineageGeneration ?? undefined
-  });
+function lineageScopeId(session: LineageSession): string {
+  return session.lineageId ?? session.id;
 }
 
 /**
@@ -212,7 +201,7 @@ export async function readSessionScopeWithLineage<T>(
   // empty shared resource for the very session that owns it.
   const [own, atLineage] = await Promise.all([
     readAll(session.id),
-    readAll(lineageScopeId(session, tenantId))
+    readAll(lineageScopeId(session))
   ]);
 
   const merged: Record<string, T> = {};

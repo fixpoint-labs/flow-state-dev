@@ -82,7 +82,6 @@ import {
   resolveResourceIsolation,
   resolveResourceScopeId,
   resolveSessionStorageKey,
-  resolveLineageScopeId,
   tenantMatches
 } from "../stores/scope-keys";
 import { resourceStorageKeys } from "../resources/storage-keys";
@@ -604,16 +603,33 @@ export async function createExecutionContext<
       orgId: options.orgId,
       tenantId: options.tenantId,
       state: (options.sessionState ?? {}) as TSessionState,
-      // Minted here and never rewritten — this is what separates this
-      // conversation from a later one that reuses the id (FIX-1068).
-      lineageGeneration: generateId("gen"),
+      // Minted once, here, and never rewritten. This is the address every
+      // shared resource in this session resolves to (FIX-1068).
+      lineageId: generateId("lin"),
       resources: normalizeScopeResources(sessionResourceConfigs, undefined),
       version: 0,
       createdAt: now,
       updatedAt: now,
       journal: []
     };
-    await stores.session.set(sessionRecord.id, sessionRecord, "any");
+    // Create-if-absent, not an unconditional write. Two first actions on one
+    // new session both find nothing and both create; an unconditional write
+    // lets the loser overwrite the winner, and each carries a DIFFERENT
+    // `lineageId` — so the loser's shared writes land at an address nothing
+    // ever reads again. The winner's record is authoritative for both.
+    const created = await stores.session.set(sessionRecord.id, sessionRecord, "absent");
+    if (!created.ok) {
+      const winner =
+        created.conflict.currentValue ?? (await stores.session.get(sessionRecord.id));
+      if (winner === undefined) {
+        // Tombstoned between the read and the write. The store contract requires
+        // a caller to treat that as deleted and stop, never as "reuse my copy".
+        throw new Error(
+          `Session "${sessionId}" was deleted while this request was starting it`
+        );
+      }
+      sessionRecord = winner as typeof sessionRecord;
+    }
   } else {
     ensureJournalDefaults(sessionRecord);
 
@@ -658,29 +674,13 @@ export async function createExecutionContext<
   // record without it IS the root — true of every top-level session and of every
   // record persisted before the field existed, so `== null` reads both the
   // absent and the store-nulled form (BP-030).
-  const lineageRootSessionId = sessionRecord.lineageRootSessionId ?? undefined;
-  // The incarnation of the lineage ROOT: inherited when this session is a
-  // descendant, its own when it is the root. Absent on records predating the
-  // field, which leaves their address exactly as it was (BP-030).
-  const lineageRootGeneration =
-    sessionRecord.lineageRootGeneration ?? sessionRecord.lineageGeneration ?? undefined;
-  // Storage form of the same address, conjoined with the lineage's OWNER.
+  // The lineage this session addresses its shared resources through (FIX-1068).
   //
-  // Not the bare root session key: session ids are caller-chosen and a session
-  // can be deleted, so a descendant addressing a bare root id can be pointed at
-  // a session someone else later created under that id. `userId` is
-  // authoritative here — the binding check above throws unless it equals
-  // `sessionRecord.userId` — and `tenantId` likewise. See
-  // `resolveLineageScopeId` for why this is an address and not a check.
-  //
-  // The root computes the SAME address from its own id, which is what keeps a
-  // parent and its descendants on one bucket.
-  const lineageRootSessionKey = resolveLineageScopeId({
-    rootSessionId: lineageRootSessionId ?? sessionId,
-    userId,
-    tenantId: options.tenantId,
-    rootGeneration: lineageRootGeneration
-  });
+  // Read back, not reconstructed. A record without the field predates it and is
+  // its own lineage, keyed by its session storage key — safe because a recreated
+  // session always gets a record that carries the field, so two records can
+  // never both land on one fallback id (BP-030).
+  const lineageId = sessionRecord.lineageId ?? sessionKey;
 
   const resolvedOrgKey =
     resolvedOrgId !== undefined
@@ -746,8 +746,7 @@ export async function createExecutionContext<
             tenantId: options.tenantId,
             orgId: resolvedOrgId,
             sessionId,
-            lineageRootSessionId,
-            lineageRootGeneration
+            lineageId
           },
           startOperation: options.requestHost.startOperation,
           parentTask: options.requestHost.parentTask,
@@ -1006,7 +1005,7 @@ export async function createExecutionContext<
     // the lineage root, so a parent and its Workstreams resolve one resource.
     // Everything else stays on the running session, unchanged.
     if (scope === "session") {
-      return sharedToWorkstreamFlagOf(config) ? lineageRootSessionKey : sessionKey;
+      return sharedToWorkstreamFlagOf(config) ? lineageId : sessionKey;
     }
     const identityId = scopeIdentityId(scope);
     if (identityId === undefined) return undefined;
@@ -1042,11 +1041,11 @@ export async function createExecutionContext<
    * different key spaces, and no reservation has to hold at every entry point
    * forever to keep them apart.
    *
-   * Exactly the addresses `lineageRootSessionKey` names, which is the one
+   * Exactly the addresses `lineageId` names, which is the one
    * address a session-scoped shared resource resolves to.
    */
   const storageScopeOf = (scope: ContentScopeType, scopeId: string): StorageScopeType =>
-    scope === "session" && scopeId === lineageRootSessionKey ? "lineage" : scope;
+    scope === "session" && scopeId === lineageId ? "lineage" : scope;
   const resolveResourceStorageScopeId = (
     scope: ContentScopeType,
     storageKey: string
@@ -1055,7 +1054,7 @@ export async function createExecutionContext<
     // session — which is the address it had before shared resources existed.
     if (scope === "session") {
       return resolveBucketFlag("session", storageKey) === true
-        ? lineageRootSessionKey
+        ? lineageId
         : sessionKey;
     }
     const identityId = scopeIdentityId(scope);
@@ -1127,7 +1126,7 @@ export async function createExecutionContext<
     sub: Record<string, ResourceConfig | ResourceCollectionConfig>,
     read: (scopeId: string, sub: Record<string, ResourceConfig | ResourceCollectionConfig>) => Promise<Record<string, T>>
   ): Promise<Record<string, T>> => {
-    if (scope !== "session" || scopeId !== lineageRootSessionKey) return loaded;
+    if (scope !== "session" || scopeId !== lineageId) return loaded;
     if (scopeId === sessionKey) return loaded; // nothing moved
     const prior = retainOwnedKeys(scope, sessionKey, await read(sessionKey, sub));
     const merged: Record<string, T> = {};

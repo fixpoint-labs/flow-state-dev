@@ -49,49 +49,26 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    */
   parentSessionId?: string;
   /**
-   * Bare id of the TOP-MOST session in this session's lineage (FIX-1068) — the
-   * ancestor a `sharedToWorkstream` resource resolves against, so every session
-   * in one chain addresses the same storage.
+   * The lineage this session belongs to (FIX-1068) — the address every resource
+   * it declares `sharedToWorkstream` stores under.
    *
-   * Stamped once, at creation, by the detached-start writer
-   * (`context/create-request-host.ts`): a child's root is its parent's root, or
-   * the parent itself when the parent has none. That makes the lookup O(1) per
-   * resource read instead of a walk up `parentSessionId`, and it is safe to
-   * stamp because a child never changes parents.
+   * **Minted, not derived.** A root session mints one when its record is
+   * created; every descendant inherits that same literal value at spawn. The
+   * address is therefore a value that is written once and read back, rather than
+   * something reconstructed at each read out of session identity — which is
+   * mutable, reusable, concurrently creatable, and has a legacy shape.
    *
-   * Absent means **"I am the root"** — true of every top-level session, and of
-   * every record persisted before this field existed. A store that nulls absent
-   * keys hands back `null`, so read it with `== null` (BP-030). A legacy child
-   * is therefore treated as its own root, which is exactly the behaviour it had
-   * before this field: its session-scoped resources stay its own.
+   * That is what makes the hard cases go away instead of needing handling. A
+   * deleted session id recreated by anyone gets a NEW record and therefore a new
+   * lineage, so a surviving descendant of the old lineage keeps its own address
+   * with no owner or incarnation conjoined into it.
    *
-   * Bare, not tenant-namespaced, matching {@link SessionRecord.parentSessionId}.
+   * Absent on records written before this field existed. Those are read as their
+   * own lineage keyed by their session storage key (BP-030) — safe because a
+   * *recreated* session always gets a record that carries the field, so two
+   * records can never both fall back to one id.
    */
-  lineageRootSessionId?: string;
-  /**
-   * Nonce identifying THIS INCARNATION of this session id (FIX-1068).
-   *
-   * Session ids are caller-chosen and a session can be deleted, so one id names
-   * different conversations over time. The lineage address is derived from the
-   * root's id, and without something separating incarnations a recreated root
-   * lands on the deleted one's bucket — where descendants of the OLD lineage may
-   * still be running and writing. Two live lineages sharing a bucket is not a
-   * hygiene problem, which is why this is minted rather than inferred.
-   *
-   * Stamped once at record creation and never rewritten. Absent on records
-   * written before this field existed, which the address reads as an empty
-   * component (BP-030) — those keep the address they already had.
-   */
-  lineageGeneration?: string;
-  /**
-   * The {@link SessionRecord.lineageGeneration} of this session's lineage ROOT,
-   * inherited at spawn (FIX-1068). Undefined on a root, which uses its own.
-   *
-   * Carried rather than looked up for the same reason
-   * {@link SessionRecord.lineageRootSessionId} is: a resource read must not have
-   * to load the root record.
-   */
-  lineageRootGeneration?: string;
+  lineageId?: string;
   /**
    * Human-readable name for the body of work a detached child session was
    * started for (FIX-1010). Stamped by the detached-start writer

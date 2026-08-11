@@ -23,8 +23,6 @@
  * was isolated. The opt-out direction is now honored.
  */
 
-import { createHash } from "node:crypto";
-
 import type { SessionParentage } from "./types";
 
 /** Minimal flow shape carrying the scope-isolation flags plus its own `kind`. */
@@ -83,74 +81,6 @@ export function resolveSessionStorageKey(
   return tenantId !== undefined && tenantId.length > 0
     ? `${tenantId}:${sessionId}`
     : sessionId;
-}
-
-/** Prefix so a lineage scopeId is recognisable in a store dump. */
-const LINEAGE_ID_PREFIX = "lin_";
-
-/**
- * Length-prefix a field so field boundaries cannot be confused. Same reasoning,
- * and same shape, as `context/detached-child.ts`.
- */
-function framed(value: string | undefined): string {
-  const v = value ?? "";
-  return `${v.length}:${v}`;
-}
-
-/**
- * Storage `scopeId` for a resource shared across a session lineage (FIX-1068).
- *
- * **Why the owner is in the address rather than checked on read.** A shared
- * resource is addressed by the lineage ROOT, and a descendant carries only the
- * root's bare session id — it never reloads the root record, which is what makes
- * the lookup O(1). Session ids are caller-chosen and a session can be deleted,
- * so the id a surviving descendant points at can be created again by someone
- * else. Addressed by the bare root id, the descendant's shared resource would
- * then resolve into whatever now sits there: the new owner's ordinary
- * session-scoped rows, which it could read and overwrite.
- *
- * Conjoining tenant and user makes that collision **unexpressible** rather than
- * detectable. It costs nothing semantically — a shared resource already runs
- * down one owner's chain and never sideways, so this only writes down what was
- * already true. The alternatives are worse: validating the root on every resolve
- * buys a store read per request and still leaves a window, and refusing to
- * delete a root with live descendants is a policy change that someone
- * eventually works around.
- *
- * **Why a hash and not a delimited string.** Every component here is
- * caller-influenced, and `resolveSessionStorageKey` above concatenates tenant
- * and session with a bare `:` — so a caller who picks the right session id can
- * make an ordinary session key that reads exactly like a delimited lineage key,
- * which is the collision this function exists to remove. Framing the fields and
- * hashing removes the whole class, exactly as `deriveChildSessionId` does with
- * the same key material.
- *
- * Distinct from every ordinary session key by construction, so a lineage address
- * and a session address can never name one bucket.
- */
-export function resolveLineageScopeId(input: {
-  /** Bare id of the lineage root — the session itself when it has no ancestor. */
-  rootSessionId: string;
-  /** The lineage's owner. Authoritative (validated against the session record). */
-  userId: string;
-  /** The tenant the lineage belongs to, if multi-tenant. */
-  tenantId: string | undefined;
-  /**
-   * The root's incarnation nonce. Separates a recreated session id from the one
-   * it replaced, so a new conversation cannot land on a deleted lineage's bucket
-   * while that lineage's descendants are still writing to it. Absent on records
-   * predating the field, which keeps their address unchanged (BP-030).
-   */
-  rootGeneration: string | undefined;
-}): string {
-  const material = [
-    framed(input.tenantId),
-    framed(input.userId),
-    framed(input.rootSessionId),
-    framed(input.rootGeneration)
-  ].join("|");
-  const digest = createHash("sha256").update(material, "utf8").digest("hex");
-  return `${LINEAGE_ID_PREFIX}${digest.slice(0, 32)}`;
 }
 
 /**
