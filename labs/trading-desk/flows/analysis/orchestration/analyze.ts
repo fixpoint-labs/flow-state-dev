@@ -67,7 +67,8 @@ export const analyze = sequencer({
   .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
   .tap(computeAndStoreSpine)
   // Persist a thinned price-history slice for the Summary overlay. Reads the
-  // warm cache the technical analyst already populated — no extra fetch.
+  // session `technicalData` spine (NOT a warm process cache — FIX-758 migrated
+  // it) — no extra fetch. See store-price-history.ts for the miss behaviour.
   .tap(storePriceHistory)
   .step(researchStage)
   // Phase 2b — investor-lens pack (Slice 5). Pre-decision: runs after Phase 2

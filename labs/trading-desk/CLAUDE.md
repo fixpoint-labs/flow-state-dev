@@ -278,11 +278,18 @@ sticks (ref-guarded, mirroring the auto-follow idiom).
   lines; with `< 2` bars or a `source: "unavailable"` slice it falls back to a
   trade-levels list.
 - **Price-history persistence:** `price-history-resource.ts` (leaf, BP-019) +
-  `store-price-history.ts` (a `.tap()` after the spine tap in `flow.ts`). The tap
-  reads the warm tool cache / fixture the technical analyst already populated — no
-  extra fetch, no `block.run()` — and persists a thinned `{ date, close }` series
-  + provenance `source`. On any miss it leaves the resource null and the chart
-  degrades. Tested in `test/store-price-history.spec.ts`.
+  `store-price-history.ts` (a `.tap()` after the spine tap in
+  `orchestration/analyze.ts`). The tap reads the session `technicalData` spine
+  the technical analyst's `get_price_history` wrote in Phase 1 (FIX-758 migrated
+  this off the warm process cache) — no extra fetch, no `block.run()` — and
+  persists a thinned `{ date, close }` series + provenance `source`. Only the
+  SUBJECT's series at `SUMMARY_PRICE_RANGE` reaches the spine; a peer/benchmark
+  or off-range probe stays on the args-keyed cache, so it can never be persisted
+  mislabeled as the subject's chart (real-money gate). Three outcomes, kept
+  distinct: bars persist; a provider miss persists an empty-bars slice tagged
+  `source: "unavailable"` (degrades to `ChartEmpty`); nothing on the spine leaves
+  the resource null and warns with the reason. Tested in
+  `test/store-price-history.spec.ts`.
 - **Real-money gates:** no fabricated numbers, `dataQuality` chips for
   provenance, missing metrics shown as `—`/gap (never invented), a stopped run
   shows only its stop banner, the `StatusBar` not-advice disclaimer stays visible.
