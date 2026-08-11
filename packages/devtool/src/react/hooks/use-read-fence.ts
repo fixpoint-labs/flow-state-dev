@@ -104,9 +104,31 @@ export function useReadFence(
   const onRetiredRef = useRef(onRetired);
   onRetiredRef.current = onRetired;
 
+  // Retired with nothing to replace it — the unmount case.
+  //
+  // Every other kind of staleness this fence models arrives as a SUPERSEDING
+  // identity: a new session, a rebuilt client, a different tuple. Unmounting
+  // announces none of that, so without a teardown a read in flight keeps seeing
+  // its own identity in play and runs to completion for a component that is
+  // gone. React cancels nothing; an async walk is a plain promise chain.
+  //
+  // The cleanup fires on an identity change too, which is harmless and in fact
+  // what makes one flag cover both: on a change it is cleared again by the very
+  // next run of this effect, and on unmount there is no next run.
+  const retiredRef = useRef(false);
+
   useEffect(
     () => {
+      retiredRef.current = false;
+      // Deliberately NOT called from the cleanup below. Retiring on unmount has
+      // to stop reads WITHOUT running the reset: there is no component left to
+      // clear state on, so it buys nothing, and a caller whose reset ever does
+      // more than `setState` would be running it against a workspace that no
+      // longer exists.
       onRetiredRef.current?.();
+      return () => {
+        retiredRef.current = true;
+      };
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     identity
@@ -126,10 +148,13 @@ export function useReadFence(
       const mine = identity;
       return {
         begin: () => {
+          if (retiredRef.current) return null;
           if (!sameIdentity(mine, currentRef.current)) return null;
           const seq = ++seqRef.current;
           return () =>
-            sameIdentity(mine, currentRef.current) && seq === seqRef.current;
+            !retiredRef.current &&
+            sameIdentity(mine, currentRef.current) &&
+            seq === seqRef.current;
         },
       };
     },

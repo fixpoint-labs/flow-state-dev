@@ -29,6 +29,7 @@ vi.mock("../src/react/context/devtool-context", () => ({
 }));
 
 import { useWorkstreams, MAX_WORKSTREAM_ROWS } from "../src/react/hooks/use-workstreams";
+import { useReadFence } from "../src/react/hooks/use-read-fence";
 
 function row(id: string, overrides: Partial<WorkstreamSummary> = {}): WorkstreamSummary {
   return {
@@ -221,6 +222,57 @@ describe("useWorkstreams — a superseded walk stops working", () => {
     });
 
     expect(pending.filter((read) => read.sessionId === "sess_parent")).toHaveLength(2);
+  });
+
+  it("stops issuing pages when the panel unmounts mid-walk", async () => {
+    // The one way an identity is retired with nothing arriving to replace it.
+    // Every other case the fence handles is a SUPERSEDING identity — a new
+    // session, a new client — and an embedded DevTool being unmounted announces
+    // no such thing. Without a teardown the walk sees its identity still in
+    // play and pages on to the bound, up to ~500 requests under a one-row page
+    // size, each with a per-row status lookup behind it, for a result nothing
+    // is left to render.
+    const pending = armSteppableReads();
+
+    const { unmount } = renderHook(() => useWorkstreams("sess_parent"));
+    await waitFor(() => expect(pending).toHaveLength(1));
+
+    // First page lands full, so the walk wants another.
+    await act(async () => {
+      pending[0]!.resolve(page(0, 25));
+    });
+    await waitFor(() => expect(pending).toHaveLength(2));
+
+    unmount();
+
+    // The outstanding page comes back, also full. There is nobody to render it.
+    await act(async () => {
+      pending[1]!.resolve(page(25, 25));
+    });
+
+    expect(pending).toHaveLength(2);
+  });
+
+  it("does not run the reset when the panel unmounts", async () => {
+    // Retiring on unmount must STOP reads without clearing state. There is no
+    // component left to clear, so it buys nothing — and a caller whose reset
+    // ever does more than `setState` would be running it against a workspace
+    // that no longer exists.
+    const onRetired = vi.fn();
+    sessionClientMock.listWorkstreams.mockResolvedValue([]);
+
+    const { unmount, rerender } = renderHook(
+      ({ id }: { id: string }) => useReadFence([id], onRetired),
+      { initialProps: { id: "a" } }
+    );
+    // Mount runs it once; an identity change runs it again.
+    await waitFor(() => expect(onRetired).toHaveBeenCalledTimes(1));
+    rerender({ id: "b" });
+    await waitFor(() => expect(onRetired).toHaveBeenCalledTimes(2));
+
+    unmount();
+
+    expect(onRetired).toHaveBeenCalledTimes(2);
   });
 
   it("lands the surviving walk's rows, not the abandoned one's", async () => {
