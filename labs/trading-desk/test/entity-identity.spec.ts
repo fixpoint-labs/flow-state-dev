@@ -110,6 +110,39 @@ describe("subjectEntityFromProfile", () => {
     }
   });
 
+  it("does not let REIT identify a trust — a wrapper is not an identity", () => {
+    // Same defect as `ETF`, on the 4+ character pass: `reit` is a legal wrapper
+    // every REIT carries, so it identifies none of them. An industry term stays
+    // distinctive (`semiconductor` still carries `ON Semiconductor`); a
+    // structural wrapper does not.
+    const spg = subjectEntityFromProfile("SPG", {
+      source: "finnhub",
+      name: "Simon Property Group REIT",
+    }) as SubjectEntity;
+    // Kept as a name token, demoted at match time — not filtered out.
+    expect(spg.nameTokens.has("reit")).toBe(true);
+    expect(textMentionsEntity("the REIT sector rallied on rate cuts", spg)).toBe(false);
+    // The issuer's actual name still verifies on its own.
+    expect(textMentionsEntity("Simon reported higher occupancy", spg)).toBe(true);
+  });
+
+  it("falls back to the short pass when every long token is ordinary", () => {
+    // The interaction demoting `reit` creates: `XP REIT` HAS a long token, so a
+    // presence test would keep the short pass off — but a lone ordinary token
+    // can never verify (it needs an adjacent pair that does not exist), leaving
+    // the name with no signal at all. The gate is "no DISTINCTIVE token", so the
+    // short pass correctly runs and recovers `XP`.
+    const odd = subjectEntityFromProfile("XPR", {
+      source: "yahoo",
+      name: "XP REIT",
+    }) as SubjectEntity;
+    expect([...odd.nameTokens]).toEqual(["reit"]);
+    expect([...odd.shortNameTokens]).toEqual(["XP"]);
+    expect(textMentionsEntity("XP REIT raised its dividend", odd)).toBe(true);
+    // And the wrapper still does not identify it.
+    expect(textMentionsEntity("a broad REIT rally", odd)).toBe(false);
+  });
+
   it("keeps the denylist meaningful for an all-short name with a classifier", () => {
     // The degenerate leftover the structural rule cannot reach: no long token,
     // so the short pass DOES run, and the classifier must still be excluded.

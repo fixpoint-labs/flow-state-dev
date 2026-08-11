@@ -59,6 +59,28 @@ const GENERIC_NAME_TOKENS = new Set([
  * least in the subject's own sector, which is the same adjacency the macro /
  * market discovery exemption already accepts, and demoting it would cost real
  * recall on issuers whose name IS the canonical industry term.
+ *
+ * ---
+ *
+ * **THE RULE, stated once for this file: an industry term stays distinctive; a
+ * legal or structural WRAPPER does not.**
+ *
+ * A company can be *named for its industry* — `ON Semiconductor` has no other
+ * token, and demoting `semiconductor` would cost it name verification entirely.
+ * But **no company's identity is its wrapper.** `reit`, `ETF`, `ADR`, `ADS`,
+ * `ETN`, and `trust`-as-a-suffix describe what a SECURITY IS, not who the
+ * ISSUER IS. Simon Property Group is identified by "Simon Property Group";
+ * `REIT` adds nothing any issuer could be distinguished by, because every REIT
+ * has it.
+ *
+ * That is the same line `shortNameTokens` draws structurally for short tokens,
+ * and the reason these three lists are one policy rather than three curations:
+ *   - `GENERIC_NAME_TOKENS`       — wrappers and forms, 4+ chars, dropped outright
+ *   - `ORDINARY_NAME_TOKENS`      — words that also mean something else in prose,
+ *                                   plus 4+ char wrappers like `reit`, demoted
+ *                                   to needing an adjacent pair
+ *   - `SHORT_GENERIC_NAME_TOKENS` — the same wrappers at 2-3 chars
+ * A term that survives all three is one an issuer could actually be known by.
  */
 const ORDINARY_NAME_TOKENS = new Set([
   "advisors",
@@ -94,6 +116,8 @@ const ORDINARY_NAME_TOKENS = new Set([
   "products",
   "property",
   "real",
+  // A legal wrapper, not an industry: every REIT is one. See THE RULE above.
+  "reit",
   "resources",
   "sector",
   "security",
@@ -209,12 +233,20 @@ export function entityNameTokens(name: string): Set<string> {
  * corporate forms (`Inc`, `Co`, `The`) without needing to enumerate them.
  *
  * **A FALLBACK, not an additional signal — this is what keeps category labels
- * out.** The pass runs only when `entityNameTokens` is empty. Read the two
- * halves of that together: the short pass exists because `3M Company` and
- * `XP Inc.` have no long token to identify them, so a name that HAS one never
- * needed it. Without the restriction, `iShares Core S&P 500 ETF` yields `ETF`,
- * and every result containing the routine label "ETF" verifies as evidence about
- * that one fund — far broader than any sibling-fund problem.
+ * out.** The pass runs only when the name has no long token that could carry it
+ * ALONE. The short pass exists because `3M Company` and `XP Inc.` have nothing
+ * to identify them, so a name that already has a carrying token never needed it.
+ * Without the restriction, `iShares Core S&P 500 ETF` yields `ETF`, and every
+ * result containing the routine label "ETF" verifies as evidence about that one
+ * fund — far broader than any sibling-fund problem.
+ *
+ * **"Carrying" means DISTINCTIVE, not merely present.** Testing
+ * `entityNameTokens` non-empty would be wrong: ordinary tokens are kept in that
+ * set and demoted at match time, so `XP REIT` has a long token (`reit`) that can
+ * never verify on its own — a lone ordinary token needs an adjacent pair that
+ * does not exist. Gating on presence would leave such a name with no name signal
+ * at all, which is the round-4 "thin name is not an absent identity" bug wearing
+ * a different hat.
  *
  * The structural rule is what does the work; enumerating `ETF` / `ETN` / `ADR`
  * in a denylist would fail open on the first instrument type nobody listed. Note
@@ -224,9 +256,11 @@ export function entityNameTokens(name: string): Set<string> {
  */
 export function shortNameTokens(name: string): Set<string> {
   // Not merely "prefer long tokens" — the short pass is OFF entirely when a
-  // distinctive long token exists, so a trailing classifier can never become an
+  // DISTINCTIVE long token exists, so a trailing classifier can never become an
   // identity for a name that has a real one.
-  if (entityNameTokens(name).size > 0) return new Set();
+  for (const t of entityNameTokens(name)) {
+    if (!ORDINARY_NAME_TOKENS.has(t)) return new Set();
+  }
   return new Set(
     name
       .split(/[^A-Za-z0-9]+/)
