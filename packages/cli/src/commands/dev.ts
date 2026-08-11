@@ -54,7 +54,7 @@ export function registerDevCommand(program: Command): void {
     .option("--dotenv <path>", "Load a specific .env file, e.g. an app's (repeatable, resolved from cwd)", collectValues, undefined)
     .option("--config <path>", "Path to an fsdev config file (default: fsdev.config.{ts,mts,js,mjs} in cwd)")
     .option("--no-config", "Ignore fsdev.config.* and use directory discovery")
-    .option("-m, --model <model>", "Override model for all generator blocks")
+    .option("-m, --model <model>", "Override model for generator blocks run in this process")
     .option("--no-open", "Don't open the browser automatically")
     .action(async (options: DevCommandOptions) => {
       try {

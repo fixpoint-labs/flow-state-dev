@@ -33,7 +33,7 @@ export function registerChatCommand(program: Command): void {
     .command("chat [flow] [action]")
     .description("Start an interactive chat session over a flow")
     .option("-s, --session <id>", "Resume an engine session for the initially bound flow")
-    .option("-m, --model <model>", "Override model for all generator blocks")
+    .option("-m, --model <model>", "Override model for generator blocks run in this process")
     .option("-u, --user <id>", "Engine identity for sessions and turns (default: cli-user)")
     .option("--flow-dir <path>", "Override flow discovery root (repeatable)", collectValues, undefined)
     .option("--dotenv <path>", "Load a specific .env file (repeatable, resolved from cwd)", collectValues, undefined)

@@ -88,7 +88,7 @@ export function registerRunCommand(program: Command): void {
     .description("Execute a flow action with streaming NDJSON output")
     .option("-i, --input <json>", "Inline JSON input")
     .option("-f, --input-file <path>", "Path to JSON input file")
-    .option("-m, --model <model>", "Override model for all generator blocks")
+    .option("-m, --model <model>", "Override model for generator blocks run in this process")
     .option("-s, --session <id>", "Session ID for reuse across invocations")
     .option("--seed-session <json>", "Seed session-level state (JSON or file path)")
     .option("--seed-user <json>", "Seed user-level state (JSON or file path)")
