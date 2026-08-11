@@ -330,6 +330,92 @@ describe("a detached board's launching request returns while the work is outstan
     expect(afterChild?.output).toBeUndefined();
   });
 
+  it("refuses a child whose lease lapsed while it sat in the host's queue", async () => {
+    // Nothing renews a detached row's lease between the parent handing it off
+    // and the child actually starting, so a child that waits in the host's
+    // queue longer than the lease can start on a row the substrate already
+    // considers free. The other three gate arms all still pass — same attempt,
+    // same creation stamp, same incarnation, still `in_progress` — because no
+    // successor has come along and taken it yet.
+    //
+    // What makes that worse than a wasted run: the worker's side effects happen
+    // first and the refusal comes second. The settlement is fenced on the lease,
+    // so `complete()` is declined `lost-claim`, the row stays recoverable, and
+    // the next drain runs the same work again. Duplicate effects, and no error
+    // at the point they are committed.
+    //
+    // The lapse is written onto the durable row rather than waited out: the
+    // board's default lease is two minutes and no board-level knob shortens it,
+    // and a row whose `leaseUntil` has passed is exactly what those two minutes
+    // would produce. Same technique, and the same reason, as the reincarnation
+    // above.
+    const stores = createInMemoryStores();
+    const { flow, ran } = buildFlow({ kind: "handoff-lapsed", mode: "detached" });
+
+    const dispatched: RecordedDispatch[] = [];
+    const parent = await runAction({
+      flow,
+      actionName: "start",
+      input: {},
+      userId: USER_ID,
+      sessionId: "s_parent",
+      stores,
+      runtimeConfig: {
+        ...baseRuntimeConfig(),
+        requestHost: {
+          startOperation: async (spec) => {
+            dispatched.push({
+              sessionId: spec.sessionId,
+              actionName: spec.actionName,
+              input: spec.input,
+            });
+            return { requestId: "child_req_1" };
+          },
+        },
+      },
+    });
+    expect(parent.error).toBeUndefined();
+
+    const claimed = await durableRow(stores, "handoff-lapsed", "t1");
+    // The claim wrote a lease, or there is nothing here to lapse.
+    expect(claimed?.leaseUntil).toBeDefined();
+
+    // The deadline moves back to the instant the claim was committed, so the
+    // lease expired the moment it was granted. Derived from the row's own
+    // `updatedAt` rather than from a wall-clock read: that stamp was written by
+    // the claim on the collection's clock, which is the clock the gate and the
+    // fence both compare against, and it is strictly in the past by the time
+    // the child runs. Subtracting a wall-clock offset instead would be reading
+    // one clock to make a claim about another.
+    const lapsedAt = claimed!.updatedAt;
+    await rewriteRow(stores, "handoff-lapsed", "t1", { leaseUntil: lapsedAt });
+
+    const child = await runAction({
+      flow,
+      actionName: dispatched[0]!.actionName as "start",
+      input: dispatched[0]!.input,
+      userId: USER_ID,
+      sessionId: dispatched[0]!.sessionId,
+      source: WORKSTREAM_SOURCE,
+      stores,
+      runtimeConfig: baseRuntimeConfig(),
+    });
+
+    // THE ASSERTION THIS CASE EXISTS FOR: the worker never ran. Asserting on
+    // the row alone would pass without the gate too, since the fence declines
+    // the settlement either way — the row looks identical whether the work was
+    // refused or merely wasted.
+    expect(ran).toEqual([]);
+    expect(child.error).toBeUndefined();
+
+    const afterChild = await durableRow(stores, "handoff-lapsed", "t1");
+    expect(afterChild?.status).toBe("in_progress");
+    expect(afterChild?.output).toBeUndefined();
+    // Refused, not adopted: the child extended nothing, so the row is still as
+    // recoverable as the next drain found it.
+    expect(afterChild?.leaseUntil).toBe(lapsedAt);
+  });
+
   it("still holds the request open for an inline worker on the same board shape", async () => {
     // The control, and the one that protects every board that exists today.
     // The exclusion is opt-in per declaration: flip `mode` and the identical

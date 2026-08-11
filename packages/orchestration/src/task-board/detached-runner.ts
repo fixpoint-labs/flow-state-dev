@@ -17,8 +17,8 @@
  *    cancel or a reclaim landing in that gap leaves the claimant proceeding from
  *    a stale snapshot — a cancelled task running to completion. The gate re-reads
  *    the row and aborts unless the claim is still current: `attempts` matches,
- *    `createdAt` matches, the row's incarnation matches, and the status is still
- *    `in_progress`.
+ *    `createdAt` matches, the row's incarnation matches, the status is still
+ *    `in_progress`, and the claim's lease has not run out.
  * 2. **Worker selection.** The route comes from the row's own `assignee`, not
  *    from the dispatch envelope (BP-031). The envelope names a board; the ledger
  *    names the worker.
@@ -50,6 +50,22 @@
  * separates the two rows — with `createdAt` kept as the arm that still works on
  * a row or an envelope predating the nonce. Both ride the ticket the board
  * minted from the row it claimed, so neither costs an extra read.
+ *
+ * ## And why identity alone is not enough
+ *
+ * Every arm above compares the dispatch against the row. None of them asks
+ * whether the claim is still *live*, and those are different questions: a claim
+ * loses its row by running out of time as readily as by being superseded, and
+ * the row looks untouched when it does. Nothing renews a detached row's lease
+ * between the parent's hand-off and the child's first breath (FIX-1070), so a
+ * child that waits in the host's queue longer than the lease starts on a row the
+ * substrate already counts as free — same attempt, same stamps, still
+ * `in_progress`, because no successor has come along and taken it yet.
+ *
+ * Letting that through is the expensive direction. The worker's side effects
+ * commit first and the refusal arrives second: settlement is fenced on the same
+ * lease, so `complete()` is declined `lost-claim`, the row stays recoverable,
+ * and the next drain runs the whole thing again.
  */
 import { sequencer, utility } from "@flow-state-dev/core";
 import type { DefinedCapability } from "@flow-state-dev/core";
@@ -68,11 +84,19 @@ import { coordinateKey, type WorkerCoordinate } from "./coordinate";
 import { createRecordError, createRecordSuccess } from "./blocks/record-result";
 import { taskBoardWorkerBodyStateSchema } from "./schemas";
 import type { ResolvedWorkerSlot } from "./detached";
-import type { Task, TaskCollectionRef } from "../tasks";
+import { leaseLapsed, type Task, type TaskCollectionRef } from "../tasks";
 
 /**
  * Thrown by the start gate when the claim this dispatch names is no longer the
  * row's current claim.
+ *
+ * **Superseded and expired both land here**, rather than the second getting a
+ * name of its own. A claim stops being the row's live claim by running out of
+ * time exactly as it does by being taken, the substrate already spells both
+ * `lost-claim` at the fence, and what this dispatch must do about it is the same
+ * either way: stop, write nothing, leave the row to be recovered. A second error
+ * type would split one outcome across two names and invite a caller to handle
+ * them differently when there is no different handling to do.
  *
  * A named error rather than a silent return: a detached request that stops
  * because its claim was superseded is a *correct* outcome, but one that stops
@@ -316,6 +340,30 @@ export function buildDetachedRunner(
           throw new StaleDetachedClaimError(
             dispatch.taskId,
             `the row is "${row.status}", so no claim is outstanding on it`
+          );
+        }
+        // The one arm that is about liveness rather than identity — see the
+        // header for why the two cannot substitute for each other.
+        //
+        // **Refused, not renewed**, and that is not a preference between two
+        // available moves. `renewLease` is fenced on this exact subtraction, so
+        // it declines a lapsed lease by construction; adopting the row would
+        // mean *re-claiming* it, minting a fresh attempt to run a payload the
+        // parent packed against the old one. Modelling a hand-off that holds its
+        // row across the queue wait is FIX-1070's question and the lease's shape
+        // to change, not a branch to add here.
+        //
+        // Refusing costs nothing it did not already cost: the row keeps its
+        // lapsed lease and its `in_progress` status, which is exactly what
+        // `isClaimable` reads as recoverable, so the next drain takes it and the
+        // work runs once. The clock is the collection's for the reason every
+        // other reader of this subtraction takes it from there — the deadline
+        // was stamped against it by the claim write.
+        if (leaseLapsed(row, board.now())) {
+          throw new StaleDetachedClaimError(
+            dispatch.taskId,
+            "its lease ran out before this dispatch started, so the row is back in " +
+              "the claim queue and any work done under it could not be recorded"
           );
         }
 

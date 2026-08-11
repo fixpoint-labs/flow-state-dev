@@ -12,6 +12,14 @@ recreated under the same id inside the same millisecond passed, and the stale
 child ran its old payload against the replacement row. A row or a dispatch that
 predates the nonce keeps the previous behaviour rather than being refused.
 
+The same check now also refuses a detached child whose claim expired while it
+waited to start. Nothing renews a task's lease between the hand-off and the
+child's first breath, so a child that sat in the host's queue longer than the
+lease used to begin work on a row the board had already released — running the
+worker's side effects, then having the result declined and the task recovered and
+run a second time. It stops before the worker instead, and the row is left for
+the next drain to pick up.
+
 A board also stops treating a detached row as work running elsewhere once that
 row's lease has run out. Routing says where a task's work belongs; only the lease
 says whether anyone is still on it, so a claimant that died before its background
