@@ -294,11 +294,14 @@ caveats) — which was locally true and globally wrong, and is what a per-commen
 
 | # | Fix | Altitude | Targets |
 |---|---|---|---|
-| A | `issue-implement` 10.6 gains "Measure the total, not the delta" — re-read a materially grown file whole before closing a round | skill, PR-feedback | both rows |
+| A | `issue-spec` 6.5.2 (the anti-addenda rule) gains **growth** as a second trigger — cumulative, past ~1.3× the artifact's length when review opened — and becomes canonical for `issue-implement` 10.6, which carries a short pointer and makes the resulting re-draft binding | skill, spec + PR-feedback | both rows |
 
-`issue-spec` **6.5.2 already holds this rule** for spec PRs ("re-draft — do not append"), but it
-fires on a *direction pivot*; neither of these PRs pivoted. Fix A is the same rule with growth as
-its trigger, placed in the loop that lacked one.
+`issue-spec` **6.5.2 already held this rule**, but fired only on a *direction pivot*; neither of
+these PRs pivoted. The first cut of fix A restated the rule in 10.6 instead, which left one rule
+in two homes — the same accretion this cycle is about, in the fix aimed at it. Review caught it;
+the rule now lives once, with two entry points. **The trigger is cumulative by construction:**
+anchored per-round, small batches bloat a file without ever tripping it, which is "measure the
+total, not the delta" defeated by its own trigger.
 
 ### Dropped
 
@@ -319,9 +322,11 @@ its trigger, placed in the loop that lacked one.
 
 ### Claim to test next cycle
 
-`over-engineered` findings raised by the **owner** on artifacts that passed automated review
-fall, and no file in a later cycle shows the grow-then-rewrite curve (a peak line count more
-than ~1.3× its merged count). Fix A is prose, aimed at attention at edit time — the same shape
+`over-engineered` falls **as a share of each cycle's findings** — the share metric this file
+declares in its header, not a raw count, so a shrinking sample can't read as improvement while
+the per-artifact rate worsens. **Baseline: 2 of 8 findings (25%) across this cycle's two rows.**
+And no file in a later cycle shows the grow-then-rewrite curve (a peak line count more than
+~1.3× its merged count). Fix A is prose, aimed at attention at edit time — the same shape
 cycle 2's round 8 note said it doubts. If the curve recurs, that is the second class where
 written guidance failed to change behavior, and the honest read is mechanical enforcement (a
 diff-size check on the round), not sharper prose. Do not spend a third cycle on rung 4 here.
