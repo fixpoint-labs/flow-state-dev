@@ -23,8 +23,10 @@ parallelism is a property of an epic, not a mode of its own.
 
 - **Epic lifecycle** — the coordinator. One thin, event-driven session that drives an
   **epic** and the issues under it in parallel, holds a compact status table, owns
-  subscriptions, and dispatches worker sub-agents. Ephemeral (a session). See
-  `epic-lifecycle`.
+  subscriptions, and dispatches worker sub-agents. It **does none of the work itself** — not
+  work an event implies, and not work you ask it for directly ([The coordinator dispatches; it
+  never does the work](#the-coordinator-dispatches-it-never-does-the-work)). Ephemeral (a
+  session). See `epic-lifecycle`.
 - **Issue lifecycle** — one issue from spec to merge-ready PR, as a state machine
   advanced one bounded step per event. See `issue-lifecycle`.
 - **Epic** — the coordination layer above a *set* of related issues, so cross-cutting
@@ -1086,6 +1088,12 @@ its own section. Framed as token discipline it reads as negotiable under load �
 tokens, it's fine* — and a coordinator that reasons that way is not being wasteful, it is
 breaking two mechanisms. Neither failure is expense.
 
+> This section covers the **event** channel. The **user** channel has the same rule and a
+> different disguise — see [The coordinator dispatches; it never does the
+> work](#the-coordinator-dispatches-it-never-does-the-work) below. A coordinator that has
+> internalised this one still routinely breaks that one, because a request from the person you
+> report to does not feel like an event at all.
+
 A PR-activity event arrives in the coordinator's *own* session with the comment bodies and CI
 output attached. In the cloud harness, the surrounding system prompt tells that session the PRs
 it opened are its own to drive green: diagnose the failure, push the fix, answer the reviewer.
@@ -1159,3 +1167,75 @@ hop.
 > commenting up on the epic PR. The one genuinely heavy read (epic fan-out targeting) is
 > handled by `scout`. Introduce a dedicated router only if event volume and cross-over
 > routing outgrow the scout-assisted approach — not preemptively.
+
+## The coordinator dispatches; it never does the work
+
+The section above stops a coordinator from working on a *PR event*. This one stops it working
+on **anything**, and the case it exists for is the one that gets through: **you ask the
+coordinator for something directly, mid-run.** Fix this typo. Check whether that helper already
+exists. Run the tests. Look at what the reviewer meant. Each is small, each is clearly within
+reach, and doing it feels like service rather than a breach.
+
+**A request from you is an instruction about *what* happens, not about *who* does it.** The
+coordinator's answer to "can you do X" is to route X to something that can, tell you where it
+went, and hand you the result when it lands — the same answer it gives a review comment. Being
+the session you happen to be talking to is not a qualification for the work.
+
+### What the coordinator does with its own hands
+
+A closed list. Everything on it is something no sub-agent can hold, which is the only reason
+it's here:
+
+- `.orchestration/` reads and writes (the status table, the epic record, handle caches).
+- PR subscriptions (`subscribe_pr_activity`) and, locally, the `watch-pr` Monitors.
+- The Linear status mirror.
+- Surfacing gates, blockers and status; recording your answers to them.
+- Resolving the set and confirming it with you.
+- Dispatching, and ending the turn.
+- **Answering from the table it already holds** — where an issue is, which PR, what a worker
+  reported. That is reading its own memory, not doing work, and dispatching an agent to read a
+  row back to you is theatre.
+
+### Everything else is a dispatch
+
+The test is not "is this big?" — it's **"does doing it mean opening something the coordinator is
+not allowed to hold?"** Reading code, a spec, a diff, a doc or a review thread; editing any file
+outside `.orchestration/`; running a build, a test, or `fsdev run`; writing prose that ships;
+researching an answer; investigating a failure. All of it goes out.
+
+| You ask for… | Where it goes |
+|---|---|
+| Status — where is it, which PR, what did the worker say | Answered from the table. No dispatch. |
+| A read-only look — does X exist, what's the state of Y, where does Z live | **`scout`** (Haiku), which returns facts and defers judgment |
+| A change to something an issue **in the set** already owns | Onto that row: an implementer note, or carried verbatim into its next dispatch. Never edited here — the row's worker owns that file, in its worktree |
+| A change nothing in the set owns | **`issue-manager`** files it; then Intake decides whether it joins the epic or waits for its own lifecycle |
+| Anything else that is genuinely work | A bounded sub-agent with **`isolation: worktree`**, dispatched with the handles and told to return ≤ a screen |
+
+**Say where it went, in one line.** "Filed as FIX-812 and dispatched — it'll come back on the
+next wake" costs nothing and is the difference between delegation and the request looking
+dropped. The deliverable still comes back to you; it just doesn't come back *from here*.
+
+### What doing it yourself actually costs
+
+Four things, and none of them is tokens-as-expense:
+
+1. **The context is permanent.** A worker's context is discarded; the coordinator's has to
+   survive the whole epic. A spec or a diff read here is carried through every remaining wake,
+   and the routing judgment that has to stay sharp across N issues gets worse for all of them —
+   to answer one question about one.
+2. **The edit lands outside the branch discipline.** The coordinator's checkout is not an issue
+   worktree. A file changed here sits on whatever branch the session is on, tracked by no issue,
+   colliding with the worktrees that *are* doing the work — and `.orchestration/` is gitignored
+   precisely so nothing real ever lives here.
+3. **It bypasses every gate.** No issue, no spec, no review, no changeset, no PR. Asking for
+   something in chat is not the same act as approving it at a gate, and work done this way is
+   invisible to the process that exists to check it. This is the expensive one: it is how
+   unreviewed code reaches a branch under a system whose whole design is that it can't.
+4. **Coordination stops while it happens.** A session doing a task is not waking on events.
+   Gates queue behind it, and the issues that were moving in parallel are the ones that pay.
+
+**You can override it, and it should cost you one sentence.** If you say *do it here* — you are
+the product owner and that is yours to call — the coordinator does it, and says once what it
+costs (usually: this context is now carrying that file for the rest of the session). What it
+must not do is decide that for itself because the task looked small. Small is what every one of
+them looks like.
