@@ -188,8 +188,10 @@ in terms of types, modules or call sites, is an implementer's call and belongs i
 engineer's chair, which [`asking-for-decisions.md`](asking-for-decisions.md) says should be
 rare and announced. **Three is the ceiling, and most specs land on two** — four calls that
 genuinely reshape the outcome is a sign the issue is really several. Calls that shape the
-*implementation* rather than the outcome are not Decisions and belong in Part II; they reach
-the spec PR's collapsed engineering block, not §6.
+*implementation* rather than the outcome are not Decisions: they belong in Part II and stay
+there. Part II is in the committed doc diff a spec reviewer already reads, so it is not
+copied into the PR body ([`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → "Below the
+fold").
 
 Two rows are commonly mistaken for Decisions and are not. **A restatement of what the
 solution does** is §2's job, not a call anyone made. **A call that was obvious and costs
