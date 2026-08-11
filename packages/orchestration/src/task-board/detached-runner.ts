@@ -184,6 +184,15 @@ export interface BuildDetachedRunnerOptions {
    * message reads as a stale claim, and the claim is perfectly current.
    */
   uses?: readonly DefinedCapability[];
+  /**
+   * The board's worker-failure policy, threaded rather than re-chosen.
+   *
+   * `"skip"` (the board default) settles the row and lets the Workstream's
+   * request complete; `"fail"` additionally fails that request, which is what a
+   * board asking for `"fail"` means once the run executing the worker is the
+   * Workstream's rather than the drain's.
+   */
+  onError: "skip" | "fail";
 }
 
 /**
@@ -225,7 +234,7 @@ function coordinateForTask(
 export function buildDetachedRunner(
   options: BuildDetachedRunnerOptions
 ): BlockDefinition<any, any> | undefined {
-  const { name, boardId, collection: collectionFactory, detached, uses } = options;
+  const { name, boardId, collection: collectionFactory, detached, uses, onError } = options;
   if (detached.length === 0) return undefined;
 
   // The same recorders the inline drain composes, bound to this board's
@@ -239,11 +248,21 @@ export function buildDetachedRunner(
   const recordError = createRecordError({
     name: `${name}-workstream-record-error`,
     collection: collectionFactory,
-    // Swallow after writing the failure. Rethrowing would fail the Workstream's
-    // request as well, and the request is not the thing that failed — the task
-    // is, and the row now says so. A failed detached request would additionally
-    // look to recovery like work to retry.
-    onError: "skip",
+    // The BOARD's policy, not a constant. `onError` says what a worker failure
+    // does to the run executing it; inline that run is the drain's request, and
+    // detached it is the Workstream's. Hard-coding `"skip"` here meant a board
+    // that asked for `"fail"` got a Workstream request reporting success for
+    // work that failed — and everything that reads background work by request
+    // status (`listWorkstreams`, the DevTool panel, any consumer polling a run)
+    // believed it.
+    //
+    // The rationale that stood here argued the request is not the thing that
+    // failed, which is a defensible reading — and is exactly the reading
+    // `onError: "skip"` encodes, so it is the DEFAULT rather than the rule. It
+    // also claimed a failed detached request "would look to recovery like work
+    // to retry", and that is not so: `recoverInterruptedRequests` re-dispatches
+    // only records still `in_progress`, so a terminal `failed` is left alone.
+    onError,
   });
 
   const declaredAssignees = new Set<string>();
