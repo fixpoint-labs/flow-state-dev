@@ -112,7 +112,7 @@ GET /api/flows/sessions/ws_9f2c1a/requests
 That returns the job's runs, with the item log for each when you ask for it
 (`?include_items=true`).
 
-Each run carries provenance the framework wrote:
+Each run's record carries a `metadata.workstream` bag:
 
 ```json
 {
@@ -120,22 +120,39 @@ Each run carries provenance the framework wrote:
   "metadata": {
     "workstream": {
       "topic": "market-research",
-      "key": "…",
+      "key": "researcher",
       "taskId": "task_7f3"
     }
   }
 }
 ```
 
-`topic` repeats the job's label. `taskId` names the task-board row the run was
-started for, so you can match a run back to a board row without keeping the
-board open beside it. It appears only when the job came from a task board, so
-read it with a `== null` guard.
+Read that bag at all only when `source` is `"workstream"`. An application can
+put whatever it likes in `metadata` on its own requests, including a key named
+`workstream`. `source` is different: the transport that accepted the request
+stamps it, and a request body cannot.
 
-Read that bag as provenance only when `source` is `"workstream"`. An
-application can put whatever it likes in `metadata` on its own requests,
-including a key named `workstream`. `source` is different: the framework sets
-it, and no caller can.
+What you can rely on differs by field.
+
+`topic` and `key` are the address the run's session was derived from. Choosing
+them and choosing which session you get is the same choice, so they cannot
+disagree with the run they sit on. The `topic` and `coordinate` on the job's
+row in the listing above come from that same address. Treat `key` as opaque and
+compare it whole; work started from a task board encodes the board and the
+worker into it. `key` is absent when the job was addressed without one.
+
+`taskId` names the task-board row the run was started for, so you can match a
+run back to a board row without keeping the board open beside it. It holds what
+the code that started the job passed, and nothing checks it against a board. A
+job started by a task board takes it off the claim the board holds on that row,
+so on board work it points where it says. But `ctx.requestHost.startDetached`
+is reachable from any block, so application code can start a job and name any
+row it likes. Use `taskId` to stitch a run to a row in a view. Don't key an
+authorization or a settlement on it. It appears only when the caller supplied
+one, so read it with a `== null` guard.
+
+Nothing routes, authorizes or settles on the bag. A wrong `taskId` mislabels a
+run for whoever is reading it and grants nothing.
 
 Jobs can nest. If a job files jobs of its own, calling `/workstreams` on its id
 returns them.
