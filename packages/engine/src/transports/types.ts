@@ -169,17 +169,48 @@ export interface DispatchHandle {
    *   The run itself is still waiting behind its concurrency key.
    * - **In-process, ordinary** (FIX-982): the run's own `activeRequests`
    *   registration has committed. `dispatchLocal` returns while `runAction` is
-   *   still at its first await, so without this a fire-and-forget caller — a
-   *   detached spawn handing over a claimed task — would report a request
-   *   started while the write that makes it exist could still fail. The
-   *   `in_progress` record follows during execution on this path, so an
-   *   immediate `…/stream` read can still miss it; the entry that recovery and
-   *   the sweeper key off is what has landed.
+   *   still at its first await, so without this a caller would ack a request
+   *   while the write that makes it exist could still fail. The `in_progress`
+   *   record follows during execution on this path, so an immediate `…/stream`
+   *   read can still miss it; the entry that recovery and the sweeper key off is
+   *   what has landed.
+   *
+   * **Acceptance is discoverability, not safety.** Setup continues after it and
+   * can still fail without recording anything — a caller handing over ownership
+   * of work wants {@link DispatchHandle.started}.
    *
    * Optional on the type because a custom dispatcher may not distinguish
    * acceptance from completion. Every dispatcher this package ships does.
    */
   readonly accepted?: Promise<void>;
+  /**
+   * Resolves once the request has entered execution — past every setup step
+   * that can fail *silently* (FIX-982). Rejects with the run's own error when
+   * setup dies there instead.
+   *
+   * The window this closes is specific. Between registration and execution the
+   * run updates the session's `latestRequestId`, emits its opening status
+   * events, builds an execution context that loads the flow's eager resources,
+   * and runs the flow's `request.onStarted` hook. A failure anywhere in there
+   * writes no terminal record and deregisters the entry on the way out, so the
+   * request leaves no trace at all — while a failure after it is a durable
+   * `failed`.
+   *
+   * That is why this is separate from `accepted` rather than replacing it. An
+   * HTTP ack wants the cheap milestone: waiting here would hold the response
+   * across author-supplied resource loads and lifecycle hooks of unbounded
+   * duration. A caller that releases something on the strength of the dispatch
+   * — a detached spawn letting go of a claimed task — needs the sound one, and
+   * pays for it.
+   *
+   * **Set only when this call also starts the run**, which is the in-process
+   * dispatcher with no `queue` policy in force. A queued or externally
+   * dispatched run starts later by design, so promising execution would mean
+   * promising to wait out the queue; those leave it `undefined` and a caller
+   * falls back to `accepted`, keeping FIX-1070's documented hand-off gap
+   * exactly as wide as it already is rather than widening it.
+   */
+  readonly started?: Promise<void>;
 }
 
 /**

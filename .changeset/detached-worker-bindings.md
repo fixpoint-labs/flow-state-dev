@@ -48,6 +48,6 @@ the routing derives from.
   board routes by. The refusal is reported through the existing
   `TaskWriteOutcome`, so callers that ignore the return value are unaffected.
 
-No execution changes. Boards that declare no detached workers, and durable
-collections no detached board binds, behave exactly as before: no bindings, no
-coordinate, and `setAssignee` unrestricted.
+Boards that declare no detached workers, and durable collections no detached
+board binds, are unaffected: no bindings, no coordinate, and `setAssignee`
+unrestricted.

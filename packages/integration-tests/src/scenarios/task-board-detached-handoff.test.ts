@@ -37,8 +37,14 @@
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
-import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
-import type { StoreRegistry } from "@flow-state-dev/engine";
+import {
+  createFlowApiRouter,
+  createFlowRegistry,
+  createInMemoryStores,
+  disposeFlowApiRouter,
+  runAction,
+} from "@flow-state-dev/engine";
+import type { RequestRecord, StoreRegistry } from "@flow-state-dev/engine";
 import {
   defineTaskCollection,
   type Task,
@@ -83,7 +89,19 @@ type RecordedDispatch = {
  * assertion that fires for one and not the other is attributable to detachment
  * and to nothing else about the board.
  */
-function buildFlow(options: { kind: string; mode: "inline" | "detached" }) {
+function buildFlow(options: {
+  kind: string;
+  mode: "inline" | "detached";
+  /**
+   * Topic for the seeded task, when the scenario needs the Workstream's topic
+   * to be something OTHER than the task id.
+   *
+   * Absent, `workstreamRoutingSeed` falls back to the task id, and then `topic`
+   * and `taskId` hold the same string — which would let a provenance assertion
+   * pass while reading the wrong field.
+   */
+  taskTopic?: string;
+}) {
   const ran: string[] = [];
 
   const background = handler({
@@ -120,6 +138,9 @@ function buildFlow(options: { kind: string; mode: "inline" | "detached" }) {
         // scenario tests the drain's exit question rather than that gate; the
         // packing bug is tracked separately.
         input: { note: "background" },
+        ...(options.taskTopic === undefined
+          ? {}
+          : { metadata: { topic: options.taskTopic } }),
       },
     ],
   });
@@ -438,5 +459,145 @@ describe("a detached board's launching request returns while the work is outstan
     expect(ran).toEqual(["t1"]);
     const row = await durableRow(stores, "handoff-inline", "t1");
     expect(row?.status).toBe("completed");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Provenance — what the detached REQUEST record says about the task it runs
+// ---------------------------------------------------------------------------
+
+/**
+ * A consumer that has found a Workstream (hop 1) and listed its requests
+ * (hop 2) can see *that* background work ran, and — through the routing labels
+ * — which body of work it belongs to. What it could not see was **which row**
+ * the run was spawned for. The task id lived only on the dispatch input, which
+ * is the runner's private envelope: it is not projected onto any read route, so
+ * correlating a request back to a board row meant having the board's own ledger
+ * open beside it.
+ *
+ * `metadata.workstream.taskId` closes that. It is stamped in the same place, in
+ * the same call, from the same server-derived material as
+ * `metadata.workstream.topic`, and it decides nothing — see
+ * `StartDetachedInput.provenance`.
+ */
+/**
+ * Poll `read` until it returns a value, or fail naming what was being waited
+ * for.
+ *
+ * Needed because the action route acks acceptance (202) and runs the parent in
+ * the background, so there is no promise to await for "the spawn has happened".
+ * A fixed sleep would either be flaky or slow; this is neither, and a timeout
+ * reports the condition rather than a bare `undefined` further down.
+ */
+async function waitFor<T>(
+  read: () => Promise<T | undefined>,
+  what: string,
+  timeoutMs = 5000
+): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const value = await read();
+    if (value !== undefined) return value;
+    if (Date.now() >= deadline) {
+      throw new Error(`timed out after ${timeoutMs}ms waiting for ${what}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+describe("a detached request record names the task it was spawned for", () => {
+  const KIND = "handoff-provenance";
+  /**
+   * Deliberately NOT the task id. `workstreamRoutingSeed` falls back to the
+   * task id when a task declares no topic, and then `topic` and `taskId` hold
+   * the same string — an assertion that read one while meaning the other would
+   * pass on either. With them distinct, only the right field satisfies it.
+   */
+  const TASK_TOPIC = "nightly-report";
+
+  /**
+   * Driven through the **shipped router**, not `runAction`.
+   *
+   * The scenarios above deliberately record the dispatch and start nothing,
+   * which is what proves the parent returned first. This one needs the opposite
+   * property: a real request *record*. `createFlowApiRouter` is the path that
+   * supplies one — it wires `createDetachedStartOperation` onto the request-host
+   * seam itself, so the envelope is assembled by the shipped writer and lands on
+   * a record the shipped store wrote. A hand-rolled start operation here would
+   * be the test asserting against its own envelope.
+   */
+  it("carries the board's task id on metadata.workstream, beside the routing labels", async () => {
+    const stores = createInMemoryStores();
+    const { flow } = buildFlow({
+      kind: KIND,
+      mode: "detached",
+      taskTopic: TASK_TOPIC,
+    });
+
+    const registry = createFlowRegistry();
+    registry.register(flow);
+    const router = createFlowApiRouter({
+      registry,
+      stores,
+      ...baseRuntimeConfig(),
+    });
+
+    try {
+      const response = await router.POST(
+        new Request(`http://localhost/api/flows/${KIND}/actions/start`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            userId: USER_ID,
+            sessionId: "s_parent",
+            input: {},
+          }),
+        }),
+        { params: { path: [KIND, "actions", "start"] } }
+      );
+      // 202, not 200: the action route acks acceptance and runs the parent in
+      // the background. Acceptance is not completion, so the spawn has not
+      // necessarily happened yet — hence the wait below rather than a read here.
+      expect(response.status).toBe(202);
+
+      // Hop 1 — the parent's Workstreams, read the way the listing route reads
+      // them. No tenant is bound in this scenario, so a session's storage key
+      // and its bare id are the same string; the route's `toBareSessionId` step
+      // is a no-op here.
+      const child = await waitFor(async () => {
+        const children = await stores.session.list({
+          parentage: { parentOf: "s_parent" },
+        });
+        return children.length === 1 ? children[0] : undefined;
+      }, "the parent to spawn exactly one Workstream");
+
+      // Hop 2 — that Workstream's own runs.
+      const detached = await waitFor(async () => {
+        const requests: RequestRecord[] = await stores.request.list({
+          sessionId: child.id,
+        });
+        return requests.length === 1 ? requests[0] : undefined;
+      }, "the Workstream to have exactly one request record");
+
+      // The discriminator a reader keys on. `source` is set by the seam and is
+      // not settable by any caller, which is what makes the `workstream` bag
+      // below server truth rather than something an ordinary request could
+      // carry under the same key.
+      expect(detached.source).toBe("workstream");
+
+      // THE ASSERTION THIS BLOCK EXISTS FOR. Whole-object equality rather than
+      // a property probe, so a future writer that drops `topic` or `key` to
+      // make room for `taskId` fails here — the DevTool panel and the
+      // kitchen-sink demo both read those two today.
+      expect(detached.metadata).toEqual({
+        workstream: {
+          topic: TASK_TOPIC,
+          key: expect.any(String),
+          taskId: "t1",
+        },
+      });
+    } finally {
+      await disposeFlowApiRouter(router);
+    }
   });
 });

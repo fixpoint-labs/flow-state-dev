@@ -251,10 +251,27 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // seed this call already consumed to derive the key — so it cannot
       // disagree with the child it names — and never from `args.record`, which
       // is the caller's own bag.
+      //
+      // `taskId` answers the next question down — not *which body* of work this
+      // is, but *which row* this run was spawned for — and it is the one fact
+      // here the seam did not derive itself. It comes through `args.provenance`,
+      // a channel whose whole contract is "server-derived only", and pointedly
+      // NOT through `args.record`: keeping that bag off the request record is
+      // what lets a reader treat everything under `workstream` as server truth.
+      // See `StartDetachedInput.provenance` for why reach rather than a check is
+      // what backs that, and for the no-authority rule both halves share.
+      //
+      // Absent when the caller has no durable row behind it, which is an
+      // ordinary state and not a defect — a reader that finds no `taskId` has a
+      // run it cannot correlate to a board, exactly as before this field
+      // existed (BP-030).
       metadata: {
         workstream: {
           topic: args.seed.topic,
-          ...(args.seed.key !== undefined ? { key: args.seed.key } : {})
+          ...(args.seed.key !== undefined ? { key: args.seed.key } : {}),
+          ...(args.provenance !== undefined
+            ? { taskId: args.provenance.taskId }
+            : {})
         }
       }
     });

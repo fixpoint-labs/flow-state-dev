@@ -46,6 +46,12 @@
  *   recovery by one lease is the cheap direction; failing a row a live child is
  *   working is not.
  *
+ *   A child that dies during its own setup now lands here too, and that is the
+ *   point: `startDetached` resolves only once the child has entered execution,
+ *   so a setup failure is a throw the parent request carries rather than a
+ *   success it reports. Recovery is the same one lease either way; what changed
+ *   is that the failure is visible when it happens.
+ *
  * ## Why the lease renewal stops here
  *
  * The parent renews the lease to say "a live worker is on this row." After the
@@ -120,10 +126,15 @@ export function createSpawnDetached(options: SpawnDetachedOptions) {
       const seed = workstreamRoutingSeed({
         boardId,
         coordinate,
-        // A task's topic is what makes two tasks share one Workstream — the
-        // second task on the same topic lands in the same child and continues
-        // its history. Absent or blank falls back to the task id, so continuity
-        // is opted into rather than accidental.
+        // Topic is one of three things that have to agree before two tasks share
+        // a Workstream: same board, same worker coordinate, same topic. The seed
+        // carries all three (`workstreamRoutingSeed` frames `boardId` and the
+        // coordinate into its `key`), and the runtime hashes them with the
+        // parent session and principal. So a topic shared across two workers, or
+        // across two boards, lands in two different children — the second task
+        // continues the first's history only when the whole address matches.
+        // Absent or blank falls back to the task id, so continuity is opted into
+        // rather than accidental.
         ...(typeof payload.metadata?.topic === "string"
           ? { topic: payload.metadata.topic }
           : {}),
@@ -158,6 +169,17 @@ export function createSpawnDetached(options: SpawnDetachedOptions) {
       const result = await requireRequestHost(ctx).startDetached({
         seed,
         input: dispatch,
+        // Stamped onto the detached REQUEST record, so a run can be correlated
+        // back to the row it came from without opening this board's ledger. The
+        // dispatch input above carries the same id, but that is the runner's
+        // private envelope — nothing projects it onto a read route.
+        //
+        // Same source as every other field here: the claim ticket the board
+        // minted from the row it had already claimed, never anything a task
+        // author or a transport supplied. It labels and decides nothing — the
+        // runner's start gate still verifies the claim off `dispatch` against
+        // the row it re-reads (see `StartDetachedInput.provenance`).
+        provenance: { taskId: claim.taskId },
       });
 
       if (!result.ok) {
@@ -179,12 +201,16 @@ export function createSpawnDetached(options: SpawnDetachedOptions) {
       // remains: stop asserting a lease this request no longer holds, and
       // return.
       //
-      // KNOWN GAP (FIX-1070): acceptance is not a start. With an external
-      // dispatcher it means enqueued, and under flow-level `queue` concurrency
-      // it means deferred behind a key — so between here and the child's start
-      // gate nobody holds the lease. If that delay exceeds the lease TTL another
-      // drain reclaims the row, and this child then fails its gate as stale.
-      // Bounded and safe per occurrence (the gate is what rejects it), but under
+      // KNOWN GAP (FIX-1070), now scoped to the deferred-start deployments. On
+      // the default in-process path `startDetached` resolves only once the child
+      // has ENTERED EXECUTION, so the window below is closed there. With an
+      // external dispatcher, or under flow-level `queue` concurrency, the start
+      // is deferred past this call by design — a start signal would mean waiting
+      // out the queue, which is the launching request blocking on detached work.
+      // Those two keep the gap: between here and the child's start gate nobody
+      // holds the lease, and if that delay exceeds the lease TTL another drain
+      // reclaims the row and this child then fails its gate as stale. Bounded
+      // and safe per occurrence (the gate is what rejects it), but under
       // sustained backlog it can starve. The parent cannot simply keep renewing:
       // its request returns immediately, so the driver would leak. Closing it
       // means modelling "claimed but not yet started", which is the lease's
@@ -196,7 +222,10 @@ export function createSpawnDetached(options: SpawnDetachedOptions) {
         taskId: claim.taskId,
         sessionId: result.sessionId,
         requestId: result.requestId,
-        /** True when the Workstream already existed — a second task on one topic. */
+        /**
+         * True when the Workstream already existed — a second task addressed to
+         * the same board, worker and topic as one that came before it.
+         */
         adopted: result.adopted,
       };
     },

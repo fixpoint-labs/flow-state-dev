@@ -634,9 +634,10 @@ export async function runActionInternal<
     // stale-heartbeat path, with no queued grace protecting it.
   });
 
-  // The run is discoverable from here, and that is the fact a fire-and-forget
-  // dispatcher needs before it reports the request as started (FIX-982). Placed
-  // immediately after the write it reports on, so it can never run ahead of it.
+  // The run is discoverable from here (FIX-982). Placed immediately after the
+  // write it reports on, so it can never run ahead of it. Discoverable is NOT
+  // yet safe to hand ownership to — see `onExecutionStarted`, fired at the main
+  // try below, for the boundary that is.
   options.onRegistered?.();
 
   const heartbeatIntervalMs = options.flow.request?.heartbeatIntervalMs ?? 10_000;
@@ -1318,6 +1319,14 @@ export async function runActionInternal<
   }
 
   try {
+    // Execution starts here, and so does durable failure handling: this try's
+    // catch writes a terminal `failed` / `aborted` record for anything that goes
+    // wrong from now on, including the deferred parse error re-thrown just
+    // below. That is what makes this — and not registration — the boundary a
+    // caller may hand ownership of work across (FIX-982). Every step above can
+    // fail leaving nothing terminal behind.
+    options.onExecutionStarted?.();
+
     // Re-throw deferred parse error now that we have ctx for error handling.
     if (parseError !== undefined) {
       throw parseError;
