@@ -53,11 +53,20 @@ failed to start it, and recorded the task as failed. Tools named in a static
 array are now collected. A tool set resolved at runtime still is not — its
 contents do not exist when the flow is built.
 
+A detached worker can now run a detached board of its own. Nesting is a
+documented shape, but the inner board's routing lived only on the outer board's
+runner — a block the flow learns about only after collecting the outer board — so
+it never reached the flow and the inner child's dispatch had nowhere to land.
+Collection now closes over the runners it discovers, however deep the nesting
+goes.
+
 A dynamic schedule whose resolver returns a handler containing a detached board
 is now refused at dispatch, naming the board and the flow, instead of claiming a
 task it cannot start. The resolver's handler is built after the flow is, so its
 board never reached the flow's routing; the refusal happens before the board
-claims anything, so nothing is left half-done.
+claims anything, so nothing is left half-done. The check covers the handler's
+`onCompleted` and `onErrored` observers too, since those run as real blocks and
+a board under one claims work exactly as a board under the handler does.
 
 The safety check on a detached worker's payload now rejects a null-prototype
 object (`Object.create(null)`). Its data survives serialization and its prototype

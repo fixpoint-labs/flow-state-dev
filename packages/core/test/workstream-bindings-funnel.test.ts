@@ -419,3 +419,106 @@ describe("a board handed to a generator as a tool still reaches the flow", () =>
     expect((flow as { workstream?: unknown }).workstream).toBeUndefined();
   });
 });
+
+describe("binding collection closes over the runners it discovers", () => {
+  /**
+   * A board substitutes a spawn block for each detached worker, so the real
+   * worker is not a child of any action root — the block containing it is the
+   * board's RUNNER, which reaches the flow as a binding rather than as a block.
+   * A worker that drains a second detached board therefore hides that board's
+   * binding on the outer runner and nowhere else.
+   *
+   * The end-to-end consequence is pinned in `integration-tests`
+   * (`task-board-nested-detached`), which walks the claim-to-spawn path twice.
+   * What is pinned here is the collector property that makes it possible, plus
+   * the two shapes that could break the loop itself.
+   */
+  it("finds a board reachable only through another board's runner", () => {
+    const innerDrain = stampedDrain("deep", "inner-board");
+    const outerRunner = sequencer({ name: "outer-runner" }).step(innerDrain);
+    const outerDrain = sequencer({ name: "outer-drain" }).tap(
+      handler({ name: "spawn-stand-in", execute: () => undefined })
+    );
+    declareWorkstreamBindings(outerDrain, [
+      {
+        boardId: "outer-board",
+        coordinateKey: "assignee|3:top",
+        worker: workerBlock("top"),
+        runner: outerRunner as unknown as BlockDefinition<never, never>,
+      },
+    ]);
+
+    const flow = defineFlow({
+      kind: "board",
+      actions: { run: { block: outerDrain } },
+    } as never)({ id: "board" });
+
+    expect(boundWorkers(flow as { workstreamBindings?: WorkstreamBindings }).sort()).toEqual([
+      "deep",
+      "top",
+    ]);
+  });
+
+  it("terminates when two runners reach each other", () => {
+    // Not producible through `taskBoard()` today, and that is the point: the
+    // loop's termination must be a property of the loop rather than of the
+    // shapes we happen to build. A depth bound would have to guess a number
+    // here; a visited set cannot revisit, so it stops on its own.
+    const drainA = sequencer({ name: "drain-a" }).tap(
+      handler({ name: "a-work", execute: () => undefined })
+    );
+    const runnerA = sequencer({ name: "runner-a" }).tap(
+      handler({ name: "a-runner-work", execute: () => undefined })
+    );
+    const runnerB = sequencer({ name: "runner-b" }).tap(
+      handler({ name: "b-runner-work", execute: () => undefined })
+    );
+    // A's runner declares B's board, and B's runner declares A's — a cycle
+    // through the binding rail rather than through `childBlocks`.
+    declareWorkstreamBindings(drainA, [
+      {
+        boardId: "board-a",
+        coordinateKey: "assignee|1:a",
+        worker: workerBlock("a"),
+        runner: runnerA as unknown as BlockDefinition<never, never>,
+      },
+    ]);
+    declareWorkstreamBindings(runnerA, [
+      {
+        boardId: "board-b",
+        coordinateKey: "assignee|1:b",
+        worker: workerBlock("b"),
+        runner: runnerB as unknown as BlockDefinition<never, never>,
+      },
+    ]);
+    declareWorkstreamBindings(runnerB, [
+      {
+        boardId: "board-a",
+        coordinateKey: "assignee|1:a",
+        worker: workerBlock("a"),
+        runner: runnerA as unknown as BlockDefinition<never, never>,
+      },
+    ]);
+
+    // Reaching this line at all is the assertion: an unbounded walk would not
+    // return. `board-a` at the same coordinate arrives twice under two distinct
+    // binding objects, which the merge refuses — the loop still has to get there
+    // rather than spin.
+    expect(() =>
+      defineFlow({ kind: "board", actions: { run: { block: drainA } } } as never)
+    ).toThrow(/board-a/);
+  });
+
+  it("leaves a flow whose runners declare nothing further untouched", () => {
+    // The ordinary single-level board. The extra pass must find nothing new and
+    // change nothing about what it already collected.
+    const flow = defineFlow({
+      kind: "board",
+      actions: { run: { block: sequencer({ name: "root" }).step(stampedDrain("implement")) } },
+    } as never)({ id: "board" });
+
+    expect(boundWorkers(flow as { workstreamBindings?: WorkstreamBindings })).toEqual([
+      "implement",
+    ]);
+  });
+});

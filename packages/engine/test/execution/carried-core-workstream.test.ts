@@ -97,6 +97,49 @@ describe("a dispatch-time core carrying a detached board is refused by name", ()
     ).rejects.toThrow(/carried-core/);
   });
 
+  it("refuses a board mounted on the core's onCompleted observer", async () => {
+    // `runAction` executes the observers as real blocks, so a board under one
+    // claims work exactly as a board under the root does. Checking only
+    // `core.block` left the observers as a way in.
+    await expect(
+      runAction({
+        flow: plainFlow(),
+        actionName: "resolved-at-dispatch" as never,
+        input: {},
+        userId: "u_1",
+        sessionId: "s_1",
+        source: SCHEDULED_SOURCE,
+        metadata: { schedule: { scheduleId: "nightly" } },
+        resolvedActionCore: {
+          block: handler({ name: "ordinary-root", execute: () => ({ ok: true }) }) as never,
+          onCompleted: stampedDrain("issue-work", "implement") as never,
+        },
+        stores: createInMemoryStores(),
+        runtimeConfig: baseRuntimeConfig(),
+      })
+    ).rejects.toThrow(/issue-work/);
+  });
+
+  it("refuses a board mounted on the core's onErrored observer", async () => {
+    await expect(
+      runAction({
+        flow: plainFlow(),
+        actionName: "resolved-at-dispatch" as never,
+        input: {},
+        userId: "u_1",
+        sessionId: "s_1",
+        source: SCHEDULED_SOURCE,
+        metadata: { schedule: { scheduleId: "nightly" } },
+        resolvedActionCore: {
+          block: handler({ name: "ordinary-root-2", execute: () => ({ ok: true }) }) as never,
+          onErrored: stampedDrain("issue-work", "implement") as never,
+        },
+        stores: createInMemoryStores(),
+        runtimeConfig: baseRuntimeConfig(),
+      })
+    ).rejects.toThrow(/issue-work/);
+  });
+
   it("allows a carried core whose board the flow already routes", async () => {
     // THE CONTROL, and the reason the check compares bindings rather than
     // merely asking "does this core carry any". A resolver may legitimately
