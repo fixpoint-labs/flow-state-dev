@@ -26,6 +26,17 @@ export type DerivationIdentity = {
   tenantId: string | undefined;
   /** The session that is spawning the child — the child's parent. */
   parentSessionId: string;
+  /**
+   * The lineage the parent belongs to (FIX-1068).
+   *
+   * In the key material because a session id can be deleted and recreated: the
+   * same id, same principal and same seed would otherwise derive the same child,
+   * and the new conversation would ADOPT the old lineage's workstream — silently
+   * inheriting an address belonging to a conversation that no longer exists.
+   * Conjoining the lineage makes the two children different sessions, so nothing
+   * has to detect the case.
+   */
+  lineageId: string;
 };
 
 /** Prefix so a derived child id is recognisable in a store dump. */
@@ -58,6 +69,7 @@ export function deriveChildSessionId(
     framed(identity.tenantId),
     framed(identity.userId),
     framed(identity.parentSessionId),
+    framed(identity.lineageId),
     framed(seed.topic),
     framed(seed.key)
   ].join("|");

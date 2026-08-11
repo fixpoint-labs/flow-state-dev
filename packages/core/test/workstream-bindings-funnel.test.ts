@@ -338,3 +338,187 @@ describe("deriving does not disturb the other rails", () => {
     expect(Object.keys(chain.declaredResources ?? {})).toEqual(["entries"]);
   });
 });
+
+describe("a board handed to a generator as a tool still reaches the flow", () => {
+  /**
+   * `tools: [board.drain]` is a supported shape — assigning board work directly
+   * to a tool shipped in FIX-925 — and a generator bubbles none of its tools'
+   * rails. So a detached board reached only that way used to contribute no
+   * bindings at all: `flow.workstream` was never built, and the first time the
+   * model called the tool the board claimed a row, spawned, and failed
+   * `no-workstream-core`, recording the task as failed.
+   *
+   * Asserted on `flow.workstream` as well as on the bindings map, because the
+   * map is an intermediate: what a detached dispatch actually resolves is the
+   * core, and a flow with bindings but no core fails in the same place with the
+   * same symptom.
+   */
+  it("collects bindings from a static tools array", () => {
+    const agent = handler({ name: "agent", execute: () => null });
+    (agent as unknown as { config: { tools?: unknown[] } }).config.tools = [
+      stampedDrain("implement"),
+    ];
+
+    const flow = defineFlow({
+      kind: "board",
+      actions: { run: { block: agent } },
+    } as never)({ id: "board" });
+
+    expect(boundWorkers(flow as { workstreamBindings?: WorkstreamBindings })).toEqual([
+      "implement",
+    ]);
+    expect((flow as { workstream?: unknown }).workstream).toBeDefined();
+  });
+
+  it("reaches a board nested inside a tool's own composition", () => {
+    // The tool is a root of its own subtree, so its accumulated union is what
+    // gets read — the board does not have to be the tool itself.
+    const inner = sequencer({ name: "tool-inner" }).step(stampedDrain("review"));
+    const agent = handler({ name: "agent-nested", execute: () => null });
+    (agent as unknown as { config: { tools?: unknown[] } }).config.tools = [inner];
+
+    const flow = defineFlow({
+      kind: "board",
+      actions: { run: { block: agent } },
+    } as never)({ id: "board" });
+
+    expect(boundWorkers(flow as { workstreamBindings?: WorkstreamBindings })).toEqual(["review"]);
+  });
+
+  it("still refuses a rail dropped INSIDE a tool's composition", () => {
+    // A missing tool edge and a dropped rail are different failures and must not
+    // be conflated: collecting from every reachable block would repair a dropped
+    // rail by reading it off the child, and the propagation assertion could
+    // never fire again. A late stamp under a tool is that same bug one level in.
+    const child = sequencer({ name: "late-under-tool" }).tap(
+      handler({ name: "w-late", execute: () => undefined })
+    );
+    const toolRoot = sequencer({ name: "tool-root" }).step(child);
+    declareWorkstreamBindings(child, [binding("issue-work-late", "implement-late")]);
+
+    const agent = handler({ name: "agent-late", execute: () => null });
+    (agent as unknown as { config: { tools?: unknown[] } }).config.tools = [toolRoot];
+
+    expect(() =>
+      defineFlow({ kind: "board", actions: { run: { block: agent } } } as never)
+    ).toThrow(/issue-work-late/);
+  });
+
+  it("leaves a flow whose tools declare nothing detached untouched", () => {
+    const agent = handler({ name: "agent-plain", execute: () => null });
+    (agent as unknown as { config: { tools?: unknown[] } }).config.tools = [
+      handler({ name: "plain-tool", execute: () => null }),
+    ];
+
+    const flow = defineFlow({
+      kind: "plain",
+      actions: { run: { block: agent } },
+    } as never)({ id: "plain" });
+
+    expect(flow.workstreamBindings).toBeUndefined();
+    expect((flow as { workstream?: unknown }).workstream).toBeUndefined();
+  });
+});
+
+describe("binding collection closes over the runners it discovers", () => {
+  /**
+   * A board substitutes a spawn block for each detached worker, so the real
+   * worker is not a child of any action root — the block containing it is the
+   * board's RUNNER, which reaches the flow as a binding rather than as a block.
+   * A worker that drains a second detached board therefore hides that board's
+   * binding on the outer runner and nowhere else.
+   *
+   * The end-to-end consequence is pinned in `integration-tests`
+   * (`task-board-nested-detached`), which walks the claim-to-spawn path twice.
+   * What is pinned here is the collector property that makes it possible, plus
+   * the two shapes that could break the loop itself.
+   */
+  it("finds a board reachable only through another board's runner", () => {
+    const innerDrain = stampedDrain("deep", "inner-board");
+    const outerRunner = sequencer({ name: "outer-runner" }).step(innerDrain);
+    const outerDrain = sequencer({ name: "outer-drain" }).tap(
+      handler({ name: "spawn-stand-in", execute: () => undefined })
+    );
+    declareWorkstreamBindings(outerDrain, [
+      {
+        boardId: "outer-board",
+        coordinateKey: "assignee|3:top",
+        worker: workerBlock("top"),
+        runner: outerRunner as unknown as BlockDefinition<never, never>,
+      },
+    ]);
+
+    const flow = defineFlow({
+      kind: "board",
+      actions: { run: { block: outerDrain } },
+    } as never)({ id: "board" });
+
+    expect(boundWorkers(flow as { workstreamBindings?: WorkstreamBindings }).sort()).toEqual([
+      "deep",
+      "top",
+    ]);
+  });
+
+  it("terminates when two runners reach each other", () => {
+    // Not producible through `taskBoard()` today, and that is the point: the
+    // loop's termination must be a property of the loop rather than of the
+    // shapes we happen to build. A depth bound would have to guess a number
+    // here; a visited set cannot revisit, so it stops on its own.
+    const drainA = sequencer({ name: "drain-a" }).tap(
+      handler({ name: "a-work", execute: () => undefined })
+    );
+    const runnerA = sequencer({ name: "runner-a" }).tap(
+      handler({ name: "a-runner-work", execute: () => undefined })
+    );
+    const runnerB = sequencer({ name: "runner-b" }).tap(
+      handler({ name: "b-runner-work", execute: () => undefined })
+    );
+    // A's runner declares B's board, and B's runner declares A's — a cycle
+    // through the binding rail rather than through `childBlocks`.
+    declareWorkstreamBindings(drainA, [
+      {
+        boardId: "board-a",
+        coordinateKey: "assignee|1:a",
+        worker: workerBlock("a"),
+        runner: runnerA as unknown as BlockDefinition<never, never>,
+      },
+    ]);
+    declareWorkstreamBindings(runnerA, [
+      {
+        boardId: "board-b",
+        coordinateKey: "assignee|1:b",
+        worker: workerBlock("b"),
+        runner: runnerB as unknown as BlockDefinition<never, never>,
+      },
+    ]);
+    declareWorkstreamBindings(runnerB, [
+      {
+        boardId: "board-a",
+        coordinateKey: "assignee|1:a",
+        worker: workerBlock("a"),
+        runner: runnerA as unknown as BlockDefinition<never, never>,
+      },
+    ]);
+
+    // Reaching this line at all is the assertion: an unbounded walk would not
+    // return. `board-a` at the same coordinate arrives twice under two distinct
+    // binding objects, which the merge refuses — the loop still has to get there
+    // rather than spin.
+    expect(() =>
+      defineFlow({ kind: "board", actions: { run: { block: drainA } } } as never)
+    ).toThrow(/board-a/);
+  });
+
+  it("leaves a flow whose runners declare nothing further untouched", () => {
+    // The ordinary single-level board. The extra pass must find nothing new and
+    // change nothing about what it already collected.
+    const flow = defineFlow({
+      kind: "board",
+      actions: { run: { block: sequencer({ name: "root" }).step(stampedDrain("implement")) } },
+    } as never)({ id: "board" });
+
+    expect(boundWorkers(flow as { workstreamBindings?: WorkstreamBindings })).toEqual([
+      "implement",
+    ]);
+  });
+});

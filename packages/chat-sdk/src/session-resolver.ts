@@ -31,15 +31,14 @@ export interface EnsureSessionArgs {
   event: ChatInboundEvent;
 }
 
+import { ensureSessionRecord } from "@flow-state-dev/engine";
+
 export async function ensureSessionForChat(args: EnsureSessionArgs): Promise<void> {
   const { stores, sessionId, flowKind, principal, event } = args;
-  const existing = await stores.session.get(sessionId);
-  if (existing !== undefined) return;
-
+  // One creation path (FIX-1068): it mints the lineage id and writes
+  // create-if-absent, neither of which this resolver should be deciding.
   const now = Date.now();
-  await stores.session.set(
-    sessionId,
-    {
+  await ensureSessionRecord(stores, sessionId, () => ({
       id: sessionId,
       flowKind,
       userId: principal.userId,
@@ -55,7 +54,5 @@ export async function ensureSessionForChat(args: EnsureSessionArgs): Promise<voi
         threadId: event.thread?.id ?? sessionId,
         isDM: event.thread?.isDM ?? false,
       },
-    },
-    "any"
-  );
+  }));
 }

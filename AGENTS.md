@@ -32,7 +32,7 @@ This repo uses Changesets for release coordination. Do not edit a root `changelo
 **On every PR with user-facing impact:**
 
 1. Run `pnpm changeset`. Pick the affected publishable package(s).
-2. Pre-1.0: choose `patch` for non-breaking, `minor` for breaking. Never `major`.
+2. Pre-1.0: select `patch` for non-breaking, `minor` for new capabilities or breaking changes. Never `major`.
 3. Write a single user-facing sentence describing the change. Multi-paragraph or migration notes are fine when warranted.
 4. Commit the generated `.changeset/<name>.md` file with the PR.
 
@@ -47,7 +47,7 @@ This repo uses Changesets for release coordination. Do not edit a root `changelo
 - Preserve canonical package boundaries (`core`, `server`, `client`, `react`, `testing`, `cli`).
 - **Working memory is session-only — never commit it.** Orchestration state (the epic board, per-issue handle caches, any coordination scratch) lives in the **gitignored `.orchestration/`** directory. Never `git add`, commit, or open a PR for these files — commit only the actual issue work, in the issue's own worktree/branch. A PR whose diff is a board / status / scratch file is a bug; don't open it, and if one exists, close it.
 
-> **Orchestration reference.** How the epic and issue lifecycles compose — roles, gates (`spec approved`, `epic approved`), the epic-spec, and the spec-review bar and convergence rule — is defined once, with diagrams, in `docs/contributing/orchestration.md`. The orchestration skills and worker agents reference it. Two rules worth knowing without opening it: **parallel issue work always runs under an epic** (`epic-lifecycle`), and **a spec is approved when it's directionally correct, not when nothing is left to nitpick** — below-the-bar review feedback goes to the implementer, and spec review converges in two rounds.
+> **Orchestration reference.** How the epic and issue lifecycles compose — roles, gates (`spec approved`, `epic approved`), the epic-spec, and the spec-review bar and convergence rule — is defined once, with diagrams, in `docs/contributing/orchestration.md`. The orchestration skills and worker agents reference it. Three rules worth knowing without opening it: **parallel issue work always runs under an epic** (`epic-lifecycle`); **a spec is approved when it's directionally correct, not when nothing is left to nitpick** — below-the-bar review feedback goes to the implementer, and spec review converges in two rounds; and **a coordinator dispatches, it never does the work** — including work the user asks it for directly mid-run, which is the case that gets through (a request says *what* should happen, not *who* does it).
 
 ## Asking the user for a decision
 

@@ -1,6 +1,7 @@
 /**
  * `fsdev run <flowKind> <action>` command — executes a flow action with streaming NDJSON output.
  */
+import { ensureSessionRecord } from "@flow-state-dev/engine";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve, isAbsolute } from "node:path";
 import type { Command } from "commander";
@@ -88,7 +89,7 @@ export function registerRunCommand(program: Command): void {
     .description("Execute a flow action with streaming NDJSON output")
     .option("-i, --input <json>", "Inline JSON input")
     .option("-f, --input-file <path>", "Path to JSON input file")
-    .option("-m, --model <model>", "Override model for all generator blocks")
+    .option("-m, --model <model>", "Override model for generator blocks run in this process")
     .option("-s, --session <id>", "Session ID for reuse across invocations")
     .option("--seed-session <json>", "Seed session-level state (JSON or file path)")
     .option("--seed-user <json>", "Seed user-level state (JSON or file path)")
@@ -286,7 +287,9 @@ export async function executeRunCommand(
           updatedAt: Date.now(),
         }, "any");
       } else {
-        await stores.session.set(sessionId, {
+        // One creation path (FIX-1068) — it mints the lineage id, which a
+        // seeded CLI session needs as much as any other.
+        await ensureSessionRecord(stores, sessionId, () => ({
           id: sessionId,
           flowKind: flowKind,
           userId: "cli-user",
@@ -295,7 +298,7 @@ export async function executeRunCommand(
           createdAt: Date.now(),
           updatedAt: Date.now(),
           journal: [],
-        }, "any");
+        }));
       }
     }
 
@@ -333,6 +336,15 @@ export async function executeRunCommand(
     // 6b. Construct the stderr runtime logger (suppressible via --quiet, level via --log-level).
     const logLevel = resolveLogLevel(options, "info");
     const logger = createCliLogger(logLevel);
+
+    // Install it on the app's OWN runtime config too, not just on the derived
+    // copy below. The FlowState logs on its own account outside any request —
+    // notably while `dispose()` waits for detached work to finish — and it reads
+    // this object, never the copy. Without this, `--quiet` silenced the run and
+    // not the shutdown, which is the opposite of what the flag promises.
+    if (baseRuntimeConfig !== undefined) {
+      baseRuntimeConfig.logger = logger;
+    }
 
     // 7. Execute the flow action. With a config, forward the app's runtimeConfig
     // (durability, settings, ...), overriding only the logger (CLI

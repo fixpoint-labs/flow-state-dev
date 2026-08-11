@@ -26,6 +26,9 @@ import type {
   StartDetachedResult
 } from "@flow-state-dev/core/types";
 import type { SessionRecord, StoreRegistry } from "../stores/types";
+import { workstreamBindingKey } from "@flow-state-dev/core/types";
+import { workstreamDispatchInputSchema } from "@flow-state-dev/core";
+import type { RuntimeConfig } from "../runtime-config";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
 import { deriveChildSessionId, evaluateAdoption } from "./detached-child";
 import { evaluateLivenessGate, type LivenessGateInputs } from "./liveness-gate";
@@ -62,7 +65,27 @@ export type DetachedStartOperation = (spec: {
    * never the caller's bag.
    */
   metadata?: Record<string, unknown>;
-}) => Promise<{ requestId: string }>;
+  /**
+   * The runtime config the LAUNCHING request is running under, for the child to
+   * inherit (FIX-1077).
+   *
+   * A host is built once, but a caller may run a given request under a derived
+   * config — `fsdev run` builds `{ ...appConfig, modelResolver, logger }` so
+   * `--model` takes effect. The child is that request's own work continued in
+   * the background, so it runs under the same resolvers and logger rather than
+   * the host's construction-time ones. Absent → the host's own config applies.
+   */
+  runtimeConfig?: RuntimeConfig;
+}) => Promise<
+  | { requestId: string }
+  /**
+   * The dispatch never happened, definitively. Distinguished from a thrown
+   * rejection because the two need opposite handling by the caller: nothing
+   * started means the caller still owns whatever it was about to hand over, so
+   * it can settle it; a throw after the attempt cannot rule out a live child.
+   */
+  | { notStarted: true; reason: string }
+>;
 
 /** The one parent-board row this request was dispatched for, stamped at spawn. */
 export type ParentTaskBinding = {
@@ -81,14 +104,20 @@ export type RequestHostInputs = {
     /** The running request's session — the parent of anything it spawns. */
     sessionId: string;
     /**
-     * The running session's own lineage root, or `undefined` when it *is* the
-     * root (FIX-1068). Read off the running session record, so a child inherits
-     * the same root rather than re-deriving it by walking parents.
+     * The lineage the running session belongs to (FIX-1068). Inherited by the
+     * child verbatim, which is the whole of what makes parent and descendant
+     * address one bucket — there is nothing to re-derive and nothing to agree on.
      */
-    lineageRootSessionId?: string;
+    lineageId: string;
   };
   /** Absent when this process executes requests but cannot start one. */
   startOperation?: DetachedStartOperation;
+  /**
+   * The config this request runs under, handed to the start operation so a
+   * detached child inherits it rather than the host's construction-time one
+   * (FIX-1077). See `DetachedStartOperation`.
+   */
+  effectiveRuntimeConfig?: RuntimeConfig;
   /** Absent unless this request was dispatched for a parent-board task. */
   parentTask?: ParentTaskBinding;
   /** Everything the liveness gate needs. The gate runs here, once. */
@@ -123,6 +152,66 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         detail: `flow "${flow.kind}" declares no workstream core, so it accepts no detached dispatch`
       };
     }
+    // THE ROUTABILITY GUARANTEE (FIX-1074). Every way a board can reach the
+    // runtime without reaching `flow.workstreamBindings` converges on one state:
+    // the flow has a workstream core, and no route for this board. Definition
+    // time cannot close that — a board constructed at dispatch does not exist
+    // when the flow is built — so the check that has to be uniform lives here,
+    // where the fact is knowable whatever produced the board.
+    //
+    // Refusing HERE and not at the child's dispatch is the whole point: the
+    // caller still holds its claim, so its recorder settles the row against a
+    // named refusal. Discovered one hop later, the row has already been handed
+    // over and nothing can settle it until its lease lapses.
+    //
+    // Shape-checked rather than assumed: `startDetached` is a general verb and a
+    // caller with no board passes whatever input its own core takes, so only an
+    // input that actually names a board is judged. `coordinateKey` is compared
+    // too — a flow may route a board's other workers and not this one.
+    //
+    // WHAT THIS PROVES, EXACTLY: that *some* declaration in this flow owns this
+    // address — not that the board making the call is that declaration. The two
+    // differ only when a board built at runtime reuses a registered board's
+    // `boardId` and coordinate, and they cannot be told apart here: nothing
+    // identifies the caller. `requestHost` is built once per request, not per
+    // block (see `runAction`'s `createExecutionContext` call), so everything this
+    // seam knows about who is calling arrives in `args`, from the caller. A token
+    // presented there would separate the accidental collision, but it would be a
+    // convention like `provenance.taskId` below, not an enforcement — and a
+    // convention documented as a guarantee is what this epic keeps paying for.
+    //
+    // What limits the damage is downstream and is real: the dispatch enters the
+    // REGISTERED board's runner, whose start gate re-reads the row from that
+    // board's own ledger and refuses unless `attempts`, `createdAt`,
+    // `incarnationId`, a live lease and `status === "in_progress"` all hold, and
+    // separately refuses unless the envelope's `coordinateKey` equals the
+    // coordinate re-derived from the row. Two boards on separate ledgers there
+    // fail the identity arms, so the collision costs a stalled row rather than a
+    // wrong settle. It is the two-boards-one-collection case that survives every
+    // arm — the row really is shared — and there the registered board's worker
+    // runs the runtime board's payload. Closing that needs caller identity
+    // threaded into the block context, which is the runtime's shape to change and
+    // not this check's (FIX-1074).
+    const addressed = workstreamDispatchInputSchema.safeParse(args.input);
+    if (addressed.success) {
+      const key = workstreamBindingKey(
+        addressed.data.boardId,
+        addressed.data.coordinateKey
+      );
+      if (flow.workstreamBindings?.get(key) === undefined) {
+        return {
+          ok: false,
+          refused: "board-not-routable",
+          detail:
+            `flow "${flow.kind}" declares no detached binding for board ` +
+            `"${addressed.data.boardId}" at coordinate "${addressed.data.coordinateKey}", so a ` +
+            `child dispatched for it would have no route. The board is reachable at runtime but ` +
+            `never reached the flow definition — declare it on a statically-reachable action, or ` +
+            `stop dispatching it detached.`
+        };
+      }
+    }
+
     if (inputs.startOperation === undefined) {
       return {
         ok: false,
@@ -139,7 +228,8 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       {
         userId: identity.userId,
         tenantId: identity.tenantId,
-        parentSessionId: identity.sessionId
+        parentSessionId: identity.sessionId,
+        lineageId: identity.lineageId
       },
       args.seed
     );
@@ -191,16 +281,9 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),
         ...(identity.orgId !== undefined ? { orgId: identity.orgId } : {}),
         parentSessionId: identity.sessionId,
-        // The lineage root, stamped once at creation (FIX-1068). Inherited from
-        // the running session when it has one, otherwise the running session is
-        // itself the root. Every descendant therefore carries the same value, so
-        // a `sharedToWorkstream` resource resolves to one address across the
-        // whole chain without any read walking `parentSessionId`.
-        //
-        // `??`, so a store that nulls absent keys reads the same as an absent
-        // field: both mean "the running session is the root", never "the root is
-        // null" (BP-030).
-        lineageRootSessionId: identity.lineageRootSessionId ?? identity.sessionId,
+        // Inherited verbatim. Not a hash, not a re-derivation — the same
+        // value, so parent and child address one bucket by construction (FIX-1068).
+        lineageId: identity.lineageId,
         // Canonical labels, stamped here and only here (FIX-1010). They are
         // taken from the seed **this call already consumed to derive the child
         // key**, not from `args.record` below — which is why a caller cannot
@@ -267,13 +350,54 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // seed this call already consumed to derive the key — so it cannot
       // disagree with the child it names — and never from `args.record`, which
       // is the caller's own bag.
+      //
+      // `taskId` answers the next question down — not *which body* of work this
+      // is, but *which row* this run was spawned for — and it is the one fact
+      // here the seam did not derive itself. It comes through `args.provenance`,
+      // a channel whose contract is "put a fact here only when the runtime
+      // produced it", and pointedly NOT through `args.record`, which stays off
+      // the request record entirely.
+      //
+      // That contract is a convention, not an enforcement: `startDetached` is on
+      // the block context, so any block author can call it and pass any id. The
+      // two fields above cannot disagree with the child they name — the same
+      // seed derived its key — but this one is taken on trust, and a reader
+      // should not treat it as checked. It decides nothing, which is what
+      // contains it; see `StartDetachedInput.provenance`.
+      //
+      // Absent when the caller has no durable row behind it, which is an
+      // ordinary state and not a defect — a reader that finds no `taskId` has a
+      // run it cannot correlate to a board, exactly as before this field
+      // existed (BP-030).
       metadata: {
         workstream: {
           topic: args.seed.topic,
-          ...(args.seed.key !== undefined ? { key: args.seed.key } : {})
+          ...(args.seed.key !== undefined ? { key: args.seed.key } : {}),
+          ...(args.provenance !== undefined
+            ? { taskId: args.provenance.taskId }
+            : {})
         }
-      }
+      },
+      // The child continues THIS request's work, so it runs under THIS
+      // request's config — not the host's construction-time one.
+      ...(inputs.effectiveRuntimeConfig !== undefined
+        ? { runtimeConfig: inputs.effectiveRuntimeConfig }
+        : {})
     });
+
+    if ("notStarted" in started) {
+      // Nothing was dispatched, so the caller still owns the work — returning a
+      // refusal rather than throwing is what lets it settle its own row instead
+      // of leaving it for the lease to recover. The host refuses synchronously
+      // for a small set of pre-dispatch conditions, the reachable one being a
+      // flow-level `reject` concurrency policy whose key the parent already
+      // holds (FIX-982).
+      return {
+        ok: false,
+        refused: "dispatch-rejected",
+        detail: `the host refused the dispatch before starting it: ${started.reason}`
+      };
+    }
 
     return { ok: true, sessionId: childId, requestId: started.requestId, adopted };
   };

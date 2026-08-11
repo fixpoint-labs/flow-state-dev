@@ -494,13 +494,74 @@ Four channels, and none of them is shared session state:
 
 Resources close the gap that state does not, and they close it without a cross-session seam. A session-scoped resource or collection declaring `sharedToWorkstream: true` resolves against the **lineage root** rather than the running session, so a parent and every descendant address one storage cell through the ordinary resource API. There is no new verb, no direction, and no cross-session read path: whether a resource is shared changes only where it stores.
 
-**Why the root and not the parent.** A workstream carries its parent's `flowKind` — `createRequestHost` writes `flowKind: flow.kind` and `evaluateAdoption` refuses a mismatch — so every session in a lineage declares the same resource set statically. A layer holding a shared resource its ancestors do not would require dynamic installation, which the resource contract does not offer. Resolving to the root is therefore both the simple rule and the correct one, and it makes a three-deep lineage hold one copy rather than two.
+**The lineage identity is minted, not derived.** A root session mints
+`SessionRecord.lineageId` when its record is created; every descendant inherits
+that same literal value at spawn, and the storage address *is* that id. Nothing
+is reconstructed at read time, so there is nothing for a parent and a descendant
+to compute their way to differently.
 
-**Where the root comes from.** `SessionRecord.lineageRootSessionId` is stamped once, at child creation, by `createRequestHost.startDetached`: the parent's root, or the parent itself when the parent has none. A resource read is then O(1) — no walk up `parentSessionId`. Absent means "I am the root", which covers every top-level session and every record persisted before the field existed, so a legacy child keeps the isolation it always had (BP-030; read it with `== null`). Only the detached-start writer sets it — the public session-create route does not, matching `parentSessionId` (BP-031).
+That is the whole reason the hard cases need no handling. A session id can be
+deleted and recreated by anyone, but a recreate produces a new record and
+therefore a new lineage — so a surviving descendant of the old one keeps its own
+address, with neither the owner nor an incarnation nonce conjoined in to tell
+them apart. An earlier design derived the address from `(tenant, user, root
+session id)` and had to keep growing to stay ahead of the ways session identity
+is not stable; each component it grew added a seam — inheritance, adoption,
+legacy fallback, concurrent minting — that then had to be kept consistent. The
+minted id is the same guarantee without any of them.
+
+A record written before the field existed has no `lineageId` and falls back to a
+value derived from its session storage key, prefixed so it can never *equal* that
+key. This is defensive hygiene for records left by earlier commits in
+development, **not** an upgrade path from a released version — no version of this
+package has been published, so no deployed store holds session records or
+Workstream addresses predating any of this. The prefix is load-bearing: the storage scope is decided by
+comparing a resolved address against the lineage id, and if the fallback were the
+session key itself, an unstamped session's shared and unshared buckets would be
+indistinguishable — routing unshared resources into the lineage namespace.
+
+**Where the id comes from, and where it must not come from.** Every creator goes
+through `ensureSessionRecord` (`context/ensure-session-record.ts`), which mints
+the id and writes create-if-absent. Both halves are the point: a creator that
+omits the id leaves a session on the derived fallback, where delete-and-recreate
+lands on the same address again; and `get`-then-`set` lets a concurrent first
+action's loser overwrite the winner with a *different* id, stranding its shared
+writes at an address nothing reads. A caller describes the record it wants and
+chooses neither the id nor the write predicate, and must use the record that
+comes back — on a lost race that is the winner's, not its own.
+
+Descendants get the id from `createRequestHost.startDetached`, copied verbatim.
+It is also part of the derived child session id, because otherwise a recreated
+session spawning the same seed derives the same child and *adopts* the previous
+lineage's workstream, silently inheriting a dead conversation's address.
+
+**The lineage is its own storage scope.** `StorageScopeType` adds `lineage`
+alongside the three declared scopes, so a lineage bucket is not addressable from
+the session namespace at all. Session scope ids are caller-chosen and nothing
+validates them, so a lineage bucket sharing that space would be one a caller
+could occupy by picking the right session id — unguessable is a weaker property
+than unaddressable. Adapters treat the value as opaque (a plain `TEXT` column,
+no constraint), so this needed no schema change and no migration.
 
 **Where resolution happens.** On the execution path, `resolveConfigScopeId` and `resolveResourceStorageScopeId` in `packages/engine/src/context/createExecutionContext.ts`. Both route the session scope on a `sharedToWorkstream` bucket map built the same way user/org build their `flowIsolation` buckets: singles by canonical storage key, collection instances by longest-matching prefix. Collections sharing a storage prefix must agree on the flag, refused at context construction like the `flowIsolation` case.
 
-The HTTP read/write routes need the same answer and derive it from `packages/engine/src/resources/lineage-scope.ts` — `sessionResourceScopeId` where a route already holds the resource's config, `readSessionScopeWithLineage` for the whole-scope reads (`getPersistedData`, the state route). The whole-scope read drops shared keys from the session's own rows before folding in the root's, so a child's view is exactly what a block resolves rather than a union of two sessions' resources.
+The HTTP read/write routes need the same answer and derive it from `packages/engine/src/resources/lineage-scope.ts`. **Which helper depends on what the route holds, and getting that wrong is a cross-session read:**
+
+- `sessionKeyScopeId` for a concrete storage key — the collection CRUD routes. A route names a collection by ref, and a broad pattern accepts keys a narrower sibling owns (`tasks/**` accepts `tasks/meta/a`), so the addressed *declaration's* flag is not the key's owner.
+- `readSessionScopeWithLineage` for anything spanning a prefix or a whole scope — `getPersistedData`, the state route, and collection listing. It drops shared keys from the session's own rows before folding in the lineage's, so a child's view is exactly what a block resolves rather than a union of two sessions' resources.
+- `sessionResourceScopeId` only where the declaration genuinely is the subject.
+- `sessionStorageScope` for the scope kind that goes with a resolved address. It and
+  `createExecutionContext`'s `storageScopeOf` answer one question, and they have already
+  disagreed once about which namespace an unstamped session's shared bucket lives in.
+
+**Ownership is one rule, in one place.** `resolveOwnershipFlag` (`resources/lineage-scope.ts`) decides which declaration owns a storage key: **an exact single wins outright, then the longest matching collection prefix.** Both `createExecutionContext`'s bucket resolution and the whole-scope reads call it, because two implementations of "longest prefix wins" is how the execution view and the HTTP view drift into disagreeing about which session holds a key.
+
+Two shapes make that precedence load-bearing rather than cosmetic:
+
+- A shared collection with an **empty storage prefix** — any parameterized pattern, e.g. `[topic]/observations` — matches every key in the scope. Treating "matches a shared prefix" as "is shared" hands the whole scope to the root and discards the child's private rows.
+- A **private prefix nested under a shared one** (`tasks/meta/*` under `tasks/**`) is owned by the longer prefix. A collection is loaded by prefix, so the broad scan sweeps up keys the narrow sibling owns; every prefix scan (the eager waves and the lazy `getByPrefix` alike) therefore re-checks each returned key against per-key routing and keeps only what that bucket is the address for. Without it, which copy survives depends on declaration order.
+
+**Filtering a scan changes what it covers.** `loadedCollectionPrefixes` records coverage per `(scopeId, prefix)`, not per prefix, because a filtered scan read one bucket and may legitimately have returned nothing for keys another bucket owns. Recording the bare prefix would claim coverage the scan never had, and `isMissAuthoritative` would then answer "absent" for a row that exists — the read suppressed by its own correctness.
 
 **Sharing does not imply serialization.** Two workstreams writing one shared resource is ordinary same-resource contention, governed by the `expectedVersion` + `SetResult` contract every `ResourceStateStore` adapter implements (FIX-992). Nothing queues, locks or orders those writes.
 

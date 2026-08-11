@@ -43,11 +43,82 @@ When an `fsdev.config.ts` is present at your project root, the CLI skips auto-di
 
 ## Model overrides
 
-Use `-m` to swap models without code changes. Pass a model ID (e.g. `gpt-4o-mini`, `claude-3-haiku`). All generator blocks in the run use the overridden model. Useful for testing with cheaper or faster models during development.
+Use `-m` to swap models without code changes. Pass a model ID (e.g. `openai/gpt-5.4-mini`, `anthropic/claude-haiku-4-5`). Useful for testing with cheaper or faster models during development.
+
+Every generator that runs in the command's own process uses the override, including generators in [background work that runs there](#waiting-for-in-process-work).
+
+The override does not cross a queue. When background work is [handed to a queue](#with-a-queue-the-command-doesnt-wait), another process runs it under its own model configuration, so the generators inside it use whatever model that process resolves. A flow that detaches through a queue therefore runs on two models at once: the one you passed, and the worker's. If you are comparing models, or forcing a cheap one, the result only covers the part that ran here.
+
+You get a line on stderr at each dispatch that loses the override:
+
+```
+[flow-state] the model override on this run does NOT apply to background work dispatched to a queue: request "req_8f21c0" (flow "research") will run under the worker's own model configuration, not the override. Generators in this process still use it.
+```
+
+`--quiet` silences that line, the same as the other stderr notices.
 
 ## State seeding
 
 `--seed-session`, `--seed-user`, and `--seed-org` let you start with specific state for debugging. Pass inline JSON or a file path. The seeded state is merged into the scopes before execution. Handy for reproducing issues that depend on prior state.
+
+## Background work
+
+A flow can hand a unit of work to a *workstream*, a background child session that keeps running after the request that started it has returned. `fsdev run` and `fsdev chat` can start one. What the command does about it depends on how the app is wired.
+
+| Your setup | What the command does |
+|---|---|
+| `fsdev.config.*`, no queue | Runs the work in this process, and waits for it before exiting |
+| `fsdev.config.*` with a dispatching queue adapter (`colocated`, `dispatch-only`) | Hands the work to the queue, and returns without waiting for it to run |
+| No config (directory discovery or `--no-config`) | Can't start background work; the call fails by name |
+| A `worker-only` process | Runs the work in this process rather than putting it on the queue. Not durable: if the process stops, nothing re-runs it |
+
+For what a workstream is and how tasks group into one, see [Work that outlives the turn](/guides/background-work).
+
+### Waiting for in-process work
+
+Without a queue, the workstream runs inside the same process as the command. The action that launched it returns straight away, which is what detaching means, so `flow_complete` lands on stdout while the background work is still going. The command holds the process open until that work finishes, and says so on stderr:
+
+```
+[flowstate] waiting for 1 detached request(s) to finish before shutdown {"pending":1}
+```
+
+A run whose NDJSON already looks complete but whose shell prompt hasn't come back is usually sitting here.
+
+`--quiet` suppresses the line, not the wait. So does `--log-level error`, since the notice is logged at `warn`. Either way the command stays up until the work is done.
+
+Background work can start more background work, and the wait covers descendants too. The wait is bounded: it runs against `detachedDrainTimeoutMs`, a `createFlowState` option that defaults to 30 seconds, and a flow that spawns without end hits a round cap as well. When the budget runs out the command cancels what's still running, names the requests and sessions it gave up on, and exits. That report goes to stderr even under `--quiet`, since work may have been left unfinished.
+
+`fsdev chat` waits at the equivalent point in its own life, which is when you leave the session rather than at the end of each turn.
+
+### With a queue, the command doesn't wait
+
+When the config hands `createFlowState` a worker adapter that dispatches, meaning `colocated` (the default) or `dispatch-only`, background work goes to the queue instead of running in the command's own process, and the wait above doesn't apply.
+
+By the time the command returns, the request has been recorded and the queue has accepted the job. A failed store write or a rejected enqueue fails the dispatch rather than reporting a start, so a queue you can't reach surfaces as an error instead of as silence.
+
+None of that says the job survives, or that it ever runs. Whatever consumes the queue decides that, and a queue with nothing draining it is an ordinary state: the job sits in it, and the command finishes the same way it would if a worker were pulling from it. Read the workstream's own requests to find out what became of it. See [Background work](/docs/server/background-work).
+
+### Without a config, background work can't start
+
+Directory discovery and `--no-config` give the CLI flows and stores, and no runtime host for a workstream to start through. A block that reaches for one throws:
+
+```
+NoRequestHostError: This capability needs a runtime host, and none is wired on this context.
+```
+
+The error carries `code: "no-request-host"`, and on a task board the row the work was claimed for is recorded failed.
+
+Run against an `fsdev.config.*` to exercise a flow's background work from the terminal.
+
+### From a worker-only process
+
+A process whose worker adapter runs `mode: "worker-only"` consumes the queue and dispatches nothing. Background work started there runs inside the worker process itself, the same way it runs with no queue configured. Nothing is enqueued.
+
+**That work is not durable.** An enqueued job belongs to the queue, so whatever drains it picks it up, and a crash or a redeploy costs a retry rather than the work. Work started from a `worker-only` process belongs to the process. If the process stops, the run stops with it and nothing re-runs it: the request record stops where it stopped, and a task board row the work had claimed is left unfinished.
+
+A `worker-only` process is a good place to consume durable jobs and a poor place to start them. For the queue to own the work, start it from a process that has a dispatcher, which means `colocated` or `dispatch-only`.
+
+Shutdown treats it as in-process work, so the process waits for it the way it waits above.
 
 ## Next steps
 

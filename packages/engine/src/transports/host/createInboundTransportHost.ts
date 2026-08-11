@@ -19,17 +19,31 @@ import {
 import { resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys";
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
+import {
+  DEFAULT_RUNTIME_LOGGER,
+  logRuntimeEvent,
+  summarizeForLog
+} from "../../execution/logging";
+import {
+  deregisterAbortController,
+  registerAbortController
+} from "../../execution/abort-registry";
 import { generateId } from "../../utils/generate-id";
 import {
   ConcurrencyQueueTimeoutError,
   OrgRequiredError,
   PrincipalResolutionError
 } from "../errors";
-import { createConcurrencyArbiter } from "../concurrency/arbiter";
+import {
+  createConcurrencyArbiter,
+  type ConcurrencyArbiter
+} from "../concurrency/arbiter";
 import { pickPrincipalResolver } from "../auth/pickPrincipalResolver";
 import type { FlowDispatcher, DispatchEnvelope } from "../dispatcher";
 import {
+  combineSignals,
   createInProcessDispatcher,
+  isInProcessDispatcher,
   type InProcessDispatcher
 } from "./in-process-dispatcher";
 import type {
@@ -88,19 +102,42 @@ export type CreateInboundTransportHostOptions = {
    * external worker (e.g., BullMQ WorkerDispatcher).
    */
   dispatcher?: FlowDispatcher;
+  /**
+   * Concurrency arbiter to enforce policy through. Defaults to a fresh one.
+   *
+   * Supplied when more than one host serves the same process, so a declared
+   * `queue`/`reject` policy is enforced ONCE rather than once per host — two
+   * arbiters hold two independent keyed gates, and a request admitted by one
+   * knows nothing about a key the other is holding (FIX-1077).
+   */
+  arbiter?: ConcurrencyArbiter;
 };
 
 /**
- * Terminate an enqueue-time request record whose job was never started —
- * materialization or the dispatcher hand-off failed. Marks a still-`in_progress`
- * record `failed` so it does not linger forever: the dispatch teardown
- * deregisters the activeRequests entry, leaving the stale-request sweeper
- * nothing to reap. Best-effort and idempotent — a missing or already-terminal
- * record is left untouched. (FIX-828)
+ * Terminate an enqueue-time request record whose job was never started, so it
+ * does not linger `in_progress` forever: the dispatch teardown deregisters the
+ * activeRequests entry, leaving the stale-request sweeper nothing to reap.
+ * Best-effort and idempotent — a missing or already-terminal record is left
+ * untouched. (FIX-828)
+ *
+ * `status` distinguishes the two ways a run can end without starting, and they
+ * are not the same event to anybody downstream (FIX-1077):
+ *
+ * - `failed` — materialization or the dispatcher hand-off broke. Something went
+ *   wrong and someone should look.
+ * - `aborted` — the run was cancelled before it left the concurrency queue,
+ *   which is shutdown working as designed. Recording that as `failed` reports a
+ *   successful cancellation as an execution failure to clients, to workstream
+ *   summaries, and to recovery, which reads terminal statuses to decide what
+ *   needs attention.
+ *
+ * `failedAtMs` is stamped only for the failure, since it is the field readers
+ * key on for "this broke"; an abort carries `updatedAt` and its status.
  */
 async function terminateUnenqueuedRequest(
   stores: StoreRegistry,
-  requestId: string
+  requestId: string,
+  status: "failed" | "aborted" = "failed"
 ): Promise<void> {
   try {
     const record = await stores.request.get(requestId);
@@ -108,7 +145,12 @@ async function terminateUnenqueuedRequest(
     const now = Date.now();
     await stores.request.set(
       requestId,
-      { ...record, status: "failed", failedAtMs: now, updatedAt: now },
+      {
+        ...record,
+        status,
+        ...(status === "failed" ? { failedAtMs: now } : {}),
+        updatedAt: now
+      },
       "any"
     );
   } catch {
@@ -138,7 +180,7 @@ export function createInboundTransportHost(
   });
   const effectiveDispatcher: FlowDispatcher | InProcessDispatcher =
     options.dispatcher ?? inProcessDispatcher;
-  const isExternalDispatcher = !("dispatchLocal" in effectiveDispatcher);
+  const isExternalDispatcher = !isInProcessDispatcher(effectiveDispatcher);
 
   // One arbiter governs every in-process dispatch, so an action's concurrency
   // policy is enforced once at this shared seam (FIX-837). v1 enforces only the
@@ -146,7 +188,82 @@ export function createInboundTransportHost(
   // the run completes in another worker, so the policy is deferred to the
   // durable substrate (FIX-830) rather than gating the enqueue, which would give
   // misleading semantics (a `reject` lease freed at enqueue, not run-completion).
-  const arbiter = createConcurrencyArbiter();
+  const arbiter = options.arbiter ?? createConcurrencyArbiter();
+
+  /**
+   * Hand a STARTED run's `finished` to the adapter's keep-alive hook, containing
+   * a synchronous throw from it.
+   *
+   * Both seams that start a run — `dispatch` and `continueRequest` — call the
+   * hook last, once the run is already under way, and both are synchronous from
+   * their caller's point of view (`continueRequest` via the promise it returns).
+   * The hook is adapter-supplied and does throw in practice: Next's `after()`
+   * and `waitUntil` both raise synchronously when called outside a request
+   * scope. An escaping throw would therefore make a synchronous failure mean two
+   * different things, and each caller reads it as only one — the pre-start one:
+   * `createDetachedStartOperation` reads it as "nothing was dispatched" and
+   * settles the row it handed over, and the resume route reads it as
+   * "setup failed" and reverts the suspension to `pending`, inviting a second
+   * resume against a request whose run is still going. Two writers, one row
+   * (FIX-982, FIX-1095).
+   *
+   * Containing it here is what makes "a synchronous throw is pre-start" a
+   * property those callers can rely on rather than one they assume.
+   *
+   * Failing to register keep-alive is real — on a freeze-after-response platform
+   * the run can stall — but it is not a failure to start, and the handle the
+   * caller gets back is honest either way. So it is logged, not raised.
+   */
+  /**
+   * Emit a diagnostic without letting it become the failure it was describing.
+   *
+   * A `RuntimeLogger` is adapter- or app-supplied, so `warn`/`error` are
+   * arbitrary code that can throw. Both callers here are on a path where that
+   * throw would be read as something else entirely: one runs before a detached
+   * dispatch has materialized, where `createDetachedStartOperation` reads a
+   * synchronous throw as "nothing was started" and settles the row — so a failed
+   * log line would report work as never started when the only thing that failed
+   * was the logging. The other is the containment inside
+   * `registerBackgroundWork`, where a throwing logger would escape the very
+   * helper that exists to stop a throw escaping.
+   *
+   * `console.error` deliberately, and not through the logger: the logger is what
+   * just failed.
+   */
+  const logSafely = (
+    logger: RuntimeConfig["logger"],
+    level: "warn" | "error",
+    message: string,
+    context: Record<string, unknown>
+  ): void => {
+    try {
+      logRuntimeEvent(logger ?? DEFAULT_RUNTIME_LOGGER, level, message, context);
+    } catch (error) {
+      console.error("[flow-state] runtime logger threw", error);
+    }
+  };
+
+  const registerBackgroundWork = (
+    finished: Promise<unknown>,
+    context: { requestId: string; flowKind?: string },
+    /**
+     * The hook for THIS dispatch. Defaults to the host's, which is right for
+     * every seam that has no per-request config of its own.
+     */
+    hook: RuntimeConfig["onBackgroundWork"] = onBackgroundWork
+  ): void => {
+    if (hook === undefined) return;
+    try {
+      hook(finished);
+    } catch (error) {
+      logSafely(
+        runtimeConfig.logger,
+        "error",
+        "[flow-state] onBackgroundWork threw; the run was started but is not registered as background work",
+        { ...context, error: summarizeForLog(error) }
+      );
+    }
+  };
 
   const dispatch = (envelope: InboundRequestEnvelope): DispatchHandle => {
     const flow = registry.get(envelope.flowKind);
@@ -184,12 +301,52 @@ export function createInboundTransportHost(
       : arbiter.resolve(flow, envelope.action, dispatchEnvelope);
     const gateStart = arbiter.gate(decision, requestId);
 
+    // The config this dispatch runs under. Normally the host's own; a detached
+    // child carries the LAUNCHING request's, because the caller may have derived
+    // one the host was never built with — `fsdev run` does, so `--model` reaches
+    // background work rather than silently resolving the app's default
+    // (FIX-1077). Server-set only; see `InboundRequestEnvelope.runtimeConfig`.
+    const dispatchRuntimeConfig = envelope.runtimeConfig ?? runtimeConfig;
+
+    // Say so when a caller-derived model resolver is about to be dropped at the
+    // serialization boundary (FIX-1077).
+    //
+    // No brand and no CLI plumbing needed: the condition IS the divergence. A
+    // launching request whose config carries a different resolver from the
+    // host's is one a caller derived — `fsdev run --model` is the shipped case —
+    // and an external dispatcher cannot carry it, because a `RuntimeConfig`
+    // holds live resolvers and providers that do not serialize. Serializing just
+    // the model id was the alternative and is worse: the worker is a different
+    // process with its own gateways and keys, so a forced id may not resolve
+    // there at all, replacing a silent wrong model with a failure surfacing
+    // where the caller cannot see it.
+    //
+    // Warned rather than refused because refusing would break a working command
+    // for a condition that may never arise in it — a queue-configured app whose
+    // flows never detach is unaffected. This fires only at the exact dispatch
+    // that loses the override.
+    if (
+      isExternalDispatcher &&
+      envelope.runtimeConfig !== undefined &&
+      envelope.runtimeConfig.modelResolver !== runtimeConfig.modelResolver
+    ) {
+      logSafely(
+        dispatchRuntimeConfig.logger,
+        "warn",
+        `[flow-state] the model override on this run does NOT apply to background work ` +
+          `dispatched to a queue: request "${requestId}" (flow "${envelope.flowKind}") will ` +
+          `run under the worker's own model configuration, not the override. Generators in ` +
+          `this process still use it.`,
+        { requestId, flowKind: envelope.flowKind, source: envelope.source }
+      );
+    }
+
     // Per-flow `voice.provider` wins over the router-level provider, mirroring
     // the principal-resolver override pattern below. Merged once here so
     // `runAction` receives the effective value (via `runtimeConfig.voiceProvider`)
     // and never re-merges.
     const effectiveVoiceProvider =
-      flow.voice?.provider ?? runtimeConfig.voiceProvider;
+      flow.voice?.provider ?? dispatchRuntimeConfig.voiceProvider;
 
     // Per-flow SSE heartbeat override wins over the host default.
     const flowHeartbeatMs = flow.request?.sseHeartbeatMs;
@@ -230,27 +387,69 @@ export function createInboundTransportHost(
     // (carries non-serializable context); external dispatchers use the
     // generic dispatch interface.
     let finished: Promise<ExecutionResult>;
-    // Set for external dispatch only: resolves once the request is accepted —
-    // enqueue-time store writes committed AND the dispatcher accepted the job
-    // (see the external branch). Left undefined for in-process.
+    // Resolves once the request is accepted. Every branch sets it, and each
+    // means "discoverable" in the terms its own path can honour: enqueue-time
+    // store writes committed plus the job taken (external), those same writes
+    // committed (in-process `queue`), or the run's own `activeRequests`
+    // registration committed (in-process, FIX-982).
     let accepted: Promise<void> | undefined;
     if ("dispatchLocal" in effectiveDispatcher) {
-      const startRun = (): Promise<ExecutionResult> => {
+      // The in-process milestones, held here rather than read off the handle
+      // because `gateStart` owns *when* the run is started and the handle does
+      // not exist until it does (FIX-982). The `queue` branch below has its own,
+      // earlier acceptance — its enqueue-time writes — and ignores these.
+      let markAccepted: () => void = () => {};
+      let failAccepted: (error: unknown) => void = () => {};
+      const inProcessAccepted = new Promise<void>((resolve, reject) => {
+        markAccepted = resolve;
+        failAccepted = reject;
+      });
+      // Handled unconditionally: this is discarded on the `queue` path and
+      // ignored by every caller that only wants `finished`.
+      void inProcessAccepted.catch(() => {});
+
+      /**
+       * `cancellation` is a signal the run must inherit rather than merely be
+       * checked against. The queued branch holds one: an abort that lands
+       * between its pre-start check and `runAction`'s own
+       * `registerAbortController` would otherwise be thrown away, because
+       * `runAction` mints a fresh controller and overwrites the one that was
+       * aborted. Threading it makes the handoff atomic — there is one signal
+       * from enqueue to completion, so the abort cannot fall between two
+       * registrations no matter when it lands (FIX-1077).
+       */
+      const startRun = (cancellation?: AbortSignal): Promise<ExecutionResult> => {
+        const signal =
+          cancellation === undefined
+            ? envelope.signal
+            : envelope.signal === undefined
+              ? cancellation
+              : combineSignals(envelope.signal, cancellation);
         const handle = (effectiveDispatcher as InProcessDispatcher).dispatchLocal(
           dispatchEnvelope,
           {
-            signal: envelope.signal,
+            signal,
             responseEmitter,
             effectiveRuntimeConfig: {
-              ...runtimeConfig,
+              ...dispatchRuntimeConfig,
               voiceProvider: effectiveVoiceProvider
             }
           }
         );
+        handle.accepted?.then(markAccepted, failAccepted);
         return handle.finished;
       };
 
       if (decision.policy === "queue" && decision.key !== undefined) {
+        // Registered HERE rather than left to `runAction`, because between this
+        // dispatch and the run's own registration the request is real,
+        // discoverable, and cancellable by anyone reading the store — and yet
+        // has no controller for `abortRequest` to find. `runAction` re-registers
+        // (overwriting this one) when it actually starts, which is the same
+        // last-write-wins hand-off the enqueue-time record already uses, so this
+        // adds a window rather than a second registry to keep in sync. The
+        // `finally` below removes it on every exit, started or not.
+        const queuedAbort = registerAbortController(requestId);
         // A `queue` run's start is deferred behind the key, so `dispatchLocal`
         // (which registers `activeRequests` and writes the request record) has
         // not run when this handle is returned. Materialize a discoverable
@@ -329,11 +528,34 @@ export function createInboundTransportHost(
                 (queuedHeartbeat as unknown as { unref: () => void }).unref();
               }
             }
-            return gateStart(() => {
+            return gateStart(async () => {
               // `runAction` re-registers and starts its own heartbeat timer from
               // here, so the host's stewardship of the entry ends exactly here.
               stopQueuedHeartbeat();
-              return startRun();
+              // Cancelled while it sat in the queue, so do not start it now.
+              //
+              // A queued run is the one dispatch that exists without an abort
+              // controller: `runAction` registers that, and `runAction` has not
+              // been called yet. So `abortRequest` finds nothing and returns
+              // false, and a cancel issued in this window — shutdown's drain is
+              // the reachable one — silently does not apply. Waking up after
+              // `dispose()` and starting a run against closed adapters is a
+              // corrupting outcome rather than an untidy one, so the wait is
+              // registered (above) and the decision is re-read here, at the last
+              // moment before anything runs (FIX-1077).
+              if (queuedAbort.signal.aborted) {
+                await terminateUnenqueuedRequest(stores, requestId, "aborted");
+                throw new Error(
+                  `Request "${requestId}" was cancelled before it left the concurrency queue`
+                );
+              }
+              // The check above is not sufficient on its own and is not meant to
+              // be: an abort landing after it would be lost, because `runAction`
+              // registers a fresh controller over this one. Handing the signal
+              // down is what closes that gap — the check short-circuits the run
+              // entirely when the decision is already made, and the signal
+              // carries it when it is made a moment later.
+              return startRun(queuedAbort.signal);
             }).catch(async (error: unknown) => {
               if (error instanceof ConcurrencyQueueTimeoutError) {
                 await terminateUnenqueuedRequest(stores, requestId);
@@ -341,9 +563,21 @@ export function createInboundTransportHost(
               throw error;
             });
           })
-          .finally(stopQueuedHeartbeat);
+          .finally(() => {
+            stopQueuedHeartbeat();
+            // Whoever registered it removes it, on every exit — started,
+            // cancelled, or timed out — so the pre-start window cannot leak
+            // controllers into a long-lived process. Idempotent with
+            // `runAction`'s own deregistration on the path where it did start.
+            deregisterAbortController(requestId);
+          });
       } else {
         finished = gateStart(startRun);
+        // A start that never happens (the gate threw on the way in) must fail
+        // acceptance rather than leave it pending forever. Once the run has
+        // registered this is already settled and both arms are no-ops.
+        finished.then(markAccepted, failAccepted);
+        accepted = inProcessAccepted;
       }
     } else {
       // External dispatchers (BullMQ, etc.) run in a separate process and only
@@ -430,9 +664,25 @@ export function createInboundTransportHost(
       stores.activeRequests.deregister(requestId).catch(() => {});
     });
 
-    if (onBackgroundWork !== undefined) {
-      onBackgroundWork(finished);
-    }
+    // Contained by `registerBackgroundWork`, because this is the ONLY thing left
+    // in `dispatch` that can throw synchronously and the run has already been
+    // started above — see that helper for why an escaping throw is damaging.
+    //
+    // Taken from `dispatchRuntimeConfig`, not from the host's construction-time
+    // config, and on a freeze-after-response platform that distinction is the
+    // difference between the child finishing and the child stalling. The run
+    // executes under the dispatch config; the keep-alive hook is what holds the
+    // process open for it. Read the host's instead and a detached child launched
+    // by a request whose config carries its own `after()` / `waitUntil` hands
+    // `finished` to the wrong scope — or to nothing — and the platform freezes
+    // the container the moment the parent responds, with the child mid-run.
+    // Every other per-dispatch value here already resolves this way
+    // (`voiceProvider`, `logger`); this one did not.
+    registerBackgroundWork(
+      finished,
+      { requestId, flowKind: dispatchEnvelope.flowKind },
+      dispatchRuntimeConfig.onBackgroundWork
+    );
 
     // The HTTP 202 path awaits `accepted`, not `finished`, so a fire-and-forget
     // external dispatch can leave `finished` unobserved. Mark it handled to
@@ -472,11 +722,18 @@ export function createInboundTransportHost(
     // container — the resume appears to hang for tens of seconds, the flow's
     // remaining steps never run, and a refresh still shows `in_progress`.
     // Registering `finished` with `onBackgroundWork` (→ Next `after()` /
-    // waitUntil) lets it run to completion. `void .catch` marks it handled: the
-    // 202 path doesn't await `finished`, so an unobserved rejection must not
-    // surface as an unhandled rejection.
+    // waitUntil) lets it run to completion. Contained by
+    // `registerBackgroundWork`: `continueRequestImpl` above has already started
+    // the run, so a throw escaping from here would reject this promise and the
+    // resume route would read that as setup having failed — reverting the
+    // suspension of a request that is still running (FIX-1095).
+    //
+    // `void .catch` marks `finished` handled: the 202 path doesn't await it, so
+    // an unobserved rejection must not surface as an unhandled rejection. It
+    // stays inside the keep-alive branch, which is the only case where nothing
+    // else is guaranteed to observe the promise.
     if (onBackgroundWork !== undefined) {
-      onBackgroundWork(result.finished);
+      registerBackgroundWork(result.finished, { requestId: opts.requestId });
       void result.finished.catch(() => {});
     }
 

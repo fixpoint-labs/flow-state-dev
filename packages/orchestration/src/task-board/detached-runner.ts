@@ -17,7 +17,8 @@
  *    cancel or a reclaim landing in that gap leaves the claimant proceeding from
  *    a stale snapshot — a cancelled task running to completion. The gate re-reads
  *    the row and aborts unless the claim is still current: `attempts` matches,
- *    `createdAt` matches, and the status is still `in_progress`.
+ *    `createdAt` matches, the row's incarnation matches, the status is still
+ *    `in_progress`, and the claim's lease has not run out.
  * 2. **Worker selection.** The route comes from the row's own `assignee`, not
  *    from the dispatch envelope (BP-031). The envelope names a board; the ledger
  *    names the worker.
@@ -34,11 +35,37 @@
  *    calls running unfenced, silently: "no ticket presented" and "not a claimed
  *    worker" are the same condition to the guard.
  *
- * ## `createdAt` is why this is an identity check and not a counter check
+ * ## Why this is an identity check and not a counter check
  *
  * A task deleted and recreated under the same id inside the claim→spawn window
- * passes an attempt-only gate. Comparing `createdAt` closes that with a fact the
- * ticket already carries, so it costs no extra read.
+ * passes an attempt-only gate: the recreate resets `attempts`, and the
+ * replacement's first claim lands the counter right back where the dispatch
+ * left it. The gate therefore checks *which row* as well as *which attempt*.
+ *
+ * `createdAt` is the cheap half and not the sound half. It is a millisecond
+ * clock, and a delete-then-recreate under the same id lands inside the same
+ * millisecond often enough (measured 198/200, see `tasks/schema/task.ts`) that
+ * the replacement wears the original's stamp. `incarnationId` is the nonce
+ * minted per incarnation for exactly this, and it is the field that actually
+ * separates the two rows — with `createdAt` kept as the arm that still works on
+ * a row or an envelope predating the nonce. Both ride the ticket the board
+ * minted from the row it claimed, so neither costs an extra read.
+ *
+ * ## And why identity alone is not enough
+ *
+ * Every arm above compares the dispatch against the row. None of them asks
+ * whether the claim is still *live*, and those are different questions: a claim
+ * loses its row by running out of time as readily as by being superseded, and
+ * the row looks untouched when it does. Nothing renews a detached row's lease
+ * between the parent's hand-off and the child's first breath (FIX-1070), so a
+ * child that waits in the host's queue longer than the lease starts on a row the
+ * substrate already counts as free — same attempt, same stamps, still
+ * `in_progress`, because no successor has come along and taken it yet.
+ *
+ * Letting that through is the expensive direction. The worker's side effects
+ * commit first and the refusal arrives second: settlement is fenced on the same
+ * lease, so `complete()` is declined `lost-claim`, the row stays recoverable,
+ * and the next drain runs the whole thing again.
  */
 import { sequencer, utility } from "@flow-state-dev/core";
 import type { DefinedCapability } from "@flow-state-dev/core";
@@ -57,11 +84,19 @@ import { coordinateKey, type WorkerCoordinate } from "./coordinate";
 import { createRecordError, createRecordSuccess } from "./blocks/record-result";
 import { taskBoardWorkerBodyStateSchema } from "./schemas";
 import type { ResolvedWorkerSlot } from "./detached";
-import type { Task, TaskCollectionRef } from "../tasks";
+import { leaseLapsed, type Task, type TaskCollectionRef } from "../tasks";
 
 /**
  * Thrown by the start gate when the claim this dispatch names is no longer the
  * row's current claim.
+ *
+ * **Superseded and expired both land here**, rather than the second getting a
+ * name of its own. A claim stops being the row's live claim by running out of
+ * time exactly as it does by being taken, the substrate already spells both
+ * `lost-claim` at the fence, and what this dispatch must do about it is the same
+ * either way: stop, write nothing, leave the row to be recovered. A second error
+ * type would split one outcome across two names and invite a caller to handle
+ * them differently when there is no different handling to do.
  *
  * A named error rather than a silent return: a detached request that stops
  * because its claim was superseded is a *correct* outcome, but one that stops
@@ -117,9 +152,14 @@ export interface BuildDetachedRunnerOptions {
    * and that is a real bound rather than an oversight: the general
    * resolve-the-parent's-board seam is settlement's, and a board whose rows a
    * detached worker must reach has to be addressable from the child — user or
-   * org scope, or a session-scoped board keyed by the parent session id. The
-   * refusal below names it rather than hydrating an empty board and settling
-   * nothing.
+   * org scope, or a session-scoped board that resolves to the lineage root.
+   *
+   * A board declared that way no longer reaches this code: `taskBoard()`
+   * refuses it at construction (FIX-1074), because arriving here means the gate
+   * reads an empty ledger, calls the claim stale, and leaves the row to be
+   * reclaimed and redispatched forever. The gate's own `no such row` refusal
+   * still names the possibility, since a board can also resolve to a different
+   * ledger for reasons construction cannot see.
    */
   collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
   /**
@@ -144,6 +184,15 @@ export interface BuildDetachedRunnerOptions {
    * message reads as a stale claim, and the claim is perfectly current.
    */
   uses?: readonly DefinedCapability[];
+  /**
+   * The board's worker-failure policy, threaded rather than re-chosen.
+   *
+   * `"skip"` (the board default) settles the row and lets the Workstream's
+   * request complete; `"fail"` additionally fails that request, which is what a
+   * board asking for `"fail"` means once the run executing the worker is the
+   * Workstream's rather than the drain's.
+   */
+  onError: "skip" | "fail";
 }
 
 /**
@@ -185,7 +234,7 @@ function coordinateForTask(
 export function buildDetachedRunner(
   options: BuildDetachedRunnerOptions
 ): BlockDefinition<any, any> | undefined {
-  const { name, boardId, collection: collectionFactory, detached, uses } = options;
+  const { name, boardId, collection: collectionFactory, detached, uses, onError } = options;
   if (detached.length === 0) return undefined;
 
   // The same recorders the inline drain composes, bound to this board's
@@ -199,11 +248,21 @@ export function buildDetachedRunner(
   const recordError = createRecordError({
     name: `${name}-workstream-record-error`,
     collection: collectionFactory,
-    // Swallow after writing the failure. Rethrowing would fail the Workstream's
-    // request as well, and the request is not the thing that failed — the task
-    // is, and the row now says so. A failed detached request would additionally
-    // look to recovery like work to retry.
-    onError: "skip",
+    // The BOARD's policy, not a constant. `onError` says what a worker failure
+    // does to the run executing it; inline that run is the drain's request, and
+    // detached it is the Workstream's. Hard-coding `"skip"` here meant a board
+    // that asked for `"fail"` got a Workstream request reporting success for
+    // work that failed — and everything that reads background work by request
+    // status (`listWorkstreams`, the DevTool panel, any consumer polling a run)
+    // believed it.
+    //
+    // The rationale that stood here argued the request is not the thing that
+    // failed, which is a defensible reading — and is exactly the reading
+    // `onError: "skip"` encodes, so it is the DEFAULT rather than the rule. It
+    // also claimed a failed detached request "would look to recovery like work
+    // to retry", and that is not so: `recoverInterruptedRequests` re-dispatches
+    // only records still `in_progress`, so a terminal `failed` is left alone.
+    onError,
   });
 
   const declaredAssignees = new Set<string>();
@@ -283,10 +342,52 @@ export function buildDetachedRunner(
             "the row was deleted and recreated under the same id after this dispatch was addressed"
           );
         }
+        // The same question `createdAt` above asks, asked with a value that can
+        // actually answer it. Compared only when BOTH sides carry a nonce
+        // (BP-030): a row persisted before `incarnationId` shipped has none,
+        // and so does an envelope enqueued by the previous version, and neither
+        // is evidence of a recreate. Absence therefore leaves exactly the
+        // protection this gate had before — `createdAt` alone — rather than
+        // refusing work that is perfectly current.
+        if (
+          row.incarnationId !== undefined &&
+          dispatch.incarnationId !== undefined &&
+          row.incarnationId !== dispatch.incarnationId
+        ) {
+          throw new StaleDetachedClaimError(
+            dispatch.taskId,
+            "the row was deleted and recreated under the same id after this dispatch was " +
+              "addressed (its incarnation differs, though its creation stamp does not)"
+          );
+        }
         if (row.status !== "in_progress") {
           throw new StaleDetachedClaimError(
             dispatch.taskId,
             `the row is "${row.status}", so no claim is outstanding on it`
+          );
+        }
+        // The one arm that is about liveness rather than identity — see the
+        // header for why the two cannot substitute for each other.
+        //
+        // **Refused, not renewed**, and that is not a preference between two
+        // available moves. `renewLease` is fenced on this exact subtraction, so
+        // it declines a lapsed lease by construction; adopting the row would
+        // mean *re-claiming* it, minting a fresh attempt to run a payload the
+        // parent packed against the old one. Modelling a hand-off that holds its
+        // row across the queue wait is FIX-1070's question and the lease's shape
+        // to change, not a branch to add here.
+        //
+        // Refusing costs nothing it did not already cost: the row keeps its
+        // lapsed lease and its `in_progress` status, which is exactly what
+        // `isClaimable` reads as recoverable, so the next drain takes it and the
+        // work runs once. The clock is the collection's for the reason every
+        // other reader of this subtraction takes it from there — the deadline
+        // was stamped against it by the claim write.
+        if (leaseLapsed(row, board.now())) {
+          throw new StaleDetachedClaimError(
+            dispatch.taskId,
+            "its lease ran out before this dispatch started, so the row is back in " +
+              "the claim queue and any work done under it could not be recorded"
           );
         }
 

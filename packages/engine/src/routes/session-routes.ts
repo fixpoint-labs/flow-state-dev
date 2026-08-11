@@ -178,6 +178,10 @@ export async function handleCreateSession(
     tags: asStringArray(body.tags),
     metadata: asObject(body.metadata),
     state: initialState,
+    // Minted per record. Recreating a deleted id therefore yields a NEW
+    // lineage, which is what makes a surviving descendant of the old one keep
+    // its own address with nothing conjoined in to keep them apart (FIX-1068).
+    lineageId: generateId("lin"),
     version: 0,
     createdAt: now,
     updatedAt: now,

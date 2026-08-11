@@ -36,7 +36,7 @@
  * anything the forger owns.
  */
 import { keyedRouter } from "../utility/keyed-router";
-import { z } from "zod";
+import { z, type ZodTypeAny } from "zod";
 import type { BlockDefinition } from "../types/block";
 import type { ActionCore } from "../types/flow";
 import type { WorkstreamBindings } from "../types/workstream";
@@ -49,12 +49,16 @@ import type { WorkstreamBindings } from "../types/workstream";
  * supplies identity. A task author names a topic and an assignee and nothing
  * here.
  *
- * `attempt` and `createdAt` are the claim's identity, and they are carried so
- * the runner's start gate can verify them against the row rather than trust
- * them: they say *which* claim this dispatch believes it is running, and the
- * gate decides whether that is still true. `createdAt` is what makes it an
- * identity check rather than a counter check — a task deleted and recreated
- * under the same id inside the claim→spawn window cannot pass one.
+ * `attempt`, `createdAt` and `incarnationId` are the claim's identity, and they
+ * are carried so the runner's start gate can verify them against the row rather
+ * than trust them: they say *which* claim this dispatch believes it is running,
+ * and the gate decides whether that is still true.
+ *
+ * `incarnationId` is what makes it an identity check rather than a counter
+ * check — a task deleted and recreated under the same id inside the
+ * claim→spawn window resets `attempts`, and a replacement created in the same
+ * millisecond carries the same `createdAt`, so neither of the other two tells
+ * the two rows apart.
  */
 export type WorkstreamDispatchInput = {
   /** Which board's ledger this dispatch settles against. */
@@ -67,6 +71,16 @@ export type WorkstreamDispatchInput = {
   readonly attempt: number;
   /** The claimed row's creation stamp. Verified, never trusted. */
   readonly createdAt: number;
+  /**
+   * The claimed row's incarnation nonce — which *instance* of this task id the
+   * dispatch was addressed to. Verified, never trusted.
+   *
+   * Optional, and it stays optional: an envelope persisted before this field
+   * shipped has none, and a row written by a `TaskCollectionRef` that maintains
+   * no provenance has none either. A gate compares it only when both sides
+   * carry one (BP-030).
+   */
+  readonly incarnationId?: string;
   /** The materialized worker input, packed at claim time. */
   readonly payload: unknown;
 };
@@ -85,6 +99,11 @@ export const workstreamDispatchInputSchema = z.object({
   taskId: z.string().min(1),
   attempt: z.number().int().nonnegative(),
   createdAt: z.number(),
+  // Optional so an envelope enqueued by the previous version still parses
+  // rather than failing at the boundary during a rolling deploy (BP-030). The
+  // gate treats absence as "cannot tell", so a legacy envelope keeps exactly
+  // the protection it had.
+  incarnationId: z.string().optional(),
   payload: z.unknown(),
 });
 
@@ -158,9 +177,15 @@ export function buildWorkstreamCore(
   // detached request's durable trace to record a choice that was never made —
   // and on resume that record has to be re-validated against a re-selected
   // route, which is a failure mode bought for nothing.
+  //
+  // The address is still CHECKED, just not routed on: skipping the router must
+  // not also skip `boardId`. See {@link soleBoardSchema}.
   const only = singleEntry(runners);
   if (only !== undefined) {
-    return { block: only, inputSchema: workstreamDispatchInputSchema };
+    return {
+      block: only.value,
+      inputSchema: soleBoardSchema(only.key),
+    };
   }
 
   // Null-prototype, because `boardId` is author-chosen and unrestricted. On a
@@ -185,9 +210,41 @@ export function buildWorkstreamCore(
   };
 }
 
-/** The map's only value, or `undefined` when it holds none or several. */
-function singleEntry<K, V>(map: Map<K, V>): V | undefined {
+/** The map's only entry, or `undefined` when it holds none or several. */
+function singleEntry<K, V>(map: Map<K, V>): { key: K; value: V } | undefined {
   if (map.size !== 1) return undefined;
-  for (const value of map.values()) return value;
+  for (const [key, value] of map) return { key, value };
   return undefined;
+}
+
+/**
+ * The dispatch schema, narrowed to the one board this flow actually routes to.
+ *
+ * `boardId` is half the durable routing address, and the multi-board path
+ * checks it for free — `keyedRouter` refuses a key it has no route for. The
+ * single-board fast path has no router and would therefore accept **any**
+ * `boardId`, which is not a smaller version of the same behaviour: a dispatch
+ * addressed to a board that has since been removed or renamed is re-resolved
+ * from its persisted envelope into whatever board is registered now, and if the
+ * two share a durable ledger the runner's start gate can pass every arm it has
+ * — same row, same attempt, same stamps — because none of them asks which board
+ * the dispatch named. Stale work then runs as current work.
+ *
+ * Enforced on the schema rather than in a guard block so the check costs no
+ * durable record and no step: `runAction` parses the action input before the
+ * core's block is entered, so a mis-addressed envelope is refused before the
+ * runner reads a row.
+ */
+function soleBoardSchema(boardId: string): ZodTypeAny {
+  return workstreamDispatchInputSchema.superRefine((input, ctx) => {
+    if (input.boardId === boardId) return;
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["boardId"],
+      message:
+        `[workstream] this dispatch is addressed to board "${input.boardId}", but this flow ` +
+        `declares detached work on board "${boardId}" only. The envelope names a board that ` +
+        `is not registered here — it was removed or renamed since the dispatch was addressed.`,
+    });
+  });
 }

@@ -49,25 +49,26 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
    */
   parentSessionId?: string;
   /**
-   * Bare id of the TOP-MOST session in this session's lineage (FIX-1068) — the
-   * ancestor a `sharedToWorkstream` resource resolves against, so every session
-   * in one chain addresses the same storage.
+   * The lineage this session belongs to (FIX-1068) — the address every resource
+   * it declares `sharedToWorkstream` stores under.
    *
-   * Stamped once, at creation, by the detached-start writer
-   * (`context/create-request-host.ts`): a child's root is its parent's root, or
-   * the parent itself when the parent has none. That makes the lookup O(1) per
-   * resource read instead of a walk up `parentSessionId`, and it is safe to
-   * stamp because a child never changes parents.
+   * **Minted, not derived.** A root session mints one when its record is
+   * created; every descendant inherits that same literal value at spawn. The
+   * address is therefore a value that is written once and read back, rather than
+   * something reconstructed at each read out of session identity — which is
+   * mutable, reusable, concurrently creatable, and has a legacy shape.
    *
-   * Absent means **"I am the root"** — true of every top-level session, and of
-   * every record persisted before this field existed. A store that nulls absent
-   * keys hands back `null`, so read it with `== null` (BP-030). A legacy child
-   * is therefore treated as its own root, which is exactly the behaviour it had
-   * before this field: its session-scoped resources stay its own.
+   * That is what makes the hard cases go away instead of needing handling. A
+   * deleted session id recreated by anyone gets a NEW record and therefore a new
+   * lineage, so a surviving descendant of the old lineage keeps its own address
+   * with no owner or incarnation conjoined into it.
    *
-   * Bare, not tenant-namespaced, matching {@link SessionRecord.parentSessionId}.
+   * Absent on records written before this field existed. Those are read as their
+   * own lineage keyed by their session storage key (BP-030) — safe because a
+   * *recreated* session always gets a record that carries the field, so two
+   * records can never both fall back to one id.
    */
-  lineageRootSessionId?: string;
+  lineageId?: string;
   /**
    * Human-readable name for the body of work a detached child session was
    * started for (FIX-1010). Stamped by the detached-start writer
@@ -877,6 +878,26 @@ export interface ActiveRequestRegistry {
 export type ContentScopeType = "session" | "user" | "org";
 
 /**
+ * The scope kind a resource row is STORED under (FIX-1068).
+ *
+ * Wider than {@link ContentScopeType}, which is the scope a resource is
+ * DECLARED at. The two differ for exactly one case: a session-scoped resource
+ * marked `sharedToWorkstream` stores in the `lineage` space, addressed by the
+ * lineage rather than by a session.
+ *
+ * They are separate types rather than one widened type because they answer
+ * different questions, and because a lineage bucket must not be expressible
+ * where a declared scope is expected. Keeping the lineage space out of
+ * `session` is the whole point: session scope ids are caller-chosen, so a
+ * lineage bucket sharing that space is one a caller can occupy by picking a
+ * session id.
+ *
+ * Adapters treat this as an opaque string — it is a plain `TEXT` column with no
+ * constraint — so widening it needs no schema change and no migration.
+ */
+export type StorageScopeType = ContentScopeType | "lineage";
+
+/**
  * Separates resource content persistence from scope record persistence.
  *
  * Content is addressed by (scopeType, scopeId, resourceKey). This allows
@@ -885,16 +906,16 @@ export type ContentScopeType = "session" | "user" | "org";
  */
 export interface ContentStore {
   /** Read a single resource's content. */
-  get(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<string | undefined>;
+  get(scopeType: StorageScopeType, scopeId: string, resourceKey: string): Promise<string | undefined>;
 
   /** Write a single resource's content. Creates or overwrites. */
-  set(scopeType: ContentScopeType, scopeId: string, resourceKey: string, content: string): Promise<void>;
+  set(scopeType: StorageScopeType, scopeId: string, resourceKey: string, content: string): Promise<void>;
 
   /** Delete a single resource's content. */
-  delete(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<void>;
+  delete(scopeType: StorageScopeType, scopeId: string, resourceKey: string): Promise<void>;
 
   /** Read all content for a scope instance. Used during state route reads (full-scope view). */
-  getAll(scopeType: ContentScopeType, scopeId: string): Promise<Record<string, string>>;
+  getAll(scopeType: StorageScopeType, scopeId: string): Promise<Record<string, string>>;
 
   /**
    * Read every content entry in a scope whose resourceKey starts with
@@ -903,10 +924,10 @@ export interface ContentStore {
    * only the content a flow declares — fixed resources by exact key, and
    * collections by their pattern prefix.
    */
-  getByPrefix(scopeType: ContentScopeType, scopeId: string, keyPrefix: string): Promise<Record<string, string>>;
+  getByPrefix(scopeType: StorageScopeType, scopeId: string, keyPrefix: string): Promise<Record<string, string>>;
 
   /** Delete all content for a scope instance. Used during scope record deletion. */
-  deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void>;
+  deleteAll(scopeType: StorageScopeType, scopeId: string): Promise<void>;
 }
 
 /**
@@ -1019,7 +1040,7 @@ export interface ResourceStateStore {
    * a key that never existed.
    */
   get(
-    scopeType: ContentScopeType,
+    scopeType: StorageScopeType,
     scopeId: string,
     resourceKey: string
   ): Promise<VersionedResourceState | undefined>;
@@ -1042,7 +1063,7 @@ export interface ResourceStateStore {
    * as "deleted" and stop — never as "reuse what I had cached".
    */
   set(
-    scopeType: ContentScopeType,
+    scopeType: StorageScopeType,
     scopeId: string,
     resourceKey: string,
     state: JsonObject,
@@ -1073,7 +1094,7 @@ export interface ResourceStateStore {
    * conflict" reports one to a caller that opted out of versions entirely.
    */
   delete(
-    scopeType: ContentScopeType,
+    scopeType: StorageScopeType,
     scopeId: string,
     resourceKey: string,
     expectedVersion: ExpectedVersion
@@ -1084,7 +1105,7 @@ export interface ResourceStateStore {
    * version. Used by full-scope reads (`/state`, debug snapshot).
    */
   getAll(
-    scopeType: ContentScopeType,
+    scopeType: StorageScopeType,
     scopeId: string
   ): Promise<Record<string, VersionedResourceState>>;
 
@@ -1096,7 +1117,7 @@ export interface ResourceStateStore {
    * by exact key, collections by their pattern prefix.
    */
   getByPrefix(
-    scopeType: ContentScopeType,
+    scopeType: StorageScopeType,
     scopeId: string,
     keyPrefix: string
   ): Promise<Record<string, VersionedResourceState>>;
@@ -1112,7 +1133,7 @@ export interface ResourceStateStore {
    * a never-existed key. Closing that needs a scope generation, not a per-key
    * predicate.
    */
-  deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void>;
+  deleteAll(scopeType: StorageScopeType, scopeId: string): Promise<void>;
 }
 
 /**

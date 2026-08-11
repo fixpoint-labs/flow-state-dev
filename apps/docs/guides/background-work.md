@@ -89,11 +89,53 @@ Having its own session is also what it costs you. A workstream keeps its own sta
 
 For anything narrower, hand it over as input when the work starts and report it back when the work finishes. A session-scoped resource has a second route: mark it `sharedToWorkstream` and the conversation and every workstream under it resolve one copy of it. Session state has no such route; it is private to each session either way. See [State vs Resources](/docs/resources/storage#session-scope-and-background-work).
 
-This is where the task board's detached workers are headed. A board can declare that a worker's tasks belong outside the request that claimed them, addressed by the board's `boardId` plus that worker's coordinate so a later run can still find the block that does the work. Such a board needs a durable collection and an explicit `boardId`, because that id is part of the child session's identity. That declaration is groundwork today: a worker declared detached is validated and routed, and then still runs inline, inside the claiming request.
+A task board is the usual way to start one. A board is a list of tasks plus a set of named workers that claim them. Wrap one of those workers in `{ worker, dispatch }` and its tasks go to a workstream instead of running in the request that claimed them:
 
-Starting a workstream is server-side only, and no stock server wires it yet.
+```ts
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
 
-Read next: **[Background work](/docs/server/background-work)** for the HTTP surface, its paging, what `status` does and doesn't tell you, and what a stock server does about starting one; **[Client overview](/docs/client/overview#background-work)** for reading it from an app; and **[Durable execution](/docs/advanced/durable-execution)** for what happens to a run that was interrupted.
+const diligenceTasks = defineTaskCollection({ id: "diligence-tasks", scope: "user" });
+
+const board = taskBoard({
+  name: "diligence",
+  boardId: "diligence",
+  collection: diligenceTasks,
+  workers: {
+    investigate: { worker: investigateBlock, dispatch: { mode: "detached" } },
+    verify: { worker: verifyBlock, dispatch: { mode: "detached" } },
+    summarize: summarizeBlock, // a bare block runs inline, in the request that claimed the task
+  },
+  initialTasks: [
+    { id: "filings", goal: "Read the Q3 filings", assignee: "investigate", metadata: { topic: "acme" } },
+    { id: "calls", goal: "Summarize the analyst calls", assignee: "investigate", metadata: { topic: "acme" } },
+  ],
+});
+```
+
+`boardId` is required once anything on the board is detached, and the collection has to be a `defineTaskCollection()`. The workstream settles its task after the request that claimed it is gone, so the collection it settles against has to outlive that request too. Both are checked when the board is built, not when the first detached task arrives.
+
+Tasks are seeded here to keep the example in one piece. A task added later with `addTask` carries the same `assignee` and `metadata` fields.
+
+Two bounds are worth knowing before you reach for this.
+
+**The board has to be reachable from the child session.** The workstream settles its own task, and resource scope resolves against whichever session is running — so a session-scoped board hydrates empty inside a workstream and has nothing to settle. Give the collection `sharedToWorkstream: true` and the whole lineage settles against one ledger. `user` and `org` scope need nothing extra.
+
+**On serverless without a queue adapter, the work is bounded by the function.** Detached work runs inside the invocation that started it, so the function's maximum duration is the ceiling. Add a queue adapter and it moves to a worker process, where it isn't.
+
+### Which tasks share a workstream
+
+A workstream is one `boardId`, one worker, one topic. A task matching an earlier task on all three lands in the workstream that task is already using and continues its history. Differ in any one and the task gets a workstream of its own.
+
+`filings` and `calls` above match on all three, so they run in one workstream: two runs in the same session, and `listSessionRequests` on that workstream returns both. Change `calls` to `assignee: "verify"` and the two split into a workstream each. Two boards with different `boardId`s split the same way, even on the same topic.
+
+A task with no topic, or a blank one, falls back to its own task id. So a task that doesn't ask for continuity always gets a workstream to itself, and two tasks that both left the topic off never share one by accident. Set a topic when a worker should pick up where it left off on the same body of work: one research thread, one issue, one document. Leave it off when each task starts cold.
+
+Starting a workstream is server-side only. There's no client call for it.
+
+You can exercise all of it from the terminal by running the flow against an `fsdev.config.*`. Whether the command waits for the background work before exiting depends on whether a queue is configured, and running without a config can't start it at all. See [Background work from the CLI](/docs/cli/overview#background-work).
+
+Read next: **[Background work](/docs/server/background-work)** for the HTTP surface, its paging, what `status` does and doesn't tell you, and the access rules the listing endpoint applies; **[Client overview](/docs/client/overview#background-work)** for reading it from an app; and **[Durable execution](/docs/advanced/durable-execution)** for what happens to a run that was interrupted.
 
 ## Nearby, and often confused
 

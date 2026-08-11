@@ -10,6 +10,7 @@
 import {
   fifoDispatcher,
   isClaimable,
+  leaseLapsed,
   priorityDispatcher,
   topologicalDispatcher,
   type Task,
@@ -68,7 +69,8 @@ export function depsSatisfied(
 }
 
 /**
- * Is this row's work running outside the drain that is asking (FIX-982)?
+ * Would this row's work be *routed* to a Workstream rather than run in the
+ * drain that is asking (FIX-982)?
  *
  * A board that declares a worker `dispatch: { mode: "detached" }` hands its
  * claimed rows to a Workstream, which settles them from its own session. The
@@ -78,8 +80,44 @@ export function depsSatisfied(
  * Supplied by the board, which derives it from its own detached declarations,
  * so a board with nothing detached passes nothing and every count below is the
  * `count()` it always was.
+ *
+ * **A routing question, not a liveness one.** It answers *where this row's work
+ * belongs*, which is durable and knowable from declarations. Whether anybody is
+ * actually on the row right now is the lease's answer, and {@link countWaitable}
+ * asks it separately — see the "and only while the lease is live" section there
+ * for why the two cannot be collapsed.
  */
 export type RunsElsewhere = (task: Task) => boolean;
+
+/**
+ * Is this row **handed off** — routed to a Workstream, and still held by one?
+ *
+ * The conjunction is the whole definition and neither half stands alone:
+ * routing says the work belongs elsewhere, the live lease says somebody is
+ * still on it. A row that is detached by routing and abandoned in fact is not
+ * handed off; it is recoverable, and every caller here has to treat it that way.
+ *
+ * Exported because two different questions read it and must not answer it
+ * differently. {@link countWaitable} asks "is this row mine to wait on"; the
+ * board's completion meta asks "did this board finish, or hand its remaining
+ * work over" — and a board that answered those with two spellings would report
+ * a drain it correctly exited as a failure, or a genuinely stuck board as a
+ * clean hand-off. One predicate, one answer (FIX-1074).
+ *
+ * `runsElsewhere` absent means the board declares nothing detached, so nothing
+ * is ever handed off and every caller keeps its pre-detachment behaviour
+ * bit-for-bit.
+ */
+export function isHandedOff(
+  task: Task,
+  now: number,
+  runsElsewhere: RunsElsewhere | undefined
+): boolean {
+  if (runsElsewhere === undefined) return false;
+  return (
+    task.status === "in_progress" && runsElsewhere(task) && !leaseLapsed(task, now)
+  );
+}
 
 /**
  * Count rows in `statuses`, minus the `in_progress` ones `runsElsewhere`
@@ -104,6 +142,44 @@ export type RunsElsewhere = (task: Task) => boolean;
  *   changed, so it keeps holding the drain open. A detached board that parks
  *   for review therefore still blocks its launching request; closing that is a
  *   separate question about who owns a parked row, not this one.
+ *
+ * ## …and only while the lease is live
+ *
+ * `runsElsewhere` says where a row's work *belongs*. It cannot say whether
+ * anyone is on it, because it reads declarations and an assignee — facts that
+ * are just as true of a row nobody is running. A claimant that dies between
+ * `claim()` and the child's first breath leaves exactly that: `in_progress`,
+ * detached assignee, no worker anywhere. So does a child that was accepted and
+ * then died. Both become recoverable when the deadline passes, and excluding
+ * them on routing alone hides them from the drain at the moment they become so.
+ *
+ * **Where that bites is the worker loop's own ordering.** `claimTask` runs
+ * before `checkBoard`, so a drain that *starts* on a lapsed row reclaims it on
+ * its first iteration whatever this says. The reachable case is a worker
+ * already in flight: it parks in `idleWait`, the row's deadline passes, the
+ * wake test fires because `hasClaimableTask` now sees it — and the very next
+ * step is `checkBoard`, which without the conjunct below reports `drained` and
+ * ends the loop before it can circle back to `claimTask`. The board is declared
+ * drained with a claimed row on it that nothing will settle, and the two halves
+ * of the exit question have contradicted each other, which is the drift this
+ * module was collapsed to prevent.
+ *
+ * **No persisted "the hand-off was accepted" mark distinguishes those states**,
+ * which is why this is a lease check and not a new field. Whichever side of the
+ * spawn such a mark were written on, a crash lands in the gap: write it first
+ * and it is present for a hand-off that never happened; write it after and a
+ * crash between acceptance and the write leaves it absent for one that did. A
+ * mark moves the window; it does not close it — and it says nothing at all
+ * about a child that started and then died.
+ *
+ * The lease answers because it is the one fact here that *expires*. It is
+ * renewed from inside the child for as long as the child lives, so a live lease
+ * means a live worker somewhere and a lapsed one means the row is recoverable —
+ * the same reading `hasClaimableTask` and the substrate's own `claim` already
+ * take (FIX-1005).
+ *
+ * **The clock comes from the collection** for the reason `hasClaimableTask`
+ * names: the deadline was stamped against that clock by the claim write.
  */
 function countWaitable(
   collection: TaskCollectionRef,
@@ -112,10 +188,11 @@ function countWaitable(
 ): number {
   if (runsElsewhere === undefined) return collection.count({ status: statuses });
   const rows = collection.list({ status: statuses });
+  const now = collection.now();
   let waiting = 0;
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows[i]!;
-    if (row.status === "in_progress" && runsElsewhere(row)) continue;
+    if (isHandedOff(row, now, runsElsewhere)) continue;
     waiting += 1;
   }
   return waiting;

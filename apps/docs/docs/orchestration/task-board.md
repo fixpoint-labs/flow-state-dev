@@ -96,6 +96,7 @@ The final `task-board-meta` item carries a `terminationReason` field saying whic
 - `"all-completed"` — every task reached `completed` (or the board started empty).
 - `"blocked-by-failures"` — at least one task did not reach `completed`. Could be `errored`, `cancelled`, or `pending` with unresolvable deps.
 - `"retry-budget-exhausted"` — the board refused a retry because `maxTotalRetries` was spent. See [Bounding the retries](#bounding-the-retries).
+- `"handed-off"` — every task still outstanding is running in a Workstream. The board finished its own part and the work continues in the background, so this is a success, not a stall. Only a board with a worker declared `dispatch: { mode: "detached" }` reports it, and `counts.in_progress` is how many are still running.
 
 A delegation board's `runBoard` tool reports a `status` of its own, and the two count different things. `terminationReason` asks whether every task succeeded. `runBoard`'s `status` asks whether any task is still outstanding, so a board whose only problem is one errored task reads `"blocked-by-failures"` here and `"drained"` there. See [Delegation](../skills/delegation.md) for the coordinator's side.
 
@@ -106,7 +107,7 @@ A delegation board's `runBoard` tool reports a `status` of its own, and the two 
   data: {
     collectionId: "echo",
     status: "completed",
-    terminationReason: "all-completed",   // or "blocked-by-failures" | "retry-budget-exhausted"
+    terminationReason: "all-completed",   // or "blocked-by-failures" | "retry-budget-exhausted" | "handed-off"
     maxTotalRetries: 50,
     counts: {
       total: 2,
@@ -123,7 +124,7 @@ A delegation board's `runBoard` tool reports a `status` of its own, and the two 
 }
 ```
 
-The choice between `"all-completed"` and `"blocked-by-failures"` comes from the counts (`completed === total`), so in `"wait"` mode a `shouldExit` that fires while tasks are still running reports `"blocked-by-failures"` even though nothing failed. Read `counts` when you override termination. `"retry-budget-exhausted"` is not a count comparison: it appears only when a retry was actually refused.
+The choice between `"all-completed"` and `"blocked-by-failures"` comes from the counts (`completed === total`), so in `"wait"` mode a `shouldExit` that fires while tasks are still running reports `"blocked-by-failures"` even though nothing failed. Read `counts` when you override termination. The other two are not count comparisons: `"retry-budget-exhausted"` appears only when a retry was actually refused, and `"handed-off"` only when every outstanding task is one a Workstream is holding.
 
 ### `"complete"`
 
@@ -230,6 +231,8 @@ A delegation board catches a bad assignee earlier than that. Its roster is the s
 - `maxAttempts` (per task) — set on a task's `TaskInit`, not on the board. While `attempts < maxAttempts`, a failed task is re-dispatched instead of left errored.
 - `maxTotalRetries` (default `50`) — how many failure retries the board may authorize in total, across every task. See [Bounding the retries](#bounding-the-retries).
 - `maxIterations` — safety cap on how many times a single worker loops back to claim again, not a cap across the board. Default `10000`.
+
+`onError` reaches a detached worker too, where there is no board run left to fail. `"fail"` fails the Workstream that worker is running in, so it reports `failed`. `"skip"` leaves it reporting `completed`, with the error on the task as usual. See [What `status` tells you](../server/background-work#what-status-tells-you).
 
 A worker's result is not always the last word on its task. A coordinator can cancel the task while the worker runs. The worker can mark the task done itself partway through. The claim can expire and another worker can pick the task up. In each case the worker comes back with a result for a task that has already moved on.
 

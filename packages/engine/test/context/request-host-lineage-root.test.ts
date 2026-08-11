@@ -1,15 +1,12 @@
 /**
- * FIX-1068: `startDetached` stamps the lineage root on the child it creates.
+ * FIX-1068: a detached spawn passes the lineage id on, unchanged.
  *
- * The root is the address a `sharedToWorkstream` resource resolves to, so it has
- * to be the SAME value for every session in a chain. Stamping it at creation —
- * the parent's root, or the parent itself when the parent has none — is what
- * makes a resource read O(1) instead of a walk up `parentSessionId`, and it is
- * safe because a child never changes parents.
- *
- * The depth-2 case is the one worth pinning: a workstream spawned from inside a
- * workstream must inherit the ROOT, not name its immediate parent, or a
- * three-deep lineage ends up holding two copies of a resource it declared once.
+ * The address a shared resource stores under is a value the root minted, not
+ * something each session works out for itself. So the only thing a spawn has to
+ * do is copy it — there is no root to locate, no parent chain to walk, and
+ * nothing for two sessions to disagree about. Depth is the case that shows it:
+ * a workstream spawned from inside a workstream carries the same id as the
+ * conversation at the top, because it was handed the same value twice.
  */
 import { describe, expect, it } from "vitest";
 import type { FlowInstance } from "@flow-state-dev/core";
@@ -23,15 +20,8 @@ const FLOW = {
   workstream: { block: { name: "core" } }
 } as unknown as FlowInstance;
 
-/**
- * Spawn a child from `sessionId`, whose own lineage root is `root` (omit for a
- * session that IS the root), and hand back the record that was written.
- */
-async function spawnChild(
-  stores: StoreRegistry,
-  sessionId: string,
-  root: string | undefined
-) {
+/** Spawn a child from `sessionId`, which belongs to lineage `lineageId`. */
+async function spawnChild(stores: StoreRegistry, sessionId: string, lineageId: string) {
   const { host } = createRequestHost({
     stores,
     flow: FLOW,
@@ -40,7 +30,7 @@ async function spawnChild(
       tenantId: undefined,
       orgId: undefined,
       sessionId,
-      lineageRootSessionId: root
+      lineageId
     },
     startOperation: async () => ({ requestId: "req_child" }),
     liveness: {}
@@ -53,24 +43,35 @@ async function spawnChild(
   return record;
 }
 
-describe("FIX-1068: lineage root stamped at detached spawn", () => {
-  it("names the spawning session as the root when that session has none", async () => {
+describe("FIX-1068: the lineage id is inherited at detached spawn", () => {
+  it("copies the spawning session's lineage onto the child", async () => {
     const stores = createInMemoryStores();
-    const child = await spawnChild(stores, "s_root", undefined);
+    const child = await spawnChild(stores, "s_root", "lin_alpha");
 
     expect(child.parentSessionId).toBe("s_root");
-    expect(child.lineageRootSessionId).toBe("s_root");
+    expect(child.lineageId).toBe("lin_alpha");
   });
 
-  it("inherits the root rather than naming the immediate parent, at depth 2", async () => {
+  it("carries the same lineage at depth 2, with no root to re-derive", async () => {
     const stores = createInMemoryStores();
-    const child = await spawnChild(stores, "s_root", undefined);
+    const child = await spawnChild(stores, "s_root", "lin_alpha");
 
-    // The child now spawns its own workstream, carrying the root it was stamped
-    // with. The grandchild's parent is the child; its root is still s_root.
-    const grandchild = await spawnChild(stores, child.id, child.lineageRootSessionId);
+    // The child now spawns its own workstream, passing on what it holds.
+    const grandchild = await spawnChild(stores, child.id, child.lineageId!);
 
     expect(grandchild.parentSessionId).toBe(child.id);
-    expect(grandchild.lineageRootSessionId).toBe("s_root");
+    expect(grandchild.lineageId).toBe("lin_alpha");
+  });
+
+  it("gives a different lineage a different child address", async () => {
+    // Two conversations, two minted ids, two lineages — nothing about the
+    // session ids or the owner participates, so a reused session id cannot
+    // bring two lineages together.
+    const stores = createInMemoryStores();
+    const a = await spawnChild(stores, "s_shared_id", "lin_alpha");
+    const b = await spawnChild(stores, "s_shared_id", "lin_beta");
+
+    expect(a.lineageId).toBe("lin_alpha");
+    expect(b.lineageId).toBe("lin_beta");
   });
 });

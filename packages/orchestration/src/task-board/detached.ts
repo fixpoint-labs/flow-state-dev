@@ -12,16 +12,16 @@
  *    set that asked to be detached;
  * 3. `assertDetachedBoardSupported`, the construction-time refusals.
  *
- * **No execution lives here.** Nothing in P1 dispatches anything out of the
- * request — a worker declared `detached` is validated and then still runs
- * inline, because the spawn arrives in P3a. That is deliberate: the refusals
- * have to exist before the mechanism does, or the first detached board is
- * built against a backing that cannot settle it.
+ * **No execution lives here.** The spawn is `blocks/spawn-detached.ts` and the
+ * child's entry point is `detached-runner.ts`; this module only decides what a
+ * declaration *means* and refuses the ones that cannot work. The refusals
+ * landed before the mechanism did, deliberately — otherwise the first detached
+ * board is built against a backing that cannot settle it.
  *
  * ## Where the refusals live, and why two of them are not here
  *
  * The spec (§6 decision 11, §8 P1) asks for six construction-time refusals.
- * Three of them are decidable from what `taskBoard()` is handed and are
+ * Four of them are decidable from what `taskBoard()` is handed and are
  * enforced below. Two are not, and the enforcement point had to move to where
  * the fact first exists:
  *
@@ -39,7 +39,12 @@
  * cannot see is how a guard becomes a silent no-op, which is the failure class
  * this whole issue exists to remove.
  */
-import type { Task, TaskWorker, TaskWorkerRegistry } from "../tasks";
+import type {
+  DefinedTaskCollection,
+  Task,
+  TaskWorker,
+  TaskWorkerRegistry,
+} from "../tasks";
 import { coordinateLabel, type WorkerCoordinate } from "./coordinate";
 import type { TaskBoardBacking } from "./index";
 
@@ -273,6 +278,47 @@ function authoredSessionStateSchema(worker: TaskWorker): unknown {
 }
 
 /**
+ * The first block at or under `worker` that authors a session-state schema.
+ *
+ * Composed children are the reachable half of this refusal. A detached worker is
+ * routinely a sequencer or a router, and the block that declares the schema is
+ * usually a step inside it — which runs in the Workstream's session exactly as
+ * the root does, and collides with a sibling route's key exactly as the root
+ * would. Inspecting only the root accepted the board and left the declaration to
+ * surface as a missing typed key inside the child.
+ *
+ * **Composition is walkable; capabilities are not.** A capability that
+ * contributes `sessionStateSchema` — at its top level or through a preset —
+ * never writes it onto the consuming block's `config`, so no walk of this shape
+ * can see it. That is the same separate-channel problem `tools` has, and closing
+ * it is a different piece of work: a preset's contribution is conditional on
+ * runtime opt-out, so a definition-time walk of `__presetDefs` would refuse
+ * boards whose preset never activates.
+ *
+ * Visited-set rather than a depth bound, for the reason the flow's own binding
+ * walk uses one: blocks are shared and a router route may point back up.
+ */
+function nestedSessionStateSchema(
+  worker: TaskWorker
+): { block: { name: string }; schema: unknown } | undefined {
+  const seen = new Set<unknown>();
+  const queue: unknown[] = [worker];
+  while (queue.length > 0) {
+    const block = queue.pop();
+    if (block == null || seen.has(block)) continue;
+    seen.add(block);
+    const schema = authoredSessionStateSchema(block as TaskWorker);
+    if (schema !== undefined) {
+      return { block: block as { name: string }, schema };
+    }
+    for (const child of (block as { childBlocks?: unknown[] }).childBlocks ?? []) {
+      queue.push(child);
+    }
+  }
+  return undefined;
+}
+
+/**
  * Construction-time refusals for a board with at least one detached worker.
  *
  * Every refusal is **by name and loud** — never a warning, never a degrade.
@@ -286,9 +332,17 @@ export function assertDetachedBoardSupported(options: {
   name: string;
   boardId: string | undefined;
   backing: TaskBoardBacking;
+  /**
+   * The durable collection's own declaration, when the backing has one.
+   *
+   * The declaration rather than a field off it, so the predicate below can be
+   * relaxed by reading one more thing about the collection instead of by
+   * changing this signature and every caller.
+   */
+  collection?: DefinedTaskCollection;
   detached: readonly ResolvedWorkerSlot[];
 }): void {
-  const { name, boardId, backing, detached } = options;
+  const { name, boardId, backing, collection, detached } = options;
   if (detached.length === 0) return;
 
   const declared = detached.map((slot) => slot.label).join(", ");
@@ -319,6 +373,40 @@ export function assertDetachedBoardSupported(options: {
     );
   }
 
+  // A Workstream runs in its OWN session, and a session-scoped collection
+  // resolves against the running session — so the child would address an empty
+  // ledger rather than the one that claimed the row. Nothing about that failure
+  // announces itself: the start gate reads the missing row as a stale claim and
+  // returns, the row stays `in_progress`, the next drain reclaims and
+  // redispatches it, and the board loops until the abandonment cap finally
+  // errors it out. A board that never dispatches is easier to fix than a board
+  // that dispatches forever (FIX-1074).
+  //
+  // **One condition, deliberately.** A session-scoped collection becomes
+  // REACHABLE FROM ITS WORKSTREAM the moment it resolves to the lineage root
+  // rather than to the running session, because parent and child then address
+  // the same rows. `sharedToWorkstream` is the declaration that says exactly
+  // that, so the refusal is "session-scoped AND not resolving to the lineage
+  // root" — the flag is not an override of this rule, it is the thing the rule
+  // was always asking about.
+  //
+  // Reachable is all it becomes, and the word is chosen against the obvious
+  // looser one: it says the child can FIND the row, not that the claim on it is
+  // still live. The hand-off lease bound this module's runner documents
+  // (FIX-1070 — nothing renews a detached row's lease between hand-off and the
+  // child's first breath) applies to a lineage-rooted board exactly as it does
+  // to a user- or org-scoped one. It is also the runner's own wording, so this
+  // build-time refusal and the runtime stale-claim error name the same thing.
+  if (collection?.scope === "session" && collection.sharedToWorkstream !== true) {
+    throw new Error(
+      `[task-board] "${name}" declares detached workers (${declared}) on a session-scoped ` +
+        `collection — a Workstream runs in its own session, so it would resolve an empty ledger ` +
+        `and never find the row it was dispatched for. Add \`sharedToWorkstream: true\` so the ` +
+        `ledger resolves to the lineage root and the child addresses the same rows the board ` +
+        `claimed, or declare the collection \`scope: "user"\` or \`scope: "org"\`.`
+    );
+  }
+
   // Every detached worker in a flow becomes a route on ONE shared
   // WorkstreamFlow, so two routes declaring the same session-state key with
   // different shapes would corrupt each other silently — `createScopeStateOps`
@@ -326,9 +414,14 @@ export function assertDetachedBoardSupported(options: {
   // and at write time. One construction-time refusal is the whole fix for now;
   // key-shape compatibility validation is a follow-up nothing yet needs.
   for (const slot of detached) {
-    if (authoredSessionStateSchema(slot.worker) !== undefined) {
+    const authored = nestedSessionStateSchema(slot.worker);
+    if (authored !== undefined) {
+      const where =
+        authored.block.name === slot.worker.name
+          ? `("${slot.worker.name}")`
+          : `("${slot.worker.name}", via composed block "${authored.block.name}")`;
       throw new Error(
-        `[task-board] "${name}" detached worker ${slot.label} ("${slot.worker.name}") declares ` +
+        `[task-board] "${name}" detached worker ${slot.label} ${where} declares ` +
           `sessionStateSchema — detached workers share one Workstream flow, where two routes ` +
           `choosing the same key with different shapes corrupt each other with no error. ` +
           `Keep the worker's state on the task instead.`

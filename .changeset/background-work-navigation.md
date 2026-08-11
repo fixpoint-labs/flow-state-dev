@@ -12,9 +12,7 @@ job queue" without pointing anywhere.
 
 New guide `guides/background-work.md` ("Work that outlives the turn") is the
 map: what each mechanism outlives, when you'd reach for it, and which reference
-page owns it. It states flatly that no shipped path starts a workstream today —
-`ctx.requestHost.startDetached` refuses `no-start-operation` on the stock router
-— rather than implying the read surface has something to read.
+page owns it.
 
 Routing added on the pages that needed it: `orchestration/overview`,
 `advanced/sequencer-side-chains`, `server/background-work`, `client/overview`,

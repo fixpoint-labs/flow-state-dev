@@ -5,10 +5,11 @@
  * it has to be a JSON value. The obvious check is not one:
  * `JSON.parse(JSON.stringify(v))` throws on exactly two things — `BigInt` and a
  * cycle — and silently *mangles* the rest. A `Date` becomes a string, a `Map`,
- * `Set` or class instance becomes `{}`, a function or `undefined` in object
- * position disappears, and a `symbol` disappears with it. Each of those reaches
- * the worker as a value that is the wrong shape but not obviously wrong, which
- * is the failure this validation exists to make loud.
+ * `Set` or class instance becomes `{}`, a null-prototype object comes back an
+ * ordinary one, a function or `undefined` in object position disappears, and a
+ * `symbol` disappears with it. Each of those reaches the worker as a value that
+ * is the wrong shape but not obviously wrong, which is the failure this
+ * validation exists to make loud.
  *
  * So this walks the value and rejects anything that is not a plain JSON shape,
  * naming the path where it found it — the path is the whole point, since the
@@ -20,15 +21,19 @@
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
 /**
- * A plain object — one whose prototype is `Object.prototype` or `null`.
+ * A plain object — one whose prototype is `Object.prototype`, and nothing else.
  *
  * Class instances are rejected on this test rather than on their contents: an
  * instance serializes to a bare property bag, so its methods and its identity
  * are gone on the other side while its data survives, which reads as success.
+ *
+ * **A null prototype is not plain either**, and admitting it was the same defect
+ * facing the other way — the data survived and the prototype did not. It is
+ * refused above with a message of its own, because "not a plain object" would
+ * describe it accurately and tell its author nothing.
  */
 function isPlainObject(value: object): boolean {
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
+  return Object.getPrototypeOf(value) === Object.prototype;
 }
 
 /** Human-readable path into the value, for the refusal message. */
@@ -119,6 +124,96 @@ export function assertJsonSafe(
       );
     }
 
+    // The other two ways a property escapes the walk below, which reads
+    // `Object.entries` — own, enumerable, string-keyed, and read once:
+    //
+    // - a NON-ENUMERABLE property (`Object.defineProperty(o, "token", { value:
+    //   "x" })`) is skipped by `Object.entries` AND by `JSON.stringify`. It is
+    //   the symbol-key case in a different spelling: dropped entirely, with
+    //   nothing on either side saying a property was there.
+    // - an ACCESSOR is read here and read AGAIN by `JSON.stringify`, and
+    //   nothing makes the two reads agree. A getter that counts, or that
+    //   returns a `Date` on its second call, ships a payload this gate never
+    //   saw — so what was validated is not what crosses.
+    //
+    // Two more are checked here that are not about a property escaping the walk
+    // at all, but about its ATTRIBUTES not surviving. `JSON.parse` rebuilds
+    // every property as an ordinary one, so a NON-WRITABLE or NON-CONFIGURABLE
+    // property arrives writable and configurable: the value crosses, the
+    // guarantee does not, and a payload that could not be modified before it was
+    // sent can be after. That is the same silent change as the branches above,
+    // one level down from the value — and no exception is made on the argument
+    // that a guarantee matters less than a value, because a gate that admits one
+    // exception invites the next.
+    //
+    // Checked on every object for the reason the symbol check is, arrays
+    // included: an array's own non-index property is dropped whether or not it
+    // is enumerable, and the extras check below sees only the enumerable ones.
+    // An array's indices are properties too, so `Object.freeze([1, 2])` is
+    // caught here rather than sliding past on `Array.isArray`. An array's
+    // `length` is non-enumerable and non-configurable by specification rather
+    // than by anyone's declaration, which is the one exemption.
+    const descriptors = Object.getOwnPropertyDescriptors(obj);
+    for (const key of Object.keys(descriptors)) {
+      if (key === "length" && Array.isArray(node)) continue;
+      const descriptor = descriptors[key]!;
+      if (descriptor.get !== undefined || descriptor.set !== undefined) {
+        throw new Error(
+          `${options.label} is not JSON-safe: ${joinPath(path)}.${key} is an accessor property. ` +
+            `Serialization reads it a second time, so the value that crosses need not be the one ` +
+            `checked here. Assign a plain value instead.`
+        );
+      }
+      if (!descriptor.enumerable) {
+        throw new Error(
+          `${options.label} is not JSON-safe: ${joinPath(path)}.${key} is a non-enumerable ` +
+            `property, which is dropped entirely. Make it enumerable, or omit it.`
+        );
+      }
+      if (descriptor.writable === false) {
+        throw new Error(
+          `${options.label} is not JSON-safe: ${joinPath(path)}.${key} is a non-writable ` +
+            `property, and arrives writable. The value crosses and the guarantee does not, with ` +
+            `nothing on either side saying so. Send it as an ordinary property, and re-freeze on ` +
+            `the far side if the worker needs it read-only.`
+        );
+      }
+      if (!descriptor.configurable) {
+        throw new Error(
+          `${options.label} is not JSON-safe: ${joinPath(path)}.${key} is a non-configurable ` +
+            `property, and arrives configurable — redefinable and deletable where the one that ` +
+            `was sent was neither. Send it as an ordinary property.`
+        );
+      }
+    }
+
+    // A null prototype survives nothing. `JSON.stringify` writes the data and
+    // `JSON.parse` rebuilds an ORDINARY object, so what arrives has
+    // `Object.prototype`: `hasOwnProperty` goes from `undefined` to a function,
+    // `toString` appears, and a lookup that could never reach an inherited key
+    // now can. That is the class-instance case in reverse — the data crosses and
+    // the identity does not — and `Object.create(null)` is a real idiom for a
+    // dictionary, so this is reachable rather than exotic.
+    //
+    // REFUSED rather than normalized, deliberately. This gate's whole contract
+    // is to refuse what the round-trip would silently change; normalizing here
+    // would make the gate perform one of those changes itself, and it would have
+    // to do it by mutating the caller's payload — `assertJsonSafe` asserts, it
+    // does not transform, and every other branch here refuses rather than
+    // repairs. The author's fix is one spread, which is what makes refusing
+    // cheap.
+    //
+    // Ahead of the array branch so a null-prototype array is caught too, rather
+    // than slipping through on `Array.isArray`.
+    if (Object.getPrototypeOf(obj) === null) {
+      throw new Error(
+        `${options.label} is not JSON-safe: ${joinPath(path)} has a null prototype, and arrives ` +
+          `with Object.prototype instead — so \`hasOwnProperty\`, \`toString\` and every other ` +
+          `inherited member differ on the other side. Spread it into a plain object ` +
+          `({ ...value }) before sending.`
+      );
+    }
+
     if (onPath.has(obj)) {
       throw new Error(
         `${options.label} is not JSON-safe: ${joinPath(path)} contains itself, so it cannot be ` +
@@ -144,9 +239,12 @@ export function assertJsonSafe(
         walk(node[index]);
         path.pop();
       }
-      // An array's own string-keyed properties beyond its indices are dropped
-      // the same way a symbol key is: `const a = [1]; a.total = 1` serializes to
-      // `[1]`, and the index loop above would never look at `total`.
+      // An array's own ENUMERABLE string-keyed properties beyond its indices
+      // are dropped the same way a symbol key is: `const a = [1]; a.total = 1`
+      // serializes to `[1]`, and the index loop above would never look at
+      // `total`. A non-enumerable one is dropped too and was already refused by
+      // the descriptor pass, which is why this reads `Object.keys` and needs
+      // no widening.
       const extras = Object.keys(node).filter(
         (key) => !/^(?:0|[1-9]\d*)$/.test(key) || Number(key) >= node.length
       );

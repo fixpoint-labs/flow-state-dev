@@ -64,11 +64,13 @@ fsdev block ./src/flows/hello-chat/blocks/counter.ts -i '{}'
 Swap models without changing code:
 
 ```bash
-fsdev run hello-chat chat -i '{"message": "Hi"}' -m gpt-4o
-fsdev block ./src/blocks/summarizer.ts -i '{"text": "..."}' -m claude-sonnet-4
+fsdev run hello-chat chat -i '{"message": "Hi"}' -m openai/gpt-5.4-mini
+fsdev block ./src/blocks/summarizer.ts -i '{"text": "..."}' -m anthropic/claude-haiku-4-5
 ```
 
-Useful for comparing model behavior or testing with a cheaper model during development.
+Handy for forcing a cheaper model during development, and for comparing how two models behave on the same input.
+
+The override reaches every generator that runs in the command's own process, and stops at a queue: background work dispatched to one runs elsewhere, under that process's model configuration. So a comparison covers the part of the flow that ran here, not the part that ran on a worker. The command names each dispatch that loses the override on stderr. See [Model overrides](/docs/cli/overview#model-overrides).
 
 ### Seeding state
 

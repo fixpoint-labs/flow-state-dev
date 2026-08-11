@@ -20,7 +20,7 @@
  *   failure rather than a passing test about the wrong thing.
  */
 import { describe, expect, it } from "vitest";
-import { handler } from "@flow-state-dev/core";
+import { handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   defineTaskCollection,
@@ -244,5 +244,140 @@ describe("detached dispatch — the uniform and floor coordinates", () => {
     });
 
     expect(board.detachedWorkers.map((slot) => slot.label)).toEqual(["floor"]);
+  });
+});
+
+describe("detached dispatch — a session-scoped ledger is refused at construction", () => {
+  /**
+   * A Workstream runs in its own session, and a session-scoped collection
+   * resolves against the running session — so the child addresses an empty
+   * ledger and never finds the row it was dispatched for.
+   *
+   * Nothing about that announces itself at runtime. The start gate reads the
+   * missing row as a stale claim and returns cleanly, the row stays
+   * `in_progress`, the next drain reclaims and redispatches it, and the board
+   * loops — burning dispatches, making no progress, and terminating only when
+   * the abandonment cap finally errors the row out. A refusal at construction is
+   * the only version of this a person can diagnose from the symptom, which is
+   * why it is asserted here and not against a running board.
+   */
+  const sessionScoped = defineTaskCollection({ id: "session-tasks", scope: "session" });
+
+  it("refuses, naming the board and pointing at the scopes that work", () => {
+    expect(() =>
+      taskBoard({
+        name: "session-detached",
+        boardId: "session-detached",
+        collection: sessionScoped,
+        workers: {
+          implement: { worker: worker("impl-session"), dispatch: { mode: "detached" } },
+        },
+      })
+    ).toThrow(/session-scoped collection/);
+  });
+
+  it("names the declared worker, so the message points at what would not run", () => {
+    expect(() =>
+      taskBoard({
+        name: "session-detached-named",
+        boardId: "session-detached-named",
+        collection: sessionScoped,
+        workers: {
+          implement: { worker: worker("impl-session-2"), dispatch: { mode: "detached" } },
+        },
+      })
+    ).toThrow(/assignee:implement/);
+  });
+
+  it("leaves a session-scoped board with nothing detached alone", () => {
+    // The refusal is about the hand-off, not about the scope. An inline board
+    // never leaves its request, so a session-scoped ledger is exactly right for
+    // it — and refusing one would outlaw a shape that works today.
+    expect(() =>
+      taskBoard({
+        name: "session-inline",
+        collection: defineTaskCollection({ id: "session-inline-tasks", scope: "session" }),
+        workers: { implement: worker("impl-session-inline") },
+      })
+    ).not.toThrow();
+  });
+
+  it("accepts a detached board on a user-scoped ledger", () => {
+    // The control: same declaration, reachable scope. Without this the refusal
+    // above would pass just as well against a guard that refused every detached
+    // board.
+    expect(() =>
+      taskBoard({
+        name: "user-detached",
+        boardId: "user-detached",
+        collection: defineTaskCollection({ id: "user-tasks", scope: "user" }),
+        workers: {
+          implement: { worker: worker("impl-user"), dispatch: { mode: "detached" } },
+        },
+      })
+    ).not.toThrow();
+  });
+});
+
+describe("the session-schema refusal sees composed children", () => {
+  it("refuses a schema declared by a step inside the worker", () => {
+    // A detached worker is routinely a sequencer, and the block declaring the
+    // schema is usually a step inside it. It runs in the Workstream's session
+    // exactly as the root would, and collides with a sibling route's key
+    // exactly as the root would — so inspecting only the root accepted the
+    // board and left the declaration to surface as a missing typed key inside
+    // the child.
+    const nested = sequencer({ name: "outer" }).tap(
+      handler({
+        name: "inner-with-state",
+        sessionStateSchema: z.object({ needed: z.string() }),
+        execute: () => null,
+      })
+    );
+
+    expect(() =>
+      taskBoard({
+        name: "nested-session-state",
+        boardId: "nested-session-state",
+        collection: durable,
+        workers: { implement: { worker: nested as never, dispatch: { mode: "detached" } } },
+      })
+    ).toThrow(/sessionStateSchema/);
+  });
+
+  it("names the composed block, not just the worker", () => {
+    const nested = sequencer({ name: "outer-2" }).tap(
+      handler({
+        name: "inner-named",
+        sessionStateSchema: z.object({ needed: z.string() }),
+        execute: () => null,
+      })
+    );
+
+    expect(() =>
+      taskBoard({
+        name: "nested-session-named",
+        boardId: "nested-session-named",
+        collection: durable,
+        workers: { implement: { worker: nested as never, dispatch: { mode: "detached" } } },
+      })
+    ).toThrow(/inner-named/);
+  });
+
+  it("leaves a composed worker that declares none alone", () => {
+    // The control. A walk that flagged any sequencer would refuse most detached
+    // boards in the codebase.
+    const plain = sequencer({ name: "outer-plain" }).tap(
+      handler({ name: "inner-plain", execute: () => null })
+    );
+
+    expect(() =>
+      taskBoard({
+        name: "nested-session-clean",
+        boardId: "nested-session-clean",
+        collection: durable,
+        workers: { implement: { worker: plain as never, dispatch: { mode: "detached" } } },
+      })
+    ).not.toThrow();
   });
 });

@@ -41,7 +41,9 @@ import { buildReportSummary } from "./aggregate";
 import { DecisionHeader } from "./decision-header";
 import { ConvictionStrip } from "./conviction-strip";
 import { AnalystTldrGrid } from "./analyst-tldr-grid";
+import { ResearchSynthesisBlock } from "./research-synthesis-block";
 import { RiskPanel } from "./risk-panel";
+import { InvalidationList } from "./invalidation-list";
 import { ChartEmpty } from "./chart-empty";
 import { BarGroup } from "./charts/bar-group";
 import { ScenarioStrip } from "./charts/scenario-strip";
@@ -141,6 +143,11 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
 
       <ConvictionStrip nodes={summary.conviction} />
 
+      {/* The research manager's synthesis in words — its stance, its conviction,
+          and where the analysts still disagree. It sits directly under the strip
+          because it is what the strip's spread means (FIX-1060). */}
+      <ResearchSynthesisBlock synthesis={summary.researchSynthesis} />
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
           <SectionLabel>Factor scores</SectionLabel>
@@ -175,6 +182,7 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
 
       <RiskPanel
         criticalRisks={summary.criticalRisks}
+        verdict={summary.riskVerdict}
         keyDependencies={summary.keyDependencies}
       />
 
@@ -299,6 +307,12 @@ function PricePanel({
   );
 }
 
+/**
+ * The levels panel shown when the price chart can't draw. It carries the
+ * trader's invalidation criteria alongside the numbers: this block is the only
+ * "Price & levels" content on such a run, and levels without what invalidates
+ * them is half the trade (FIX-1060).
+ */
 function TradeLevelsList({
   trade,
 }: {
@@ -313,26 +327,36 @@ function TradeLevelsList({
     rows.push({ label: "stop", value: String(trade.stopPrice) });
   if (trade?.targetPrice != null)
     rows.push({ label: "target", value: String(trade.targetPrice) });
-  if (rows.length === 0) return null;
+
+  const invalidation = trade?.invalidationCriteria ?? null;
+  const hasInvalidation = invalidation !== null && invalidation.length > 0;
+  if (rows.length === 0 && !hasInvalidation) return null;
 
   return (
-    <dl
+    <div
       className={cn(
-        "grid grid-cols-2 gap-2 rounded-md border p-3 sm:grid-cols-3",
+        "flex flex-col gap-3 rounded-md border p-3",
         "border-[color:var(--c-border)] bg-[color:var(--c-surface)]",
       )}
-      aria-label="Trade levels"
     >
-      {rows.map((r) => (
-        <div key={r.label} className="flex flex-col gap-0.5">
-          <dt className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
-            {r.label}
-          </dt>
-          <dd className="font-mono text-[12px] text-[color:var(--c-fg)]">
-            {r.value}
-          </dd>
-        </div>
-      ))}
-    </dl>
+      {rows.length > 0 ? (
+        <dl
+          className="grid grid-cols-2 gap-2 sm:grid-cols-3"
+          aria-label="Trade levels"
+        >
+          {rows.map((r) => (
+            <div key={r.label} className="flex flex-col gap-0.5">
+              <dt className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
+                {r.label}
+              </dt>
+              <dd className="font-mono text-[12px] text-[color:var(--c-fg)]">
+                {r.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+      <InvalidationList criteria={invalidation} />
+    </div>
   );
 }

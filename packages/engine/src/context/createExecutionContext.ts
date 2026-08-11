@@ -60,6 +60,7 @@ import type { ModelResolver, ReplayLog } from "@flow-state-dev/core";
 import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { createRequestWorkPool } from "../execution/request-work-pool";
 import { createRequestHost } from "./create-request-host";
+import { ensureSessionRecord } from "./ensure-session-record";
 import { resolveActionCore } from "../execution/resolve-action-core";
 import { isTraceObservabilityEnabled, errorDetailsWithCause } from "@flow-state-dev/core";
 import type { TracingLevel } from "@flow-state-dev/core";
@@ -85,6 +86,8 @@ import {
   tenantMatches
 } from "../stores/scope-keys";
 import { resourceStorageKeys } from "../resources/storage-keys";
+import { resolveOwnershipFlag } from "../resources/lineage-scope";
+import type { StorageScopeType } from "../stores/types";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
 import { createInitialRequestRecord } from "./initial-request-record";
 import {
@@ -592,9 +595,12 @@ export async function createExecutionContext<
     await stores.user.set(userRecord.id, userRecord, "any");
   }
 
-  let sessionRecord = loadedSession;
-  if (sessionRecord === undefined) {
-    sessionRecord = {
+  // Created through the one path that mints the lineage id and writes
+  // create-if-absent (FIX-1068), so this request cannot overwrite a concurrent
+  // first action and cannot invent a second address for the same session.
+  let sessionRecord =
+    loadedSession ??
+    ((await ensureSessionRecord(stores, sessionKey, () => ({
       id: sessionKey,
       flowKind: flow.kind,
       userId,
@@ -606,11 +612,18 @@ export async function createExecutionContext<
       createdAt: now,
       updatedAt: now,
       journal: []
-    };
-    await stores.session.set(sessionRecord.id, sessionRecord, "any");
-  } else {
-    ensureJournalDefaults(sessionRecord);
+    }))) as typeof loadedSession & object);
 
+  ensureJournalDefaults(sessionRecord);
+
+  // The binding checks run HERE, on one path, rather than inside the
+  // already-existed branch. A request that loses the create race adopts the
+  // WINNER's record — which it did not build and whose identity it has not
+  // checked — so a branch-local check would let a losing request run against
+  // another principal's or another tenant's session. Running them
+  // unconditionally costs a comparison on the branch that built the record
+  // itself, where they pass by construction, and that is the cheaper mistake.
+  {
     // userId mismatch — closes a long-standing gap. The loaded session record's
     // userId is authoritative; a request claiming a different identity would
     // route this user's actions against another user's data.
@@ -652,14 +665,18 @@ export async function createExecutionContext<
   // record without it IS the root — true of every top-level session and of every
   // record persisted before the field existed, so `== null` reads both the
   // absent and the store-nulled form (BP-030).
-  const lineageRootSessionId = sessionRecord.lineageRootSessionId ?? undefined;
-  // Storage form of the same address. `sessionKey` when this session is the
-  // root, so an unshared resource and a shared one agree there and a lineage
-  // that never spawned a child stores exactly where it always did.
-  const lineageRootSessionKey =
-    lineageRootSessionId === undefined
-      ? sessionKey
-      : resolveSessionStorageKey(lineageRootSessionId, options.tenantId);
+  // The lineage this session addresses its shared resources through (FIX-1068).
+  //
+  // Read back, not reconstructed. A record without the field predates it and is
+  // its own lineage, keyed by its session storage key — safe because a recreated
+  // session always gets a record that carries the field, so two records can
+  // never both land on one fallback id (BP-030).
+  // Prefixed, so the fallback can never EQUAL the session key. The storage
+  // scope is decided by comparing a resolved address against this value, and if
+  // an unstamped session's lineage id were its session key the two would be
+  // indistinguishable — routing unshared resources into the lineage namespace
+  // along with the shared ones.
+  const lineageId = sessionRecord.lineageId ?? `lin_${sessionKey}`;
 
   const resolvedOrgKey =
     resolvedOrgId !== undefined
@@ -725,10 +742,11 @@ export async function createExecutionContext<
             tenantId: options.tenantId,
             orgId: resolvedOrgId,
             sessionId,
-            lineageRootSessionId
+            lineageId
           },
           startOperation: options.requestHost.startOperation,
           parentTask: options.requestHost.parentTask,
+          effectiveRuntimeConfig: options.effectiveRuntimeConfig,
           liveness: {
             heartbeatIntervalMs: flow.request?.heartbeatIntervalMs,
             staleThresholdMs: options.requestHost.staleThresholdMs,
@@ -984,7 +1002,7 @@ export async function createExecutionContext<
     // the lineage root, so a parent and its Workstreams resolve one resource.
     // Everything else stays on the running session, unchanged.
     if (scope === "session") {
-      return sharedToWorkstreamFlagOf(config) ? lineageRootSessionKey : sessionKey;
+      return sharedToWorkstreamFlagOf(config) ? lineageId : sessionKey;
     }
     const identityId = scopeIdentityId(scope);
     if (identityId === undefined) return undefined;
@@ -1003,21 +1021,28 @@ export async function createExecutionContext<
   // *longest* declared prefix that owns them, so nested prefixes (e.g. `a/` and
   // `a/b/`) route to the right collection rather than the first one declared;
   // an undeclared key falls back to the flow-flag bucket.
-  const resolveBucketFlag = (scope: ContentScopeType, storageKey: string): boolean | undefined => {
-    const buckets = scopeBuckets[scope];
-    const single = buckets.singles.get(storageKey);
-    if (single !== undefined) return single;
-    let flag: boolean | undefined;
-    let bestLen = -1;
-    for (const p of buckets.prefixes) {
-      const matches = p.prefix === "" || storageKey.startsWith(p.prefix);
-      if (matches && p.prefix.length > bestLen) {
-        bestLen = p.prefix.length;
-        flag = p.flag;
-      }
-    }
-    return flag;
-  };
+  // Ownership precedence lives in `resources/lineage-scope.ts` so the HTTP
+  // whole-scope reads resolve a key's owner with the same rule this does. Two
+  // implementations of "longest prefix wins" is how the two sides drift into
+  // disagreeing about which session a key belongs to.
+  const resolveBucketFlag = (scope: ContentScopeType, storageKey: string): boolean | undefined =>
+    resolveOwnershipFlag(scopeBuckets[scope], storageKey);
+
+  /**
+   * The scope kind a resolved address STORES under (FIX-1068).
+   *
+   * The lineage bucket is not a session bucket: session scope ids are
+   * caller-chosen, so a lineage address sharing that space is one a caller can
+   * occupy by picking the right session id. Giving it its own scope kind makes
+   * that collision unexpressible rather than merely unlikely — the two live in
+   * different key spaces, and no reservation has to hold at every entry point
+   * forever to keep them apart.
+   *
+   * Exactly the addresses `lineageId` names, which is the one
+   * address a session-scoped shared resource resolves to.
+   */
+  const storageScopeOf = (scope: ContentScopeType, scopeId: string): StorageScopeType =>
+    scope === "session" && scopeId === lineageId ? "lineage" : scope;
   const resolveResourceStorageScopeId = (
     scope: ContentScopeType,
     storageKey: string
@@ -1026,7 +1051,7 @@ export async function createExecutionContext<
     // session — which is the address it had before shared resources existed.
     if (scope === "session") {
       return resolveBucketFlag("session", storageKey) === true
-        ? lineageRootSessionKey
+        ? lineageId
         : sessionKey;
     }
     const identityId = scopeIdentityId(scope);
@@ -1057,14 +1082,72 @@ export async function createExecutionContext<
     return groups;
   };
 
+  // Drop rows a bucket scan swept up but does not own. A collection is loaded by
+  // its pattern PREFIX, so a broad prefix scans keys a narrower sibling owns —
+  // shared `tasks/**` reads `tasks/meta/a` at the lineage root even though
+  // private `tasks/meta/*` owns it in this session. Per-key routing already
+  // decides that correctly, so re-check each returned key against it and keep
+  // only the ones this bucket is the address for. Without this the surviving
+  // copy depends on which collection was declared first.
+  const retainOwnedKeys = <T>(
+    scope: ContentScopeType,
+    scopeId: string,
+    rows: Record<string, T>
+  ): Record<string, T> => {
+    const owned: Record<string, T> = {};
+    for (const [key, value] of Object.entries(rows)) {
+      if (resolveResourceStorageScopeId(scope, key) === scopeId) owned[key] = value;
+    }
+    return owned;
+  };
+
+  /**
+   * Rows a session-scoped resource held BEFORE it was marked
+   * `sharedToWorkstream` (FIX-1068).
+   *
+   * Turning the flag on moves a resource from this session's own key to the
+   * lineage address. A resource already carrying data in a deployed app would
+   * otherwise read empty the moment the flag ships — not because anything was
+   * lost, but because nothing looks where it still is. So a shared key with no
+   * row at the lineage address falls back to this session's own key, which is
+   * exactly where the pre-adoption copy lives.
+   *
+   * Read-only and one-directional: the next write lands at the lineage address
+   * and the stale copy stops being consulted. Nothing is deleted, so a rollback
+   * finds its data where it left it.
+   */
+  const adoptionFallback = async <T>(
+    scope: ContentScopeType,
+    scopeId: string,
+    loaded: Record<string, T>,
+    sub: Record<string, ResourceConfig | ResourceCollectionConfig>,
+    read: (scopeId: string, sub: Record<string, ResourceConfig | ResourceCollectionConfig>) => Promise<Record<string, T>>
+  ): Promise<Record<string, T>> => {
+    if (scope !== "session" || scopeId !== lineageId) return loaded;
+    if (scopeId === sessionKey) return loaded; // nothing moved
+    const prior = retainOwnedKeys(scope, sessionKey, await read(sessionKey, sub));
+    const merged: Record<string, T> = {};
+    for (const [key, value] of Object.entries(prior)) merged[key] = value;
+    for (const [key, value] of Object.entries(loaded)) merged[key] = value;
+    return merged;
+  };
+
   const loadScopeStateByBuckets = async (
     scope: ContentScopeType,
     configs: Record<string, ResourceConfig | ResourceCollectionConfig>
   ): Promise<Record<string, VersionedResourceState>> => {
     const groups = partitionConfigsByScopeId(scope, configs);
+    const readState = (id: string, sub: Record<string, ResourceConfig | ResourceCollectionConfig>) =>
+      loadDeclaredResourceState(stores.resourceState, storageScopeOf(scope, id), id, sub);
     const results = await Promise.all(
-      [...groups].map(([scopeId, sub]) =>
-        loadDeclaredResourceState(stores.resourceState, scope, scopeId, sub)
+      [...groups].map(async ([scopeId, sub]) =>
+        adoptionFallback(
+          scope,
+          scopeId,
+          retainOwnedKeys(scope, scopeId, await readState(scopeId, sub)),
+          sub,
+          readState
+        )
       )
     );
     return Object.assign({}, ...results) as Record<string, VersionedResourceState>;
@@ -1075,9 +1158,17 @@ export async function createExecutionContext<
     configs: Record<string, ResourceConfig | ResourceCollectionConfig>
   ): Promise<Record<string, string>> => {
     const groups = partitionConfigsByScopeId(scope, configs);
+    const readContent = (id: string, sub: Record<string, ResourceConfig | ResourceCollectionConfig>) =>
+      loadDeclaredScopeContent(stores.content, storageScopeOf(scope, id), id, sub);
     const results = await Promise.all(
-      [...groups].map(([scopeId, sub]) =>
-        loadDeclaredScopeContent(stores.content, scope, scopeId, sub)
+      [...groups].map(async ([scopeId, sub]) =>
+        adoptionFallback(
+          scope,
+          scopeId,
+          retainOwnedKeys(scope, scopeId, await readContent(scopeId, sub)),
+          sub,
+          readContent
+        )
       )
     );
     return Object.assign({}, ...results) as Record<string, string>;
@@ -1245,6 +1336,12 @@ export async function createExecutionContext<
     user: new Set<string>(),
     org: new Set<string>()
   };
+  /**
+   * One coverage entry: the bucket a prefix scan actually read, plus the prefix.
+   * `\n` cannot occur in a scopeId, so the join is unambiguous.
+   */
+  const coverageToken = (scopeId: string, keyPrefix: string): string =>
+    `${scopeId}\n${keyPrefix}`;
   // Negative cache for lazy single-row reads: a key confirmed absent by a
   // `resourceState.get` returning undefined. Caps each missing key at one store
   // round-trip per request instead of re-reading on every `get`/`getOptional`.
@@ -1285,9 +1382,19 @@ export async function createExecutionContext<
   // under a prefix already bulk-loaded via `getByPrefix` — the whole prefix is
   // materialized, so an absent key is definitively absent. Prefixes end in `/`
   // (or are `""`, the whole-scope load), so `startsWith` is the coverage test.
+  //
+  // Coverage is per BUCKET, not per prefix. A prefix scan reads one scopeId, and
+  // ownership filtering means it may legitimately return nothing for keys a
+  // sibling declaration owns at a different address (FIX-1068). Recording the
+  // bare prefix would claim coverage the scan never had, and the next lazy read
+  // of such a key would answer "absent" for a row that exists.
   const isMissAuthoritative = (scope: ContentScopeType, storageKey: string): boolean => {
-    for (const prefix of loadedCollectionPrefixes[scope]) {
-      if (storageKey.startsWith(prefix)) return true;
+    const scopeId = resolveResourceStorageScopeId(scope, storageKey);
+    if (scopeId === undefined) return false;
+    for (const token of loadedCollectionPrefixes[scope]) {
+      const split = token.indexOf("\n");
+      if (token.slice(0, split) !== scopeId) continue;
+      if (storageKey.startsWith(token.slice(split + 1))) return true;
     }
     return false;
   };
@@ -1304,7 +1411,11 @@ export async function createExecutionContext<
       if (isExternalResourceCollection(config)) continue;
       if (!isCollectionConfig(config)) continue;
       const prefix = getPatternPrefix(config.pattern);
-      loadedCollectionPrefixes[scope].add(prefix === "" ? "" : `${prefix}/`);
+      const scanned = resolveConfigScopeId(scope, config);
+      if (scanned === undefined) continue;
+      loadedCollectionPrefixes[scope].add(
+        coverageToken(scanned, prefix === "" ? "" : `${prefix}/`)
+      );
     }
   };
   seedLoadedPrefixes("session", sessionFlowLevelConfigs);
@@ -1357,8 +1468,8 @@ export async function createExecutionContext<
           if (storageKey in stateRef.current) return;
           const started = Date.now();
           const [row, content] = await Promise.all([
-            stores.resourceState.get(scope, scopeId, storageKey),
-            stores.content.get(scope, scopeId, storageKey)
+            stores.resourceState.get(storageScopeOf(scope, scopeId), scopeId, storageKey),
+            stores.content.get(storageScopeOf(scope, scopeId), scopeId, storageKey)
           ]);
           durationMs = Date.now() - started;
           fetched = true;
@@ -1379,18 +1490,25 @@ export async function createExecutionContext<
         return { fetched, durationMs };
       },
       async getByPrefix(keyPrefix: string): Promise<LazyLoadOutcome> {
-        if (loadedCollectionPrefixes[scope].has(keyPrefix)) return { fetched: false, durationMs: 0 };
         // FIX-735: the collection's prefix resolves to its isolation bucket.
         const scopeId = resolveResourceStorageScopeId(scope, keyPrefix)!;
+        if (loadedCollectionPrefixes[scope].has(coverageToken(scopeId, keyPrefix))) {
+          return { fetched: false, durationMs: 0 };
+        }
         let fetched = false;
         let durationMs = 0;
         await runSingleFlight(`${scope}:prefix:${keyPrefix}`, async () => {
-          if (loadedCollectionPrefixes[scope].has(keyPrefix)) return;
+          if (loadedCollectionPrefixes[scope].has(coverageToken(scopeId, keyPrefix))) return;
           const started = Date.now();
-          const [rows, content] = await Promise.all([
-            stores.resourceState.getByPrefix(scope, scopeId, keyPrefix),
-            stores.content.getByPrefix(scope, scopeId, keyPrefix)
+          // Same ownership re-check as the eager waves: a lazy collection is
+          // fetched by prefix too, so a broad prefix sweeps up keys a narrower
+          // sibling owns at a different address.
+          const [rawRows, rawContent] = await Promise.all([
+            stores.resourceState.getByPrefix(storageScopeOf(scope, scopeId), scopeId, keyPrefix),
+            stores.content.getByPrefix(storageScopeOf(scope, scopeId), scopeId, keyPrefix)
           ]);
+          const rows = retainOwnedKeys(scope, scopeId, rawRows);
+          const content = retainOwnedKeys(scope, scopeId, rawContent);
           durationMs = Date.now() - started;
           fetched = true;
           const state = toBareStates(rows);
@@ -1406,7 +1524,7 @@ export async function createExecutionContext<
             ...withoutDeleted(content, deletedContentKeys[scope]),
             ...contentRef.current
           };
-          loadedCollectionPrefixes[scope].add(keyPrefix);
+          loadedCollectionPrefixes[scope].add(coverageToken(scopeId, keyPrefix));
         });
         return { fetched, durationMs };
       }
@@ -1465,10 +1583,16 @@ export async function createExecutionContext<
       const subConfig = { [storageKey]: config };
 
       const applyLoad = async (): Promise<void> => {
-        const [stateSeed, contentSeed] = await Promise.all([
-          loadDeclaredResourceState(stores.resourceState, scope, scopeId, subConfig),
-          loadDeclaredScopeContent(stores.content, scope, scopeId, subConfig)
+        // FIX-1068: the same ownership re-check the eager waves and the lazy
+        // prefix loader perform. A collection loads by PREFIX, so a broad scan at
+        // one bucket returns keys a narrower sibling owns at another — seeding
+        // those here would shadow the child-owned row for the rest of the request.
+        const [rawState, rawContent] = await Promise.all([
+          loadDeclaredResourceState(stores.resourceState, storageScopeOf(scope, scopeId), scopeId, subConfig),
+          loadDeclaredScopeContent(stores.content, storageScopeOf(scope, scopeId), scopeId, subConfig)
         ]);
+        const stateSeed = retainOwnedKeys(scope, scopeId, rawState);
+        const contentSeed = retainOwnedKeys(scope, scopeId, rawContent);
         // Same precedence as the state merge below: a key already in the cache
         // keeps the version it was first observed at.
         for (const [key, version] of Object.entries(toVersions(stateSeed))) {
@@ -1489,19 +1613,19 @@ export async function createExecutionContext<
         if (mode === "lazy") continue; // lazy collections fetch via async accessor
         const prefix = getPatternPrefix(config.pattern);
         const keyPrefix = prefix === "" ? "" : `${prefix}/`;
-        if (loadedCollectionPrefixes[scope].has(keyPrefix)) {
+        if (loadedCollectionPrefixes[scope].has(coverageToken(scopeId, keyPrefix))) {
           recordResourceLoad({ storageKey: keyPrefix, scope, source, durationMs: 0, cacheHit: true });
           continue;
         }
         tasks.push(
           runSingleFlight(`${scope}:prefix:${keyPrefix}`, async () => {
-            if (loadedCollectionPrefixes[scope].has(keyPrefix)) {
+            if (loadedCollectionPrefixes[scope].has(coverageToken(scopeId, keyPrefix))) {
               recordResourceLoad({ storageKey: keyPrefix, scope, source, durationMs: 0, cacheHit: true });
               return;
             }
             const started = Date.now();
             await applyLoad();
-            loadedCollectionPrefixes[scope].add(keyPrefix);
+            loadedCollectionPrefixes[scope].add(coverageToken(scopeId, keyPrefix));
             loadSourceByToken.set(`${scope}:prefix:${keyPrefix}`, source);
             recordResourceLoad({
               storageKey: keyPrefix, scope, source, durationMs: Date.now() - started, cacheHit: false
@@ -1649,8 +1773,8 @@ export async function createExecutionContext<
             intent,
             signal: options.backgroundSignal,
             persist: (next, expectedVersion) =>
-              stores.resourceState.set(scope, scopeId, key, next, expectedVersion),
-            reread: () => stores.resourceState.get(scope, scopeId, key)
+              stores.resourceState.set(storageScopeOf(scope, scopeId), scopeId, key, next, expectedVersion),
+            reread: () => stores.resourceState.get(storageScopeOf(scope, scopeId), scopeId, key)
           });
         } catch (err) {
           // A lost create still taught us something: the store reported the
@@ -1712,7 +1836,7 @@ export async function createExecutionContext<
         // only re-delete something it has already been told it does not own.
         const expectedVersion = versionRef.current[key] ?? 0;
         const result = await stores.resourceState.delete(
-          scope,
+          storageScopeOf(scope, scopeId),
           scopeId,
           key,
           expectedVersion
@@ -1776,14 +1900,14 @@ export async function createExecutionContext<
         const scopeId = resolveResourceStorageScopeId(scope, key);
         if (scopeId === undefined) return;
         if (contentRef.current[key] === content) return;
-        await stores.content.set(scope, scopeId, key, content);
+        await stores.content.set(storageScopeOf(scope, scopeId), scopeId, key, content);
         contentRef.current[key] = content;
       },
       deleteResourceContentKey: async (key: string): Promise<void> => {
         const scopeId = resolveResourceStorageScopeId(scope, key);
         // Load-state check, as in `deleteResourceKey` above.
         if (scopeId === undefined || !(key in contentRef.current)) return;
-        await stores.content.delete(scope, scopeId, key);
+        await stores.content.delete(storageScopeOf(scope, scopeId), scopeId, key);
         delete contentRef.current[key];
         deletedContentKeys[scope].add(key);
       }

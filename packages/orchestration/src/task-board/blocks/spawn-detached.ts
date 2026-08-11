@@ -13,16 +13,44 @@
  *
  * `recordSuccess` settles the claim held on the worker-body state, and returns
  * **without settling** when that slot is empty. So the hand-off is a state
- * write: this block clears `currentClaim` once the dispatch is accepted, and the
- * recorder that runs next sees nothing of its own to record. The row stays
- * `in_progress`, owned by the Workstream, which re-mints the same ticket from it
- * and settles it there.
+ * write: this block clears `currentClaim`, and the recorder that runs next sees
+ * nothing of its own to record. The row stays `in_progress`, owned by the
+ * Workstream, which re-mints the same ticket from it and settles it there.
  *
- * The clear is deliberately **last**. If the spawn throws, the claim is still on
- * the state, the worker body's `.rescue()` reaches `recordError`, and the task
- * fails against the claim that is still genuinely this request's — which is the
- * correct outcome for work that was never handed off. Clearing first would leave
- * a claimed row with nobody holding it and nobody able to fail it.
+ * ## Why the clear runs BEFORE the dispatch, and hands the claim back on refusal
+ *
+ * The clear is a store write and can fail. Run *after* an accepted dispatch, a
+ * failed clear leaves the old `currentClaim` on the state and throws — so the
+ * body's `.rescue()` reaches `recordError`, which marks the task **failed**
+ * while the Workstream that owns it is running it. The row then reads terminal
+ * to everyone, the child's settlement is declined at the fence, and the work is
+ * lost with nothing reporting it.
+ *
+ * A failed spawn and a failed post-hand-off write are opposite situations, and
+ * ordering is what separates them. Releasing first means there is **no fallible
+ * step left after acceptance**: past `startDetached` returning ok this block
+ * only stops a timer and returns. And releasing first costs nothing while the
+ * spawn can still fail, because the two failure shapes are handled explicitly:
+ *
+ * - **Refused** (`ok: false`) is definitive — every refusal is decided before
+ *   anything is dispatched. The claim is put back and this block throws, so
+ *   `recordError` fails the row against the claim that is still genuinely this
+ *   request's, exactly as before.
+ * - **Threw** is not definitive, and not merely as a precaution: `host.dispatch`
+ *   starts the run and only then hands `finished` to the deployment's
+ *   `onBackgroundWork` hook, so a throw from that hook is a throw with a child
+ *   already running. Nothing here can tell that apart from a store read that
+ *   failed before anything was dispatched, so the claim stays released and
+ *   nothing is settled: the row keeps its lapsing lease and the next drain
+ *   recovers it, bounded by the substrate's abandonment allowance. Deferring
+ *   recovery by one lease is the cheap direction; failing a row a live child is
+ *   working is not.
+ *
+ *   A child that dies during its own setup now lands here too, and that is the
+ *   point: `startDetached` resolves only once the child has entered execution,
+ *   so a setup failure is a throw the parent request carries rather than a
+ *   success it reports. Recovery is the same one lease either way; what changed
+ *   is that the failure is visible when it happens.
  *
  * ## Why the lease renewal stops here
  *
@@ -95,15 +123,43 @@ export function createSpawnDetached(options: SpawnDetachedOptions) {
         label: `[task-board] "${boardId}" detached payload for task "${claim.taskId}"`,
       });
 
+      // Take the round trip HERE, so both deployment modes send the same value.
+      //
+      // An external dispatcher serializes the envelope on its way to the worker;
+      // the in-process path hands the child the very object graph this block is
+      // holding. That difference is observable whenever a payload references one
+      // object from two places — legal JSON, which is why the gate above permits
+      // it, and which the round trip resolves into two independent copies. Left
+      // to the transport, the child sees one shared object in-process and two
+      // copies under a queue, so a worker that mutates through one reference, or
+      // compares two by identity, behaves differently by deployment mode with
+      // nothing anywhere announcing it.
+      //
+      // Doing it once, here, also closes a smaller gap for free: `patchState`
+      // below is awaited, so without this the graph just validated stays mutable
+      // — by a concurrent step, or by anything holding a reference — between the
+      // check and the dispatch. Snapshotting makes the value that was checked the
+      // value that is sent.
+      //
+      // Safe to do unconditionally because `assertJsonSafe` has already refused
+      // everything a round trip would silently change (a Date, a Map, a class
+      // instance, a function); what remains round-trips to an equal value.
+      const snapshot = JSON.parse(JSON.stringify(payload)) as TaskWorkerInput;
+
       const seed = workstreamRoutingSeed({
         boardId,
         coordinate,
-        // A task's topic is what makes two tasks share one Workstream — the
-        // second task on the same topic lands in the same child and continues
-        // its history. Absent or blank falls back to the task id, so continuity
-        // is opted into rather than accidental.
-        ...(typeof payload.metadata?.topic === "string"
-          ? { topic: payload.metadata.topic }
+        // Topic is one of three things that have to agree before two tasks share
+        // a Workstream: same board, same worker coordinate, same topic. The seed
+        // carries all three (`workstreamRoutingSeed` frames `boardId` and the
+        // coordinate into its `key`), and the runtime hashes them with the
+        // parent session and principal. So a topic shared across two workers, or
+        // across two boards, lands in two different children — the second task
+        // continues the first's history only when the whole address matches.
+        // Absent or blank falls back to the task id, so continuity is opted into
+        // rather than accidental.
+        ...(typeof snapshot.metadata?.topic === "string"
+          ? { topic: snapshot.metadata.topic }
           : {}),
         topicFallback: claim.taskId,
       });
@@ -113,54 +169,86 @@ export function createSpawnDetached(options: SpawnDetachedOptions) {
         coordinateKey: coordKey,
         taskId: claim.taskId,
         // The claim's identity, carried so the Workstream's start gate can
-        // VERIFY it against the row — not so it can trust it. Both fields come
+        // VERIFY it against the row — not so it can trust it. Every field comes
         // off the ticket the board minted from the row it claimed, never off
         // anything a caller supplied.
         attempt: claim.attempt,
         createdAt: claim.createdAt,
-        payload,
+        // Spread conditionally, because the payload beside it has to clear a
+        // gate that rejects a present key holding `undefined` by name. Absent
+        // means the claimed row carried no nonce, which the start gate reads as
+        // "cannot tell" rather than as a mismatch.
+        ...(claim.incarnationId !== undefined
+          ? { incarnationId: claim.incarnationId }
+          : {}),
+        payload: snapshot,
       };
+
+      // Release BEFORE the point of no return — see the file header. A failure
+      // here is a failure to hand off: nothing has been dispatched, the claim is
+      // untouched, and the throw reaches `recordError` with it still in place.
+      await ctx.sequencer!.patchState({ currentClaim: undefined });
 
       const result = await requireRequestHost(ctx).startDetached({
         seed,
         input: dispatch,
+        // Stamped onto the detached REQUEST record, so a run can be correlated
+        // back to the row it came from without opening this board's ledger. The
+        // dispatch input above carries the same id, but that is the runner's
+        // private envelope — nothing projects it onto a read route.
+        //
+        // Same source as every other field here: the claim ticket the board
+        // minted from the row it had already claimed, never anything a task
+        // author or a transport supplied. It labels and decides nothing — the
+        // runner's start gate still verifies the claim off `dispatch` against
+        // the row it re-reads (see `StartDetachedInput.provenance`).
+        provenance: { taskId: claim.taskId },
       });
 
       if (!result.ok) {
-        // Throwing hands the row to `recordError`, which fails it against the
-        // claim still on the state. That is the honest outcome: the work was
-        // claimed and could not be started, so the row must not sit
-        // `in_progress` waiting for a Workstream that was never created.
+        // A refusal is decided before anything is dispatched, so the claim is
+        // still this request's to fail. Hand it back, then throw: `recordError`
+        // fails the row against it, which is the honest outcome for work that
+        // was claimed and could not be started. Restoring can itself fail, and
+        // that lands in the not-definitive case below by construction — the
+        // claim is not on the state, so nothing is settled and the row is
+        // recovered.
+        await ctx.sequencer!.patchState({ currentClaim: claim });
         throw new Error(
           `[task-board] "${boardId}" could not start detached work for task "${claim.taskId}" ` +
             `(${coordKey}): ${result.refused} — ${result.detail}`
         );
       }
 
-      // Past this point the Workstream owns the row. Stop asserting a lease this
-      // request no longer holds, then release the claim so `recordSuccess`
-      // settles nothing. Order matters only in that both follow a successful
-      // dispatch — see the file header on why the clear is last.
+      // Past this point the Workstream owns the row, and nothing fallible
+      // remains: stop asserting a lease this request no longer holds, and
+      // return.
       //
-      // KNOWN GAP (FIX-1070): acceptance is not a start. With an external
-      // dispatcher it means enqueued, and under flow-level `queue` concurrency
-      // it means deferred behind a key — so between here and the child's start
-      // gate nobody holds the lease. If that delay exceeds the lease TTL another
-      // drain reclaims the row, and this child then fails its gate as stale.
-      // Bounded and safe per occurrence (the gate is what rejects it), but under
+      // KNOWN GAP (FIX-1070), now scoped to the deferred-start deployments. On
+      // the default in-process path `startDetached` resolves only once the child
+      // has ENTERED EXECUTION, so the window below is closed there. With an
+      // external dispatcher, or under flow-level `queue` concurrency, the start
+      // is deferred past this call by design — a start signal would mean waiting
+      // out the queue, which is the launching request blocking on detached work.
+      // Those two keep the gap: between here and the child's start gate nobody
+      // holds the lease, and if that delay exceeds the lease TTL another drain
+      // reclaims the row and this child then fails its gate as stale. Bounded
+      // and safe per occurrence (the gate is what rejects it), but under
       // sustained backlog it can starve. The parent cannot simply keep renewing:
       // its request returns immediately, so the driver would leak. Closing it
       // means modelling "claimed but not yet started", which is the lease's
       // shape to change, not the spawn's.
       currentLeaseRenewal()?.stop();
-      await ctx.sequencer!.patchState({ currentClaim: undefined });
 
       return {
         detached: true as const,
         taskId: claim.taskId,
         sessionId: result.sessionId,
         requestId: result.requestId,
-        /** True when the Workstream already existed — a second task on one topic. */
+        /**
+         * True when the Workstream already existed — a second task addressed to
+         * the same board, worker and topic as one that came before it.
+         */
         adopted: result.adopted,
       };
     },

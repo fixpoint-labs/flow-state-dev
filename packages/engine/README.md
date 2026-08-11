@@ -39,10 +39,22 @@ That's a full API with action execution, session management, SSE streaming with 
 
 - `getRouter(): Promise<FlowApiRouter>` — resolve the route handlers (first call triggers store init).
 - `ready(): Promise<void>` — eager warmup, idempotent.
-- `dispose(): Promise<void>` — release pooled resources across every declared store.
+- `dispose(): Promise<void>` — drain in-process background work, close the worker, release pooled resources.
 - `activeProfile`, `settings`, `meta` — read-only diagnostics.
 
 Construction is synchronous; stores initialize lazily and memoized on the first `getRouter()` / `ready()`. There's no top-level await, so the same instance works in a Next.js Route Handler.
+
+### Shutdown
+
+`dispose()` runs in order:
+
+1. Waits for background work still running in this process. Work handed to a queue runs in another process and is never waited for.
+2. Bounds that wait with `detachedDrainTimeoutMs`, a `createFlowState` option defaulting to 30000 ms. It's a ceiling, not a target: work that finishes sooner is not delayed. `0` means don't wait at all.
+3. Cancels whatever is still running when the budget runs out, and gives it a brief window, inside that same budget rather than added to it, to unwind.
+4. Reports the request ids and session ids it gave up on, on stderr. That report prints even when the runtime's logger is silenced, since work may have been left unfinished.
+5. Closes the worker and releases pooled resources across every declared store adapter.
+
+Shutdown does not write a terminal status on background work's behalf. It cancels the work; it does not mark those records finished, failed, or aborted. The task goes back to the board when its lease lapses, and the request record is marked `interrupted` by a later runtime start, once its heartbeat has been quiet longer than the staleness threshold. See [what a stopped process leaves behind](https://flow-state.dev/docs/server/background-work#what-a-stopped-process-leaves-behind).
 
 ### Stores and capability profiles
 
@@ -352,16 +364,26 @@ child's id, its parent, `topic` and `coordinate` labels, timestamps, and a
 
 `topic` and `coordinate` are written by `ctx.requestHost.startDetached` when it
 creates the job's session, taken from the routing seed that session's id was
-derived from (`seed.topic` and `seed.key`). The caller's `record` bag lands in
-the record's `metadata` and never becomes a label. Both are display only —
-nothing routes, authorizes or adopts on them — and both are optional, so guard
-with `== null`.
+derived from (`seed.topic` and `seed.key`). The caller's own `record` bag lands
+on the child session record and never becomes a label. Both labels are display
+only — nothing routes, authorizes or adopts on them — and both are optional, so
+guard with `== null`.
 
 The route is session-addressed: the parent is loaded and ownership-checked
 before the handler runs, and the answer is scoped to the stored parent's owner,
 tenant, org and flow kind. `limit` accepts 1–100 (default 25) and `offset`
 0–10000; anything outside returns `400`. Use each row's `id` with the existing
 `/sessions/:id/requests` endpoint to read that job's history.
+
+Those runs carry a `metadata.workstream` bag on the request record: `topic` and
+`key` from the routing seed, plus `taskId` naming the task-board row the run was
+started for. Read the bag at all only when the record's `source` is
+`"workstream"` — `metadata` is caller-writable on an ordinary request, `source`
+is not. `topic` and `key` are the seed the child session's id was derived from,
+so they cannot disagree with the run they sit on. `taskId` holds whatever the
+caller of `startDetached` passed and is checked against no board, so treat it as
+a correlation to display rather than one to key on. `key` and `taskId` are
+optional, so guard with `== null`.
 
 See [Background work](https://flow-state.dev/docs/server/background-work) for
 the full contract.

@@ -216,6 +216,85 @@ describe("the detached payload gate rejects what a round-trip would mangle", () 
     );
   });
 
+  it("rejects a non-enumerable property, which vanishes with no trace", () => {
+    // `Object.entries` does not see it and neither does `JSON.stringify`, so
+    // the walk would never look at it and the value would arrive `{}` with
+    // nothing saying a property was dropped — the symbol-key failure in a
+    // different spelling.
+    const auth: Record<string, unknown> = {};
+    Object.defineProperty(auth, "token", { value: "secret", enumerable: false });
+    expect(() => assertJsonSafe({ auth }, { label })).toThrow(
+      /\.auth\.token is a non-enumerable property/
+    );
+  });
+
+  it("rejects an accessor, because serialization reads it a second time", () => {
+    // The walk validates what the getter returns NOW; `JSON.stringify` calls it
+    // again and ships whatever it returns THEN. Nothing makes the two agree, so
+    // a gate that accepted this would be checking a value that never crossed.
+    let reads = 0;
+    const payload = {
+      auth: {
+        get token() {
+          reads += 1;
+          return reads === 1 ? "safe" : new Date();
+        },
+      },
+    };
+    expect(() => assertJsonSafe(payload, { label })).toThrow(
+      /\.auth\.token is an accessor property/
+    );
+  });
+
+  it("rejects a non-writable property, which arrives writable", () => {
+    // The value survives and the ATTRIBUTE does not: `JSON.parse` rebuilds every
+    // property as an ordinary one, so a payload the author made read-only before
+    // sending is mutable on the other side. Nothing anywhere says the guarantee
+    // was dropped — the same silent change as the branches above, one level down
+    // from the value.
+    const auth: Record<string, unknown> = {};
+    Object.defineProperty(auth, "token", {
+      value: "secret",
+      writable: false,
+      enumerable: true,
+      configurable: true,
+    });
+    expect(() => assertJsonSafe({ auth }, { label })).toThrow(
+      /\.auth\.token is a non-writable property/
+    );
+  });
+
+  it("rejects a non-configurable property, which arrives configurable", () => {
+    // Same class as non-writable: the round trip hands back a property that can
+    // be redefined and deleted, where the one that was sent could not be.
+    const auth: Record<string, unknown> = {};
+    Object.defineProperty(auth, "token", {
+      value: "secret",
+      writable: true,
+      enumerable: true,
+      configurable: false,
+    });
+    expect(() => assertJsonSafe({ auth }, { label })).toThrow(
+      /\.auth\.token is a non-configurable property/
+    );
+  });
+
+  it("rejects a frozen array's elements, checked like any other property", () => {
+    // An array's indices are properties, and freezing sets both flags on each of
+    // them. A gate that judged only objects would let a frozen array cross and
+    // arrive fully mutable.
+    expect(() => assertJsonSafe({ rows: Object.freeze([1, 2]) }, { label })).toThrow(
+      /\.rows\.0 is a non-writable property/
+    );
+  });
+
+  it("accepts a non-enumerable property that is an array's own length", () => {
+    // `length` is non-enumerable by specification rather than by anyone's
+    // declaration, and it is not dropped — it IS the array. Rejecting it would
+    // refuse every array the gate ever sees.
+    expect(() => assertJsonSafe({ rows: [1, 2, 3] }, { label })).not.toThrow();
+  });
+
   it("rejects an array's non-index properties, dropped the same way", () => {
     const rows: unknown[] & { total?: number } = [1, 2];
     rows.total = 2;
@@ -226,6 +305,32 @@ describe("the detached payload gate rejects what a round-trip would mangle", () 
 
   it("rejects negative zero, which serializes to 0", () => {
     expect(() => assertJsonSafe({ delta: -0 }, { label })).toThrow(/\.delta is -0/);
+  });
+
+  it("rejects a null-prototype object, which arrives with Object.prototype", () => {
+    // The same identity loss the class-instance branch rejects, running the
+    // other way: the data survives and the prototype does not. `Object.create(
+    // null)` is a real idiom for a dictionary that cannot collide with
+    // inherited keys, and on the far side it is an ordinary object again —
+    // `hasOwnProperty` goes from `undefined` to a function, and a key lookup
+    // that could never hit `Object.prototype` now can.
+    const dict: Record<string, unknown> = Object.create(null);
+    dict.token = "x";
+    expect(() => assertJsonSafe({ dict }, { label })).toThrow(
+      /\.dict has a null prototype/
+    );
+  });
+
+  it("names what to do about it, since the remedy is one spread", () => {
+    expect(() => assertJsonSafe({ dict: Object.create(null) }, { label })).toThrow(
+      /\{ \.\.\.value \}/
+    );
+  });
+
+  it("still accepts an ordinary object literal", () => {
+    // The control. A guard keyed on "not Object.prototype" rather than on
+    // "null prototype" would reject every payload the gate exists to pass.
+    expect(() => assertJsonSafe({ dict: { token: "x" } }, { label })).not.toThrow();
   });
 
   it("accepts the same object appearing twice on separate branches", () => {

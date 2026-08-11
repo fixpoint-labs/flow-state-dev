@@ -41,6 +41,17 @@ export interface DispatchEnvelope {
 export interface FlowDispatchHandle {
   readonly requestId: string;
   readonly finished: Promise<ExecutionResult>;
+  /**
+   * Resolves once the request is *accepted* — registered and discoverable —
+   * without waiting for the run (FIX-982). Rejects with the run's own error
+   * when it dies before getting that far.
+   *
+   * Optional because a dispatcher is free not to distinguish the two, but the
+   * in-process one does: `dispatchLocal` returns as soon as `runAction` reaches
+   * its first await, which is before the registration write has landed, so the
+   * handle alone is not evidence the request exists.
+   */
+  readonly accepted?: Promise<void>;
   abort(): void;
 }
 

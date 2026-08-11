@@ -15,15 +15,20 @@
  */
 import type { ResourceCollectionConfig } from "@flow-state-dev/core/types";
 import { getPatternPrefix } from "@flow-state-dev/core/types";
-import { resolveSessionStorageKey } from "../stores/scope-keys";
 import { resourceStorageKeys } from "./storage-keys";
+import type { StorageScopeType } from "../stores/types";
 
 /** The session-record fields lineage addressing reads. */
 export type LineageSession = {
   /** Tenant-namespaced session storage key — the scopeId for unshared resources. */
   id: string;
-  /** Bare id of the lineage root; `null`/absent when this session is the root. */
-  lineageRootSessionId?: string | null;
+  /** The session's owner. Authoritative — it is the stored record's own field. */
+  userId: string;
+  /**
+   * The lineage this session belongs to (FIX-1068). Absent on a record written
+   * before the field existed, read as its own lineage keyed by `id` (BP-030).
+   */
+  lineageId?: string | null;
 };
 
 /** The declaration fields that decide where a session-scoped resource stores. */
@@ -49,39 +54,142 @@ export function sessionResourceScopeId(
   config: SharedFlag | undefined,
   tenantId: string | undefined
 ): string {
-  const root = session.lineageRootSessionId;
-  if (config?.sharedToWorkstream !== true || root == null) return session.id;
-  return resolveSessionStorageKey(root, tenantId);
+  if (config?.sharedToWorkstream !== true) return session.id;
+  return lineageScopeId(session);
 }
 
 /**
- * The storage keys and key prefixes a flow's session scope shares with its
- * lineage. Empty when nothing is declared shared, which is the common case.
+ * Storage `scopeId` for one concrete session-scope storage KEY.
+ *
+ * Use this — not {@link sessionResourceScopeId} — wherever the key is
+ * addressable through a declaration that does not own it. A route names a
+ * collection by ref, and a broad pattern accepts keys a narrower sibling owns
+ * (`tasks/**` accepts `tasks/meta/a` while `tasks/meta/*` owns it), so reading
+ * the addressed declaration's flag sends the request to the wrong session. The
+ * key's owner is the only thing that decides, and it is decided here by the same
+ * `resolveOwnershipFlag` execution uses.
  */
-function sharedAddressing(flowResources: unknown): {
-  keys: Set<string>;
-  prefixes: string[];
+export function sessionKeyScopeId(
+  session: LineageSession,
+  flowResources: unknown,
+  storageKey: string,
+  tenantId: string | undefined
+): string {
+  const { buckets } = sessionOwnership(flowResources);
+  return resolveOwnershipFlag(buckets, storageKey) === true
+    ? lineageScopeId(session)
+    : session.id;
+}
+
+/**
+ * The lineage address for this session — the same one `createExecutionContext`
+ * resolves. Conjoins the owner, so a root id recreated under a different user
+ * names a different bucket (see `resolveLineageScopeId`).
+ */
+function lineageScopeId(session: LineageSession): string {
+  // Prefixed for the same reason `createExecutionContext` prefixes it: the
+  // fallback must never equal the session key, or unshared resources become
+  // indistinguishable from lineage ones.
+  return session.lineageId ?? `lin_${session.id}`;
+}
+
+/**
+ * The scope kind a resolved session-scope address stores under (FIX-1068).
+ *
+ * The lineage bucket is not in the session namespace: session scope ids are
+ * caller-chosen and nothing validates them, so a lineage address sharing that
+ * space would be one a caller could occupy by picking the right session id.
+ * Its own scope kind makes that unaddressable rather than merely unguessable.
+ */
+export function sessionStorageScope(
+  session: LineageSession,
+  scopeId: string
+): StorageScopeType {
+  // No exception for the legacy fallback, where the lineage id happens to equal
+  // the session key: `createExecutionContext` puts that bucket in the lineage
+  // namespace too, and the two paths reading one address differently is the
+  // failure this module exists to prevent. Same id, different namespace, so
+  // shared and unshared rows stay apart even there.
+  return scopeId === lineageScopeId(session) ? "lineage" : "session";
+}
+
+/**
+ * Which declaration owns a storage key, expressed as the routing flag that
+ * declaration carries. Singles are matched exactly; collection instances by
+ * their pattern prefix.
+ *
+ * Shared by every reader that has to split one scope across two storage
+ * addresses, so the precedence rule below exists once rather than once per
+ * call site — two independent "longest prefix wins" implementations is how the
+ * two sides drift into disagreeing about who owns a key.
+ */
+export type OwnershipBuckets = {
+  singles: ReadonlyMap<string, boolean>;
+  prefixes: ReadonlyArray<{ prefix: string; flag: boolean }>;
+};
+
+/**
+ * The flag of the declaration that owns `storageKey`, or `undefined` when no
+ * declaration claims it.
+ *
+ * **An exact single wins outright**, because a single's storage key names one
+ * slot and cannot be a prefix of anything it doesn't own. Otherwise the
+ * **longest matching prefix** wins: `tasks/meta/*` owns `tasks/meta/a` even
+ * when `tasks/**` is declared beside it, and the empty prefix a parameterized
+ * pattern produces (`[topic]/observations`) is the weakest possible match
+ * rather than a wildcard that swallows the scope.
+ */
+export function resolveOwnershipFlag(
+  buckets: OwnershipBuckets,
+  storageKey: string
+): boolean | undefined {
+  const single = buckets.singles.get(storageKey);
+  if (single !== undefined) return single;
+  let flag: boolean | undefined;
+  let bestLen = -1;
+  for (const p of buckets.prefixes) {
+    const matches = p.prefix === "" || storageKey.startsWith(p.prefix);
+    if (matches && p.prefix.length > bestLen) {
+      bestLen = p.prefix.length;
+      flag = p.flag;
+    }
+  }
+  return flag;
+}
+
+/**
+ * Ownership buckets for a flow's session scope, over **every** session-scoped
+ * declaration rather than only the shared ones.
+ *
+ * Reading only the shared declarations is what makes a private resource look
+ * shared: with nothing representing it, any shared prefix that happens to match
+ * its key claims it, and an empty prefix matches every key there is.
+ */
+function sessionOwnership(flowResources: unknown): {
+  buckets: OwnershipBuckets;
+  anyShared: boolean;
 } {
-  const keys = new Set<string>();
-  const prefixes: string[] = [];
+  const singles = new Map<string, boolean>();
+  const prefixes: Array<{ prefix: string; flag: boolean }> = [];
+  let anyShared = false;
   if (typeof flowResources !== "object" || flowResources === null) {
-    return { keys, prefixes };
+    return { buckets: { singles, prefixes }, anyShared };
   }
   const entries = Object.entries(flowResources as Record<string, unknown>).filter(
     ([, def]) => (def as { scope?: string } | null)?.scope === "session"
   );
-  const sessionConfigs = Object.fromEntries(entries);
-  const storageKeys = resourceStorageKeys(sessionConfigs);
+  const storageKeys = resourceStorageKeys(Object.fromEntries(entries));
   for (const [accessor, def] of entries) {
-    if ((def as SharedFlag).sharedToWorkstream !== true) continue;
+    const flag = (def as SharedFlag).sharedToWorkstream === true;
+    if (flag) anyShared = true;
     if (isCollection(def)) {
       const prefix = getPatternPrefix(def.pattern);
-      prefixes.push(prefix === "" ? "" : `${prefix}/`);
+      prefixes.push({ prefix: prefix === "" ? "" : `${prefix}/`, flag });
     } else {
-      keys.add(storageKeys[accessor] ?? accessor);
+      singles.set(storageKeys[accessor] ?? accessor, flag);
     }
   }
-  return { keys, prefixes };
+  return { buckets: { singles, prefixes }, anyShared };
 }
 
 /**
@@ -100,20 +208,24 @@ export async function readSessionScopeWithLineage<T>(
   session: LineageSession,
   flowResources: unknown,
   tenantId: string | undefined,
-  readAll: (scopeId: string) => Promise<Record<string, T>>
+  readAll: (scopeType: StorageScopeType, scopeId: string) => Promise<Record<string, T>>
 ): Promise<Record<string, T>> {
-  const root = session.lineageRootSessionId;
-  if (root == null) return readAll(session.id);
+  const { buckets, anyShared } = sessionOwnership(flowResources);
+  // Nothing shared means one bucket, which is every flow that never asked for
+  // this. The second read below is not paid for by flows that don't use it.
+  if (!anyShared) return readAll("session", session.id);
 
-  const { keys, prefixes } = sharedAddressing(flowResources);
-  if (keys.size === 0 && prefixes.length === 0) return readAll(session.id);
+  // Ownership, not "matches some shared prefix" — a private declaration beside
+  // a shared one keeps the keys it owns.
+  const isShared = (key: string): boolean => resolveOwnershipFlag(buckets, key) === true;
 
-  const isShared = (key: string): boolean =>
-    keys.has(key) || prefixes.some((p) => p === "" || key.startsWith(p));
-
-  const [own, atRoot] = await Promise.all([
-    readAll(session.id),
-    readAll(resolveSessionStorageKey(root, tenantId))
+  // Both buckets, whether or not this session has an ancestor: the lineage
+  // address is its own namespace, so a ROOT session's shared rows are not at
+  // its session key either. Reading only `session.id` there would return an
+  // empty shared resource for the very session that owns it.
+  const [own, atLineage] = await Promise.all([
+    readAll("session", session.id),
+    readAll(sessionStorageScope(session, lineageScopeId(session)), lineageScopeId(session))
   ]);
 
   const merged: Record<string, T> = {};
@@ -121,7 +233,7 @@ export async function readSessionScopeWithLineage<T>(
     if (isShared(key)) continue;
     merged[key] = value;
   }
-  for (const [key, value] of Object.entries(atRoot)) {
+  for (const [key, value] of Object.entries(atLineage)) {
     if (isShared(key)) merged[key] = value;
   }
   return merged;

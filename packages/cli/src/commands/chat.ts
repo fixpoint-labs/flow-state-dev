@@ -33,7 +33,7 @@ export function registerChatCommand(program: Command): void {
     .command("chat [flow] [action]")
     .description("Start an interactive chat session over a flow")
     .option("-s, --session <id>", "Resume an engine session for the initially bound flow")
-    .option("-m, --model <model>", "Override model for all generator blocks")
+    .option("-m, --model <model>", "Override model for generator blocks run in this process")
     .option("-u, --user <id>", "Engine identity for sessions and turns (default: cli-user)")
     .option("--flow-dir <path>", "Override flow discovery root (repeatable)", collectValues, undefined)
     .option("--dotenv <path>", "Load a specific .env file (repeatable, resolved from cwd)", collectValues, undefined)
@@ -211,6 +211,14 @@ export async function executeChatCommand(
     }
 
     const logger = createCliLogger(resolveLogLevel(options, "warn"));
+
+    // Also on the app's own config, for the same reason `run` does it: the
+    // FlowState logs outside any request while `dispose()` drains detached work,
+    // and it reads this object rather than the copy below.
+    if (baseRuntimeConfig !== undefined) {
+      baseRuntimeConfig.logger = logger;
+    }
+
     const runtimeConfig: RuntimeConfig =
       baseRuntimeConfig !== undefined
         ? { ...baseRuntimeConfig, modelResolver, logger }

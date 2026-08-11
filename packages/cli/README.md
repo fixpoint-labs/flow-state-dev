@@ -30,7 +30,7 @@ fsdev run market-intel-agent runStrategy \
   -f ./test-inputs/strategy.json \
   --session sess_abc123
 
-# Override model for all generators
+# Override the model for generators run in this process
 fsdev run my-agent chat -i '{"message": "hi"}' --model gpt-5
 
 # Seed session state before execution
@@ -45,7 +45,7 @@ Options:
 |------|-------------|
 | `-i, --input <json>` | Inline JSON input |
 | `-f, --input-file <path>` | JSON input from file |
-| `-m, --model <model>` | Override model for all generator blocks |
+| `-m, --model <model>` | Override model for generator blocks run in this process |
 | `-s, --session <id>` | Session ID for reuse across invocations |
 | `--seed-session <json\|path>` | Seed session-level state (JSON or file path) |
 | `--seed-user <json\|path>` | Seed user-level state |
@@ -144,7 +144,7 @@ Options:
 | `-p, --port <port>` | Port to listen on (default: `4200`) |
 | `--flow-dir <path>` | Override flow discovery root (repeatable) |
 | `--dotenv <path>` | Load a specific `.env` file before the cwd walk-up (repeatable, resolved from cwd) |
-| `-m, --model <model>` | Override model for all generator blocks |
+| `-m, --model <model>` | Override model for generator blocks run in this process |
 | `--no-open` | Don't open the browser automatically |
 
 Requires `@flow-state-dev/devtool` to be installed (provides the pre-built UI assets). The CLI lists it as an optional peer dependency.
@@ -196,7 +196,7 @@ Options:
 | Flag | Description |
 |------|-------------|
 | `-s, --session <id>` | Resume an engine session for the initially bound flow |
-| `-m, --model <model>` | Override model for all generator blocks |
+| `-m, --model <model>` | Override model for generator blocks run in this process |
 | `-u, --user <id>` | Engine identity for sessions and turns (default: `cli-user`) |
 | `--flow-dir <path>` | Override flow discovery root (repeatable) |
 | `--dotenv <path>` | Load a specific `.env` file before the cwd walk-up (repeatable, resolved from cwd) |

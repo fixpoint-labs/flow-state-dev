@@ -345,9 +345,12 @@ body of work. The turn that claimed the task returns while the worker keeps
 going; the Workstream re-reads the claimed row, verifies the claim is still
 current, runs the worker, and settles the task itself.
 
-Tasks that share a `topic` land in the same Workstream and continue one history.
-A task with no topic falls back to its own id, so continuity is something you opt
-into rather than something that happens by accident.
+A Workstream is one `boardId`, one worker, one `topic` (read from the task's
+`metadata.topic`). All three have to match for a task to continue an earlier
+task's history. Two tasks sharing a topic but routing to different workers, or
+sitting on boards with different `boardId`s, get separate Workstreams. A task
+with no topic, or a blank one, falls back to its own id, so continuity is
+something you opt into rather than something that happens by accident.
 
 **The board must be addressable from the child session**, because the Workstream
 settles its own task. Session scope resolves against the *current* session, so a
@@ -370,7 +373,14 @@ touches. Sharing does not serialize: two Workstreams writing one board is
 ordinary same-resource contention, fenced by the store's `expectedVersion` check
 and nothing more.
 
-**Serverless without a queue adapter** is the other bound. Detached work runs
+**The claim has to survive the wait before the child starts.** A claim carries a
+lease (two minutes by default), and nothing extends it until the worker is
+actually running. A Workstream that starts after its lease has run out does
+nothing at all — the task is already back in the queue, and the next drain picks
+it up. A deep queue backlog in front of the child is where this shows up, and the
+board's lease is not configurable today.
+
+**Serverless without a queue adapter** is the last bound. Detached work runs
 inside the invocation that started it and is bounded by that function's maximum
 duration. With a queue adapter it moves to a worker process and is not.
 
