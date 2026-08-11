@@ -15,16 +15,12 @@
  * An empty list is the ordinary answer for a session with no background work,
  * not an error — see the panel for how that is rendered.
  *
- * ## Why this pages, and where it stops
+ * ## What it reads
  *
- * The route returns 25 rows when the caller names no `limit`, and orders by
- * creation time. A single unparameterized read therefore shows the OLDEST page
- * and silently omits everything after it — and a panel that renders a count
- * beside a truncated list is claiming the rest does not exist. So this reads
- * until the server runs out, bounded at {@link MAX_WORKSTREAM_ROWS}, and
- * reports `truncated` when it stopped at the bound rather than at the end.
- * The panel says so on screen; a silent cap would be the same lie in a
- * different place.
+ * One page — the newest background work, since the listing is ordered
+ * `created_at DESC` — plus a sentinel read when that page comes back full, so
+ * the panel can say whether there is more without walking the whole history.
+ * See `fetchWorkstreamPage` for why the budget is one read per turn.
  */
 import { useCallback, useEffect, useState } from "react";
 import type { SessionClient, WorkstreamSummary } from "@flow-state-dev/client";
@@ -32,121 +28,59 @@ import { useDevTool } from "../context/devtool-context";
 import { useReadFence } from "./use-read-fence";
 
 /**
- * The most rows this hook will accumulate for one session.
+ * Read the Workstream axis for one session.
  *
- * A bound rather than an unbounded walk because every row costs the server a
- * request-store lookup, and this list is all-time history that only grows. 500
- * is 20 pages at the route's default page size and stays far inside its
- * `offset` ceiling of 10,000.
+ * ## One page, not the whole history
+ *
+ * `docs/architecture/server-and-client.md` fixes the budget for this axis:
+ * "The cost is one Workstream read per turn, independent of task-board
+ * activity." That is a contract, not a tuning preference — it is what makes an
+ * axis read on every interaction affordable — and `useSession` in
+ * `@flow-state-dev/react` honours it with a single `listWorkstreams` call.
+ *
+ * The listing is ordered `created_at DESC`, so that one page IS the newest
+ * background work. An earlier version of this hook walked every page to the
+ * end, on a premise that turned out to be false: it claimed a single read
+ * showed the OLDEST page and hid the newest. The opposite is true, and paging
+ * bought completeness at a cost that grew with board activity — precisely what
+ * the budget above forbids.
+ *
+ * ## What it costs to still tell the truth about `truncated`
+ *
+ * A single read cannot distinguish "this is the whole list" from "this is the
+ * first page of a longer one", and `truncated` has to be right in BOTH
+ * directions: claiming a cap that is not there sends someone looking for work
+ * that does not exist, and hiding one presents a partial list as whole.
+ *
+ * So a non-empty page is followed by ONE sentinel read for the row after it.
+ * The cost is one request for a session with no background work and two for any
+ * other — a constant either way, which is the property the budget is actually
+ * protecting. It cannot be one in the common case: the page size belongs to the
+ * deployment, so this side cannot tell a short page from a full one and has to
+ * ask. A row spawning between the two reads shifts the boundary, and the answer
+ * stays correct — the list really did just get longer.
+ *
+ * `stillWanted` gates the sentinel because it is a second request, and a read
+ * whose result may not be written is a read worth not making. `undefined` means
+ * the read was abandoned rather than completed — it has no honest `truncated`
+ * to report, so it returns no page at all rather than a misleading one.
  */
-export const MAX_WORKSTREAM_ROWS = 500;
-
-/**
- * The largest `offset` the route accepts; past it the request is a 400.
- *
- * Reached only when duplicates have pushed the read position far beyond the
- * rows actually kept, which also makes it the walk's termination guarantee.
- */
-const MAX_WORKSTREAM_OFFSET = 10_000;
-
-/**
- * Read every page the server will give us for one session.
- *
- * `limit` is deliberately NOT sent: a host may configure `maxWorkstreamListLimit`
- * below any page size we'd pick, and the route REJECTS an out-of-range limit
- * with a 400 rather than clamping it. Omitting it takes the server's own
- * default, whatever the deployment set, and the walk advances by what actually
- * arrived.
- *
- * ## The read position is not the row count
- *
- * The listing is ordered `created_at DESC` — newest first — and it is a live
- * table, not a snapshot. A Workstream that spawns between two page requests
- * lands at the FRONT and shifts every later offset boundary by one, so a walk
- * that advances by the rows it has KEPT re-reads whatever straddled the
- * boundary. That shows up as a duplicate row and an inflated count.
- *
- * The route exposes only `limit`/`offset` — there is no cursor or snapshot to
- * ask for — so the two are tracked separately: the read position advances by
- * what each page actually contained, and identity is enforced on the way in.
- * The dedupe is not belt-and-braces; it is the thing that makes the count
- * truthful, because the shifted page really does hand back a row we hold.
- *
- * A row inserted ahead of the walk is missed rather than duplicated. An offset
- * listing cannot see behind itself, and the next refresh picks it up — under-
- * reporting one brand-new row for one read beats showing the same session twice.
- *
- * ## `truncated` has to be right in both directions
- *
- * Reporting less than exists is the defect this paging fixed; reporting more
- * than exists is the same defect pointing the other way, and on a debugging
- * surface it sends someone looking for background work that is not there. So
- * reaching the bound is not by itself evidence of a remainder — a final page
- * can land exactly on it — and the only thing that settles it is asking whether
- * a row follows, at the READ POSITION rather than at the row count.
- *
- * An ABANDONED walk answers neither. It returns `undefined` rather than a page,
- * because it read fewer rows than exist and has no honest value for either
- * field: `truncated: true` would tell the user their list is capped when it was
- * merely dropped, and `truncated: false` would present a partial list as whole.
- * A distinct return makes that unrepresentable instead of merely discouraged.
- *
- * ## Stopping is a different question from discarding
- *
- * The caller's fence decides whether a result may be WRITTEN. It cannot decide
- * whether the work should CONTINUE, and asking it once at the end is how a
- * retired walk went on issuing pages — up to twenty on a busy session, and up
- * to five hundred under a host configured with `maxWorkstreamListLimit: 1`,
- * each dragging a per-row status lookup behind it, all of it thrown away on
- * arrival. `stillWanted` is threaded in rather than read off the hook's refs so
- * this stays a function of its arguments.
- */
-async function fetchAllWorkstreams(
+async function fetchWorkstreamPage(
   sessionClient: SessionClient,
   sessionId: string,
   stillWanted: () => boolean
 ): Promise<{ rows: WorkstreamSummary[]; truncated: boolean } | undefined> {
-  const rows: WorkstreamSummary[] = [];
-  const seen = new Set<string>();
-  let offset = 0;
+  // No `limit`: a host may configure `maxWorkstreamListLimit` below any page
+  // size this side would pick, and the route REJECTS an out-of-range limit with
+  // a 400 rather than clamping it. Omitting it takes the deployment's own
+  // default.
+  const rows = await sessionClient.listWorkstreams(sessionId);
+  if (rows.length === 0) return { rows, truncated: false };
 
-  while (rows.length < MAX_WORKSTREAM_ROWS && offset < MAX_WORKSTREAM_OFFSET) {
-    // Checked before each SUBSEQUENT page, never before the first: a walk that
-    // gives up before reading anything leaves the panel with no completed read
-    // at all, which is a worse answer than a superseded one.
-    if (offset > 0 && !stillWanted()) return undefined;
-    const page = await sessionClient.listWorkstreams(sessionId, { offset });
-    // An empty page is the end of the list. It is also the terminating case if
-    // the client's parent-mismatch filter ever drops a whole page — that is a
-    // server bug the client already warns about, and stopping short beats
-    // re-reading the same offset forever.
-    if (page.length === 0) return { rows, truncated: false };
-    offset += page.length;
-    for (const workstream of page) {
-      if (seen.has(workstream.id)) continue;
-      seen.add(workstream.id);
-      rows.push(workstream);
-    }
-  }
-
-  // Overshot the bound, because the server's page size need not divide it. The
-  // rows past the cap are proof of a remainder, so no probe is needed.
-  if (rows.length > MAX_WORKSTREAM_ROWS) {
-    return { rows: rows.slice(0, MAX_WORKSTREAM_ROWS), truncated: true };
-  }
-
-  // Stopped on the offset ceiling rather than on the end of the list, so what
-  // follows is unread by construction.
-  if (offset >= MAX_WORKSTREAM_OFFSET) return { rows, truncated: true };
-
-  // Landed exactly on the row bound. One probe for a sentinel distinguishes
-  // "the list is this long" from "the list is longer" — the only case where the
-  // loop's exit condition alone is wrong. It reads from the position the walk
-  // actually reached, which duplicates may have pushed past the row count.
-  //
-  // The probe is a subsequent page like any other, so it is gated too.
   if (!stillWanted()) return undefined;
-  const beyond = await sessionClient.listWorkstreams(sessionId, { offset });
+  const beyond = await sessionClient.listWorkstreams(sessionId, {
+    offset: rows.length,
+  });
   return { rows, truncated: beyond.length > 0 };
 }
 
@@ -155,8 +89,8 @@ export type UseWorkstreamsResult = {
   isLoading: boolean;
   error: string | null;
   /**
-   * The listing stopped at {@link MAX_WORKSTREAM_ROWS} with more rows still on
-   * the server. The panel renders this; it is never silently swallowed.
+   * More background work exists than this page shows. The panel renders it;
+   * it is never silently swallowed.
    */
   truncated: boolean;
   refresh: () => Promise<void>;
@@ -215,7 +149,7 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
     setIsLoading(true);
     setError(null);
     try {
-      const page = await fetchAllWorkstreams(sessionClient, sessionId, stillCurrent);
+      const page = await fetchWorkstreamPage(sessionClient, sessionId, stillCurrent);
       // `undefined` is a walk that stopped because it was retired, not a page.
       // It holds a partial list and no meaningful `truncated`, so there is
       // nothing here to write — and the fence below would refuse it anyway.

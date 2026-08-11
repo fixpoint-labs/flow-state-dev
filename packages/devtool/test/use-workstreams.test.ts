@@ -50,122 +50,92 @@ beforeEach(() => {
   sessionClientMock.listWorkstreams.mockReset().mockResolvedValue([]);
 });
 
-describe("useWorkstreams — reading the whole list", () => {
-  it("pages until the server runs out instead of showing only the first page", async () => {
-    // The route's default page is 25 and it orders by creation time, so
-    // stopping after one read hides every workstream created after the 25th.
-    sessionClientMock.listWorkstreams
-      .mockResolvedValueOnce(page(0, 25))
-      .mockResolvedValueOnce(page(25, 25))
-      .mockResolvedValueOnce(page(50, 4))
-      .mockResolvedValueOnce([]);
-
-    const { result } = renderHook(() => useWorkstreams("sess_parent"));
-
-    await waitFor(() => expect(result.current.workstreams).toHaveLength(54));
-    expect(result.current.truncated).toBe(false);
-    // Each read asks for the rows after the ones already held.
-    expect(sessionClientMock.listWorkstreams.mock.calls.map((c) => c[1])).toEqual([
-      { offset: 0 },
-      { offset: 25 },
-      { offset: 50 },
-      { offset: 54 },
-    ]);
-  });
-
-  it("never sends a limit, because a host may cap it below whatever we'd pick", async () => {
-    // The route REJECTS an out-of-range limit with a 400 rather than clamping,
-    // and `maxWorkstreamListLimit` is an operator's setting. Omitting it takes
-    // whatever default the deployment runs.
-    sessionClientMock.listWorkstreams.mockResolvedValueOnce([]);
-    renderHook(() => useWorkstreams("sess_parent"));
-
-    await waitFor(() => expect(sessionClientMock.listWorkstreams).toHaveBeenCalled());
-    expect(sessionClientMock.listWorkstreams.mock.calls[0]?.[1]).not.toHaveProperty("limit");
-  });
-
-  it("does not claim more rows exist when the list ends exactly on the bound", async () => {
-    // The only value where the loop's exit condition alone is wrong. The last
-    // full page brings the total to the cap, so the walk stops without ever
-    // asking whether a row follows — and reports a remainder that is not there.
+describe("useWorkstreams — reading one page", () => {
+  it("reads a single page, not the whole history", async () => {
+    // `docs/architecture/server-and-client.md` fixes the budget for this axis:
+    // "The cost is one Workstream read per turn, independent of task-board
+    // activity." Walking every page made the cost grow with how much background
+    // work a session had — on a host configured to a one-row page size, ~500
+    // sequential requests on every mount and every action refresh.
     //
-    // This direction matters as much as the original bug: the panel understating
-    // the list sent someone looking for work it had hidden, and the panel
-    // overstating it sends them looking for work that does not exist.
-    const PAGE = 25;
+    // The listing is ordered `created_at DESC`, so the one page IS the newest
+    // work. A short page is the whole list and needs nothing further.
     sessionClientMock.listWorkstreams.mockImplementation(
-      async (_id: string, opts: { offset: number }) =>
-        opts.offset >= MAX_WORKSTREAM_ROWS ? [] : page(opts.offset, PAGE)
+      async (_id: string, opts?: { offset?: number }) =>
+        opts?.offset === undefined ? [row("dsx_1"), row("dsx_2")] : []
     );
 
     const { result } = renderHook(() => useWorkstreams("sess_parent"));
 
     await waitFor(() =>
-      expect(result.current.workstreams).toHaveLength(MAX_WORKSTREAM_ROWS)
+      expect(result.current.workstreams.map((w) => w.id)).toEqual(["dsx_1", "dsx_2"])
     );
     expect(result.current.truncated).toBe(false);
-    // The sentinel probe is the read that settles it.
-    expect(sessionClientMock.listWorkstreams).toHaveBeenCalledWith("sess_parent", {
-      offset: MAX_WORKSTREAM_ROWS,
-    });
+    // The page plus its sentinel. Two whatever the session holds — the page
+    // size belongs to the deployment, so a short page is not self-evident.
+    expect(sessionClientMock.listWorkstreams).toHaveBeenCalledTimes(2);
   });
 
-  it("does not double-count a Workstream that spawns mid-read", async () => {
-    // The route orders `created_at DESC, id DESC`, so a child created between
-    // two page requests lands at the FRONT and shifts every later offset by one.
-    // A walk that advances by the number of rows it has KEPT then re-reads the
-    // row that straddled the boundary — the same session appears twice in the
-    // table and twice in the header's count.
-    //
-    // Driven through a real insertion rather than by stubbing the arithmetic:
-    // the arithmetic is not the bug, the moving boundary is.
-    const PAGE = 3;
-    const server = [
-      row("dsx_6"),
-      row("dsx_5"),
-      row("dsx_4"),
-      row("dsx_3"),
-      row("dsx_2"),
-      row("dsx_1"),
-    ];
-    let reads = 0;
-    sessionClientMock.listWorkstreams.mockImplementation(
-      async (_id: string, opts: { offset: number }) => {
-        const slice = server.slice(opts.offset, opts.offset + PAGE);
-        reads += 1;
-        // A detached worker spawns while the walk is between pages.
-        if (reads === 1) server.unshift(row("dsx_7"));
-        return slice;
-      }
-    );
+  it("never sends a limit, because a host may cap it below whatever we'd pick", async () => {
+    // The route REJECTS an out-of-range limit with a 400 rather than clamping,
+    // and `maxWorkstreamListLimit` is an operator's setting.
+    sessionClientMock.listWorkstreams.mockResolvedValue([]);
+    renderHook(() => useWorkstreams("sess_parent"));
+
+    await waitFor(() => expect(sessionClientMock.listWorkstreams).toHaveBeenCalled());
+    const [, options] = sessionClientMock.listWorkstreams.mock.calls[0]!;
+    expect(options ?? {}).not.toHaveProperty("limit");
+  });
+
+  it("costs one request when the session has no background work", async () => {
+    sessionClientMock.listWorkstreams.mockResolvedValue([]);
 
     const { result } = renderHook(() => useWorkstreams("sess_parent"));
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-    const ids = result.current.workstreams.map((w) => w.id);
-    expect(new Set(ids).size).toBe(ids.length);
-    // Every row that existed when the walk began, each exactly once. The row
-    // that appeared mid-walk is missed rather than duplicated — an offset
-    // listing cannot see behind itself, and the next refresh picks it up.
-    expect(ids).toEqual(["dsx_6", "dsx_5", "dsx_4", "dsx_3", "dsx_2", "dsx_1"]);
+    expect(result.current.workstreams).toEqual([]);
+    expect(result.current.truncated).toBe(false);
+    expect(sessionClientMock.listWorkstreams).toHaveBeenCalledTimes(1);
   });
 
-  it("stops at the row bound and says the list is truncated", async () => {
-    // The bound exists because every row costs the server a request-store
-    // lookup. Hitting it silently would be the same lie as the first-page bug.
+  it("says there is more when a full page has a row behind it", async () => {
+    // `truncated` has to be right in both directions, so a full page alone is
+    // not evidence — it takes one sentinel read to tell "the whole list" from
+    // "the first page of a longer one".
+    const first = page(0, 25);
     sessionClientMock.listWorkstreams.mockImplementation(
-      async (_id: string, opts: { offset: number }) => page(opts.offset, 25)
+      async (_id: string, opts?: { offset?: number }) =>
+        opts?.offset === undefined ? first : [row("dsx_beyond")]
     );
 
     const { result } = renderHook(() => useWorkstreams("sess_parent"));
 
     await waitFor(() => expect(result.current.truncated).toBe(true));
-    expect(result.current.workstreams).toHaveLength(MAX_WORKSTREAM_ROWS);
+    expect(result.current.workstreams).toHaveLength(25);
+    expect(sessionClientMock.listWorkstreams).toHaveBeenCalledWith("sess_parent", {
+      offset: 25,
+    });
+    // Two, and only two — the cost stays constant however much work exists.
+    expect(sessionClientMock.listWorkstreams).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not claim more when a full page is the whole list", async () => {
+    // The other direction, and the one a full-page heuristic gets wrong:
+    // exactly a page's worth of workstreams and nothing behind it.
+    const first = page(0, 25);
+    sessionClientMock.listWorkstreams.mockImplementation(
+      async (_id: string, opts?: { offset?: number }) =>
+        opts?.offset === undefined ? first : []
+    );
+
+    const { result } = renderHook(() => useWorkstreams("sess_parent"));
+
+    await waitFor(() => expect(result.current.workstreams).toHaveLength(25));
+    expect(result.current.truncated).toBe(false);
   });
 });
 
-describe("useWorkstreams — a superseded walk stops working", () => {
+describe("useWorkstreams — a superseded read stops working", () => {
   /** Every page request made, held open so the walk can be stepped one at a time. */
   type PendingRead = {
     sessionId: string;
@@ -176,11 +146,11 @@ describe("useWorkstreams — a superseded walk stops working", () => {
   function armSteppableReads(): PendingRead[] {
     const pending: PendingRead[] = [];
     sessionClientMock.listWorkstreams.mockImplementation(
-      (sessionId: string, opts: { offset: number }) =>
+      (sessionId: string, opts?: { offset?: number }) =>
         new Promise((resolve) => {
           pending.push({
             sessionId,
-            offset: opts.offset,
+            offset: opts?.offset ?? 0,
             resolve: resolve as (rows: WorkstreamSummary[]) => void,
           });
         })
@@ -188,13 +158,12 @@ describe("useWorkstreams — a superseded walk stops working", () => {
     return pending;
   }
 
-  it("stops issuing pages once its walk has been retired", async () => {
-    // The fence answers "may this result be written". Whether the WORK should
-    // continue is a different question, and the walk never asked it: a retired
-    // walk kept paging to the cap — about 20 sequential requests on a busy
-    // session, up to 500 under a host with `maxWorkstreamListLimit: 1`, each
-    // dragging a per-row status lookup behind it, all of it discarded on
-    // arrival.
+  it("does not issue its sentinel read once retired", async () => {
+    // The window that matters, and the only one there is now that a read is a
+    // page plus a sentinel: the identity is retired while the PAGE is still in
+    // flight. The fence stops the result being written either way — the point
+    // here is that the second request is never made, because a read whose
+    // result may not be written is a read worth not making.
     const pending = armSteppableReads();
 
     const { rerender } = renderHook(
@@ -203,54 +172,35 @@ describe("useWorkstreams — a superseded walk stops working", () => {
     );
     await waitFor(() => expect(pending).toHaveLength(1));
 
-    // First page lands full, so the walk wants another.
-    await act(async () => {
-      pending[0]!.resolve(page(0, 25));
-    });
-    await waitFor(() => expect(pending).toHaveLength(2));
-
-    // The user leaves. The replacement read starts for the new session.
+    // Retired while its page is outstanding.
     rerender({ sessionId: "sess_child" });
     await waitFor(() =>
       expect(pending.some((read) => read.sessionId === "sess_child")).toBe(true)
     );
 
-    // The retired walk's outstanding page comes back, also full. It must not
-    // ask for another.
+    // The page lands full, which would otherwise call for a sentinel.
     await act(async () => {
-      pending[1]!.resolve(page(25, 25));
+      pending[0]!.resolve(page(0, 25));
     });
 
-    expect(pending.filter((read) => read.sessionId === "sess_parent")).toHaveLength(2);
+    expect(pending.filter((read) => read.sessionId === "sess_parent")).toHaveLength(1);
   });
 
-  it("stops issuing pages when the panel unmounts mid-walk", async () => {
-    // The one way an identity is retired with nothing arriving to replace it.
-    // Every other case the fence handles is a SUPERSEDING identity — a new
-    // session, a new client — and an embedded DevTool being unmounted announces
-    // no such thing. Without a teardown the walk sees its identity still in
-    // play and pages on to the bound, up to ~500 requests under a one-row page
-    // size, each with a per-row status lookup behind it, for a result nothing
-    // is left to render.
+  it("does not issue its sentinel read after the panel unmounts", async () => {
+    // Same window, with the identity retired by teardown rather than by a
+    // replacement — the case no identity change announces.
     const pending = armSteppableReads();
 
     const { unmount } = renderHook(() => useWorkstreams("sess_parent"));
     await waitFor(() => expect(pending).toHaveLength(1));
 
-    // First page lands full, so the walk wants another.
+    unmount();
+
     await act(async () => {
       pending[0]!.resolve(page(0, 25));
     });
-    await waitFor(() => expect(pending).toHaveLength(2));
 
-    unmount();
-
-    // The outstanding page comes back, also full. There is nobody to render it.
-    await act(async () => {
-      pending[1]!.resolve(page(25, 25));
-    });
-
-    expect(pending).toHaveLength(2);
+    expect(pending).toHaveLength(1);
   });
 
   it("does not run the reset when the panel unmounts", async () => {
@@ -275,7 +225,7 @@ describe("useWorkstreams — a superseded walk stops working", () => {
     expect(onRetired).toHaveBeenCalledTimes(2);
   });
 
-  it("lands the surviving walk's rows, not the abandoned one's", async () => {
+  it("lands the surviving read's rows, not the abandoned one's", async () => {
     const pending = armSteppableReads();
 
     const { result, rerender } = renderHook(
@@ -320,8 +270,8 @@ describe("useWorkstreams — a superseded walk stops working", () => {
 describe("useWorkstreams — a callback outliving its identity", () => {
   /** A listing that ends after one page, so a walk terminates. */
   function onePage(rows: WorkstreamSummary[]) {
-    return async (_id: string, opts: { offset: number }) =>
-      opts.offset === 0 ? rows : [];
+    return async (_id: string, opts?: { offset?: number }) =>
+      opts?.offset === undefined ? rows : [];
   }
 
   it("refuses a refresh invoked from a closure made for a previous session", async () => {

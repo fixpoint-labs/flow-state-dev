@@ -45,6 +45,7 @@ import { useContinueRequest } from "./hooks/use-continue-request";
 import { useLiveMode } from "./hooks/use-live-mode";
 import { useFocusRevalidate } from "./hooks/use-focus-revalidate";
 import { useWorkstreams } from "./hooks/use-workstreams";
+import { useReadFence } from "./hooks/use-read-fence";
 import { flattenTaskItems } from "./lib/task-collection-state";
 import { pickFurthestStatus } from "./lib/request-status";
 import { shortSessionId } from "./lib/utils";
@@ -119,6 +120,23 @@ function PanelContent({ className }: { className?: string }) {
   const { activeSessionId: stickySession } = useActiveSession(activeFlowKind);
 
   const effectiveSessionId = activeSessionId ?? stickySession;
+
+  // The panel's own staleness check, on the same primitive its hooks use.
+  //
+  // `descentSessionRef` cannot serve: it is synchronised by a PASSIVE EFFECT,
+  // so between a navigator or sticky-session change committing and that effect
+  // running there is a window where it still names the session just left. An
+  // awaited callback settling in that window passes the check and installs its
+  // request as the active stream under the session now open.
+  //
+  // That is the render-versus-effect trap for the third time here — a
+  // generation counter read too late, then captured too early, now a cell
+  // updated on a different schedule from the render that changed it. The fence
+  // mirrors its identity DURING RENDER, so there is no schedule to be out of
+  // step with. A ref written in render would work equally; this is the same
+  // question the hooks ask, so it uses the same answer rather than a fourth
+  // mechanism.
+  const sessionFence = useReadFence([effectiveSessionId]);
 
   useEffect(() => {
     if (stickySession && !activeSessionId) {
@@ -468,7 +486,8 @@ function PanelContent({ className }: { className?: string }) {
   const handleSendAction = useCallback(
     async (action: string, input: unknown) => {
       if (!activeFlowKind || !effectiveSessionId) return;
-      const dispatchedFor = effectiveSessionId;
+      const stillCurrent = sessionFence.begin();
+      if (stillCurrent === null) return;
       // Re-read the Workstream axis at the START of the call, which is what
       // `docs/architecture/server-and-client.md` specifies and what
       // `useSession` does. The reason it is the start rather than the end: the
@@ -494,13 +513,13 @@ function PanelContent({ className }: { className?: string }) {
       // workspace is on; it is updated eagerly on a descent and by the reset
       // effect on a navigator pick, so it is the right thing to compare against
       // rather than a second generation counter.
-      if (descentSessionRef.current !== dispatchedFor) return;
+      if (!stillCurrent()) return;
       if (response?.request.id) {
         setActiveRequestId(response.request.id);
         setDispatchedRequestId(response.request.id);
       }
     },
-    [activeFlowKind, effectiveSessionId, sendAction, refreshWorkstreams],
+    [activeFlowKind, effectiveSessionId, sendAction, refreshWorkstreams, sessionFence],
   );
 
   // After a suspension is resolved, re-attach the live stream to the continued
@@ -529,7 +548,7 @@ function PanelContent({ className }: { className?: string }) {
       // check. `useResumeSuspension` is no better a home: unlike
       // `useContinueRequest`, which carries an owner token for exactly this, it
       // takes no session and could not tell.
-      if (descentSessionRef.current !== effectiveSessionId) return;
+      if (sessionFence.begin() === null) return;
       setActiveRequestId(requestId);
       setDispatchedRequestId(requestId);
       // Force a reconnect: the id is unchanged (same-request continuation), so
@@ -547,7 +566,7 @@ function PanelContent({ className }: { className?: string }) {
       // immediately, with nothing downstream able to skip it.
       void refreshWorkstreams();
     },
-    [effectiveSessionId, refreshRequests, refreshWorkstreams],
+    [refreshRequests, refreshWorkstreams, sessionFence],
   );
 
   // Per-row Continue action (FIX-865) — supersedes the legacy top-level
