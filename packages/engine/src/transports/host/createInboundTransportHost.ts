@@ -26,7 +26,10 @@ import {
   OrgRequiredError,
   PrincipalResolutionError
 } from "../errors";
-import { createConcurrencyArbiter } from "../concurrency/arbiter";
+import {
+  createConcurrencyArbiter,
+  type ConcurrencyArbiter
+} from "../concurrency/arbiter";
 import { pickPrincipalResolver } from "../auth/pickPrincipalResolver";
 import type { FlowDispatcher, DispatchEnvelope } from "../dispatcher";
 import {
@@ -90,6 +93,15 @@ export type CreateInboundTransportHostOptions = {
    * external worker (e.g., BullMQ WorkerDispatcher).
    */
   dispatcher?: FlowDispatcher;
+  /**
+   * Concurrency arbiter to enforce policy through. Defaults to a fresh one.
+   *
+   * Supplied when more than one host serves the same process, so a declared
+   * `queue`/`reject` policy is enforced ONCE rather than once per host — two
+   * arbiters hold two independent keyed gates, and a request admitted by one
+   * knows nothing about a key the other is holding (FIX-1077).
+   */
+  arbiter?: ConcurrencyArbiter;
 };
 
 /**
@@ -148,7 +160,7 @@ export function createInboundTransportHost(
   // the run completes in another worker, so the policy is deferred to the
   // durable substrate (FIX-830) rather than gating the enqueue, which would give
   // misleading semantics (a `reject` lease freed at enqueue, not run-completion).
-  const arbiter = createConcurrencyArbiter();
+  const arbiter = options.arbiter ?? createConcurrencyArbiter();
 
   /**
    * Hand a STARTED run's `finished` to the adapter's keep-alive hook, containing

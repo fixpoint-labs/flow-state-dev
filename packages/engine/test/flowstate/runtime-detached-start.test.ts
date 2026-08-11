@@ -382,7 +382,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
       // And it did not go quietly. A count alone would be barely better than
       // silence, so the ids someone reads the rows back with have to be there.
       const truncation = reported.find((line) =>
-        line.includes("shutdown did not wait out")
+        line.includes("shutdown cancelled")
       );
       expect(truncation).toBeDefined();
       expect(truncation).toContain("1 detached request(s)");
@@ -488,6 +488,56 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     expect(observed.children[0]!.model).toBe("cli-override");
 
     await state.dispose();
+  });
+
+  it("enforces a reject policy ACROSS the router and detached hosts, not once each", async () => {
+    const observed: Observed = { children: [] };
+    const flow = detachingFlow("runtime-arbiter-shared", observed, {
+      // The parent holds this key for its whole run. A child dispatched under
+      // the same key must meet it.
+      concurrency: { policy: "reject", key: "user" }
+    });
+
+    const state = createFlowState({
+      flows: { detaching: flow },
+      stores: { default: { primary: inMemoryStores() } },
+      modelResolver: markerResolver("app-default")
+    });
+
+    // The topology the split lives in: the runtime resolves first (so
+    // `#wireDetachedStart` builds a host), and a router is built after (so a
+    // second host exists). `fsdev serve` and `fsdev dev` both do this.
+    await state.getRuntime();
+    const router = await state.getRouter();
+
+    // A real HTTP request, so the PARENT goes through the router's host and
+    // holds the concurrency key there — which is the only way the two hosts can
+    // be observed disagreeing.
+    const res = await router.POST(
+      new Request(
+        "http://localhost/api/flows/runtime-arbiter-shared/actions/launch",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", accept: "text/event-stream" },
+          body: JSON.stringify({ userId: USER_ID, sessionId: "s_http", input: {} })
+        }
+      ),
+      { params: { path: ["runtime-arbiter-shared", "actions", "launch"] } }
+    );
+    const reader = res.body?.getReader();
+    while (reader !== undefined) {
+      const { done } = await reader.read();
+      if (done) break;
+    }
+
+    // With one arbiter the child's dispatch meets its parent's held key and is
+    // rejected. With a private arbiter per host it sees a free key and runs, so
+    // a declared `reject` policy is enforced once per host instead of once per
+    // flow — policy belongs to the flow, not to whichever host took the
+    // dispatch.
+    expect(observed.children).toEqual([]);
+    // The refusal surfaced to the block rather than vanishing.
+    expect(observed.error ?? "").toMatch(/concurren|reject/i);
   });
 
   it("a router-first init is left exactly as it was — the router wires its own", async () => {

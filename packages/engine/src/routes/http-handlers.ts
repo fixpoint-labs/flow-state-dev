@@ -67,6 +67,7 @@ import { createInboundTransportHost } from "../transports/host/createInboundTran
 import { createDetachedStartOperation } from "../context/detached-start-operation";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import type { FlowDispatcher } from "../transports/dispatcher";
+import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
 
 export type RequestContext = {
   method: string;
@@ -170,6 +171,14 @@ export type CreateFlowRouteHandlersOptions = {
   debugCountLimit?: number;
   /** Pluggable flow dispatcher. Default: in-process via runAction. */
   dispatcher?: FlowDispatcher;
+  /**
+   * Concurrency arbiter for this router's host. Defaults to a fresh one.
+   *
+   * Supplied by `createFlowState` when it also built a host of its own for
+   * detached dispatch, so one declared `queue`/`reject` policy is enforced once
+   * across both rather than once per host (FIX-1077).
+   */
+  arbiter?: ConcurrencyArbiter;
 };
 
 const DEFAULT_SSE_HEARTBEAT_MS = 15_000;
@@ -244,7 +253,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     stores,
     resolvePrincipal: hostResolver,
     runtimeConfig,
-    dispatcher: options.dispatcher
+    dispatcher: options.dispatcher,
+    arbiter: options.arbiter
   });
 
   // Close the last loop in the detached seam (FIX-982 P3a). `startDetached`

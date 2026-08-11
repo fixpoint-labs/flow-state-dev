@@ -19,6 +19,7 @@ import { createFlowRegistry, type FlowRegistry } from "../registry/flow-registry
 import { createFlowApiRouter, type FlowApiRouter } from "../routes/createFlowApiRouter";
 import { createRuntimeConfig, resolveStaleSweep, type RuntimeConfig } from "../runtime-config";
 import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent } from "../execution/logging";
+import { abortRequest } from "../execution/abort-registry";
 import { createCheckpointDurabilityProvider } from "../durability/checkpoint-durability-provider";
 import { FlowStateConfigError, FlowStateDisposedError } from "../errors/flow-error";
 import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store-adapter";
@@ -30,6 +31,7 @@ import {
 } from "../context/detached-start-operation";
 import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
 import { isInProcessDispatcher } from "../transports/host/in-process-dispatcher";
+import { createConcurrencyArbiter } from "../transports/concurrency/arbiter";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import type {
   CreateFlowStateOptions,
@@ -51,6 +53,17 @@ const MAX_DETACHED_DRAIN_ROUNDS = 32;
 
 /** How many outstanding children the truncation warning names before eliding. */
 const MAX_NAMED_TRUNCATED_CHILDREN = 5;
+
+/**
+ * Grace given to a cancelled child to unwind before the stores close.
+ *
+ * An aborted run throws at its next await and writes a terminal record, and that
+ * write needs the adapters still open — cancelling and closing in the same tick
+ * would trade a run that never finished for one that half-wrote. Short, because
+ * this is the tail of an already-expired budget and a child that ignores its
+ * abort signal must not be able to extend shutdown indefinitely.
+ */
+const DETACHED_ABORT_UNWIND_MS = 2_000;
 
 /**
  * Default ceiling on how long `dispose()` waits for in-process detached work.
@@ -98,9 +111,17 @@ function resolveDetachedDrainTimeout(configured: number | undefined): number {
  * out first. Never rejects — the caller passes an `allSettled`, and a timeout is
  * an answer rather than an error.
  *
- * The timer is `unref`'d so a pending budget cannot by itself hold a one-shot
- * process open past the work it is timing, and cleared on the settle path so a
- * fast drain does not leave one armed.
+ * The timer is deliberately **referenced**, and that is load-bearing rather than
+ * incidental. An earlier version `unref`'d it to avoid "holding the process
+ * open", which inverted the whole mechanism: a child that never settles usually
+ * owns no referenced handle either, an awaited promise keeps nothing alive on
+ * its own, so Node drained the loop and exited *immediately* — before the
+ * timeout fired, before the truncation was reported, and before the worker and
+ * store adapters were closed. The budget existed and was never reached.
+ *
+ * Keeping it referenced is safe because every exit from this function goes
+ * through `finish`, which clears the timer, so a drain that completes early
+ * leaves nothing armed to hold the process past its work.
  */
 function settledWithin(work: Promise<unknown>, ms: number): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
@@ -112,9 +133,6 @@ function settledWithin(work: Promise<unknown>, ms: number): Promise<boolean> {
       resolve(value);
     };
     const timer = setTimeout(() => finish(false), ms);
-    if (typeof (timer as { unref?: () => void }).unref === "function") {
-      (timer as unknown as { unref: () => void }).unref();
-    }
     void work.then(
       () => finish(true),
       () => finish(true)
@@ -196,6 +214,18 @@ class InternalFlowState<TSettings extends object>
    * install one after `getRuntime()` returns.
    */
   #resolvedRuntimeConfig: RuntimeConfig | undefined;
+  /**
+   * The one concurrency arbiter every host in this process shares (FIX-1077).
+   *
+   * A runtime-first init can build two hosts — the one `#wireDetachedStart`
+   * closes the start operation over, and the router's later on. Each would
+   * otherwise own a private keyed gate, so a Workstream spawned by an HTTP
+   * request could start under a `user`/`session` key its own parent still held:
+   * a declared `queue` policy silently not serialising, or a `reject` policy
+   * silently admitting. Policy is a property of the flow, not of whichever host
+   * happened to take the dispatch.
+   */
+  readonly #arbiter = createConcurrencyArbiter();
 
   constructor(options: CreateFlowStateOptions<TSettings>) {
     if (Object.hasOwn(options, "middleware")) {
@@ -395,8 +425,47 @@ class InternalFlowState<TSettings extends object>
     }
 
     if (this.#detachedChildren.size > 0) {
-      this.#reportTruncatedChildren(Date.now() - startedAt, budgetMs);
+      await this.#cancelOutstandingChildren(Date.now() - startedAt, budgetMs);
     }
+  }
+
+  /**
+   * Cancel detached work the budget ran out on, then let it unwind.
+   *
+   * Reporting alone was not enough, and the gap was the dangerous kind. The
+   * budget expired, the warning printed, and `dispose()` went on to close the
+   * worker and every store adapter — while the child kept running. Two things
+   * followed: the process could stay alive well past the timeout it advertised
+   * (the run's own heartbeat timer is a referenced handle), and the child went
+   * on writing **through disposed adapters**, which is worse than either a hang
+   * or a stranded row because the write goes somewhere undefined.
+   *
+   * `abortRequest` is the framework's own teardown seam — the single point both
+   * the abort route and `runAction`'s cross-process heartbeat poll converge on —
+   * so a shutdown cancel is indistinguishable downstream from a user's. Every
+   * child here is in-process by construction (the locality gate), so its
+   * controller is in this process's registry.
+   *
+   * The brief unwind wait afterwards is what makes the cancel worth doing: an
+   * aborted run throws at its next await and writes a terminal record, and that
+   * write needs the stores still open. Bounded, so a child that ignores its
+   * signal cannot re-open the hang this method exists to close.
+   */
+  async #cancelOutstandingChildren(elapsedMs: number, budgetMs: number): Promise<void> {
+    const abandoned = [...this.#detachedChildren];
+
+    for (const child of abandoned) {
+      // Best-effort by contract: `false` means the run already deregistered,
+      // which is a race we win by doing nothing.
+      abortRequest(child.requestId);
+    }
+
+    await settledWithin(
+      Promise.allSettled(abandoned.map((child) => child.finished)),
+      DETACHED_ABORT_UNWIND_MS
+    );
+
+    this.#reportTruncatedChildren(abandoned, elapsedMs, budgetMs);
   }
 
   /**
@@ -420,16 +489,19 @@ class InternalFlowState<TSettings extends object>
    * silence; the request and session ids are what someone reads the rows back
    * with afterwards.
    */
-  #reportTruncatedChildren(elapsedMs: number, budgetMs: number): void {
-    const outstanding = [...this.#detachedChildren];
-    const named = outstanding
+  #reportTruncatedChildren(
+    abandoned: readonly DispatchedDetachedChild[],
+    elapsedMs: number,
+    budgetMs: number
+  ): void {
+    const named = abandoned
       .slice(0, MAX_NAMED_TRUNCATED_CHILDREN)
       .map((child) => `${child.requestId} (session ${child.sessionId})`)
       .join(", ");
-    const overflow = outstanding.length - MAX_NAMED_TRUNCATED_CHILDREN;
+    const overflow = abandoned.length - MAX_NAMED_TRUNCATED_CHILDREN;
 
     console.error(
-      `[flowstate] shutdown did not wait out ${outstanding.length} detached request(s) ` +
+      `[flowstate] shutdown cancelled ${abandoned.length} detached request(s) ` +
         `after ${elapsedMs}ms (budget ${budgetMs}ms); they may not have completed: ` +
         `${named}${overflow > 0 ? `, and ${overflow} more` : ""}`
     );
@@ -708,7 +780,9 @@ class InternalFlowState<TSettings extends object>
       resolvePrincipal:
         this.#options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
       runtimeConfig: runtime.runtimeConfig,
-      dispatcher
+      dispatcher,
+      // Shared with the router's host — see `#arbiter`.
+      arbiter: this.#arbiter
     });
 
     // Track children for the shutdown drain ONLY when they run here.
@@ -803,7 +877,10 @@ class InternalFlowState<TSettings extends object>
       staleSweepIntervalMs: this.#options.staleSweepIntervalMs,
       staleSweepThresholdMs: this.#options.staleSweepThresholdMs,
       queuedGraceMs: this.#options.queuedGraceMs,
-      dispatcher: this.#options.dispatcher ?? this.#workerDispatcher
+      dispatcher: this.#options.dispatcher ?? this.#workerDispatcher,
+      // The same arbiter the detached-start host uses, so one flow-level
+      // concurrency policy is enforced once across the process — see `#arbiter`.
+      arbiter: this.#arbiter
     });
   }
 }
