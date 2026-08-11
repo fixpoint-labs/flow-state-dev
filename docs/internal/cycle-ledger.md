@@ -325,16 +325,22 @@ total, not the delta" defeated by its own trigger.
 **Observable: at merge, no file in a PR sits above 6.5.2's growth trigger without a re-draft
 commit reconciling it.** If fix A works, growth is either avoided or reconciled *before* the PR
 closes, so merged artifacts carry no unreconciled accretion. If it doesn't, files merge over the
-trigger untouched and the accretion ships. **Baseline: both rows this cycle fail it** — #1169
-needed the owner to ask for the rewrite, #1166 merged with its growth intact.
+trigger untouched and the accretion ships. **Baseline: #1166 fails it** — merged with its growth
+intact. **#1169 is not scored**: it never merged, so it has no at-merge result, and it was in fact
+reconciled (198→73). Counting it as a failure scored *who prompted the rewrite*, which is a
+different thing than the observable measures.
 
 The criterion deliberately does **not** score a peak above 1.3× as failure. Fix A only fires
 *after* growth crosses the trigger, so a correct firing **requires** a peak and then a re-draft —
 scoring the peak would read every successful firing as a failure and trip the abandon-this-altitude
-conclusion on the best case. Three earlier drafts of this claim were wrong in three different ways
-(delta-vs-cumulative, raw-vs-share, and a criterion false under success), so this one is derived
-from what each world would *look* like rather than patched again. A fourth patch is not the move;
-if it's wrong again, the class being measured is not measurable from review data.
+conclusion on the best case.
+
+**This is the fourth formulation of this claim** — delta-vs-cumulative, raw-vs-share,
+false-under-success, and a baseline that contradicted its own observable. There will not be a
+fifth. Four attempts is evidence about the instrument, not bad luck: a criterion that needs five
+rewrites to become scoreable is itself the argument for the mechanical check the live fork already
+puts to the owner. If this formulation doesn't hold either, the conclusion is that the class isn't
+measurable from review data — not that the claim needs another edit.
 
 Fix A is prose, aimed at attention at edit time — the same shape cycle 2's round 8 note said it
 doubts. If unreconciled growth still reaches merge, that is the second class where written guidance
