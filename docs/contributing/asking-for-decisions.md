@@ -162,9 +162,9 @@ first. Two to four is a normal batch. Past four, either some of them aren't asks
 went too long without checking in.
 
 That count is a **turn's batch**, and it is not the per-artifact cap. A spec or a PR surfaces
-**zero to two live forks** — the ones that get the full six-part shape — while everything else
-in its §6 is being ratified at one line each. A turn can carry four asks because they come from
-four different places; one artifact asking four times means its direction isn't settled.
+**zero to two live forks** — the ones that get the full six-part shape — above at most three
+ratified rows, one line each. A turn can carry four asks because they come from four different
+places; one artifact asking four times means its direction isn't settled.
 
 Each item is self-contained — they will answer #3 without re-reading #1.
 
@@ -178,11 +178,16 @@ Each item is self-contained — they will answer #3 without re-reading #1.
 | **A gate** | The spec-approval and epic-objective gates, surfaced by the lifecycles ([`orchestration.md`](orchestration.md) → Gates) |
 | **A blocker** | A worker escalating a fork it can't settle — the escalation carries the parts, the coordinator surfaces them |
 
-**Most decisions are not live forks.** A spec's §6 lists up to eight Decisions and the human
-is *ratifying the direction* on most of them — those stay one line each with a cost column,
-which is what makes eight of them fit on a screen. The full six-part shape is for the one or
-two that are genuinely open, plus anything in §12. Applying it to all eight buries the live
-ones; applying it to none leaves them to be found.
+**Most decisions are not live forks, and most don't reach them at all.** A decision reaches
+the product owner's surface only if a wrong answer changes what a user experiences, what
+we've promised, when something ships, or what it costs to undo — and if they'd plausibly
+answer differently than you did ([`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → §3
+carries both filters and the worked before/after). The rest are yours; record them where an
+engineer reads them.
+
+Of the few that do reach them, most are being *ratified* — one line each with a cost column.
+The full six-part shape is for the one or two genuinely open, plus anything in a spec's §12.
+Applying it to every row buries the live ones; applying it to none leaves them to be found.
 
 ## Worked example
 

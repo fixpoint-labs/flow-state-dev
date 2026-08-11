@@ -30,15 +30,23 @@ The one exception is a PR that seeks **no** review of a direction: a `settle-cla
 PR, whose body is a compact evidence block and whose only job is to put a finding in front
 of a human. It leads with the claim and why it earned a PR, and stops there.
 
-| | Block | Answers | Authored |
-|---|---|---|---|
-| 1 | **The problem** | What's broken, for whom, why now? | Per PR |
-| 2 | **What this does** | The mechanism in plain terms, plus a diagram if one earns its place | Per PR |
-| 3 | **What's asked of you** | The decisions, the recommendation, what a wrong one costs | Per PR |
-| 4 | **Parts worth reviewing closely** | Where, in *this* change, should attention go? | Per PR |
-| 5 | **Links line** | Spec doc, Linear, epic — and whether this merges | Per PR |
-| — | *collapsed* → **How to review this** | What is this artifact, at what altitude? | Pasted verbatim per PR kind |
-| — | *collapsed* → **Everything else** | The full case, verification output, file-by-file changes | Per PR |
+| | Block | Answers | For | Authored |
+|---|---|---|---|---|
+| 1 | **The problem** | What's broken, for whom, why now? | Product owner | Per PR |
+| 2 | **What this does** | The mechanism in plain terms, plus a diagram if one earns its place | Product owner | Per PR |
+| 3 | **What's asked of you** | The decisions *they* own, the recommendation, what a wrong one costs | Product owner | Per PR |
+| 4 | **Parts worth reviewing closely** | Where, in *this* change, should attention go? | Code reviewer | Per PR |
+| 5 | **Links line** | Spec doc, Linear, epic — and whether this merges | Both | Per PR |
+| — | *collapsed* → **How to review this** | What is this artifact, at what altitude? | Code reviewer | Pasted verbatim per PR kind |
+| — | *collapsed* → **Engineering calls** | What was decided that a product owner doesn't own | Code reviewer | Per PR |
+| — | *collapsed* → **Everything else** | The full case, verification output, file-by-file changes | Code reviewer | Per PR |
+
+**The *For* column is the load-bearing one.** A product owner's job ends at the bottom of
+block 3, and blocks 1–3 are written so it can — plain language, decisions priced in
+consequences. Everything below that line is engineer-to-engineer. Mixing the two registers,
+by putting an implementation call in block 3 or by writing block 3 in mechanism, is the
+failure this layout exists to prevent: it produces a description where the reader can't tell
+which sentences are addressed to them.
 
 Two things about this order are easy to get wrong and worth stating plainly.
 
@@ -47,18 +55,16 @@ of artifact this is. A reviewer can't judge any of it before they know what hurt
 links line is genuinely useful, which is why it's kept, and it goes at position 5 where a
 reader reaches for it *after* deciding they want to go deeper.
 
-**Blocks 3 and 4 are the two halves of the ask, and they come after 1–2 for a reason.**
-Asking someone to look hard at "Decision 4" before they know what problem Decision 4
-serves is asking them to review a number. On a change that follows an approved spec,
-block 3 is one line — *nothing is being decided here; this implements the approved
-direction* — and that line is worth writing, because its absence reads as an omission.
+**Blocks 3 and 4 are both asks, but of different people, and both come after 1–2 for a
+reason.** Asking someone to look hard at "Decision 4" before they know what problem Decision
+4 serves is asking them to review a number. On a change that follows an approved spec, block
+3 is one line — *nothing is being decided here; this implements the approved direction* — and
+that line is worth writing, because its absence reads as an omission.
 
-**Blocks 1–3 are written for a product owner, not a peer engineer.** The human reviewing
-this holds the roadmap; what they can judge and a bot can't is direction, scope, and whether
-this was worth building. So the problem is stated in observable behaviour and each decision
-is priced in consequences — customers, promises, timing, reversibility — rather than in
-mechanism. The full contract is [`asking-for-decisions.md`](asking-for-decisions.md); §3
-below applies it.
+What a product owner can judge and a bot can't is direction, scope, and whether this was
+worth building, so blocks 1–3 state the problem in observable behaviour and price each
+decision in consequences — customers, promises, timing, reversibility. The full contract is
+[`asking-for-decisions.md`](asking-for-decisions.md); §3 below applies it.
 
 **The contract moved below the fold; it did not go away.** It is the one lever we have on
 reviewers we can't instruct, and it measurably raises what comes back. But it says the
@@ -118,27 +124,53 @@ Rules, all cheap to check:
 
 ## 3. What's asked of you
 
-This block has **two registers**, and mixing them is the common failure. Most decisions the
-human is *ratifying* — the direction is settled and they're confirming it's the direction
-they want. One or two might be *live forks* the author genuinely can't settle alone. Ratified
-rows get a line; a live fork gets the full ask.
+**This is the last block written for the product owner, and it is the one they came for.**
+If they stop at the end of it, they should have done their whole job. Everything after it is
+for the code reviewer.
 
-### The ratified rows — one line each
+So the failure mode here is not length — it is a reader who finishes six rows unable to say
+which one they were supposed to decide. **A decision earns its place on this surface or it
+does not appear on it.** Two filters decide that, and a row has to pass both.
 
-The decisions and their consequences, with what a wrong one costs. On an implementation PR
-that's the Key Decisions & Ramifications list, capped at five; on an epic PR, the
-cross-cutting decisions.
+### Filter 1 — is it theirs?
 
-**Where the artifact defines a sign-off surface, the cap doesn't apply — show all of it.**
-A spec's §6 allows up to eight Decisions and every one of them is what approval certifies
-(`spec-template.md` → §6). Indexing five of eight asks a reviewer to approve three they
-can't see, which is worse than a slightly longer table. Eight one-liners still fits a
-screen; the full text stays in the collapsed case.
+A wrong answer has to change one of four things:
 
-Carry the substance alongside the number, never the number alone — a bare "Decision 3"
-makes the reader rebuild a map they don't have.
+- **what a user experiences**
+- **what we've promised** anyone outside the team
+- **when something ships**
+- **what it costs to undo**
 
-A table works well, because the cost column is the part that gets dropped when it's prose:
+If a wrong answer changes none of them, it is an engineer's call. It goes one line each in
+the collapsed **engineering calls** block, where the code reviewer wants it anyway — not on
+the surface a product owner reads. *"Feed the new lenses from the shared evidence bundle
+rather than wiring data to each one"* is a real decision, and it changes none of the four.
+
+### Filter 2 — is it worth their attention?
+
+A call that is obviously right, or reversible in an afternoon at near-zero cost, is one you
+make and note in a line ([`asking-for-decisions.md`](asking-for-decisions.md) → "When not to
+ask"). Surfacing it *as* a decision implies weight it doesn't have, and it spends the
+attention the row beside it needed. *"An unrun panel says it didn't run instead of
+disappearing"* passes filter 1 — a reader sees it — and fails this one.
+
+### The rule that catches the most inflation
+
+**A row describing what the change does belongs to block 2, not here.** *"A lens missing
+evidence counts for a fraction of a seat"* is the mechanism; it was already stated above.
+Block 3 is only for calls where a reasonable person could have gone the other way and the
+product owner would care which. Re-listing the mechanism as decisions is what turns a
+two-decision change into a six-row table.
+
+### The shape
+
+**Three rows is the ceiling, hardest first**, plus zero to two live forks. Not a target —
+one row and one fork is a healthy PR, and a change following an approved spec often has
+none. Past three, either the filters weren't applied or this PR carries more product surface
+than one PR should.
+
+Carry the substance alongside the number, never the number alone — a bare "Decision 3" makes
+the reader rebuild a map they don't have.
 
 ```md
 | # | Decision | If it's wrong |
@@ -151,6 +183,12 @@ guard surface, or a migration third parties didn't need" is a cost a product own
 "The two guards would both have to be maintained" is a fact about our code, and it asks them
 to work out for themselves why that's bad.
 
+> **On a spec PR the §6 Decisions are what approval certifies, so none is dropped — they are
+> *sorted*.** Rows that pass both filters go here; the rest go one line each in the collapsed
+> engineering block. Nothing is hidden and nothing is approved unseen. A §6 that yields six
+> product rows is a §6 that put the owner in the engineer's chair, and the fix for that is
+> upstream in the spec ([`spec-template.md`](spec-template.md) → §6), not a longer table here.
+
 ### The live forks — the full ask, under the table
 
 A decision the author can't settle alone isn't a table row. It gets the six-part shape from
@@ -158,10 +196,14 @@ A decision the author can't settle alone isn't a table row. It gets the six-part
 trade-off, **your recommendation**, what would change your mind, and what being wrong costs.
 Canonical there; don't re-derive it here.
 
-Two rules keep this from swallowing the block:
+Three rules keep it from swallowing the block:
 
 - **Zero to two per PR.** Three is a signal the change went too long without checking in.
   A fork the whole PR rests on should have been raised before the PR existed.
+- **One to three sentences per part; ~200 words for the whole fork** — the per-fork row in
+  [`writing-for-humans.md`](writing-for-humans.md) → Budgets. A five-sentence recommendation
+  is an argument with itself on the page. Make the call, give the reason that actually
+  decided it, and stop.
 - **Never present a fork as neutral when you have a view.** That spends a round extracting
   the view, and it isn't neutrality — it's asking the reader to build a position from less
   information than you have.
@@ -169,10 +211,57 @@ Two rules keep this from swallowing the block:
 A PR where nothing is open says so in one line — *nothing is being decided here; this
 implements the approved direction* — and its absence reads as an omission.
 
+### Before and after
+
+A real block 3, at six rows. The change adds investment "lenses" to an analysis panel and
+discounts lenses that were missing data.
+
+**Before** — six rows and a fork, all looking equally weighty. Row 1 is the mechanism
+restated, row 3 fails filter 1, row 5 fails filter 2, and nothing tells the reader which of
+the six is theirs:
+
+```md
+| # | Decision | If it's wrong |
+|---|---|---|
+| 1 | A lens that reported missing evidence counts for a fraction of a seat, and only when it agrees with the majority | Agreement is no longer a headcount, so the same evidence can produce a smaller suggested position |
+| 2 | The discount may change the headline read — live fork, asked in full below | Well-founded calls on partly-thin data get sized smaller than today |
+| 3 | Feed the new lenses by putting the four missing valuation figures on the shared evidence surface, not by wiring data to them | The panel splits into lenses reading two versions of the same company, and the fix has to be made twice |
+| 4 | Seat the two lenses the original design named, accepting that three of six now read through a value frame | A "they all agree" read is partly a property of who we seated |
+| 5 | A cheap-preset report states the panel did not run, instead of omitting the block | A reader can't tell "nobody checked" from "the philosophies agreed" |
+| 6 | Ships as two PRs: the agreement-honesty fix first, the pack expansion second | The honesty half reaches readers weeks later than it needs to |
+```
+
+**After** — same change, filters applied. The old row 1 was mechanism that block 2 already
+stated, and its live half is the fork. The old row 3 changes none of the four things. The old
+row 5 is obviously right and costs nothing to reverse. What's left is one fork and two rows,
+and the reader can see that all three are theirs:
+
+```md
+| # | Decision | If it's wrong |
+|---|---|---|
+| 1 | **Live fork — see below.** Thin data may downgrade the headline verdict, which sizes the position smaller | Good calls on partly-thin data get smaller positions than they get today, on every report from here |
+| 2 | Three of the six seated lenses read through a value frame, so the report says the panel is value-tilted rather than implying an even spread | We publish "the philosophies agree" when what we built was a panel that mostly shares one philosophy |
+| 3 | The honesty fix ships first, on its own, ahead of the larger pack expansion | Readers keep getting the overstated agreement number for the weeks the bigger change takes |
+```
+
+The shipping row survives because *when something ships* is one of the four — a sequencing
+call is a product call even though an engineer made it. And the two dropped rows didn't
+disappear: they moved to the collapsed engineering block, one line each, where the person who
+can actually evaluate them will read them.
+
 ## 4. Parts worth reviewing closely
 
-**1–3 items. Never a walk of the diff.** If everything is worth reviewing closely, nothing
-is, and the section has spent the reviewer's attention without directing it.
+**This block is for the code reviewer, and the change of audience is the point.** Blocks 1–3
+were the product owner's; this one is engineer-to-engineer, and it is where the register is
+allowed to become technical. Open it with one line that says so — *"The rest of this is for
+whoever reviews the code"* — so a product owner knows they are done rather than skimming
+three paragraphs of mechanism looking for another ask.
+
+**1–3 items, two to four sentences each**, inside the artifact's overall budget
+([`writing-for-humans.md`](writing-for-humans.md) → Budgets) rather than on top of it. Never
+a walk of the diff. If everything is worth reviewing closely, nothing is, and the section has
+spent the reviewer's attention without directing it. An item that needs a paragraph of setup
+is usually two items, or one that belongs in a code comment next to the code it describes.
 
 Each item names three things:
 
@@ -228,6 +317,19 @@ open it from that line alone.
 What goes down here:
 
 - **The reviewer contract**, always, and first.
+- **The engineering calls** — every decision §3's filters kept off the product owner's
+  surface, one line each with what a wrong one costs, in the engineer's register. This is
+  the block that makes the filters safe to apply: nothing is dropped from the record, it is
+  sorted by who it is addressed to, and the reader who wants it is the reader who opens it.
+
+  ```md
+  <details>
+  <summary><b>Engineering calls</b> — decided along the way, no product sign-off needed</summary>
+  ```
+
+  On a spec PR this is where the §6 Decisions that aren't product decisions live, so §6
+  stays complete. If this block is empty on a change of any size, the filters probably
+  weren't applied — the rows are still in §3.
 - **The long-form case.** On a spec PR, the rest of Part I — tradeoffs, focus practices,
   worked examples, the Decisions in full. Blocks 1–3 above are §1, §2 and the §6 index, so
   the collapsed block picks up where they stop and nothing is said twice.
@@ -422,9 +524,9 @@ sequenceDiagram
 
 ## What's asked of you
 
-Approve the direction, or push back on any of these. *(Three of §6's seven rows are shown
-here to keep the example short — a real spec PR indexes **every** Decision, because §6 is
-the sign-off surface.)*
+Approve the direction, or push back on any of these. *(Three of §6's seven rows passed the
+two filters in §3 above; the other four were engineer's calls and are listed in the collapsed
+engineering block, so §6 stays complete.)*
 
 | # | Decision | If it's wrong |
 |---|---|---|
@@ -465,6 +567,13 @@ stops being cheap and becomes a breaking change we've promised not to make.
 <summary><b>How to review this</b> — altitude, what's in scope, what's deliberately unsettled</summary>
 
 …contract, verbatim…
+
+</details>
+
+<details>
+<summary><b>Engineering calls</b> — decided along the way, no product sign-off needed</summary>
+
+…§6's other four Decisions, one line each…
 
 </details>
 

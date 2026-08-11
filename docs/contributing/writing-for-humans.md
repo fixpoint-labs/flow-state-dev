@@ -108,10 +108,16 @@ more, since a small change is where a reviewer is most likely to assume the wron
 
 - The path to the answer. The conclusion goes up; the derivation goes down.
 - Per-file, per-item, per-decision enumerations — **unless the enumeration *is* the ask.**
-  Where an artifact defines a sign-off surface, every item on it goes above the fold, one
-  line each: a spec's §6 Decisions are what approval certifies, so indexing a subset asks
-  the reader to approve what they can't see. The test is whether the reader is being asked
-  to *decide* on each row or merely informed of it.
+  The test is whether the reader is being asked to **decide** on each row or is merely being
+  **informed** of it. Rows they decide go above the fold, one line each, however many there
+  are; rows they're informed of go below it, however few.
+
+  Where an artifact defines a sign-off surface — a spec's §6 Decisions are what approval
+  certifies — nothing on that surface is ever *dropped*, but it is **sorted** by that same
+  test, so the reader approves nothing they can't see and reads nothing they can't act on.
+  A sign-off surface where most rows are informational is a signal the surface itself
+  collected the wrong things; fix it there rather than lengthening what a human reads
+  ([`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → §3 carries the filters).
 - Verification output, test counts, tool transcripts, quoted evidence.
 - Alternatives weighed and rejected — that a simpler one lost is a clause; the analysis is
   below.

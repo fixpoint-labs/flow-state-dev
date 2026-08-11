@@ -181,13 +181,19 @@ Numbered, ≤ 8, only the calls that **shape the outcome** — some interpretati
 the implementer is expected. Each: the decision, the alternative rejected, the
 ramification. Part II must not introduce a decision that isn't here.
 
-**Each one is a business decision or it does not belong here.** The test: could the owner
-explain the choice, and what it costs them, to a customer — without the file names? If a
-row only makes sense in terms of types, modules or call sites, it is an implementer's call
-and belongs in Part II. A spec whose §6 reads like a design review has put the owner in the
+**Each one is a business decision or it does not belong here.** The test is the same one the
+PR body applies ([`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → §3): a wrong answer
+has to change **what a user experiences**, **what we've promised** anyone outside the team,
+**when something ships**, or **what it costs to undo**. If it changes none of those, or it
+only makes sense in terms of types, modules or call sites, it is an implementer's call and
+belongs in Part II. A spec whose §6 reads like a design review has put the owner in the
 engineer's chair, which [`asking-for-decisions.md`](asking-for-decisions.md) says should be
 rare and announced. **Most specs should have two or three rows here, not eight** — eight
 calls that genuinely reshape the outcome is a sign the issue is really several.
+
+Two rows are commonly mistaken for Decisions and are not. **A restatement of what the
+solution does** is §2's job, not a call anyone made. **A call that was obvious and costs
+nothing to reverse** is one you make and note; listing it implies weight it doesn't have.
 
 **Write *Locks in* as a consequence, not a mechanism.** It is the only line that tells a
 product owner what signing this off costs them, so it names what we can no longer change
