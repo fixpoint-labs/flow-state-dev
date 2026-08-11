@@ -63,6 +63,15 @@ function sameIdentity(a: readonly unknown[], b: readonly unknown[]): boolean {
 
 export type ReadFence = {
   /**
+   * Is `candidate` the identity currently in play?
+   *
+   * For deriving OUTPUT, not for gating a write. A hook holds the identity its
+   * data was read under and asks this during render, so a consumer never sees
+   * rows belonging to an identity that has already been replaced — the gap a
+   * reset effect leaves open.
+   */
+  holds: (candidate: readonly unknown[]) => boolean;
+  /**
    * Open a read. Returns the predicate for "may this result still be written",
    * or `null` when the caller was built for an identity that is no longer in
    * play — in which case there is no read to make.
@@ -147,6 +156,8 @@ export function useReadFence(
     () => {
       const mine = identity;
       return {
+        holds: (candidate) =>
+          !retiredRef.current && sameIdentity(candidate, currentRef.current),
         begin: () => {
           if (retiredRef.current) return null;
           if (!sameIdentity(mine, currentRef.current)) return null;

@@ -131,6 +131,42 @@ describe("useSessionRequests — switching sessions", () => {
     expect(result.current.requests).toEqual([]);
   });
 
+  it("returns no rows for a session whose read has not landed, during the render itself", async () => {
+    // The gap a reset effect leaves. `requests` is what live mode picks its
+    // subscription target out of, and it does so DURING render — so the
+    // previous session's `in_progress` row being returned for even one render
+    // is enough for the old session's stream to open under the new workspace.
+    //
+    // Observed per-render rather than from `result.current`, which only ever
+    // shows the state after effects have flushed and so cannot see this.
+    const parentRow = { id: "req_parent", status: "in_progress" };
+    sessionClientMock.listSessionRequests.mockResolvedValue([parentRow]);
+
+    const seen: Array<{ sessionId: string; ids: string[] }> = [];
+    const { rerender } = renderHook(
+      ({ sessionId }: { sessionId: string }) => {
+        const view = useSessionRequests(sessionId);
+        seen.push({ sessionId, ids: view.requests.map((r) => r.id) });
+        return view;
+      },
+      { initialProps: { sessionId: "sess_parent" } }
+    );
+    await waitFor(() =>
+      expect(seen.some((s) => s.ids.includes("req_parent"))).toBe(true)
+    );
+
+    // The replacement read never lands, so every render below is inside the
+    // window this is about.
+    sessionClientMock.listSessionRequests.mockReturnValue(new Promise(() => {}));
+    seen.length = 0;
+    rerender({ sessionId: "sess_child" });
+
+    const leaked = seen.filter(
+      (s) => s.sessionId === "sess_child" && s.ids.includes("req_parent")
+    );
+    expect(leaked).toEqual([]);
+  });
+
   it("refuses a refresh invoked from a closure made for a previous session", async () => {
     // The panel hands `refresh` to children (`handleResumed` calls it). An
     // operator changes sessions while a suspension approval is outstanding, the

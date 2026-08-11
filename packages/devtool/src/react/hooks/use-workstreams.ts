@@ -27,6 +27,9 @@ import type { SessionClient, WorkstreamSummary } from "@flow-state-dev/client";
 import { useDevTool } from "../context/devtool-context";
 import { useReadFence } from "./use-read-fence";
 
+/** Stable empty list, so a stale hold does not hand back a new array each render. */
+const EMPTY_ROWS: WorkstreamSummary[] = [];
+
 /**
  * Read the Workstream axis for one session.
  *
@@ -119,12 +122,27 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
   // not, a `true` left by the old identity would have no owner at all. Safe for
   // an ordinary switch because this clear and `refresh`'s synchronous `true`
   // land in one commit and batch: `true` for a real session, `false` for none.
+  // The identity the state below was read under, written with it in the same
+  // batch. Everything this hook RETURNS is derived from it during render.
+  //
+  // Making the check render-synchronous was not enough on its own: the check
+  // knew the identity was stale, but the rows a consumer reads were still the
+  // old ones until an effect cleared them. Live mode selects its subscription
+  // out of those rows DURING that render, so the previous session's stream
+  // opened under the new workspace — the same render-versus-effect trap the
+  // fence exists to remove, one layer out.
+  //
+  // The reset below is now bookkeeping: it drops the retired data so nothing
+  // holds it, and correctness no longer waits on it.
+  const [heldIdentity, setHeldIdentity] = useState<readonly unknown[] | null>(null);
   const fence = useReadFence([sessionId, sessionClient], () => {
     setWorkstreams([]);
     setError(null);
     setTruncated(false);
     setIsLoading(false);
+    setHeldIdentity(null);
   });
+  const holdsCurrent = heldIdentity !== null && fence.holds(heldIdentity);
 
   const refresh = useCallback(async () => {
     // `null` means this callback was built for a session since left — an
@@ -137,17 +155,20 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
     // rows without clearing it — a stale failure banner over fresh data.
     const stillCurrent = fence.begin();
     if (stillCurrent === null) return;
+    const mine: readonly unknown[] = [sessionId, sessionClient];
 
     if (!sessionId) {
       if (!stillCurrent()) return;
       setWorkstreams([]);
       setError(null);
       setTruncated(false);
+      setHeldIdentity(mine);
       return;
     }
 
     setIsLoading(true);
     setError(null);
+    setHeldIdentity(mine);
     try {
       const page = await fetchWorkstreamPage(sessionClient, sessionId, stillCurrent);
       // `undefined` is a walk that stopped because it was retired, not a page.
@@ -181,5 +202,14 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
     void refresh();
   }, [refresh]);
 
-  return { workstreams, isLoading, error, truncated, refresh };
+  // Derived, never returned raw. A hold from a replaced identity reads as "no
+  // data yet for this one", which is what it is — and `isLoading` says so, so
+  // nothing renders an empty list as "there is no background work".
+  return {
+    workstreams: holdsCurrent ? workstreams : EMPTY_ROWS,
+    isLoading: holdsCurrent ? isLoading : sessionId !== null,
+    error: holdsCurrent ? error : null,
+    truncated: holdsCurrent ? truncated : false,
+    refresh,
+  };
 }
