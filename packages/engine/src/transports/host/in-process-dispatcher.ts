@@ -77,32 +77,21 @@ export function createInProcessDispatcher(
       ? combineSignals(local.signal, abortController.signal)
       : abortController.signal;
 
-    // Two signals ahead of completion, because a run has two distinct earlier
-    // milestones and callers need different ones (FIX-982).
+    // Acceptance, separated from completion (FIX-982). `runAction` is async, so
+    // this function returns while the run is still at its first await — the
+    // `activeRequests` write has been *issued* and not committed. A caller that
+    // reads the bare handle as "the request exists" is trusting a write that can
+    // still fail, into a `finished` a fire-and-forget caller is not holding.
     //
-    // `accepted` — the request is registered and discoverable. `runAction` is
-    // async, so this function returns while the run is still at its first await
-    // and that write has been *issued*, not committed; a caller reading the bare
-    // handle as "the request exists" is trusting a write that can still fail,
-    // into a `finished` a fire-and-forget caller is not holding.
-    //
-    // `started` — the run reached its main try, past the session write, the
-    // opening emits, the execution context's eager resource loads and the
-    // flow's `onStarted` hook. Everything in that window fails silently: no
-    // terminal record, and the entry deregistered on the way out. So a caller
-    // handing over ownership of work waits for THIS, and an HTTP ack — which
-    // must not wait on author-supplied setup — waits for `accepted`.
+    // It reports discoverability and nothing more. Setup after it can still
+    // fail; what protects a caller that handed over durable work is that work's
+    // own lease, and what this adds is that the failure is visible rather than
+    // silent.
     let markAccepted: () => void = () => {};
     let failAccepted: (error: unknown) => void = () => {};
     const accepted = new Promise<void>((resolve, reject) => {
       markAccepted = resolve;
       failAccepted = reject;
-    });
-    let markStarted: () => void = () => {};
-    let failStarted: (error: unknown) => void = () => {};
-    const started = new Promise<void>((resolve, reject) => {
-      markStarted = resolve;
-      failStarted = reject;
     });
 
     const finished = runAction({
@@ -121,26 +110,22 @@ export function createInProcessDispatcher(
       stores,
       responseEmitter: local.responseEmitter,
       runtimeConfig: local.effectiveRuntimeConfig,
-      onRegistered: markAccepted,
-      onExecutionStarted: markStarted
+      onRegistered: markAccepted
     });
 
-    // Settles both milestones for a run that never reached them: the failure it
-    // died of becomes their failure. A run that got there has already resolved
-    // them, so every arm is a no-op by then.
+    // Settles acceptance for a run that never reached registration: the failure
+    // it died of becomes the acceptance failure. A run that DID register has
+    // already resolved it, so both arms are no-ops by then.
     finished.then(markAccepted, failAccepted);
-    finished.then(markStarted, failStarted);
-    // Every existing caller wants `finished` only. Marking these handled keeps
-    // an early failure from surfacing as an unhandled rejection; callers that
-    // await them still observe it.
+    // Every existing caller wants `finished` only. Marking it handled keeps an
+    // early failure from surfacing as an unhandled rejection; callers that await
+    // it still observe it.
     void accepted.catch(() => {});
-    void started.catch(() => {});
 
     return {
       requestId: envelope.requestId,
       finished: finished as Promise<ExecutionResult>,
       accepted,
-      started,
       abort: () => abortController.abort()
     };
   };

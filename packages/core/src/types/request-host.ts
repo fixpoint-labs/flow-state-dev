@@ -145,7 +145,14 @@ export type StartDetachedRefusal =
   | "key-occupied"
   | "no-workstream-core"
   | "no-start-operation"
-  | "board-not-routable";
+  | "board-not-routable"
+  /**
+   * The host refused the dispatch before starting anything — today, a
+   * flow-level `reject` concurrency policy whose key the launching request
+   * already holds. Definitive, so a caller that was handing work over still
+   * owns it and can settle it.
+   */
+  | "dispatch-rejected";
 
 /**
  * Outcome of {@link RequestHost.startDetached}. `adopted` distinguishes a child

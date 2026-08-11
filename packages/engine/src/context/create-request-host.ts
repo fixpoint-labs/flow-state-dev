@@ -64,7 +64,16 @@ export type DetachedStartOperation = (spec: {
    * never the caller's bag.
    */
   metadata?: Record<string, unknown>;
-}) => Promise<{ requestId: string }>;
+}) => Promise<
+  | { requestId: string }
+  /**
+   * The dispatch never happened, definitively. Distinguished from a thrown
+   * rejection because the two need opposite handling by the caller: nothing
+   * started means the caller still owns whatever it was about to hand over, so
+   * it can settle it; a throw after the attempt cannot rule out a live child.
+   */
+  | { notStarted: true; reason: string }
+>;
 
 /** The one parent-board row this request was dispatched for, stamped at spawn. */
 export type ParentTaskBinding = {
@@ -318,6 +327,20 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         }
       }
     });
+
+    if ("notStarted" in started) {
+      // Nothing was dispatched, so the caller still owns the work — returning a
+      // refusal rather than throwing is what lets it settle its own row instead
+      // of leaving it for the lease to recover. The host refuses synchronously
+      // for a small set of pre-dispatch conditions, the reachable one being a
+      // flow-level `reject` concurrency policy whose key the parent already
+      // holds (FIX-982).
+      return {
+        ok: false,
+        refused: "dispatch-rejected",
+        detail: `the host refused the dispatch before starting it: ${started.reason}`
+      };
+    }
 
     return { ok: true, sessionId: childId, requestId: started.requestId, adopted };
   };

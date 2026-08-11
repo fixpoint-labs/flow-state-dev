@@ -81,6 +81,12 @@ recorded the row errored and its Workstream request still reported success, so
 anything reading background work by run status saw a success for failed work.
 `"skip"` remains the default and is unchanged.
 
+A dispatch the host refuses outright — a flow-level `reject` concurrency policy
+whose key the launching request already holds — now settles its task instead of
+leaving it. The refusal happens before any background work exists, so the
+request that was handing the task over still owns it and fails it; previously
+the row stayed outstanding until its lease ran down.
+
 Two bounds worth knowing. Work is settled by the Workstream, which must be able
 to address the board it settles against, so a board whose rows a detached worker
 reaches has to be scoped where the child can see it. And on a serverless host

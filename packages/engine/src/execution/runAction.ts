@@ -1392,14 +1392,6 @@ export async function runActionInternal<
   }
 
   try {
-    // Execution starts here, and so does durable failure handling: this try's
-    // catch writes a terminal `failed` / `aborted` record for anything that goes
-    // wrong from now on, including the deferred parse error re-thrown just
-    // below. That is what makes this — and not registration — the boundary a
-    // caller may hand ownership of work across (FIX-982). Every step above can
-    // fail leaving nothing terminal behind.
-    options.onExecutionStarted?.();
-
     // Re-throw deferred parse error now that we have ctx for error handling.
     if (parseError !== undefined) {
       throw parseError;

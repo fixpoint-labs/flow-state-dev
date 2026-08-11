@@ -146,41 +146,15 @@ export type RunActionOptions<
    * registration — that failure surfaces on the returned promise, which is the
    * signal a consumer pairs this with.
    *
-   * **Registration is discoverability, not durability.** Between it and
-   * execution the run still updates the session's `latestRequestId`, emits its
-   * opening status events, and builds an execution context that loads the
-   * flow's eager resources — every one of which can fail, and none of which
-   * records anything terminal when it does. A consumer that needs "nothing left
-   * can fail silently" wants {@link RunActionOptions.onExecutionStarted}
-   * instead.
+   * **Registration is discoverability, not safety**, and the difference is
+   * smaller than it looks. Setup after this point can still fail without
+   * recording anything — but a caller handing over durable work is protected by
+   * that work's own lease, not by this signal: if the run dies at any point, the
+   * lease lapses and the owner recovers the row. What this buys is that the
+   * failure is *visible* rather than silent, which is what a fire-and-forget
+   * caller has no other way to learn.
    */
   onRegistered?: () => void;
-  /**
-   * Fired once this run enters execution — the boundary past which every
-   * failure is caught by the run's own terminal handling and written to the
-   * request record as `failed` / `aborted` (FIX-982).
-   *
-   * This is the *sound* start signal, and it is deliberately separate from
-   * {@link RunActionOptions.onRegistered} rather than replacing it, because the
-   * two answer different questions and cost different amounts. Registration is
-   * one write and makes the request discoverable, which is all an HTTP ack
-   * needs. Reaching execution additionally waits out the session write, the
-   * opening emits, the execution context's eager resource loads and the flow's
-   * own `request.onStarted` hook — author-supplied work of unbounded duration,
-   * which no ack should hold.
-   *
-   * The consumer that needs it is a caller handing over ownership of something:
-   * a detached spawn releases a claimed task on the strength of this, so it
-   * must not resolve while a step that would fail into a promise nobody holds
-   * is still ahead.
-   *
-   * Fires at most once, and never for a run that dies during setup — that
-   * failure surfaces on the returned promise.
-   *
-   * Not to be confused with `flow.request.onStarted`, an author-facing
-   * lifecycle observer that runs just BEFORE this fires.
-   */
-  onExecutionStarted?: () => void;
   /**
    * Same-request continuation flag (FIX-811). Set by `continueRequest` when a
    * suspended/interrupted request re-enters under its OWN id. Triggers replay
