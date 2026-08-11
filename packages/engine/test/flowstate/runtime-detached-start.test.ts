@@ -58,6 +58,8 @@ function detachingFlow(
   observed: Observed,
   options: {
     coreDelayMs?: number;
+    /** The child never finishes — a run blocked on something external. */
+    coreNeverSettles?: boolean;
     concurrency?: { policy: "queue" | "reject" | "allow"; key: "user" | "session" };
   } = {}
 ) {
@@ -83,6 +85,9 @@ function detachingFlow(
     inputSchema: z.object({}).passthrough(),
     outputSchema: z.object({}),
     execute: async (input, ctx) => {
+      if (options.coreNeverSettles === true) {
+        await new Promise(() => {});
+      }
       // Deliberately slow when asked: a child that finishes inside the parent's
       // own turn cannot show whether anything waited for it.
       if (options.coreDelayMs !== undefined) {
@@ -325,6 +330,66 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     // nothing about external dispatch.
     expect(observed.children).toEqual([]);
   });
+
+  it(
+    "NEGATIVE: a child that never settles cannot hang dispose, and is named on the way out",
+    // A generous test-level timeout so the failure mode is legible: against the
+    // unbounded drain this hangs rather than asserting, and without an explicit
+    // bound well above the drain's own budget a reader cannot tell "the fix is
+    // broken" from "the suite stalled".
+    { timeout: 15_000 },
+    async () => {
+      const observed: Observed = { children: [] };
+      const flow = detachingFlow("runtime-drain-wedged", observed, {
+        // In-process, so it IS tracked — and never finishes. A Workstream
+        // blocked on an external call looks exactly like this.
+        coreNeverSettles: true
+      });
+
+      const state = createFlowState({
+        flows: { detaching: flow },
+        stores: { default: { primary: inMemoryStores() } },
+        modelResolver: markerResolver("app-default"),
+        // Short budget so the test measures the bound rather than the default.
+        detachedDrainTimeoutMs: 250
+      });
+
+      const runtime = await state.getRuntime();
+      await runLikeCli(runtime, flow, "s_parent");
+      expect(observed.start).toMatchObject({ ok: true });
+
+      // The give-up report deliberately bypasses the logger — it reports work
+      // that may not have completed, which `--quiet` must not be able to hide.
+      const reported: string[] = [];
+      const restore = console.error;
+      console.error = (...args: unknown[]) => {
+        reported.push(args.map(String).join(" "));
+      };
+
+      const startedAt = Date.now();
+      try {
+        await state.dispose();
+      } finally {
+        console.error = restore;
+      }
+      const elapsed = Date.now() - startedAt;
+
+      // THE ASSERTION THIS EXISTS FOR: the round cap bounded the number of
+      // batches but not the wait inside one, so a single never-settling child
+      // meant `dispose()` never returned at all.
+      expect(elapsed).toBeLessThan(10_000);
+
+      // And it did not go quietly. A count alone would be barely better than
+      // silence, so the ids someone reads the rows back with have to be there.
+      const truncation = reported.find((line) =>
+        line.includes("shutdown did not wait out")
+      );
+      expect(truncation).toBeDefined();
+      expect(truncation).toContain("1 detached request(s)");
+      const startedChild = observed.start as { sessionId?: string };
+      expect(truncation).toContain(startedChild.sessionId!);
+    }
+  );
 
   it("the drain survives a queued concurrency policy instead of wedging on it", async () => {
     const observed: Observed = { children: [] };

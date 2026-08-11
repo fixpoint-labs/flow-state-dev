@@ -56,6 +56,22 @@ import type { DetachedStartOperation } from "./create-request-host";
 import type { InboundTransportHost } from "../transports/types";
 import { WORKSTREAM_SOURCE } from "../execution/transport-sources";
 
+/**
+ * A detached child handed to `onDispatched`, with enough identity to name it.
+ *
+ * The ids are not decoration: a host that gives up waiting on this child has to
+ * say *which* work it abandoned, or the notice is barely better than the silence
+ * it replaced. These are what someone types into a log search or a store read to
+ * find the row afterwards.
+ */
+export type DispatchedDetachedChild = {
+  /** Settles when the child run finishes. Never awaited by the operation. */
+  finished: Promise<unknown>;
+  requestId: string;
+  /** The derived child session — the Workstream this run belongs to. */
+  sessionId: string;
+};
+
 export type DetachedStartOperationInputs = {
   /**
    * The host whose `dispatch` this drives.
@@ -88,7 +104,7 @@ export type DetachedStartOperationInputs = {
    * Never awaited by this operation — that would reintroduce the wait the whole
    * feature exists to remove.
    */
-  onDispatched?: (finished: Promise<unknown>) => void;
+  onDispatched?: (child: DispatchedDetachedChild) => void;
 };
 
 /**
@@ -147,7 +163,11 @@ export function createDetachedStartOperation(
     // Handed over BEFORE the await below, so the child is known to its host from
     // the instant it exists rather than from the instant it is confirmed —
     // including on the paths that await nothing at all.
-    inputs.onDispatched?.(handle.finished);
+    inputs.onDispatched?.({
+      finished: handle.finished,
+      requestId: handle.requestId,
+      sessionId: spec.sessionId
+    });
 
     // Awaiting acceptance is what makes a `Started` result mean "discoverable"
     // rather than "we intended to". It is deliberately the ONLY thing awaited,

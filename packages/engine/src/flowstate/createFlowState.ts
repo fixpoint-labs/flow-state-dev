@@ -24,7 +24,10 @@ import { FlowStateConfigError, FlowStateDisposedError } from "../errors/flow-err
 import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store-adapter";
 import { resolveProfileStores } from "./resolve-slots";
 import type { FlowDispatcher } from "../transports/dispatcher";
-import { createDetachedStartOperation } from "../context/detached-start-operation";
+import {
+  createDetachedStartOperation,
+  type DispatchedDetachedChild
+} from "../context/detached-start-operation";
 import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
 import { isInProcessDispatcher } from "../transports/host/in-process-dispatcher";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
@@ -45,6 +48,79 @@ import type {
  * work is slow. High enough that legitimate nesting never hits it.
  */
 const MAX_DETACHED_DRAIN_ROUNDS = 32;
+
+/** How many outstanding children the truncation warning names before eliding. */
+const MAX_NAMED_TRUNCATED_CHILDREN = 5;
+
+/**
+ * Default ceiling on how long `dispose()` waits for in-process detached work.
+ *
+ * 30s, chosen against the two callers rather than picked for roundness:
+ *
+ * - **Production shutdown.** `dispose()` runs under a termination signal inside
+ *   a platform grace period — 30s is Kubernetes' default
+ *   `terminationGracePeriodSeconds`, after which the process is killed anyway.
+ *   A longer default could not be honoured, so it would be a promise the
+ *   platform breaks rather than one we keep.
+ * - **`fsdev run` verifying a flow.** Measured against the harness this was
+ *   built with, an in-process detached child settles in ~85ms with no model call
+ *   and ~880ms behind a 750ms sleep; 30s leaves room for a real agent turn with
+ *   several model calls, which is the case a verification run actually cares
+ *   about.
+ *
+ * It is a **ceiling on the wait, not a target** — work that finishes sooner is
+ * never delayed, and this only decides when to stop waiting and say so.
+ *
+ * Deliberately the same order as the sibling budgets in this runtime
+ * (`QUEUE_WAIT_TIMEOUT_MS`, the 30s stale-request default), so a deployment
+ * tuning one is not surprised by another on a different scale.
+ */
+const DEFAULT_DETACHED_DRAIN_TIMEOUT_MS = 30_000;
+
+/**
+ * Resolve the drain budget, rejecting values that cannot bound anything.
+ *
+ * `NaN` is what `Number(process.env.X)` yields from a typo, and every comparison
+ * against it is false — the deadline would never be considered reached, which is
+ * precisely the hang this bound exists to remove. A negative or zero budget is
+ * honoured as "do not wait": that is a legitimate choice for a host that wants
+ * shutdown to be immediate, and it still reports what it left behind.
+ */
+function resolveDetachedDrainTimeout(configured: number | undefined): number {
+  if (configured === undefined || !Number.isFinite(configured)) {
+    return DEFAULT_DETACHED_DRAIN_TIMEOUT_MS;
+  }
+  return Math.max(0, configured);
+}
+
+/**
+ * Resolve `true` when `work` settles within `ms`, `false` when the budget runs
+ * out first. Never rejects — the caller passes an `allSettled`, and a timeout is
+ * an answer rather than an error.
+ *
+ * The timer is `unref`'d so a pending budget cannot by itself hold a one-shot
+ * process open past the work it is timing, and cleared on the settle path so a
+ * fast drain does not leave one armed.
+ */
+function settledWithin(work: Promise<unknown>, ms: number): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    let done = false;
+    const finish = (value: boolean): void => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const timer = setTimeout(() => finish(false), ms);
+    if (typeof (timer as { unref?: () => void }).unref === "function") {
+      (timer as unknown as { unref: () => void }).unref();
+    }
+    void work.then(
+      () => finish(true),
+      () => finish(true)
+    );
+  });
+}
 
 function toModelResolverOptions(
   models: FlowStateModelsConfig | undefined
@@ -113,7 +189,7 @@ class InternalFlowState<TSettings extends object>
    * for. Entries remove themselves when they settle, so a long-lived server does
    * not accumulate them.
    */
-  readonly #detachedChildren = new Set<Promise<unknown>>();
+  readonly #detachedChildren = new Set<DispatchedDetachedChild>();
   /**
    * The resolved runtime config, kept so `dispose()` can read the logger a host
    * configured. Held as the object rather than the logger value: a host may
@@ -254,24 +330,50 @@ class InternalFlowState<TSettings extends object>
    * waiting for background work to finish is what you want anyway.
    *
    * Rounds, not one pass: detached work may itself detach, and a grandchild
-   * registered while we await belongs to this drain too. Bounded so a flow that
-   * spawns without end cannot hang shutdown outright — that is a runaway flow,
-   * and the bound turns it into a warning instead of a wedged process.
+   * registered while we await belongs to this drain too.
+   *
+   * ## Bounded, because "unbounded" is not patience
+   *
+   * Every wait here races a deadline. A round cap alone bounded the number of
+   * batches and not the wait inside one, so a single child that never settles —
+   * a Workstream blocked on an external call — meant the `await` never returned,
+   * the cap was never reached, and `dispose()` hung forever, taking `fsdev run`
+   * and any production shutdown with it.
+   *
+   * The principle was never "wait forever", it was **don't truncate silently**,
+   * and a bounded wait that names what it abandoned satisfies that completely. A
+   * hang does not, and is strictly worse than the truncation it was avoiding: a
+   * stranded row at least leaves a record someone can find, where a wedged
+   * process leaves nothing.
    */
   async #drainDetachedChildren(): Promise<void> {
+    if (this.#detachedChildren.size === 0) return;
+
+    const budgetMs = resolveDetachedDrainTimeout(this.#options.detachedDrainTimeoutMs);
+    // ONE deadline for the whole drain, not one per round. A per-round budget
+    // multiplies by the round cap, so a slow-but-progressing spawn chain could
+    // still hold shutdown for many minutes.
+    const deadline = Date.now() + budgetMs;
+    const startedAt = Date.now();
+
     for (
       let round = 0;
       this.#detachedChildren.size > 0 && round < MAX_DETACHED_DRAIN_ROUNDS;
       round += 1
     ) {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) break;
+
       const pending = [...this.#detachedChildren];
       // Printed because an unexplained pause at exit reads as a hang — this says
       // what is being waited for.
       //
       // Through the configured logger, not `console` directly: `fsdev run
       // --quiet` promises to suppress runtime logs on stderr, and a host that
-      // installed a silent logger meant it. The user asked for silence and can
-      // re-run without the flag; an unsuppressable line is not ours to insist on.
+      // installed a silent logger meant it. This line is NARRATION — progress
+      // toward a normal outcome — and narration is exactly what the flag exists
+      // to switch off. (The give-up warning below is a different kind of thing
+      // and is treated differently; see there.)
       //
       // `warn`, not `info`, and that is about the SINK rather than the severity:
       // `DEFAULT_RUNTIME_LOGGER.info` writes to `console.info` — stdout — which
@@ -280,21 +382,57 @@ class InternalFlowState<TSettings extends object>
       this.#logShutdown(
         "warn",
         `[flowstate] waiting for ${pending.length} detached request(s) to finish before shutdown`,
-        { pending: pending.length }
+        { pending: pending.length, budgetMs }
       );
+
       // Settled, not all: a child that threw has already surfaced its own error,
       // and one failure must not abandon the rest of the drain.
-      await Promise.allSettled(pending);
+      const finishedInTime = await settledWithin(
+        Promise.allSettled(pending.map((child) => child.finished)),
+        remainingMs
+      );
+      if (!finishedInTime) break;
     }
 
     if (this.#detachedChildren.size > 0) {
-      this.#logShutdown(
-        "warn",
-        `[flowstate] gave up waiting on ${this.#detachedChildren.size} detached request(s) ` +
-          `after ${MAX_DETACHED_DRAIN_ROUNDS} rounds; they may be truncated by shutdown`,
-        { pending: this.#detachedChildren.size, rounds: MAX_DETACHED_DRAIN_ROUNDS }
-      );
+      this.#reportTruncatedChildren(Date.now() - startedAt, budgetMs);
     }
+  }
+
+  /**
+   * Report detached work shutdown did not wait out — loudly, and by name.
+   *
+   * **Deliberately not routed through the configured logger**, which is the one
+   * place in this file that bypasses it. The waiting notice is narration and
+   * `--quiet` silences it; this is an *outcome*: work was started and may not
+   * have finished. Nothing else reports it — the launching request already
+   * returned successfully, so the process exit code is a success — which means
+   * suppressing this is silent truncation, the exact failure the drain exists to
+   * prevent. Quiet means "don't narrate", not "don't tell me something went
+   * wrong".
+   *
+   * `console.error` rather than `console.warn` for the same sink reasoning as
+   * the notice: both are stderr, and error is the honest level for "this may not
+   * have completed". A structured-logging deployment loses structure on this one
+   * exceptional line and never loses the line itself.
+   *
+   * The ids are the point. "Gave up on 3 requests" is barely better than
+   * silence; the request and session ids are what someone reads the rows back
+   * with afterwards.
+   */
+  #reportTruncatedChildren(elapsedMs: number, budgetMs: number): void {
+    const outstanding = [...this.#detachedChildren];
+    const named = outstanding
+      .slice(0, MAX_NAMED_TRUNCATED_CHILDREN)
+      .map((child) => `${child.requestId} (session ${child.sessionId})`)
+      .join(", ");
+    const overflow = outstanding.length - MAX_NAMED_TRUNCATED_CHILDREN;
+
+    console.error(
+      `[flowstate] shutdown did not wait out ${outstanding.length} detached request(s) ` +
+        `after ${elapsedMs}ms (budget ${budgetMs}ms); they may not have completed: ` +
+        `${named}${overflow > 0 ? `, and ${overflow} more` : ""}`
+    );
   }
 
   /**
@@ -609,7 +747,7 @@ class InternalFlowState<TSettings extends object>
     requestHost.startOperation = createDetachedStartOperation({
       host,
       ...(runsHere
-        ? { onDispatched: (finished: Promise<unknown>) => this.#trackDetachedChild(finished) }
+        ? { onDispatched: (child: DispatchedDetachedChild) => this.#trackDetachedChild(child) }
         : {})
     });
   }
@@ -623,11 +761,11 @@ class InternalFlowState<TSettings extends object>
    * handled. Without the `catch` here, the `finally` link would itself reject
    * and become the unhandled rejection this is meant to avoid.
    */
-  #trackDetachedChild(finished: Promise<unknown>): void {
-    this.#detachedChildren.add(finished);
-    void finished
+  #trackDetachedChild(child: DispatchedDetachedChild): void {
+    this.#detachedChildren.add(child);
+    void child.finished
       .catch(() => undefined)
-      .finally(() => this.#detachedChildren.delete(finished));
+      .finally(() => this.#detachedChildren.delete(child));
   }
 
   async #doInit(): Promise<FlowApiRouter> {

@@ -17,23 +17,34 @@ dispatcher the router would.
 
 Two things go with it:
 
-- **`dispose()` waits for detached work that runs in this process.** Detachment
-  means the launching *request* does not wait; in a one-shot process it cannot
-  mean the *process* does not wait, because there is nothing left to outlive.
-  Without this a CLI run closed pooled stores while a child was still writing,
-  and the child's task row was stranded `in_progress`. Work handed to a queue is
-  deliberately **not** waited for: it is durable, outliving the process is the
-  point of enqueuing it, and a queue with no worker consuming it would otherwise
-  block shutdown indefinitely. The notice printed while waiting goes through the
-  configured runtime logger, so `fsdev run --quiet` suppresses it.
+- **`dispose()` waits for detached work that runs in this process**, up to
+  `detachedDrainTimeoutMs` (default 30s). Detachment means the launching
+  *request* does not wait; in a one-shot process it cannot mean the *process*
+  does not wait, because there is nothing left to outlive. Without this a CLI run
+  closed pooled stores while a child was still writing, and the child's task row
+  was stranded `in_progress`. The wait is bounded because unbounded is not
+  patience — one child that never settles would hang shutdown outright. When the
+  budget expires, shutdown proceeds and reports the request and session ids it
+  did not wait out, so abandoned work is named rather than dropped silently.
+  Work handed to a queue is **not** waited for at all: the enqueue is confirmed
+  before the launching call returns, and waiting for the job to run would block
+  on a process this one does not control. The progress notice goes through the
+  configured runtime logger, so `fsdev run --quiet` suppresses it; the
+  did-not-wait-out report deliberately does not, because it reports work that may
+  not have completed and nothing else surfaces that.
 - **Detached work inherits the launching request's runtime config**, not the
   host's construction-time one — so a caller that derives a config (as
   `fsdev run --model` does) has it apply to background work instead of silently
   resolving the app's default model.
 
-Unchanged: a deployment that supplied its own start operation keeps it, a
-router-first init still gets the router's, and a `worker-only` runtime — which
-has no inbound transport and whose start operation is a queue-backed enqueue
-owned by the queue's adapter — still refuses `no-start-operation` by name.
+Unchanged: a deployment that supplied its own start operation keeps it, and a
+router-first init still gets the router's.
+
+Also unchanged, and worth distinguishing because the two failures have different
+shapes: a `worker-only` runtime — which has no inbound transport and whose start
+operation is a queue-backed enqueue owned by the queue's adapter — **returns**
+`{ ok: false, refused: "no-start-operation" }`, a value a caller branches on.
 `fsdev run` without an `fsdev.config.*` (directory discovery) builds no
-`FlowState` and is unaffected; that gap is tracked as FIX-1087.
+`FlowState` at all, so there is no runtime host on the context and
+`requireRequestHost` **throws** `NoRequestHostError` (`code: "no-request-host"`)
+before any refusal is reachable; that gap is tracked as FIX-1087.
