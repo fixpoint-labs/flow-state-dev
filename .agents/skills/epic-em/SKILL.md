@@ -65,39 +65,63 @@ instead:
 Everything else is yours. Naming, layering, local structure, which helper, sequencing, where
 a guard sits, how a test is shaped, whether to split a PR — decide it, don't relay it.
 
-**Owning the decision is not doing the research.** Decide from what the worker reported. When
-that isn't enough — the answer lives in a spec, a diff, or the code — **dispatch a worker to
-go get it and decide on the return**, which is what `epic-lifecycle` → "Gates & autonomy"
-already prescribes for a fork the coordinator can't settle. Opening the artifact yourself is
-the one thing this posture must never license
-([`orchestration.md`](../../../docs/contributing/orchestration.md) → "The coordinator
-dispatches; it never does the work"). Guessing from thin `blocker` text is the other failure
-mode, and it is the more expensive one: it buys a wake and pays for it in rework.
-
 **This overrides step 4 — for engineering blockers only.** `epic-lifecycle` step 4 surfaces
 every gate *and every blocker*. Under `epic-em` an engineering blocker skips that surfacing:
 you decide it, record it at step 3, and it reaches the user as one line in the report rather
 than as an ask. **Gates are untouched** — every row in the table above still surfaces at step
 4 exactly as written.
 
-**Two blockers stay the user's no matter what the test says.** Both are rows `epic-lifecycle`
-step 3 parks for a reason the product/architectural test cannot see:
+**Three blockers are never yours**, each parked for a reason the product/architectural test
+cannot see:
 
 - **`"POC returned INCONCLUSIVE"`** — an evidence run tried to settle the claim and could
   not. That is the precise moment it stops being an engineering call, which is why
-  `orchestration.md` hands it back to the human: a fabricated verdict is worse than an
-  unsettled debate, because it ends the debate wrongly.
-- **An epic-level `unsettled` claim** — the same thing one altitude up, with no row to be
-  local to. It goes to `epic.answers` and an `epic-agent` fold, unchanged.
+  `orchestration.md` hands it back: a fabricated verdict is worse than an unsettled debate,
+  because it ends the debate wrongly.
+- **An epic-level `unsettled` claim** — the same thing one altitude up.
+- **An epic-spec open question** — a cross-cutting decision the fold raised for the user.
 
-Absorbing either would take exactly the decisions the process most wants escalated.
+Absorbing any of them would take exactly the decisions the process most wants escalated. The
+last two are keyed to the **epic**, not to a row, which also decides how an answer is recorded.
 
-**Record the answer through the mechanism that already exists.** Append it to the row's
-`blockerResolutions` and clear `blocker`, exactly as `epic-lifecycle` step 3 describes for
-an answer you got from the user. The next worker cannot tell the difference and should not
-have to. Then **put one line in your next report** naming the fork and the call — absorbing
-a decision *silently* is strictly worse than escalating it, because it takes the user's
-ability to reverse it away without telling them. Absorb and expose; never absorb and hide.
+#### Absorbing the judgment does not shorten the path to it
+
+One rule sits behind every caveat above, and behind delta 2 as well. Taking a decision changes
+**who decides**. It does not change **where the information lives**, and it does not change
+**where the answer is written**.
+
+**Getting the information.** Decide from what the worker reported. When that isn't enough — the
+answer is in a spec, a diff, the code, or a review thread — **dispatch a bounded reader (a
+worker, or `scout` for a read-only look) and decide on its return.** Opening the artifact here
+is the one thing this posture must never license
+([`orchestration.md`](../../../docs/contributing/orchestration.md) → "The coordinator
+dispatches; it never does the work"), and guessing from thin `blocker` text is the other
+failure mode — it buys a wake and pays for it in rework.
+
+**The PR-feedback cap is the case that forces this.** The wake's cap blocker ends *"the worker's
+read on the open threads is on the PR"* — so the analysis separating *converging slowly* from
+*the approach is wrong* sits on a surface you may not read. A plain `epic-lifecycle` coordinator
+relays that question and the **human** reads the PR; an EM answering it has no such reader. So
+**dispatch one before answering a cap blocker**, every time. Answering it from the blocker text
+alone is a guess dressed as a decision, on the one question the cap exists to ask.
+
+**Recording the answer.** Which field depends on what the blocker was keyed to, and the two are
+not interchangeable:
+
+| Blocker keyed to | Record it by |
+|---|---|
+| **An issue row** | Append `{ for, answer }` to the row's `blockerResolutions` and clear `blocker` — exactly as `epic-lifecycle` step 3 describes for an answer that came from the user |
+| **The epic** (`unsettled`, `openQuestions`) | Append `{ question, answer }` to `epic.answers`, **leave the original entry in place**, and let the `epic-agent` fold record and retire it |
+
+Reaching for `blockerResolutions` at epic scope silently loses the answer: there is no row to
+hold it, the question resurfaces every wake, and `mayWrap` never goes true — so the epic cannot
+close. Both paths are `epic-lifecycle`'s, unchanged. The EM only supplies an answer that would
+otherwise have come from the user; the next worker cannot tell the difference and should not
+have to.
+
+Then **put one line in your next report** naming the fork and the call. Absorbing a decision
+*silently* is strictly worse than escalating it, because it takes the user's ability to reverse
+it away without telling them. Absorb and expose; never absorb and hide.
 
 **When an architecturally-critical one does go up, say out loud that you are putting them in
 the engineer's chair**, and why the business framing doesn't decide it. That move, and the
@@ -110,16 +134,23 @@ slipped, not that the epic is unusually hard.
 
 The cap
 ([`orchestration.md`](../../../docs/contributing/orchestration.md) → "PR feedback: the round
-cap") parks an issue at twelve rounds and asks the user to pick a direction. Four of the
-five available answers — keep going, take a position on the thread that keeps reopening,
-re-examine the approach, split the remainder into a follow-up — are engineering judgments.
-**Take them**, under delta 1's dispatch rule: if picking between them needs the threads read,
-dispatch the row's worker to read them rather than reading them here. Record the answer and
-reset `prFeedbackRounds` to `0` as step 3 requires.
+cap") parks an issue at twelve rounds and asks the user to pick a direction: keep going, take a
+position on the thread that keeps reopening, re-examine the approach, split the remainder into
+a follow-up, or merge as-is and handle the rest separately. Most of those are engineering
+judgments, and those are yours — after dispatching the reader delta 1 requires.
 
-**The fifth is the user's, always: merge as-is and handle the rest separately.** It ships a
-known gap to customers, which is a product call wearing a review-process costume. Surface it
-as the gap and what it costs, never as a review that went long.
+**Test the resolution, not the option.** Don't pre-classify the list into yours and theirs. Run
+delta 1's product-critical test against the answer you are about to give, at the moment you give
+it. Two of the five reach it often enough to name:
+
+- **Merge as-is and handle the rest separately** — always. It ships a known gap to customers,
+  which is a product call wearing a review-process costume.
+- **Split the remainder into a follow-up** — whenever the deferred item protects promised or
+  customer-visible behaviour. Deferring scope is a scope-and-timing decision, and it carries
+  the same consequence as the option above. A split that defers only internal cleanup is yours.
+
+Surface either as the gap and what it costs, never as a review that went long. Otherwise take
+the answer and reset `prFeedbackRounds` to `0` as step 3 requires.
 
 ### 3. Report outcomes, not phases
 
