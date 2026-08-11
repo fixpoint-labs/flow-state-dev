@@ -215,20 +215,40 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
     name: "report-background-work",
     inputSchema: z.object({ message: z.string() }),
     outputSchema: z.string(),
+    // "Which rows this conversation has already told the user about" is
+    // CONVERSATION state, not task state, and putting it in the right place is
+    // what keeps it out of the transcript.
+    //
+    // It lived on the task's `metadata` first, written with `patchMetadata`.
+    // That emits a client-visible `task-change` carrying the WHOLE row —
+    // `output` included — which the parent's `<TaskPlan />` then rendered
+    // inline. So the acknowledgement that a result had been delivered
+    // *republished that result into the transcript*, beside the explicit "Back
+    // from the background" message: precisely the folding-back-in this demo
+    // exists to argue against. Nothing about a delivery belongs to the task,
+    // and once it is held here the board publishes no completed row at all —
+    // the settle happens in the child, whose stream is its own.
+    sessionStateSchema: z.object({
+      reportedBackgroundTaskIds: z.array(z.string()).default([]),
+    }),
     uses: [board.capability],
     execute: async (input, ctx) => {
-      // One ref, several reads and a write per delivered row — the accessor
-      // sugar re-hydrates the durable collection per call, so `tasks()` once is
-      // the documented shape for this.
-      const board = await ctx.cap["background-work"].tasks();
-      const handles = await board.list();
+      // One ref for several reads — the accessor sugar re-hydrates the durable
+      // collection per call, so `tasks()` once is the documented shape.
+      const ledger = await ctx.cap["background-work"].tasks();
+      const handles = await ledger.list();
+      const alreadyReported = new Set(
+        // `?? []` and not a truthiness check: a session that predates this key
+        // has no value at all (BP-030).
+        ctx.session.state.reportedBackgroundTaskIds ?? [],
+      );
       const rows = handles.map(
         (task): ReportedTask => ({
           id: task.id,
           goal: task.goal,
           status: task.status,
           output: task.output,
-          reported: task.metadata?.["reportedAtMs"] != null,
+          reported: alreadyReported.has(task.id),
         }),
       );
 
@@ -316,19 +336,21 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
       // next turn: visible, harmless, and self-correcting.
       ctx.emit.message(reply);
 
-      // Now record what was just delivered. Only the rows actually in the reply.
-      // `patchMetadata` merges, so the row's `topic` survives.
-      //
-      // Contained per row, and deliberately: the reply is already out, so a
-      // failed marking must not fail the turn on top of it. An unmarked row is
-      // reported again next turn — the benign, self-correcting failure this
-      // ordering exists to prefer. Containing it per row also stops one bad
-      // write from stranding the rows behind it in the same loop.
-      for (const row of [...finished, ...broken]) {
+      // Now record what was just delivered — one session-state write, after
+      // the reply is out. Same ordering rule as before and for the same
+      // reason: this is an acknowledgement that the user has been told, so it
+      // must not become durable before the telling happened. Contained,
+      // because the reply is already delivered and a failed write must not
+      // fail the turn on top of it; the cost of losing it is a repeat report
+      // next turn, which is visible and self-correcting.
+      const delivered = [...finished, ...broken].map((row) => row.id);
+      if (delivered.length > 0) {
         try {
-          await board.patchMetadata(row.id, { reportedAtMs: Date.now() });
+          await ctx.session.patchState({
+            reportedBackgroundTaskIds: [...alreadyReported, ...delivered],
+          });
         } catch {
-          ctx.emit.status(`Could not mark "${row.goal}" as reported; it may repeat.`);
+          ctx.emit.status("Could not record what was reported; it may repeat.");
         }
       }
 

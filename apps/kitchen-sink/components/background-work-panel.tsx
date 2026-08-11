@@ -94,9 +94,13 @@ interface BackgroundWorkPanelProps {
  * a pinned read budget: ONE `listWorkstreams` read per turn, taken by
  * `useSession` at action start. That budget is a contract
  * (`docs/architecture/server-and-client.md`), and it is why the DevTool's own
- * panel reads one page plus a sentinel instead of walking the index. This adds
- * a second read at stream end — the price paid here for the first filed job
- * being visible without further user action.
+ * panel reads one page plus a sentinel instead of walking the index.
+ *
+ * What this actually costs, stated plainly because it was understated twice:
+ * `session.refresh()` is a **full session snapshot plus** the workstream read,
+ * and with `items: true` the snapshot paginates the entire item history. It is
+ * not one extra list read. The gate below at least confines that to
+ * conversations which use background work at all.
  *
  * The intended fix is a framework opt-in rather than an app-level effect,
  * tracked as **FIX-1109**: `useSession` grows an explicit
@@ -106,13 +110,39 @@ interface BackgroundWorkPanelProps {
  * delete this component and pass that option instead.
  */
 export function BackgroundWorkRefresh({ session }: { session: BackgroundWorkPanelProps["session"] }) {
-  const { refresh, isStreaming } = session;
+  const { refresh, isStreaming, items, workstreams } = session;
+
+  // Only conversations that actually use background work pay for this. The
+  // gate matters because `session.refresh()` is NOT the cheap read this was
+  // originally documented as: it is `Promise.all([refreshSnapshot(),
+  // refreshWorkstreams()])`, and with `items: true` the snapshot paginates the
+  // session's entire item history. Ungated, every finished turn in every
+  // conversation — the overwhelming majority of which never file a job — paid
+  // a full history refetch to update a panel with nothing in it.
+  //
+  // `useSession` exposes no workstream-only refresh (`refreshWorkstreams` is
+  // internal), which is exactly the gap FIX-1109 closes. Until it lands this
+  // gate is the whole of the mitigation available to an app.
+  //
+  // Detected from `task-board-meta`, the same signal `lib/item-inference.ts`
+  // uses, and NOT from `task-change` — this board declares those invisible to
+  // the client on purpose (see `backgroundWorkLedger`).
+  const usesBackgroundWork =
+    workstreams.length > 0 ||
+    items.some(
+      (item) =>
+        item.type === "component" &&
+        (item as { component?: string }).component === "task-board-meta" &&
+        (item as { data?: { collectionId?: string } }).data?.collectionId ===
+          "background-work",
+    );
+
   const wasStreaming = useRef(isStreaming);
   useEffect(() => {
     const finished = wasStreaming.current && !isStreaming;
     wasStreaming.current = isStreaming;
-    if (finished) void refresh();
-  }, [isStreaming, refresh]);
+    if (finished && usesBackgroundWork) void refresh();
+  }, [isStreaming, refresh, usesBackgroundWork]);
   return null;
 }
 
