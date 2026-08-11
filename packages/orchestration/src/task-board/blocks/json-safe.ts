@@ -5,10 +5,11 @@
  * it has to be a JSON value. The obvious check is not one:
  * `JSON.parse(JSON.stringify(v))` throws on exactly two things — `BigInt` and a
  * cycle — and silently *mangles* the rest. A `Date` becomes a string, a `Map`,
- * `Set` or class instance becomes `{}`, a function or `undefined` in object
- * position disappears, and a `symbol` disappears with it. Each of those reaches
- * the worker as a value that is the wrong shape but not obviously wrong, which
- * is the failure this validation exists to make loud.
+ * `Set` or class instance becomes `{}`, a null-prototype object comes back an
+ * ordinary one, a function or `undefined` in object position disappears, and a
+ * `symbol` disappears with it. Each of those reaches the worker as a value that
+ * is the wrong shape but not obviously wrong, which is the failure this
+ * validation exists to make loud.
  *
  * So this walks the value and rejects anything that is not a plain JSON shape,
  * naming the path where it found it — the path is the whole point, since the
@@ -20,15 +21,19 @@
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
 /**
- * A plain object — one whose prototype is `Object.prototype` or `null`.
+ * A plain object — one whose prototype is `Object.prototype`, and nothing else.
  *
  * Class instances are rejected on this test rather than on their contents: an
  * instance serializes to a bare property bag, so its methods and its identity
  * are gone on the other side while its data survives, which reads as success.
+ *
+ * **A null prototype is not plain either**, and admitting it was the same defect
+ * facing the other way — the data survived and the prototype did not. It is
+ * refused above with a message of its own, because "not a plain object" would
+ * describe it accurately and tell its author nothing.
  */
 function isPlainObject(value: object): boolean {
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
+  return Object.getPrototypeOf(value) === Object.prototype;
 }
 
 /** Human-readable path into the value, for the refusal message. */
@@ -153,6 +158,33 @@ export function assertJsonSafe(
             `property, which is dropped entirely. Make it enumerable, or omit it.`
         );
       }
+    }
+
+    // A null prototype survives nothing. `JSON.stringify` writes the data and
+    // `JSON.parse` rebuilds an ORDINARY object, so what arrives has
+    // `Object.prototype`: `hasOwnProperty` goes from `undefined` to a function,
+    // `toString` appears, and a lookup that could never reach an inherited key
+    // now can. That is the class-instance case in reverse — the data crosses and
+    // the identity does not — and `Object.create(null)` is a real idiom for a
+    // dictionary, so this is reachable rather than exotic.
+    //
+    // REFUSED rather than normalized, deliberately. This gate's whole contract
+    // is to refuse what the round-trip would silently change; normalizing here
+    // would make the gate perform one of those changes itself, and it would have
+    // to do it by mutating the caller's payload — `assertJsonSafe` asserts, it
+    // does not transform, and every other branch here refuses rather than
+    // repairs. The author's fix is one spread, which is what makes refusing
+    // cheap.
+    //
+    // Ahead of the array branch so a null-prototype array is caught too, rather
+    // than slipping through on `Array.isArray`.
+    if (Object.getPrototypeOf(obj) === null) {
+      throw new Error(
+        `${options.label} is not JSON-safe: ${joinPath(path)} has a null prototype, and arrives ` +
+          `with Object.prototype instead — so \`hasOwnProperty\`, \`toString\` and every other ` +
+          `inherited member differ on the other side. Spread it into a plain object ` +
+          `({ ...value }) before sending.`
+      );
     }
 
     if (onPath.has(obj)) {

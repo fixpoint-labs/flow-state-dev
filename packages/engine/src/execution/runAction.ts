@@ -10,7 +10,7 @@ import type {
   SuspensionRecord
 } from "@flow-state-dev/core/types";
 import { resolveActionCore } from "./resolve-action-core";
-import { RESUME_ACTION_STATUS } from "@flow-state-dev/core/types";
+import { RESUME_ACTION_STATUS, workstreamBindingKey } from "@flow-state-dev/core/types";
 import { SuspensionError, errorDetailsWithCause, buildReplayLog, buildBlockInstanceId, parseBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
 import type { ReplayLog } from "@flow-state-dev/core";
 import type { BlockTraceItem, ContinuationItem, SuspensionItem, SuspensionResumeItem } from "@flow-state-dev/core/items";
@@ -136,6 +136,60 @@ async function drainRequestWorkPool(
 }
 
 /**
+ * Refuse a dispatch-time core whose detached boards this flow cannot route
+ * (FIX-982).
+ *
+ * A carried core is produced after `defineFlow` ran — today by a dynamic
+ * schedule's `resolve` — so its blocks were never walked and its declarations
+ * never reached `flow.workstreamBindings`. A task board with a detached worker
+ * inside one is therefore admitted with no route: the drain claims a row, the
+ * spawn refuses `no-workstream-core` (or the workstream core has no route for
+ * that `boardId`), and the row fails or cycles through lease recovery. Work that
+ * stalls without erroring, which is the failure class this whole change exists
+ * to remove.
+ *
+ * Checked HERE because this is the one seam every carried core passes through,
+ * whatever transport produced it, and because it is upstream of everything: the
+ * request is not yet registered and the board has not yet claimed anything, so a
+ * refusal costs a failed dispatch rather than a stranded task.
+ *
+ * **Why this is a refusal and not a build-time one.** A resolver's return value
+ * does not exist at definition time, and the only predicate available there —
+ * "this flow has a `schedules.resolve`" — would refuse flows whose resolvers
+ * never touch a board. This predicate is exact: it fires when a core actually
+ * carries a detached binding this flow cannot route, and never otherwise.
+ *
+ * **Bound worth knowing.** It reads the union already accumulated on the core's
+ * root block, which is what composition bubbles up. A board reachable from the
+ * carried core only through a generator's static `tools` array is not in that
+ * union (a generator carries none of its tools' rails), so it is not caught
+ * here and keeps the late failure it has today. Closing that would mean walking
+ * the tool edge from `engine`, duplicating a traversal `core` owns.
+ */
+function assertCarriedCoreRoutable(flow: FlowInstance, core: ActionCore): void {
+  const declared = core.block.workstreamBindings;
+  if (declared === undefined) return;
+
+  for (const binding of declared.values()) {
+    const key = workstreamBindingKey(binding.boardId, binding.coordinateKey);
+    // Identity, not key equality — the same test `defineFlow`'s reachability
+    // assertion makes. A binding present under a DIFFERENT object is a second
+    // declaration that happens to collide on the coordinate, not this one
+    // arriving by another route, and routing it would run someone else's board.
+    if (flow.workstreamBindings?.get(key) === binding) continue;
+    throw new ValidationError(
+      `Flow "${flow.kind}" cannot route the detached work in this dispatch's action core: ` +
+        `board "${binding.boardId}" coordinate "${binding.coordinateKey}" (worker ` +
+        `"${binding.worker.name}") is not among the flow's declared bindings. The core was ` +
+        `produced at dispatch time — a dynamic schedule's resolver — so its board never reached ` +
+        `the flow definition and no workstream route exists for it. Declare the board on a ` +
+        `statically-reachable action, or drop the detached dispatch from it.`,
+      { scope: "request" }
+    );
+  }
+}
+
+/**
  * Resolves the action core to run from a flow and validates that it exists.
  *
  * Resolution is form-aware. A pre-resolved core (`carriedCore`) wins outright:
@@ -156,6 +210,7 @@ function resolveAction(
   carriedCore: ActionCore | undefined
 ): ActionCore {
   if (carriedCore !== undefined) {
+    assertCarriedCoreRoutable(flow, carriedCore);
     return carriedCore;
   }
 
