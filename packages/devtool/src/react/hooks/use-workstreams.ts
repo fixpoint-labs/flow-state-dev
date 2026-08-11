@@ -27,6 +27,17 @@ import type { SessionClient, WorkstreamSummary } from "@flow-state-dev/client";
 import { useDevTool } from "../context/devtool-context";
 import { useReadFence } from "./use-read-fence";
 
+/**
+ * What is known about rows beyond the page on screen.
+ *
+ * A union rather than a boolean because there are three answers, and the third
+ * arrived through the error path: `complete` (this is the whole list), `more`
+ * (a row follows it), `unknown` (the check itself failed). Calling the third
+ * `false` would assert completeness nobody verified — the truncation lie in the
+ * other direction.
+ */
+export type Truncation = "complete" | "more" | "unknown";
+
 /** Stable empty list, so a stale hold does not hand back a new array each render. */
 const EMPTY_ROWS: WorkstreamSummary[] = [];
 
@@ -72,19 +83,33 @@ async function fetchWorkstreamPage(
   sessionClient: SessionClient,
   sessionId: string,
   stillWanted: () => boolean
-): Promise<{ rows: WorkstreamSummary[]; truncated: boolean } | undefined> {
+): Promise<{ rows: WorkstreamSummary[]; truncation: Truncation } | undefined> {
   // No `limit`: a host may configure `maxWorkstreamListLimit` below any page
   // size this side would pick, and the route REJECTS an out-of-range limit with
   // a 400 rather than clamping it. Omitting it takes the deployment's own
   // default.
   const rows = await sessionClient.listWorkstreams(sessionId);
-  if (rows.length === 0) return { rows, truncated: false };
+  if (rows.length === 0) return { rows, truncation: "complete" };
 
   if (!stillWanted()) return undefined;
-  const beyond = await sessionClient.listWorkstreams(sessionId, {
-    offset: rows.length,
-  });
-  return { rows, truncated: beyond.length > 0 };
+  // The sentinel's failure is NOT the page's failure. Letting it reject would
+  // throw away rows that had already arrived — showing nothing on a first load,
+  // or older rows on a refresh, because a follow-up probe timed out.
+  //
+  // The resulting unknown is honest here in a way a permanent one would not be.
+  // It says "these are the rows; I could not check for more", it is caused by a
+  // request failing rather than by the protocol being unable to answer, and it
+  // is rare. A caveat shown on every non-empty session forever would just train
+  // the reader to ignore it; one shown after a network blip tells them
+  // something true.
+  try {
+    const beyond = await sessionClient.listWorkstreams(sessionId, {
+      offset: rows.length,
+    });
+    return { rows, truncation: beyond.length > 0 ? "more" : "complete" };
+  } catch {
+    return { rows, truncation: "unknown" };
+  }
 }
 
 export type UseWorkstreamsResult = {
@@ -95,7 +120,7 @@ export type UseWorkstreamsResult = {
    * More background work exists than this page shows. The panel renders it;
    * it is never silently swallowed.
    */
-  truncated: boolean;
+  truncation: Truncation;
   refresh: () => Promise<void>;
 };
 
@@ -104,7 +129,7 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
   const [workstreams, setWorkstreams] = useState<WorkstreamSummary[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [truncated, setTruncated] = useState(false);
+  const [truncation, setTruncation] = useState<Truncation>("complete");
 
   // Guarded twice, per the contract in
   // `docs/architecture/server-and-client.md` ("Reads are guarded twice") —
@@ -138,7 +163,7 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
   const fence = useReadFence([sessionId, sessionClient], () => {
     setWorkstreams([]);
     setError(null);
-    setTruncated(false);
+    setTruncation("complete");
     setIsLoading(false);
     setHeldIdentity(null);
   });
@@ -161,7 +186,7 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
       if (!stillCurrent()) return;
       setWorkstreams([]);
       setError(null);
-      setTruncated(false);
+      setTruncation("complete");
       setHeldIdentity(mine);
       return;
     }
@@ -177,7 +202,7 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
       if (page === undefined) return;
       if (!stillCurrent()) return;
       setWorkstreams(page.rows);
-      setTruncated(page.truncated);
+      setTruncation(page.truncation);
       // Cleared on the way OUT as well as on the way in. The clear at the start
       // of this read cannot retire an error a slower, older read raises after it.
       setError(null);
@@ -209,7 +234,7 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
     workstreams: holdsCurrent ? workstreams : EMPTY_ROWS,
     isLoading: holdsCurrent ? isLoading : sessionId !== null,
     error: holdsCurrent ? error : null,
-    truncated: holdsCurrent ? truncated : false,
+    truncation: holdsCurrent ? truncation : "complete",
     refresh,
   };
 }

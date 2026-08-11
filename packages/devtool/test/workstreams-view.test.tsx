@@ -35,7 +35,7 @@ function renderView(props: Partial<React.ComponentProps<typeof WorkstreamsView>>
       workstreams={[]}
       isLoading={false}
       error={null}
-      truncated={false}
+      truncation="complete"
       onRefresh={onRefresh}
       items={[]}
       onOpen={onOpen}
@@ -192,7 +192,7 @@ describe("WorkstreamsView", () => {
     // as complete, so the newest background work looks like it does not exist.
     renderView({
       workstreams: [workstream({ id: "dsx_1", topic: "FIX-1" })],
-      truncated: true,
+      truncation: "more" as const,
     });
 
     expect(

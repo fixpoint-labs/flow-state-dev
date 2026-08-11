@@ -152,7 +152,7 @@ function PanelContent({ className }: { className?: string }) {
     workstreams,
     isLoading: workstreamsLoading,
     error: workstreamsError,
-    truncated: workstreamsTruncated,
+    truncation: workstreamsTruncation,
     refresh: refreshWorkstreams,
   } = useWorkstreams(effectiveSessionId);
   const { sendAction, isSending, lastResponse } = useActionDispatch();
@@ -809,7 +809,7 @@ function PanelContent({ className }: { className?: string }) {
                 workstreams={workstreams}
                 isLoading={workstreamsLoading}
                 error={workstreamsError}
-                truncated={workstreamsTruncated}
+                truncation={workstreamsTruncation}
                 onRefresh={() => void refreshWorkstreams()}
                 items={taskItems}
                 onOpen={handleOpenWorkstream}

@@ -67,7 +67,7 @@ vi.mock("../src/react/hooks/use-workstreams", () => ({
     workstreams: [],
     isLoading: false,
     error: null,
-    truncated: false,
+    truncation: "complete" as const,
     refresh: refreshWorkstreams,
   }),
 }));

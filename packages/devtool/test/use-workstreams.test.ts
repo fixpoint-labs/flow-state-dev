@@ -70,7 +70,7 @@ describe("useWorkstreams — reading one page", () => {
     await waitFor(() =>
       expect(result.current.workstreams.map((w) => w.id)).toEqual(["dsx_1", "dsx_2"])
     );
-    expect(result.current.truncated).toBe(false);
+    expect(result.current.truncation).toBe("complete");
     // The page plus its sentinel. Two whatever the session holds — the page
     // size belongs to the deployment, so a short page is not self-evident.
     expect(sessionClientMock.listWorkstreams).toHaveBeenCalledTimes(2);
@@ -94,7 +94,7 @@ describe("useWorkstreams — reading one page", () => {
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.workstreams).toEqual([]);
-    expect(result.current.truncated).toBe(false);
+    expect(result.current.truncation).toBe("complete");
     expect(sessionClientMock.listWorkstreams).toHaveBeenCalledTimes(1);
   });
 
@@ -110,13 +110,38 @@ describe("useWorkstreams — reading one page", () => {
 
     const { result } = renderHook(() => useWorkstreams("sess_parent"));
 
-    await waitFor(() => expect(result.current.truncated).toBe(true));
+    await waitFor(() => expect(result.current.truncation).toBe("more"));
     expect(result.current.workstreams).toHaveLength(25);
     expect(sessionClientMock.listWorkstreams).toHaveBeenCalledWith("sess_parent", {
       offset: 25,
     });
     // Two, and only two — the cost stays constant however much work exists.
     expect(sessionClientMock.listWorkstreams).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a page whose sentinel failed, and says the check did not come back", async () => {
+    // The sentinel's failure is not the page's failure. Letting it reject threw
+    // away rows that had already arrived — nothing at all on a first load, or
+    // stale rows on a refresh, because a follow-up probe timed out.
+    //
+    // The unknown is honest HERE in a way a permanent one would not be: it is
+    // caused by a request failing rather than by the protocol being unable to
+    // answer, and it is rare. Reporting it as `complete` would assert a
+    // completeness nobody checked.
+    const first = page(0, 25);
+    sessionClientMock.listWorkstreams.mockImplementation(
+      async (_id: string, opts?: { offset?: number }) => {
+        if (opts?.offset === undefined) return first;
+        throw new Error("network down");
+      }
+    );
+
+    const { result } = renderHook(() => useWorkstreams("sess_parent"));
+
+    await waitFor(() => expect(result.current.workstreams).toHaveLength(25));
+    expect(result.current.truncation).toBe("unknown");
+    // The page succeeded, so this is not a failed read.
+    expect(result.current.error).toBeNull();
   });
 
   it("does not claim more when a full page is the whole list", async () => {
@@ -131,7 +156,7 @@ describe("useWorkstreams — reading one page", () => {
     const { result } = renderHook(() => useWorkstreams("sess_parent"));
 
     await waitFor(() => expect(result.current.workstreams).toHaveLength(25));
-    expect(result.current.truncated).toBe(false);
+    expect(result.current.truncation).toBe("complete");
   });
 });
 
@@ -263,7 +288,7 @@ describe("useWorkstreams — a superseded read stops working", () => {
     expect(result.current.workstreams.map((w) => w.id)).toEqual(["dsx_child"]);
     // An abandoned walk read fewer rows than exist. Reporting that as a cap
     // would tell the user their list is truncated when it was merely dropped.
-    expect(result.current.truncated).toBe(false);
+    expect(result.current.truncation).toBe("complete");
   });
 });
 

@@ -28,6 +28,7 @@ import {
   linkWorkstreamsToTasks,
   type LinkedTask,
 } from "../../lib/workstream-links";
+import type { Truncation } from "../../hooks/use-workstreams";
 import { shortSessionId } from "../../lib/utils";
 import { EmptyState } from "../shared/empty-state";
 import { StatusBadge } from "../shared/status-badge";
@@ -45,10 +46,11 @@ type Props = {
   isLoading: boolean;
   error: string | null;
   /**
-   * The listing stopped at its row bound with more still on the server. Shown,
-   * because a count beside a silently truncated list reads as complete.
+   * What is known about rows beyond this page. Shown, because a count beside a
+   * silently truncated list reads as complete — and so does one beside a list
+   * whose check for more never came back.
    */
-  truncated: boolean;
+  truncation: Truncation;
   onRefresh: () => void;
   /**
    * The open session's items, used only to name the board tasks a Workstream
@@ -65,7 +67,7 @@ export function WorkstreamsView({
   workstreams,
   isLoading,
   error,
-  truncated,
+  truncation,
   onRefresh,
   items,
   onOpen,
@@ -100,7 +102,7 @@ export function WorkstreamsView({
           ) : (
             <>
               {workstreams.length} workstream{workstreams.length === 1 ? "" : "s"}
-              {truncated && " (first)"}
+              {truncation !== "complete" && " (first)"}
             </>
           )}
         </span>
@@ -118,10 +120,17 @@ export function WorkstreamsView({
         <p className="px-3 py-2 text-xs text-red-400">{error}</p>
       )}
 
-      {truncated && (
+      {truncation === "more" && (
         <p className="px-3 py-2 text-[11px] text-amber-400">
           Showing the first {workstreams.length} workstreams. This session has
           more background work than the panel reads in one go.
+        </p>
+      )}
+
+      {truncation === "unknown" && (
+        <p className="px-3 py-2 text-[11px] text-amber-400">
+          Showing {workstreams.length} workstreams. Checking whether there are
+          more didn't come back, so there may be others not listed here.
         </p>
       )}
 
