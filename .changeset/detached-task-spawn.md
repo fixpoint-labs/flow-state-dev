@@ -53,6 +53,19 @@ failed to start it, and recorded the task as failed. Tools named in a static
 array are now collected. A tool set resolved at runtime still is not — its
 contents do not exist when the flow is built.
 
+A dynamic schedule whose resolver returns a handler containing a detached board
+is now refused at dispatch, naming the board and the flow, instead of claiming a
+task it cannot start. The resolver's handler is built after the flow is, so its
+board never reached the flow's routing; the refusal happens before the board
+claims anything, so nothing is left half-done.
+
+The safety check on a detached worker's payload now rejects a null-prototype
+object (`Object.create(null)`). Its data survives serialization and its prototype
+does not, so the worker receives an ordinary object where `hasOwnProperty` and
+every other inherited member behave differently — the same identity loss the
+check already rejects class instances for. Spread it into a plain object before
+sending.
+
 Two bounds worth knowing. Work is settled by the Workstream, which must be able
 to address the board it settles against, so a board whose rows a detached worker
 reaches has to be scoped where the child can see it. And on a serverless host
