@@ -77,6 +77,19 @@ export function createInProcessDispatcher(
       ? combineSignals(local.signal, abortController.signal)
       : abortController.signal;
 
+    // Acceptance, separated from completion (FIX-982). `runAction` is async, so
+    // this function returns while the run is still at its first await — the
+    // `activeRequests` write has been *issued* and not committed. A caller that
+    // reads the returned handle as "the request exists" is therefore trusting a
+    // write that can still fail, and when it does the failure lands only on
+    // `finished`, which a fire-and-forget caller is not holding.
+    let markAccepted: () => void = () => {};
+    let failAccepted: (error: unknown) => void = () => {};
+    const accepted = new Promise<void>((resolve, reject) => {
+      markAccepted = resolve;
+      failAccepted = reject;
+    });
+
     const finished = runAction({
       flow,
       actionName: envelope.actionName as keyof typeof flow.actions & string,
@@ -92,12 +105,23 @@ export function createInProcessDispatcher(
       signal,
       stores,
       responseEmitter: local.responseEmitter,
-      runtimeConfig: local.effectiveRuntimeConfig
+      runtimeConfig: local.effectiveRuntimeConfig,
+      onRegistered: markAccepted
     });
+
+    // Settles acceptance for a run that never reached registration: the failure
+    // it died of becomes the acceptance failure. A run that DID register has
+    // already resolved this, so both arms are no-ops by then.
+    finished.then(markAccepted, failAccepted);
+    // Every existing caller wants `finished` only. Marking the acceptance
+    // promise handled keeps an early failure from surfacing as an unhandled
+    // rejection; callers that await it still observe it.
+    void accepted.catch(() => {});
 
     return {
       requestId: envelope.requestId,
       finished: finished as Promise<ExecutionResult>,
+      accepted,
       abort: () => abortController.abort()
     };
   };

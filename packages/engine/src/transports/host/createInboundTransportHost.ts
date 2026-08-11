@@ -230,11 +230,28 @@ export function createInboundTransportHost(
     // (carries non-serializable context); external dispatchers use the
     // generic dispatch interface.
     let finished: Promise<ExecutionResult>;
-    // Set for external dispatch only: resolves once the request is accepted —
-    // enqueue-time store writes committed AND the dispatcher accepted the job
-    // (see the external branch). Left undefined for in-process.
+    // Resolves once the request is accepted. Every branch sets it, and each
+    // means "discoverable" in the terms its own path can honour: enqueue-time
+    // store writes committed plus the job taken (external), those same writes
+    // committed (in-process `queue`), or the run's own `activeRequests`
+    // registration committed (in-process, FIX-982).
     let accepted: Promise<void> | undefined;
     if ("dispatchLocal" in effectiveDispatcher) {
+      // The in-process acceptance signal, held here rather than read off the
+      // handle because `gateStart` owns *when* the run is started and the
+      // handle does not exist until it does (FIX-982). The `queue` branch below
+      // has its own, earlier acceptance — its enqueue-time writes — and ignores
+      // this one.
+      let markAccepted: () => void = () => {};
+      let failAccepted: (error: unknown) => void = () => {};
+      const inProcessAccepted = new Promise<void>((resolve, reject) => {
+        markAccepted = resolve;
+        failAccepted = reject;
+      });
+      // Handled unconditionally: this promise is discarded on the `queue` path
+      // and ignored by every caller that only wants `finished`.
+      void inProcessAccepted.catch(() => {});
+
       const startRun = (): Promise<ExecutionResult> => {
         const handle = (effectiveDispatcher as InProcessDispatcher).dispatchLocal(
           dispatchEnvelope,
@@ -247,6 +264,7 @@ export function createInboundTransportHost(
             }
           }
         );
+        handle.accepted?.then(markAccepted, failAccepted);
         return handle.finished;
       };
 
@@ -344,6 +362,11 @@ export function createInboundTransportHost(
           .finally(stopQueuedHeartbeat);
       } else {
         finished = gateStart(startRun);
+        // A start that never happens (the gate threw on the way in) must fail
+        // acceptance rather than leave it pending forever. Once the run has
+        // registered this is already settled and both arms are no-ops.
+        finished.then(markAccepted, failAccepted);
+        accepted = inProcessAccepted;
       }
     } else {
       // External dispatchers (BullMQ, etc.) run in a separate process and only

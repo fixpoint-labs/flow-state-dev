@@ -152,15 +152,32 @@ export interface DispatchHandle {
   /** Resolves when the action completes (success, failure, or abort). */
   readonly finished: Promise<ExecutionResult>;
   /**
-   * Resolves once an externally-dispatched request has been *accepted*: the
-   * enqueue-time store writes (`activeRequests` entry + the `in_progress`
-   * record) have committed AND the dispatcher has accepted the job. Adapters
-   * that ack a request before the client opens `GET …/stream` (the `202` path)
-   * await this, so the ack means "discoverable and enqueued" — a store-write or
-   * an enqueue failure rejects it (and is surfaced as a failed POST / reverted
-   * resume) instead of acking a request that never runs. It does not wait for
-   * execution to finish. `undefined` for in-process dispatch, where the record
-   * is written during execution. (FIX-828)
+   * Resolves once the request has been *accepted* — discoverable, with nothing
+   * left that could make it silently not exist. It does not wait for execution
+   * to finish, and it rejects when acceptance fails, so a caller that acks on it
+   * never acks a request that never runs.
+   *
+   * What "discoverable" costs differs by path, and each promises what its own
+   * path can honour:
+   *
+   * - **External dispatch** (FIX-828): the enqueue-time store writes
+   *   (`activeRequests` entry + the `in_progress` record) have committed AND the
+   *   dispatcher has taken the job. Adapters that ack before the client opens
+   *   `GET …/stream` (the `202` path) await this; a store-write or enqueue
+   *   failure rejects it and surfaces as a failed POST / reverted resume.
+   * - **In-process, `queue` policy** (FIX-999): the same enqueue-time writes.
+   *   The run itself is still waiting behind its concurrency key.
+   * - **In-process, ordinary** (FIX-982): the run's own `activeRequests`
+   *   registration has committed. `dispatchLocal` returns while `runAction` is
+   *   still at its first await, so without this a fire-and-forget caller — a
+   *   detached spawn handing over a claimed task — would report a request
+   *   started while the write that makes it exist could still fail. The
+   *   `in_progress` record follows during execution on this path, so an
+   *   immediate `…/stream` read can still miss it; the entry that recovery and
+   *   the sweeper key off is what has landed.
+   *
+   * Optional on the type because a custom dispatcher may not distinguish
+   * acceptance from completion. Every dispatcher this package ships does.
    */
   readonly accepted?: Promise<void>;
 }
