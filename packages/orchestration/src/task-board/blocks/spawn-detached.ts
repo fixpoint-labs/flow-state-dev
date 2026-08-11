@@ -169,6 +169,17 @@ export function createSpawnDetached(options: SpawnDetachedOptions) {
       const result = await requireRequestHost(ctx).startDetached({
         seed,
         input: dispatch,
+        // Stamped onto the detached REQUEST record, so a run can be correlated
+        // back to the row it came from without opening this board's ledger. The
+        // dispatch input above carries the same id, but that is the runner's
+        // private envelope — nothing projects it onto a read route.
+        //
+        // Same source as every other field here: the claim ticket the board
+        // minted from the row it had already claimed, never anything a task
+        // author or a transport supplied. It labels and decides nothing — the
+        // runner's start gate still verifies the claim off `dispatch` against
+        // the row it re-reads (see `StartDetachedInput.provenance`).
+        provenance: { taskId: claim.taskId },
       });
 
       if (!result.ok) {

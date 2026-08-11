@@ -59,6 +59,18 @@ void host.startDetached({ sessionId: "s_other", seed: { topic: "review" } });
 // @ts-expect-error identity is closed over, never a parameter.
 void host.startDetached({ seed: { topic: "review" }, userId: "u_other" });
 
+// Server-derived provenance is its own channel, distinct from the caller's bag.
+void host.startDetached({
+  seed: { topic: "review" },
+  provenance: { taskId: "task_7f3" }
+});
+
+// @ts-expect-error a provenance bag with no facts in it is not provenance.
+void host.startDetached({ seed: { topic: "review" }, provenance: {} });
+
+// @ts-expect-error the channel is closed — adding a fact to it is a decision.
+void host.startDetached({ seed: { topic: "r" }, provenance: { taskId: "t", boardId: "b1" } });
+
 // Settlement addresses the stamped row and takes no claim.
 void host.settleParentTask({ outcome: "complete", output: { ok: true } });
 
