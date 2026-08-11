@@ -178,6 +178,33 @@ export function flattenTaskItems(
     .flatMap(({ group }) => group.items);
 }
 
+/** An item's emission time, or the beginning of time when it carries none. */
+function itemTs(item: TaskStreamItem): number {
+  return (item as { ts?: number }).ts ?? Number.NEGATIVE_INFINITY;
+}
+
+/**
+ * Does an arriving item supersede what is currently held for the same key?
+ *
+ * The fold's one precedence rule, stated once because both things it folds —
+ * per-task changes and per-collection board meta — obey it, and stating it
+ * twice is how the two came to disagree:
+ *
+ * 1. **`ts` wins outright.** It is real chronology. Two requests overlap all
+ *    the time, and the one that STARTED earlier can emit later — a long drain
+ *    finishing after a short one began. That emission genuinely is the newer
+ *    fact, whichever request it belongs to.
+ * 2. **Request order breaks a `ts` tie**, because the caller flattens
+ *    chronologically (`flattenTaskItems`).
+ * 3. **Walk order breaks a tie inside one request**, where the sequence is the
+ *    order — which is what `>=` preserves here.
+ *
+ * Nothing held wins by default: the first item for a key always takes.
+ */
+function supersedes(incomingTs: number, heldTs: number | undefined): boolean {
+  return heldTs === undefined || incomingTs >= heldTs;
+}
+
 export function groupCollections(
   items: ReadonlyArray<TaskStreamItem>
 ): CollectionView[] {
@@ -189,22 +216,13 @@ export function groupCollections(
       tasksById: Map<string, ResolvedTask>;
       /** `ts` of the change currently held per task. Internal to the fold. */
       tsById: Map<string, number>;
+      /** `ts` of the board meta currently held. Internal to the fold. */
+      metaTs?: number;
     }
   >();
 
-  // One pass, counting every change and keeping the newest per task.
-  //
-  // Precedence, strongest first: the item's own `ts` is real chronology and
-  // wins outright — a long-running request can emit AFTER a later one started,
-  // and that emission is genuinely later. Request order breaks a `ts` tie, and
-  // walk order breaks a tie within one request. The last two are only correct
-  // because the caller flattens chronologically (`flattenTaskItems`); walk
-  // order on its own is newest-request-first and would invert them.
-  //
-  // `boardMeta` takes the last one walked past for the same reason, and it is
-  // the same fix: with a chronological walk that is the newest request's meta.
-  // Before it was the oldest, so a board's status and counts ribbon reported a
-  // superseded drain.
+  // One pass, counting every change and keeping the newest of everything —
+  // tasks and board meta alike, both through `supersedes`.
   for (const item of items) {
     if (item.type !== "component") continue;
     const component = (item as { component?: string }).component;
@@ -222,21 +240,13 @@ export function groupCollections(
       const bucket = ensureBucket(byId, change.collectionId);
       const prior = bucket.tasksById.get(change.taskId);
       const changeCount = (prior?.changeCount ?? 0) + 1;
-      // Latest by `ts`, not last-walked. The panel receives requests
-      // newest-first (`listSessionRequests` orders `updated_at DESC`) and
-      // flattens them in that order, so "the last item walked past" is the
-      // OLDEST request's snapshot of any task that changed more than once —
-      // which is a stale `status`, `assignee` and `topic` for everything
-      // downstream to render and match against.
-      //
-      // Compared here rather than by sorting the input: sorting would reorder
-      // items within a request too, and this needs no ordering contract from a
-      // caller at all. `ts` is required on every item, so there is no gap.
-      // `>=` keeps walk order as the tie-break, which is what orders two
-      // changes emitted in the same millisecond inside one request.
-      const ts = (item as { ts?: number }).ts ?? Number.NEGATIVE_INFINITY;
-      const priorTs = bucket.tsById.get(change.taskId) ?? Number.NEGATIVE_INFINITY;
-      if (prior !== undefined && ts < priorTs) {
+      // Latest by `supersedes`, not last-walked: the panel receives requests
+      // newest-first, so "the last item walked past" was the OLDEST request's
+      // snapshot of any task that changed more than once — a stale `status`,
+      // `assignee` and `topic` for everything downstream to render and match
+      // against.
+      const ts = itemTs(item);
+      if (prior !== undefined && !supersedes(ts, bucket.tsById.get(change.taskId))) {
         // An older change arriving after a newer one. It still counts as
         // activity — the `×N` ribbon reports how much happened, not who won.
         bucket.tasksById.set(change.taskId, { ...prior, changeCount });
@@ -256,6 +266,14 @@ export function groupCollections(
       const meta = data as TaskBoardMetaData;
       if (typeof meta.collectionId !== "string") continue;
       const bucket = ensureBucket(byId, meta.collectionId);
+      // Same rule as the task fold. Replacing unconditionally was justified on
+      // the two metas ONE board emits being a tie — but two overlapping drains
+      // on one collection are not a tie: the earlier-STARTED one can emit its
+      // final counts after the later one, so request order walks it first and
+      // last-wins then overwrites the newer fact with an older snapshot.
+      const ts = itemTs(item);
+      if (!supersedes(ts, bucket.metaTs)) continue;
+      bucket.metaTs = ts;
       bucket.boardMeta = {
         status: meta.status,
         counts: meta.counts,
@@ -285,6 +303,8 @@ function ensureBucket(
       tasksById: Map<string, ResolvedTask>;
       /** `ts` of the change currently held per task. Internal to the fold. */
       tsById: Map<string, number>;
+      /** `ts` of the board meta currently held. Internal to the fold. */
+      metaTs?: number;
     }
   >,
   id: string

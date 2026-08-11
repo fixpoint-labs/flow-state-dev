@@ -52,6 +52,86 @@ function change(options: {
   } as never;
 }
 
+/** One `task-board-meta` item, as a board emits at start and at end. */
+function meta(options: {
+  requestId: string;
+  ts: number;
+  status: string;
+  total: number;
+}): TaskStreamItem {
+  return {
+    id: `meta_${options.requestId}_${options.ts}`,
+    type: "component",
+    status: "completed",
+    requestId: options.requestId,
+    itemIndex: 0,
+    provenance: { blockName: "board", blockInstanceId: "b:0", phase: "main" },
+    ts: options.ts,
+    component: "task-board-meta",
+    key: "issues",
+    data: {
+      collectionId: "issues",
+      status: options.status,
+      counts: {
+        total: options.total,
+        pending: 0,
+        in_progress: 0,
+        blocked: 0,
+        awaiting_review: 0,
+        completed: options.total,
+        errored: 0,
+        cancelled: 0,
+      },
+    },
+  } as never;
+}
+
+describe("groupCollections — which board meta wins", () => {
+  it("keeps the newest meta when an older-started request finishes last", () => {
+    // Two overlapping drains on one collection. `req_older` STARTED first but
+    // ran longer, so its final meta is emitted AFTER `req_newer`'s — genuinely
+    // later, on the real clock. Request ordering walks it first, so a fold that
+    // replaces unconditionally then overwrites it with the newer-started
+    // request's older snapshot, and the board reports a superseded run.
+    //
+    // Not a tie: the timestamps differ and the inversion is across requests,
+    // which is the case `ts`-wins-outright exists for.
+    const [collection] = groupCollections(
+      flattenTaskItems([
+        {
+          startedAt: 2_000,
+          items: [meta({ requestId: "req_newer", ts: 3_000, status: "completed", total: 1 })],
+        },
+        {
+          startedAt: 1_000,
+          items: [meta({ requestId: "req_older", ts: 4_000, status: "completed", total: 9 })],
+        },
+      ])
+    );
+
+    expect(collection?.boardMeta.counts?.total).toBe(9);
+  });
+
+  it("still lets a later meta in the same request supersede an earlier one", () => {
+    // The ordinary case the exception was written for: one board emits `active`
+    // at start and `completed` at end, inside one request.
+    const [collection] = groupCollections(
+      flattenTaskItems([
+        {
+          startedAt: 1_000,
+          items: [
+            meta({ requestId: "req_1", ts: 1_000, status: "active", total: 0 }),
+            meta({ requestId: "req_1", ts: 2_000, status: "completed", total: 3 }),
+          ],
+        },
+      ])
+    );
+
+    expect(collection?.boardMeta.status).toBe("completed");
+    expect(collection?.boardMeta.counts?.total).toBe(3);
+  });
+});
+
 describe("groupCollections — which snapshot of a task wins", () => {
   it("keeps the newest change when the items arrive newest-request-first", () => {
     // The order the panel actually receives. `listSessionRequests` returns
