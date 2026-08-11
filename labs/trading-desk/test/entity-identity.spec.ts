@@ -302,4 +302,48 @@ describe("publisherIsSubject", () => {
     expect(publisherIsSubject("ishares.com", ivv)).toBe(false);
     expect(textMentionsEntity("IVV sees record inflows", ivv)).toBe(true);
   });
+
+  it("keeps the shortcut for a corporate site at a locale or section root", () => {
+    // Requiring a BARE host was too blunt. A company whose provider-supplied
+    // site is `company.com/en/` is not a product page on a shared host, and
+    // dropping its host removes first-party matching exactly where it is
+    // load-bearing: a release titled "Third Quarter 2026 Results" names no
+    // company, so the text check cannot rescue it.
+    for (const site of [
+      "https://www.acme.com/en/",
+      "https://www.acme.com/us/en",
+      "https://www.acme.com/index.html",
+      "https://www.acme.com/home",
+      "https://www.acme.com/ir",
+      "https://www.acme.com",
+    ]) {
+      const acme = subjectEntityFromProfile("ACME", {
+        source: "finnhub",
+        name: "Acme Robotics Corporation",
+        website: site,
+      }) as SubjectEntity;
+      expect(acme.websiteHost, site).toBe("acme.com");
+      // The whole point: a generic-titled first-party release still verifies.
+      expect(publisherIsSubject("investor.acme.com", acme), site).toBe(true);
+    }
+  });
+
+  it("still gives up the shortcut for any deeper product path", () => {
+    // The narrowing recognises site ROOTS only. Anything it does not positively
+    // recognise keeps the conservative behaviour, so the fund case that
+    // motivated the rule is unaffected.
+    for (const site of [
+      "https://www.schwabassetmanagement.com/products/schd",
+      "https://investor.vanguard.com/investment-products/etfs/profile/voo",
+      "https://www.ssga.com/us/en/intermediary/etfs/funds/spdr-sp-500-etf-trust-spy",
+      "https://www.acme.com/en/products/widget",
+    ]) {
+      const fund = subjectEntityFromProfile("FUND", {
+        source: "yahoo",
+        name: "Some Fund Trust",
+        website: site,
+      }) as SubjectEntity;
+      expect(fund.websiteHost, site).toBeNull();
+    }
+  });
 });

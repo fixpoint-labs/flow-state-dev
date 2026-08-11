@@ -273,22 +273,58 @@ export function subjectEntityFromProfile(
 }
 
 /**
+ * A path segment that marks a site ROOT rather than a page within the site: a
+ * locale or region prefix (`en`, `en-us`, `us`, `ir`) or a default document.
+ *
+ * This is the narrow half of the shared-host test below. It recognises the
+ * shapes that are definitely NOT product-specific and treats everything else as
+ * a page — so an unrecognised path keeps the conservative behaviour rather than
+ * being waved through.
+ */
+function isRootPathSegment(segment: string): boolean {
+  const s = segment.toLowerCase();
+  return (
+    s === "home" ||
+    /^(index|default)\.(html?|php|aspx?|jsp)$/.test(s) ||
+    /^[a-z]{2}([-_][a-z]{2})?$/.test(s)
+  );
+}
+
+/**
  * Best-effort hostname, `www.` stripped. Null on an unparseable URL — and null
- * when the profile's site is a page WITHIN a host rather than the host itself.
+ * when the profile's site is a PRODUCT PAGE within a shared host rather than
+ * that company's own site.
  *
  * A fund's profile site is typically a product page on its sponsor's shared
  * domain (`ishares.com/us/products/239726/…`). Reducing that to `ishares.com`
  * would make every page about every other fund in the family first-party
- * evidence for this one — the family is not the member. A path is the only
- * signal available that the host is shared, so a profile carrying one gives up
- * the publisher shortcut and falls back to ticker / name matching, which is
- * what actually distinguishes one fund from its siblings.
+ * evidence for this one — the family is not the member.
+ *
+ * **The test is the shape of the path, not its mere presence.** Requiring a
+ * bare host was too blunt: an ordinary corporate site published at a locale or
+ * section root (`company.com/en/`, `company.com/us/en/`, `company.com/index.html`)
+ * also lost the shortcut, and it lost it exactly where the shortcut is
+ * load-bearing. First-party matching exists for the release titled "Third
+ * Quarter 2026 Results" that names no company anywhere in its title or snippet —
+ * so removing it for those issuers discarded the most authoritative evidence the
+ * desk can get, on precisely the items the text check cannot rescue.
+ *
+ * So a path made ENTIRELY of root-ish segments is still that company's own site;
+ * anything else (a product path, any deeper page) gives up the shortcut and
+ * falls back to ticker / name matching, which is what actually distinguishes one
+ * fund from its siblings.
+ *
+ * This narrows the ambiguity, it does not remove it: a fund whose profile URL is
+ * a bare sponsor root would still be read as first-party for the whole family.
+ * That direction is chosen deliberately — see the note on `publisherIsSubject`.
  */
 function hostOf(url: string | null): string | null {
   if (url === null || url === "") return null;
   try {
     const parsed = new URL(url);
-    if (parsed.pathname !== "" && parsed.pathname !== "/") return null;
+    const segments = parsed.pathname.split("/").filter((s) => s !== "");
+    // `[].every` is true, so a bare host (`""` / `"/"`) still resolves.
+    if (!segments.every(isRootPathSegment)) return null;
     return parsed.hostname.replace(/^www\./, "").toLowerCase();
   } catch {
     return null;
@@ -394,8 +430,20 @@ export function textMentionsEntity(text: string, subject: SubjectEntity): boolea
  * entity mismatch. The match is anchored on a leading dot, so `evilnvidia.com`
  * and `nvidia.com.attacker.net` are still third-party.
  *
- * Always false when the profile's site was a page on a shared host rather than
- * a host of its own — see `hostOf`.
+ * Always false when the profile's site was a PRODUCT PAGE on a shared host
+ * rather than that company's own site — see `hostOf`, which decides that on the
+ * shape of the path.
+ *
+ * **The direction chosen, stated plainly.** No test cleanly separates a shared
+ * product host from an ordinary corporate site; the path shape is a proxy, not a
+ * proof. Between the two failure directions — accepting a sibling fund's page as
+ * this fund's evidence, or discarding a genuine first-party release — this
+ * function errs toward DISCARDING on anything it does not positively recognise
+ * as a site root. Contaminated evidence is read as fact and sizes a position; a
+ * dropped release is a gap the analyst can see in its own `dataQuality`. The
+ * residual is a fund whose profile URL is a bare sponsor root, which stays
+ * wrongly first-party for its whole family; that is the family-token problem
+ * tracked on FIX-1100, and the ticker is what carries fund identity regardless.
  */
 export function publisherIsSubject(
   publisher: string | null,

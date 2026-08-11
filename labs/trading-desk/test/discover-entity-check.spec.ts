@@ -261,6 +261,29 @@ describe("the guard degrades honestly instead of failing closed", () => {
     expect(payload.entityCheck).toBe("unchecked");
     expect(mockResolveProvider).not.toHaveBeenCalled();
   });
+
+  it("does NOT report a provider outage as a completed check that found nothing", async () => {
+    // The subject resolves fine; the SEARCH is what fails (no provider wired,
+    // or every provider errored). The payload comes back `unavailable` with no
+    // items — and stamping `verified` on it tells the analyst, in the prompt's
+    // own words, that "the filter ran and nothing passed". That is a provider
+    // outage reported as a clean search: absent data presented as measured data,
+    // which is the failure this whole surface exists to prevent.
+    mockResolveProvider.mockImplementation(() => {
+      throw new Error("no search provider configured");
+    });
+    const { payload } = await runDiscovery({
+      action: "discoverFundamentals",
+      state: stateFor("live"),
+      profile: SUBJECT_PROFILE,
+      sessionId: "entity-provider-outage",
+    });
+    expect(payload.source).toBe("unavailable");
+    expect(payload.items).toEqual([]);
+    // `unchecked` — we could not look, as distinct from looked-and-found-nothing.
+    expect(payload.entityCheck).toBe("unchecked");
+    expect(payload.excluded).toEqual([]);
+  });
 });
 
 describe("environment-scoped discovery is not filtered", () => {

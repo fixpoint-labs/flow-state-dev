@@ -161,12 +161,16 @@ export function readSubjectEntity(ctx: DiscoveryCtx): SubjectEntity | null {
  * still prose in the prompt — the whole point is that the contaminating text
  * does not reach the model.
  *
- * Two escapes, both deliberate and both honest rather than silent:
+ * Three escapes, all deliberate and all honest rather than silent:
  *   - `entityScoped: false` (macro / market-context discovery) asks about the
  *     environment around a name, so the subject is not expected to be named.
  *   - an unresolved subject leaves everything in place tagged `"unchecked"`;
  *     dropping every snippet because we could not identify the company would be
  *     a worse failure than the one this guards against.
+ *   - a payload with no search behind it (`"unavailable"` / `"skipped"`) stays
+ *     `"unchecked"`. The verdict describes what happened to ITEMS, so a run that
+ *     retrieved none has nothing to report a verdict on. See the guard below:
+ *     `verified` on an outage is an absence of data dressed as a measurement.
  */
 export function applyEntityCheck(
   payload: DiscoveryPayload,
@@ -175,6 +179,15 @@ export function applyEntityCheck(
 ): DiscoveryPayload {
   if (!entityScoped) {
     return { ...payload, entityCheck: "not-applicable", excluded: [] };
+  }
+  // No search ran, so there is nothing to have verified. `"unavailable"` is a
+  // provider outage or a missing key; `"skipped"` is the cost gate. Stamping
+  // `verified` on either would tell the analyst "the filter ran and nothing
+  // passed" (the prompt's literal reading of verified + empty `items`) when the
+  // truth is "we could not look" — an absence of data reported as a measured
+  // one, which is the failure this whole surface exists to prevent.
+  if (payload.source === "unavailable" || payload.source === "skipped") {
+    return { ...payload, entityCheck: "unchecked", excluded: [] };
   }
   if (subject === null) {
     return { ...payload, entityCheck: "unchecked", excluded: [] };
