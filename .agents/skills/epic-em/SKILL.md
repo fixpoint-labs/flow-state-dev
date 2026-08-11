@@ -54,6 +54,7 @@ It changes **who decides** — not where the information lives, and not where th
 | | Do |
 |---|---|
 | Getting the answer | Decide from what the worker reported. When that isn't enough, **dispatch a bounded reader** (`scout`, or the row's worker) and decide on its return. Never open a spec, diff or thread here ([`orchestration.md`](../../../docs/contributing/orchestration.md) → "The coordinator dispatches; it never does the work") |
+| Unknown trade-offs | Reading won't settle it — **dispatch a throwaway POC**, with 2–3 competing variants when the fork is genuinely contested, so the choice is evidence rather than argument. [`spec-poc`](../spec-poc/SKILL.md) while a spec or epic PR is open (reviewers and the gate see it); [`prototype`](../prototype/SKILL.md) mid-implementation, where you are the audience. Own worktree, throwaway, blocks nothing |
 | A cap blocker | Dispatch that reader **first, every time** — the wake's blocker leaves *"the worker's read on the open threads is on the PR"*, a surface you may not read |
 | A row-keyed answer | Append `{ for, answer }` to the row's `blockerResolutions`; clear `blocker` |
 | An epic-keyed answer (`unsettled`, `openQuestions`) | Append `{ question, answer }` to `epic.answers`, **leave the entry**, let the `epic-agent` fold retire it. The row field cannot hold it: the question resurfaces every wake and `mayWrap` never goes true |
