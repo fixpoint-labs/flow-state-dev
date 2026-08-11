@@ -27,6 +27,7 @@ import {
   type TaskStreamItem,
 } from "../../lib/task-collection-state";
 import { linkWorkstreamsToTasks, taskLinkKey } from "../../lib/workstream-links";
+import type { Truncation } from "../../hooks/use-workstreams";
 import { EmptyState } from "../shared/empty-state";
 import { Badge } from "../ui/badge";
 import { JsonViewer } from "../shared/json-viewer";
@@ -42,11 +43,16 @@ type Props = {
    * Omitted (or empty) leaves every row exactly as it was.
    */
   workstreams?: readonly WorkstreamSummary[];
+  /**
+   * What is known about Workstreams beyond the page that was read. An
+   * unmatched task is only definitely unmatched when this is `complete`.
+   */
+  truncation: Truncation;
   /** Open the Workstream running a task. */
   onOpenWorkstream: (workstream: WorkstreamSummary) => void;
 };
 
-export function TaskCollectionsView({ items, workstreams, onOpenWorkstream }: Props) {
+export function TaskCollectionsView({ items, workstreams, truncation, onOpenWorkstream }: Props) {
   const collections = useMemo(() => groupCollections(items), [items]);
   const byTask = useMemo(
     () => linkWorkstreamsToTasks(workstreams ?? [], collections).byTask,
@@ -69,6 +75,7 @@ export function TaskCollectionsView({ items, workstreams, onOpenWorkstream }: Pr
           key={collection.id}
           collection={collection}
           byTask={byTask}
+          truncation={truncation}
           onOpenWorkstream={onOpenWorkstream}
         />
       ))}
@@ -79,10 +86,12 @@ export function TaskCollectionsView({ items, workstreams, onOpenWorkstream }: Pr
 function CollectionCard({
   collection,
   byTask,
+  truncation,
   onOpenWorkstream,
 }: {
   collection: CollectionView;
   byTask: ReadonlyMap<string, WorkstreamSummary>;
+  truncation: Truncation;
   onOpenWorkstream: (workstream: WorkstreamSummary) => void;
 }) {
   const counts = collection.boardMeta.counts;
@@ -133,6 +142,7 @@ function CollectionCard({
                 key={entry.task.id}
                 entry={entry}
                 workstream={byTask.get(taskLinkKey(collection.id, entry.task.id))}
+                truncation={truncation}
                 onOpenWorkstream={onOpenWorkstream}
               />
             ))}
@@ -146,10 +156,12 @@ function CollectionCard({
 function TaskRow({
   entry,
   workstream,
+  truncation,
   onOpenWorkstream,
 }: {
   entry: ResolvedTask;
   workstream?: WorkstreamSummary;
+  truncation: Truncation;
   onOpenWorkstream: (workstream: WorkstreamSummary) => void;
 }) {
   const { task } = entry;
@@ -168,6 +180,7 @@ function TaskRow({
       <td className="py-1.5 pr-2">
         <WorkstreamLink
           workstream={workstream}
+          truncation={truncation}
           onOpen={onOpenWorkstream}
         />
       </td>
@@ -210,12 +223,42 @@ function TaskRow({
  */
 function WorkstreamLink({
   workstream,
+  truncation,
   onOpen,
 }: {
   workstream?: WorkstreamSummary;
+  truncation: Truncation;
   onOpen: (workstream: WorkstreamSummary) => void;
 }) {
   if (workstream === undefined) {
+    // "No Workstream" is only a fact when the whole listing was read. Past that
+    // page, or when the check for more failed, the honest statement is "none
+    // among the ones I have" — and a bare dash makes the stronger claim.
+    //
+    // The two uncertain cases are kept apart because they lead somewhere
+    // different: `more` means the match may be on a page this panel does not
+    // read, so refreshing will not change it; `unknown` means the check itself
+    // failed, so refreshing might.
+    if (truncation === "more") {
+      return (
+        <span
+          className="text-amber-500/70"
+          title="No workstream among those listed. This session has more background work than the panel reads, so an older one may be running this task."
+        >
+          —?
+        </span>
+      );
+    }
+    if (truncation === "unknown") {
+      return (
+        <span
+          className="text-amber-500/70"
+          title="No workstream among those listed, and checking whether there are more didn't come back — so one may be missing from the list."
+        >
+          —?
+        </span>
+      );
+    }
     return <span className="text-slate-600">—</span>;
   }
 

@@ -798,6 +798,7 @@ function PanelContent({ className }: { className?: string }) {
                 key={effectiveSessionId ?? "none"}
                 items={taskItems}
                 workstreams={workstreams}
+                truncation={workstreamsTruncation}
                 onOpenWorkstream={handleOpenWorkstream}
               />
             </TabsContent>
