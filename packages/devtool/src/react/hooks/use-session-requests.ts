@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { SessionRequestSummary } from "@flow-state-dev/client";
 import { useDevTool } from "../context/devtool-context";
+import { useReadFence } from "./use-read-fence";
 
 export function useSessionRequests(sessionId: string | null) {
   const { sessionClient, recoveryClient, config, autoRecoverInterrupted } = useDevTool();
@@ -14,10 +15,15 @@ export function useSessionRequests(sessionId: string | null) {
   // to a request in the session the user just left and render its items under
   // the new one. Reachable from the navigator, and reliably so when descending
   // into a Workstream while the conversation that started it is still running.
-  const requestedRef = useRef<string | null>(sessionId);
+  //
+  // Shared with `use-workstreams` rather than restated: this hook previously
+  // ASSIGNED its own ref inside the read, so a callback the panel handed to a
+  // view that has since unmounted rewrote the guard for every reader.
+  const fence = useReadFence([sessionId, sessionClient]);
 
   const refresh = useCallback(async () => {
-    requestedRef.current = sessionId;
+    const stillCurrent = fence.begin();
+    if (stillCurrent === null) return;
     if (!sessionId) {
       setRequests([]);
       return;
@@ -42,15 +48,22 @@ export function useSessionRequests(sessionId: string | null) {
       const result = await sessionClient.listSessionRequests(sessionId, {
         includeItems: true
       });
-      if (requestedRef.current !== sessionId) return;
+      if (!stillCurrent()) return;
       setRequests(result);
     } catch (err) {
-      if (requestedRef.current !== sessionId) return;
+      if (!stillCurrent()) return;
       setError(err instanceof Error ? err.message : "Failed to fetch requests");
     } finally {
-      if (requestedRef.current === sessionId) setIsLoading(false);
+      if (stillCurrent()) setIsLoading(false);
     }
-  }, [sessionClient, recoveryClient, sessionId, config.userId, autoRecoverInterrupted]);
+  }, [
+    fence,
+    sessionClient,
+    recoveryClient,
+    sessionId,
+    config.userId,
+    autoRecoverInterrupted,
+  ]);
 
   // Drop the previous session's rows before the new session's read lands. Runs
   // before the fetch effect below, which shares its dependency.

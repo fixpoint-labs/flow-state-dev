@@ -8,7 +8,7 @@
  * it.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 
 const sessionClientMock = {
   listSessionRequests: vi.fn(),
@@ -100,6 +100,91 @@ describe("useSessionRequests — switching sessions", () => {
     rerender({ sessionId: "sess_child" });
 
     expect(result.current.requests).toEqual([]);
+  });
+
+  it("refuses a refresh invoked from a closure made for a previous session", async () => {
+    // The panel hands `refresh` to children (`handleResumed` calls it). An
+    // operator changes sessions while a suspension approval is outstanding, the
+    // unmounted view invokes the callback it captured, and that callback names
+    // the OLD session.
+    //
+    // Worse than the same bug in `use-workstreams`: there a stale closure
+    // BORROWED the current identity, here it REDEFINES it — `requestedRef` is
+    // assigned inside `refresh`, so a stale call rewrites the shared cell and
+    // corrupts the guard for every read, not just its own.
+    sessionClientMock.listSessionRequests.mockResolvedValue([]);
+
+    const { result, rerender } = renderHook(
+      ({ sessionId }: { sessionId: string }) => useSessionRequests(sessionId),
+      { initialProps: { sessionId: "sess_parent" } }
+    );
+    await waitFor(() =>
+      expect(sessionClientMock.listSessionRequests).toHaveBeenCalledWith(
+        "sess_parent",
+        { includeItems: true }
+      )
+    );
+
+    const staleRefresh = result.current.refresh;
+
+    sessionClientMock.listSessionRequests.mockResolvedValue([
+      { id: "req_child", status: "completed" },
+    ]);
+    rerender({ sessionId: "sess_child" });
+    await waitFor(() =>
+      expect(result.current.requests).toEqual([{ id: "req_child", status: "completed" }])
+    );
+
+    const callsBefore = sessionClientMock.listSessionRequests.mock.calls.length;
+    sessionClientMock.listSessionRequests.mockResolvedValue([
+      { id: "req_parent_stale", status: "in_progress" },
+    ]);
+    await act(async () => {
+      await staleRefresh();
+    });
+
+    expect(result.current.requests).toEqual([{ id: "req_child", status: "completed" }]);
+    // A read it may not write is a read worth not making.
+    expect(sessionClientMock.listSessionRequests.mock.calls.length).toBe(callsBefore);
+  });
+
+  it("does not let a stale callback discard the current session's in-flight read", async () => {
+    // The corruption half. Assigning the shared ref from a stale call makes a
+    // legitimate read for the session ON SCREEN fail its own guard on arrival,
+    // so live mode is left with no rows at all rather than the wrong ones.
+    let resolveChild!: (rows: unknown[]) => void;
+    sessionClientMock.listSessionRequests.mockResolvedValue([]);
+
+    const { result, rerender } = renderHook(
+      ({ sessionId }: { sessionId: string }) => useSessionRequests(sessionId),
+      { initialProps: { sessionId: "sess_parent" } }
+    );
+    await waitFor(() =>
+      expect(sessionClientMock.listSessionRequests).toHaveBeenCalled()
+    );
+    const staleRefresh = result.current.refresh;
+
+    sessionClientMock.listSessionRequests.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveChild = resolve as (rows: unknown[]) => void;
+      })
+    );
+    rerender({ sessionId: "sess_child" });
+    await waitFor(() => expect(resolveChild).toBeDefined());
+
+    sessionClientMock.listSessionRequests.mockResolvedValue([
+      { id: "req_parent_stale", status: "in_progress" },
+    ]);
+    await act(async () => {
+      await staleRefresh();
+    });
+
+    await act(async () => {
+      resolveChild([{ id: "req_child", status: "completed" }]);
+      await Promise.resolve();
+    });
+
+    expect(result.current.requests).toEqual([{ id: "req_child", status: "completed" }]);
   });
 
   it("ignores a read that resolves after the session moved on", async () => {
