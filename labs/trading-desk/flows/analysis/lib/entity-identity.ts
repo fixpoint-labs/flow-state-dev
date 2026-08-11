@@ -111,13 +111,24 @@ const ORDINARY_NAME_TOKENS = new Set([
 ]);
 
 /**
- * Corporate-form tokens SHORT enough to survive the short-name pass below.
- * `entityNameTokens`'s 4+ character rule already drops `inc` / `ltd` before
- * `GENERIC_NAME_TOKENS` is ever consulted, so that set never had to list them.
- * The short-name pass has no length floor to hide behind and needs its own.
+ * Short tokens that describe a company's FORM or a security's STRUCTURE rather
+ * than its identity. `entityNameTokens`'s 4+ character rule already drops `inc`
+ * / `ltd` before `GENERIC_NAME_TOKENS` is ever consulted, so that set never had
+ * to list them; the short-name pass has no length floor to hide behind.
  * Upper-case because that pass is case-sensitive.
+ *
+ * **This list is defense-in-depth, NOT the primary defence.** A curated denylist
+ * of category labels fails OPEN — an instrument type nobody thought of becomes
+ * an identity — which is the wrong default for a contamination guard. The
+ * primary rule is structural and lives in `shortNameTokens`: the short pass runs
+ * only for a name with no distinctive long token at all. Every name carrying one
+ * of these classifiers also carries a real name word (`iShares … ETF`,
+ * `Vanguard … ETF`, `Taiwan Semiconductor … ADR`), so the structural rule
+ * already excludes them. This set only catches the degenerate leftover — a name
+ * that is ALL short tokens and includes a classifier (`XP ETF`).
  */
 const SHORT_GENERIC_NAME_TOKENS = new Set([
+  // Corporate forms.
   "AB",
   "AG",
   "AS",
@@ -136,6 +147,20 @@ const SHORT_GENERIC_NAME_TOKENS = new Set([
   "SA",
   "SE",
   "SPA",
+  // Security structures and instrument wrappers.
+  "ADR",
+  "ADS",
+  "BDC",
+  "CEF",
+  "ETC",
+  "ETF",
+  "ETN",
+  "ETP",
+  "GDR",
+  "GDS",
+  "MLP",
+  "ORD",
+  "UIT",
 ]);
 
 /** Lower-case, strip every non-alphanumeric run to a single space, trim. */
@@ -182,9 +207,26 @@ export function entityNameTokens(name: string): Set<string> {
  * Restricted to 2–3 characters and all-caps: a single letter (`T`) is too noisy
  * to carry identity, and the all-caps test is what excludes the mixed-case
  * corporate forms (`Inc`, `Co`, `The`) without needing to enumerate them.
- * `SHORT_GENERIC_NAME_TOKENS` then removes the forms that ARE written in caps.
+ *
+ * **A FALLBACK, not an additional signal — this is what keeps category labels
+ * out.** The pass runs only when `entityNameTokens` is empty. Read the two
+ * halves of that together: the short pass exists because `3M Company` and
+ * `XP Inc.` have no long token to identify them, so a name that HAS one never
+ * needed it. Without the restriction, `iShares Core S&P 500 ETF` yields `ETF`,
+ * and every result containing the routine label "ETF" verifies as evidence about
+ * that one fund — far broader than any sibling-fund problem.
+ *
+ * The structural rule is what does the work; enumerating `ETF` / `ETN` / `ADR`
+ * in a denylist would fail open on the first instrument type nobody listed. Note
+ * the shape: a name carrying a classifier is a fund or a depositary receipt OF
+ * something, so it always carries that something's name too — which is exactly
+ * why "has a long token" separates the two populations cleanly.
  */
 export function shortNameTokens(name: string): Set<string> {
+  // Not merely "prefer long tokens" — the short pass is OFF entirely when a
+  // distinctive long token exists, so a trailing classifier can never become an
+  // identity for a name that has a real one.
+  if (entityNameTokens(name).size > 0) return new Set();
   return new Set(
     name
       .split(/[^A-Za-z0-9]+/)
@@ -213,8 +255,9 @@ export type SubjectEntity = {
   /** Identifying 4+ character name tokens, lower-cased, matched
    *  case-insensitively. May be empty (`3M Company`, `XP Inc.`). */
   nameTokens: Set<string>;
-  /** Short all-caps name tokens (`3M`), matched case-sensitively. Usually
-   *  empty; the reason a short-named issuer still has a name signal. */
+  /** Short all-caps name tokens (`3M`), matched case-sensitively. Populated
+   *  ONLY when `nameTokens` is empty — the fallback that gives a short-named
+   *  issuer a name signal, never an extra signal alongside a real one. */
   shortNameTokens: Set<string>;
 };
 

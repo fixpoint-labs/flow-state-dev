@@ -83,6 +83,44 @@ describe("subjectEntityFromProfile", () => {
     expect([...mmm.shortNameTokens]).toEqual(["3M"]);
   });
 
+  it("does not let a security-structure label become an identity", () => {
+    // `ETF` is uppercase, 3 characters, and a category label — not an identity.
+    // Admitting it verified ANY result containing the routine word "ETF" as
+    // evidence about this one fund, far broader than a sibling-fund page.
+    const ivv = subjectEntityFromProfile("IVV", {
+      source: "yahoo",
+      name: "iShares Core S&P 500 ETF",
+    }) as SubjectEntity;
+    expect([...ivv.shortNameTokens]).toEqual([]);
+    expect(textMentionsEntity("the ETF saw record outflows in June", ivv)).toBe(false);
+    // The ticker still identifies it — that is what carries fund identity.
+    expect(textMentionsEntity("IVV saw record outflows", ivv)).toBe(true);
+
+    // The same holds for every other wrapper label, via the same structural
+    // rule rather than via the denylist: each of these names carries a real
+    // name word, so the short pass never runs.
+    for (const name of [
+      "Vanguard S&P 500 ETF",
+      "SPDR S&P 500 ETF Trust",
+      "iPath Series B Bloomberg ETN",
+      "Taiwan Semiconductor Manufacturing ADR",
+    ]) {
+      const e = subjectEntityFromProfile("X", { source: "yahoo", name }) as SubjectEntity;
+      expect([...e.shortNameTokens], name).toEqual([]);
+    }
+  });
+
+  it("keeps the denylist meaningful for an all-short name with a classifier", () => {
+    // The degenerate leftover the structural rule cannot reach: no long token,
+    // so the short pass DOES run, and the classifier must still be excluded.
+    const odd = subjectEntityFromProfile("XPT", {
+      source: "yahoo",
+      name: "XP ETF",
+    }) as SubjectEntity;
+    expect([...odd.shortNameTokens]).toEqual(["XP"]);
+    expect(textMentionsEntity("a broad ETF rally", odd)).toBe(false);
+  });
+
   it("does not treat a short corporate form as an identity", () => {
     // `Siemens AG` must not resolve `AG` as a short name token — it is a
     // corporate form, and the all-caps test alone would let it through.
