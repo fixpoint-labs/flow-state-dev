@@ -232,11 +232,38 @@ describe("linkWorkstreamsToTasks", () => {
     expect(byWorkstream.get("dsx_impl")?.map((l) => l.task.id)).toEqual(["task-a"]);
   });
 
-  it("still links a lone Workstream whose coordinate names no assignee", () => {
-    // The other half of the same rule: only a POSITIVE contradiction blocks a
-    // link. A `uniform` board's key names no assignee, and an unlabelled record
-    // carries no coordinate at all — neither contradicts anything, so tightening
-    // the check must not start dropping these.
+  it("refuses a named-assignee Workstream for a task carrying no assignee", () => {
+    // An ABSENT assignee is not an unreadable one. `coordinateForTask` routes an
+    // `assignee` coordinate only when the row has an assignee the board
+    // declares (`task.assignee !== undefined && declared.has(...)`); an
+    // unassigned row gets `uniform`, `floor`, or a refusal. So this task could
+    // not possibly have produced this Workstream, and treating its missing
+    // assignee as ignorance throws away something the routing rule tells us.
+    const ws = workstream({
+      id: "dsx_impl",
+      topic: "FIX-1",
+      coordinate: coordinate("issue-work", assigneeKey("implement")),
+    });
+
+    const { byTask, byWorkstream } = linkWorkstreamsToTasks(
+      [ws],
+      // A genuinely unassigned task, not a hand-built candidate.
+      [board("issues", [task({ id: "task-a", metadata: { topic: "FIX-1" } })])]
+    );
+
+    expect(byTask.size).toBe(0);
+    expect(byWorkstream.size).toBe(0);
+  });
+
+  // The two sides' silences mean different things, and the pair below keeps them
+  // apart on purpose. A COORDINATE that names no worker is ignorance and stays
+  // eligible; a TASK with no assignee, against a coordinate that DOES name one,
+  // is a contradiction. Kept as separate tests so a later change cannot quietly
+  // collapse the two back into one rule — the test above pins the second half.
+
+  it("still links a lone Workstream whose coordinate names no assignee, for an assigned task", () => {
+    // A `uniform` board's key names no assignee, and an unlabelled record
+    // carries no coordinate at all — neither contradicts anything.
     const uniformWs = workstream({
       id: "dsx_uniform",
       topic: "FIX-1",
@@ -256,6 +283,39 @@ describe("linkWorkstreamsToTasks", () => {
 
     expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(uniformWs);
     expect(byTask.get(taskLinkKey("issues", "task-b"))).toBe(bareWs);
+  });
+
+  it("still links a lone Workstream whose coordinate names no assignee, for an UNASSIGNED task", () => {
+    // The pairing that must survive the tightening, and the one the assigned
+    // case above cannot speak for. An unassigned row is exactly what
+    // `coordinateForTask` routes to `uniform` or `floor`, so this is the
+    // ordinary shape of unassigned detached work — not an edge case.
+    const uniformWs = workstream({
+      id: "dsx_uniform",
+      topic: "FIX-1",
+      coordinate: coordinate("issue-work", "uniform"),
+    });
+    const floorWs = workstream({
+      id: "dsx_floor",
+      topic: "FIX-2",
+      coordinate: coordinate("issue-work", "floor"),
+    });
+    const bareWs = workstream({ id: "dsx_bare", topic: "FIX-3" });
+
+    const { byTask } = linkWorkstreamsToTasks(
+      [uniformWs, floorWs, bareWs],
+      [
+        board("issues", [
+          task({ id: "task-a", metadata: { topic: "FIX-1" } }),
+          task({ id: "task-b", metadata: { topic: "FIX-2" } }),
+          task({ id: "task-c", metadata: { topic: "FIX-3" } }),
+        ]),
+      ]
+    );
+
+    expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(uniformWs);
+    expect(byTask.get(taskLinkKey("issues", "task-b"))).toBe(floorWs);
+    expect(byTask.get(taskLinkKey("issues", "task-c"))).toBe(bareWs);
   });
 
   it("draws no link when a shared topic cannot be resolved to one worker", () => {
@@ -350,7 +410,10 @@ describe("linkWorkstreamsToTasks", () => {
           }),
         ],
         expected: undefined,
-        why: "nothing on the task side to compare, so both stay eligible",
+        // Not "nothing to compare" — an unassigned row cannot reach an
+        // assignee coordinate at all, so BOTH are contradicted rather than
+        // both being unknown. Same outcome, different reason.
+        why: "an unassigned task contradicts every named-assignee coordinate",
       },
       {
         part: "nothing (identical coordinates)",

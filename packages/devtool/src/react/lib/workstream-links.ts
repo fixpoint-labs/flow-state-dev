@@ -24,13 +24,14 @@
  * Both are decoded here rather than rendered raw, because a hashed `ws_…` id
  * beside `10:issue-work|20:assignee|9:implement` tells a developer nothing.
  *
- * ## Why the match is by topic, and what that costs
+ * ## Why the match starts at the topic
  *
  * `boardId` and a collection's `collectionId` are deliberately different strings
  * (`taskBoard` documents that they "are not always the same"), and only
  * `collectionId` reaches the item stream the Tasks panel reads. So the board id
- * decoded from a coordinate cannot be joined against a rendered board, and topic
- * is the only shared value.
+ * decoded from a coordinate cannot be joined against a rendered board, which
+ * leaves the topic as the only value both sides can be INDEXED on. The worker is
+ * comparable once a candidate is in hand, but it cannot key the lookup.
  *
  * ## A Workstream's identity has three parts, so the match checks three
  *
@@ -57,6 +58,13 @@
  * candidate eligible. Those are deliberately not the same. Collapsing them
  * would drop the ordinary lone unlabelled Workstream, which carries no
  * coordinate and still pairs correctly with its task.
+ *
+ * The two sides are not symmetric about what counts as unreadable, and that is
+ * the easy thing to get wrong. A COORDINATE that names no worker is ignorance.
+ * A TASK with no assignee, against a coordinate that names one, is a
+ * DISAGREEMENT — `coordinateForTask` cannot route an unassigned row to an
+ * assignee coordinate, so the absence rules the pairing out rather than leaving
+ * it open. See `couldRun`.
  *
  * A link is drawn only when exactly one candidate survives, and only when no
  * second board is contending for it.
@@ -169,18 +177,30 @@ export type LinkedTask = {
 /**
  * Could this Workstream be running this task?
  *
- * `false` only on a POSITIVE contradiction — both sides name a worker and the
- * two names differ. Everything else is "cannot tell": a Workstream with no
- * coordinate, a label the decoder cannot read, a `uniform`/`floor` board whose
- * key names no assignee at all, or a task with no `assignee`. Those are
- * genuinely undecidable from what the server sends, and treating them as
- * matches is what lets a lone unlabelled Workstream still pair with its task.
+ * `false` on a positive contradiction. The subtlety is which absences count as
+ * one, and the two sides are not symmetric:
+ *
+ * - **An unreadable coordinate is ignorance.** No coordinate at all, a label the
+ *   decoder cannot parse, or a `uniform`/`floor` key names no worker, so there
+ *   is nothing to compare and the candidate stays eligible. This is what lets a
+ *   lone unlabelled Workstream pair with its task.
+ * - **An absent assignee is not.** When the coordinate DOES name an assignee,
+ *   a task without one could not have produced it: `coordinateForTask`
+ *   (`task-board/detached-runner.ts`) reaches its `assignee` branch only via
+ *   `task.assignee !== undefined && declared.has(task.assignee)`, and routes an
+ *   unassigned row to `uniform`, to `floor`, or to a refusal. The absence is
+ *   therefore a statement about where the task can have gone, not a gap in what
+ *   we know — treating it as ignorance discards that.
+ *
+ * So the asymmetry is deliberate: the coordinate's silence is unknown, the
+ * task's silence is informative, because only one of them is governed by a
+ * routing rule that forbids the pairing.
  */
 function couldRun(workstream: WorkstreamSummary, task: Task): boolean {
   const worker = decodeWorkstreamCoordinate(workstream.coordinate)?.worker;
   if (worker === undefined || !worker.startsWith("assignee:")) return true;
   const assignee = task.assignee;
-  if (assignee == null || assignee.length === 0) return true;
+  if (assignee == null || assignee.length === 0) return false;
   return worker === `assignee:${assignee}`;
 }
 
