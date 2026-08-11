@@ -15,6 +15,15 @@
  * The FIRST row an agent produces is its anchor: the originating event a jump
  * lands on. Later rows from the same agent are not anchors, so a jump always
  * lands at the top of that agent's stretch of transcript, not its tail.
+ *
+ * "First" is scoped to the CURRENT run, not the whole session log. Re-running
+ * an existing input tuple dispatches into the SAME session and `useSession`
+ * keeps the earlier run's items, so an unscoped walk would anchor each agent on
+ * the PREVIOUS run's first row while the header showing the control belongs to
+ * the replacement memo. The run boundary is the last Phase 1 `analyst-phase`
+ * divider — emitted exactly once per analyze run, and the first phase of every
+ * run. A re-run that stops before Phase 1 emits no new divider, so anchors stay
+ * on the older run, which is also the run whose memos are still displayed.
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { AGENTS, type AgentName } from "@/flows/analysis/registry";
@@ -69,16 +78,22 @@ export function buildTranscriptRows(
 ): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
   const anchored = new Set<AgentName>();
+  const runStart = currentRunStartIndex(items);
+  // Set per item, so `claimAnchor` keeps its single-argument call sites.
+  let inCurrentRun = false;
 
-  /** Claim the anchor for `agent` if it has not produced a row yet. */
+  /** Claim the anchor for `agent` if it has not produced a row in this run. */
   const claimAnchor = (agent: AgentName | null): boolean => {
+    if (!inCurrentRun) return false;
     if (agent === null || anchored.has(agent)) return false;
     anchored.add(agent);
     return true;
   };
 
-  for (const item of items) {
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index] as OutputItem;
     if (item.transient === true) continue;
+    inCurrentRun = index >= runStart;
 
     if (item.type === "container") {
       const container = item as Extract<OutputItem, { type: "container" }>;
@@ -182,8 +197,24 @@ export function buildTranscriptRows(
   return rows;
 }
 
-/** The agents that have at least one transcript row — i.e. the memos whose
- *  "jump to transcript" control has a target. */
+/** Index of the first item belonging to the CURRENT analyze run.
+ *
+ * The Phase 1 stage ships a `component: "analyst-phase"` container, once per
+ * run and before any analyst row, so the LAST one marks where the current run's
+ * transcript begins. No divider at all (a session whose only run stopped at a
+ * pre-Phase-1 guard, or a re-opened report) means the whole log is the run. */
+function currentRunStartIndex(items: readonly OutputItem[]): number {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index] as OutputItem;
+    if (item.transient === true || item.type !== "container") continue;
+    const container = item as Extract<OutputItem, { type: "container" }>;
+    if (container.component === "analyst-phase") return index;
+  }
+  return 0;
+}
+
+/** The agents that have at least one transcript row in the current run — i.e.
+ *  the memos whose "jump to transcript" control has a target. */
 export function agentsWithTranscriptRows(
   items: readonly OutputItem[],
 ): ReadonlySet<AgentName> {

@@ -56,6 +56,16 @@ function speakRow(agentName: string, text: string): OutputItem {
   });
 }
 
+/** The Phase 1 divider — emitted once per analyze run, before any analyst row,
+ *  so it is what separates a re-run's transcript from the run before it. */
+function runStart(): OutputItem {
+  return item({
+    type: "container",
+    component: "analyst-phase",
+    label: "Phase 1 — Analyst Fan-out begins.",
+  });
+}
+
 describe("buildTranscriptRows", () => {
   it("anchors an agent on its FIRST row, not a later one", () => {
     const rows = buildTranscriptRows([
@@ -148,6 +158,52 @@ describe("buildTranscriptRows", () => {
     expect(rows[0]?.isAgentAnchor).toBe(true);
   });
 
+  it("anchors on the CURRENT run's first row, not the previous run's", () => {
+    // Re-running the same input tuple dispatches into the same session and the
+    // earlier run's items are still in `session.items`. The header showing the
+    // control belongs to the REPLACEMENT memo, so the jump has to land in the
+    // replacement run — otherwise it silently sends the reader back in time.
+    const rows = buildTranscriptRows([
+      runStart(),
+      toolRow("macroAnalyst", "get_macro_indicators"),
+      speakRow("macroAnalyst", "First run read."),
+      runStart(),
+      toolRow("macroAnalyst", "get_cross_asset_flow"),
+      speakRow("macroAnalyst", "Second run read."),
+    ]);
+
+    const anchors = rows.filter((r) => r.isAgentAnchor);
+    expect(anchors).toHaveLength(1);
+    expect(anchors[0]?.key).toBe(rows[4]?.key);
+  });
+
+  it("anchors an agent that only appears in the current run", () => {
+    const rows = buildTranscriptRows([
+      runStart(),
+      toolRow("macroAnalyst", "get_macro_indicators"),
+      runStart(),
+      toolRow("quantAnalyst", "get_options_chain"),
+    ]);
+
+    expect(rows.filter((r) => r.isAgentAnchor).map((r) => r.agent)).toEqual([
+      "quantAnalyst",
+    ]);
+  });
+
+  it("keeps the older run's anchors when a re-run stopped before Phase 1", () => {
+    // A guard stop (unresolvable ticker, unsupported asset type) emits no new
+    // divider — and leaves the previous run's memos on screen. Those memos are
+    // exactly what the older rows belong to, so they stay jumpable.
+    const rows = buildTranscriptRows([
+      runStart(),
+      toolRow("macroAnalyst", "get_macro_indicators"),
+    ]);
+
+    expect(rows.filter((r) => r.isAgentAnchor).map((r) => r.agent)).toEqual([
+      "macroAnalyst",
+    ]);
+  });
+
   it("does not anchor an unregistered agent name", () => {
     const rows = buildTranscriptRows([toolRow("someRetiredAgent", "get_x")]);
     // The row still renders (the badge gets the raw name, as before), but it is
@@ -174,6 +230,20 @@ describe("agentsWithTranscriptRows", () => {
     ]);
 
     expect([...agents].sort()).toEqual(["macroAnalyst", "trader"]);
+  });
+
+  it("drops an agent that ran earlier but has not spoken in the current run", () => {
+    // Mid-stream on a re-run: the previous run's memo is still on screen but
+    // the replacement has not produced a row yet. Offering the control here
+    // would jump to the previous run's event — the honest answer is no control.
+    const agents = agentsWithTranscriptRows([
+      runStart(),
+      toolRow("macroAnalyst", "get_macro_indicators"),
+      runStart(),
+      toolRow("quantAnalyst", "get_options_chain"),
+    ]);
+
+    expect([...agents]).toEqual(["quantAnalyst"]);
   });
 
   it("offers no jump target for a report with no persisted transcript items", () => {

@@ -365,6 +365,12 @@ function TradingDeskApp(): ReactElement {
     setTranscriptJump((prev) => ({ agent, nonce: (prev?.nonce ?? 0) + 1 }));
   }, []);
 
+  // A jump is an event, not a mode: once the panes have acted on it, drop it.
+  // Held, it would re-fire on every remount of a transcript pane — a mobile tab
+  // switch away and back, or a desktop desk→reports→desk trip — scrolling and
+  // stealing focus with no click behind it.
+  const handleJumpHandled = useCallback(() => setTranscriptJump(null), []);
+
   // Fires once `useSession` is bound to the resolved session id. Without
   // this, calling `session.sendAction` synchronously after `selectSession`
   // would dispatch against the previously-active session because the hook's
@@ -445,7 +451,11 @@ function TradingDeskApp(): ReactElement {
               session={session}
               onJumpToTranscript={handleJumpToTranscript}
             />
-            <TranscriptPane session={session} jumpTo={transcriptJump} />
+            <TranscriptPane
+              session={session}
+              jumpTo={transcriptJump}
+              onJumpHandled={handleJumpHandled}
+            />
           </main>
         )}
         <StatusBar
@@ -485,7 +495,11 @@ function TradingDeskApp(): ReactElement {
               onJumpToTranscript={handleJumpToTranscript}
             />
           ) : mobileTab === "transcript" ? (
-            <TranscriptPane session={session} jumpTo={transcriptJump} />
+            <TranscriptPane
+              session={session}
+              jumpTo={transcriptJump}
+              onJumpHandled={handleJumpHandled}
+            />
           ) : mobileTab === "portfolio" ? (
             <FlowProvider flowKind="portfolio" userId={USER_ID} baseUrl="">
               <PortfolioView />

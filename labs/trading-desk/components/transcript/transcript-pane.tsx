@@ -7,10 +7,10 @@
  *   - `tool_output` items → `TxTool` row, with FIXTURE/LIVE pill drawn
  *     from the output's `source` field.
  *   - `message` items from sub-agents or primary agents → `TxSpeak` row.
- *   - `block_trace` items with terminal `output` and an emitting agent in
- *     `{researchManager, trader, portfolioManager}` (Phase 2+) →
- *     `TxStruct` collapsible. Phase 1 analyst structured outputs are
- *     intentionally suppressed from the transcript per the design — they
+ *   - `component` items with `component: "thesis-card"` from an emitting agent
+ *     in `{researchManager, trader, portfolioManager, thesisValidator}`
+ *     (Phase 2+) → `TxStruct` collapsible. Phase 1 analyst structured outputs
+ *     are intentionally suppressed from the transcript per the design — they
  *     surface only in the right pane.
  *
  * The item → row projection itself is pure and lives in `transcript-rows.ts`,
@@ -49,10 +49,20 @@ export type TranscriptJump = {
 type Props = {
   session: SessionView;
   jumpTo?: TranscriptJump | null;
+  /** Called once this pane has acted on `jumpTo`, so the owner can clear the
+   *  request. A jump is an EVENT: left standing, it replays on every remount
+   *  (a mobile tab switch away and back, a desktop desk→reports→desk trip),
+   *  stealing scroll and focus with no click behind it. */
+  onJumpHandled?: () => void;
 };
 
-export function TranscriptPane({ session, jumpTo }: Props): ReactElement {
+export function TranscriptPane({
+  session,
+  jumpTo,
+  onJumpHandled,
+}: Props): ReactElement {
   const items = session.items as OutputItem[];
+  const sessionId = session.sessionId;
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
 
@@ -70,6 +80,15 @@ export function TranscriptPane({ session, jumpTo }: Props): ReactElement {
     return () => el.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // A new session gets a fresh transcript, so it gets fresh auto-follow. This
+  // pane stays mounted across a session switch on desktop, so without the reset
+  // a jump taken in the previous report would leave the NEXT live run refusing
+  // to follow its own output until the user scrolled to the bottom by hand.
+  // Declared before the jump effect so a same-commit jump still wins.
+  useEffect(() => {
+    stickToBottomRef.current = true;
+  }, [sessionId]);
+
   // Auto-scroll on new items if the user has not scrolled away.
   useEffect(() => {
     const el = scrollRef.current;
@@ -86,6 +105,10 @@ export function TranscriptPane({ session, jumpTo }: Props): ReactElement {
   // missing anchor is a silent no-op: the header only offers the control when
   // `agentsWithTranscriptRows` says there is one, so this is belt-and-braces
   // for the mid-stream case where the memo publishes before its row lands.
+  // The request is consumed whether or not a target was found: a jump that
+  // cannot land is spent, not queued. Both shells render (CSS picks one), so
+  // both panes act on the same request in one commit before the clear lands —
+  // the hidden one's scroll and focus are no-ops on a `display: none` subtree.
   useEffect(() => {
     if (jumpTo === null || jumpTo === undefined) return;
     const container = scrollRef.current;
@@ -93,14 +116,16 @@ export function TranscriptPane({ session, jumpTo }: Props): ReactElement {
     const target = container.querySelector<HTMLElement>(
       `[${TX_AGENT_ANCHOR_ATTR}="${jumpTo.agent}"]`,
     );
-    if (target === null) return;
-    // The user navigated deliberately; a streaming run must not drag them back.
-    stickToBottomRef.current = false;
-    target.scrollIntoView({ block: "start", behavior: "smooth" });
-    // Move the reading position too, so the jump means something to a screen
-    // reader / keyboard user and not only to a sighted one.
-    target.focus({ preventScroll: true });
-  }, [jumpTo]);
+    if (target !== null) {
+      // The user navigated deliberately; a streaming run must not drag them back.
+      stickToBottomRef.current = false;
+      target.scrollIntoView({ block: "start", behavior: "smooth" });
+      // Move the reading position too, so the jump means something to a screen
+      // reader / keyboard user and not only to a sighted one.
+      target.focus({ preventScroll: true });
+    }
+    onJumpHandled?.();
+  }, [jumpTo, onJumpHandled]);
 
   return (
     <section
