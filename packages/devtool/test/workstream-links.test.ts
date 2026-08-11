@@ -202,6 +202,62 @@ describe("linkWorkstreamsToTasks", () => {
     expect(byTask.get(taskLinkKey("issues", "task-b"))).toBe(reviewWs);
   });
 
+  it("checks the coordinate even when the topic has only one candidate", () => {
+    // The ordinary shape of the same defect, and the one a count-gated check
+    // waves through: two tasks share a topic but target different workers, and
+    // only the `implement` one has spawned — the `review` task is inline, or has
+    // not started. That single Workstream is then the only candidate for BOTH,
+    // so a check that runs only on contested topics links the review task to a
+    // session that is not running it.
+    const implementWs = workstream({
+      id: "dsx_impl",
+      topic: "FIX-1",
+      coordinate: coordinate("issue-work", assigneeKey("implement")),
+    });
+    const shared = { topic: "FIX-1" };
+
+    const { byTask, byWorkstream } = linkWorkstreamsToTasks(
+      [implementWs],
+      [
+        board("issues", [
+          task({ id: "task-a", assignee: "implement", metadata: shared }),
+          task({ id: "task-b", assignee: "review", metadata: shared }),
+        ]),
+      ]
+    );
+
+    expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(implementWs);
+    expect(byTask.get(taskLinkKey("issues", "task-b"))).toBeUndefined();
+    // And the reverse direction must not claim the review task either.
+    expect(byWorkstream.get("dsx_impl")?.map((l) => l.task.id)).toEqual(["task-a"]);
+  });
+
+  it("still links a lone Workstream whose coordinate names no assignee", () => {
+    // The other half of the same rule: only a POSITIVE contradiction blocks a
+    // link. A `uniform` board's key names no assignee, and an unlabelled record
+    // carries no coordinate at all — neither contradicts anything, so tightening
+    // the check must not start dropping these.
+    const uniformWs = workstream({
+      id: "dsx_uniform",
+      topic: "FIX-1",
+      coordinate: coordinate("issue-work", "uniform"),
+    });
+    const bareWs = workstream({ id: "dsx_bare", topic: "FIX-2" });
+
+    const { byTask } = linkWorkstreamsToTasks(
+      [uniformWs, bareWs],
+      [
+        board("issues", [
+          task({ id: "task-a", assignee: "implement", metadata: { topic: "FIX-1" } }),
+          task({ id: "task-b", assignee: "review", metadata: { topic: "FIX-2" } }),
+        ]),
+      ]
+    );
+
+    expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(uniformWs);
+    expect(byTask.get(taskLinkKey("issues", "task-b"))).toBe(bareWs);
+  });
+
   it("draws no link when a shared topic cannot be resolved to one worker", () => {
     // A `uniform` board's coordinate names no assignee, so nothing distinguishes
     // the two candidates. On a debugging surface a wrong link is worse than

@@ -48,6 +48,13 @@ export const MAX_WORKSTREAM_ROWS = 500;
  * with a 400 rather than clamping it. Omitting it takes the server's own
  * default, whatever the deployment set, and the walk advances by what actually
  * arrived.
+ *
+ * `truncated` has to be right in BOTH directions. Reporting less than exists is
+ * the defect this paging fixed; reporting more than exists is the same defect
+ * pointing the other way, and on a debugging surface it sends someone looking
+ * for background work that is not there. So reaching the bound is not by itself
+ * evidence of a remainder — a final page can land exactly on it — and the only
+ * thing that settles it is asking whether a row follows.
  */
 async function fetchAllWorkstreams(
   sessionClient: SessionClient,
@@ -65,7 +72,20 @@ async function fetchAllWorkstreams(
     if (page.length === 0) return { rows, truncated: false };
     rows.push(...page);
   }
-  return { rows, truncated: true };
+
+  // Overshot the bound, because the server's page size need not divide it. The
+  // rows past the cap are proof of a remainder, so no probe is needed.
+  if (rows.length > MAX_WORKSTREAM_ROWS) {
+    return { rows: rows.slice(0, MAX_WORKSTREAM_ROWS), truncated: true };
+  }
+
+  // Landed exactly on it. One probe for a sentinel row distinguishes "the list
+  // is this long" from "the list is longer", which is the only value where the
+  // loop's exit condition alone is wrong.
+  const beyond = await sessionClient.listWorkstreams(sessionId, {
+    offset: MAX_WORKSTREAM_ROWS,
+  });
+  return { rows, truncated: beyond.length > 0 };
 }
 
 export type UseWorkstreamsResult = {

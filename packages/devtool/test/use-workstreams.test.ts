@@ -83,6 +83,32 @@ describe("useWorkstreams — reading the whole list", () => {
     expect(sessionClientMock.listWorkstreams.mock.calls[0]?.[1]).not.toHaveProperty("limit");
   });
 
+  it("does not claim more rows exist when the list ends exactly on the bound", async () => {
+    // The only value where the loop's exit condition alone is wrong. The last
+    // full page brings the total to the cap, so the walk stops without ever
+    // asking whether a row follows — and reports a remainder that is not there.
+    //
+    // This direction matters as much as the original bug: the panel understating
+    // the list sent someone looking for work it had hidden, and the panel
+    // overstating it sends them looking for work that does not exist.
+    const PAGE = 25;
+    sessionClientMock.listWorkstreams.mockImplementation(
+      async (_id: string, opts: { offset: number }) =>
+        opts.offset >= MAX_WORKSTREAM_ROWS ? [] : page(opts.offset, PAGE)
+    );
+
+    const { result } = renderHook(() => useWorkstreams("sess_parent"));
+
+    await waitFor(() =>
+      expect(result.current.workstreams).toHaveLength(MAX_WORKSTREAM_ROWS)
+    );
+    expect(result.current.truncated).toBe(false);
+    // The sentinel probe is the read that settles it.
+    expect(sessionClientMock.listWorkstreams).toHaveBeenCalledWith("sess_parent", {
+      offset: MAX_WORKSTREAM_ROWS,
+    });
+  });
+
   it("stops at the row bound and says the list is truncated", async () => {
     // The bound exists because every row costs the server a request-store
     // lookup. Hitting it silently would be the same lie as the first-page bug.

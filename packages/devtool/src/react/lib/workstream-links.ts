@@ -149,6 +149,24 @@ export type LinkedTask = {
 };
 
 /**
+ * Could this Workstream be running this task?
+ *
+ * `false` only on a POSITIVE contradiction — both sides name a worker and the
+ * two names differ. Everything else is "cannot tell": a Workstream with no
+ * coordinate, a label the decoder cannot read, a `uniform`/`floor` board whose
+ * key names no assignee at all, or a task with no `assignee`. Those are
+ * genuinely undecidable from what the server sends, and treating them as
+ * matches is what lets a lone unlabelled Workstream still pair with its task.
+ */
+function couldRun(workstream: WorkstreamSummary, task: Task): boolean {
+  const worker = decodeWorkstreamCoordinate(workstream.coordinate)?.worker;
+  if (worker === undefined || !worker.startsWith("assignee:")) return true;
+  const assignee = task.assignee;
+  if (assignee == null || assignee.length === 0) return true;
+  return worker === `assignee:${assignee}`;
+}
+
+/**
  * The one Workstream a task is addressed by, or `undefined` when that cannot be
  * decided.
  *
@@ -160,26 +178,24 @@ export type LinkedTask = {
  * Workstream looking taskless.
  *
  * The coordinate is the half of that key which reaches the client, and a task's
- * `assignee` is what the board turns into it, so an ambiguous topic is settled
- * by matching `assignee:<name>` against the decoded worker. Where that still
- * does not name exactly one — a `uniform` or `floor` board, a label the decoder
- * cannot read, two candidates wearing the same coordinate — this returns
- * nothing. A wrong link on a debugging surface is worse than no link, which is
- * the call the decoder already makes for a label it cannot parse.
+ * `assignee` is what the board turns into it, so the two are compared —
+ * **always, not only when the topic is contested**. A single candidate is the
+ * ordinary shape of the same defect: two tasks share a topic but target
+ * different workers and only one has spawned (the other is inline, or has not
+ * started), so the lone Workstream is the only candidate for BOTH and a
+ * count-gated check waves the wrong one through.
+ *
+ * Where the comparison still does not name exactly one — a `uniform` or `floor`
+ * board, a label the decoder cannot read, two candidates wearing the same
+ * coordinate — this returns nothing. A wrong link on a debugging surface is
+ * worse than no link, which is the call the decoder already makes for a label
+ * it cannot parse.
  */
 function resolveWorkstream(
   candidates: readonly WorkstreamSummary[],
   task: Task
 ): WorkstreamSummary | undefined {
-  if (candidates.length <= 1) return candidates[0];
-
-  const assignee = task.assignee;
-  if (assignee == null || assignee.length === 0) return undefined;
-  const expected = `assignee:${assignee}`;
-  const matched = candidates.filter(
-    (candidate) =>
-      decodeWorkstreamCoordinate(candidate.coordinate)?.worker === expected
-  );
+  const matched = candidates.filter((candidate) => couldRun(candidate, task));
   return matched.length === 1 ? matched[0] : undefined;
 }
 
