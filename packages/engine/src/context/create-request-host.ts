@@ -26,6 +26,8 @@ import type {
   StartDetachedResult
 } from "@flow-state-dev/core/types";
 import type { SessionRecord, StoreRegistry } from "../stores/types";
+import { workstreamBindingKey } from "@flow-state-dev/core/types";
+import { workstreamDispatchInputSchema } from "@flow-state-dev/core";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
 import { deriveChildSessionId, evaluateAdoption } from "./detached-child";
 import { evaluateLivenessGate, type LivenessGateInputs } from "./liveness-gate";
@@ -123,6 +125,42 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         detail: `flow "${flow.kind}" declares no workstream core, so it accepts no detached dispatch`
       };
     }
+    // THE ROUTABILITY GUARANTEE (FIX-1074). Every way a board can reach the
+    // runtime without reaching `flow.workstreamBindings` converges on one state:
+    // the flow has a workstream core, and no route for this board. Definition
+    // time cannot close that — a board constructed at dispatch does not exist
+    // when the flow is built — so the check that has to be uniform lives here,
+    // where the fact is knowable whatever produced the board.
+    //
+    // Refusing HERE and not at the child's dispatch is the whole point: the
+    // caller still holds its claim, so its recorder settles the row against a
+    // named refusal. Discovered one hop later, the row has already been handed
+    // over and nothing can settle it until its lease lapses.
+    //
+    // Shape-checked rather than assumed: `startDetached` is a general verb and a
+    // caller with no board passes whatever input its own core takes, so only an
+    // input that actually names a board is judged. `coordinateKey` is compared
+    // too — a flow may route a board's other workers and not this one.
+    const addressed = workstreamDispatchInputSchema.safeParse(args.input);
+    if (addressed.success) {
+      const key = workstreamBindingKey(
+        addressed.data.boardId,
+        addressed.data.coordinateKey
+      );
+      if (flow.workstreamBindings?.get(key) === undefined) {
+        return {
+          ok: false,
+          refused: "board-not-routable",
+          detail:
+            `flow "${flow.kind}" declares no detached binding for board ` +
+            `"${addressed.data.boardId}" at coordinate "${addressed.data.coordinateKey}", so a ` +
+            `child dispatched for it would have no route. The board is reachable at runtime but ` +
+            `never reached the flow definition — declare it on a statically-reachable action, or ` +
+            `stop dispatching it detached.`
+        };
+      }
+    }
+
     if (inputs.startOperation === undefined) {
       return {
         ok: false,

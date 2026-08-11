@@ -83,21 +83,33 @@ The endpoint does not distinguish those. If you need to know which,
 open the job and read its history, or read the task board the job is working
 from.
 
-Every other value is how the job ended:
+Every other value is how the job's last run ended:
 
 | Value | Meaning |
 |---|---|
-| `completed` | Finished successfully |
-| `failed` | Ended with an error |
+| `completed` | The run finished |
+| `failed` | The run ended with an error |
 | `aborted` | Cancelled |
 | `incomplete` | Stopped short of finishing, usually on a budget |
+
+`completed` says the run finished, not that the work came out right. A job doing
+a task board's work runs that board's worker, and a worker that throws always
+marks its own task `errored`. What that does to the run around it is the board's
+`onError` setting. On the default, `"skip"`, the run finishes and the job reads
+`completed`. On `"fail"` the error propagates and the job reads `failed`.
+
+So a board left on the default reports a job that succeeded for work that broke.
+The task carries the failure in both cases, which makes the board the thing to
+watch when the question is whether the work came out right, and the job's status
+the thing to watch when the question is whether anything is still running. See
+[Concurrency and error
+handling](../orchestration/task-board.md#concurrency-and-error-handling).
 
 A job with no runs yet has no `status` field at all. Absence means "nothing has
 run", which is different from any of the values above.
 
-A job that ran several times reports the outcome of its most recent run. A job
-that failed and was retried successfully reads `completed`; the failed attempt
-is still there in the job's own history.
+A job that failed and was retried successfully reads `completed`; the failed
+attempt is still there in the job's own history.
 
 `active` describes what the system recorded, not what a worker is doing right
 now. If a worker's process dies mid-job the row keeps reading `active` until the
