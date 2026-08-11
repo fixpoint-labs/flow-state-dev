@@ -551,9 +551,9 @@ sequenceDiagram
 
 ## What's asked of you
 
-Approve the direction, or push back on any of these. *(Three of §6's seven Decisions passed
-the two filters in §3 above; the other four were engineer's calls and are listed in the
-collapsed engineering block, so §6 stays complete.)*
+Approve the direction, or push back on any of these. *(This spec's §6 has three Decisions and
+all three pass the filters — the normal case for a compliant §6, which is product-only by
+construction, so there is no engineering-calls block on this PR.)*
 
 ### Replace the old guard, or keep both? — live fork
 
@@ -602,13 +602,6 @@ stops being cheap and becomes a breaking change we've promised not to make.
 <summary><b>How to review this</b> — altitude, what's in scope, what's deliberately unsettled</summary>
 
 …contract, verbatim…
-
-</details>
-
-<details>
-<summary><b>Engineering calls</b> — decided along the way, no product sign-off needed</summary>
-
-…§6's other four Decisions, one line each…
 
 </details>
 

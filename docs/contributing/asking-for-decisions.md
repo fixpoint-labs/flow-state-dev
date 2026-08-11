@@ -155,16 +155,25 @@ If a wrong answer changes none of them, it is an engineer's call. Decide it and 
 an engineer reads it. *"Feed the new lenses from the shared evidence bundle rather than wiring
 data to each one"* is a real decision and changes none of the four.
 
-**Filter 2 — is it worth their attention?** A call that is obviously right, or reversible in an
-afternoon at near-zero cost, is one you make and note. Surfacing it *as* a decision implies
-weight it doesn't have, and it spends the attention the decision beside it needed.
+**Filter 2 — is it worth their attention?** A call that is **both** obviously right **and**
+cheap to reverse is one you make and note. Surfacing it *as* a decision implies weight it
+doesn't have, and it spends the attention the decision beside it needed.
+
+**Both, not either.** A call that is obviously right but **expensive to reverse** — a
+migration, a deletion, a new dependency, a contract change — stays visible. Nobody disputing it
+is not the same as nobody needing to know, and an undisputed irreversible call is exactly the
+one that gets discovered too late. It isn't a *decision*, so it doesn't take one of the three
+slots; it is **news**, and news that is hard to reverse never collapses
+([`writing-for-humans.md`](writing-for-humans.md) → "What never gets collapsed"). Say it in a
+line, above the fold, where they'd see it.
 
 **Filtering is sorting, not hiding.** Where the artifact defines a sign-off surface, everything
 on it stays in the artifact — what they don't own moves to a section addressed to the engineer,
 so nothing is approved unseen and nothing unactionable is put in front of them. On a PR that
 section is the collapsed **engineering calls** block
 ([`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → §3, which carries the worked
-before/after and the shape rules).
+before/after and the shape rules). **What never collapses stays out of it** — a risk, a known
+gap, or anything hard to reverse is news, not an engineering call.
 
 **Cap what survives at three, hardest first.** Past three, either the filters weren't applied or
 the artifact carries more product surface than one artifact should.
@@ -218,9 +227,12 @@ to none leaves them to be found.
 
 Three asks from one turn. They're deliberately different lengths — the shape scales down, and
 the third one is mostly its calibration line. Read the three calibrations together
-(*moderate* · *the expensive one* · *near zero*): that contrast is the part doing the work,
-because it tells the reader where to spend their attention before they've read a word of the
-detail.
+(*moderate* · *the expensive one* · *low*): that contrast is the part doing the work, because
+it tells the reader where to spend their attention before they've read a word of the detail.
+
+**None of the three is free** — a genuinely near-zero, obviously-right call fails filter 2 and
+never reaches this batch at all. The cheap one here is cheap, not costless: it still turns on
+something only they know.
 
 ---
 
@@ -284,7 +296,12 @@ detail.
 > deferral was right, and nothing has changed since. Both pieces stay filed and get picked up
 > together later.
 >
-> **Cost of being wrong here: near zero.** This is the one where I'd just take your gut.
+> **What would change my mind:** if anyone outside the team has been told this epic closes this
+> quarter. Dropping the gate marks it done on a narrower promise than the one they heard.
+>
+> **Cost of being wrong: low, and it surfaces fast.** Worst case we mark an epic complete that
+> someone still counts as open, and they say so within a week. This is the cheap one in the
+> batch — read the three calibrations together and spend your time on #2.
 
 ---
 
