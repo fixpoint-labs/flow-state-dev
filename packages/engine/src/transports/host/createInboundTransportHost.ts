@@ -109,16 +109,30 @@ export type CreateInboundTransportHostOptions = {
 };
 
 /**
- * Terminate an enqueue-time request record whose job was never started —
- * materialization or the dispatcher hand-off failed. Marks a still-`in_progress`
- * record `failed` so it does not linger forever: the dispatch teardown
- * deregisters the activeRequests entry, leaving the stale-request sweeper
- * nothing to reap. Best-effort and idempotent — a missing or already-terminal
- * record is left untouched. (FIX-828)
+ * Terminate an enqueue-time request record whose job was never started, so it
+ * does not linger `in_progress` forever: the dispatch teardown deregisters the
+ * activeRequests entry, leaving the stale-request sweeper nothing to reap.
+ * Best-effort and idempotent — a missing or already-terminal record is left
+ * untouched. (FIX-828)
+ *
+ * `status` distinguishes the two ways a run can end without starting, and they
+ * are not the same event to anybody downstream (FIX-1077):
+ *
+ * - `failed` — materialization or the dispatcher hand-off broke. Something went
+ *   wrong and someone should look.
+ * - `aborted` — the run was cancelled before it left the concurrency queue,
+ *   which is shutdown working as designed. Recording that as `failed` reports a
+ *   successful cancellation as an execution failure to clients, to workstream
+ *   summaries, and to recovery, which reads terminal statuses to decide what
+ *   needs attention.
+ *
+ * `failedAtMs` is stamped only for the failure, since it is the field readers
+ * key on for "this broke"; an abort carries `updatedAt` and its status.
  */
 async function terminateUnenqueuedRequest(
   stores: StoreRegistry,
-  requestId: string
+  requestId: string,
+  status: "failed" | "aborted" = "failed"
 ): Promise<void> {
   try {
     const record = await stores.request.get(requestId);
@@ -126,7 +140,12 @@ async function terminateUnenqueuedRequest(
     const now = Date.now();
     await stores.request.set(
       requestId,
-      { ...record, status: "failed", failedAtMs: now, updatedAt: now },
+      {
+        ...record,
+        status,
+        ...(status === "failed" ? { failedAtMs: now } : {}),
+        updatedAt: now
+      },
       "any"
     );
   } catch {
@@ -437,7 +456,7 @@ export function createInboundTransportHost(
               // registered (above) and the decision is re-read here, at the last
               // moment before anything runs (FIX-1077).
               if (queuedAbort.signal.aborted) {
-                await terminateUnenqueuedRequest(stores, requestId);
+                await terminateUnenqueuedRequest(stores, requestId, "aborted");
                 throw new Error(
                   `Request "${requestId}" was cancelled before it left the concurrency queue`
                 );

@@ -629,6 +629,8 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     // `runAction` (what `fsdev run` does) is unarbitrated, so a child dispatched
     // from it never queues and the window under test never opens.
     const router = await state.getRouter();
+    // Memoized, so this is the same resolved store registry the router uses.
+    const runtime = await state.getRuntime();
     const res = await router.POST(
       new Request("http://localhost/api/flows/queued-cancel/actions/launch", {
         method: "POST",
@@ -661,6 +663,15 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     // If cancellation only reached started runs, this is where the queued child
     // wakes up and executes against stores `dispose()` has already closed.
     expect(observed.children).toEqual([]);
+
+    // And it is recorded as what it was. `aborted` is a successful cancellation;
+    // `failed` would tell clients, workstream summaries and recovery that an
+    // execution broke, and recovery reads terminal statuses to decide what needs
+    // attention. Two different events must not share one status.
+    const childRequestId = (observed.start as { requestId?: string }).requestId!;
+    const record = await runtime.stores.request.get(childRequestId);
+    expect(record?.status).toBe("aborted");
+    expect(record?.failedAtMs).toBeUndefined();
   });
 
   it("the child inherits the CALLER's runtime config, not the host's", async () => {
