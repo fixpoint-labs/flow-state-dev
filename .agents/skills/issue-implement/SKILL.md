@@ -483,6 +483,8 @@ Before you end this PR-feedback pass, **enumerate every code comment in the batc
 
 Any code comment with the `eyes` reaction but **no reply is not done**: post its reply now. **Do not end the round, and do not treat the batch as processed, while any actionable comment sits at eyes-only.** The reviewer relies on the reply as the visible outcome — a comment that was silently read, considered, and even acted on, but never answered, is a failure of this gate, not a completed item. (Non-code conversation is exempt — it's done at the `eyes` reaction.)
 
+**Measure the total, not the delta.** Every gate above is per-comment, and reviewers phrase fixes as "one line would close this" — so each round appends and nothing here reads the whole. Before closing a round that grew a file materially, re-read that file end to end and ask whether the accumulated additions restructure into less; correct feedback, taken one comment at a time, still compounds into bloat. This is `issue-spec` 6.5.2's anti-addenda rule with a second trigger: **growth**, no pivot required.
+
 #### 10.7: Continue until merged — or until the twelfth round
 
 After processing the batch, **check the round count first.**
