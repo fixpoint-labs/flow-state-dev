@@ -19,6 +19,7 @@ import {
 import { resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys";
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
+import { logRuntimeEvent, summarizeForLog } from "../../execution/logging";
 import { generateId } from "../../utils/generate-id";
 import {
   ConcurrencyQueueTimeoutError,
@@ -452,8 +453,30 @@ export function createInboundTransportHost(
       stores.activeRequests.deregister(requestId).catch(() => {});
     });
 
+    // Contained, because this is the ONLY thing left in `dispatch` that can
+    // throw synchronously and the run has already been started above. The hook
+    // is adapter-supplied and does throw in practice — Next's `after()` and
+    // `waitUntil` both raise synchronously when called outside a request scope —
+    // and an escaping throw makes a synchronous failure from `dispatch` mean two
+    // different things. `createDetachedStartOperation` reads it as one: nothing
+    // was dispatched, so its caller settles the row it just handed over, while
+    // the child it was told never started is still running and still trying to
+    // settle the same row (FIX-982).
+    //
+    // Failing to register keep-alive is real — on a freeze-after-response
+    // platform the run can stall — but it is not a failed dispatch, and the
+    // handle below is honest either way. So it is logged rather than raised.
     if (onBackgroundWork !== undefined) {
-      onBackgroundWork(finished);
+      try {
+        onBackgroundWork(finished);
+      } catch (error) {
+        logRuntimeEvent(
+          runtimeConfig.logger,
+          "error",
+          "[flow-state] onBackgroundWork threw; the run was started but is not registered as background work",
+          { requestId, flowKind: dispatchEnvelope.flowKind, error: summarizeForLog(error) }
+        );
+      }
     }
 
     // The HTTP 202 path awaits `accepted`, not `finished`, so a fire-and-forget

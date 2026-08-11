@@ -164,6 +164,61 @@ describe("createInboundTransportHost", () => {
     expect(typeof (lastArg as { then?: unknown })?.then).toBe("function");
   });
 
+  it("dispatch does not throw when onBackgroundWork throws, because the run has already started", async () => {
+    // `onBackgroundWork` is adapter-supplied and is called after the in-process
+    // run is under way — Next's `after()` and `waitUntil` both throw
+    // synchronously when called outside a request scope. Letting that escape
+    // would make a synchronous throw from `dispatch` ambiguous, and
+    // `createDetachedStartOperation` reads it unambiguously as "nothing was
+    // dispatched" before its caller settles the row it handed over (FIX-982).
+    const registry = createFlowRegistry();
+    const stores = createInMemoryStores();
+    registry.register(
+      defineFlow({
+        kind: "keepalive-test",
+        actions: {
+          run: {
+            inputSchema: z.object({ value: z.string() }),
+            block: handler<{ value: string }, { ok: true }>({
+              name: "keepalive-run",
+              execute: () => ({ ok: true })
+            })
+          }
+        }
+      })({ id: "keepalive-test" })
+    );
+
+    const error = vi.fn();
+    const host = createInboundTransportHost({
+      registry,
+      stores,
+      resolvePrincipal: defaultBodyUserIdPrincipalResolver,
+      runtimeConfig: {
+        logger: { error },
+        onBackgroundWork: () => {
+          throw new Error("after() was called outside a request scope");
+        }
+      }
+    });
+
+    const handle = host.dispatch({
+      source: "http",
+      flowKind: "keepalive-test",
+      action: "run",
+      input: { value: "hello" },
+      principal: { userId: "u_keepalive" }
+    });
+
+    // The run the hook failed to register still ran, and the handle is usable.
+    await expect(handle.finished).resolves.toBeDefined();
+    expect(await stores.request.get(handle.requestId)).toBeDefined();
+
+    // Swallowed, not hidden: the keep-alive failure is real on a
+    // freeze-after-response platform, so it is reported at the seam that saw it.
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(error.mock.calls[0]?.[0]).toMatch(/onBackgroundWork threw/);
+  });
+
   it("dispatch returns a usable liveStream by default", async () => {
     const { host } = buildHost();
     const handle = host.dispatch({

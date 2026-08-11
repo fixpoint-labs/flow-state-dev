@@ -246,6 +246,48 @@ describe("the detached payload gate rejects what a round-trip would mangle", () 
     );
   });
 
+  it("rejects a non-writable property, which arrives writable", () => {
+    // The value survives and the ATTRIBUTE does not: `JSON.parse` rebuilds every
+    // property as an ordinary one, so a payload the author made read-only before
+    // sending is mutable on the other side. Nothing anywhere says the guarantee
+    // was dropped — the same silent change as the branches above, one level down
+    // from the value.
+    const auth: Record<string, unknown> = {};
+    Object.defineProperty(auth, "token", {
+      value: "secret",
+      writable: false,
+      enumerable: true,
+      configurable: true,
+    });
+    expect(() => assertJsonSafe({ auth }, { label })).toThrow(
+      /\.auth\.token is a non-writable property/
+    );
+  });
+
+  it("rejects a non-configurable property, which arrives configurable", () => {
+    // Same class as non-writable: the round trip hands back a property that can
+    // be redefined and deleted, where the one that was sent could not be.
+    const auth: Record<string, unknown> = {};
+    Object.defineProperty(auth, "token", {
+      value: "secret",
+      writable: true,
+      enumerable: true,
+      configurable: false,
+    });
+    expect(() => assertJsonSafe({ auth }, { label })).toThrow(
+      /\.auth\.token is a non-configurable property/
+    );
+  });
+
+  it("rejects a frozen array's elements, checked like any other property", () => {
+    // An array's indices are properties, and freezing sets both flags on each of
+    // them. A gate that judged only objects would let a frozen array cross and
+    // arrive fully mutable.
+    expect(() => assertJsonSafe({ rows: Object.freeze([1, 2]) }, { label })).toThrow(
+      /\.rows\.0 is a non-writable property/
+    );
+  });
+
   it("accepts a non-enumerable property that is an array's own length", () => {
     // `length` is non-enumerable by specification rather than by anyone's
     // declaration, and it is not dropped — it IS the array. Rejecting it would

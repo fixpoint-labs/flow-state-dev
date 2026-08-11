@@ -76,13 +76,20 @@ export function createDetachedStartOperation(
   inputs: DetachedStartOperationInputs
 ): DetachedStartOperation {
   return async (spec) => {
-    // A SYNCHRONOUS throw here is definitively pre-dispatch: `host.dispatch`
-    // resolves the flow and claims the concurrency key before it starts
-    // anything, so an unknown flow, a `reject` policy whose key is already held,
-    // or exhausted stream capacity all land before a child exists. Reported as
-    // "not started" rather than thrown, because the caller can settle work it
-    // still owns — and a throw cannot be read that way, since one raised after
-    // the attempt cannot rule out a live child (FIX-982).
+    // A SYNCHRONOUS throw here is pre-dispatch, and that is a property
+    // `host.dispatch` is BUILT to hold rather than one this seam infers.
+    // Everything that can throw synchronously — resolving the flow, claiming the
+    // concurrency key, the kickoff itself — runs before a child exists; the one
+    // step that runs after the child has started, the `onBackgroundWork`
+    // keep-alive hook, is contained there precisely so it cannot escape as a
+    // throw. Read `createInboundTransportHost`'s note on that hook before
+    // relying on this: an uncontained post-start throw would arrive here
+    // indistinguishable from a refusal, and the caller would settle a row whose
+    // child is still running (FIX-982).
+    //
+    // Reported as "not started" rather than thrown, because the caller can
+    // settle work it still owns — and a throw cannot be read that way, since one
+    // raised after the attempt cannot rule out a live child.
     let handle: ReturnType<typeof inputs.host.dispatch>;
     try {
       handle = inputs.host.dispatch({
