@@ -24,6 +24,7 @@ import {
   deregisterAbortController,
   registerAbortController
 } from "../../execution/abort-registry";
+import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent } from "../../execution/logging";
 import { generateId } from "../../utils/generate-id";
 import {
   ConcurrencyQueueTimeoutError,
@@ -37,6 +38,7 @@ import {
 import { pickPrincipalResolver } from "../auth/pickPrincipalResolver";
 import type { FlowDispatcher, DispatchEnvelope } from "../dispatcher";
 import {
+  combineSignals,
   createInProcessDispatcher,
   isInProcessDispatcher,
   type InProcessDispatcher
@@ -269,6 +271,39 @@ export function createInboundTransportHost(
     // (FIX-1077). Server-set only; see `InboundRequestEnvelope.runtimeConfig`.
     const dispatchRuntimeConfig = envelope.runtimeConfig ?? runtimeConfig;
 
+    // Say so when a caller-derived model resolver is about to be dropped at the
+    // serialization boundary (FIX-1077).
+    //
+    // No brand and no CLI plumbing needed: the condition IS the divergence. A
+    // launching request whose config carries a different resolver from the
+    // host's is one a caller derived — `fsdev run --model` is the shipped case —
+    // and an external dispatcher cannot carry it, because a `RuntimeConfig`
+    // holds live resolvers and providers that do not serialize. Serializing just
+    // the model id was the alternative and is worse: the worker is a different
+    // process with its own gateways and keys, so a forced id may not resolve
+    // there at all, replacing a silent wrong model with a failure surfacing
+    // where the caller cannot see it.
+    //
+    // Warned rather than refused because refusing would break a working command
+    // for a condition that may never arise in it — a queue-configured app whose
+    // flows never detach is unaffected. This fires only at the exact dispatch
+    // that loses the override.
+    if (
+      isExternalDispatcher &&
+      envelope.runtimeConfig !== undefined &&
+      envelope.runtimeConfig.modelResolver !== runtimeConfig.modelResolver
+    ) {
+      logRuntimeEvent(
+        dispatchRuntimeConfig.logger ?? DEFAULT_RUNTIME_LOGGER,
+        "warn",
+        `[flow-state] the model override on this run does NOT apply to background work ` +
+          `dispatched to a queue: request "${requestId}" (flow "${envelope.flowKind}") will ` +
+          `run under the worker's own model configuration, not the override. Generators in ` +
+          `this process still use it.`,
+        { requestId, flowKind: envelope.flowKind, source: envelope.source }
+      );
+    }
+
     // Per-flow `voice.provider` wins over the router-level provider, mirroring
     // the principal-resolver override pattern below. Merged once here so
     // `runAction` receives the effective value (via `runtimeConfig.voiceProvider`)
@@ -336,11 +371,27 @@ export function createInboundTransportHost(
       // ignored by every caller that only wants `finished`.
       void inProcessAccepted.catch(() => {});
 
-      const startRun = (): Promise<ExecutionResult> => {
+      /**
+       * `cancellation` is a signal the run must inherit rather than merely be
+       * checked against. The queued branch holds one: an abort that lands
+       * between its pre-start check and `runAction`'s own
+       * `registerAbortController` would otherwise be thrown away, because
+       * `runAction` mints a fresh controller and overwrites the one that was
+       * aborted. Threading it makes the handoff atomic — there is one signal
+       * from enqueue to completion, so the abort cannot fall between two
+       * registrations no matter when it lands (FIX-1077).
+       */
+      const startRun = (cancellation?: AbortSignal): Promise<ExecutionResult> => {
+        const signal =
+          cancellation === undefined
+            ? envelope.signal
+            : envelope.signal === undefined
+              ? cancellation
+              : combineSignals(envelope.signal, cancellation);
         const handle = (effectiveDispatcher as InProcessDispatcher).dispatchLocal(
           dispatchEnvelope,
           {
-            signal: envelope.signal,
+            signal,
             responseEmitter,
             effectiveRuntimeConfig: {
               ...dispatchRuntimeConfig,
@@ -461,7 +512,13 @@ export function createInboundTransportHost(
                   `Request "${requestId}" was cancelled before it left the concurrency queue`
                 );
               }
-              return startRun();
+              // The check above is not sufficient on its own and is not meant to
+              // be: an abort landing after it would be lost, because `runAction`
+              // registers a fresh controller over this one. Handing the signal
+              // down is what closes that gap — the check short-circuits the run
+              // entirely when the decision is already made, and the signal
+              // carries it when it is made a moment later.
+              return startRun(queuedAbort.signal);
             }).catch(async (error: unknown) => {
               if (error instanceof ConcurrencyQueueTimeoutError) {
                 await terminateUnenqueuedRequest(stores, requestId);

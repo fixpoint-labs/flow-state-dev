@@ -674,6 +674,35 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     expect(record?.failedAtMs).toBeUndefined();
   });
 
+  it("refuses to admit detached work once disposal has begun", async () => {
+    const observed: Observed = { children: [] };
+    const flow = detachingFlow("admission-closed", observed);
+
+    const state = createFlowState({
+      flows: { detaching: flow },
+      stores: { default: { primary: inMemoryStores() } },
+      modelResolver: markerResolver("app-default")
+    });
+
+    const runtime = await state.getRuntime();
+    await state.dispose();
+
+    // A parent still running when shutdown began — the worker draining its last
+    // jobs is the shipped shape — reaching `startDetached` afterwards. Before
+    // the gate this registered a child the drain had already walked past: never
+    // waited for, never cancelled, never reported, and writing while the stores
+    // closed underneath it.
+    await runLikeCli(runtime, flow, "s_late");
+
+    expect(observed.start).toMatchObject({
+      ok: false,
+      refused: "dispatch-rejected"
+    });
+    expect(observed.children).toEqual([]);
+    // Refused as a value the caller can settle its own row from, not thrown.
+    expect(observed.error).toBeUndefined();
+  });
+
   it("the child inherits the CALLER's runtime config, not the host's", async () => {
     const observed: Observed = { children: [] };
     const flow = detachingFlow("runtime-config-inherit", observed);

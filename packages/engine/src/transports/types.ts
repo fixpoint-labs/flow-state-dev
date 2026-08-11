@@ -108,10 +108,24 @@ export interface InboundRequestEnvelope {
    * (`fsdev run` builds one so `--model` applies), which the host was never
    * constructed with.
    *
-   * **In-process dispatch only.** A `RuntimeConfig` holds resolvers and
-   * providers and does not serialize, so the external-dispatcher branch ignores
-   * it — a queued job runs under its own worker's config, which is the right
-   * answer there because that process resolved its own.
+   * **The rule this field exists for: a detached child inherits the LAUNCHING
+   * REQUEST's effective config, not the host's construction-time one.** A host
+   * is built once; a caller may run any given request under a config it derived
+   * (`fsdev run` builds `{ ...appConfig, modelResolver, logger }` so `--model`
+   * takes effect), and the child is that request's own work continued in the
+   * background.
+   *
+   * **And the limit, which is part of the rule rather than an exception to it:
+   * it cannot cross a serialization boundary.** A `RuntimeConfig` holds live
+   * resolvers and providers, so the external-dispatcher branch ignores this — a
+   * queued job runs under its own worker's config, which is the only thing that
+   * process can honour. Carrying just a model *id* across would not fix it: the
+   * worker has its own gateways and keys, so a forced id may not resolve there
+   * at all. The host therefore WARNS at the dispatch that drops an override
+   * rather than pretending it applied.
+   *
+   * Three separate rounds of fixes rediscovered this limit one instance at a
+   * time. It is written here so the fourth does not have to.
    */
   runtimeConfig?: RuntimeConfig;
 

@@ -799,6 +799,16 @@ class InternalFlowState<TSettings extends object>
    *
    * A start operation already on the config is still never overwritten: a
    * deployment that wired its own is the more specific answer.
+   *
+   * ## Why the disposal gate lives HERE and not in `startDetached`
+   *
+   * The gate below refuses new detached work once `dispose()` has begun, and it
+   * belongs to this operation rather than to the shared `startDetached` seam.
+   * `startDetached` serves every deployment, including a direct
+   * `createFlowApiRouter` caller that has no `FlowState` and therefore no
+   * `dispose()` at all — gating there would make such a caller refuse during a
+   * disposal it is not part of and cannot observe. Disposal is a property of the
+   * owner, so the check belongs to the owner's operation.
    */
   #installDetachedStart(runtimeConfig: RuntimeConfig, stores: StoreRegistry): void {
     const requestHost = runtimeConfig.requestHost;
@@ -807,6 +817,41 @@ class InternalFlowState<TSettings extends object>
 
     let operation: DetachedStartOperation | undefined;
     requestHost.startOperation = (spec) => {
+      // ADMISSION CLOSES BEFORE THE DRAIN LOOKS.
+      //
+      // `dispose()` used to take a snapshot of outstanding children and then
+      // act, while the system carried on admitting work — so anything that
+      // registered afterwards was never waited for, never cancelled, and never
+      // reported. Two ways in: a worker draining its last jobs spawns a child
+      // after the drain has already run, and a descendant starts during the
+      // reserved unwind window after the snapshot was taken. Closing each window
+      // in turn just moved the race; refusing new work outright removes it.
+      //
+      // **This is the only way `#detachedChildren` grows.** It is fed solely by
+      // `onDispatched`, which fires solely inside the operation below, so a
+      // refusal here means nothing can register for the rest of the process's
+      // life. That is what makes the drain's snapshot complete rather than
+      // merely early.
+      //
+      // **The gate and the tracking are one synchronous instant, and that is
+      // load-bearing.** Below, `host.dispatch(...)` is synchronous and
+      // `onDispatched` fires on the next line, with no `await` between them — so
+      // "passed the gate" and "is tracked" are not two states a disposal can
+      // land between. Put an `await` in that window and this gate quietly
+      // becomes a race again.
+      //
+      // A `startDetached` already in flight — its child-session write is async
+      // and may straddle this — arrives here afterwards and is refused. That is
+      // the honest answer: the session record exists with no run, which is the
+      // adoptable state a retry already handles, and the caller gets a named
+      // refusal it can settle its own row from rather than leaving it to lease
+      // recovery.
+      if (this.#disposed) {
+        return Promise.resolve({
+          notStarted: true,
+          reason: "the runtime is shutting down and is no longer starting detached work"
+        });
+      }
       operation ??= this.#buildDetachedStartOperation(runtimeConfig, stores);
       return operation(spec);
     };

@@ -165,7 +165,12 @@ export function createInProcessDispatcher(
   };
 }
 
-function combineSignals(outer: AbortSignal, inner: AbortSignal): AbortSignal {
+/**
+ * One signal that aborts when either does. Exported so a caller that already
+ * holds a cancellation for a run can hand it in rather than mint a competing
+ * one — see the queued branch in `createInboundTransportHost`.
+ */
+export function combineSignals(outer: AbortSignal, inner: AbortSignal): AbortSignal {
   if (outer.aborted) return outer;
   return AbortSignal.any([outer, inner]);
 }
