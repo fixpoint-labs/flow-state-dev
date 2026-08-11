@@ -363,13 +363,15 @@ tenant, org and flow kind. `limit` accepts 1–100 (default 25) and `offset`
 0–10000; anything outside returns `400`. Use each row's `id` with the existing
 `/sessions/:id/requests` endpoint to read that job's history.
 
-Those runs carry the same provenance on the request record, under
-`metadata.workstream`: `topic` and `key` from the routing seed, plus `taskId`
-naming the task-board row the run was started for when the job came from a
-board. All three are display only and all three are optional, so guard with
-`== null`. Read the bag as provenance only when the record's `source` is
+Those runs carry a `metadata.workstream` bag on the request record: `topic` and
+`key` from the routing seed, plus `taskId` naming the task-board row the run was
+started for. Read the bag at all only when the record's `source` is
 `"workstream"` — `metadata` is caller-writable on an ordinary request, `source`
-is not.
+is not. `topic` and `key` are the seed the child session's id was derived from,
+so they cannot disagree with the run they sit on. `taskId` holds whatever the
+caller of `startDetached` passed and is checked against no board, so treat it as
+a correlation to display rather than one to key on. All three are display only
+and `key` and `taskId` are optional, so guard with `== null`.
 
 See [Background work](https://flow-state.dev/docs/server/background-work) for
 the full contract.

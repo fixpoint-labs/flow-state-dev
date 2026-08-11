@@ -265,11 +265,16 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
       // `taskId` answers the next question down — not *which body* of work this
       // is, but *which row* this run was spawned for — and it is the one fact
       // here the seam did not derive itself. It comes through `args.provenance`,
-      // a channel whose whole contract is "server-derived only", and pointedly
-      // NOT through `args.record`: keeping that bag off the request record is
-      // what lets a reader treat everything under `workstream` as server truth.
-      // See `StartDetachedInput.provenance` for why reach rather than a check is
-      // what backs that, and for the no-authority rule both halves share.
+      // a channel whose contract is "put a fact here only when the runtime
+      // produced it", and pointedly NOT through `args.record`, which stays off
+      // the request record entirely.
+      //
+      // That contract is a convention, not an enforcement: `startDetached` is on
+      // the block context, so any block author can call it and pass any id. The
+      // two fields above cannot disagree with the child they name — the same
+      // seed derived its key — but this one is taken on trust, and a reader
+      // should not treat it as checked. It decides nothing, which is what
+      // contains it; see `StartDetachedInput.provenance`.
       //
       // Absent when the caller has no durable row behind it, which is an
       // ordinary state and not a defect — a reader that finds no `taskId` has a

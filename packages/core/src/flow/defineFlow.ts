@@ -442,6 +442,57 @@ function collectWorkstreamBindings(
 }
 
 /**
+ * Collect bindings, then keep collecting from the runners those bindings name,
+ * until no new runner appears (FIX-1074).
+ *
+ * **Jobs nest, and that is the case a single pass misses.** A board substitutes
+ * a spawn block for each detached worker, so the real worker is not a child of
+ * any action root — the only block that contains it is the board's runner, which
+ * reaches the flow as a *binding* rather than as a block. If that worker in turn
+ * drains a second detached board, the inner board's binding exists nowhere but
+ * on the outer runner. One pass yields the outer board alone, the flow's
+ * workstream core is built with no route for the inner `boardId`, and the inner
+ * child's dispatch has nowhere to land — leaving its row `in_progress` for lease
+ * recovery. Nesting is a documented shape, so this is a supported configuration
+ * that did not work.
+ *
+ * **Termination is by visited-set, not by a depth bound.** Every iteration
+ * processes only runners not yet collected from, and the set of blocks in a flow
+ * is finite, so the loop cannot revisit and cannot spin — including when two
+ * boards reach each other, which a bound would have to guess a number for. A
+ * depth cap would also silently truncate a legal-but-deep nesting, which is the
+ * failure mode this whole area keeps producing.
+ *
+ * Each newly discovered runner is walked for its own static tool edges too, so a
+ * board reached through a generator's `tools` inside a nested worker is found on
+ * the same terms as one at the top level.
+ */
+function collectWorkstreamBindingsToFixpoint(
+  roots: readonly BlockDefinition[]
+): WorkstreamBindings | undefined {
+  let collected = collectWorkstreamBindings(roots);
+  // The runners already folded in. Grows monotonically over a finite set of
+  // blocks, which is what bounds the loop.
+  const collectedFrom = new Set<BlockDefinition>();
+
+  while (collected !== undefined) {
+    const pending = distinctRunners(collected).filter(
+      (runner) => !collectedFrom.has(runner)
+    );
+    if (pending.length === 0) break;
+    for (const runner of pending) collectedFrom.add(runner);
+
+    const nested = walkFlowGraph(pending);
+    collected = mergeWorkstreamBindings(
+      collected,
+      collectWorkstreamBindings([...pending, ...nested.toolRoots])
+    );
+  }
+
+  return collected;
+}
+
+/**
  * A generator's **statically declared** tools, or nothing (FIX-1074).
  *
  * `tools` is a `ToolsSlot` — an array, or a function resolved per call with the
@@ -932,7 +983,7 @@ function createFlowInstance(
   // Deliberately not from every reachable block — see {@link walkFlowGraph} for
   // why that would silently repair the propagation bug the assertion catches.
   const graph = walkFlowGraph(declaredBlocks);
-  const workstreamBindings = collectWorkstreamBindings([
+  const workstreamBindings = collectWorkstreamBindingsToFixpoint([
     ...declaredBlocks,
     ...graph.toolRoots,
   ]);

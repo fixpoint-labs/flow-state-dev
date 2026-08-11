@@ -167,9 +167,27 @@ async function drainRequestWorkPool(
  * the tool edge from `engine`, duplicating a traversal `core` owns.
  */
 function assertCarriedCoreRoutable(flow: FlowInstance, core: ActionCore): void {
-  const declared = core.block.workstreamBindings;
-  if (declared === undefined) return;
+  // Every block an `ActionCore` can execute, which is the root plus the two
+  // lifecycle observers — the same three `defineFlow`'s `actionCoreBlocks`
+  // collects, and for the same reason: `runAction` runs the observers as real
+  // blocks, so a board under one claims work exactly as a board under the root
+  // does. The core's other fields declare no block (`inputSchema` and
+  // `userMessage` are a schema and a pure function; `tokenBudget` and `durable`
+  // are settings), so this list is the whole executable surface.
+  const carriers = [core.block, core.onCompleted, core.onErrored];
 
+  for (const carrier of carriers) {
+    const declared = carrier?.workstreamBindings;
+    if (declared === undefined) continue;
+    assertBindingsRoutable(flow, declared);
+  }
+}
+
+/** Refuse any binding in `declared` the flow has no route for. */
+function assertBindingsRoutable(
+  flow: FlowInstance,
+  declared: NonNullable<BlockDefinition["workstreamBindings"]>
+): void {
   for (const binding of declared.values()) {
     const key = workstreamBindingKey(binding.boardId, binding.coordinateKey);
     // Identity, not key equality — the same test `defineFlow`'s reachability
