@@ -45,6 +45,7 @@ import { useContinueRequest } from "./hooks/use-continue-request";
 import { useLiveMode } from "./hooks/use-live-mode";
 import { useFocusRevalidate } from "./hooks/use-focus-revalidate";
 import { useWorkstreams } from "./hooks/use-workstreams";
+import { flattenTaskItems } from "./lib/task-collection-state";
 import { pickFurthestStatus } from "./lib/request-status";
 import { shortSessionId } from "./lib/utils";
 
@@ -373,10 +374,13 @@ function PanelContent({ className }: { className?: string }) {
   // is ever mounted; lifting the fold here would instead run it on every
   // `requestGroups` change no matter which tab is open, i.e. on every streamed
   // item while the user is watching the Stream tab, for nothing.
-  const taskItems = useMemo(
-    () => requestGroups.flatMap((group) => group.items),
-    [requestGroups]
-  );
+  //
+  // Flattened through `flattenTaskItems` rather than a bare `flatMap`, because
+  // `requestGroups` is newest-first and the fold settles a same-millisecond tie
+  // by walk order — which is right within a request and inverted across them.
+  // Ordering the requests here fixes the axis without disturbing the Stream and
+  // Trace tabs, which read `requestGroups` directly and want it newest-first.
+  const taskItems = useMemo(() => flattenTaskItems(requestGroups), [requestGroups]);
 
   // The sessions we descended through to reach the open one, outermost first,
   // with the open session itself last. Empty while looking at a session picked
@@ -430,6 +434,20 @@ function PanelContent({ className }: { className?: string }) {
     async (action: string, input: unknown) => {
       if (!activeFlowKind || !effectiveSessionId) return;
       const dispatchedFor = effectiveSessionId;
+      // Re-read the Workstream axis at the START of the call, which is what
+      // `docs/architecture/server-and-client.md` specifies and what
+      // `useSession` does. The reason it is the start rather than the end: the
+      // read is anchored to a local fact — this panel dispatched an interaction
+      // — so nothing the turn then does can remove it. A board that declares
+      // nothing detached, a dropped connection, an action that throws: none of
+      // them skip a read that already happened. Anchoring it to the response
+      // would make the refresh conditional on the very thing most likely to
+      // fail.
+      //
+      // It needs no session fence of its own: nothing is awaited before it, so
+      // it always names the session on screen, and the hook already retires its
+      // own read by generation if the workspace moves while it is in flight.
+      void refreshWorkstreams();
       const response = await sendAction(activeFlowKind, effectiveSessionId, action, input);
       // The workspace can move while this is in flight — descending into a
       // Workstream is a click away — and the session-change reset has already
@@ -447,7 +465,7 @@ function PanelContent({ className }: { className?: string }) {
         setDispatchedRequestId(response.request.id);
       }
     },
-    [activeFlowKind, effectiveSessionId, sendAction],
+    [activeFlowKind, effectiveSessionId, sendAction, refreshWorkstreams],
   );
 
   // After a suspension is resolved, re-attach the live stream to the continued

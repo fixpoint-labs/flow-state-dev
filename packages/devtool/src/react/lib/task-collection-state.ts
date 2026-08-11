@@ -140,6 +140,44 @@ type TaskBoardMetaData = {
  * `task-board-meta` component items — pattern-agnostic, so any consumer of the
  * unified Plan/Task substrate shows up.
  */
+/** The part of a request group the task fold needs. */
+export type TaskItemSource = {
+  /** When the request started — the only cross-request clock available. */
+  startedAt: number;
+  items: ReadonlyArray<TaskStreamItem>;
+};
+
+/**
+ * Flatten request groups into the chronological item stream the fold expects.
+ *
+ * The panel holds requests NEWEST-FIRST (`listSessionRequests` orders
+ * `updated_at DESC`) and must keep them that way for the Stream and Trace tabs,
+ * so the ordering is corrected here rather than on `requestGroups` itself.
+ *
+ * Ordering the requests — not the items — is what makes this safe: within a
+ * request the items are already in sequence order, and sorting the flat item
+ * list would disturb that. After this, walk order agrees with time on BOTH
+ * axes, which is what lets {@link groupCollections} settle a tie by walk order.
+ */
+export function flattenTaskItems(
+  groups: readonly TaskItemSource[]
+): TaskStreamItem[] {
+  return groups
+    .map((group, index) => ({ group, index }))
+    .sort((a, b) => {
+      if (a.group.startedAt !== b.group.startedAt) {
+        return a.group.startedAt - b.group.startedAt;
+      }
+      // Equal `startedAt` — two requests that began in the same millisecond. A
+      // stable sort would keep the INPUT order here, and the input is
+      // newest-first, so the axis would silently re-invert for exactly the
+      // tie this ordering exists to fix. Higher original index is the older
+      // request, so it goes first.
+      return b.index - a.index;
+    })
+    .flatMap(({ group }) => group.items);
+}
+
 export function groupCollections(
   items: ReadonlyArray<TaskStreamItem>
 ): CollectionView[] {
@@ -154,11 +192,19 @@ export function groupCollections(
     }
   >();
 
-  // One pass, counting every change and keeping the newest per task by `ts`
-  // (see the comparison below — walk order alone is NOT chronological here).
-  // `boardMeta` still takes the last one walked past, which is correct for it:
-  // it is keyed per collection and the stream carries one active and one
-  // completed, never two competing snapshots of the same instant.
+  // One pass, counting every change and keeping the newest per task.
+  //
+  // Precedence, strongest first: the item's own `ts` is real chronology and
+  // wins outright — a long-running request can emit AFTER a later one started,
+  // and that emission is genuinely later. Request order breaks a `ts` tie, and
+  // walk order breaks a tie within one request. The last two are only correct
+  // because the caller flattens chronologically (`flattenTaskItems`); walk
+  // order on its own is newest-request-first and would invert them.
+  //
+  // `boardMeta` takes the last one walked past for the same reason, and it is
+  // the same fix: with a chronological walk that is the newest request's meta.
+  // Before it was the oldest, so a board's status and counts ribbon reported a
+  // superseded drain.
   for (const item of items) {
     if (item.type !== "component") continue;
     const component = (item as { component?: string }).component;

@@ -59,13 +59,16 @@ vi.mock("../src/react/hooks/use-session-requests", () => ({
   useSessionRequests: () => requestsState,
 }));
 
+/** The Workstream axis's own re-read, so the panel's use of it is observable. */
+const refreshWorkstreams = vi.fn();
+
 vi.mock("../src/react/hooks/use-workstreams", () => ({
   useWorkstreams: () => ({
     workstreams: [],
     isLoading: false,
     error: null,
     truncated: false,
-    refresh: vi.fn(),
+    refresh: refreshWorkstreams,
   }),
 }));
 
@@ -162,6 +165,38 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     activeSession.activeSessionId = "sess_1";
     devToolState.activeSessionId = "sess_1";
     sendAction.mockReset().mockResolvedValue(null);
+    refreshWorkstreams.mockReset();
+  });
+
+  it("re-reads the Workstream axis when an action starts work", async () => {
+    // The tab exists to show background work appearing. Without this the count
+    // and the per-task links stay as they were until the user clicks Refresh or
+    // leaves and refocuses the window — on the one surface whose whole job is
+    // noticing that work started.
+    //
+    // Asserted at the START of the call, per the interaction-scoped contract in
+    // `docs/architecture/server-and-client.md`: the read is anchored to having
+    // dispatched, so a slow, failing or aborted action cannot skip it.
+    let resolveDispatch!: (value: unknown) => void;
+    sendAction.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveDispatch = resolve;
+      })
+    );
+
+    await act(async () => render(<DevToolPanel userId="u1" />));
+    refreshWorkstreams.mockClear(); // ignore the mount read
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("send-stub"));
+    });
+
+    expect(refreshWorkstreams).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveDispatch(null);
+      await Promise.resolve();
+    });
   });
 
   it("discards a dispatch that resolves after the user moved to another session", async () => {

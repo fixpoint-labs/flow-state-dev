@@ -8,7 +8,10 @@
  * with the wrong values in it.
  */
 import { describe, expect, it } from "vitest";
-import { groupCollections } from "../src/react/lib/task-collection-state";
+import {
+  flattenTaskItems,
+  groupCollections,
+} from "../src/react/lib/task-collection-state";
 import type { TaskStreamItem } from "../src/react/lib/task-collection-state";
 
 /**
@@ -100,5 +103,97 @@ describe("groupCollections — which snapshot of a task wins", () => {
     ]);
 
     expect(collection?.tasks[0]?.task.status).toBe("completed");
+  });
+});
+
+describe("flattenTaskItems — the two axes a tie can fall on", () => {
+  // A `ts` tie has to be broken on the right axis, and the two are opposite in
+  // the panel's own ordering: within a request, later-walked is genuinely later;
+  // across requests, later-walked is the OLDER request, because the panel holds
+  // them newest-first. Walk order alone therefore settles one correctly and
+  // inverts the other, which is why the requests are ordered before flattening.
+
+  it("puts an older request's items before a newer one's", () => {
+    const items = flattenTaskItems([
+      // Newest first, as the panel holds them.
+      { startedAt: 2_000, items: [change({ requestId: "req_2", ts: 5_000, taskId: "task-a" })] },
+      { startedAt: 1_000, items: [change({ requestId: "req_1", ts: 5_000, taskId: "task-a" })] },
+    ]);
+
+    expect(items.map((i) => (i as { requestId: string }).requestId)).toEqual([
+      "req_1",
+      "req_2",
+    ]);
+  });
+
+  it("keeps a request's own items in sequence order", () => {
+    // The reason requests are reordered rather than the flat item list: within
+    // one request the sequence IS the order, and sorting items would lose it.
+    const items = flattenTaskItems([
+      {
+        startedAt: 1_000,
+        items: [
+          change({ requestId: "req_1", ts: 5_000, taskId: "task-a", status: "in_progress" }),
+          change({ requestId: "req_1", ts: 5_000, taskId: "task-a", status: "completed" }),
+        ],
+      },
+    ]);
+
+    expect(items.map((i) => (i as { data: { task: { status: string } } }).data.task.status)).toEqual(
+      ["in_progress", "completed"]
+    );
+  });
+
+  it("orders two requests that started in the same millisecond by recency", () => {
+    // A stable sort on equal keys preserves input order, and input order is
+    // newest-first — so an equal `startedAt` would re-invert the axis unless the
+    // tie is broken deliberately.
+    const items = flattenTaskItems([
+      { startedAt: 1_000, items: [change({ requestId: "req_newer", ts: 5_000, taskId: "task-a" })] },
+      { startedAt: 1_000, items: [change({ requestId: "req_older", ts: 5_000, taskId: "task-a" })] },
+    ]);
+
+    expect(items.map((i) => (i as { requestId: string }).requestId)).toEqual([
+      "req_older",
+      "req_newer",
+    ]);
+  });
+});
+
+describe("the two folds composed — a tie across requests", () => {
+  it("lets the newer request win a same-millisecond tie", () => {
+    // The defect the `ts` comparison alone cannot catch: equal timestamps fall
+    // through to walk order, and walk order across requests was inverted.
+    const [collection] = groupCollections(
+      flattenTaskItems([
+        {
+          startedAt: 2_000,
+          items: [
+            change({
+              requestId: "req_newer",
+              ts: 5_000,
+              taskId: "task-a",
+              assignee: "review",
+              status: "completed",
+            }),
+          ],
+        },
+        {
+          startedAt: 1_000,
+          items: [
+            change({
+              requestId: "req_older",
+              ts: 5_000,
+              taskId: "task-a",
+              assignee: "implement",
+              status: "in_progress",
+            }),
+          ],
+        },
+      ])
+    );
+
+    expect(collection?.tasks[0]?.task.status).toBe("completed");
+    expect(collection?.tasks[0]?.task.assignee).toBe("review");
   });
 });
