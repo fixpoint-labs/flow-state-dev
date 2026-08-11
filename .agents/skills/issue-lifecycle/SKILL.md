@@ -479,20 +479,19 @@ outranks the row it was copied from and goes stale the moment the row moves.
 ## Your requests are dispatched too
 
 **Canonical: [`orchestration.md`](../../../docs/contributing/orchestration.md) → "The coordinator
-dispatches; it never does the work".** The closed list of what this orchestrator touches with its
-own hands, the routing table for everything else, and what doing it yourself costs live there.
-
-Same rule as the section above, minus the disguise: a mid-run request from **you** — fix this
-typo, check whether that helper exists, run the tests, see what the reviewer meant — says *what*
-should happen, not *who* does it. It is the case that gets through, because a PR event is
-obviously an event and a direct ask obviously isn't.
+dispatches; it never does the work".** Read it, don't re-derive it here. Same rule as the section
+above with the disguise removed — a mid-run request from **you** says *what* should happen, not
+*who* does it — and it is the case that gets through, because a direct ask doesn't look like an
+event at all.
 
 The issue-specific delta: **this issue's own worktree is not yours to edit from here.** A side
-request about a file this issue touches goes into the next phase sub-agent's prompt, so the
-change lands inside the PR that is already under review. Editing it from the orchestrator puts an
-unreviewed commit on the branch the worker is mid-flight on. A request about anything *else* is a
-different issue — file it via `issue-manager` (Boundaries), don't scope-creep it into this one.
-Say where it went in one line.
+request about a file this issue touches is dispatched to a phase sub-agent, so the change lands
+inside the PR that is already under review; editing it from the orchestrator puts an unreviewed
+commit on the branch a worker is mid-flight on. **Dispatch it in the wake it arrives** — an issue
+sitting at "ready to merge" has no next phase action, so a request merely recorded is one the
+merge then ships without — and hold the merge gate until it lands. A *change* to anything else is
+a different issue: file it via `issue-manager` (Boundaries) rather than scope-creeping it into
+this one. A read-only *lookup* is neither — that's a `scout`, not a ticket.
 
 ## Waking
 

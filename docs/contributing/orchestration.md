@@ -1207,9 +1207,27 @@ researching an answer; investigating a failure. All of it goes out.
 |---|---|
 | Status — where is it, which PR, what did the worker say | Answered from the table. No dispatch. |
 | A read-only look — does X exist, what's the state of Y, where does Z live | **`scout`** (Haiku), which returns facts and defers judgment |
-| A change to something an issue **in the set** already owns | Onto that row: an implementer note, or carried verbatim into its next dispatch. Never edited here — the row's worker owns that file, in its worktree |
+| A change to something an issue **in the set** already owns | Dispatch **that row's worker**, in the wake the request arrives — the change lands in the worktree whose worker owns that file, inside its PR and its review. Never edited here, and never left as a note alone (below) |
 | A change nothing in the set owns | **`issue-manager`** files it; then Intake decides whether it joins the epic or waits for its own lifecycle |
 | Anything else that is genuinely work | A bounded sub-agent with **`isolation: worktree`**, dispatched with the handles and told to return ≤ a screen |
+
+**This table is the router — unlike the PR-event rule, which deliberately lists no routes.** The
+difference is that an event has a phase table to branch on and a chat message has nothing. So
+there the row is the authority and a written-down route would outrank it; here there is no row,
+and the table is what stops the routing being improvised per request. **Prefer the third row
+whenever it applies**: most side requests during a run are about a file some issue already owns,
+and piggybacking on that row's next dispatch is cheaper than a fresh worktree and lands the
+change inside a PR that is already being reviewed.
+
+**A note is not a dispatch, and this is the row where a request goes missing.** `epic-wake`'s
+`pendingAction()` dispatches a `PR_FEEDBACK` row on a CI failure, unhandled PR or spec-PR
+activity, a multi-PR DAG step, or an answered decision — and there is no side-request field on
+the row for anything else to match. A **settled** row (green, reviewed, nothing new) matches none
+of them and returns `null`. So a change parked as an implementer note on a settled row is
+dispatched by nothing, while that row's merge gate stays open: the PR merges without the change
+you asked for, and the record of the request dies with the session. Dispatch the row's worker
+**directly** instead — the same direct dispatch the cross-spec walkthrough uses to land an
+alignment — and **withhold that row's merge gate until it lands.**
 
 **Say where it went, in one line.** "Filed as FIX-812 and dispatched — it'll come back on the
 next wake" costs nothing and is the difference between delegation and the request looking
