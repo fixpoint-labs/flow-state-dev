@@ -10,6 +10,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import React from "react";
 import type { WorkstreamSummary } from "@flow-state-dev/client";
 import { WorkstreamsView } from "../src/react/components/workspace/workstreams-view";
@@ -157,22 +158,33 @@ describe("WorkstreamsView", () => {
     expect(screen.queryByText(/^0 workstreams/i)).not.toBeInTheDocument();
   });
 
-  it("opens a Workstream from the keyboard, not only by pointer", () => {
+  it("opens a Workstream from the keyboard, not only by pointer", async () => {
     // The row's onClick is a pointer convenience. A clickable `<tr>` takes no
     // focus, no Enter and announces nothing, so the tab's primary action has to
     // be a real control or it does not exist for a keyboard user.
+    //
+    // Activation is driven with real key events rather than a synthetic click:
+    // a focusable element that does not respond to Enter or Space is exactly
+    // the failure a `tabIndex` bolted onto the row would produce, and a click
+    // assertion cannot tell the two apart.
+    const user = userEvent.setup();
     const { onOpen } = renderView({
       workstreams: [workstream({ id: "dsx_1", topic: "FIX-1" })],
     });
 
+    // Reachable by tabbing at all — the panel's Refresh button comes first in
+    // document order, the row's control second.
+    await user.tab();
+    await user.tab();
     const open = screen.getByRole("button", { name: /Open workstream dsx_1/i });
-    open.focus();
     expect(open).toHaveFocus();
 
-    // Enter on a focused native button dispatches a click.
-    fireEvent.click(open);
+    await user.keyboard("{Enter}");
     expect(onOpen).toHaveBeenCalledTimes(1);
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "dsx_1" }));
+
+    await user.keyboard(" ");
+    expect(onOpen).toHaveBeenCalledTimes(2);
   });
 
   it("says so when the listing stopped at its bound", () => {

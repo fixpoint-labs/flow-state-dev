@@ -282,16 +282,176 @@ describe("linkWorkstreamsToTasks", () => {
     expect(byWorkstream.size).toBe(0);
   });
 
-  it("does not merge two boards' tasks under different collection ids", () => {
-    // Same task id on two boards is legal. The key carries the collection so the
-    // two rows stay distinct even when both link to the same Workstream.
-    const ws = workstream({ id: "dsx_1", topic: "task-a" });
+  describe("the identity parts, taken one at a time", () => {
+    // A child session is identified by (board, worker coordinate, topic). The
+    // rule is one rule, not three cases: a part that DECODES AND DISAGREES
+    // disqualifies a candidate, and a part that cannot be read leaves it
+    // eligible. What differs between the parts is only whether the task side
+    // carries anything to compare against — and the board side carries nothing,
+    // which is why its disagreement has to be detected rather than checked.
+    const cases: Array<{
+      part: string;
+      candidates: WorkstreamSummary[];
+      taskAssignee?: string;
+      /** The id expected, or `undefined` for "ambiguous, draw nothing". */
+      expected: string | undefined;
+      why: string;
+    }> = [
+      {
+        part: "board",
+        candidates: [
+          workstream({
+            id: "dsx_a",
+            topic: "FIX-1",
+            coordinate: coordinate("board-a", assigneeKey("implement")),
+          }),
+          workstream({
+            id: "dsx_b",
+            topic: "FIX-1",
+            coordinate: coordinate("board-b", assigneeKey("implement")),
+          }),
+        ],
+        taskAssignee: "implement",
+        expected: undefined,
+        why: "the task carries no board id, so it cannot pick between them",
+      },
+      {
+        part: "worker (task names one)",
+        candidates: [
+          workstream({
+            id: "dsx_impl",
+            topic: "FIX-1",
+            coordinate: coordinate("issue-work", assigneeKey("implement")),
+          }),
+          workstream({
+            id: "dsx_review",
+            topic: "FIX-1",
+            coordinate: coordinate("issue-work", assigneeKey("review")),
+          }),
+        ],
+        taskAssignee: "implement",
+        expected: "dsx_impl",
+        // The one part the task CAN check, so a difference is resolvable rather
+        // than ambiguous. Refusing here would delete correct behaviour.
+        why: "assignee decides it",
+      },
+      {
+        part: "worker (task names none)",
+        candidates: [
+          workstream({
+            id: "dsx_impl",
+            topic: "FIX-1",
+            coordinate: coordinate("issue-work", assigneeKey("implement")),
+          }),
+          workstream({
+            id: "dsx_review",
+            topic: "FIX-1",
+            coordinate: coordinate("issue-work", assigneeKey("review")),
+          }),
+        ],
+        expected: undefined,
+        why: "nothing on the task side to compare, so both stay eligible",
+      },
+      {
+        part: "nothing (identical coordinates)",
+        candidates: [
+          workstream({
+            id: "dsx_1",
+            topic: "FIX-1",
+            coordinate: coordinate("issue-work", "uniform"),
+          }),
+          workstream({
+            id: "dsx_2",
+            topic: "FIX-1",
+            coordinate: coordinate("issue-work", "uniform"),
+          }),
+        ],
+        taskAssignee: "implement",
+        expected: undefined,
+        why: "a uniform board names no assignee, so neither can be excluded",
+      },
+    ];
+
+    for (const scenario of cases) {
+      it(`differing in ${scenario.part} — ${scenario.why}`, () => {
+        const { byTask } = linkWorkstreamsToTasks(scenario.candidates, [
+          board("issues", [
+            task({
+              id: "task-a",
+              metadata: { topic: "FIX-1" },
+              ...(scenario.taskAssignee !== undefined
+                ? { assignee: scenario.taskAssignee }
+                : {}),
+            }),
+          ]),
+        ]);
+
+        expect(byTask.get(taskLinkKey("issues", "task-a"))?.id).toBe(scenario.expected);
+      });
+    }
+  });
+
+  it("draws no link when two boards in the session contend for one Workstream", () => {
+    // The third leg of identity. `deriveChildSessionId` hashes topic AND a key
+    // built from `boardId|coordinateKey`, so a Workstream belongs to ONE board —
+    // but nothing on the task side carries a board id. `task-change` and
+    // `task-board-meta` emit `collectionId`, and `taskBoard` documents that as a
+    // deliberately different string from `boardId`, so board equality can never
+    // be checked the way the worker can.
+    //
+    // What IS observable is contention: if tasks in more than one collection
+    // each resolve to the same Workstream, at most one of them owns it and
+    // nothing on the wire says which. Clicking the wrong one opens unrelated
+    // work, so neither gets a link.
+    const ws = workstream({
+      id: "dsx_1",
+      topic: "FIX-1",
+      coordinate: coordinate("issue-work", assigneeKey("implement")),
+    });
+    const shared = { topic: "FIX-1" };
+
+    const { byTask, byWorkstream } = linkWorkstreamsToTasks(
+      [ws],
+      [
+        board("issues", [task({ id: "task-a", assignee: "implement", metadata: shared })]),
+        board("chores", [task({ id: "task-b", assignee: "implement", metadata: shared })]),
+      ]
+    );
+
+    expect(byTask.size).toBe(0);
+    expect(byWorkstream.size).toBe(0);
+  });
+
+  it("keeps one board's tasks linked when it is the only claimant", () => {
+    // The guard against over-reading contention: two collections in the session
+    // is not itself ambiguity. Only the collection whose task actually resolves
+    // to the Workstream claims it, so the link stands.
+    const ws = workstream({
+      id: "dsx_1",
+      topic: "FIX-1",
+      coordinate: coordinate("issue-work", assigneeKey("implement")),
+    });
+
     const { byTask } = linkWorkstreamsToTasks(
       [ws],
-      [board("issues", [task({ id: "task-a" })]), board("chores", [task({ id: "task-a" })])]
+      [
+        board("issues", [
+          task({ id: "task-a", assignee: "implement", metadata: { topic: "FIX-1" } }),
+        ]),
+        board("chores", [
+          task({ id: "task-b", assignee: "implement", metadata: { topic: "FIX-2" } }),
+        ]),
+      ]
     );
+
     expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(ws);
-    expect(byTask.get(taskLinkKey("chores", "task-a"))).toBe(ws);
-    expect(byTask.size).toBe(2);
+    expect(byTask.size).toBe(1);
+  });
+
+  it("keys a link by collection, so one board's row is never another's", () => {
+    // Same task id on two boards is legal, which is why the key carries the
+    // collection. Asserted on the key itself rather than through a link, because
+    // two boards claiming one Workstream is now refused outright.
+    expect(taskLinkKey("issues", "task-a")).not.toBe(taskLinkKey("chores", "task-a"));
   });
 });

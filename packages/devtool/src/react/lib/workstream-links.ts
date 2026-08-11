@@ -32,26 +32,44 @@
  * decoded from a coordinate cannot be joined against a rendered board, and topic
  * is the only shared value.
  *
- * A topic is not by itself a child session, though. The routing seed carries a
- * `key` beside it (`framed(boardId)|framed(coordinateKey)`) and the seam hashes
- * both, so one topic routed to two workers is two sessions. The coordinate is
- * the half of that key which reaches the client, so where a topic has more than
- * one candidate the task's `assignee` is matched against the decoded worker —
- * and where that still does not name exactly one, no link is drawn at all.
+ * ## A Workstream's identity has three parts, so the match checks three
  *
- * Three consequences, all real and all correct to show:
+ * `deriveChildSessionId` hashes the topic together with the routing seed's
+ * `key`, and `workstreamRoutingSeed` builds that key as
+ * `framed(boardId)|framed(coordinateKey)`. So a child session is identified by
+ * **(board, worker coordinate, topic)** — and a match that indexes on one part
+ * and checks another leaves the third as a defect waiting to be reported. This
+ * file therefore takes each part in turn rather than special-casing the shapes
+ * that happen to have been noticed:
+ *
+ * - **Topic** — the index key. Both sides carry it (a task's `metadata.topic`,
+ *   else its id, which is the fallback the routing seed itself applies).
+ * - **Worker** — comparable. The coordinate decodes to `assignee:<name>` and a
+ *   task carries `assignee`, so a disagreement is visible and disqualifying.
+ * - **Board** — NOT comparable, in either direction of the data. The coordinate
+ *   carries `boardId`, but nothing on the task side does: `task-change` and
+ *   `task-board-meta` emit `collectionId`, which `taskBoard` documents as a
+ *   deliberately different string. Its disagreement is therefore detected
+ *   rather than checked — see `linkWorkstreamsToTasks`'s second pass.
+ *
+ * One rule spans all three: a part that DECODES AND DISAGREES disqualifies a
+ * candidate; a part that cannot be read at all is "cannot tell" and leaves the
+ * candidate eligible. Those are deliberately not the same. Collapsing them
+ * would drop the ordinary lone unlabelled Workstream, which carries no
+ * coordinate and still pairs correctly with its task.
+ *
+ * A link is drawn only when exactly one candidate survives, and only when no
+ * second board is contending for it.
+ *
+ * Two consequences, both real and both correct to show:
  *
  * - **Several tasks can share one Workstream.** That is the substrate's own
- *   behaviour — a second task on the same topic and worker lands in the same
- *   child session and continues its history — not an artifact of matching this
- *   way.
- * - **A `uniform` or `floor` board cannot be disambiguated.** Its coordinate
- *   names no assignee, so a topic with two such Workstreams links to neither.
- *   Tightening it needs the routing key itself on the wire.
- * - **Two boards in one session with colliding task ids would cross-match.** The
- *   decoded board id is rendered on the row, so a wrong pairing is visible
- *   rather than silent. Tightening it needs `boardId` on the wire, which is a
- *   server change.
+ *   behaviour — a second task on the same board, worker and topic lands in the
+ *   same child session and continues its history — not an artifact of matching
+ *   this way.
+ * - **A `uniform` or `floor` board cannot be disambiguated by worker.** Its
+ *   coordinate names no assignee, so a topic with two such Workstreams links to
+ *   neither. Tightening it needs the routing key itself on the wire.
  */
 import type { WorkstreamSummary } from "@flow-state-dev/client";
 import type { CollectionView, Task } from "./task-collection-state";
@@ -224,8 +242,9 @@ export function linkWorkstreamsToTasks(
     else bucket.push(workstream);
   }
 
-  const byTask = new Map<string, WorkstreamSummary>();
-  const byWorkstream = new Map<string, LinkedTask[]>();
+  // Pass 1 — resolve the two identity parts that CAN be compared: the topic
+  // (the index key) and the worker (assignee against the decoded coordinate).
+  const claims: Array<{ collectionId: string; task: Task; workstream: WorkstreamSummary }> = [];
   for (const collection of collections) {
     for (const entry of collection.tasks) {
       const workstream = resolveWorkstream(
@@ -233,12 +252,41 @@ export function linkWorkstreamsToTasks(
         entry.task
       );
       if (workstream === undefined) continue;
-      byTask.set(taskLinkKey(collection.id, entry.task.id), workstream);
-      const linked = byWorkstream.get(workstream.id);
-      const value: LinkedTask = { collectionId: collection.id, task: entry.task };
-      if (linked === undefined) byWorkstream.set(workstream.id, [value]);
-      else linked.push(value);
+      claims.push({ collectionId: collection.id, task: entry.task, workstream });
     }
+  }
+
+  // Pass 2 — the BOARD leg, which cannot be compared and so is detected instead.
+  //
+  // A Workstream belongs to exactly one board: `deriveChildSessionId` hashes the
+  // topic together with a key built from `boardId|coordinateKey`. The board id
+  // is on the Workstream's coordinate, but NOTHING on the task side carries one
+  // — `task-change` and `task-board-meta` emit `collectionId`, and `taskBoard`
+  // documents that as a deliberately different string from `boardId`. So board
+  // equality can never be verified the way the worker can.
+  //
+  // What is observable is CONTENTION. If tasks in more than one collection each
+  // resolve to the same Workstream, at most one of those boards owns it and
+  // nothing on the wire says which — so none of them gets a link. That is the
+  // same rule the other two legs follow (a part that cannot decide is ambiguous,
+  // and ambiguity draws nothing), applied to the only part whose disagreement is
+  // invisible.
+  const claimants = new Map<string, Set<string>>();
+  for (const claim of claims) {
+    const owners = claimants.get(claim.workstream.id);
+    if (owners === undefined) claimants.set(claim.workstream.id, new Set([claim.collectionId]));
+    else owners.add(claim.collectionId);
+  }
+
+  const byTask = new Map<string, WorkstreamSummary>();
+  const byWorkstream = new Map<string, LinkedTask[]>();
+  for (const claim of claims) {
+    if ((claimants.get(claim.workstream.id)?.size ?? 0) > 1) continue;
+    byTask.set(taskLinkKey(claim.collectionId, claim.task.id), claim.workstream);
+    const linked = byWorkstream.get(claim.workstream.id);
+    const value: LinkedTask = { collectionId: claim.collectionId, task: claim.task };
+    if (linked === undefined) byWorkstream.set(claim.workstream.id, [value]);
+    else linked.push(value);
   }
 
   return { byTask, byWorkstream };
