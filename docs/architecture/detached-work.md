@@ -1,0 +1,187 @@
+# Detached Work
+
+Detached work is a unit of work that outlives the request that started it. It
+runs in a **Workstream** — a child session hanging off the conversation that
+started it — dispatched through `ctx.requestHost.startDetached`.
+
+This document owns one question the other docs each answer a slice of: **what
+happens to detached work over its lifetime**, per deployment topology. What
+"started" means, where it actually runs, whether it survives the process, who
+holds the task's lease when nobody is running it, what `dispose()` settles, and
+what brings an abandoned run back.
+
+Related, and deliberately not restated here:
+
+- [State and Scopes](./state-and-scopes.md) → *Workstreams and Scope* — what a
+  child session inherits, and where a `sharedToWorkstream` resource stores.
+- [Inbound Transports](./inbound-transports.md) — the dispatch seam and the
+  request host's four verbs.
+- `packages/orchestration/README.md` → *Declaring detached work* — the task-board
+  surface that is the ordinary way to start one.
+
+## The rule that decides everything
+
+**Locality is decided by the effective dispatcher, not by `worker.mode`.**
+
+`createFlowState` resolves `options.dispatcher ?? #workerDispatcher`, then asks
+`isInProcessDispatcher`, whose test is `dispatcher === undefined || "dispatchLocal" in dispatcher`.
+`dispatchLocal` is the discriminator because it accepts a live `AbortSignal` and
+`ResponseEmitter` — capabilities that cannot cross a serialization boundary, so
+a dispatcher offering it is necessarily running the work here.
+
+The two genuinely disagree, which is why the mode is the wrong thing to read:
+
+- `options.dispatcher` is mutually exclusive with `worker`, so `mode` reads as
+  its `colocated` default while the dispatcher may be external.
+- A custom dispatcher exposing `dispatchLocal` is local whatever the mode says.
+- `worker-only` constructs **no** dispatcher at all (`createFlowState` skips
+  `createDispatcher` for that mode), so the effective dispatcher is `undefined`
+  — which is *in-process*.
+
+Everything below follows from that one test.
+
+## Topology matrix
+
+| Topology | Effective dispatcher | Where the child runs | "Started" means | Survives the process? | `dispose()` waits? |
+|---|---|---|---|---|---|
+| No worker adapter | none (`undefined`) | this process | the child request is running here | no | **yes**, bounded |
+| `colocated` | queue dispatcher | a worker (may be this process) | the job is on the queue | yes | no |
+| `dispatch-only` | queue dispatcher | another container | the job is on the queue | yes | no |
+| `worker-only` | **none** | this process | the child request is running here | **no** | **yes**, bounded |
+| No request host (CLI with no config) | — | nowhere | `NoRequestHostError` is thrown | — | — |
+
+**`worker-only` is the trap.** It is the natural place to start durable jobs and
+the one place they silently are not durable. The mode consumes the queue and
+dispatches nothing, so `startDetached` there runs the child in the worker
+process itself and enqueues nothing. A crash or a redeploy loses the run
+outright rather than costing a retry. For the queue to own the work, start it
+from a process that has a dispatcher — `colocated` or `dispatch-only`.
+
+That the feature works at all in `worker-only` is deliberate: a topology that
+claims support while refusing detached work is not supporting it. Running it
+in-process is the honest interim answer, not a durability guarantee.
+
+**No request host is a different failure from no start operation.** A context
+with no `requestHost` at all throws `NoRequestHostError` (`code:
+"no-request-host"`) — the CLI running on directory discovery or `--no-config`.
+A host that exists but was wired without a start operation *refuses* with
+`no-start-operation`, a named return rather than a throw. A `createFlowState`
+deployment wires one in every topology, and so does the shipped HTTP router, so
+the refusal is reachable only on a runtime config assembled without either.
+
+## What acceptance means
+
+`startDetached` returns once the child is *accepted*, and what that guarantees
+differs by row above.
+
+**In-process.** The child request is running in this process. Nothing else is
+holding it, so the guarantee ends at the process boundary.
+
+**Queued.** The request record has been written and the queue has accepted the
+job. Both are confirmed before `startDetached` returns: a failed store write or
+a rejected enqueue fails the dispatch rather than reporting a start, so an
+unreachable queue surfaces as an error instead of as silence. Because the
+request is registered at enqueue time, an SSE client can attach to
+`GET /requests/:id/stream` before any worker claims the job.
+
+Acceptance is not execution. A queue with nothing draining it is an ordinary
+state — the job sits there, and the caller finishes exactly as it would if a
+worker were pulling. Whether the work ever ran is a question for the
+Workstream's own request list.
+
+## What cannot cross the queue
+
+A `RuntimeConfig` holds live model resolvers, providers and loggers. None of
+them serialize, so a **per-request** config cannot travel with an enqueued job.
+The job payload carries the serializable envelope only — flow kind, action,
+input, identity, source, metadata, request id — and the worker runs it under the
+`runtimeConfig` that worker was built with.
+
+The shipped case is `fsdev run --model`. The override reaches every generator in
+the command's own process, including in-process detached work, and stops at the
+queue. `createInboundTransportHost` detects exactly this — an external
+dispatcher plus a launching config whose `modelResolver` differs from the host's
+— and logs a warning naming the request that lost it.
+
+The envelope contract this rests on, including why carrying the selected model
+*id* across would not fix it, is
+[Inbound Transports](./inbound-transports.md#execution-configuration-is-per-host-with-one-per-envelope-exception)'s.
+
+## Shutdown: what `dispose()` settles, and what it does not
+
+`dispose()` drains **in-process** detached children and no others.
+
+The tracking is keyed on the same `isInProcessDispatcher` test: `onDispatched`
+registers a child for the drain only when it runs here. An externally dispatched
+child is deliberately untracked — the enqueue is already confirmed, so there is
+no half-written row to strand, and its `finished` resolves only when some worker
+completes the job. Waiting on that would block shutdown on a process this one
+does not control, indefinitely when the workers live elsewhere.
+
+Admission closes before the drain looks. Once `dispose()` begins, the start
+operation refuses new detached work outright (`notStarted`, with a reason), which
+is what makes the drain's snapshot complete rather than merely early. A
+`startDetached` already in flight arrives afterwards and is refused: the child
+session record exists with no run, which is the adoptable state a retry already
+handles.
+
+The drain runs in rounds, because detached work may itself detach and a
+grandchild registered mid-await belongs to this drain too. Every wait races
+`detachedDrainTimeoutMs` (default 30 s; `0` skips the wait). At the budget it
+cancels what is still running, gives it a brief window *inside* the same budget
+to unwind, and reports the request and session ids it gave up on — on stderr,
+even when the runtime logger is silenced, since work may have been left
+unfinished.
+
+**Shutdown never writes a terminal status on the work's behalf.** It cancels;
+it does not mark records finished, failed, or aborted. That division only holds
+because something else recovers, which is the next section.
+
+## What a stopped process leaves behind, and what recovers it
+
+A process can stop while detached work is still running — a shutdown that ran
+out of budget, or a kill. Either way the work is cancelled without being
+settled, and two records are left mid-flight. Each has its own way back.
+
+**The task** stays `in_progress`, holding a lease nobody is renewing. Once the
+lease deadline passes the board is entitled to hand it out again, and does: back
+to `pending`, with `abandonments` incremented. A task that keeps being handed
+out and abandoned settles `errored` rather than recycling forever. A task whose
+lease has passed also stops counting as work in flight, so it does not hold a
+board back from being considered quiet.
+
+**The request record** stays `in_progress` until a sweep marks it `interrupted`,
+the status a run can be resumed from. Three things run that sweep:
+
+1. **Runtime init** — `createFlowState`'s `#detectInterruptedOnStartup`, on every
+   runtime init, router or not, honouring the `detectInterruptedOnStartup`
+   option. Retained rather than fire-and-forget, so `dispose()` can let it finish
+   before closing adapters.
+2. **A periodic sweeper** — `createStaleRequestSweeper`, built by
+   `createFlowApiRouter`, so it runs wherever a router exists.
+3. **A client poke** — `POST .../check-interrupted`, which the DevTool calls on
+   mount and on every session-list refresh.
+
+All three are idempotent: detection re-checks `status === "in_progress"` before
+writing, so a record that reached a terminal status is never overwritten, and a
+router deployment sweeping twice at startup costs one empty scan.
+
+The sweep only picks up a record whose executor heartbeat has been quiet longer
+than the staleness threshold. That delay is load-bearing: a request that has
+gone quiet for a second is not the same as one nobody is running, and treating
+them alike would reclaim live work.
+
+So a row reading in-progress just after a process stopped is expected, and it
+clears itself. If nothing ever runs against that store again, nothing sweeps it,
+and the row stays as it is.
+
+## Where the invariants live in code
+
+| Concern | Module |
+|---|---|
+| Locality test | `engine/src/transports/host/in-process-dispatcher.ts` → `isInProcessDispatcher` |
+| Start operation install, drain, disposal gate | `engine/src/flowstate/createFlowState.ts` → `#installDetachedStart`, `#drainDetachedChildren` |
+| Child session derivation and adoption | `engine/src/context/detached-child.ts`, `engine/src/context/create-request-host.ts` |
+| Per-dispatch runtime config and the override warning | `engine/src/transports/host/createInboundTransportHost.ts` |
+| Interrupted-request detection | `engine/src/execution/request-recovery.ts`, `engine/src/execution/stale-request-sweeper.ts` |
+| Lease and abandonment | `packages/orchestration` → task substrate |

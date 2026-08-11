@@ -67,6 +67,16 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 - `getBlockOutput(blockDef)`: returns completed output from already-dispatched sibling blocks at the current execution level, otherwise `undefined`
 - `getBlockResult(blockDef)`: returns `{status: not_started|running|completed|failed}` for already-dispatched sibling blocks at the current execution level (not ancestor chain), with output/error payload on terminal states
 
+## Detached work (Workstreams)
+
+- A Workstream is a **child session**, not a new scope level
+- Locality is decided by the effective dispatcher (`isInProcessDispatcher`), **not** by `worker.mode`
+- `worker-only` constructs no dispatcher → detached work runs **in-process and is not durable**
+- `dispose()` drains in-process detached children only; queued work is never waited for
+- Shutdown cancels, it never settles — the lease recycles the task, a sweep marks the request `interrupted`
+
+→ [Detached Work](../architecture/detached-work.md)
+
 ## Streaming
 
 - SSE named events; deterministic ordering by `sequence_number`

@@ -12,18 +12,13 @@ state, its resources, and the history of every request that ran in it. A
 background job's session hangs off the conversation that started it, as a child
 of it.
 
-Reading a conversation's jobs takes two calls. Ask the conversation for its
+This page is the HTTP surface for reading those jobs: ask a conversation for its
 jobs, then ask any one job for its history.
 
-Starting one is not something the HTTP API does. A job's session is created from
-inside a running request, through `ctx.requestHost.startDetached`. The shipped
-HTTP router supplies the start operation that call needs, so a job started this
-way runs on the same server that accepted the request — no extra wiring. Supply
-your own `requestHost.startOperation` and yours is used instead, which is how a
-deployment sends background work to a separate worker tier.
-
-In practice that means a task board with a worker declared detached. See [Work
-that outlives the turn](/guides/background-work#workstreams-a-job-with-its-own-session).
+Starting one is server-side only — there is no endpoint for it. A job begins
+inside a running request, usually as a task board with a worker declared
+detached. See [Work that outlives the
+turn](/guides/background-work#workstreams-a-job-with-its-own-session).
 
 ## Listing a conversation's jobs
 
@@ -64,16 +59,15 @@ the board and the worker together in one encoded string. Compare it whole. The
 worker's name is visible inside it, but matching on that substring collides
 across boards.
 
+Together the two identify a job, so two rows sharing a `topic` are separate jobs
+whenever their `coordinate`s differ. A row with a `topic` and no `coordinate` was
+addressed by topic alone, without a board. For which tasks land in the same job
+rather than starting a new one, see [Which tasks share a
+workstream](/guides/background-work#which-tasks-share-a-workstream).
+
 Both labels are optional, as is `status`, so read them with `== null` guards
 rather than assuming every row carries them. A row with neither label is a child
 session that isn't a background job.
-
-The pair is what identifies a job. A job is one board, one worker, one topic, so
-two rows sharing a `topic` are separate jobs whenever their `coordinate`s
-differ, whether that's a different board or a different worker, and tasks
-matching on all three continue one job instead of starting another. A row with a
-`topic` and no `coordinate` was addressed by topic alone, without a board. See
-[Which tasks share a workstream](/guides/background-work#which-tasks-share-a-workstream).
 
 ### What `status` tells you
 

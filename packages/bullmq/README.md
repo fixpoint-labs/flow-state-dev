@@ -18,71 +18,116 @@ pnpm add @flow-state-dev/scheduled
 
 ## Quick start
 
-Two deployment shapes are supported: **co-located** (web + worker in one process) and **separated** (web enqueues, workers run elsewhere).
+Hand `bullmqWorker` to `createFlowState` and actions stop running inline. They become queued jobs.
 
-### Co-located (simplest)
+```ts
+import { createFlowState } from "@flow-state-dev/engine";
+import { bullmqWorker } from "@flow-state-dev/bullmq";
+
+export const flowstate = createFlowState({
+  flows: { billing },
+  stores: { /* a backend the web process and the workers both reach */ },
+  worker: bullmqWorker({ connection: process.env.REDIS_URL! }),
+});
+
+process.on("SIGTERM", () => flowstate.dispose());
+```
+
+A POST to an action returns a request id instead of running the action. A worker picks the job up, runs it against the same stores, and the client attaches to `GET /requests/:id/stream` exactly as it would for an in-process run. Same request, same session.
+
+`createFlowState` hands the dispatch side and the worker the same resolved `{ registry, stores, runtimeConfig }`, so there is no way to wire a mismatched store registry through this path.
+
+### Deployment modes
+
+`mode` picks which sides of the queue this process runs. One flag, not a rewrite.
+
+| Mode | This process | Use it for |
+|---|---|---|
+| `colocated` (default) | enqueues **and** consumes | local dev, single-container deploys |
+| `dispatch-only` | enqueues only | the web tier of a separated deployment |
+| `worker-only` | consumes only | a dedicated worker container |
+
+```ts
+// Web tier
+worker: bullmqWorker({ connection: redisUrl, mode: "dispatch-only" })
+
+// Worker container — build the same createFlowState from shared config
+worker: bullmqWorker({ connection: redisUrl, mode: "worker-only" })
+```
+
+A `worker-only` process installs no dispatcher and typically never serves the router. Call `flowstate.ready()` to start consuming.
+
+Options: `connection`, `mode`, `retry`, `concurrency` (default 2), `lockDuration` (default 300000 — LLM calls are slow), `prefix`, `queueName`, `channelPrefix`. The adapter also exposes `queue` and `runtime` for admin consoles and direct `enqueueAction` use.
+
+## What crosses the queue, and what doesn't
+
+Some limits are worth knowing before you rely on the queue for durability.
+
+### A per-request runtime config does not cross
+
+A `RuntimeConfig` holds live model resolvers, providers and loggers, and none of them serialize. The job payload carries the serializable envelope only: flow kind, action, input, identity, source, metadata, request id. The worker runs it under the config that worker was built with.
+
+The case you will hit is `fsdev run --model`. The override applies to every generator in the command's own process and stops at the queue, so a flow that dispatches through Redis runs on two models at once: the one you passed, and the worker's. Each dispatch that loses the override logs a warning naming the request.
+
+Serializing just the model id would be worse. The worker is a different process with its own gateways and keys, so a forced id may not resolve there at all.
+
+### Background work started from a `worker-only` process is not durable
+
+`worker-only` installs no dispatcher. Background work started there runs **inside the worker process itself**, and nothing is enqueued. That covers `ctx.requestHost.startDetached`, which is what a task board's `dispatch: { mode: "detached" }` worker uses.
+
+That work belongs to the process, not to the queue. If the process stops, the run stops with it and nothing re-runs it: the request record stays where it stopped, and a task-board row the work had claimed is left for lease recovery. An enqueued job, by contrast, costs a retry rather than the work.
+
+A `worker-only` process is a good place to *consume* durable jobs and a poor place to *start* them. For the queue to own the work, start it from a process that has a dispatcher, which means `colocated` or `dispatch-only`.
+
+### `dispose()` does not wait for queued work
+
+`FlowState.dispose()` closes the worker, which drains the jobs this process is currently running, then releases connections. It does not wait for jobs sitting in the queue, or for jobs running in another container. Waiting on those would block shutdown on a process this one does not control.
+
+Background work that runs *in-process* is waited for, bounded by `detachedDrainTimeoutMs`. Work handed to the queue is not.
+
+Shutdown also never writes a terminal status on cancelled work's behalf. The task returns to the board when its lease lapses; the request record is marked `interrupted` by a later sweep.
+
+### Lower-level composition
+
+`bullmqWorker` composes the primitives below, all exported for wiring the framework by hand: a custom transport, or a worker that is not a `createFlowState`.
+
+```ts
+import { Queue } from "bullmq";
+import {
+  createWorkerDispatcher,
+  createFlowWorker,
+  createRedisStreamBridge,
+} from "@flow-state-dev/bullmq";
+
+const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
+const bridge = createRedisStreamBridge({ connection: redisUrl });
+
+// Web side: route all flow dispatches through the queue
+const queue = new Queue("fsd-flows", { connection: redisUrl });
+const dispatcher = createWorkerDispatcher({ queue, bridge });
+
+// Worker side
+const worker = createFlowWorker({
+  connection: redisUrl,
+  deps: { registry, stores, runtimeConfig, bridge },
+});
+
+process.on("SIGTERM", () => worker.close());
+```
+
+`createBullmqRuntime` bundles the queue, an `enqueueAction` helper, `createWorker`, and `close` if you want to enqueue jobs directly:
 
 ```ts
 import { createBullmqRuntime } from "@flow-state-dev/bullmq";
-import { createFlowState } from "@flow-state-dev/engine";
 
-const bullmq = createBullmqRuntime({
-  connection: process.env.REDIS_URL ?? "redis://localhost:6379",
-});
+const bullmq = createBullmqRuntime({ connection: redisUrl });
 
-// Enqueue a job directly
 await bullmq.enqueueAction({
   flowKind: "billing",
   actionName: "generateInvoice",
   input: { month: "2026-06" },
   userId: "system",
 });
-
-// Start a worker in the same process
-bullmq.createWorker({ registry, stores, runtimeConfig });
-
-// Graceful shutdown
-process.on("SIGTERM", () => bullmq.close());
-```
-
-### Separated (web process + worker process)
-
-On the **web side**, use `createWorkerDispatcher` to route all flow dispatches through the queue:
-
-```ts
-import { Queue } from "bullmq";
-import { createFlowState } from "@flow-state-dev/engine";
-import {
-  createWorkerDispatcher,
-  createRedisStreamBridge,
-} from "@flow-state-dev/bullmq";
-
-const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
-
-const bridge = createRedisStreamBridge({ connection: redisUrl });
-const queue = new Queue("fsd-flows", { connection: redisUrl });
-
-const flowstate = createFlowState({
-  flows: { /* ... */ },
-  dispatcher: createWorkerDispatcher({ queue, bridge }),
-});
-```
-
-On the **worker side**, run `createFlowWorker`:
-
-```ts
-import { createFlowWorker, createRedisStreamBridge } from "@flow-state-dev/bullmq";
-
-const bridge = createRedisStreamBridge({
-  connection: process.env.REDIS_URL ?? "redis://localhost:6379",
-});
-
-const worker = createFlowWorker({
-  connection: process.env.REDIS_URL ?? "redis://localhost:6379",
-  deps: { registry, stores, runtimeConfig, bridge },
-});
-
-process.on("SIGTERM", () => worker.close());
 ```
 
 ## Connection
@@ -214,5 +259,7 @@ The kitchen-sink app includes a working integration at `/api/admin/queues` (requ
 ## See also
 
 - [BullMQ background jobs guide](https://flow-state.dev/guides/background-jobs-bullmq) — setup walkthrough with Docker
+- [Work that outlives the turn](https://flow-state.dev/guides/background-work) — how queued action runs relate to side chains and workstreams
+- [Background work](https://flow-state.dev/docs/server/background-work) — reading what a queued job became
 - [Scheduled actions reference](https://flow-state.dev/docs/server/scheduled) — framework scheduling contract
 - [Inbound transports architecture](https://flow-state.dev/docs/advanced/inbound-transports) — dispatcher and transport adapter contracts

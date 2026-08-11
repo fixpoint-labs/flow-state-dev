@@ -313,10 +313,14 @@ export async function handleListActiveRequests(
  * Sweep stale active-request entries for a single user and mark their
  * `in_progress` request records as `interrupted`.
  *
- * The framework only auto-runs `detectInterruptedRequests` at server startup
- * (and many deployments disable that for serverless safety). This endpoint
- * lets a client poke detection on demand — typically the DevTool calls it
- * when it mounts and on every session-list refresh.
+ * The framework runs `detectInterruptedRequests` itself in two places: once at
+ * runtime init, router or not (`createFlowState`'s `#detectInterruptedOnStartup`,
+ * honouring `detectInterruptedOnStartup`), and then periodically wherever a
+ * router exists (`createStaleRequestSweeper`). Neither helps a deployment that
+ * disabled the startup pass, nor a caller that wants an answer now rather than
+ * at the next sweep tick. This endpoint lets a client poke detection on demand —
+ * typically the DevTool calls it when it mounts and on every session-list
+ * refresh.
  *
  * Optional query: `staleThresholdMs` (defaults to the host's configured
  * `staleSweepThresholdMs`, so an unparameterised poke sweeps on the same clock

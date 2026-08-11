@@ -8,10 +8,12 @@
  * the HTTP read/write routes need the same answer, and this module is the one
  * place both derive it from so they cannot disagree.
  *
- * The root comes off the session record (`lineageRootSessionId`), stamped once
- * at child creation. Absent means "I am the root" — every top-level session and
- * every record written before the field existed — so nothing here changes what a
- * lineage that never spawned a child sees (BP-030).
+ * The address comes off the session record (`SessionRecord.lineageId`), minted
+ * at session creation and inherited verbatim by every descendant — so the id is
+ * read, never reconstructed, and a parent and a child cannot compute their way
+ * to different answers. A record written before the field existed has no
+ * `lineageId` and falls back to a value derived from its session key, prefixed
+ * so it can never equal that key (BP-030).
  */
 import type { ResourceCollectionConfig } from "@flow-state-dev/core/types";
 import { getPatternPrefix } from "@flow-state-dev/core/types";
@@ -83,8 +85,9 @@ export function sessionKeyScopeId(
 
 /**
  * The lineage address for this session — the same one `createExecutionContext`
- * resolves. Conjoins the owner, so a root id recreated under a different user
- * names a different bucket (see `resolveLineageScopeId`).
+ * resolves. The stored id *is* the address; nothing is conjoined onto it,
+ * because a recreated session mints a fresh id rather than landing back on the
+ * old one's address.
  */
 function lineageScopeId(session: LineageSession): string {
   // Prefixed for the same reason `createExecutionContext` prefixes it: the

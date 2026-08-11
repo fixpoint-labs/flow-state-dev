@@ -464,6 +464,8 @@ const scopeId = resolveResourceScopeId(userId, flow.kind, isolated); // bare id,
 
 A workstream is a **child session**, not a new scope level. The hierarchy stays `request → session → user → org`; a workstream occupies a different `session` cell and inherits the rest of its identity from the request that started it.
 
+This section covers what a workstream *addresses*. For what happens to it over its lifetime — where it runs per topology, whether it survives the process, what `dispose()` settles, and what recovers an abandoned run — see [Detached Work](./detached-work.md).
+
 `startDetached` derives the child's session id rather than accepting one (`deriveChildSessionId`, `packages/engine/src/context/detached-child.ts`). The key material is the running request's `tenantId`, `userId` and `parentSessionId` plus the caller's routing seed (`topic` + optional `key`), each length-framed, hashed to `dsx_<sha256[0:32]>`. The caller supplies the *target* of the operation and never the *authority* for it. The derivation is deterministic, which is what makes "adopt if it already exists" the ordinary second-task-same-topic path rather than a conflict.
 
 The child inherits `flowKind`, `userId`, `tenantId` and `orgId`, and records `parentSessionId`. `evaluateAdoption` re-checks all five before adopting a record found at the derived key — the public session-create route lets a same-principal caller pre-create a record sitting at that deterministic id, and `createExecutionContext` validates user, tenant and org bindings but not `flowKind` or `parentSessionId`.
@@ -520,15 +522,38 @@ comparing a resolved address against the lineage id, and if the fallback were th
 session key itself, an unstamped session's shared and unshared buckets would be
 indistinguishable — routing unshared resources into the lineage namespace.
 
-**Where the id comes from, and where it must not come from.** Every creator goes
-through `ensureSessionRecord` (`context/ensure-session-record.ts`), which mints
-the id and writes create-if-absent. Both halves are the point: a creator that
-omits the id leaves a session on the derived fallback, where delete-and-recreate
-lands on the same address again; and `get`-then-`set` lets a concurrent first
-action's loser overwrite the winner with a *different* id, stranding its shared
-writes at an address nothing reads. A caller describes the record it wants and
-chooses neither the id nor the write predicate, and must use the record that
-comes back — on a lost race that is the winner's, not its own.
+**Where the id comes from, and where it must not come from.** Two invariants
+hold for every creator, however it writes: the record is stamped with a
+`lineageId` before it lands, and it lands through create-if-absent rather than
+`get`-then-`set`. Both halves are the point. A creator that omits the id leaves
+a session on the derived fallback, where delete-and-recreate lands on the same
+address again; and `get`-then-`set` lets a concurrent first action's loser
+overwrite the winner with a *different* id, stranding its shared writes at an
+address nothing reads.
+
+`ensureSessionRecord` (`context/ensure-session-record.ts`) is how a creator that
+**mints** satisfies both at once — it generates the id and writes `"absent"`, so
+the caller describes the record it wants, chooses neither the id nor the write
+predicate, and must use the record that comes back (on a lost race, the
+winner's, not its own). `createExecutionContext`, the CLI's `run`, and the
+webhook and chat-SDK session resolvers all go through it.
+
+Two creators satisfy the invariants without it, and neither is an oversight:
+
+- **`routes/session-routes.ts`** (the public create-session route) mints inline
+  and writes `"absent"` itself, because it owes the caller a `409` naming the
+  conflict rather than the helper's adopt-the-winner return.
+- **`context/create-request-host.ts`** (the Workstream path) *cannot* use it.
+  `SessionRecordSeed` is `Omit<SessionRecord, "lineageId">`, so a caller is
+  structurally forbidden from supplying an id — and a child must inherit its
+  parent's **verbatim**, not mint a new one. It also runs `evaluateAdoption` on
+  a conflict, which the helper has no notion of.
+
+So the rule a third creator has to follow is the pair of invariants, not the
+helper. **A new creator on the child side that reaches for `ensureSessionRecord`
+mints a fresh lineage for a session that should have inherited one** — which
+silently splits a Workstream's shared resources away from the conversation that
+owns them.
 
 Descendants get the id from `createRequestHost.startDetached`, copied verbatim.
 It is also part of the derived child session id, because otherwise a recreated
@@ -549,10 +574,16 @@ The HTTP read/write routes need the same answer and derive it from `packages/eng
 
 - `sessionKeyScopeId` for a concrete storage key — the collection CRUD routes. A route names a collection by ref, and a broad pattern accepts keys a narrower sibling owns (`tasks/**` accepts `tasks/meta/a`), so the addressed *declaration's* flag is not the key's owner.
 - `readSessionScopeWithLineage` for anything spanning a prefix or a whole scope — `getPersistedData`, the state route, and collection listing. It drops shared keys from the session's own rows before folding in the lineage's, so a child's view is exactly what a block resolves rather than a union of two sessions' resources.
-- `sessionResourceScopeId` only where the declaration genuinely is the subject.
 - `sessionStorageScope` for the scope kind that goes with a resolved address. It and
   `createExecutionContext`'s `storageScopeOf` answer one question, and they have already
   disagreed once about which namespace an unstamped session's shared bucket lives in.
+
+The module also exports `sessionResourceScopeId`, which answers from a
+declaration rather than a key. **It has no callers.** Every route that looked
+like its case turned out to hold a key, not a declaration — which is the
+distinction the first bullet exists for — so reach for it only if a caller
+genuinely arrives holding the declaration and nothing else, and read
+`sessionKeyScopeId`'s contract first to be sure that is what you have.
 
 **Ownership is one rule, in one place.** `resolveOwnershipFlag` (`resources/lineage-scope.ts`) decides which declaration owns a storage key: **an exact single wins outright, then the longest matching collection prefix.** Both `createExecutionContext`'s bucket resolution and the whole-scope reads call it, because two implementations of "longest prefix wins" is how the execution view and the HTTP view drift into disagreeing about which session holds a key.
 

@@ -117,11 +117,13 @@ const board = taskBoard({
 
 Tasks are seeded here to keep the example in one piece. A task added later with `addTask` carries the same `assignee` and `metadata` fields.
 
-Two bounds are worth knowing before you reach for this.
+Some bounds are worth knowing before you reach for this.
 
 **The board has to be reachable from the child session.** The workstream settles its own task, and resource scope resolves against whichever session is running — so a session-scoped board hydrates empty inside a workstream and has nothing to settle. Give the collection `sharedToWorkstream: true` and the whole lineage settles against one ledger. `user` and `org` scope need nothing extra.
 
-**On serverless without a queue adapter, the work is bounded by the function.** Detached work runs inside the invocation that started it, so the function's maximum duration is the ceiling. Add a queue adapter and it moves to a worker process, where it isn't.
+**On serverless without a queue adapter, the work is bounded by the function.** Detached work runs inside the invocation that started it, so the function's maximum duration is the ceiling. Add a queue adapter in `colocated` or `dispatch-only` mode and it moves to a worker process, where it isn't.
+
+**A `worker-only` process starts workstreams that aren't durable.** That mode consumes the queue and dispatches nothing, so a workstream started there runs inside the worker process instead of going onto the queue — and if the process stops, nothing re-runs it. It's a good place to consume durable jobs and a poor place to start them. Start them from a process that dispatches: `colocated` or `dispatch-only`.
 
 ### Which tasks share a workstream
 
