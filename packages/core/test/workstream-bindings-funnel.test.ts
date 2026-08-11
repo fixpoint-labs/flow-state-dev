@@ -338,3 +338,84 @@ describe("deriving does not disturb the other rails", () => {
     expect(Object.keys(chain.declaredResources ?? {})).toEqual(["entries"]);
   });
 });
+
+describe("a board handed to a generator as a tool still reaches the flow", () => {
+  /**
+   * `tools: [board.drain]` is a supported shape — assigning board work directly
+   * to a tool shipped in FIX-925 — and a generator bubbles none of its tools'
+   * rails. So a detached board reached only that way used to contribute no
+   * bindings at all: `flow.workstream` was never built, and the first time the
+   * model called the tool the board claimed a row, spawned, and failed
+   * `no-workstream-core`, recording the task as failed.
+   *
+   * Asserted on `flow.workstream` as well as on the bindings map, because the
+   * map is an intermediate: what a detached dispatch actually resolves is the
+   * core, and a flow with bindings but no core fails in the same place with the
+   * same symptom.
+   */
+  it("collects bindings from a static tools array", () => {
+    const agent = handler({ name: "agent", execute: () => null });
+    (agent as unknown as { config: { tools?: unknown[] } }).config.tools = [
+      stampedDrain("implement"),
+    ];
+
+    const flow = defineFlow({
+      kind: "board",
+      actions: { run: { block: agent } },
+    } as never)({ id: "board" });
+
+    expect(boundWorkers(flow as { workstreamBindings?: WorkstreamBindings })).toEqual([
+      "implement",
+    ]);
+    expect((flow as { workstream?: unknown }).workstream).toBeDefined();
+  });
+
+  it("reaches a board nested inside a tool's own composition", () => {
+    // The tool is a root of its own subtree, so its accumulated union is what
+    // gets read — the board does not have to be the tool itself.
+    const inner = sequencer({ name: "tool-inner" }).step(stampedDrain("review"));
+    const agent = handler({ name: "agent-nested", execute: () => null });
+    (agent as unknown as { config: { tools?: unknown[] } }).config.tools = [inner];
+
+    const flow = defineFlow({
+      kind: "board",
+      actions: { run: { block: agent } },
+    } as never)({ id: "board" });
+
+    expect(boundWorkers(flow as { workstreamBindings?: WorkstreamBindings })).toEqual(["review"]);
+  });
+
+  it("still refuses a rail dropped INSIDE a tool's composition", () => {
+    // A missing tool edge and a dropped rail are different failures and must not
+    // be conflated: collecting from every reachable block would repair a dropped
+    // rail by reading it off the child, and the propagation assertion could
+    // never fire again. A late stamp under a tool is that same bug one level in.
+    const child = sequencer({ name: "late-under-tool" }).tap(
+      handler({ name: "w-late", execute: () => undefined })
+    );
+    const toolRoot = sequencer({ name: "tool-root" }).step(child);
+    declareWorkstreamBindings(child, [binding("issue-work-late", "implement-late")]);
+
+    const agent = handler({ name: "agent-late", execute: () => null });
+    (agent as unknown as { config: { tools?: unknown[] } }).config.tools = [toolRoot];
+
+    expect(() =>
+      defineFlow({ kind: "board", actions: { run: { block: agent } } } as never)
+    ).toThrow(/issue-work-late/);
+  });
+
+  it("leaves a flow whose tools declare nothing detached untouched", () => {
+    const agent = handler({ name: "agent-plain", execute: () => null });
+    (agent as unknown as { config: { tools?: unknown[] } }).config.tools = [
+      handler({ name: "plain-tool", execute: () => null }),
+    ];
+
+    const flow = defineFlow({
+      kind: "plain",
+      actions: { run: { block: agent } },
+    } as never)({ id: "plain" });
+
+    expect(flow.workstreamBindings).toBeUndefined();
+    expect((flow as { workstream?: unknown }).workstream).toBeUndefined();
+  });
+});

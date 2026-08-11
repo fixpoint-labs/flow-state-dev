@@ -37,6 +37,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, handler } from "@flow-state-dev/core";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import {
   createFlowApiRouter,
   createFlowRegistry,
@@ -50,7 +51,11 @@ import {
   type Task,
   type TaskWorkerInput,
 } from "@flow-state-dev/orchestration/tasks";
-import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
+import {
+  taskBoard,
+  taskWorkerInputSchema,
+  TASK_BOARD_META_COMPONENT_TYPE,
+} from "@flow-state-dev/orchestration/task-board";
 import { createMockModelResolver } from "@flow-state-dev/testing";
 import { z } from "zod";
 
@@ -205,6 +210,35 @@ async function rewriteRow(
   );
 }
 
+/**
+ * The board's own completion item, read off the parent's emitted items.
+ *
+ * `task-board-meta` is a transient component item, so it never reaches the
+ * persisted log — the run's live item list is the only place it exists, which is
+ * exactly where a consumer subscribing to the stream would see it.
+ */
+function boardMeta(items: readonly RuntimeItem[]):
+  | { status: string; terminationReason: string; counts: Record<string, number> }
+  | undefined {
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const item = items[i] as { type?: string; component?: string; data?: unknown };
+    if (item.type === "component" && item.component === TASK_BOARD_META_COMPONENT_TYPE) {
+      const data = item.data as {
+        status?: string;
+        terminationReason?: string;
+        counts?: Record<string, number>;
+      };
+      if (data.status !== "completed") continue;
+      return {
+        status: data.status,
+        terminationReason: data.terminationReason ?? "",
+        counts: data.counts ?? {},
+      };
+    }
+  }
+  return undefined;
+}
+
 describe("a detached board's launching request returns while the work is outstanding", () => {
   it("completes the parent with the row still in progress, then settles it in the Workstream", async () => {
     const stores = createInMemoryStores();
@@ -256,6 +290,24 @@ describe("a detached board's launching request returns while the work is outstan
     // construction. Anyone tempted to replace `runsElsewhere` with that
     // comparison should fail here first.
     expect(afterParent?.claimedBy?.sessionId).toBe("s_parent");
+
+    // WHAT THE PARENT TOLD ITS CONSUMERS. The drain runs its completion meta
+    // unconditionally after the fan-out, and that item's structural test is
+    // `completed === total` — which a successful hand-off fails, because the row
+    // it handed over is still `in_progress`. So every healthy detached board
+    // announced itself as a terminal failure, permanently: nothing re-emits this
+    // item when the child eventually settles.
+    //
+    // Asserted on the emitted item rather than on the classifier, because the
+    // classifier was right the whole time. The defect was in what the outer
+    // drain did with its answer, and only a full drain produces that.
+    const parentMeta = boardMeta(parent.items);
+    expect(parentMeta?.status).toBe("completed");
+    expect(parentMeta?.terminationReason).toBe("handed-off");
+    // Not `all-completed` either: a consumer reads that as "nothing left to do"
+    // and stops watching while a child is still working.
+    expect(parentMeta?.counts.in_progress).toBe(1);
+    expect(parentMeta?.counts.completed).toBe(0);
 
     // The hand-off left runnable work behind. Replaying the captured envelope
     // through the workstream source is what the real host would have done.

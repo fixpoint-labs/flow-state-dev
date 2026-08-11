@@ -29,11 +29,29 @@ rather than at the first restart:
   and caller-supplied factory backings are refused
 - a detached worker may not declare `sessionStateSchema`, since detached workers
   share one execution flow
+- the collection may not be `scope: "session"`. A Workstream runs in its own
+  session, so a session-scoped ledger resolves empty there and the child never
+  finds the row it was dispatched for — declare it `scope: "user"` or
+  `scope: "org"`
 
 Two tasks continue in the same Workstream when they are addressed to the same
 board, the same worker and the same topic. A task with no topic falls back to its
 own id, so continuity is something a task opts into rather than something two
 untitled tasks fall into together.
+
+A board that finishes by handing its remaining work over now says so: the final
+`task-board-meta` item carries a new `terminationReason: "handed-off"` rather
+than `"blocked-by-failures"`. The old value made a board that did exactly what it
+was designed to do report itself as a terminal failure, permanently — nothing
+re-emits that item when the child settles. `counts.in_progress` is how many rows
+are still running elsewhere.
+
+A board handed to a model as a tool (`tools: [board.drain]`) can now declare
+detached workers. A generator does not carry its tools' declarations, so the
+board's routing never reached the flow and the first tool call claimed a task,
+failed to start it, and recorded the task as failed. Tools named in a static
+array are now collected. A tool set resolved at runtime still is not — its
+contents do not exist when the flow is built.
 
 Two bounds worth knowing. Work is settled by the Workstream, which must be able
 to address the board it settles against, so a board whose rows a detached worker

@@ -441,6 +441,77 @@ function collectWorkstreamBindings(
   return collected;
 }
 
+/**
+ * A generator's **statically declared** tools, or nothing (FIX-1074).
+ *
+ * `tools` is a `ToolsSlot` — an array, or a function resolved per call with the
+ * input and context in hand. Only the array is knowable here, and the function
+ * form is genuinely unknowable rather than merely inconvenient: what it returns
+ * depends on runtime values that do not exist at definition time.
+ */
+function staticTools(block: BlockDefinition): readonly BlockDefinition[] {
+  const tools = (block.config as { tools?: unknown }).tools;
+  return Array.isArray(tools) ? (tools as BlockDefinition[]) : [];
+}
+
+/**
+ * Walk the flow's block graph once, returning the two views the caller needs.
+ *
+ * - `reachable` — every block, through composition AND through a generator's
+ *   static `tools` array. What the reachability assertion checks.
+ * - `toolRoots` — the blocks arrived at *across a tool edge*. What the collector
+ *   adds to the action roots.
+ *
+ * **The two views are different on purpose, and collapsing them re-opens a bug.**
+ * A composed child's bindings bubble into its parent, so reading them off the
+ * ROOT and reading them off the child should agree — and when they don't, some
+ * composition step dropped the rail, which is precisely what
+ * {@link assertWorkstreamBindingsReachable} exists to catch. Collecting from
+ * every reachable block instead would repair that silently by reading the child
+ * directly, and the assertion could never fire again.
+ *
+ * A tool edge is not that. A generator is a leaf that bubbles none of its tools'
+ * rails **by design**, so a tool's bindings are missing for a structural reason
+ * rather than a propagation failure — and each tool block is the root of its own
+ * composed subtree, so its own accumulated union is authoritative exactly as an
+ * action root's is. That is why tool roots are collected and their descendants
+ * are not.
+ *
+ * **The tool edge is here because a board can be handed to a model as a tool**
+ * (`tools: [board.drain]`, the shape FIX-925 shipped). Without it a detached
+ * board reached only that way contributed no bindings, `flow.workstream` was
+ * never built, and the first time the model called the tool the board claimed a
+ * row, spawned, and failed `no-workstream-core` — recording the task as failed
+ * for a configuration the author had every reason to think was supported
+ * (FIX-1074).
+ *
+ * A block is visited once: blocks are shared freely (one handler across several
+ * actions) and a router route may point back up the tree, so revisits and cycles
+ * are ordinary rather than exceptional. `viaTool` is recorded before that check,
+ * so a block reached both ways still counts as a tool root.
+ */
+function walkFlowGraph(roots: readonly BlockDefinition[]): {
+  reachable: BlockDefinition[];
+  toolRoots: BlockDefinition[];
+} {
+  const seen = new Set<BlockDefinition>();
+  const toolRoots = new Set<BlockDefinition>();
+  const queue: { block: BlockDefinition; viaTool: boolean }[] = roots.map(
+    (block) => ({ block, viaTool: false })
+  );
+  while (queue.length > 0) {
+    const { block, viaTool } = queue.pop()!;
+    if (viaTool) toolRoots.add(block);
+    if (seen.has(block)) continue;
+    seen.add(block);
+    // Rescue handlers installed via `config.rescue` are already folded into
+    // `childBlocks` by `buildBlock`.
+    for (const child of block.childBlocks ?? []) queue.push({ block: child, viaTool: false });
+    for (const tool of staticTools(block)) queue.push({ block: tool, viaTool: true });
+  }
+  return { reachable: [...seen], toolRoots: [...toolRoots] };
+}
+
 /** True when any declared block (root or lifecycle observer) opted into `requireOrg`. */
 /**
  * The distinct runner blocks in a binding set (FIX-982 P3a).
@@ -468,17 +539,23 @@ function collectRequiresOrg(blocks: readonly BlockDefinition[]): boolean {
  * Assert that every detached board reachable from this flow's declared blocks
  * resolves to a binding on the flow (FIX-982).
  *
- * `collectWorkstreamBindings` reads the union off each root and trusts that
- * composition carried it there. This walks the tree and checks that trust. The
- * two disagree exactly when some composition step dropped a child's bindings on
- * the way up — the failure this rail has had over and over — and the difference
- * between catching it here and not catching it is the difference between a flow
- * that refuses to define and a detached task that is admitted, claimed,
- * dispatched, and then never runs.
+ * `collectWorkstreamBindings` reads the union off each block and trusts that
+ * composition carried it there. This checks that trust against the same
+ * {@link reachableBlocks} closure. The two disagree exactly when some
+ * composition step dropped a child's bindings on the way up — the failure this
+ * rail has had over and over — and the difference between catching it here and
+ * not catching it is the difference between a flow that refuses to define and a
+ * detached task that is admitted, claimed, dispatched, and then never runs.
  *
  * It is checkable at all only because `BlockDefinition.childBlocks` now retains
  * the sequencer's children. A board's drain IS a sequencer, so while that edge
  * was closure-captured a traversal could not reach a single real board.
+ *
+ * **Both sides read the same closure, deliberately.** An earlier cut walked the
+ * tree here and read roots there, and the tool edge is exactly where that would
+ * have bitten: the collector would have gained a board the assertion could not
+ * see, or the reverse, and a flow would either define with a hole in it or
+ * refuse for a binding that was in fact present.
  *
  * Identity, not key equality, is the test: `mergeWorkstreamBindings` dedupes on
  * the binding object, so a coordinate present under a *different* object is a
@@ -486,20 +563,10 @@ function collectRequiresOrg(blocks: readonly BlockDefinition[]): boolean {
  */
 function assertWorkstreamBindingsReachable(
   kind: string,
-  roots: readonly BlockDefinition[],
+  reachable: readonly BlockDefinition[],
   collected: WorkstreamBindings | undefined
 ): void {
-  const seen = new Set<BlockDefinition>();
-  const queue: BlockDefinition[] = [...roots];
-
-  while (queue.length > 0) {
-    const block = queue.pop()!;
-    // Blocks are shared freely (one handler reused across actions) and a
-    // router route may point back up the tree, so both revisits and cycles are
-    // ordinary rather than exceptional.
-    if (seen.has(block)) continue;
-    seen.add(block);
-
+  for (const block of reachable) {
     for (const binding of block.workstreamBindings?.values() ?? []) {
       const key = workstreamBindingKey(binding.boardId, binding.coordinateKey);
       if (collected?.get(key) === binding) continue;
@@ -512,16 +579,6 @@ function assertWorkstreamBindingsReachable(
           `declared wrongly: some step rebuilt a block without carrying its children over.`
       );
     }
-
-    for (const child of block.childBlocks ?? []) queue.push(child);
-    // Rescue handlers installed via `config.rescue` are already folded into
-    // `childBlocks` by `buildBlock`. Generator `config.tools` is deliberately
-    // NOT walked: a generator is a leaf that does not bubble its tools' rails at
-    // all, so walking that edge would report a different, pre-existing gap
-    // rather than the propagation failure this assertion is for. Keeping the
-    // scope tight is the point — an assertion that fires for two unrelated
-    // reasons is one people learn to route around, and this one has to stay
-    // worth stopping for. Widen it only together with the rail it checks.
   }
 }
 
@@ -839,11 +896,22 @@ function createFlowInstance(
   // declare would be missing from `flow.resources` — and the failure surfaces as
   // an unresolved resource inside the Workstream, far from the declaration.
   // `requiresOrg` is worse: it would simply not be enforced.
-  const workstreamBindings = collectWorkstreamBindings(declaredBlocks);
-  // Reachability stays on the ORIGINAL list: the question it answers is whether
-  // the flow can route to a board it can reach, and the runners are what it
-  // would route to, so including them would make the check trivially true.
-  assertWorkstreamBindingsReachable(kind, declaredBlocks, workstreamBindings);
+  //
+  // Collected from the action roots PLUS every block reached across a static
+  // `tools` edge, because a board handed to a model as a tool is a supported
+  // shape and a generator bubbles none of its tools' rails (FIX-1074).
+  // Deliberately not from every reachable block — see {@link walkFlowGraph} for
+  // why that would silently repair the propagation bug the assertion catches.
+  const graph = walkFlowGraph(declaredBlocks);
+  const workstreamBindings = collectWorkstreamBindings([
+    ...declaredBlocks,
+    ...graph.toolRoots,
+  ]);
+  // Reachability stays on the closure of the ORIGINAL roots: the question it
+  // answers is whether the flow can route to a board it can reach, and the
+  // runners are what it would route to, so including them would make the check
+  // trivially true.
+  assertWorkstreamBindingsReachable(kind, graph.reachable, workstreamBindings);
   const declaringBlocks =
     workstreamBindings === undefined
       ? declaredBlocks

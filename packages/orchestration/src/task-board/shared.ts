@@ -90,6 +90,36 @@ export function depsSatisfied(
 export type RunsElsewhere = (task: Task) => boolean;
 
 /**
+ * Is this row **handed off** — routed to a Workstream, and still held by one?
+ *
+ * The conjunction is the whole definition and neither half stands alone:
+ * routing says the work belongs elsewhere, the live lease says somebody is
+ * still on it. A row that is detached by routing and abandoned in fact is not
+ * handed off; it is recoverable, and every caller here has to treat it that way.
+ *
+ * Exported because two different questions read it and must not answer it
+ * differently. {@link countWaitable} asks "is this row mine to wait on"; the
+ * board's completion meta asks "did this board finish, or hand its remaining
+ * work over" — and a board that answered those with two spellings would report
+ * a drain it correctly exited as a failure, or a genuinely stuck board as a
+ * clean hand-off. One predicate, one answer (FIX-1074).
+ *
+ * `runsElsewhere` absent means the board declares nothing detached, so nothing
+ * is ever handed off and every caller keeps its pre-detachment behaviour
+ * bit-for-bit.
+ */
+export function isHandedOff(
+  task: Task,
+  now: number,
+  runsElsewhere: RunsElsewhere | undefined
+): boolean {
+  if (runsElsewhere === undefined) return false;
+  return (
+    task.status === "in_progress" && runsElsewhere(task) && !leaseLapsed(task, now)
+  );
+}
+
+/**
  * Count rows in `statuses`, minus the `in_progress` ones `runsElsewhere`
  * places outside this drain.
  *
@@ -162,13 +192,7 @@ function countWaitable(
   let waiting = 0;
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows[i]!;
-    if (
-      row.status === "in_progress" &&
-      runsElsewhere(row) &&
-      !leaseLapsed(row, now)
-    ) {
-      continue;
-    }
+    if (isHandedOff(row, now, runsElsewhere)) continue;
     waiting += 1;
   }
   return waiting;
