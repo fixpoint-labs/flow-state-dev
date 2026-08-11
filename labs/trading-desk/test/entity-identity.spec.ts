@@ -14,6 +14,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  anyFieldMentionsEntity,
   entityNameTokens,
   publisherIsSubject,
   subjectEntityFromProfile,
@@ -320,6 +321,43 @@ describe("textMentionsEntity", () => {
     expect(textMentionsEntity("Nvidia's data-center mix keeps climbing", xp)).toBe(false);
     // Lower-case `xp` is ordinary prose ("gained xp"), not a mention.
     expect(textMentionsEntity("the player gained xp quickly", xp)).toBe(false);
+  });
+
+  it("does not let a FIELD BOUNDARY manufacture the adjacent pair", () => {
+    // The adjacency rule exists to stop a bag-of-words match. Concatenating a
+    // result's title + snippet + URL put the end of one field beside the start
+    // of the next, manufacturing the exact phrase the rule looks for: a title
+    // ending "American" and an unrelated snippet opening "Financial pressure…"
+    // verified American Financial Group. Neither field is about the issuer.
+    const afg = subjectEntityFromProfile("AFG", {
+      source: "finnhub",
+      name: "American Financial Group Inc",
+    }) as SubjectEntity;
+    const title = "Why the consumer is still American";
+    const snippet = "Financial pressure builds as rates rise";
+    const url = "https://example.com/macro-outlook";
+    expect(anyFieldMentionsEntity([title, snippet, url], afg)).toBe(false);
+    // The concatenation is what was wrong, and it still matches — proving the
+    // fix is the per-field call, not a change to the matching rules.
+    expect(textMentionsEntity(`${title} ${snippet} ${url}`, afg)).toBe(true);
+    // A genuine within-field mention is untouched.
+    expect(
+      anyFieldMentionsEntity(["American Financial Group beat estimates", "", url], afg),
+    ).toBe(true);
+  });
+
+  it("does not let a field boundary manufacture a dotted ticker run", () => {
+    // Same defect, second rule: `BRK.B` normalizes to the two-token run
+    // `BRK B`, so a title ending "BRK" beside a snippet opening "B" produced it.
+    const brk = subjectEntityFromProfile("BRK.B", {
+      source: "finnhub",
+      name: "Berkshire Hathaway Inc",
+    }) as SubjectEntity;
+    const title = "Analyst note on BRK";
+    const snippet = "B shares closed at a record";
+    expect(anyFieldMentionsEntity([title, snippet, "https://ex.com/x"], brk)).toBe(false);
+    // Within one field it still verifies.
+    expect(anyFieldMentionsEntity(["BRK.B closes at a record", "", ""], brk)).toBe(true);
   });
 
   it("still verifies a distinctive token with no adjacency requirement", () => {

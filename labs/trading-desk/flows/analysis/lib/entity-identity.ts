@@ -421,6 +421,12 @@ function casedTokenRun(text: string): string {
  * deliberately avoided (token equality only), so `marks` does not match
  * `marketwatch`.
  *
+ * **`text` must be ONE field exactly as it arrived.** Two of the rules below
+ * match a token SEQUENCE, so a caller holding several fields must use
+ * `anyFieldMentionsEntity` — joining them first manufactures sequences no field
+ * contained. See the note there; it is the failure this guard is least able to
+ * notice, because the assembled string looks like ordinary evidence.
+ *
  * **An ordinary-word name token never verifies alone.** `Target Corporation`
  * reduces to `target`, and "the analyst raises the price target" is prose about
  * any issuer at all; accepting it would verify a Tesla article as evidence about
@@ -494,6 +500,37 @@ export function textMentionsEntity(text: string, subject: SubjectEntity): boolea
     }
   }
   return false;
+}
+
+/**
+ * True when ANY ONE of `fields` names the subject. The entry point every caller
+ * with more than one field must use.
+ *
+ * **Never concatenate the fields and match the result.** Two of this module's
+ * rules match a SEQUENCE of tokens — the ordinary-word pair, which requires
+ * adjacency, and a dotted class share's ticker run (`BRK.B` → `BRK B`). Joining
+ * a result's title, snippet, and URL puts the end of one field next to the start
+ * of the next, so the join manufactures sequences no source field contained:
+ * a title ending `American` and a snippet opening `Financial pressure…` produce
+ * `american financial` and verify American Financial Group; a title ending `BRK`
+ * and a snippet opening `B` produce the `BRK B` ticker run. The adjacency rule
+ * exists to stop a bag-of-words match, and concatenation hands it the exact
+ * phrase it looks for.
+ *
+ * **A separator cannot fix this** — `normalizeEntityName` collapses every
+ * non-alphanumeric RUN to a single space, so a newline, a pipe, or any other
+ * punctuation normalizes to precisely the space that creates the adjacency. A
+ * separator would look like a fix and change nothing. Matching each field as it
+ * arrived is the only form that can't invent evidence.
+ *
+ * Single-token rules (a distinctive name token, a short name token) were never
+ * at risk: a boundary always splits, so it can never fuse `3` and `M` into `3M`.
+ */
+export function anyFieldMentionsEntity(
+  fields: readonly string[],
+  subject: SubjectEntity,
+): boolean {
+  return fields.some((field) => textMentionsEntity(field, subject));
 }
 
 /**

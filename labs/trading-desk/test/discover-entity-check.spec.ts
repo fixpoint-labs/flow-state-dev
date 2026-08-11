@@ -253,6 +253,64 @@ describe("entity-scoped discovery drops wrong-company results", () => {
   });
 });
 
+describe("field boundaries cannot manufacture a match", () => {
+  it("drops a macro result whose title/snippet join into the issuer's name", () => {
+    // The concatenation defect, end to end on the real tool path. Title ends
+    // "American"; snippet opens "Financial pressure…". Neither field names the
+    // issuer, but `title + " " + snippet + " " + url` contains the adjacent pair
+    // `american financial`, so the result was marked `verified` — the ordinary-
+    // token adjacency rule defeated by its own input preparation.
+    mockSearchResults([
+      {
+        title: "Why the consumer is still American",
+        url: "https://example.com/macro-consumer-outlook",
+        snippet: "Financial pressure builds as rates rise across the economy.",
+        source: "tavily" as const,
+      },
+    ]);
+    return runDiscovery({
+      action: "discoverFundamentals",
+      state: stateFor("live", "AFG"),
+      profile: profileOf({
+        ticker: "AFG",
+        name: "American Financial Group Inc",
+        website: null,
+      }),
+      sessionId: "entity-cross-field",
+    }).then(({ payload }) => {
+      expect(payload.entityCheck).toBe("verified");
+      expect(payload.items).toEqual([]);
+      expect(payload.excluded).toHaveLength(1);
+    });
+  });
+
+  it("still keeps a result that names the issuer within a single field", () => {
+    // The no-regression half: per-field matching must not cost a real mention.
+    mockSearchResults([
+      {
+        title: "American Financial Group beats on premium growth",
+        url: "https://example.com/afg-q3",
+        snippet: "The insurer raised its full-year outlook.",
+        source: "tavily" as const,
+      },
+    ]);
+    return runDiscovery({
+      action: "discoverFundamentals",
+      state: stateFor("live", "AFG"),
+      profile: profileOf({
+        ticker: "AFG",
+        name: "American Financial Group Inc",
+        website: null,
+      }),
+      sessionId: "entity-cross-field-ok",
+    }).then(({ payload }) => {
+      expect(payload.entityCheck).toBe("verified");
+      expect(payload.items).toHaveLength(1);
+      expect(payload.excluded).toEqual([]);
+    });
+  });
+});
+
 describe("the guard degrades honestly instead of failing closed", () => {
   it("tags `unchecked` and keeps every item when the subject's identity is unresolved", async () => {
     mockSearchResults([WRONG_COMPANY, RIGHT_COMPANY]);

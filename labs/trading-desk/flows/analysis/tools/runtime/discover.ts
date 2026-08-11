@@ -20,9 +20,9 @@
  */
 import { resolveProvider } from "@flow-state-dev/tools/search";
 import {
+  anyFieldMentionsEntity,
   publisherIsSubject,
   subjectEntityFromProfile,
-  textMentionsEntity,
   type SubjectEntity,
 } from "../../lib/entity-identity";
 import { emptyPayload, skippedDiscoveryPayload } from "../empty-payloads";
@@ -197,7 +197,10 @@ export function applyEntityCheck(
   for (const item of payload.items) {
     const mentioned =
       publisherIsSubject(item.publisher, subject) ||
-      textMentionsEntity(`${item.title} ${item.snippet} ${item.url}`, subject);
+      // Each field on its own — see `anyFieldMentionsEntity`. Concatenating them
+      // put the end of one field beside the start of the next, manufacturing the
+      // very adjacency the ordinary-token rule looks for.
+      anyFieldMentionsEntity([item.title, item.snippet, item.url], subject);
     if (mentioned) items.push({ ...item, id: String(items.length + 1) });
     else {
       excluded.push({
