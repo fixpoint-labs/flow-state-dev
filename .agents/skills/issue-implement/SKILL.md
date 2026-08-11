@@ -483,7 +483,7 @@ Before you end this PR-feedback pass, **enumerate every code comment in the batc
 
 Any code comment with the `eyes` reaction but **no reply is not done**: post its reply now. **Do not end the round, and do not treat the batch as processed, while any actionable comment sits at eyes-only.** The reviewer relies on the reply as the visible outcome — a comment that was silently read, considered, and even acted on, but never answered, is a failure of this gate, not a completed item. (Non-code conversation is exempt — it's done at the `eyes` reaction.)
 
-**Measure the total, not the delta.** Check each changed file against `issue-spec` 6.5.2's growth trigger; if it trips, re-draft before closing, then repeat 10.4's test/commit/push, re-point every reply whose `path:line` moved, and redo the reconciliation above so nothing cites text that no longer exists.
+**Measure the total, not the delta.** Check each changed file against `issue-spec` 6.5.2's triggers; if either trips, re-draft before closing, then repeat 10.4's test/commit/push, re-point every reply whose `path:line` moved, and redo the reconciliation above so nothing cites text that no longer exists.
 
 #### 10.7: Continue until merged — or until the twelfth round
 
