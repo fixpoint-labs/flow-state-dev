@@ -28,6 +28,5 @@ export const discover_fundamentals_context = handler({
       input,
       ctx,
       queryTemplate: FUNDAMENTALS_QUERY,
-      entityScoped: true,
     }),
 });

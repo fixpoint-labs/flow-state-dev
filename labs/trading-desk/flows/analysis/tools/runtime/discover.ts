@@ -197,11 +197,33 @@ export function applyEntityCheck(
 }
 
 /**
+ * Whether each tool's query is about the company itself (entity-scoped, so a
+ * result naming a different issuer is contamination) or about the environment
+ * around it (macro conditions, sector rotation, peer earnings — where a good
+ * result frequently never names the subject).
+ *
+ * A total map over `DiscoveryTool` rather than a per-call-site flag: this is a
+ * fixed property of the query, and adding a ninth tool should be a compile
+ * error here, not a silently-defaulted argument at one of nine call sites.
+ */
+const ENTITY_SCOPED: Record<DiscoveryTool, boolean> = {
+  discover_fundamentals_context: true,
+  discover_sentiment_context: true,
+  discover_technical_context: true,
+  discover_profile_context: true,
+  discover_quant_context: true,
+  discover_disclosure_context: true,
+  // The environment around the name, not the name itself. Filtering on identity
+  // here would delete exactly what these two were sent to fetch.
+  discover_macro_context: false,
+  discover_market_context: false,
+};
+
+/**
  * The shared body of all eight `discover_*_context` tools: the cost gate, the
  * fixture/live/record dispatch, and the entity check. The tools differ only in
- * name, description, query template, and whether their query is about the
- * entity or about the environment around it, so the body lives here once
- * (BP-024) — a guard copied eight times is a guard that drifts.
+ * name, description, and query template, so the body lives here once (BP-024)
+ * — a guard copied eight times is a guard that drifts.
  *
  * The cost gate fires BEFORE the fixture branch deliberately: a fixture-mode
  * regression run on the `fast` preset should observe the same no-op
@@ -217,11 +239,9 @@ export async function runDiscovery<T extends DiscoveryTool>(args: {
   input: ToolInput<T>;
   ctx: DiscoveryCtx;
   queryTemplate: (ticker: string) => string;
-  /** True when the query asks about the company itself; false when it asks
-   *  about the macro / sector environment around it. */
-  entityScoped: boolean;
 }): Promise<ToolOutput<T>> {
-  const { tool, input, ctx, queryTemplate, entityScoped } = args;
+  const { tool, input, ctx, queryTemplate } = args;
+  const entityScoped = ENTITY_SCOPED[tool];
   if (ctx.session.state.costPreset !== "full") {
     return skippedDiscoveryPayload(tool, input);
   }

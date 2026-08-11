@@ -108,20 +108,38 @@ function hostOf(url: string | null): string | null {
   }
 }
 
+/** Tokenize on non-alphanumeric runs, PRESERVING case, as a padded string so a
+ *  multi-token sequence can be matched with `includes` without regex escaping. */
+function casedTokenRun(text: string): string {
+  return ` ${text.split(/[^A-Za-z0-9]+/).filter((t) => t !== "").join(" ")} `;
+}
+
 /**
  * True when `text` names the subject — the ticker as a standalone token, or
  * any distinctive token of the company name. Substring matching is deliberately
  * avoided (token equality only), so `marks` does not match `marketwatch`.
+ *
+ * **The ticker match is case-SENSITIVE; the name match is not.** Plenty of
+ * tickers are ordinary words — `ON`, `IT`, `ALL`, `CAT`, `KEY`, `GAP`. Matching
+ * those case-insensitively lets routine prose ("… guidance depends *on* demand")
+ * verify any result at all, which would silently disable this guard for exactly
+ * the ambiguous symbols whose search results are most likely to be contaminated.
+ * Requiring the uppercase form costs a narrow slice of recall — a result whose
+ * ONLY mention of the subject is a lower-case ticker in a URL slug, with the
+ * company unnamed in both title and snippet — and that item is weak evidence
+ * anyway. `$NVDA` matches for free: `$` is a token delimiter.
+ *
+ * Name tokens stay case-insensitive: they are 4+ characters and stripped of
+ * corporate-form boilerplate, so they do not collide with ordinary prose the way
+ * a two-letter symbol does.
  */
 export function textMentionsEntity(text: string, subject: SubjectEntity): boolean {
+  // Padded-token-run for the ticker so a dotted class share (`BRK.B` → `BRK B`)
+  // matches as a token sequence rather than a single token.
+  const tickerRun = casedTokenRun(subject.ticker);
+  if (tickerRun.trim() !== "" && casedTokenRun(text).includes(tickerRun)) return true;
   const normalized = normalizeEntityName(text);
   if (normalized === "") return false;
-  const normalizedTicker = normalizeEntityName(subject.ticker);
-  // Padded-substring for the ticker so a dotted class share (`BRK.B` →
-  // `brk b`) matches as a token sequence rather than a single token.
-  if (normalizedTicker !== "" && ` ${normalized} `.includes(` ${normalizedTicker} `)) {
-    return true;
-  }
   const tokens = new Set(normalized.split(" "));
   for (const t of subject.nameTokens) if (tokens.has(t)) return true;
   return false;
@@ -130,6 +148,13 @@ export function textMentionsEntity(text: string, subject: SubjectEntity): boolea
 /**
  * True when a publisher domain is the subject's own site — a first-party page
  * is about the subject even when the extract never names it.
+ *
+ * Subdomains of the configured host count: press releases and filings live on
+ * `investor.` / `newsroom.` / `ir.` hosts, and those pages routinely carry a
+ * generic title ("Third Quarter 2026 Results") that names no company. Without
+ * this, the most authoritative evidence the desk can get would be dropped as an
+ * entity mismatch. The match is anchored on a leading dot, so `evilnvidia.com`
+ * and `nvidia.com.attacker.net` are still third-party.
  */
 export function publisherIsSubject(
   publisher: string | null,
@@ -137,5 +162,5 @@ export function publisherIsSubject(
 ): boolean {
   if (publisher === null || subject.websiteHost === null) return false;
   const p = publisher.replace(/^www\./, "").toLowerCase();
-  return p === subject.websiteHost;
+  return p === subject.websiteHost || p.endsWith(`.${subject.websiteHost}`);
 }

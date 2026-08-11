@@ -29,6 +29,5 @@ export const discover_market_context = handler({
       input,
       ctx,
       queryTemplate: MARKET_QUERY,
-      entityScoped: false,
     }),
 });

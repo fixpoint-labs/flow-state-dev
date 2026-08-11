@@ -28,6 +28,5 @@ export const discover_disclosure_context = handler({
       input,
       ctx,
       queryTemplate: DISCLOSURE_QUERY,
-      entityScoped: true,
     }),
 });

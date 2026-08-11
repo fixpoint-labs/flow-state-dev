@@ -24,6 +24,5 @@ export const discover_technical_context = handler({
       input,
       ctx,
       queryTemplate: TECHNICAL_QUERY,
-      entityScoped: true,
     }),
 });

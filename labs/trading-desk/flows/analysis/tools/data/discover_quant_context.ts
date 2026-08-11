@@ -27,6 +27,5 @@ export const discover_quant_context = handler({
       input,
       ctx,
       queryTemplate: QUANT_QUERY,
-      entityScoped: true,
     }),
 });

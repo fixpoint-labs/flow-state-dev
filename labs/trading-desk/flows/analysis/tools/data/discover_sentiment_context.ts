@@ -25,6 +25,5 @@ export const discover_sentiment_context = handler({
       input,
       ctx,
       queryTemplate: SENTIMENT_QUERY,
-      entityScoped: true,
     }),
 });

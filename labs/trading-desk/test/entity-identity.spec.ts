@@ -103,6 +103,26 @@ describe("textMentionsEntity", () => {
     }) as SubjectEntity;
     expect(textMentionsEntity("BRK.B closes at a record", brk)).toBe(true);
   });
+
+  it("does not let ordinary prose verify a word-shaped ticker", () => {
+    // `ON` is a real ticker AND an English preposition. Matching the ticker
+    // case-insensitively would verify essentially every snippet ever written,
+    // silently disabling the guard for exactly the ambiguous symbols whose
+    // search results are most likely to belong to someone else.
+    const on = subjectEntityFromProfile("ON", {
+      source: "finnhub",
+      name: "ON Semiconductor Corporation",
+    }) as SubjectEntity;
+    expect(
+      textMentionsEntity("Black Hills raised guidance on strong demand", on),
+    ).toBe(false);
+    // The real thing still verifies — by the uppercase ticker...
+    expect(textMentionsEntity("ON beats on margin", on)).toBe(true);
+    // ...by the cashtag form, which tokenizes the same way...
+    expect(textMentionsEntity("$ON is breaking out", on)).toBe(true);
+    // ...and by the distinctive name token, which stays case-insensitive.
+    expect(textMentionsEntity("onsemi and other semiconductor names", on)).toBe(true);
+  });
 });
 
 describe("publisherIsSubject", () => {
@@ -111,5 +131,19 @@ describe("publisherIsSubject", () => {
     expect(publisherIsSubject("www.nvidia.com", nvidia)).toBe(true);
     expect(publisherIsSubject("reuters.com", nvidia)).toBe(false);
     expect(publisherIsSubject(null, nvidia)).toBe(false);
+  });
+
+  it("treats first-party subdomains as the subject", () => {
+    // Press releases and filings live on `investor.` / `newsroom.` hosts and
+    // routinely carry a title that names no company ("Third Quarter Results").
+    // An exact-host match would drop the most authoritative evidence available.
+    expect(publisherIsSubject("investor.nvidia.com", nvidia)).toBe(true);
+    expect(publisherIsSubject("nvidianews.nvidia.com", nvidia)).toBe(true);
+  });
+
+  it("does not let a lookalike host impersonate the subject", () => {
+    // The dot anchor is what separates a real subdomain from a suffix collision.
+    expect(publisherIsSubject("evilnvidia.com", nvidia)).toBe(false);
+    expect(publisherIsSubject("nvidia.com.attacker.net", nvidia)).toBe(false);
   });
 });

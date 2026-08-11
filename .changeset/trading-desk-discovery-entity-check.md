@@ -2,7 +2,7 @@
 "@flow-state-dev/trading-desk": patch
 ---
 
-Validate discovery search results against the company being analysed before they reach an analyst prompt. Web search for a thinly covered or ambiguous ticker sometimes returns pages about a different company, and those snippets were passed into Phase 1 analyst prompts as context with nothing checking whose they were.
+Validate discovery search results against the company being analysed before they reach an analyst prompt (FIX-779). Web search for a thinly covered or ambiguous ticker sometimes returns pages about a different company, and those snippets were passed into Phase 1 analyst prompts as context with nothing checking whose they were.
 
 The subject's business identity is now resolved once, before the analyst bench fans out, and the six entity-scoped `discover_*_context` tools drop results that name neither the ticker nor the company. A dropped result leaves a URL and a reason in a new `excluded` list — its title and snippet are discarded, so the wrong company's prose never reaches the model. Every discovery payload carries an `entityCheck` verdict (`verified` / `unchecked` / `not-applicable`) that the analyst prompt reads before treating any item as evidence.
 

@@ -27,6 +27,5 @@ export const discover_macro_context = handler({
       input,
       ctx,
       queryTemplate: MACRO_QUERY,
-      entityScoped: false,
     }),
 });

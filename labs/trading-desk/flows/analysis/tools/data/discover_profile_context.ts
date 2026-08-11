@@ -27,6 +27,5 @@ export const discover_profile_context = handler({
       input,
       ctx,
       queryTemplate: PROFILE_QUERY,
-      entityScoped: true,
     }),
 });
