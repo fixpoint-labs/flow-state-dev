@@ -120,7 +120,7 @@ with where · the question · what a wrong answer costs — plus where the autho
 what is deliberately absent. Rules and failure modes:
 [`pr-reviewer-guidance.md`](pr-reviewer-guidance.md).)*
 
-> **1. Decision 2 — the cursor's two encodings.** Carrying the same value on a header
+> **1. Decision 1 — the cursor's two encodings.** Carrying the same value on a header
 > *and* a query param is the call I'm least comfortable with. The question: is one
 > encoding plus a documented proxy requirement better than two that must stay in step?
 > Getting it wrong locks a public string format we don't validate, and changing it later
@@ -130,7 +130,7 @@ what is deliberately absent. Rules and failure modes:
 > resume belong lower, in the store's iterator? A wrong answer here is a rewrite, not an
 > adjustment — everything in §8 hangs off it.
 >
-> **Where I'm unsure:** decision 3. Replaying a completed request from the persisted log
+> **Where I'm unsure:** decision 2. Replaying a completed request from the persisted log
 > reads clean, but I can't tell from the outside whether it quietly makes the stream a
 > history API, which §6's non-goals say we don't want.
 >
@@ -215,11 +215,7 @@ documentation surfaces (§11) — plus the PR count. A label written before Part
 guess, and a label that counts only the production diff understates the specs where most of the
 work is the test surface. This is the number the human budgets against.
 
-> 1. **Resume filters server-side by sequence number.**
->    *Rejected:* client-side dedupe.
->    *Locks in:* every transport we add later needs a monotonic per-request sequence.
->
-> 2. **The cursor is `{requestId}:{sequence}`, accepted on `Last-Event-ID` and on a
+> 1. **The cursor is `{requestId}:{sequence}`, accepted on `Last-Event-ID` and on a
 >    `starting_after` query param; the query param wins when both are sent.**
 >    *Rejected:* header only — an intermediary that strips `Last-Event-ID` would silently
 >    disable resume, which is worse than carrying two encodings of one value.
@@ -227,19 +223,19 @@ work is the test surface. This is the number the human budgets against.
 >    points have to stay in step. Changing it later is a breaking change to a string we
 >    don't validate.
 >
-> 3. **A reattach to a completed request replays from the persisted log and closes.**
+> 2. **A reattach to a completed request replays from the persisted log and closes.**
 >    *Rejected:* a distinct "already finished" status code the client has to branch on.
 >    *Locks in:* one response shape for every reattach — a cursor past the end of the
 >    log is an ordinary empty replay, not an error, so the client needs no special case.
 >
-> 4. **No cursor means today's behavior, byte for byte.**
+> 3. **No cursor means today's behavior, byte for byte.**
 >    *Rejected:* defaulting to resume-from-last-seen server-side.
 >    *Locks in:* the server holds no per-client state, so nothing to expire.
 >
 > **Non-goals** — serving a finished response to a client that was never attached (that's
 > a history read, and it stays the store's job), and client-side reconnect *policy*
 > (backoff, retry limits). Reattaching to a request that completed mid-flight *is* in
-> scope — see decision 3.
+> scope — see decision 2.
 >
 > **Size:** Medium — 4 production files · 9 test behaviours · 2 doc surfaces · 1 PR.
 
@@ -393,8 +389,8 @@ change extends an existing pattern — pointing at the pattern is better than re
 >             skip it
 >         otherwise write it
 >
-> at the route:      cursor ← query param, else header      (decision 2)
-> completed request: same loop, reading the persisted log   (decision 3)
+> at the route:      cursor ← query param, else header      (decision 1)
+> completed request: same loop, reading the persisted log   (decision 2)
 > ```
 >
 > What this asks a reviewer: *is a filter at the serialization seam the right place, or
@@ -413,11 +409,11 @@ neither ships.)*
 Ordered, independently testable steps. For each: which modules to create / modify /
 **remove** (subtraction is part of the change — tenet 3), what to test, what it depends on.
 
-> 1. **Parse and thread the cursor** at the HTTP boundary, in both encodings decision 2
+> 1. **Parse and thread the cursor** at the HTTP boundary, in both encodings decision 1
 >    names. Nothing filters yet. *Test:* each encoding, their precedence, and a malformed
 >    value. *Depends on:* nothing.
 > 2. **Filter at the seam.** *Test:* the §5 cases. *Depends on:* 1.
-> 3. **The completed-request boundary**, per decision 3. *Test:* reattach after completion,
+> 3. **The completed-request boundary**, per decision 2. *Test:* reattach after completion,
 >    and with a cursor past the end. *Depends on:* 2.
 > 4. **Client sends it** on the reattach path. *Test:* end-to-end, reload mid-request.
 >    *Depends on:* 3.
@@ -458,7 +454,7 @@ A table, plus the error taxonomy (retryable vs. fatal). Walk the second-path che
 > only fatal path is an unreadable request id, which already 404s today.
 >
 > *(The rows are the cases §6 does **not** already answer — the odd, the hostile, the
-> boundary. "No cursor" and "request already completed" are decisions 4 and 3, so they
+> boundary. "No cursor" and "request already completed" are decisions 3 and 2, so they
 > aren't repeated here. A table that re-derives the happy path from the decisions is
 > the copy that drifts.)*
 

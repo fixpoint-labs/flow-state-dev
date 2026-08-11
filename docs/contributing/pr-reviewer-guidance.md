@@ -58,8 +58,11 @@ reader reaches for it *after* deciding they want to go deeper.
 **Blocks 3 and 4 are both asks, but of different people, and both come after 1–2 for a
 reason.** Asking someone to look hard at "Decision 4" before they know what problem Decision
 4 serves is asking them to review a number. On a change that follows an approved spec, block
-3 is one line — *nothing is being decided here; this implements the approved direction* — and
-that line is worth writing, because its absence reads as an omission.
+3 is one line saying so, and that line is worth writing because its absence reads as an
+omission. Match it to the route: *this implements the approved direction* only where a spec
+was approved; on a bug, a brief-backed change, or one with no upstream contract, *nothing
+here is yours to decide* — those PRs are themselves the approval gate, so claiming an
+approved direction claims provenance they don't have.
 
 What a product owner can judge and a bot can't is direction, scope, and whether this was
 worth building, so blocks 1–3 state the problem in observable behaviour and price each
@@ -209,8 +212,9 @@ Three rules keep it from swallowing the block:
   the view, and it isn't neutrality — it's asking the reader to build a position from less
   information than you have.
 
-A PR where nothing is open says so in one line — *nothing is being decided here; this
-implements the approved direction* — and its absence reads as an omission.
+A PR where nothing is open says so in one line, matched to its route (see "The layout"
+above): *this implements the approved direction* on a spec-backed change, and *nothing here
+is yours to decide* where nothing was approved upstream. Its absence reads as an omission.
 
 ### Before and after
 
@@ -342,8 +346,10 @@ What goes down here:
   ```
 
   On a spec PR this is where the §6 Decisions that aren't product decisions live, so §6
-  stays complete. If this block is empty on a change of any size, the filters probably
-  weren't applied — the rows are still in §3.
+  stays complete. **Omit the block when nothing was filtered out** — never pad it, and never
+  keep a decision out of §6 just to have something to put here. Expect it empty on a spec PR
+  whose §6 is already product-only, and non-empty on most implementation PRs, where the
+  decisions made while building genuinely mix the two.
 - **The long-form case.** On a spec PR, the rest of Part I — tradeoffs, focus practices,
   worked examples, the Decisions in full. Blocks 1–3 above are §1, §2 and the §6 Decisions
   that passed the filters, so the collapsed block picks up where they stop and nothing is
