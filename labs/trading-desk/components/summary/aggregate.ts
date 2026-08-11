@@ -47,6 +47,11 @@ export type DecisionSummary = {
   decisionConfidence: number | null;
   agreesWithTrader: boolean | null;
   primaryScenario: string | null;
+  /** The PM's standalone call (Buy/Hold/Sell) — the 5-tier `finalRating`
+   *  decomposed. Null when the PM left it unpublished. */
+  absoluteRating: MemoState["absoluteRating"];
+  /** The PM's call relative to the benchmark. Null when unpublished. */
+  relativeRating: MemoState["relativeRating"];
 } | null;
 
 /** The trade levels (from the trader memo). Null when no trader memo. */
@@ -58,6 +63,36 @@ export type TradeLevels = {
   holdingPeriod: MemoState["holdingPeriod"];
   invalidationCriteria: string[] | null;
 } | null;
+
+/**
+ * The research manager's Phase 2 synthesis verdict — the stance it landed on
+ * after the bull/bear debate, plus the three structured lists it published.
+ *
+ * `unresolvedDisagreements` is the load-bearing one: it is the desk's own answer
+ * to "where do the analysts still diverge?", which a single dot on the
+ * conviction strip cannot express. Absent lists collapse to `[]` so the block
+ * omits its own sub-sections rather than rendering empty chrome.
+ */
+export type ResearchSynthesis = {
+  stance: "bullish" | "bearish" | "neutral" | null;
+  conviction: number | null;
+  keyRisks: string[];
+  keyOpportunities: string[];
+  unresolvedDisagreements: string[];
+};
+
+/**
+ * The Phase 4 risk-assessment memo's verdict fields that sit beside
+ * `criticalRisks`: how well-calibrated the desk's confidence is, why, and the
+ * adjustments the risk consolidator recommended (each attributed to the persona
+ * that argued for it). Every field is null/absent when the risk memo did not
+ * publish it — never defaulted to "calibrated" or an empty adjustment.
+ */
+export type RiskVerdict = {
+  confidenceCalibration: MemoState["confidenceCalibration"];
+  calibrationRationale: string | null;
+  recommendedAdjustments: MemoState["recommendedAdjustments"];
+};
 
 /** One node in the convergence strip: a stance mapped to a -1..+1 axis. */
 export type ConvictionNode = {
@@ -111,16 +146,18 @@ export type ReportSummary = {
   decision: DecisionSummary;
   trade: TradeLevels;
   conviction: ConvictionNode[]; // analysts + RM + trader + PM in pipeline order
-  rmStance: {
-    stance: "bullish" | "bearish" | "neutral" | null;
-    conviction: number | null;
-  };
+  /** The RM's synthesis verdict + its three structured lists. Rendered as the
+   *  Summary's research-synthesis block, which is what makes convergence and
+   *  divergence readable in words rather than implied by a dot on the strip. */
+  researchSynthesis: ResearchSynthesis;
   factorScores: FactorScores;
   criticalRisks: Array<{
     description: string;
     severity: "high" | "medium" | "low";
     raisedBy: string;
   }>;
+  /** Calibration + recommended adjustments from the Phase 4 risk assessment. */
+  riskVerdict: RiskVerdict;
   keyDependencies: string[];
   scenarios: Array<{ name: string; probability: number; isPrimary: boolean }>;
   distribution: string | null;
@@ -262,6 +299,8 @@ export function buildReportSummary(
             pm.primaryScenario !== null && pm.primaryScenario !== ""
               ? pm.primaryScenario
               : null,
+          absoluteRating: pm.absoluteRating,
+          relativeRating: pm.relativeRating,
         }
       : null;
 
@@ -296,11 +335,16 @@ export function buildReportSummary(
     };
   });
 
-  // Research-manager stance summary.
+  // Research-manager synthesis verdict. The three lists are the RM's structured
+  // output; an unpublished list reads `[]` (the block omits that sub-section),
+  // never a placeholder row.
   const rm = get("researchManager");
-  const rmStance = {
-    stance: (rm?.stance ?? null) as ReportSummary["rmStance"]["stance"],
+  const researchSynthesis: ResearchSynthesis = {
+    stance: (rm?.stance ?? null) as ResearchSynthesis["stance"],
     conviction: rm?.conviction ?? null,
+    keyRisks: rm?.keyRisks ?? [],
+    keyOpportunities: rm?.keyOpportunities ?? [],
+    unresolvedDisagreements: rm?.unresolvedDisagreements ?? [],
   };
 
   // Factor scores (valuation spine). The spine's component scores are ~0..100.
@@ -322,6 +366,15 @@ export function buildReportSummary(
     raisedBy: r.raisedBy,
   }));
   const keyDependencies = pm?.keyDependencies ?? [];
+
+  // The risk memo's calibration read + recommended adjustments. Read straight
+  // through: a null calibration stays null (the panel omits the line) rather
+  // than defaulting to "calibrated", which would assert a judgement nobody made.
+  const riskVerdict: RiskVerdict = {
+    confidenceCalibration: risk?.confidenceCalibration ?? null,
+    calibrationRationale: risk?.calibrationRationale ?? null,
+    recommendedAdjustments: risk?.recommendedAdjustments ?? null,
+  };
 
   // Scenario distribution.
   const scenarioMemo = get("scenarioForecast");
@@ -360,9 +413,10 @@ export function buildReportSummary(
     decision,
     trade,
     conviction,
-    rmStance,
+    researchSynthesis,
     factorScores,
     criticalRisks,
+    riskVerdict,
     keyDependencies,
     scenarios,
     distribution,

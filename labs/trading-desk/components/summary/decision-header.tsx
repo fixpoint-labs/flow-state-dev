@@ -1,7 +1,9 @@
 /**
  * DecisionHeader — the Summary's top block: the PM 5-tier rating bar (PmHero
- * idiom), the model-implied rating + band with clamp flag, decision confidence,
- * a one-line trade summary, and agree/differ-with-trader.
+ * idiom), the model-implied rating + band with clamp flag, the absolute and
+ * relative ratings, decision confidence, the scenario the decision underwrites,
+ * a one-line trade summary with its invalidation criteria, and
+ * agree/differ-with-trader.
  *
  * Every figure traces to a stored PM/trader field via the aggregate. When the
  * PM memo has not published, it renders a "Decision pending" state rather than a
@@ -13,6 +15,7 @@ import type {
   DecisionSummary,
   TradeLevels,
 } from "./aggregate";
+import { InvalidationList } from "./invalidation-list";
 import { cn } from "@/lib/utils";
 
 const TIERS = ["Sell", "Underweight", "Hold", "Overweight", "Buy"] as const;
@@ -102,10 +105,32 @@ export function DecisionHeader({
             ))}
           </div>
 
-          {/* Model-implied rating + band + clamp flag */}
+          {/* Model-implied rating + band + clamp flag, plus the PM's absolute
+              (standalone) and relative (vs benchmark) calls. The 5-tier bar
+              above is the decision; these two say what it means on each axis,
+              and both are stored PM fields — omitted individually when the PM
+              left one unpublished. */}
           {decision.modelImpliedRating !== null ||
-          decision.ratingBand !== null ? (
+          decision.ratingBand !== null ||
+          decision.absoluteRating !== null ||
+          decision.relativeRating !== null ? (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[color:var(--c-fg-muted)]">
+              {decision.absoluteRating !== null ? (
+                <span>
+                  <span className="font-mono uppercase tracking-wider text-[color:var(--c-fg-faint)]">
+                    absolute
+                  </span>{" "}
+                  {decision.absoluteRating}
+                </span>
+              ) : null}
+              {decision.relativeRating !== null ? (
+                <span>
+                  <span className="font-mono uppercase tracking-wider text-[color:var(--c-fg-faint)]">
+                    relative
+                  </span>{" "}
+                  {decision.relativeRating}
+                </span>
+              ) : null}
               {decision.modelImpliedRating !== null ? (
                 <span>
                   <span className="font-mono uppercase tracking-wider text-[color:var(--c-fg-faint)]">
@@ -130,8 +155,23 @@ export function DecisionHeader({
             </div>
           ) : null}
 
-          {/* Trade one-liner */}
+          {/* The scenario bucket the PM says this decision underwrites. The
+              scenario strip flags the same name visually; stating it here means
+              the header does not depend on the strip having rendered. */}
+          {decision.primaryScenario !== null ? (
+            <p className="text-[11px] text-[color:var(--c-fg-muted)]">
+              <span className="font-mono uppercase tracking-wider text-[color:var(--c-fg-faint)]">
+                underwrites
+              </span>{" "}
+              {decision.primaryScenario}
+            </p>
+          ) : null}
+
+          {/* Trade one-liner + what would kill the trade */}
           {trade !== null ? <TradeLine trade={trade} /> : null}
+          {trade !== null ? (
+            <InvalidationList criteria={trade.invalidationCriteria} />
+          ) : null}
 
           {decision.agreesWithTrader === true ? (
             <span className="text-[11px] text-[color:var(--c-live)]">
