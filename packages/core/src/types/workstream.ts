@@ -58,6 +58,31 @@ export type WorkstreamBinding = {
   readonly coordinateKey: string;
   /** The block that runs this coordinate's work. */
   readonly worker: BlockDefinition<never, never>;
+  /**
+   * The declaring board's detached runner — the block a dispatch for **this
+   * board** actually enters (FIX-982 P3a).
+   *
+   * Every binding a board declares carries the **same object**, because the
+   * runner is a property of the board rather than of one worker: it re-reads the
+   * claimed row from that board's ledger, verifies the claim is still current,
+   * marks the task scope, re-mints the claim ticket, and only then routes to the
+   * worker the row's own `assignee` names.
+   *
+   * **Why the board supplies it rather than this package assembling one.**
+   * Everything in that list is knowledge of a task board — resolving a
+   * collection, reading a row, minting a ticket — and `core` cannot name a task,
+   * a board, or a collection without inverting the package graph. What `core`
+   * can do is guarantee the runner is *unbypassable*, which it does by making
+   * {@link buildWorkstreamCore} the only assembler and routing every dispatch
+   * through a runner rather than at a worker.
+   *
+   * The invariant this protects — a detached worker never runs without its gate
+   * — therefore has exactly one enforcement point in the codebase: the board
+   * factory that builds the runner. Adding a worker to an existing board is
+   * covered by the runner that board already stamped, so a binding cannot be
+   * added "without the wrapper".
+   */
+  readonly runner: BlockDefinition<never, never>;
 };
 
 /**

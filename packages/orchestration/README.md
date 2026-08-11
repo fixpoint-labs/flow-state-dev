@@ -340,9 +340,33 @@ addressing one child session. Reusing a worker block across boards is fine on it
 own — give the boards distinct `boardId`s. One board reached from several places
 is a duplicate rather than a conflict and deduplicates silently.
 
-> Detached execution itself is not wired yet. This release ships the declaration,
-> its guards, and the routing registry; a worker marked detached still runs
-> inline until the spawn lands.
+A detached worker runs in a **Workstream** — a child session dedicated to that
+body of work. The turn that claimed the task returns while the worker keeps
+going; the Workstream re-reads the claimed row, verifies the claim is still
+current, runs the worker, and settles the task itself.
+
+A Workstream is one `boardId`, one worker, one `topic` (read from the task's
+`metadata.topic`). All three have to match for a task to continue an earlier
+task's history. Two tasks sharing a topic but routing to different workers, or
+sitting on boards with different `boardId`s, get separate Workstreams. A task
+with no topic, or a blank one, falls back to its own id, so continuity is
+something you opt into rather than something that happens by accident.
+
+Two bounds are worth knowing before you reach for this:
+
+- **The board must be addressable from the child session.** The Workstream
+  settles its own task, and resource scope resolves against the *current*
+  session — so a session-scoped board hydrates empty inside a Workstream and
+  cannot be settled. Scope a detached board to `user` or `org`.
+- **Serverless without a queue adapter.** Detached work runs inside the
+  invocation that started it and is bounded by that function's maximum duration.
+  With a queue adapter it moves to a worker process and is not.
+- **The claim has to survive the wait before the child starts.** A claim carries
+  a lease (two minutes by default), and nothing extends it until the worker is
+  actually running. A Workstream that starts after its lease has run out does
+  nothing at all — the task is already back in the queue, and the next drain
+  picks it up. A deep queue backlog in front of the child is where this shows
+  up, and the board's lease is not configurable today.
 
 ### goalSeekLoop
 

@@ -11,7 +11,7 @@
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { TaskCollectionRef } from "../tasks";
 import { boardQuiescence } from "./quiescence";
-import { hasClaimableTask } from "./shared";
+import { hasClaimableTask, type RunsElsewhere } from "./shared";
 
 /**
  * Wake-up predicate for the worker idle-wait. Semantics depend on
@@ -46,12 +46,25 @@ import { hasClaimableTask } from "./shared";
  * design (the drain should not end), so a wake test written as the verdict
  * alone would leave a worker asleep on claimable work until its timeout —
  * exactly the promptness defect this issue set out to fix.
+ *
+ * A board running detached workers passes `runsElsewhere` (FIX-982), and it
+ * reaches the verdict half only. The claimable disjunct needs no adjustment for
+ * it: `hasClaimableTask` judges rows by the substrate's lease, and a row a
+ * Workstream holds has a live lease renewed from the child, so it is already
+ * not claimable here. Once that lease does lapse the row is genuinely
+ * recoverable and waking on it is correct.
  */
 export function whenBoardClaimable(
   collection: TaskCollectionRef,
   options: {
     onIdle: "wait" | "complete" | "complete-or-blocked";
     shouldExit?: (collection: TaskCollectionRef) => boolean;
+    /**
+     * Rows a Workstream is running (FIX-982). Forwarded verbatim to
+     * `boardQuiescence`; this predicate adds no reading of its own, so the
+     * wake test and the exit check keep answering out of one definition.
+     */
+    runsElsewhere?: RunsElsewhere;
   }
 ): (items: readonly OutputItem[]) => boolean {
   return () =>

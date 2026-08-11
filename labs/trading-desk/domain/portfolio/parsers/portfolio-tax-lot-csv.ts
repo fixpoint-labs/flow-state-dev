@@ -409,8 +409,8 @@ function assignSeq(rows: ParsedRow[], realized: boolean): void {
   const groups = new Map<string, ParsedRow[]>();
   for (const row of rows) {
     const key = realized
-      ? `${row.ticker} ${row.openDate} ${row.closeDate}`
-      : `${row.ticker} ${row.openDate}`;
+      ? `${row.ticker}\u0000${row.openDate}\u0000${row.closeDate}`
+      : `${row.ticker}\u0000${row.openDate}`;
     const bucket = groups.get(key);
     if (bucket === undefined) groups.set(key, [row]);
     else bucket.push(row);

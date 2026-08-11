@@ -64,6 +64,7 @@ import {
 } from "./debug-routes";
 import type { InboundTransportHost, PrincipalResolver } from "../transports/types";
 import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
+import { createDetachedStartOperation } from "../context/detached-start-operation";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import type { FlowDispatcher } from "../transports/dispatcher";
 
@@ -245,6 +246,37 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     runtimeConfig,
     dispatcher: options.dispatcher
   });
+
+  // Close the last loop in the detached seam (FIX-982 P3a). `startDetached`
+  // prepares the child session and then hands off to a host start operation; up
+  // to now nothing supplied one, so the verb refused `no-start-operation` and
+  // detached work was declarable but never runnable.
+  //
+  // Mutated onto the shared `requestHost` object rather than set on a fresh
+  // config, and that is what makes it reach anything: the host above captured
+  // this config, `dispatchLocal` spreads it per request, and a spread copies the
+  // *reference* to `requestHost` — so one assignment here is visible to every
+  // request the host serves, including a worker's. It is the same mechanism
+  // `#doInit` already uses to land the sweep cadence on a running worker.
+  //
+  // The chicken-and-egg is real and this is the resolution: the operation
+  // dispatches through the host, so it cannot exist until the host does, and the
+  // host reads the config that carries it. A closure over `host` breaks the
+  // cycle without a second construction pass.
+  //
+  // Only when the host wired none. A start operation supplied from outside — a
+  // worker process that starts detached work through its own queue, a test
+  // observing what gets started — is the more specific answer, and the router's
+  // own contract for this seam is that those are "carried through untouched".
+  // Overwriting one would silently redirect a deployment's detached dispatch
+  // back through the local host, which is exactly the kind of quiet substitution
+  // that only shows up in the deployment shape nobody tested.
+  if (
+    runtimeConfig.requestHost !== undefined &&
+    runtimeConfig.requestHost.startOperation === undefined
+  ) {
+    runtimeConfig.requestHost.startOperation = createDetachedStartOperation({ host });
+  }
 
   // Detect interrupted requests from previous runs on startup
   if (options.detectInterruptedOnStartup !== false) {

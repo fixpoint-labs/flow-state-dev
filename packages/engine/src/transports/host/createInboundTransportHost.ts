@@ -19,6 +19,7 @@ import {
 import { resolveSessionStorageKey, tenantMatches } from "../../stores/scope-keys";
 import { isTerminalRequestStatus } from "../../stores/subscribe-helpers";
 import { createInitialRequestRecord } from "../../context/initial-request-record";
+import { logRuntimeEvent, summarizeForLog } from "../../execution/logging";
 import { generateId } from "../../utils/generate-id";
 import {
   ConcurrencyQueueTimeoutError,
@@ -148,6 +149,47 @@ export function createInboundTransportHost(
   // misleading semantics (a `reject` lease freed at enqueue, not run-completion).
   const arbiter = createConcurrencyArbiter();
 
+  /**
+   * Hand a STARTED run's `finished` to the adapter's keep-alive hook, containing
+   * a synchronous throw from it.
+   *
+   * Both seams that start a run — `dispatch` and `continueRequest` — call the
+   * hook last, once the run is already under way, and both are synchronous from
+   * their caller's point of view (`continueRequest` via the promise it returns).
+   * The hook is adapter-supplied and does throw in practice: Next's `after()`
+   * and `waitUntil` both raise synchronously when called outside a request
+   * scope. An escaping throw would therefore make a synchronous failure mean two
+   * different things, and each caller reads it as only one — the pre-start one:
+   * `createDetachedStartOperation` reads it as "nothing was dispatched" and
+   * settles the row it handed over, and the resume route reads it as
+   * "setup failed" and reverts the suspension to `pending`, inviting a second
+   * resume against a request whose run is still going. Two writers, one row
+   * (FIX-982, FIX-1095).
+   *
+   * Containing it here is what makes "a synchronous throw is pre-start" a
+   * property those callers can rely on rather than one they assume.
+   *
+   * Failing to register keep-alive is real — on a freeze-after-response platform
+   * the run can stall — but it is not a failure to start, and the handle the
+   * caller gets back is honest either way. So it is logged, not raised.
+   */
+  const registerBackgroundWork = (
+    finished: Promise<unknown>,
+    context: { requestId: string; flowKind?: string }
+  ): void => {
+    if (onBackgroundWork === undefined) return;
+    try {
+      onBackgroundWork(finished);
+    } catch (error) {
+      logRuntimeEvent(
+        runtimeConfig.logger,
+        "error",
+        "[flow-state] onBackgroundWork threw; the run was started but is not registered as background work",
+        { ...context, error: summarizeForLog(error) }
+      );
+    }
+  };
+
   const dispatch = (envelope: InboundRequestEnvelope): DispatchHandle => {
     const flow = registry.get(envelope.flowKind);
     if (flow === undefined) {
@@ -230,11 +272,27 @@ export function createInboundTransportHost(
     // (carries non-serializable context); external dispatchers use the
     // generic dispatch interface.
     let finished: Promise<ExecutionResult>;
-    // Set for external dispatch only: resolves once the request is accepted —
-    // enqueue-time store writes committed AND the dispatcher accepted the job
-    // (see the external branch). Left undefined for in-process.
+    // Resolves once the request is accepted. Every branch sets it, and each
+    // means "discoverable" in the terms its own path can honour: enqueue-time
+    // store writes committed plus the job taken (external), those same writes
+    // committed (in-process `queue`), or the run's own `activeRequests`
+    // registration committed (in-process, FIX-982).
     let accepted: Promise<void> | undefined;
     if ("dispatchLocal" in effectiveDispatcher) {
+      // The in-process milestones, held here rather than read off the handle
+      // because `gateStart` owns *when* the run is started and the handle does
+      // not exist until it does (FIX-982). The `queue` branch below has its own,
+      // earlier acceptance — its enqueue-time writes — and ignores these.
+      let markAccepted: () => void = () => {};
+      let failAccepted: (error: unknown) => void = () => {};
+      const inProcessAccepted = new Promise<void>((resolve, reject) => {
+        markAccepted = resolve;
+        failAccepted = reject;
+      });
+      // Handled unconditionally: this is discarded on the `queue` path and
+      // ignored by every caller that only wants `finished`.
+      void inProcessAccepted.catch(() => {});
+
       const startRun = (): Promise<ExecutionResult> => {
         const handle = (effectiveDispatcher as InProcessDispatcher).dispatchLocal(
           dispatchEnvelope,
@@ -247,6 +305,7 @@ export function createInboundTransportHost(
             }
           }
         );
+        handle.accepted?.then(markAccepted, failAccepted);
         return handle.finished;
       };
 
@@ -344,6 +403,11 @@ export function createInboundTransportHost(
           .finally(stopQueuedHeartbeat);
       } else {
         finished = gateStart(startRun);
+        // A start that never happens (the gate threw on the way in) must fail
+        // acceptance rather than leave it pending forever. Once the run has
+        // registered this is already settled and both arms are no-ops.
+        finished.then(markAccepted, failAccepted);
+        accepted = inProcessAccepted;
       }
     } else {
       // External dispatchers (BullMQ, etc.) run in a separate process and only
@@ -430,9 +494,13 @@ export function createInboundTransportHost(
       stores.activeRequests.deregister(requestId).catch(() => {});
     });
 
-    if (onBackgroundWork !== undefined) {
-      onBackgroundWork(finished);
-    }
+    // Contained by `registerBackgroundWork`, because this is the ONLY thing left
+    // in `dispatch` that can throw synchronously and the run has already been
+    // started above — see that helper for why an escaping throw is damaging.
+    registerBackgroundWork(finished, {
+      requestId,
+      flowKind: dispatchEnvelope.flowKind
+    });
 
     // The HTTP 202 path awaits `accepted`, not `finished`, so a fire-and-forget
     // external dispatch can leave `finished` unobserved. Mark it handled to
@@ -472,11 +540,18 @@ export function createInboundTransportHost(
     // container — the resume appears to hang for tens of seconds, the flow's
     // remaining steps never run, and a refresh still shows `in_progress`.
     // Registering `finished` with `onBackgroundWork` (→ Next `after()` /
-    // waitUntil) lets it run to completion. `void .catch` marks it handled: the
-    // 202 path doesn't await `finished`, so an unobserved rejection must not
-    // surface as an unhandled rejection.
+    // waitUntil) lets it run to completion. Contained by
+    // `registerBackgroundWork`: `continueRequestImpl` above has already started
+    // the run, so a throw escaping from here would reject this promise and the
+    // resume route would read that as setup having failed — reverting the
+    // suspension of a request that is still running (FIX-1095).
+    //
+    // `void .catch` marks `finished` handled: the 202 path doesn't await it, so
+    // an unobserved rejection must not surface as an unhandled rejection. It
+    // stays inside the keep-alive branch, which is the only case where nothing
+    // else is guaranteed to observe the promise.
     if (onBackgroundWork !== undefined) {
-      onBackgroundWork(result.finished);
+      registerBackgroundWork(result.finished, { requestId: opts.requestId });
       void result.finished.catch(() => {});
     }
 

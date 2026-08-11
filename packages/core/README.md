@@ -525,12 +525,14 @@ The member is optional in the *type* so a hand-built test context still type-che
 **Which operations answer depends on the deployment, and each says so by name.** Getting a host is not the same as getting every verb on it:
 
 - `livenessOf` is **absent** unless the deployment can support a trustworthy answer. It needs a request registry shared across processes, request heartbeats enabled, and a stale sweeper running. The default in-memory registry is per-process, so it is absent there. Check for it rather than asserting it.
-- `startDetached` refuses `no-workstream-core` for a flow that declares no workstream core, and `no-start-operation` where the host wired no start operation. The shipped HTTP router wires no start operation, so `startDetached` refuses `no-start-operation` on that path.
+- `startDetached` refuses `no-workstream-core` for a flow that declares no workstream core, `board-not-routable` where the input names a task-board worker the flow does not route, and `no-start-operation` where the host wired no start operation. A `board-not-routable` refusal returns before anything starts, so the caller still holds its claim and can settle the row itself. The shipped HTTP router wires a start operation, so a flow that declares detached work can start it there. A `worker-only` runtime builds no router and so wires none — that deployment must supply its own start operation.
 - `parentTask()` resolves `undefined` and `settleParentTask` refuses `no-parent-task` unless the request was dispatched for a parent-board row.
 
-Every refusal is a named outcome you can branch on.
-
 Nothing on this interface names a store, a flow, a session record or a task row, and no operation takes an identity or a session id. A caller supplies a routing seed and the runtime derives the rest from the running request. Values read from another session cross as `unknown`, to be parsed with your own schema.
+
+`startDetached` takes the caller's bookkeeping two ways, and they are not interchangeable. `record` is a free-form bag that lands on the child session record and never reaches the request record. `provenance` is a closed, optional field, today just `taskId`, and it is the one stamped onto the detached request record under `metadata.workstream` beside the routing seed's `topic` and `key`.
+
+`topic` and `key` are the seed the child session's id was derived from, so they cannot disagree with the child they name. `taskId` is recorded as you pass it and is checked against nothing, so a reader should treat it as a correlation the spawning code asserted. The shipped task-board caller takes it off the claim it holds on the row. Nothing carries authority either way: routing, adoption, authorization and settlement all run off values the runtime derives and re-reads, never off request metadata.
 
 ## Key design decisions
 

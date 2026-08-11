@@ -119,6 +119,7 @@ export { defineCapability, getBaseCapability } from "./capability";
  */
 export { NoRequestHostError, requireRequestHost } from "./types/request-host";
 export type {
+  DetachedProvenance,
   DetachedRoutingSeed,
   LivenessAnswers,
   ParentTaskOutcome,
@@ -193,7 +194,12 @@ export { runRescue } from "./blocks/sequencer";
 // it composes a subtree's background signal by the same rule the kernel uses
 // rather than a second copy of it.
 export { composeBackgroundSignal } from "./blocks/sequencer";
-export { defineFlow } from "./flow";
+export {
+  defineFlow,
+  buildWorkstreamCore,
+  workstreamDispatchInputSchema,
+  type WorkstreamDispatchInput,
+} from "./flow";
 export { readResourceContentTool, writeResourceContentTool } from "./tools/resource-content-tools";
 export { resolveResourceByPath, resolveResourceByUri } from "./tools/resource-tools";
 export { resourceTools } from "./tools/resource-tools";

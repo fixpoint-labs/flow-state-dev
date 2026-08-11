@@ -135,13 +135,16 @@ import {
 } from "./flow-policy-wiring";
 import {
   assertDetachedBoardSupported,
+  detachedTaskPredicate,
   resolveWorkerSlots,
   type ResolvedWorkerSlot,
   type TaskWorkerDispatch,
   type TaskWorkerSlot,
   type TaskWorkerSlotRegistry,
 } from "./detached";
-import { coordinateKey } from "./coordinate";
+import { buildDetachedRunner } from "./detached-runner";
+import { createSpawnDetached } from "./blocks/spawn-detached";
+import { coordinateKey, type WorkerCoordinate } from "./coordinate";
 
 // ---------------------------------------------------------------------------
 // Re-exports
@@ -222,6 +225,7 @@ export { currentWorkerClaim } from "./flow-policy-wiring";
 export type { BoardRunFlowState } from "./flow-policy-wiring";
 export {
   assertDetachedBoardSupported,
+  detachedTaskPredicate,
   isTaskWorkerEntry,
   resolveWorkerSlot,
   resolveWorkerSlots,
@@ -700,8 +704,14 @@ export function taskBoard<
     collectionConfig,
     caps
   );
-  const { collectionFactory, collectionId, capability, backing, drainUses } =
-    binding;
+  const {
+    collectionFactory,
+    collectionId,
+    capability,
+    backing,
+    collectionDeclaration,
+    drainUses,
+  } = binding;
 
   // FIX-982 decision 11 — a detached board is refused here, loudly and by
   // name, never degraded with a warning. Runs after the binding so the
@@ -712,6 +722,9 @@ export function taskBoard<
     name,
     boardId,
     backing,
+    ...(collectionDeclaration !== undefined
+      ? { collection: collectionDeclaration }
+      : {}),
     detached: resolvedWorkers.detached,
   });
 
@@ -733,10 +746,18 @@ export function taskBoard<
     collectionId,
   });
 
+  // One predicate, built once and handed to EVERY consumer (FIX-982). Building
+  // it per call site is how the wake test and the exit check drifted apart
+  // before; the completion meta is the third reader (FIX-1074), and it has to
+  // agree with the other two — a board that exited because its work is running
+  // elsewhere must not then report that exit as a failure.
+  const runsElsewhere = detachedTaskPredicate(resolvedWorkers.slots);
+
   const boardMetaCompleted = createBoardMetaCompleted({
     name: `${name}-meta-completed`,
     collection: collectionFactory,
     collectionId,
+    ...(runsElsewhere !== undefined ? { runsElsewhere } : {}),
   });
 
   const claimStepName = `${name}-worker-claim`;
@@ -763,10 +784,57 @@ export function taskBoard<
   });
   const teardownFlowState = createTeardownBoardFlowState({ name, runState });
 
+  // FIX-982 P3a — the spawn. A detached slot routes to a block that STARTS the
+  // worker in a Workstream and returns, instead of to the worker itself. The
+  // drain's shape is untouched (claim, route, record); only what the route does
+  // changes, so an inline board composes exactly as it did.
+  //
+  // Substituted here rather than inside `buildWorkerStep` because the routing
+  // table is the one place that already maps a coordinate to a block. The
+  // substitute receives the same packed `TaskWorkerInput` an inline worker
+  // would, which is what makes the two paths agree on what the worker sees.
+  // Keyed by COORDINATE, never by block identity. A block may legitimately sit
+  // at two coordinates with different dispatch modes — `{ inline: shared,
+  // background: { worker: shared, dispatch: { mode: "detached" } } }` is a valid
+  // board — and keying by the block would substitute the spawn at BOTH, so the
+  // inline assignee would silently detach. It would then fail in the Workstream
+  // rather than here, because the gate routes on the row's assignee and finds no
+  // binding for it. Two detached coordinates sharing one block collapse the same
+  // way, keeping only the last.
+  const spawnByCoordinate = new Map<string, TaskWorker>();
+  if (boardId !== undefined) {
+    for (const slot of resolvedWorkers.detached) {
+      spawnByCoordinate.set(
+        coordinateKey(slot.coordinate),
+        createSpawnDetached({
+          name: `${name}-spawn-${slot.label}`,
+          boardId,
+          coordinate: slot.coordinate,
+        }) as unknown as TaskWorker
+      );
+    }
+  }
+  const spawnAt = (coordinate: WorkerCoordinate, worker: TaskWorker): TaskWorker =>
+    spawnByCoordinate.get(coordinateKey(coordinate)) ?? worker;
+
+  const dispatchWorkers: TaskWorker | TaskWorkerRegistry =
+    typeof (workers as { run?: unknown }).run === "function"
+      ? spawnAt({ kind: "uniform" }, workers as TaskWorker)
+      : Object.fromEntries(
+          Object.entries(workers as TaskWorkerRegistry).map(([assignee, worker]) => [
+            assignee,
+            spawnAt({ kind: "assignee", name: assignee }, worker),
+          ])
+        );
+  const dispatchDefaultWorker =
+    defaultWorker !== undefined ? spawnAt({ kind: "floor" }, defaultWorker) : undefined;
+
   const workerStep = buildWorkerStep({
     name,
-    workers,
-    ...(defaultWorker !== undefined ? { defaultWorker } : {}),
+    workers: dispatchWorkers,
+    ...(dispatchDefaultWorker !== undefined
+      ? { defaultWorker: dispatchDefaultWorker }
+      : {}),
     collection: collectionFactory,
     resolveFlowPolicy: createFlowPolicyResolver(runState),
   });
@@ -787,6 +855,7 @@ export function taskBoard<
     collection: collectionFactory,
     onIdle,
     shouldExit,
+    ...(runsElsewhere !== undefined ? { runsElsewhere } : {}),
   });
 
   // Worker body: the worker block runs directly (BP-011 conformance —
@@ -944,7 +1013,11 @@ export function taskBoard<
         (items) =>
           cell.collection === undefined
             ? false
-            : whenBoardClaimable(cell.collection, { onIdle, shouldExit })(items),
+            : whenBoardClaimable(cell.collection, {
+                onIdle,
+                shouldExit,
+                ...(runsElsewhere !== undefined ? { runsElsewhere } : {}),
+              })(items),
         // Long timeout: a quiet board still wakes on task-change items.
         // The timeout is the upper bound on starvation if the wake
         // signal is somehow missed — the worker's outer `loopBack`
@@ -1037,15 +1110,37 @@ export function taskBoard<
   // second guard: `assertDetachedBoardSupported` above already refused a
   // detached board without one, because the value lands in a persisted routing
   // key. A board with no detached workers stamps nothing.
+  //
+  // Each binding also carries this board's ONE detached runner (FIX-982 P3a) —
+  // the same object on every binding, because the runner belongs to the board
+  // rather than to a worker. That is what lets the flow-level assembly route a
+  // dispatch to a board and never to a bare worker, so the start gate, the task
+  // scope mark and the claim-ticket re-mint cannot be bypassed by adding a
+  // worker later.
   if (boardId !== undefined) {
-    declareWorkstreamBindings(
-      drain,
-      resolvedWorkers.detached.map((slot) => ({
-        boardId,
-        coordinateKey: coordinateKey(slot.coordinate),
-        worker: slot.worker as unknown as BlockDefinition<never, never>,
-      }))
-    );
+    const runner = buildDetachedRunner({
+      name,
+      boardId,
+      collection: collectionFactory,
+      detached: resolvedWorkers.detached,
+      // The board's failure policy decides the Workstream's outcome exactly as
+      // it decides the drain's, so it is threaded rather than re-chosen here.
+      onError,
+      // The runner is reached by a detached dispatch, not through the drain,
+      // so it has to declare the board's durable collection itself.
+      ...(drainUses !== undefined ? { uses: drainUses } : {}),
+    });
+    if (runner !== undefined) {
+      declareWorkstreamBindings(
+        drain,
+        resolvedWorkers.detached.map((slot) => ({
+          boardId,
+          coordinateKey: coordinateKey(slot.coordinate),
+          worker: slot.worker as unknown as BlockDefinition<never, never>,
+          runner: runner as unknown as BlockDefinition<never, never>,
+        }))
+      );
+    }
   }
 
   // FIX-982 decision 10 — a detached board's assignee is fixed at admission,
@@ -1154,6 +1249,12 @@ interface CollectionBinding<TInput, TOutput, TName extends string> {
   >;
   /** The once-chosen backing, surfaced on the handle (FIX-910). */
   backing: TaskBoardBacking;
+  /**
+   * The durable collection's own declaration, when there is one (FIX-1074).
+   * Only the `resource` backing has one; the others carry no scope at all, and
+   * a detached board on them is already refused on `backing`.
+   */
+  collectionDeclaration?: DefinedTaskCollection;
   drainUses?: readonly DefinedCapability[];
 }
 
@@ -1222,6 +1323,7 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
       collectionFactory,
       collectionId,
       backing: "resource",
+      collectionDeclaration: definedCollection,
       capability: createTaskBoardCapability<TInput, TOutput, TName>({
         backing: "resource",
         boardName,

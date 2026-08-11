@@ -120,15 +120,28 @@ export async function packWorkerInput(
     }
   }
 
+  // Every optional field is spread conditionally, so an absent one is an
+  // ABSENT KEY rather than a present key holding `undefined` (FIX-982). The
+  // two are interchangeable to an inline worker and are not once the payload
+  // has to cross a process boundary: the spawn's JSON-safety gate rejects an
+  // explicit `undefined` by name, because `JSON.stringify` would drop the key
+  // and the worker on the far side would receive a different shape than the
+  // one that was checked.
+  //
+  // `input` and `feedback` were the two that were NOT conditional, and between
+  // them they made detached dispatch impossible rather than merely awkward: a
+  // freshly created task has never failed, so `feedback` is always `undefined`
+  // on a first attempt, and every detached spawn was refused before it could
+  // start. Keep new fields on this shape.
   return {
     taskId: task.id,
     goal: task.goal,
     ...(task.title !== undefined ? { title: task.title } : {}),
     ...(task.context !== undefined ? { context: task.context } : {}),
-    input: task.input,
+    ...(task.input !== undefined ? { input: task.input } : {}),
     attempts: task.attempts,
-    feedback: task.feedback,
-    metadata: task.metadata,
+    ...(task.feedback !== undefined ? { feedback: task.feedback } : {}),
+    ...(task.metadata !== undefined ? { metadata: task.metadata } : {}),
     ...(Object.keys(deps).length > 0 ? { deps } : {}),
     ...(priorWork !== undefined ? { priorWork } : {}),
   };

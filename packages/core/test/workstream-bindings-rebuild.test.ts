@@ -52,6 +52,23 @@ function workerBlock(name: string): BlockDefinition<never, never> {
   }) as unknown as BlockDefinition<never, never>;
 }
 
+/**
+ * One runner per board, standing in for what `taskBoard()` stamps.
+ *
+ * Memoized by `boardId` because that is the real invariant: a board builds its
+ * runner once and puts the SAME object on every binding it declares. Minting a
+ * fresh one per binding would make a single board's two workers look like two
+ * boards sharing a `boardId`, which the assembly refuses.
+ */
+const runners = new Map<string, BlockDefinition<never, never>>();
+function runnerBlock(boardId: string): BlockDefinition<never, never> {
+  const existing = runners.get(boardId);
+  if (existing !== undefined) return existing;
+  const runner = workerBlock(`runner-${boardId}`);
+  runners.set(boardId, runner);
+  return runner;
+}
+
 function binding(options: {
   boardId: string;
   coordinateKey?: string;
@@ -61,6 +78,7 @@ function binding(options: {
     boardId: options.boardId,
     coordinateKey: options.coordinateKey ?? "assignee|9:implement",
     worker: options.worker,
+    runner: runnerBlock(options.boardId),
   };
 }
 

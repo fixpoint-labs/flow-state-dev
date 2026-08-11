@@ -77,6 +77,23 @@ export function createInProcessDispatcher(
       ? combineSignals(local.signal, abortController.signal)
       : abortController.signal;
 
+    // Acceptance, separated from completion (FIX-982). `runAction` is async, so
+    // this function returns while the run is still at its first await — the
+    // `activeRequests` write has been *issued* and not committed. A caller that
+    // reads the bare handle as "the request exists" is trusting a write that can
+    // still fail, into a `finished` a fire-and-forget caller is not holding.
+    //
+    // It reports discoverability and nothing more. Setup after it can still
+    // fail; what protects a caller that handed over durable work is that work's
+    // own lease, and what this adds is that the failure is visible rather than
+    // silent.
+    let markAccepted: () => void = () => {};
+    let failAccepted: (error: unknown) => void = () => {};
+    const accepted = new Promise<void>((resolve, reject) => {
+      markAccepted = resolve;
+      failAccepted = reject;
+    });
+
     const finished = runAction({
       flow,
       actionName: envelope.actionName as keyof typeof flow.actions & string,
@@ -92,12 +109,23 @@ export function createInProcessDispatcher(
       signal,
       stores,
       responseEmitter: local.responseEmitter,
-      runtimeConfig: local.effectiveRuntimeConfig
+      runtimeConfig: local.effectiveRuntimeConfig,
+      onRegistered: markAccepted
     });
+
+    // Settles acceptance for a run that never reached registration: the failure
+    // it died of becomes the acceptance failure. A run that DID register has
+    // already resolved it, so both arms are no-ops by then.
+    finished.then(markAccepted, failAccepted);
+    // Every existing caller wants `finished` only. Marking it handled keeps an
+    // early failure from surfacing as an unhandled rejection; callers that await
+    // it still observe it.
+    void accepted.catch(() => {});
 
     return {
       requestId: envelope.requestId,
       finished: finished as Promise<ExecutionResult>,
+      accepted,
       abort: () => abortController.abort()
     };
   };

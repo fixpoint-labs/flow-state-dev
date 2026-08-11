@@ -26,6 +26,8 @@ import type {
   StartDetachedResult
 } from "@flow-state-dev/core/types";
 import type { SessionRecord, StoreRegistry } from "../stores/types";
+import { workstreamBindingKey } from "@flow-state-dev/core/types";
+import { workstreamDispatchInputSchema } from "@flow-state-dev/core";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
 import { deriveChildSessionId, evaluateAdoption } from "./detached-child";
 import { evaluateLivenessGate, type LivenessGateInputs } from "./liveness-gate";
@@ -41,7 +43,37 @@ export type DetachedStartOperation = (spec: {
   input: unknown;
   /** Handler block name, carried as provenance only. */
   actionName: string;
-}) => Promise<{ requestId: string }>;
+  /** The flow the child belongs to — always the parent's own (FIX-982 P3a). */
+  flowKind: string;
+  /**
+   * The child's principal, tenant and org.
+   *
+   * Passed rather than re-read from the child record the seam just wrote: these
+   * are the values the seam **derived the child key from** and validated
+   * adoption against, so passing them is what makes the dispatch provably the
+   * same identity as the record. Re-reading would introduce a second source that
+   * can disagree, and the disagreement would be a request running under an
+   * identity the key was never derived for.
+   */
+  userId: string;
+  tenantId?: string;
+  orgId?: string;
+  /**
+   * Provenance stamped onto the request record — what a reader needs to tell
+   * *which* body of background work a detached request is. Server-assembled;
+   * never the caller's bag.
+   */
+  metadata?: Record<string, unknown>;
+}) => Promise<
+  | { requestId: string }
+  /**
+   * The dispatch never happened, definitively. Distinguished from a thrown
+   * rejection because the two need opposite handling by the caller: nothing
+   * started means the caller still owns whatever it was about to hand over, so
+   * it can settle it; a throw after the attempt cannot rule out a live child.
+   */
+  | { notStarted: true; reason: string }
+>;
 
 /** The one parent-board row this request was dispatched for, stamped at spawn. */
 export type ParentTaskBinding = {
@@ -96,6 +128,66 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
         detail: `flow "${flow.kind}" declares no workstream core, so it accepts no detached dispatch`
       };
     }
+    // THE ROUTABILITY GUARANTEE (FIX-1074). Every way a board can reach the
+    // runtime without reaching `flow.workstreamBindings` converges on one state:
+    // the flow has a workstream core, and no route for this board. Definition
+    // time cannot close that — a board constructed at dispatch does not exist
+    // when the flow is built — so the check that has to be uniform lives here,
+    // where the fact is knowable whatever produced the board.
+    //
+    // Refusing HERE and not at the child's dispatch is the whole point: the
+    // caller still holds its claim, so its recorder settles the row against a
+    // named refusal. Discovered one hop later, the row has already been handed
+    // over and nothing can settle it until its lease lapses.
+    //
+    // Shape-checked rather than assumed: `startDetached` is a general verb and a
+    // caller with no board passes whatever input its own core takes, so only an
+    // input that actually names a board is judged. `coordinateKey` is compared
+    // too — a flow may route a board's other workers and not this one.
+    //
+    // WHAT THIS PROVES, EXACTLY: that *some* declaration in this flow owns this
+    // address — not that the board making the call is that declaration. The two
+    // differ only when a board built at runtime reuses a registered board's
+    // `boardId` and coordinate, and they cannot be told apart here: nothing
+    // identifies the caller. `requestHost` is built once per request, not per
+    // block (see `runAction`'s `createExecutionContext` call), so everything this
+    // seam knows about who is calling arrives in `args`, from the caller. A token
+    // presented there would separate the accidental collision, but it would be a
+    // convention like `provenance.taskId` below, not an enforcement — and a
+    // convention documented as a guarantee is what this epic keeps paying for.
+    //
+    // What limits the damage is downstream and is real: the dispatch enters the
+    // REGISTERED board's runner, whose start gate re-reads the row from that
+    // board's own ledger and refuses unless `attempts`, `createdAt`,
+    // `incarnationId`, a live lease and `status === "in_progress"` all hold, and
+    // separately refuses unless the envelope's `coordinateKey` equals the
+    // coordinate re-derived from the row. Two boards on separate ledgers there
+    // fail the identity arms, so the collision costs a stalled row rather than a
+    // wrong settle. It is the two-boards-one-collection case that survives every
+    // arm — the row really is shared — and there the registered board's worker
+    // runs the runtime board's payload. Closing that needs caller identity
+    // threaded into the block context, which is the runtime's shape to change and
+    // not this check's (FIX-1074).
+    const addressed = workstreamDispatchInputSchema.safeParse(args.input);
+    if (addressed.success) {
+      const key = workstreamBindingKey(
+        addressed.data.boardId,
+        addressed.data.coordinateKey
+      );
+      if (flow.workstreamBindings?.get(key) === undefined) {
+        return {
+          ok: false,
+          refused: "board-not-routable",
+          detail:
+            `flow "${flow.kind}" declares no detached binding for board ` +
+            `"${addressed.data.boardId}" at coordinate "${addressed.data.coordinateKey}", so a ` +
+            `child dispatched for it would have no route. The board is reachable at runtime but ` +
+            `never reached the flow definition — declare it on a statically-reachable action, or ` +
+            `stop dispatching it detached.`
+        };
+      }
+    }
+
     if (inputs.startOperation === undefined) {
       return {
         ok: false,
@@ -217,8 +309,62 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     const started = await inputs.startOperation({
       sessionId: childId,
       input: args.input,
-      actionName: core.block.name
+      actionName: core.block.name,
+      flowKind: flow.kind,
+      // The same identity the child key was derived from and adoption was
+      // validated against — see `DetachedStartOperation`.
+      userId: identity.userId,
+      ...(identity.tenantId !== undefined ? { tenantId: identity.tenantId } : {}),
+      ...(identity.orgId !== undefined ? { orgId: identity.orgId } : {}),
+      // The routing seed, restated as request provenance. This is what lets a
+      // reader tell one body of background work from another on the request
+      // record itself, without resolving the child session first. Taken from the
+      // seed this call already consumed to derive the key — so it cannot
+      // disagree with the child it names — and never from `args.record`, which
+      // is the caller's own bag.
+      //
+      // `taskId` answers the next question down — not *which body* of work this
+      // is, but *which row* this run was spawned for — and it is the one fact
+      // here the seam did not derive itself. It comes through `args.provenance`,
+      // a channel whose contract is "put a fact here only when the runtime
+      // produced it", and pointedly NOT through `args.record`, which stays off
+      // the request record entirely.
+      //
+      // That contract is a convention, not an enforcement: `startDetached` is on
+      // the block context, so any block author can call it and pass any id. The
+      // two fields above cannot disagree with the child they name — the same
+      // seed derived its key — but this one is taken on trust, and a reader
+      // should not treat it as checked. It decides nothing, which is what
+      // contains it; see `StartDetachedInput.provenance`.
+      //
+      // Absent when the caller has no durable row behind it, which is an
+      // ordinary state and not a defect — a reader that finds no `taskId` has a
+      // run it cannot correlate to a board, exactly as before this field
+      // existed (BP-030).
+      metadata: {
+        workstream: {
+          topic: args.seed.topic,
+          ...(args.seed.key !== undefined ? { key: args.seed.key } : {}),
+          ...(args.provenance !== undefined
+            ? { taskId: args.provenance.taskId }
+            : {})
+        }
+      }
     });
+
+    if ("notStarted" in started) {
+      // Nothing was dispatched, so the caller still owns the work — returning a
+      // refusal rather than throwing is what lets it settle its own row instead
+      // of leaving it for the lease to recover. The host refuses synchronously
+      // for a small set of pre-dispatch conditions, the reachable one being a
+      // flow-level `reject` concurrency policy whose key the parent already
+      // holds (FIX-982).
+      return {
+        ok: false,
+        refused: "dispatch-rejected",
+        detail: `the host refused the dispatch before starting it: ${started.reason}`
+      };
+    }
 
     return { ok: true, sessionId: childId, requestId: started.requestId, adopted };
   };

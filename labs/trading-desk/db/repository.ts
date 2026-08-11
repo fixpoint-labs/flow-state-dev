@@ -1125,7 +1125,7 @@ export class OneSourceConflictError extends Error {
  * ticker can't both pass the history read and land a keyed + an unkeyed batch.
  */
 async function assertOneSourcePerTicker(tx: Tx, events: LedgerEventInput[]): Promise<void> {
-  const SEP = " ";
+  const SEP = "\u0000";
   type Group = { keyed: boolean; unkeyed: boolean; accountId: string; ticker: string };
   const incoming = new Map<string, Group>();
   for (const e of events) {

@@ -352,16 +352,26 @@ child's id, its parent, `topic` and `coordinate` labels, timestamps, and a
 
 `topic` and `coordinate` are written by `ctx.requestHost.startDetached` when it
 creates the job's session, taken from the routing seed that session's id was
-derived from (`seed.topic` and `seed.key`). The caller's `record` bag lands in
-the record's `metadata` and never becomes a label. Both are display only —
-nothing routes, authorizes or adopts on them — and both are optional, so guard
-with `== null`.
+derived from (`seed.topic` and `seed.key`). The caller's own `record` bag lands
+on the child session record and never becomes a label. Both labels are display
+only — nothing routes, authorizes or adopts on them — and both are optional, so
+guard with `== null`.
 
 The route is session-addressed: the parent is loaded and ownership-checked
 before the handler runs, and the answer is scoped to the stored parent's owner,
 tenant, org and flow kind. `limit` accepts 1–100 (default 25) and `offset`
 0–10000; anything outside returns `400`. Use each row's `id` with the existing
 `/sessions/:id/requests` endpoint to read that job's history.
+
+Those runs carry a `metadata.workstream` bag on the request record: `topic` and
+`key` from the routing seed, plus `taskId` naming the task-board row the run was
+started for. Read the bag at all only when the record's `source` is
+`"workstream"` — `metadata` is caller-writable on an ordinary request, `source`
+is not. `topic` and `key` are the seed the child session's id was derived from,
+so they cannot disagree with the run they sit on. `taskId` holds whatever the
+caller of `startDetached` passed and is checked against no board, so treat it as
+a correlation to display rather than one to key on. `key` and `taskId` are
+optional, so guard with `== null`.
 
 See [Background work](https://flow-state.dev/docs/server/background-work) for
 the full contract.

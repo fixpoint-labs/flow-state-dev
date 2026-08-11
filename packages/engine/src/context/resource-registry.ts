@@ -605,7 +605,13 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
   // map the old hand-rolled tool caches used). The compute still runs outside the
   // write lock, so distinct fields never block on each other's I/O; only an
   // identical concurrent miss waits. Cleared when the compute settles, so a later
-  // call reads the now-stored value as a hit. Keyed by storage key + field.
+  // call reads the now-stored value as a hit. Keyed by storage key + field,
+  // joined on NUL because both halves are free-form and any printable
+  // separator could appear inside one of them.
+  //
+  // The join is written as the escape sequence, never as a literal NUL byte:
+  // git sniffs a file's first 8000 bytes for one and renders the whole file as
+  // `Bin` if it finds it, which costs every reviewer the diff of this file.
   const getOrPatchInflight = new Map<string, Promise<JsonValue>>();
   function singleFlightGetOrPatch(
     storageKey: string,
@@ -616,7 +622,7 @@ export function createScopeResourceRegistry<TResources extends Record<string, Re
   ): Promise<JsonValue> {
     const existing = readState()[key];
     if (existing !== undefined) return Promise.resolve(existing);
-    const flightKey = `${storageKey} ${key}`;
+    const flightKey = `${storageKey}\u0000${key}`;
     const pending = getOrPatchInflight.get(flightKey);
     if (pending !== undefined) return pending;
     const run = applyGetOrPatchState(ref, key, compute).finally(() => {
