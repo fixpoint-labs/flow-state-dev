@@ -155,6 +155,45 @@ Asking is not free — it costs their attention and it costs a round-trip. Don't
 The failure runs both directions. Under-asking hides a call that shapes the product; over-asking
 trains them to skim, which costs you the one they needed to read.
 
+## Scope the ask to the case that produced it
+
+The most expensive mistake in this document is not a badly-written ask. It is a **correctly-written
+ask about a choice that does not exist** — or a real decision quietly demoted to a setting. Both
+come from the same habit: **proving something on one case and stating it as a property of the
+mechanism.**
+
+It fails in both directions, and one round of it invites the other:
+
+- **Over-generalising a proof** promotes a calibration constant into a decision. You show the
+  constant changes the customer-facing output on the case in front of you, and ask the owner to set
+  it — when on most cases a rule elsewhere decides the outcome at every value.
+- **Over-generalising a disproof** demotes a real decision into a setting. You show the constant
+  *cannot* change the outcome on one case, generalise that to the constant as a whole, and withdraw
+  an ask the owner should have had.
+
+**The test, before you write an ask or withdraw one:** name the case your claim was proved on.
+Name a case outside it. Check the claim there. If you cannot name a case outside it, you have not
+established a property — you have one example.
+
+**When a rule and a constant both move the same output**, they are usually two asks, not one, and
+collapsing them is what produces the wrong sign-off:
+
+- **The rule is the business decision** and leads. It is the thing the owner would explain to a
+  customer.
+- **The constant is the implementer's** — *except* on the cases where it changes what the customer
+  actually reads. Those cases are the ask, and the ask should be written from them.
+
+A worked instance: a panel-agreement rule demoted "how much a flagged input counts" to calibration,
+on the correct observation that a *unanimous* panel's headline moves at any value below a whole
+seat — so the constant could not decide it. True, and scoped to unanimity. On a **split** panel the
+same constant chose between two different words on the report. The ask came back one round later,
+rewritten to lead with the split case, because that is the case the owner was actually deciding.
+Two wrong sign-offs in two rounds, in opposite directions, from one habit.
+
+When you catch this, **sweep the whole artifact** — a spec that disproves its own ask three
+sections below the ask has not converged, and the audit that found the defect has to be run back
+over every surface asserting the opposite.
+
 ## Batching
 
 Group the asks for one turn under a single **`Need your sign-off`** heading, numbered, hardest
