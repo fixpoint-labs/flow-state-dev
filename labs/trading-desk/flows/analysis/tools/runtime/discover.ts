@@ -19,7 +19,20 @@
  * analyst's web-enrichment backstop).
  */
 import { resolveProvider } from "@flow-state-dev/tools/search";
-import type { DiscoveryPayload } from "../schemas";
+import {
+  anyFieldMentionsEntity,
+  publisherIsSubject,
+  subjectEntityFromProfile,
+  type SubjectEntity,
+} from "../../lib/entity-identity";
+import { emptyPayload, skippedDiscoveryPayload } from "../empty-payloads";
+import { resolveToolPayload } from "./resolve";
+import type {
+  DiscoveryPayload,
+  DiscoveryTool,
+  ToolInput,
+  ToolOutput,
+} from "../schemas";
 
 const MAX_ITEMS = 5;
 
@@ -88,6 +101,11 @@ export async function discoverWeb(args: DiscoverWebArgs): Promise<DiscoveryPaylo
       publisher: extractDomain(r.url),
       provider: r.source,
     })),
+    // Raw provider output — the entity check is applied on the way out of the
+    // tool (see `runDiscovery`), so a recorded fixture keeps the unfiltered
+    // search result and replay re-runs the check against the replayed profile.
+    entityCheck: "unchecked",
+    excluded: [],
   };
 }
 
@@ -99,4 +117,172 @@ function extractDomain(url: string): string | null {
   } catch {
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Entity-identity validation (FIX-779)
+// ---------------------------------------------------------------------------
+
+/** The slice of block context this runtime reads. Loose by design — the tool
+ *  handlers pass their own typed ctx and the fields are read defensively. */
+type DiscoveryCtx = {
+  session: { state: Record<string, unknown> };
+  resources?: Record<string, unknown>;
+};
+
+/**
+ * Resolve the run's subject entity from the session profile spine. Returns
+ * `null` when the profile has not been resolved (the tap that warms it failed,
+ * or the provider had nothing) — the caller must then leave the payload
+ * `"unchecked"` rather than dropping items it cannot validate.
+ */
+export function readSubjectEntity(ctx: DiscoveryCtx): SubjectEntity | null {
+  const ticker = ctx.session.state.ticker;
+  if (typeof ticker !== "string" || ticker === "") return null;
+  const profileData = ctx.resources?.profileData as
+    | { state?: { companyProfile?: unknown } }
+    | undefined;
+  const profile = profileData?.state?.companyProfile as
+    | { source?: unknown; name?: unknown; website?: unknown }
+    | undefined;
+  return subjectEntityFromProfile(ticker, profile ?? null);
+}
+
+/**
+ * Drop discovery results that are not about the subject entity.
+ *
+ * The failure this closes: a resolvable ticker whose search results belong to
+ * someone else (a ticker symbol colliding with another issuer's name fragment,
+ * a thinly covered listing). Those snippets reached analyst prompts as evidence
+ * with nothing structural to stop them.
+ *
+ * An excluded item keeps only its URL and a reason. The wrong-company title and
+ * snippet are discarded rather than tagged, because a tag in the payload is
+ * still prose in the prompt — the whole point is that the contaminating text
+ * does not reach the model.
+ *
+ * Three escapes, all deliberate and all honest rather than silent:
+ *   - `entityScoped: false` (macro / market-context discovery) asks about the
+ *     environment around a name, so the subject is not expected to be named.
+ *   - an unresolved subject leaves everything in place tagged `"unchecked"`;
+ *     dropping every snippet because we could not identify the company would be
+ *     a worse failure than the one this guards against.
+ *   - a payload with no search behind it (`"unavailable"` / `"skipped"`) stays
+ *     `"unchecked"`. The verdict describes what happened to ITEMS, so a run that
+ *     retrieved none has nothing to report a verdict on. See the guard below:
+ *     `verified` on an outage is an absence of data dressed as a measurement.
+ */
+export function applyEntityCheck(
+  payload: DiscoveryPayload,
+  subject: SubjectEntity | null,
+  entityScoped: boolean,
+): DiscoveryPayload {
+  if (!entityScoped) {
+    return { ...payload, entityCheck: "not-applicable", excluded: [] };
+  }
+  // No search ran, so there is nothing to have verified. `"unavailable"` is a
+  // provider outage or a missing key; `"skipped"` is the cost gate. Stamping
+  // `verified` on either would tell the analyst "the filter ran and nothing
+  // passed" (the prompt's literal reading of verified + empty `items`) when the
+  // truth is "we could not look" — an absence of data reported as a measured
+  // one, which is the failure this whole surface exists to prevent.
+  if (payload.source === "unavailable" || payload.source === "skipped") {
+    return { ...payload, entityCheck: "unchecked", excluded: [] };
+  }
+  if (subject === null) {
+    return { ...payload, entityCheck: "unchecked", excluded: [] };
+  }
+  const items: DiscoveryPayload["items"] = [];
+  const excluded: DiscoveryPayload["excluded"] = [];
+  for (const item of payload.items) {
+    const mentioned =
+      publisherIsSubject(item.publisher, subject) ||
+      // Each field on its own — see `anyFieldMentionsEntity`. Concatenating them
+      // put the end of one field beside the start of the next, manufacturing the
+      // very adjacency the ordinary-token rule looks for.
+      anyFieldMentionsEntity([item.title, item.snippet, item.url], subject);
+    if (mentioned) items.push({ ...item, id: String(items.length + 1) });
+    else {
+      excluded.push({
+        url: item.url,
+        // `name` is empty when the provider returned a profile without one; the
+        // ticker still identified the subject, so say only what we matched on.
+        reason:
+          subject.name === ""
+            ? `entity-mismatch: does not name ${subject.ticker}`
+            : `entity-mismatch: names neither ${subject.ticker} nor ${subject.name}`,
+      });
+    }
+  }
+  return { ...payload, entityCheck: "verified", items, excluded };
+}
+
+/**
+ * Whether each tool's query is about the company itself (entity-scoped, so a
+ * result naming a different issuer is contamination) or about the environment
+ * around it (macro conditions, sector rotation, peer earnings — where a good
+ * result frequently never names the subject).
+ *
+ * A total map over `DiscoveryTool` rather than a per-call-site flag: this is a
+ * fixed property of the query, and adding a ninth tool should be a compile
+ * error here, not a silently-defaulted argument at one of nine call sites.
+ */
+const ENTITY_SCOPED: Record<DiscoveryTool, boolean> = {
+  discover_fundamentals_context: true,
+  discover_sentiment_context: true,
+  discover_technical_context: true,
+  discover_profile_context: true,
+  discover_quant_context: true,
+  discover_disclosure_context: true,
+  // The environment around the name, not the name itself. Filtering on identity
+  // here would delete exactly what these two were sent to fetch.
+  discover_macro_context: false,
+  discover_market_context: false,
+};
+
+/**
+ * The shared body of all eight `discover_*_context` tools: the cost gate, the
+ * fixture/live/record dispatch, and the entity check. The tools differ only in
+ * name, description, and query template, so the body lives here once (BP-024)
+ * — a guard copied eight times is a guard that drifts.
+ *
+ * The cost gate fires BEFORE the fixture branch deliberately: a fixture-mode
+ * regression run on the `fast` preset should observe the same no-op
+ * investigation a live run would, not a fixture load.
+ *
+ * Per BP-020 the live branch never falls back to fixture data — a search
+ * provider failure tags the result `"unavailable"` so the analyst sees the gap
+ * honestly. The entity check runs on the fixture branch too, so a replayed
+ * corpus is validated exactly like a live search.
+ */
+export async function runDiscovery<T extends DiscoveryTool>(args: {
+  tool: T;
+  input: ToolInput<T>;
+  ctx: DiscoveryCtx;
+  queryTemplate: (ticker: string) => string;
+}): Promise<ToolOutput<T>> {
+  const { tool, input, ctx, queryTemplate } = args;
+  const entityScoped = ENTITY_SCOPED[tool];
+  if (ctx.session.state.costPreset !== "full") {
+    return skippedDiscoveryPayload(tool, input);
+  }
+  const payload = await resolveToolPayload(tool, input, ctx, async () => {
+    try {
+      return (await discoverWeb({
+        ticker: input.ticker,
+        date: input.date,
+        queryTemplate,
+      })) as ToolOutput<T>;
+    } catch {
+      return emptyPayload(tool, input);
+    }
+  });
+  // The subject is only read when it can be used — an environment-scoped tool
+  // does not declare the profile resource at all.
+  const subject = entityScoped ? readSubjectEntity(ctx) : null;
+  return applyEntityCheck(
+    payload as DiscoveryPayload,
+    subject,
+    entityScoped,
+  ) as ToolOutput<T>;
 }

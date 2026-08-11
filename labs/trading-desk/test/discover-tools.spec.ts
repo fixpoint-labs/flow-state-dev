@@ -213,8 +213,16 @@ describe("discover_*_context — parametrised wiring check across the three rema
 });
 
 describe("discoveryPayloadSchema", () => {
+  const base = {
+    ticker: "NVDA",
+    asOf: "2026-05-06",
+    query: "",
+    items: [],
+    entityCheck: "unchecked" as const,
+    excluded: [],
+  };
+
   it("accepts the skipped, fixture, web, and unavailable shapes", () => {
-    const base = { ticker: "NVDA", asOf: "2026-05-06", query: "", items: [] };
     for (const source of ["skipped", "fixture", "web", "unavailable"] as const) {
       expect(() => discoveryPayloadSchema.parse({ ...base, source })).not.toThrow();
     }
@@ -222,13 +230,15 @@ describe("discoveryPayloadSchema", () => {
 
   it("rejects an unknown source tag", () => {
     expect(() =>
-      discoveryPayloadSchema.parse({
-        source: "made-up",
-        ticker: "NVDA",
-        asOf: "2026-05-06",
-        query: "",
-        items: [],
-      }),
+      discoveryPayloadSchema.parse({ ...base, source: "made-up" }),
+    ).toThrow();
+  });
+
+  // FIX-779 — the entity verdict is a closed set: a payload can only claim
+  // "these items are about the subject" through one of the three known states.
+  it("rejects an unknown entityCheck verdict", () => {
+    expect(() =>
+      discoveryPayloadSchema.parse({ ...base, source: "web", entityCheck: "probably" }),
     ).toThrow();
   });
 });

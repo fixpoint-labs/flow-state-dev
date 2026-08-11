@@ -34,22 +34,35 @@ export const get_company_profile = handler({
   resources: { profileData: profileDataResource },
   // Write-through to the session profile spine (see get_fundamentals).
   execute: async (input, ctx) => {
-    const loadCompanyProfile = async () => {
-      if (pickMode(ctx) === "fixture") return loadFixture("get_company_profile", input);
-      const merged = await fetchAndMergeProviders(input);
-      return enrichWithWeb(merged);
-    };
     const payload = await writeSubjectSpine({
       toSpine: input.ticker === (ctx.session.state as { ticker?: string }).ticker,
       resource: ctx.resources.profileData,
       field: "companyProfile",
       tool: "get_company_profile",
       input,
-      load: loadCompanyProfile,
+      load: () => loadCompanyProfile(input, pickMode(ctx)),
     });
     return recordIfRecording("get_company_profile", input, ctx, payload);
   },
 });
+
+/**
+ * Load one company profile for the requested mode — the fixture read, or the
+ * merged Finnhub/Yahoo fetch plus the two web-enrichment backstops.
+ *
+ * Exported because `resolve-subject-entity.ts` warms the same session spine
+ * field before Phase 1 fans out (FIX-779), and both writers must produce the
+ * IDENTICAL payload: whichever runs first is what the other reads back, and
+ * what record mode captures into the corpus.
+ */
+export async function loadCompanyProfile(
+  input: ToolInput<"get_company_profile">,
+  mode: "fixture" | "live" | "record",
+): Promise<ToolOutput<"get_company_profile">> {
+  if (mode === "fixture") return loadFixture("get_company_profile", input);
+  const merged = await fetchAndMergeProviders(input);
+  return enrichWithWeb(merged);
+}
 
 /** Run Finnhub and Yahoo concurrently and merge their fields. Finnhub
  *  wins when both provide a value (more reliable identity/scale source);

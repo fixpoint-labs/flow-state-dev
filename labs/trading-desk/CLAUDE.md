@@ -1452,6 +1452,33 @@ tools self-gate at the body level — they short-circuit to
 `skippedDiscoveryPayload` before any provider call when the preset isn't
 full. Two coordinated seams, same key, no leakage.
 
+**Discovery results are checked against the company before they reach a
+prompt (FIX-779).** All eight tools share one body — `runDiscovery`
+(`tools/runtime/discover.ts`) — which owns the cost gate, the fixture/live/
+record dispatch, and the entity check. Six of them are **entity-scoped**
+(fundamentals, sentiment, technical, profile, quant, disclosure): a result
+that names neither the ticker nor the resolved company name is REMOVED from
+`items` and recorded in `excluded` as a URL plus a reason. Its title and
+snippet are discarded on purpose — tagging contaminated prose still leaves
+it in the prompt, and the failure being closed is a different issuer's
+earnings transcript being read as this issuer's evidence. Macro and market
+context are **not** entity-scoped (`entityCheck: "not-applicable"`): those
+queries ask about the sector and the environment around a name, so filtering
+on identity would delete exactly what they were sent to fetch.
+
+The identity comes from the session profile spine, warmed by the
+`resolveSubjectEntity` tap that runs after the ticker guard and before the
+Phase 1 fan-out. It has to be a tap, not a read inside the discovery tool:
+`get_company_profile` runs in the SAME `.parallel` as every discovery tool,
+so an in-tool read would be a race. The tap writes the spine field the
+profile analyst reads back, through the shared `loadCompanyProfile` loader,
+so it is a warm-up rather than an extra fetch, and record mode still captures
+the payload from the tool. It fails soft: an unresolved identity leaves the
+payload `entityCheck: "unchecked"` with nothing dropped. Matching is coarse
+by design (`lib/entity-identity.ts` — ticker token, distinctive name token,
+or first-party domain); it is a contamination guard, not a semantic
+classifier.
+
 The citation contract — every claim traces to either a `<data>` field
 or a URL the analyst actually fetched, and fetched URLs go in the
 `citations` array — is enforced by the prompt clauses, not by runtime

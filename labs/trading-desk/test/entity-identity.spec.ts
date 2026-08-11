@@ -1,0 +1,458 @@
+/**
+ * Tests for the subject-entity identity primitives (FIX-779).
+ *
+ * Intent encoded: this leaf decides whether a web-search result is about the
+ * company being analysed. Two failure directions matter, and they are not
+ * symmetric:
+ *
+ *   - a FALSE POSITIVE lets another issuer's earnings transcript into an
+ *     analyst prompt as evidence — the bug this exists to close;
+ *   - a FALSE NEGATIVE silently discards real context, so the leaf must return
+ *     "no usable identity" (null) rather than guess when it has nothing solid
+ *     to match on. A null subject disables the check upstream; it never fails
+ *     it closed.
+ */
+import { describe, expect, it } from "vitest";
+import {
+  anyFieldMentionsEntity,
+  entityNameTokens,
+  publisherIsSubject,
+  subjectEntityFromProfile,
+  textMentionsEntity,
+  type SubjectEntity,
+} from "../flows/analysis/lib/entity-identity";
+
+const nvidia = subjectEntityFromProfile("NVDA", {
+  source: "finnhub",
+  name: "NVIDIA Corporation",
+  website: "https://www.nvidia.com",
+}) as SubjectEntity;
+
+describe("entityNameTokens", () => {
+  it("keeps the distinctive tokens and drops corporate-form boilerplate", () => {
+    expect([...entityNameTokens("NVIDIA Corporation")]).toEqual(["nvidia"]);
+    expect([...entityNameTokens("Black Hills Corporation")]).toEqual(["black", "hills"]);
+  });
+
+  it("drops the shared form suffix, so two unrelated issuers do not agree on it", () => {
+    // Without the boilerplate filter, "Alpha Holdings" and "Beta Holdings"
+    // would share a token and every result about either would verify as both.
+    const alpha = entityNameTokens("Alpha Holdings Group Inc");
+    const beta = entityNameTokens("Beta Holdings Group Inc");
+    const shared = [...alpha].filter((t) => beta.has(t));
+    expect(shared).toEqual([]);
+  });
+});
+
+describe("subjectEntityFromProfile", () => {
+  it("builds an identity from a resolved profile", () => {
+    expect(nvidia.ticker).toBe("NVDA");
+    expect(nvidia.name).toBe("NVIDIA Corporation");
+    expect(nvidia.websiteHost).toBe("nvidia.com");
+  });
+
+  it("returns null for an unavailable profile — no identity to check against", () => {
+    expect(
+      subjectEntityFromProfile("NVDA", { source: "unavailable", name: "", website: null }),
+    ).toBeNull();
+    expect(subjectEntityFromProfile("NVDA", null)).toBeNull();
+  });
+
+  it("keeps the guard ON for a name with no 4+ character tokens", () => {
+    // `XP Inc.` and `3M Company` reduce to nothing under the 4-char rule. This
+    // used to return null, which tags every payload `unchecked` and RETAINS all
+    // results — so the issuers most likely to pull another company's pages got
+    // no protection at all. The identity was never missing: ticker, domain, and
+    // the short all-caps name token were all present.
+    const xp = subjectEntityFromProfile("XP", {
+      source: "yahoo",
+      name: "XP Inc.",
+      website: "https://www.xpinc.com",
+    }) as SubjectEntity;
+    expect(xp).not.toBeNull();
+    expect(xp.nameTokens.size).toBe(0);
+    expect([...xp.shortNameTokens]).toEqual(["XP"]);
+    expect(xp.websiteHost).toBe("xpinc.com");
+
+    const mmm = subjectEntityFromProfile("MMM", {
+      source: "finnhub",
+      name: "3M Company",
+    }) as SubjectEntity;
+    expect(mmm).not.toBeNull();
+    expect(mmm.nameTokens.size).toBe(0);
+    // `Company` is boilerplate; `3M` is the identity coverage actually uses.
+    expect([...mmm.shortNameTokens]).toEqual(["3M"]);
+  });
+
+  it("does not let a security-structure label become an identity", () => {
+    // `ETF` is uppercase, 3 characters, and a category label — not an identity.
+    // Admitting it verified ANY result containing the routine word "ETF" as
+    // evidence about this one fund, far broader than a sibling-fund page.
+    const ivv = subjectEntityFromProfile("IVV", {
+      source: "yahoo",
+      name: "iShares Core S&P 500 ETF",
+    }) as SubjectEntity;
+    expect([...ivv.shortNameTokens]).toEqual([]);
+    expect(textMentionsEntity("the ETF saw record outflows in June", ivv)).toBe(false);
+    // The ticker still identifies it — that is what carries fund identity.
+    expect(textMentionsEntity("IVV saw record outflows", ivv)).toBe(true);
+
+    // The same holds for every other wrapper label, via the same structural
+    // rule rather than via the denylist: each of these names carries a real
+    // name word, so the short pass never runs.
+    for (const name of [
+      "Vanguard S&P 500 ETF",
+      "SPDR S&P 500 ETF Trust",
+      "iPath Series B Bloomberg ETN",
+      "Taiwan Semiconductor Manufacturing ADR",
+    ]) {
+      const e = subjectEntityFromProfile("X", { source: "yahoo", name }) as SubjectEntity;
+      expect([...e.shortNameTokens], name).toEqual([]);
+    }
+  });
+
+  it("does not let REIT identify a trust — a wrapper is not an identity", () => {
+    // Same defect as `ETF`, on the 4+ character pass: `reit` is a legal wrapper
+    // every REIT carries, so it identifies none of them. An industry term stays
+    // distinctive (`semiconductor` still carries `ON Semiconductor`); a
+    // structural wrapper does not.
+    const spg = subjectEntityFromProfile("SPG", {
+      source: "finnhub",
+      name: "Simon Property Group REIT",
+    }) as SubjectEntity;
+    // Kept as a name token, demoted at match time — not filtered out.
+    expect(spg.nameTokens.has("reit")).toBe(true);
+    expect(textMentionsEntity("the REIT sector rallied on rate cuts", spg)).toBe(false);
+    // The issuer's actual name still verifies on its own.
+    expect(textMentionsEntity("Simon reported higher occupancy", spg)).toBe(true);
+  });
+
+  it("falls back to the short pass when every long token is ordinary", () => {
+    // The interaction demoting `reit` creates: `XP REIT` HAS a long token, so a
+    // presence test would keep the short pass off — but a lone ordinary token
+    // can never verify (it needs an adjacent pair that does not exist), leaving
+    // the name with no signal at all. The gate is "no DISTINCTIVE token", so the
+    // short pass correctly runs and recovers `XP`.
+    const odd = subjectEntityFromProfile("XPR", {
+      source: "yahoo",
+      name: "XP REIT",
+    }) as SubjectEntity;
+    expect([...odd.nameTokens]).toEqual(["reit"]);
+    expect([...odd.shortNameTokens]).toEqual(["XP"]);
+    expect(textMentionsEntity("XP REIT raised its dividend", odd)).toBe(true);
+    // And the wrapper still does not identify it.
+    expect(textMentionsEntity("a broad REIT rally", odd)).toBe(false);
+  });
+
+  it("keeps the denylist meaningful for an all-short name with a classifier", () => {
+    // The degenerate leftover the structural rule cannot reach: no long token,
+    // so the short pass DOES run, and the classifier must still be excluded.
+    const odd = subjectEntityFromProfile("XPT", {
+      source: "yahoo",
+      name: "XP ETF",
+    }) as SubjectEntity;
+    expect([...odd.shortNameTokens]).toEqual(["XP"]);
+    expect(textMentionsEntity("a broad ETF rally", odd)).toBe(false);
+  });
+
+  it("does not treat a short corporate form as an identity", () => {
+    // `Siemens AG` must not resolve `AG` as a short name token — it is a
+    // corporate form, and the all-caps test alone would let it through.
+    const siemens = subjectEntityFromProfile("SIEGY", {
+      source: "yahoo",
+      name: "Siemens AG",
+    }) as SubjectEntity;
+    expect([...siemens.shortNameTokens]).toEqual([]);
+    expect([...siemens.nameTokens]).toEqual(["siemens"]);
+  });
+
+  it("returns null only when nothing at all can be matched on", () => {
+    // The remaining honest no-identity case: no ticker, no host, no name token
+    // of either kind. Such a subject matches nothing, so running the check
+    // would drop every result — worse than the contamination it guards against.
+    expect(
+      subjectEntityFromProfile("", { source: "yahoo", name: "Inc.", website: null }),
+    ).toBeNull();
+  });
+});
+
+describe("textMentionsEntity", () => {
+  it("matches on the ticker as a standalone token", () => {
+    expect(textMentionsEntity("Why NVDA is still cheap", nvidia)).toBe(true);
+  });
+
+  it("matches on a distinctive company-name token", () => {
+    expect(
+      textMentionsEntity("Nvidia's data-center mix keeps climbing", nvidia),
+    ).toBe(true);
+  });
+
+  it("rejects a result about a different company — the FIX-779 failure", () => {
+    expect(
+      textMentionsEntity(
+        "Black Hills Corp Q1 2026 earnings call transcript: management reiterates guidance",
+        nvidia,
+      ),
+    ).toBe(false);
+  });
+
+  it("does not match on a substring collision", () => {
+    // Token equality, not substring: a `marketwatch.com` byline must not verify
+    // a subject whose name token is `marks`.
+    const marks = subjectEntityFromProfile("MKS", {
+      source: "finnhub",
+      name: "Marks and Spencer Group plc",
+    }) as SubjectEntity;
+    expect(textMentionsEntity("marketwatch.com coverage of retail", marks)).toBe(false);
+    expect(textMentionsEntity("Marks & Spencer trading update", marks)).toBe(true);
+  });
+
+  it("matches a dotted class-share ticker as a token sequence", () => {
+    const brk = subjectEntityFromProfile("BRK.B", {
+      source: "finnhub",
+      name: "Berkshire Hathaway Inc",
+    }) as SubjectEntity;
+    expect(textMentionsEntity("BRK.B closes at a record", brk)).toBe(true);
+  });
+
+  it("does not let ordinary prose verify a word-shaped ticker", () => {
+    // `ON` is a real ticker AND an English preposition. Matching the ticker
+    // case-insensitively would verify essentially every snippet ever written,
+    // silently disabling the guard for exactly the ambiguous symbols whose
+    // search results are most likely to belong to someone else.
+    const on = subjectEntityFromProfile("ON", {
+      source: "finnhub",
+      name: "ON Semiconductor Corporation",
+    }) as SubjectEntity;
+    expect(
+      textMentionsEntity("Black Hills raised guidance on strong demand", on),
+    ).toBe(false);
+    // The real thing still verifies — by the uppercase ticker...
+    expect(textMentionsEntity("ON beats on margin", on)).toBe(true);
+    // ...by the cashtag form, which tokenizes the same way...
+    expect(textMentionsEntity("$ON is breaking out", on)).toBe(true);
+    // ...and by the distinctive name token, which stays case-insensitive.
+    expect(textMentionsEntity("onsemi and other semiconductor names", on)).toBe(true);
+  });
+
+  it("does not let an ordinary finance word carry a company name alone", () => {
+    // `Target Corporation` reduces to the single token `target`, which appears
+    // in coverage of every issuer there is ("raises the price target"). Treating
+    // it as a name match verifies a Tesla article as evidence about Target —
+    // the FIX-779 failure with the guard's own matching as the vector.
+    const target = subjectEntityFromProfile("TGT", {
+      source: "finnhub",
+      name: "Target Corporation",
+      website: "https://www.target.com",
+    }) as SubjectEntity;
+    expect(
+      textMentionsEntity("Tesla analyst raises the price target to $400", target),
+    ).toBe(false);
+    // The real thing still verifies by the uppercase ticker...
+    expect(textMentionsEntity("TGT comparable sales beat", target)).toBe(true);
+    // ...and by the first-party domain, which is why the recall cost is bounded.
+    expect(publisherIsSubject("corporate.target.com", target)).toBe(true);
+  });
+
+  it("lets two ordinary tokens verify only when they are adjacent", () => {
+    // No single token of `American Financial Group` identifies it. Two of them
+    // side by side name the company; two of them merely PRESENT somewhere in the
+    // text do not — `text` is the concatenated title + snippet + URL of one
+    // result, so co-occurrence spans unrelated sentences.
+    const afg = subjectEntityFromProfile("AFG", {
+      source: "finnhub",
+      name: "American Financial Group Inc",
+    }) as SubjectEntity;
+    expect(textMentionsEntity("American Financial posted a record quarter", afg)).toBe(
+      true,
+    );
+    // The counterexample that falsified the co-occurrence rule: macro prose about
+    // consumers and rates, about no issuer at all, carrying both name tokens far
+    // apart. Under a bag-of-words pair rule this verified as evidence about AFG —
+    // contaminated prose reaching the prompt through the guard meant to stop it.
+    expect(
+      textMentionsEntity(
+        "American consumers face financial pressure as rates rise",
+        afg,
+      ),
+    ).toBe(false);
+    // One ordinary token alone is still not enough (the pre-existing rule).
+    expect(textMentionsEntity("the American consumer is holding up", afg)).toBe(false);
+    // Adjacency is order-agnostic — a name gets written back-to-front often
+    // enough ("Financial American Group Inc" in a filings index).
+    expect(textMentionsEntity("Financial American Group filed an 8-K", afg)).toBe(true);
+    // A repeated SINGLE ordinary token is one name token twice, not two of them.
+    expect(
+      textMentionsEntity("American American Airlines cut its outlook", afg),
+    ).toBe(false);
+    // A URL slug that names the company still verifies — the normalizer splits
+    // on the hyphens, so the run stays contiguous.
+    expect(
+      textMentionsEntity("Q3 results https://ex.com/american-financial-group-q3", afg),
+    ).toBe(true);
+  });
+
+  it("matches a short name token case-sensitively, like the ticker", () => {
+    // `3M Company` has no 4+ character token, so `3M` IS the name signal.
+    // Coverage says "3M" far more often than "MMM", and without this the guard
+    // would drop most genuine 3M articles the moment it started running.
+    const mmm = subjectEntityFromProfile("MMM", {
+      source: "finnhub",
+      name: "3M Company",
+    }) as SubjectEntity;
+    expect(textMentionsEntity("3M lifts full-year guidance", mmm)).toBe(true);
+    expect(textMentionsEntity("MMM declares a dividend", mmm)).toBe(true);
+    // Case-sensitive for the same reason the ticker rule is: a 2-character
+    // token matched loosely lets routine prose verify anything.
+    expect(textMentionsEntity("the 3m distance was measured", mmm)).toBe(false);
+    // And a genuinely unrelated company is now DROPPED rather than retained —
+    // the whole point of keeping the guard on for short names.
+    expect(textMentionsEntity("Tesla raises the price target", mmm)).toBe(false);
+  });
+
+  it("checks a short-named issuer against the wrong company's prose", () => {
+    // The defect this closes, end to end: XP Inc. used to resolve to no
+    // identity, so an unrelated result was retained as `unchecked` evidence.
+    const xp = subjectEntityFromProfile("XP", {
+      source: "yahoo",
+      name: "XP Inc.",
+    }) as SubjectEntity;
+    expect(textMentionsEntity("XP Inc. posts record client assets", xp)).toBe(true);
+    expect(textMentionsEntity("Nvidia's data-center mix keeps climbing", xp)).toBe(false);
+    // Lower-case `xp` is ordinary prose ("gained xp"), not a mention.
+    expect(textMentionsEntity("the player gained xp quickly", xp)).toBe(false);
+  });
+
+  it("does not let a FIELD BOUNDARY manufacture the adjacent pair", () => {
+    // The adjacency rule exists to stop a bag-of-words match. Concatenating a
+    // result's title + snippet + URL put the end of one field beside the start
+    // of the next, manufacturing the exact phrase the rule looks for: a title
+    // ending "American" and an unrelated snippet opening "Financial pressure…"
+    // verified American Financial Group. Neither field is about the issuer.
+    const afg = subjectEntityFromProfile("AFG", {
+      source: "finnhub",
+      name: "American Financial Group Inc",
+    }) as SubjectEntity;
+    const title = "Why the consumer is still American";
+    const snippet = "Financial pressure builds as rates rise";
+    const url = "https://example.com/macro-outlook";
+    expect(anyFieldMentionsEntity([title, snippet, url], afg)).toBe(false);
+    // The concatenation is what was wrong, and it still matches — proving the
+    // fix is the per-field call, not a change to the matching rules.
+    expect(textMentionsEntity(`${title} ${snippet} ${url}`, afg)).toBe(true);
+    // A genuine within-field mention is untouched.
+    expect(
+      anyFieldMentionsEntity(["American Financial Group beat estimates", "", url], afg),
+    ).toBe(true);
+  });
+
+  it("does not let a field boundary manufacture a dotted ticker run", () => {
+    // Same defect, second rule: `BRK.B` normalizes to the two-token run
+    // `BRK B`, so a title ending "BRK" beside a snippet opening "B" produced it.
+    const brk = subjectEntityFromProfile("BRK.B", {
+      source: "finnhub",
+      name: "Berkshire Hathaway Inc",
+    }) as SubjectEntity;
+    const title = "Analyst note on BRK";
+    const snippet = "B shares closed at a record";
+    expect(anyFieldMentionsEntity([title, snippet, "https://ex.com/x"], brk)).toBe(false);
+    // Within one field it still verifies.
+    expect(anyFieldMentionsEntity(["BRK.B closes at a record", "", ""], brk)).toBe(true);
+  });
+
+  it("still verifies a distinctive token with no adjacency requirement", () => {
+    // The adjacency rule is scoped to ORDINARY tokens. A category noun like
+    // `semiconductor` stays distinctive and carries the name on its own —
+    // demoting it would cost `ON Semiconductor` name verification entirely,
+    // since `ON` only matches upper-case.
+    const on = subjectEntityFromProfile("ON", {
+      source: "finnhub",
+      name: "ON Semiconductor Corporation",
+    }) as SubjectEntity;
+    expect(
+      textMentionsEntity("a semiconductor supplier raised guidance", on),
+    ).toBe(true);
+  });
+});
+
+describe("publisherIsSubject", () => {
+  it("treats the company's own domain as first-party", () => {
+    expect(publisherIsSubject("nvidia.com", nvidia)).toBe(true);
+    expect(publisherIsSubject("www.nvidia.com", nvidia)).toBe(true);
+    expect(publisherIsSubject("reuters.com", nvidia)).toBe(false);
+    expect(publisherIsSubject(null, nvidia)).toBe(false);
+  });
+
+  it("treats first-party subdomains as the subject", () => {
+    // Press releases and filings live on `investor.` / `newsroom.` hosts and
+    // routinely carry a title that names no company ("Third Quarter Results").
+    // An exact-host match would drop the most authoritative evidence available.
+    expect(publisherIsSubject("investor.nvidia.com", nvidia)).toBe(true);
+    expect(publisherIsSubject("nvidianews.nvidia.com", nvidia)).toBe(true);
+  });
+
+  it("does not let a lookalike host impersonate the subject", () => {
+    // The dot anchor is what separates a real subdomain from a suffix collision.
+    expect(publisherIsSubject("evilnvidia.com", nvidia)).toBe(false);
+    expect(publisherIsSubject("nvidia.com.attacker.net", nvidia)).toBe(false);
+  });
+
+  it("gives up the shortcut when the profile site is a page on a shared host", () => {
+    // A fund's site is a product page on its sponsor's domain. Reducing it to
+    // the bare host makes every sibling fund's page first-party evidence for
+    // this one — the family is not the member. So no host is resolved at all,
+    // and identity falls to the ticker, which does distinguish siblings.
+    const ivv = subjectEntityFromProfile("IVV", {
+      source: "yahoo",
+      name: "iShares Core S&P 500 ETF",
+      website: "https://www.ishares.com/us/products/239726/ishares-core-sp-500-etf",
+    }) as SubjectEntity;
+    expect(ivv.websiteHost).toBeNull();
+    expect(publisherIsSubject("ishares.com", ivv)).toBe(false);
+    expect(textMentionsEntity("IVV sees record inflows", ivv)).toBe(true);
+  });
+
+  it("keeps the shortcut for a corporate site at a locale or section root", () => {
+    // Requiring a BARE host was too blunt. A company whose provider-supplied
+    // site is `company.com/en/` is not a product page on a shared host, and
+    // dropping its host removes first-party matching exactly where it is
+    // load-bearing: a release titled "Third Quarter 2026 Results" names no
+    // company, so the text check cannot rescue it.
+    for (const site of [
+      "https://www.acme.com/en/",
+      "https://www.acme.com/us/en",
+      "https://www.acme.com/index.html",
+      "https://www.acme.com/home",
+      "https://www.acme.com/ir",
+      "https://www.acme.com",
+    ]) {
+      const acme = subjectEntityFromProfile("ACME", {
+        source: "finnhub",
+        name: "Acme Robotics Corporation",
+        website: site,
+      }) as SubjectEntity;
+      expect(acme.websiteHost, site).toBe("acme.com");
+      // The whole point: a generic-titled first-party release still verifies.
+      expect(publisherIsSubject("investor.acme.com", acme), site).toBe(true);
+    }
+  });
+
+  it("still gives up the shortcut for any deeper product path", () => {
+    // The narrowing recognises site ROOTS only. Anything it does not positively
+    // recognise keeps the conservative behaviour, so the fund case that
+    // motivated the rule is unaffected.
+    for (const site of [
+      "https://www.schwabassetmanagement.com/products/schd",
+      "https://investor.vanguard.com/investment-products/etfs/profile/voo",
+      "https://www.ssga.com/us/en/intermediary/etfs/funds/spdr-sp-500-etf-trust-spy",
+      "https://www.acme.com/en/products/widget",
+    ]) {
+      const fund = subjectEntityFromProfile("FUND", {
+        source: "yahoo",
+        name: "Some Fund Trust",
+        website: site,
+      }) as SubjectEntity;
+      expect(fund.websiteHost, site).toBeNull();
+    }
+  });
+});
