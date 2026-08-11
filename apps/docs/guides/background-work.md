@@ -102,6 +102,7 @@ const board = taskBoard({
   workers: {
     investigate: { worker: investigateBlock, dispatch: { mode: "detached" } },
     verify: { worker: verifyBlock, dispatch: { mode: "detached" } },
+    summarize: summarizeBlock, // a bare block runs inline, in the request that claimed the task
   },
   initialTasks: [
     { id: "filings", goal: "Read the Q3 filings", assignee: "investigate", metadata: { topic: "acme" } },
