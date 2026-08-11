@@ -18,8 +18,14 @@ import {
 import { createFlowRegistry, type FlowRegistry } from "../registry/flow-registry";
 import { createFlowApiRouter, type FlowApiRouter } from "../routes/createFlowApiRouter";
 import { createRuntimeConfig, resolveStaleSweep, type RuntimeConfig } from "../runtime-config";
-import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent } from "../execution/logging";
+import {
+  DEFAULT_RUNTIME_LOGGER,
+  logRuntimeEvent,
+  type RuntimeLogger,
+  type RuntimeLoggerLevel
+} from "../execution/logging";
 import { abortRequest } from "../execution/abort-registry";
+import { detectInterruptedRequests } from "../execution/request-recovery";
 import { createCheckpointDurabilityProvider } from "../durability/checkpoint-durability-provider";
 import { FlowStateConfigError, FlowStateDisposedError } from "../errors/flow-error";
 import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store-adapter";
@@ -331,7 +337,19 @@ class InternalFlowState<TSettings extends object>
 
     // Detached children first, for the same reason the worker is stopped before
     // the stores: they are still writing. See `#drainDetachedChildren`.
-    await this.#drainDetachedChildren();
+    //
+    // Guarded, and the guard is not defensive padding: the drain calls a
+    // HOST-SUPPLIED `RuntimeLogger`, and a logger that throws would otherwise
+    // reject `dispose()` here — before the worker closes and before a single
+    // store adapter is released. Diagnostics must never be able to strand the
+    // backend they are describing. Reported through `console.error` for the
+    // same reason the give-up report is: the logger is the thing that just
+    // failed.
+    try {
+      await this.#drainDetachedChildren();
+    } catch (err) {
+      console.error("[flowstate] detached drain failed", err);
+    }
 
     // Stop the execution backend before the stores close: the worker drains
     // in-flight jobs (which write to the stores), then the adapter releases
@@ -494,7 +512,18 @@ class InternalFlowState<TSettings extends object>
     for (const child of abandoned) {
       // Best-effort by contract: `false` means the run already deregistered,
       // which is a race we win by doing nothing.
-      abortRequest(child.requestId);
+      //
+      // Guarded per child, and not defensively: `abortRequest` fires the run's
+      // own abort listeners SYNCHRONOUSLY, and `runAction`'s listener logs
+      // through the host-supplied logger. A logger that throws therefore throws
+      // out of `abortRequest` — and out of this loop, leaving every child after
+      // the first one running. Cancelling the rest matters more than reporting
+      // that one of them complained.
+      try {
+        abortRequest(child.requestId);
+      } catch (err) {
+        console.error("[flowstate] cancelling a detached request failed", err);
+      }
     }
 
     // NOT terminalized here, deliberately — this drain does not write terminal
@@ -580,26 +609,123 @@ class InternalFlowState<TSettings extends object>
     );
   }
 
-  /**
-   * Emit a shutdown diagnostic through the runtime's configured logger.
-   *
-   * Read from the runtime config at call time rather than captured, because a
-   * host may install its logger after resolving the runtime — the CLI does
-   * exactly that, which is how `--quiet` reaches a line written during
-   * `dispose()`. Falls back to the framework default so a deployment that
-   * configures nothing still sees it.
-   */
+  /** Emit a shutdown diagnostic through the runtime's configured logger. */
   #logShutdown(
     level: "warn",
     message: string,
     context: Record<string, unknown>
   ): void {
-    logRuntimeEvent(
-      this.#resolvedRuntimeConfig?.logger ?? DEFAULT_RUNTIME_LOGGER,
-      level,
-      message,
-      context
-    );
+    this.#logVia(level, message, context);
+  }
+
+  /**
+   * A `RuntimeLogger` that forwards to whichever logger is configured AT CALL
+   * TIME, falling back to the framework default.
+   *
+   * Exists because the host may install its logger after the runtime resolves —
+   * the CLI does, which is how `--quiet` reaches output produced by work that
+   * started during initialization.
+   */
+  readonly #deferredLogger: RuntimeLogger = {
+    debug: (m, c) => this.#logVia("debug", m, c),
+    info: (m, c) => this.#logVia("info", m, c),
+    warn: (m, c) => this.#logVia("warn", m, c),
+    error: (m, c) => this.#logVia("error", m, c)
+  };
+
+  /**
+   * Route one line through the configured logger, resolved at call time.
+   *
+   * Read from the runtime config rather than captured, because a host may
+   * install its logger after resolving the runtime — the CLI does exactly that,
+   * which is how `--quiet` reaches a line written during `dispose()`. Falls back
+   * to the framework default so a deployment that configures nothing still sees
+   * it.
+   *
+   * A host-supplied logger is arbitrary code, and every caller of this is either
+   * shutdown or a fire-and-forget recovery sweep — paths where a throw costs far
+   * more than the line was worth. Unguarded, the drain would lose its cancel and
+   * its unwind, and `dispose()` would reject before a single store adapter was
+   * released. The guard in `dispose()` catches whatever else the drain can
+   * throw; this one keeps a failed diagnostic from being that thing.
+   */
+  #logVia(
+    level: RuntimeLoggerLevel,
+    message: string,
+    context: Record<string, unknown>
+  ): void {
+    try {
+      logRuntimeEvent(
+        this.#resolvedRuntimeConfig?.logger ?? DEFAULT_RUNTIME_LOGGER,
+        level,
+        message,
+        context
+      );
+    } catch (err) {
+      console.error("[flowstate] runtime logger failed", err);
+    }
+  }
+
+  /**
+   * Sweep requests a previous process abandoned, on EVERY initialization.
+   *
+   * This used to be reachable only through `createFlowRouteHandlers`, so it ran
+   * for a deployment that built a router and for nobody else. Every producer of
+   * the `interrupted` status sat behind that same door — startup detection, the
+   * periodic sweeper, and the recovery route — which left the router-less
+   * topologies (`fsdev run`, `fsdev chat`) with no way for an abandoned record
+   * to ever be reclassified. A run cut short there stayed `in_progress`
+   * forever, and later invocations against the same store swept nothing.
+   *
+   * That is the exact topology detached work now runs in, and shutdown
+   * deliberately does not settle a child's record — it aborts and leaves the
+   * substrate to recover. That division only holds if something recovers, so
+   * this is the half that was missing rather than an extra safety net.
+   *
+   * Cost is one `listStale` against the active-request registry, which holds
+   * IN-FLIGHT requests only — bounded by concurrency, not by history — plus a
+   * read and a write per genuinely stale entry. Fire-and-forget, so it never
+   * delays startup, and on a clean store it is a single empty query. It honours
+   * the `detectInterruptedOnStartup` option, which already exists and already
+   * means precisely this; the runtime path simply never implemented it.
+   *
+   * A router deployment now sweeps twice at startup, once here and once in
+   * `createFlowRouteHandlers`. That is deliberate and costs an empty scan: the
+   * detection is idempotent (only a still-`in_progress` record is touched), so
+   * the second pass finds the first pass's work already done. The alternative
+   * was a flag threaded into the route handlers to suppress theirs, which buys
+   * a no-op query at the price of a new option on a public surface — and the
+   * handlers must keep their own call regardless, for the same reason they keep
+   * their own `startOperation` installer: a caller mounting the router without
+   * a `FlowState` has no other owner.
+   *
+   * Both bounds come off the SAME `resolveStaleSweep` values the request host
+   * was stamped with, so a sweep here cannot reap on a different clock than the
+   * liveness gate in this very process reads on.
+   */
+  #detectInterruptedOnStartup(
+    stores: StoreRegistry,
+    staleThresholdMs: number | undefined,
+    queuedGraceMs: number | undefined
+  ): void {
+    if (this.#options.detectInterruptedOnStartup === false) return;
+
+    void detectInterruptedRequests({
+      stores,
+      staleThresholdMs,
+      queuedGraceMs,
+      // Resolved per call rather than captured, for the same reason
+      // `#logShutdown` does it: the CLI installs its logger onto the resolved
+      // config AFTER `getRuntime()` returns, and this sweep is already running
+      // by then. Captured, `--quiet` would be bypassed by the one log line a
+      // recovering run emits — which is exactly the flag's job to suppress,
+      // since a swept row is narration about the past, not this run's outcome.
+      logger: this.#deferredLogger
+    }).catch((err: unknown) => {
+      // Never fails initialization: recovery is a courtesy pass over old rows,
+      // and a store that cannot answer it can still serve the run being started.
+      console.error("[flowstate] interrupted-request detection failed", err);
+    });
   }
 
   #init(): Promise<FlowApiRouter> {
@@ -756,6 +882,8 @@ class InternalFlowState<TSettings extends object>
     // BEFORE the worker wiring and before any router exists, so every later copy
     // of `requestHost` carries it. See `#installDetachedStart`.
     this.#installDetachedStart(runtimeConfig, stores);
+
+    this.#detectInterruptedOnStartup(stores, staleThresholdMs, queuedGraceMs);
 
     const runtime: FlowStateRuntime = {
       registry: this.#registry,

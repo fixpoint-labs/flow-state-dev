@@ -133,9 +133,12 @@ function detachingFlow(
 }
 
 /** Poll until `predicate` holds — the child runs fire-and-forget, unawaited. */
-async function until(predicate: () => boolean, label: string): Promise<void> {
+async function until(
+  predicate: () => boolean | Promise<boolean>,
+  label: string
+): Promise<void> {
   for (let attempt = 0; attempt < 200; attempt += 1) {
-    if (predicate()) return;
+    if (await predicate()) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error(`timed out waiting for ${label}`);
@@ -984,5 +987,159 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     expect(runtime.runtimeConfig.requestHost?.startOperation).toBeDefined();
 
     await state.dispose();
+  });
+
+  /**
+   * The other half of "shutdown does not settle a child's record".
+   *
+   * The drain deliberately leaves an abandoned row to the substrate, and the
+   * request-record half of that promise is `detectInterruptedRequests`. Every
+   * caller of it used to sit behind `createFlowApiRouter` — startup detection,
+   * the periodic sweeper, and the recovery route alike — so a router-less
+   * deployment had nothing that could ever reclassify an abandoned row. Which
+   * is to say: on the exact topology this issue is about, the recovery the
+   * removal was justified by did not run.
+   *
+   * Driven at the outcome. Seed a record the way an interrupted run leaves it,
+   * initialize a SECOND runtime the way a later `fsdev run` does, and read the
+   * status back.
+   */
+  it("sweeps a previous run's abandoned record on a runtime-only init", async () => {
+    const observed: Observed = { children: [] };
+    const flow = detachingFlow("runtime-sweep", observed);
+    // One adapter instance, so both runtimes share a store the way two CLI
+    // invocations against the same durable store do.
+    const adapter = inMemoryStores();
+
+    const first = createFlowState({
+      flows: { detaching: flow },
+      stores: { default: { primary: adapter } }
+    });
+    const runtime = await first.getRuntime();
+
+    // What a run whose process walked away leaves: an `in_progress` record and
+    // a registry entry whose heartbeat stopped long enough ago to be stale.
+    const abandonedAt = Date.now() - 10 * 60_000;
+    await runtime.stores.request.set(
+      "req_abandoned",
+      {
+        requestId: "req_abandoned",
+        sessionId: "s_abandoned",
+        userId: USER_ID,
+        flowKind: "runtime-sweep",
+        actionName: "launch",
+        status: "in_progress",
+        createdAt: abandonedAt,
+        updatedAt: abandonedAt
+      } as never,
+      "any"
+    );
+    await runtime.stores.activeRequests.register({
+      requestId: "req_abandoned",
+      sessionId: "s_abandoned",
+      userId: USER_ID,
+      flowKind: "runtime-sweep",
+      actionName: "launch",
+      startedAt: abandonedAt,
+      lastHeartbeatAt: abandonedAt
+    } as never);
+    await first.dispose();
+
+    // The later invocation. `getRouter()` is never called — that is the point.
+    const second = createFlowState({
+      flows: { detaching: flow },
+      stores: { default: { primary: adapter } }
+    });
+    await second.getRuntime();
+
+    await until(async () => {
+      const record = await runtime.stores.request.get("req_abandoned");
+      return record?.status === "interrupted";
+    }, "the abandoned record to be swept to interrupted");
+
+    const record = await runtime.stores.request.get("req_abandoned");
+    // `interrupted`, not `failed` or `aborted`: the run was stopped by its
+    // process going away, and `interrupted` is the resumable reading of that.
+    expect(record?.status).toBe("interrupted");
+
+    await second.dispose();
+  });
+
+  /**
+   * A logger that throws must not strand the backend it was describing.
+   *
+   * The drain's waiting notice goes through a HOST-SUPPLIED `RuntimeLogger`.
+   * Unguarded, a logger that throws rejects `dispose()` from inside the drain —
+   * before the worker closes and before a single store adapter is released. The
+   * process then exits holding open pools, and the diagnostic that was meant to
+   * describe shutdown is what prevented it.
+   */
+  it("still releases adapters when the configured logger throws", async () => {
+    const observed: Observed = { children: [] };
+    // A child that never settles, so the drain is guaranteed to reach the
+    // waiting notice rather than finishing before it prints anything.
+    const flow = detachingFlow("logger-throws", observed, { coreNeverSettles: true });
+
+    let disposed = false;
+    const inner = inMemoryStores();
+    const adapter: StoreAdapter = {
+      capabilities: inner.capabilities,
+      resolve: (slots) => inner.resolve(slots),
+      dispose: async () => {
+        disposed = true;
+        await inner.dispose?.();
+      }
+    };
+
+    const state = createFlowState({
+      flows: { detaching: flow },
+      stores: { default: { primary: adapter } },
+      detachedDrainTimeoutMs: 50
+    });
+
+    const runtime = await state.getRuntime();
+    // Installed after the runtime resolves, which is how a real host does it —
+    // and is why the drain looks its logger up at call time.
+    //
+    // Scoped to the drain's own notice rather than throwing on every `warn`.
+    // `runAction` also logs from inside an abort listener, and AbortSignal
+    // invokes listeners outside any promise chain this file can guard — a
+    // throw-on-everything logger surfaces from there as an uncaught exception
+    // that has nothing to do with `dispose()`. That is a real gap and a wider
+    // one than this issue; it is flagged separately rather than widened into
+    // here, and the cancel loop guards its own synchronous half regardless.
+    (runtime.runtimeConfig as { logger?: unknown }).logger = {
+      warn: (message: string) => {
+        if (message.includes("waiting for")) throw new Error("logger exploded");
+      }
+    };
+
+    await runLikeCli(runtime, flow, "s_parent");
+    await until(() => observed.start !== undefined, "the child to be dispatched");
+
+    const restore = console.error;
+    const errors: string[] = [];
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map(String).join(" "));
+    };
+    try {
+      // Must not reject. A throwing diagnostic is not a shutdown failure.
+      await expect(state.dispose()).resolves.toBeUndefined();
+    } finally {
+      console.error = restore;
+    }
+
+    // Two assertions, because the two guards buy different things and a single
+    // one would let either go unnoticed.
+    //
+    // Cleanup below the failed log line still happened — without the guard in
+    // `dispose()`, the throw propagates out of the drain and no adapter is ever
+    // released.
+    expect(disposed).toBe(true);
+    // And the drain still did its actual job. The waiting notice is emitted
+    // BEFORE the cancel, so a throw that is caught only at the top of
+    // `dispose()` abandons the rest of the drain — the child is never
+    // cancelled, and this report never printed.
+    expect(errors.some((line) => line.includes("shutdown cancelled"))).toBe(true);
   });
 });
