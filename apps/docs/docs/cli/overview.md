@@ -56,9 +56,9 @@ A flow can hand a unit of work to a *workstream*, a background child session tha
 | Your setup | What the command does |
 |---|---|
 | `fsdev.config.*`, no queue | Runs the work in this process, and waits for it before exiting |
-| `fsdev.config.*` with a queue adapter | Hands the work to the queue, and returns without waiting for it to run |
+| `fsdev.config.*` with a dispatching queue adapter (`colocated`, `dispatch-only`) | Hands the work to the queue, and returns without waiting for it to run |
 | No config (directory discovery or `--no-config`) | Can't start background work; the call fails by name |
-| A `worker-only` process | Can't start background work; the call refuses by name |
+| A `worker-only` process | Runs the work in this process rather than putting it on the queue. Not durable: if the process stops, nothing re-runs it |
 
 For what a workstream is and how tasks group into one, see [Work that outlives the turn](/guides/background-work).
 
@@ -74,13 +74,13 @@ A run whose NDJSON already looks complete but whose shell prompt hasn't come bac
 
 `--quiet` suppresses the line, not the wait. So does `--log-level error`, since the notice is logged at `warn`. Either way the command stays up until the work is done.
 
-Background work can start more background work, and the wait covers descendants too. A flow that spawns without end won't wedge the command: after enough rounds it stops waiting and warns that the remaining work may be truncated by shutdown.
+Background work can start more background work, and the wait covers descendants too. The wait is bounded: it runs against `detachedDrainTimeoutMs`, a `createFlowState` option that defaults to 30 seconds, and a flow that spawns without end hits a round cap as well. When the budget runs out the command cancels what's still running, names the requests and sessions it gave up on, and exits. That report goes to stderr even under `--quiet`, since work may have been left unfinished.
 
 `fsdev chat` waits at the equivalent point in its own life, which is when you leave the session rather than at the end of each turn.
 
 ### With a queue, the command doesn't wait
 
-When the config hands `createFlowState` a worker adapter, background work goes to the queue instead of running in the command's own process, and the wait above doesn't apply.
+When the config hands `createFlowState` a worker adapter that dispatches, meaning `colocated` (the default) or `dispatch-only`, background work goes to the queue instead of running in the command's own process, and the wait above doesn't apply.
 
 By the time the command returns, the request has been recorded and the queue has accepted the job. A failed store write or a rejected enqueue fails the dispatch rather than reporting a start, so a queue you can't reach surfaces as an error instead of as silence.
 
@@ -100,13 +100,13 @@ Run against an `fsdev.config.*` to exercise a flow's background work from the te
 
 ### From a worker-only process
 
-A process whose worker adapter runs `mode: "worker-only"` consumes the queue and dispatches nothing, so a start is refused rather than run inside the worker:
+A process whose worker adapter runs `mode: "worker-only"` consumes the queue and dispatches nothing. Background work started there runs inside the worker process itself, the same way it runs with no queue configured. Nothing is enqueued.
 
-```ts
-{ ok: false, refused: "no-start-operation", detail: "…" }
-```
+**That work is not durable.** An enqueued job belongs to the queue, so whatever drains it picks it up, and a crash or a redeploy costs a retry rather than the work. Work started from a `worker-only` process belongs to the process. If the process stops, the run stops with it and nothing re-runs it: the request record stops where it stopped, and a task board row the work had claimed is left unfinished.
 
-Refusals come back as values rather than thrown errors, so a caller branches on `refused`. A task board turns one into a failed task row naming the refusal.
+A `worker-only` process is a good place to consume durable jobs and a poor place to start them. For the queue to own the work, start it from a process that has a dispatcher, which means `colocated` or `dispatch-only`.
+
+Shutdown treats it as in-process work, so the process waits for it the way it waits above.
 
 ## Next steps
 
