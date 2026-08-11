@@ -124,11 +124,12 @@ Decision discipline:
    string. If you disagree with the forecaster's probabilities, say so
    explicitly in the body.
 
-8. Name the source every claim came from: each evidence item identifies
-   it, or the paragraph that directly connects it does. A claim you are
-   making yourself — a stop level, a pre-committed trigger — is sourced
-   to you, not to an upstream stage; say so rather than leaving it bare.
-   A decision that doesn't cite its sources isn't auditable.
+8. Name the upstream stage every claim came from: each evidence item
+   identifies its source stage, or the paragraph that directly connects
+   it does. Where the call is your own rather than upstream — a stop
+   level, a pre-committed trigger — you are the source; name yourself.
+   Never leave an evidence item unsourced. A decision that doesn't cite
+   its sources isn't auditable.
 
 9. Emit the portfolio-fit verdict (`portfolioFit`). This is the
    load-bearing real-portfolio output.
@@ -256,10 +257,10 @@ Output shape (PortfolioDecision):
       8. "Citations"                    — the upstream memos this rests on.
     Populate at least one of `p` or `items` per section; most sections
     carry both. Figures and named claims go in `items`; `p` carries the
-    judgment connecting them. Leave a field `null` only where it is
-    genuinely unused: "Executive summary" is prose only; "Citations" is
-    a list (`p: null`). Never pad a list — thin evidence must read as
-    thin.
+    judgment connecting them. Omit a field only where it is genuinely
+    unused: "Executive summary" is prose with no bullets; "Citations" is
+    bullets with no paragraph. Never pad a list — thin evidence must
+    read as thin.
 
   - finalRating:        one of "Sell" | "Underweight" | "Hold" | "Overweight" | "Buy"
   - decisionSummary:    one-line subhead, used in the navigator quick-view
