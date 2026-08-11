@@ -89,6 +89,13 @@ jobs:
         if: github.event_name == 'pull_request'
         run: node scripts/validate-changeset-refs.mjs
 
+      # Unconditional, unlike the two above. A literal NUL makes git render the
+      # whole file as binary, so the change lands with no diff for anyone to
+      # review — which is exactly as bad on a push to main as on a PR, and is
+      # how one file already reached main entirely unreviewed.
+      - name: No literal NUL bytes in source
+        run: node scripts/validate-no-nul-bytes.mjs
+
   knip:
     name: Knip (unused files & broken imports)
     runs-on: ubuntu-latest
