@@ -512,10 +512,14 @@ conclusion is the altitude, not the wording.
   mechanism, not a second statement of a rule that was already written down four days earlier.
 - **Split-channel truth as its own class.** Two instances. Merged into fix B — one answer, one
   place, whether it is computed or stored.
-- **The MCP `update_pull_request` tooling note** (strips `<details>`/`<summary>`, leaves `<b>`,
-  flips a PR out of draft). Real — three of the five PRs shipped bodies with `<b>` headings and no
-  fold, against `pr-reviewer-guidance.md` — but the mechanism is confirmed only circumstantially,
-  and it is a harness caveat, not a practice.
+- **The GitHub MCP fold-stripping tooling note.** Real, and **directly confirmed while writing this
+  row**: the PR carrying it (#1245) was opened through `create_pull_request` with two `<details>`
+  blocks and came back with both unwrapped to bare `<b>` headings. So the stripping is not specific
+  to `update_pull_request` — that tool adds the separate side effect of flipping a PR out of draft.
+  Together they explain three of the five PRs shipping bodies with `<b>` headings and no fold,
+  against `pr-reviewer-guidance.md`'s "Below the fold". Dropped from the grounding anyway: it is a
+  harness caveat for `pr-reviewer-guidance.md`, not a practice, and no tenet or BP is the right home
+  for it.
 
 ### A review error worth its own note: zero callers in a framework
 
