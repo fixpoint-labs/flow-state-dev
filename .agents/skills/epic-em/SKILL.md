@@ -39,9 +39,9 @@ gates, not the gates.
   *split the remainder* goes up when the deferred item protects promised behaviour. Otherwise
   take the answer and reset `prFeedbackRounds` to `0`.
 
-Everything else — naming, layering, local structure, sequencing, where a guard sits — is yours.
-Decide it, don't relay it. **This overrides step 4 for engineering blockers only:** they skip its
-surfacing and reach the user as one line in the report. Gates still surface there as written.
+Everything else — naming, layering, sequencing, where a guard sits — is yours **wherever it
+surfaces**: step-4 blockers and cross-spec `decision-needed` conflicts alike. Decide it, don't
+relay it. Not a **gate** (running the cross-spec pass), and not a **spend approval** (a Fable yes).
 
 Sending an architecturally-critical fork up puts the user in the engineer's chair — say so
 ([`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md) → "When
