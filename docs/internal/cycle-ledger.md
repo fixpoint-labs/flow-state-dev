@@ -346,3 +346,215 @@ Fix A is prose, aimed at attention at edit time — the same shape cycle 2's rou
 doubts. If unreconciled growth still reaches merge, that is the second class where written guidance
 failed to change behavior, and the honest read is mechanical enforcement (CI computing the ratio at
 merge), not sharper prose. Do not spend a third cycle on rung 4 here.
+
+---
+
+## Cycle 4 — durable-jobs epic wrap (FIX-939) (2026-08-11)
+
+Full epic sweep at wrap. Five implementation PRs, all merged, under epic
+[#993](https://github.com/fixpoint-labs/flow-state-dev/pull/993) — whose own endpoint
+arrives here, since epic close *is* the wrap. **80 automated review passes across the
+five.** Distinct from cycle 3, which is still open in per-PR mode on a different class
+(feedback applied additively); these are the epic's own artifacts.
+
+**Method, recorded with the numbers because two earlier baselines died of definition
+drift.** `Rounds` = automated review passes (`get_reviews`; `cursor[bot]` +
+`chatgpt-codex-connector[bot]`), counted identically for all five rows. Implementation
+PRs take **ordinary scoring** — the spent-round rule, the `nit` exclusion and the
+third-round flag are direction-artifact rules and are *not* applied here. This is the
+first cycle whose every row was measured on one definition. It is **not** comparable to
+cycle 1's or cycle 2's round columns, and does not pretend to be; the impl-PR rounds
+trend starts here.
+
+| PR | Kind | Rounds | Feedback classes | Claims (looped / settled / verdicts) | Design felt off? | Upstream fix that would have prevented it |
+|---|---|---|---|---|---|---|
+| [#1159](https://github.com/fixpoint-labs/flow-state-dev/pull/1159) FIX-982 P3a — detached work runs | impl | **23** | missed-edge-case ×4 (concurrency rejection reported `handed-off`; unroutable board across 4 construction shapes; `onError` overridden; nested `childBlocks` session schema) · stale-restatement ×4 (two `background-work` docs pages; a code comment justifying behaviour with a mechanism that does not exist; the read-cost line) · over-engineered ×1 (cursor: 30–40% of comment LOC trimmable) | 0 / 0 / — | **yes** — the `started` milestone was moved later three rounds running, then removed | Ask which layer *owns* the fact before adding a checkpoint: the host cannot assert anything about a task row |
+| [#1173](https://github.com/fixpoint-labs/flow-state-dev/pull/1173) FIX-1071 — DevTool Workstreams | impl | **27** | split-channel ×1 (`error` + `truncation`, **3 rounds on one claim**) · seam-inert ×1 (a failed-read test that passed against the bug) · missed-edge-case ×12 (read fences, session-switch staleness, paging, fold precedence) · over-engineered ×1 (duplicated derivations) | 1 / 0 / — | no | Collapse a fact split across two values before wiring a second consumer to it |
+| [#1177](https://github.com/fixpoint-labs/flow-state-dev/pull/1177) FIX-1077 — router-less detached start | impl | **15** | seam-inert ×2 (**both self-reported**; kill-count table in the body) · stale-restatement ×2 (`--model` across ~12 sites in 3 commits; the recovery-route comment) · missed-edge-case ×3 (queued cancel, drain ceiling, recovery vs disposal) · design-off ×1 | 1 / 0 / — | **yes** — "two installers competing" was the wrong diagnosis for three rounds; there was one, writing to a fork | Prove the outcome, not the seam — and grep the old answer rather than re-reading the diff |
+| [#1180](https://github.com/fixpoint-labs/flow-state-dev/pull/1180) FIX-1068 — shared session resource | impl | **9** | carry-the-decision ×5 (**self-reported**) · seam-inert ×3 (`retainOwnedKeys` always `{}`; `storageScopeOf` with zero call sites; a widened callback signature no call site passes) · stale-restatement ×2 (`state-and-scopes.md` on the superseded design; the `lineage-scope.ts` header) · missed-edge-case ×8 (delete-recreate, create-race, ownership precedence, coverage token) | 0 / 0 / — | no | Compute the answer once and pass it along; a comparison re-deciding what the caller knew is the shape to distrust |
+| [#1184](https://github.com/fixpoint-labs/flow-state-dev/pull/1184) FIX-1013 — kitchen-sink demo | impl | **6** | over-engineered ×1 (a second Workstream read per turn on *every* conversation — flagged twice, accepted as debt, FIX-1109) · missed-edge-case ×3 (delivery marker republishing, worker failure not failing its Workstream, deliver-before-ack) | 0 / 0 / — | no | A reference app teaches whatever it does; an app-level workaround in it is a framework gap deferred |
+| [#993](https://github.com/fixpoint-labs/flow-state-dev/pull/993) durable-jobs epic-spec | epic | **6 raw** (endpoint reached — see note) | *(no new findings this cycle; last updated 2026-08-09, before any of the five merged)* | 1 / 0 / — | — | *(carried from cycle 2)* |
+
+**#993's endpoint has arrived and its count is still not comparable.** The epic closes at this
+wrap, so the row is no longer in flight — but the `6` is cycle 2's raw pre-rule number and stays
+labelled raw. There is still **no comparable epic-PR rounds baseline**; the next epic scored under
+the spent-round rule starts it. The `11-of-18 findings` axis from cycle 2 remains the comparable
+one, and #993 produced no new findings this cycle, so the class trend must be read off the
+implementation rows below rather than off the epic PR.
+
+### The dominant class, for the third cycle running: `stale-restatement`
+
+Twelve instances across four of the five PRs — the largest class again, after cycle 1
+(invariant breadth) turned out to be its code-shaped sibling and cycle 2 named it.
+
+**The single most useful fact in this cycle is a date.** Tenet 5 ¶3 — the clause that says a
+decision restated in ten places is corrected in none of them until every restatement moves, and
+that tables and indexes *are* restatements — landed on **2026-08-07** (`3b339008d`). These five
+PRs merged on **2026-08-11**. The class recurred twelve times, four days after its own fix
+shipped, in work by the same loop.
+
+That is not context for the class; it *is* the finding. Cycle 2 set up exactly this test and
+named the two readings — (1) the fixes work but slowly, (2) written guidance cannot close this
+class because the failure is attention at edit time, not knowledge. Cycle 2 said round 8 already
+moved the weight to reading 2 and warned: *"Do not let a third cycle pass on reading 1 by
+default."* **Cycle 4 is that third cycle, and it confirms reading 2.** Fix A (tenet 5 ¶3) and
+fix B (`epic-agent`'s standing rule) were both live for the whole of this epic. Neither fired.
+
+Fix B's scope explains part of it and does not excuse it: `epic-agent` edits the epic-spec, so
+its enumerate-the-restatements rule never reaches an implementation PR editing code comments,
+file headers, `--help` strings and package READMEs. Cycle 1's fix C (`issue-implement` 10.6) is
+the rule that *should* have covered those, and its wording is why it didn't — it names a fixed
+three-surface list (PR body, changeset, architecture docs) and says **re-read against the current
+diff**. A re-read of the diff structurally cannot find a stale claim in a file the diff never
+opened, which is precisely where these lived: `packages/bullmq/README.md` was never in any of the
+five diffs.
+
+**The `--model` case is the class in one artifact.** The claim that the flag reaches every
+generator was corrected in three separate commits over three rounds, across ~12 sites — help text
+in three commands, two `packages/cli/README.md` tables that mirror `--help` verbatim, and seven
+docs pages. `45197d40d` records the tell: *"Three commands, not the two the review named — `dev`
+had the same string."* The third command was found by searching, not by reading the diff.
+
+### Four instances outstanding at wrap, and what closed them
+
+Three of the four `stale-restatement` instances traced from the implementation PRs were **still
+live on `main` when this sweep ran** — a ledger row saying "found and fixed" would misrepresent
+them:
+
+| Location | The stale claim |
+|---|---|
+| `packages/engine/src/resources/lineage-scope.ts` header | documented the *rejected* derived-root design and named `lineageRootSessionId`, a field that exists nowhere in source (`ac87ea9c6` replaced it with a minted `lineageId`) |
+| `packages/engine/src/routes/recovery-routes.ts:316` | "only auto-runs `detectInterruptedRequests` at server startup", after `f78fed0da` made it run on every runtime init |
+| `packages/bullmq/README.md` | untouched since `cf1946f50`, before the epic, while owning three queue-specific facts the epic changed |
+| `docs/architecture/state-and-scopes.md` | "Every creator goes through `ensureSessionRecord`" — three do not, and the child path cannot, since it inherits `lineageId` rather than minting one |
+
+**All four are being closed by the `polish-docs` pass auto-dispatched at this wrap** — confirmed
+in the working tree alongside this row (`lineage-scope.ts` now describes the minted id;
+`recovery-routes.ts` now names both run sites; `bullmq/README.md` +115/−; `state-and-scopes.md`
+replaces the false universal with the pair of invariants and names which four creators actually
+use the helper).
+
+**Record the attribution, because it is the cycle's cleanest experiment.** These were not caught
+by the rule at edit time, by the author, or by any of the 80 review passes. They were caught days
+later by a **corpus-level sweep dispatched as a separate mechanism**. That is reading 2 with a
+worked example: the prose was present and did nothing; a mechanism that enumerates surfaces found
+all four. A future cycle checking whether this class is falling must therefore ask *which* thing
+closed an instance — an edit-time catch and a wrap-time sweep are not the same result, and only
+the first is evidence the guidance works.
+
+### The new class: seam-correct-but-inert
+
+Six instances, the largest *new* class, and the one no existing lens asks about: **a check placed
+correctly at the seam that is vacuous or dead end to end.** It has two shapes the grounding treats
+unequally.
+
+- **Inert production code** (4) — `retainOwnedKeys` provably returning `{}` for every newly shared
+  key; `storageScopeOf` defined with zero call sites; a widened callback signature `tsc` accepted
+  while every call site kept passing a hardcoded value, because TypeScript lets a callback ignore
+  extra parameters; a coverage token written in one shape and read in another, so two cache checks
+  never hit. Nothing in the grounding reaches these. BP-035's second-path checklist is their
+  *inverse*: it asks about paths the change didn't add code for, not about code the change added
+  that nothing reaches.
+- **Vacuous tests** (2+) — a cancellation test that waited 300ms while the parent held its
+  concurrency key for 400ms, so it passed against the neutered fix; a failed-read test that passed
+  against the bug because the fix's own new initial state masked it. Tenet 7 covers these as an
+  assertion (*"a test that can't fail … is not a test"*) but supplies no method, and the
+  `review` skill's completeness lens checks only that RED was *demonstrated*.
+
+**The counter-practice emerged inside the epic and is worth keeping.** #1177 published a
+kill-count table (neuter each fix, record how many of its 17 tests go red — 13 for the
+single-owner install, 1 for the deadline, 1 for the ceiling fold), and #1159 states that *"every
+behavioural fix on this branch was neutered against its own test before being kept."* It caught
+most of the six. The trap it creates is worth naming with it: reverting a neuter with
+`git checkout <file>` discards every uncommitted change in that file, not the one edit intended.
+
+### `carry-the-decision`, and its state-shaped twin
+
+Five instances on #1180 alone, self-reported in that PR's body — one rule implemented in two
+places that then drift, every fix the same move (compute once, pass it along). A sixth was raised
+and declined as non-blocking (cursor on the duplicate `sharedAddressing()` walk). Tenet 5 ¶2's
+convergence clause is the nearest cover and misses it, for the same reason cycle 2 found ¶2
+missing documents: it is phrased about **guards**, and neither site here is a guard.
+
+#1173's `error` + `truncation` split is the same failure in state rather than computation — one
+fact across two independent values, so only a consumer holding both could state it correctly. It
+cost **three rounds on one claim**, and `c84d5419a` records why: *"each of the previous two fixed
+the consumer in front of us while the split kept producing another."* Two instances is under the
+bar for a class of its own; merged here because the move that fixes both is one move.
+
+### Upstream fixes — **proposed, none landed**
+
+This wrap produced a proposal, not a change. Four grounding edits and two tooling notes are with
+the product owner; **nothing was written to `philosophy.md`, `best-practices.md` or any skill.**
+Recorded here so the next cycle can tell whether a flat number means the fix failed or never
+shipped.
+
+| # | Proposed fix | Altitude | Targets | Status |
+|---|---|---|---|---|
+| A | Tenet 7 extended from "a test that cannot fail" to "**a check that cannot fire**", naming the method: break it on purpose, confirm the signal changes | philosophy | seam-correct-but-inert, both shapes | proposed |
+| B | Tenet 5 ¶2 extended from converging *guards* to carrying *decisions* — compute once and pass it along; store once and derive from it | philosophy | carry-the-decision + split-channel, 7 instances | proposed |
+| C | `issue-implement` 10.6's reconciliation rewritten from *re-read the diff* to **grep the superseded claim's distinctive noun** across headers, comments, `--help`/error strings, READMEs and docs | skill, PR-feedback | `stale-restatement`, all 12 | proposed |
+| D | Tenet 3 gains "nothing calls it yet is not the test" — in a framework, in-repo caller counts measure the example apps; the test is *is this a duplicate route?* | philosophy | the zero-callers review error (below) | proposed |
+
+**Fix C is the one this cycle's evidence actually argues for**, and it is deliberately mechanical
+rather than prose: it is cycle 2 round 5's method (*"grep every place the taxonomy is written
+down, then converge them in one pass — the enumeration found what the review queue hadn't"*),
+generalised from the epic-spec to a code change's surfaces. Fixes A, B and D are grounding edits
+and therefore carry cycle 2's warning on their face; if the classes they target do not fall, the
+conclusion is the altitude, not the wording.
+
+### Dropped
+
+- **"Fix the claim, not the file" as its own entry.** It *is* tenet 5 ¶3, near verbatim, including
+  the table-contradicting-its-own-paragraph shape. Adding a near-duplicate would weaken both;
+  folded into fix C, where the failure actually is.
+- **"Finish the edit" as a new BP.** Same tenet, same reason. Four live instances argue for a
+  mechanism, not a second statement of a rule that was already written down four days earlier.
+- **Split-channel truth as its own class.** Two instances. Merged into fix B — one answer, one
+  place, whether it is computed or stored.
+- **The MCP `update_pull_request` tooling note** (strips `<details>`/`<summary>`, leaves `<b>`,
+  flips a PR out of draft). Real — three of the five PRs shipped bodies with `<b>` headings and no
+  fold, against `pr-reviewer-guidance.md` — but the mechanism is confirmed only circumstantially,
+  and it is a harness caveat, not a practice.
+
+### A review error worth its own note: zero callers in a framework
+
+Raised by the owner, and the most consequential item this cycle. Two review lenses argued from
+**in-repo usage counts** and both were wrong to. `sharedToWorkstream` was called overbuilt for
+having one in-repo consumer, when it is deliberate framework configuration the roadmap needs — the
+reasoning would have confined a feature before its consumers arrived. FSD's surface exists for
+consumers who are not in this repo, so an in-repo caller count measures `apps/kitchen-sink`, not
+worth.
+
+The distinction that *does* hold is duplication, not usage: `parentTask` / `settleParentTask` are
+on the public `RequestHost` type, documented in `packages/core/README.md` and
+`state-and-scopes.md`, and assigned **nowhere** (`createFlowState.ts:870` says so), while
+`detached-runner.ts` already settles the parent row by re-minting the ticket from the row its start
+gate re-read. That is a second seam for a served capability, and it goes — because it is a
+duplicate path, not because nothing calls it. This is a genuine gap between tenet 3 and tenet 4
+that no doc disambiguates, which is why fix D is a tenet edit rather than a BP.
+
+### Claims
+
+No claim on any of the five looped twice on a *factual* question, so no POC settlement fired
+(`claims-settled` 0 across the board). Two claims were argued and settled by reading the code
+instead: #1173's task↔Workstream attribution bound, and #1177's diagnosis of the installer, which
+was **asserted wrongly for three rounds** and corrected by probing a colocated worker-shaped
+adapter. The second is the interesting one — it looped on a *mechanism* claim and was settled by
+building a probe, which is what `settle-claim` exists for, done by hand without invoking it. Worth
+watching whether the trigger is too narrow rather than too loose.
+
+### Claim to test next cycle
+
+1. **`stale-restatement` falls as a share of implementation-PR findings, and — the half that
+   matters — instances are caught at edit time rather than by a wrap-time sweep.** Score both.
+   This cycle: 12 instances, 0 caught at edit time, 4 caught by `polish-docs` at wrap, the rest by
+   review. If fix C lands and the class stays flat, reading 2 is confirmed a second time and the
+   next move is CI, not prose.
+2. **`seam-correct-but-inert` appears in the ledger at all next cycle.** A zero here is suspect
+   until confirmed the reviewer was looking: it is a new class, no lens asks about it today, and
+   an unmeasured class reads as a solved one.
+3. **Cycle 3's fix-A observable is not scored here.** All five PRs merged after `#1182` put the
+   growth trigger on `main`, so they are in scope — but scoring needs per-file length ratios at
+   review-open versus merge, which this sweep did not compute. Left explicitly unscored rather
+   than guessed; cycle 3's claim stands with #1166 as its only baseline.
