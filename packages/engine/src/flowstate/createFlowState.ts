@@ -577,13 +577,25 @@ class InternalFlowState<TSettings extends object>
     //
     // The drain exists because truncating in-process work strands it: nothing
     // else is holding the run, so a closed store mid-write leaves a task row
-    // `in_progress` forever. None of that is true of an enqueued child. That
-    // work is durable by construction and outliving this process is the point
-    // of putting it on a queue, so waiting buys nothing — and `finished` there
-    // resolves only when some worker completes the job, which means a runtime
-    // with no worker consuming its queue would block `dispose()` indefinitely.
-    // A queue with nobody draining it is a normal operational state, not a bug,
-    // and shutdown must not be hostage to it.
+    // `in_progress` forever. An externally dispatched child is a different
+    // situation on both counts.
+    //
+    // What is already true when `startDetached` returns: the external branch of
+    // `dispatch` resolves `accepted` only after the enqueue-time record and
+    // registry entry commit AND `dispatcher.dispatch()` resolves, and it sets no
+    // `started`, so the start operation awaits exactly that. The hand-off is
+    // therefore complete and discoverable before this process could exit — there
+    // is no half-written row to strand.
+    //
+    // What is NOT ours to assert: that the job then survives and runs. That is
+    // the dispatcher's contract and the deployment's, not the framework's —
+    // `isInProcessDispatcher` tests for `dispatchLocal`, which says nothing about
+    // durability, and even a durable queue may have no worker consuming it right
+    // now. Which is the operative point: `finished` here resolves only when some
+    // worker completes the job, so waiting would block `dispose()` on a process
+    // this one does not control, indefinitely and by design in a topology where
+    // the workers live elsewhere. A queue nobody is draining is a normal
+    // operational state, not a fault, and shutdown must not be hostage to it.
     //
     // Keyed on the effective DISPATCHER rather than on `worker.mode`, because
     // the two genuinely disagree: `options.dispatcher` (mutually exclusive with
