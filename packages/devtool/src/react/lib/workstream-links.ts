@@ -85,6 +85,17 @@
  * provenance**. It says "this is probably the session doing this work, go look",
  * not "this session provably owns this task".
  *
+ * That bound is about identity, and it is separate from FRESHNESS. Everything
+ * here resolves against whatever snapshot of a task `groupCollections` produced,
+ * and that fold used to land on the OLDEST one — so a task reassigned or
+ * re-topiced across two requests was matched on state it no longer had. The
+ * fold now keeps the newest change per task (see `task-collection-state`), which
+ * removes two effects that looked like this bound and were not: a wrong link
+ * drawn against a superseded assignee, and a CORRECT link suppressed because a
+ * stale topic made a second collection appear to contend. Neither retires the
+ * bound — an unverifiable board is unverifiable however fresh the row is — but
+ * ambiguity now reflects a real gap in the data rather than a stale read of it.
+ *
  * Refusing to link without verified attribution is not an option that leaves the
  * feature standing — attribution is not merely absent from the payload, it is
  * inexpressible from it, so that rule would draw no link ever. The fix belongs

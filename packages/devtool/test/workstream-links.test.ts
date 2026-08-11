@@ -14,7 +14,42 @@ import {
   linkWorkstreamsToTasks,
   taskLinkKey,
 } from "../src/react/lib/workstream-links";
-import type { CollectionView, Task } from "../src/react/lib/task-collection-state";
+import { groupCollections } from "../src/react/lib/task-collection-state";
+import type {
+  CollectionView,
+  Task,
+  TaskStreamItem,
+} from "../src/react/lib/task-collection-state";
+
+/** One `task-change` item for `task-a`, as the substrate emits it. */
+function taskChange(options: {
+  requestId: string;
+  ts: number;
+  assignee: string;
+}): TaskStreamItem {
+  return {
+    id: `item_${options.requestId}`,
+    type: "component",
+    status: "completed",
+    requestId: options.requestId,
+    itemIndex: 0,
+    provenance: { blockName: "board", blockInstanceId: "b:0", phase: "main" },
+    ts: options.ts,
+    component: "task-change",
+    data: {
+      collectionId: "issues",
+      taskId: "task-a",
+      kind: "assignee_changed",
+      task: {
+        id: "task-a",
+        goal: "do the thing",
+        status: "in_progress",
+        assignee: options.assignee,
+        metadata: { topic: "FIX-1" },
+      },
+    },
+  } as never;
+}
 
 /** The exact encoding `workstreamRoutingSeed` writes into `coordinate`. */
 function coordinate(boardId: string, coordinateKey: string): string {
@@ -452,6 +487,37 @@ describe("linkWorkstreamsToTasks", () => {
         expect(byTask.get(taskLinkKey("issues", "task-a"))?.id).toBe(scenario.expected);
       });
     }
+  });
+
+  it("resolves against the task's newest state, not the oldest request's", () => {
+    // Driven through the real fold and the real arrival order rather than two
+    // pre-ordered snapshots, because the ordering IS the bug — handing the
+    // resolver a ready-made `CollectionView` would pass either way.
+    //
+    // The task was claimed by `implement` in an earlier request and reassigned
+    // to `review` in a later one. Requests arrive newest-first, so a fold that
+    // takes the last item it walks past holds the `implement` snapshot, and the
+    // link then resolves against an assignee the task no longer has.
+    const reviewWs = workstream({
+      id: "dsx_review",
+      topic: "FIX-1",
+      coordinate: coordinate("issue-work", assigneeKey("review")),
+    });
+    const implementWs = workstream({
+      id: "dsx_impl",
+      topic: "FIX-1",
+      coordinate: coordinate("issue-work", assigneeKey("implement")),
+    });
+
+    const collections = groupCollections([
+      // Newer request first, as `listSessionRequests` hands them over.
+      taskChange({ requestId: "req_2", ts: 2_000, assignee: "review" }),
+      taskChange({ requestId: "req_1", ts: 1_000, assignee: "implement" }),
+    ]);
+
+    const { byTask } = linkWorkstreamsToTasks([reviewWs, implementWs], collections);
+
+    expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(reviewWs);
   });
 
   it("draws no link when two boards in the session contend for one Workstream", () => {

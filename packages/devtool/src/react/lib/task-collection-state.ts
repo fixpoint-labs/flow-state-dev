@@ -149,12 +149,16 @@ export function groupCollections(
       id: string;
       boardMeta: BoardMeta;
       tasksById: Map<string, ResolvedTask>;
+      /** `ts` of the change currently held per task. Internal to the fold. */
+      tsById: Map<string, number>;
     }
   >();
 
-  // Forward iteration so `tasksById` ends with the latest entry per task and
-  // `boardMeta` reflects the latest meta. Forward also lets us track the
-  // total number of changes per task (for the `×N` ribbon).
+  // One pass, counting every change and keeping the newest per task by `ts`
+  // (see the comparison below — walk order alone is NOT chronological here).
+  // `boardMeta` still takes the last one walked past, which is correct for it:
+  // it is keyed per collection and the stream carries one active and one
+  // completed, never two competing snapshots of the same instant.
   for (const item of items) {
     if (item.type !== "component") continue;
     const component = (item as { component?: string }).component;
@@ -171,11 +175,33 @@ export function groupCollections(
       }
       const bucket = ensureBucket(byId, change.collectionId);
       const prior = bucket.tasksById.get(change.taskId);
+      const changeCount = (prior?.changeCount ?? 0) + 1;
+      // Latest by `ts`, not last-walked. The panel receives requests
+      // newest-first (`listSessionRequests` orders `updated_at DESC`) and
+      // flattens them in that order, so "the last item walked past" is the
+      // OLDEST request's snapshot of any task that changed more than once —
+      // which is a stale `status`, `assignee` and `topic` for everything
+      // downstream to render and match against.
+      //
+      // Compared here rather than by sorting the input: sorting would reorder
+      // items within a request too, and this needs no ordering contract from a
+      // caller at all. `ts` is required on every item, so there is no gap.
+      // `>=` keeps walk order as the tie-break, which is what orders two
+      // changes emitted in the same millisecond inside one request.
+      const ts = (item as { ts?: number }).ts ?? Number.NEGATIVE_INFINITY;
+      const priorTs = bucket.tsById.get(change.taskId) ?? Number.NEGATIVE_INFINITY;
+      if (prior !== undefined && ts < priorTs) {
+        // An older change arriving after a newer one. It still counts as
+        // activity — the `×N` ribbon reports how much happened, not who won.
+        bucket.tasksById.set(change.taskId, { ...prior, changeCount });
+        continue;
+      }
+      bucket.tsById.set(change.taskId, ts);
       bucket.tasksById.set(change.taskId, {
         task: change.task,
         kind: change.kind,
         prevStatus: change.prevStatus,
-        changeCount: (prior?.changeCount ?? 0) + 1,
+        changeCount,
       });
       continue;
     }
@@ -211,6 +237,8 @@ function ensureBucket(
       id: string;
       boardMeta: BoardMeta;
       tasksById: Map<string, ResolvedTask>;
+      /** `ts` of the change currently held per task. Internal to the fold. */
+      tsById: Map<string, number>;
     }
   >,
   id: string
@@ -221,6 +249,7 @@ function ensureBucket(
       id,
       boardMeta: {},
       tasksById: new Map(),
+      tsById: new Map(),
     };
     map.set(id, bucket);
   }
