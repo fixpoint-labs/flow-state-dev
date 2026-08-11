@@ -144,6 +144,30 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
     // caller with no board passes whatever input its own core takes, so only an
     // input that actually names a board is judged. `coordinateKey` is compared
     // too — a flow may route a board's other workers and not this one.
+    //
+    // WHAT THIS PROVES, EXACTLY: that *some* declaration in this flow owns this
+    // address — not that the board making the call is that declaration. The two
+    // differ only when a board built at runtime reuses a registered board's
+    // `boardId` and coordinate, and they cannot be told apart here: nothing
+    // identifies the caller. `requestHost` is built once per request, not per
+    // block (see `runAction`'s `createExecutionContext` call), so everything this
+    // seam knows about who is calling arrives in `args`, from the caller. A token
+    // presented there would separate the accidental collision, but it would be a
+    // convention like `provenance.taskId` below, not an enforcement — and a
+    // convention documented as a guarantee is what this epic keeps paying for.
+    //
+    // What limits the damage is downstream and is real: the dispatch enters the
+    // REGISTERED board's runner, whose start gate re-reads the row from that
+    // board's own ledger and refuses unless `attempts`, `createdAt`,
+    // `incarnationId`, a live lease and `status === "in_progress"` all hold, and
+    // separately refuses unless the envelope's `coordinateKey` equals the
+    // coordinate re-derived from the row. Two boards on separate ledgers there
+    // fail the identity arms, so the collision costs a stalled row rather than a
+    // wrong settle. It is the two-boards-one-collection case that survives every
+    // arm — the row really is shared — and there the registered board's worker
+    // runs the runtime board's payload. Closing that needs caller identity
+    // threaded into the block context, which is the runtime's shape to change and
+    // not this check's (FIX-1074).
     const addressed = workstreamDispatchInputSchema.safeParse(args.input);
     if (addressed.success) {
       const key = workstreamBindingKey(
