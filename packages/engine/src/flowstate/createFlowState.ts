@@ -31,10 +31,7 @@ import {
 } from "../context/detached-start-operation";
 import type { DetachedStartOperation } from "../context/create-request-host";
 import type { StoreRegistry } from "../stores/types";
-import {
-  createInboundTransportHost,
-  terminateUnenqueuedRequest
-} from "../transports/host/createInboundTransportHost";
+import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
 import { isInProcessDispatcher } from "../transports/host/in-process-dispatcher";
 import { createConcurrencyArbiter } from "../transports/concurrency/arbiter";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
@@ -230,12 +227,6 @@ class InternalFlowState<TSettings extends object>
    * install one after `getRuntime()` returns.
    */
   #resolvedRuntimeConfig: RuntimeConfig | undefined;
-  /**
-   * The resolved stores, kept so `dispose()` can settle a cancelled child's
-   * durable record while the adapters are still open. See
-   * `#cancelOutstandingChildren`.
-   */
-  #resolvedStores: StoreRegistry | undefined;
   /**
    * The one concurrency arbiter every host in this process shares (FIX-1077).
    *
@@ -506,34 +497,36 @@ class InternalFlowState<TSettings extends object>
       abortRequest(child.requestId);
     }
 
-    // Settle their durable records HERE, while the adapters are still open, and
-    // await it — this is the one part of shutdown that is not allowed to be
-    // skipped for time.
+    // NOT terminalized here, deliberately — this drain does not write terminal
+    // status on a child's behalf.
     //
-    // Aborting alone was not enough, and the gap was invisible on an in-memory
-    // store. A child queued behind a concurrency key its holder has not released
-    // only reads its cancellation inside the gate callback, and that callback
-    // does not run until the key frees — which may be after `dispose()` has
-    // closed a pooled adapter. Its terminalizing write then hits a closed store,
-    // the best-effort `catch` swallows it, and the durable row stays
-    // `in_progress` forever: a request that will never run and never stops
-    // looking like it is running, which is worse than the truncation the drain
-    // exists to prevent.
+    // An earlier version did, to stop an abandoned row reading `in_progress`
+    // forever. Three separate defects followed, and all of them were the same
+    // mistake wearing different clothes: the write raced the child's own
+    // (overwriting a real `completed` with `aborted`), it mislabelled the
+    // event (`runAction` writes the resumable `interrupted` for a signal with
+    // no persisted intent, and the drain's `aborted` fought it), and doing
+    // store I/O inside a bounded shutdown made the bound unenforceable.
     //
-    // So cancellation terminalizes at the moment it is ISSUED rather than
-    // leaving the waiter to notice later. The in-gate check and the threaded
-    // signal both stay — they stop the run from starting — but neither is what
-    // settles the record. Idempotent by construction: it only touches a
-    // still-`in_progress` record, so a child that reaches the gate afterwards
-    // finds the row terminal and does nothing.
-    const stores = this.#resolvedStores;
-    if (stores !== undefined) {
-      await Promise.allSettled(
-        abandoned.map((child) =>
-          terminateUnenqueuedRequest(stores, child.requestId, "aborted")
-        )
-      );
-    }
+    // The substrate already answers this, and answers it better. A detached
+    // child outliving its parent process is the NORMAL case for durable work,
+    // not an anomaly to tidy up:
+    //
+    // - **The task row** recovers by lease. `isClaimable` admits a row whose
+    //   lease has lapsed even though its status is `in_progress`, and
+    //   `claimDisposition` either re-claims it or settles it `errored` once
+    //   `maxAbandonments` is exhausted — inside the atomic claim write. A
+    //   lapsed row does not block quiescence either: `runsElsewhere` counts it
+    //   as in-flight only while the lease is live.
+    // - **The request record** recovers on the next start.
+    //   `detectInterruptedRequests` marks an abandoned `in_progress` record
+    //   `interrupted`, which is the resumable status and exactly what a run
+    //   stopped by its process going away should read as.
+    //
+    // This is the same conclusion the epic reached when it removed the
+    // `started` milestone: lease lapse plus reclaim is the designed recovery
+    // path, and a parent asserting things about a child's row was the error.
+    // Aborting is ours to do; settling is not.
 
     // Whatever is left of the budget, which is the slice reserved for exactly
     // this. Never negative — `settledWithin` treats `0` as "one tick, then give
@@ -759,7 +752,6 @@ class InternalFlowState<TSettings extends object>
     });
 
     this.#resolvedRuntimeConfig = runtimeConfig;
-    this.#resolvedStores = stores;
 
     // BEFORE the worker wiring and before any router exists, so every later copy
     // of `requestHost` carries it. See `#installDetachedStart`.

@@ -725,7 +725,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
   });
 
   it(
-    "settles a queued child's durable record before the stores close",
+    "leaves a cancelled queued child's row to recovery, and never starts it",
     { timeout: 20_000 },
     async () => {
       const observed: Observed = { children: [] };
@@ -771,21 +771,26 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
         console.error = restore;
       }
 
+      // THE ASSERTION: it never starts. Wait past the parent's hold, so the key
+      // genuinely releases and the queued child gets its chance.
+      await new Promise((resolve) => setTimeout(resolve, 1_800));
+      expect(observed.children).toEqual([]);
+
+      // The row is deliberately NOT settled by shutdown. An earlier version
+      // wrote a terminal status here and produced three defects doing it: the
+      // write raced the child's own, it mislabelled the event, and the I/O made
+      // the shutdown bound unenforceable. Settling a child's row is not the
+      // parent's job — the substrate recovers it. `detectInterruptedRequests`
+      // marks an abandoned `in_progress` record `interrupted` on the next start,
+      // and a task row's lapsed lease makes it claimable again without ever
+      // being terminalized here.
+      //
       // Read through the raw registry, since the adapter is closed to callers.
       const requests = adapter.raw().request as {
         get: (id: string) => Promise<{ status?: string } | undefined>;
       };
       const record = await requests.get(childRequestId);
-
-      // THE ASSERTION. Leaving it to the waiter meant the record was only
-      // terminalized when the key released — after `dispose()` had closed the
-      // adapter — so the write threw, the best-effort catch swallowed it, and a
-      // request that will never run stayed `in_progress` forever.
-      expect(record?.status).toBe("aborted");
-
-      // And the child still never ran.
-      await new Promise((resolve) => setTimeout(resolve, 1_800));
-      expect(observed.children).toEqual([]);
+      expect(record?.status).toBe("in_progress");
     }
   );
 

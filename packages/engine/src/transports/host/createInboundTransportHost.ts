@@ -134,7 +134,7 @@ export type CreateInboundTransportHostOptions = {
  * `failedAtMs` is stamped only for the failure, since it is the field readers
  * key on for "this broke"; an abort carries `updatedAt` and its status.
  */
-export async function terminateUnenqueuedRequest(
+async function terminateUnenqueuedRequest(
   stores: StoreRegistry,
   requestId: string,
   status: "failed" | "aborted" = "failed"
