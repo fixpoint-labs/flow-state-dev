@@ -476,6 +476,23 @@ an approval, approved-and-green — and the branches differ in which worker runs
 charged, and whether to dispatch at all. Every route written down here would be a rule that
 outranks the row it was copied from and goes stale the moment the row moves.
 
+## Your requests are dispatched too
+
+**Canonical: [`orchestration.md`](../../../docs/contributing/orchestration.md) → "The coordinator
+dispatches; it never does the work".** Read it, don't re-derive it here. Same rule as the section
+above with the disguise removed — a mid-run request from **you** says *what* should happen, not
+*who* does it — and it is the case that gets through, because a direct ask doesn't look like an
+event at all.
+
+The issue-specific delta: **this issue's own worktree is not yours to edit from here.** A side
+request about a file this issue touches is dispatched to a phase sub-agent, so the change lands
+inside the PR that is already under review; editing it from the orchestrator puts an unreviewed
+commit on the branch a worker is mid-flight on. **Dispatch it in the wake it arrives** — an issue
+sitting at "ready to merge" has no next phase action, so a request merely recorded is one the
+merge then ships without — and hold the merge gate until it lands. A *change* to anything else is
+a different issue: file it via `issue-manager` (Boundaries) rather than scope-creeping it into
+this one. A read-only *lookup* is neither — that's a `scout`, not a ticket.
+
 ## Waking
 
 **Re-subscribe on every invocation, not just when a PR first opens — and do it last, after**
@@ -539,7 +556,9 @@ cloud vs. local" for how to detect the environment and the full fallback design.
 ## Token discipline (the point of this skill)
 
 - **Never** read a full spec, diff, or file into this orchestrator's context. Pass
-  the issue ID / PR# to the sub-agent; it fetches what it needs.
+  the issue ID / PR# to the sub-agent; it fetches what it needs. That holds when **you** are the
+  one asking, not just when an event is
+  ([Your requests are dispatched too](#your-requests-are-dispatched-too)).
 - Every phase sub-agent returns **≤ a screen**. If it would return more, it is doing
   the orchestrator's job — tighten its prompt.
 - Persist state as a handful of fields (the handle cache), so re-entry costs a small

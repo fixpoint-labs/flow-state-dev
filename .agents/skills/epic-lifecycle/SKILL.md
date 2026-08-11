@@ -136,6 +136,25 @@ The epic-specific delta:
   allowed. Answering a reviewer is a technical judgment about a diff you haven't read, so it is
   not.
 
+## Your requests are dispatched too
+
+**Canonical: [`orchestration.md`](../../../docs/contributing/orchestration.md) → "The coordinator
+dispatches; it never does the work".** Read it, don't re-derive it here. Same rule as the section
+above with the disguise removed — a mid-run request from **you** says *what* should happen, not
+*who* does it — and it is the case that gets through, because a direct ask doesn't look like an
+event at all.
+
+The epic-specific delta:
+
+- **The status table is the first place to look**, and a note on a row is not a dispatch. Most
+  side requests during an epic are about a file some row already owns, so that row's worker is
+  where it goes — **dispatched this wake**, not parked as a note. A settled `PR_FEEDBACK` row
+  matches none of `pendingAction()`'s dispatch conditions and there is no side-request field for
+  one to match, so a noted request is never picked up and the row can take its merge gate
+  without it. Dispatch directly, and hold that row's merge gate until the change lands.
+- **A dispatch here is a worktree, always.** N workers are live on their own branches; a
+  sub-agent you spawn without `isolation: worktree` shares this checkout with them.
+
 ## The loop (each invocation)
 
 1. **Resolve the epic and its set.** Take the epic issue ID, or the issue IDs, from the
@@ -841,7 +860,9 @@ step. So:
   depth, the documented mitigation applies one level earlier than before: have the worker run
   its phase skill **in-context** instead of dispatching a further sub-agent. Confirm this on
   the first real epic run and record what you find here.
-- Never read specs/diffs at the coordinator level. Handles and status only.
+- Never read specs/diffs at the coordinator level. Handles and status only — and that holds
+  when **you** are the one asking, not just when an event is
+  ([Your requests are dispatched too](#your-requests-are-dispatched-too)).
 
 ## Boundaries
 
