@@ -101,10 +101,10 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
   // Refresh and a focus revalidation share a generation and can be in flight
   // together, so an older response arriving last would overwrite newer rows —
   // regressing a row that has since completed back to active. Session identity
-  // alone cannot see that, because both reads name the same session.
+  // alone cannot see that, because both reads name the same session. Only the
+  // most recently STARTED read may write, on either outcome.
   const generationRef = useRef(0);
   const seqRef = useRef(0);
-  const appliedRef = useRef(0);
 
   // Declared BEFORE the fetch effect so it runs first on the same commit: the
   // previous session's rows are dropped before the new session's read starts,
@@ -119,14 +119,17 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
   const refresh = useCallback(async () => {
     const generation = generationRef.current;
     const seq = ++seqRef.current;
-    // This response may still be applied: its identity is still the current one
-    // AND nothing newer has already landed.
+    // Superseded by a read that has STARTED, not merely by one that has already
+    // landed. Fencing on "nothing newer has been applied yet" leaves a hole on
+    // the failure path: an older read that rejects while a newer one is still in
+    // flight passes that fence, sets `error`, and the newer success then writes
+    // rows without clearing it — a stale failure banner sitting over fresh data.
+    // Both paths share this fence, because the asymmetry was the bug.
     const stillCurrent = () =>
-      generationRef.current === generation && seq > appliedRef.current;
+      generationRef.current === generation && seq === seqRef.current;
 
     if (!sessionId) {
       if (!stillCurrent()) return;
-      appliedRef.current = seq;
       setWorkstreams([]);
       setError(null);
       setTruncated(false);
@@ -138,12 +141,13 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
     try {
       const page = await fetchAllWorkstreams(sessionClient, sessionId);
       if (!stillCurrent()) return;
-      appliedRef.current = seq;
       setWorkstreams(page.rows);
       setTruncated(page.truncated);
+      // Cleared on the way OUT as well as on the way in. The clear at the start
+      // of this read cannot retire an error a slower, older read raises after it.
+      setError(null);
     } catch (err) {
       if (!stillCurrent()) return;
-      appliedRef.current = seq;
       // The rows already on screen are kept: a failed re-read means the list may
       // be stale, and blanking it would claim the session has no background work
       // — which is a different, and wrong, statement.
@@ -153,9 +157,7 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
     } finally {
       // Only the newest read for the current identity owns the spinner, so an
       // older read resolving late cannot clear it while a newer one is running.
-      if (generationRef.current === generation && seq === seqRef.current) {
-        setIsLoading(false);
-      }
+      if (stillCurrent()) setIsLoading(false);
     }
   }, [sessionClient, sessionId]);
 

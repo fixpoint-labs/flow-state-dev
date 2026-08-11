@@ -217,10 +217,26 @@ function WorkstreamRow({
         {new Date(workstream.updatedAt).toLocaleString()}
       </td>
       <td className="px-3 py-1.5 text-right">
-        <span className="inline-flex items-center gap-1 font-mono text-[10px] text-slate-400">
+        {/* The real control. The row's own onClick is a pointer convenience on
+            top of this — a clickable `<tr>` is not focusable, takes no Enter,
+            and announces nothing, so the tab's primary action has to live in a
+            native button to be reachable at all without a mouse. */}
+        <button
+          type="button"
+          onClick={(event) => {
+            // The row handler would otherwise fire this a second time.
+            event.stopPropagation();
+            onOpen();
+          }}
+          title={`Open workstream ${workstream.id}`}
+          // The visible label is a SHORTENED id, which on its own names nothing
+          // a screen reader user can act on. The full id is the whole address.
+          aria-label={`Open workstream ${workstream.id}`}
+          className="inline-flex items-center gap-1 rounded font-mono text-[10px] text-slate-400 hover:text-slate-200 focus-visible:outline focus-visible:outline-1 focus-visible:outline-sky-400"
+        >
           {shortSessionId(workstream.id)}
           <ArrowRight className="h-3 w-3" aria-hidden />
-        </span>
+        </button>
       </td>
     </tr>
   );

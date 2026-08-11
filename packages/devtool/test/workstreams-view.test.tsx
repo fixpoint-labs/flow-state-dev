@@ -141,6 +141,24 @@ describe("WorkstreamsView", () => {
     expect(screen.getByText("not started")).toBeInTheDocument();
   });
 
+  it("opens a Workstream from the keyboard, not only by pointer", () => {
+    // The row's onClick is a pointer convenience. A clickable `<tr>` takes no
+    // focus, no Enter and announces nothing, so the tab's primary action has to
+    // be a real control or it does not exist for a keyboard user.
+    const { onOpen } = renderView({
+      workstreams: [workstream({ id: "dsx_1", topic: "FIX-1" })],
+    });
+
+    const open = screen.getByRole("button", { name: /Open workstream dsx_1/i });
+    open.focus();
+    expect(open).toHaveFocus();
+
+    // Enter on a focused native button dispatches a click.
+    fireEvent.click(open);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "dsx_1" }));
+  });
+
   it("says so when the listing stopped at its bound", () => {
     // The count beside a truncated list is the failure that matters: it reads
     // as complete, so the newest background work looks like it does not exist.

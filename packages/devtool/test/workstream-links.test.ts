@@ -171,6 +171,61 @@ describe("linkWorkstreamsToTasks", () => {
     expect(byTask.size).toBe(0);
   });
 
+  it("separates two workers on one topic by the task's assignee", () => {
+    // A topic is not a session. The routing seed hashes the topic AND the
+    // coordinate key, so one topic routed to two workers is two child sessions
+    // — matching on topic alone sent both tasks into whichever arrived first
+    // and left the other Workstream looking taskless.
+    const implementWs = workstream({
+      id: "dsx_impl",
+      topic: "FIX-1",
+      coordinate: coordinate("issue-work", assigneeKey("implement")),
+    });
+    const reviewWs = workstream({
+      id: "dsx_review",
+      topic: "FIX-1",
+      coordinate: coordinate("issue-work", assigneeKey("review")),
+    });
+    const shared = { topic: "FIX-1" };
+
+    const { byTask } = linkWorkstreamsToTasks(
+      [implementWs, reviewWs],
+      [
+        board("issues", [
+          task({ id: "task-a", assignee: "implement", metadata: shared }),
+          task({ id: "task-b", assignee: "review", metadata: shared }),
+        ]),
+      ]
+    );
+
+    expect(byTask.get(taskLinkKey("issues", "task-a"))).toBe(implementWs);
+    expect(byTask.get(taskLinkKey("issues", "task-b"))).toBe(reviewWs);
+  });
+
+  it("draws no link when a shared topic cannot be resolved to one worker", () => {
+    // A `uniform` board's coordinate names no assignee, so nothing distinguishes
+    // the two candidates. On a debugging surface a wrong link is worse than
+    // none — the developer clicks through into unrelated background work.
+    const { byTask, byWorkstream } = linkWorkstreamsToTasks(
+      [
+        workstream({
+          id: "dsx_1",
+          topic: "FIX-1",
+          coordinate: coordinate("issue-work", "uniform"),
+        }),
+        workstream({
+          id: "dsx_2",
+          topic: "FIX-1",
+          coordinate: coordinate("issue-work", "uniform"),
+        }),
+      ],
+      [board("issues", [task({ id: "task-a", assignee: "implement", metadata: { topic: "FIX-1" } })])]
+    );
+
+    expect(byTask.size).toBe(0);
+    expect(byWorkstream.size).toBe(0);
+  });
+
   it("does not merge two boards' tasks under different collection ids", () => {
     // Same task id on two boards is legal. The key carries the collection so the
     // two rows stay distinct even when both link to the same Workstream.

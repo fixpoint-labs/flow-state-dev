@@ -172,6 +172,41 @@ describe("useWorkstreams — superseded reads", () => {
     expect(result.current.workstreams[0]?.status).toBe("completed");
   });
 
+  it("does not leave a stale error banner over rows a newer read succeeded with", async () => {
+    // The asymmetry that a "nothing newer has APPLIED yet" fence misses: the
+    // older read fails while the newer one is still in flight, so it passes
+    // that fence and sets `error`. The newer read already cleared the error on
+    // its way in, so its success writes rows underneath a failure banner that
+    // describes a read nobody is waiting for.
+    let rejectMount!: (err: Error) => void;
+    sessionClientMock.listWorkstreams.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        rejectMount = reject as (err: Error) => void;
+      })
+    );
+
+    const { result } = renderHook(() => useWorkstreams("sess_parent"));
+
+    // A manual Refresh overlaps it and lands FIRST, with real rows.
+    sessionClientMock.listWorkstreams
+      .mockResolvedValueOnce([row("dsx_1")])
+      .mockResolvedValueOnce([]);
+    await act(async () => {
+      await result.current.refresh();
+    });
+    expect(result.current.workstreams).toHaveLength(1);
+
+    // Only now does the older mount read reject. It is superseded, so it owns
+    // nothing on screen — its failure must not be reported over the fresh rows.
+    await act(async () => {
+      rejectMount(new Error("network down"));
+      await Promise.resolve();
+    });
+
+    expect(result.current.workstreams).toHaveLength(1);
+    expect(result.current.error).toBeNull();
+  });
+
   it("retires reads from a superseded client, not just a superseded session", async () => {
     // The session client is rebuilt when `baseUrl` or the bearer token changes,
     // so a response from the old client is answering for a different server.
