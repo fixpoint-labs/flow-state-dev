@@ -157,6 +157,19 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
     name: "background-work",
     boardId: BOARD_ID,
     collection: backgroundWorkLedger,
+    // Not the default (`"skip"`), and deliberately. `onError` decides what a
+    // worker failure does to the run executing it — and for a detached worker
+    // that run is the **Workstream's**, not the drain's. Under `"skip"` a
+    // worker that throws leaves the task `errored` while its child request
+    // still completes, so the panel renders the row green while the next turn
+    // reports the same work as failed: two surfaces disagreeing about one
+    // event, which is the defect this demo is supposed to help people avoid.
+    //
+    // `"skip"` exists so one failing task does not abandon its siblings. This
+    // board has a single worker and one task per turn, so there is no sibling
+    // for a failure to be skipped in favour of — the policy buys nothing here
+    // and costs the honest status.
+    onError: "fail",
     workers: {
       // Cast: a registry is heterogeneous, so `TaskWorker` fixes its output at
       // `unknown` while this worker settles a `string`. The board only ever
@@ -257,9 +270,19 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
           ? `**${label}** could not be handed to a workstream — it was refused before it ` +
             `started (${filed.status}), so nothing is running for it. The Background work ` +
             `panel will not show a row for this one.`
-          : `Filed **${label}** as background work. It runs in its own ` +
-            `workstream, so this turn is done — open the Background work panel to watch it, ` +
-            `or ask me again in a moment and I'll report what came back.`,
+          : // Deliberately does NOT invite another turn. "Ask me again in a
+            // moment" is a status check, and a status check on this style is
+            // not free: the next turn files ANOTHER job and drains again
+            // before it reports, so checking on work creates work and bills a
+            // model call for the privilege. The panel is the right surface —
+            // it is the whole point that background work lives outside the
+            // conversation — and finished work still arrives on the next real
+            // reply on its own, which is stated as a fact rather than as an
+            // instruction to go and trigger one.
+            `Filed **${label}** as background work. It runs in its own ` +
+            `workstream, so this turn is done. Watch it in the Background work panel ` +
+            `beside this conversation, which has its own refresh — and anything that has ` +
+            `finished will come back with my next reply.`,
       ];
 
       if (running.length > 1) {
