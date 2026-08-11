@@ -82,11 +82,13 @@ This flag is repeatable. When specified, the default `src/flows/` and `flows/` d
 
 ## Model overrides
 
-During development you might want a faster or cheaper model. Use `--model` to override all generator blocks:
+During development you might want a faster or cheaper model. `--model` overrides the model for every generator that runs in the server's own process:
 
 ```bash
-fsdev dev --model gpt-4o-mini
+fsdev dev --model openai/gpt-5.4-mini
 ```
+
+Background work handed to a queue runs in another process, under that process's own model configuration. See [Model overrides](/docs/cli/overview#model-overrides).
 
 ## Connecting to a secured flow
 
