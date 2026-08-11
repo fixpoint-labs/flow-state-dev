@@ -137,9 +137,21 @@ export async function fetchFinnhubFundamentals(
     fetchJson<Metric>("/stock/metric", { symbol: input.ticker, metric: "all" }),
   ]);
   const m = metric.metric ?? {};
+  // ABSENCE-aware, not falsy-aware (FIX-1063). `/stock/metric` answers with
+  // `metric: {}` or an incomplete object routinely — a SUCCESSFUL response with
+  // fields missing, carrying no `unavailable` tag to mark the gap. So a field
+  // Finnhub did not return reads `null`, while a finite `0` it DID return stays
+  // `0`: a company measured at a 0% operating margin or a genuine zero ROE is a
+  // reading, not a gap. The `!== 0` helpers below are deliberately NOT used
+  // here — they would erase exactly those measurements.
+  const observed = (v: number | undefined): number | null =>
+    typeof v === "number" && Number.isFinite(v) ? v : null;
   // Finnhub returns ratios as percentages for margins/ROE (e.g. 25.3 = 25.3%).
   // Normalize to fractions to match the Yahoo + fixture shape (0.253).
-  const pct = (v: number | undefined) => (typeof v === "number" ? v / 100 : 0);
+  const pct = (v: number | undefined): number | null => {
+    const n = observed(v);
+    return n == null ? null : n / 100;
+  };
   // P/E fields are nullable in the schema: null is the honest signal that the
   // metric is unavailable, never a backward-looking substitute (FIX-692). A
   // zero P/E is non-physical for a going concern, so it maps to null too —
@@ -147,18 +159,19 @@ export async function fetchFinnhubFundamentals(
   const num = (v: number | undefined): number | null =>
     typeof v === "number" && Number.isFinite(v) && v !== 0 ? v : null;
   // Nullable percent → fraction. 0/absent → null (a non-payer is unobserved,
-  // not "0% yield"); never default to 0 the way pct() does for ROE/margins.
+  // not "0% yield"); the `!== 0` test is what distinguishes it from pct().
   const nullablePct = (v: number | undefined): number | null =>
     typeof v === "number" && Number.isFinite(v) && v !== 0 ? v / 100 : null;
+  const marketCapMillions = observed(profile.marketCapitalization);
   return {
     source: "finnhub" as const,
     ticker: input.ticker,
     asOf: input.date,
     // Profile gives market cap in $M; normalize to $B to match statements and fixtures.
-    marketCap: (profile.marketCapitalization ?? 0) / 1_000,
+    marketCap: marketCapMillions == null ? null : marketCapMillions / 1_000,
     forwardPE: num(m.forwardPE),
     trailingPE: num(m.peTTM),
-    priceToSales: m.psTTM ?? 0,
+    priceToSales: observed(m.psTTM),
     returnOnEquity: pct(m.roeTTM),
     operatingMargin: pct(m.operatingMarginTTM),
     grossMargin: pct(m.grossMarginTTM),

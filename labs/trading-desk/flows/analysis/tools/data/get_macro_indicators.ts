@@ -13,6 +13,14 @@
  * payload came back tagged `fred` but with 7-of-9 fields zeroed). Each series
  * also degrades to [] on final failure, so one bad series never blanks the
  * payload; `unavailable` is reported only when every series fails.
+ *
+ * A SERIES THAT FAILED READS `null`, NOT `0` (FIX-1063). This is the partial-
+ * answer path, and it is the most dangerous of the four the issue fixed: the
+ * payload keeps its `source: "fred"` tag, so nothing else marks the miss. Six
+ * of nine series answering used to publish 0% inflation, 0% unemployment and a
+ * 0% policy rate as live FRED measurements. The source tag is deliberately
+ * unchanged — whether a partial payload should report partial *provenance* is a
+ * separate change to the tag vocabulary across every tool.
  */
 import { handler } from "@flow-state-dev/core";
 import { mapLimit } from "@/lib/concurrency";
@@ -62,21 +70,33 @@ export const get_macro_indicators = handler({
         if (series.every((s) => s.length === 0)) {
           return emptyPayload("get_macro_indicators", input);
         }
-        const latestCpi = cpi[0] ?? 0;
-        const yearAgoCpi = cpi[12] ?? cpi[cpi.length - 1] ?? latestCpi;
-        const cpiYoy = yearAgoCpi > 0 ? (latestCpi - yearAgoCpi) / yearAgoCpi : 0;
+        /** Latest observation of a series, or `null` when the series failed. */
+        const latest = (s: number[]): number | null => s[0] ?? null;
+        /** As `latest`, converted from FRED's percentage to a fraction. */
+        const latestPct = (s: number[]): number | null => {
+          const v = latest(s);
+          return v == null ? null : v / 100;
+        };
+        // YoY needs BOTH prints. A year-ago observation we don't have is not a
+        // 0% change — it is no reading at all.
+        const latestCpi = latest(cpi);
+        const yearAgoCpi = cpi[12] ?? cpi[cpi.length - 1] ?? null;
+        const cpiYoy =
+          latestCpi != null && yearAgoCpi != null && yearAgoCpi > 0
+            ? (latestCpi - yearAgoCpi) / yearAgoCpi
+            : null;
         return {
           source: "fred",
           asOf: input.date,
           cpiYoy,
-          unemployment: (unrate[0] ?? 0) / 100,
-          fedFundsRate: (fedFunds[0] ?? 0) / 100,
-          tenYearYield: (tenYear[0] ?? 0) / 100,
-          oilWtiUsd: wti[0] ?? 0,
-          yieldCurve2s10s: (curve[0] ?? 0) / 100,
-          hyCreditSpread: (hySpr[0] ?? 0) / 100,
-          dollarIndex: dollar[0] ?? 0,
-          industrialProduction: indProd[0] ?? 0,
+          unemployment: latestPct(unrate),
+          fedFundsRate: latestPct(fedFunds),
+          tenYearYield: latestPct(tenYear),
+          oilWtiUsd: latest(wti),
+          yieldCurve2s10s: latestPct(curve),
+          hyCreditSpread: latestPct(hySpr),
+          dollarIndex: latest(dollar),
+          industrialProduction: latest(indProd),
         };
       } catch {
         return emptyPayload("get_macro_indicators", input);

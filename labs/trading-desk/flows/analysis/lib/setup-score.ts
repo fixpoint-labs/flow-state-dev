@@ -32,7 +32,11 @@ export function computeSetupScore(args: {
   marginOfSafety: number | null;
   quantComposites: { piotroskiF?: number; altmanZone?: string } | null;
   factorRanks: { compositeFactorPercentile?: number } | null;
-  technicals: { trend?: string; sma50?: number; sma200?: number } | null;
+  technicals: {
+    trend?: string | null;
+    sma50?: number | null;
+    sma200?: number | null;
+  } | null;
   valuation: { roic?: { value: number | null } } | null;
 }): SetupScore {
   const { expectedReturn: er, marginOfSafety, quantComposites, factorRanks, technicals, valuation } = args;
@@ -91,15 +95,34 @@ export function computeSetupScore(args: {
     componentCount++;
   }
 
-  // Momentum sub-score: trend label + SMA50/200 cross
+  // Momentum sub-score: trend label + SMA50/200 cross.
+  //
+  // The component contributes ONLY when there is a momentum reading to score:
+  // a present `trend`, or BOTH moving averages. Otherwise it scores nothing and
+  // does not count toward `componentCount` (FIX-1063).
+  //
+  // A merely present `technicals` object is not a reading. Two shapes made that
+  // gate wrong before:
+  //   - a fully unavailable payload (all nulls) recorded 50 − 10 = 40 — two
+  //     null averages read as a DEATH CROSS on a name with no price data;
+  //   - a 50-to-199-bar history, where `sma50` exists but `sma200` and `trend`
+  //     are null, fired no directional branch yet still recorded the neutral 50
+  //     and incremented the count — which can carry a run over the
+  //     `componentCount >= 3` line to "sufficient" evidence on no momentum
+  //     reading at all. That partial case is the one a naive fix leaves live,
+  //     because the payload LOOKS populated.
   let momentumSub: number | null = null;
-  if (technicals) {
+  const trend = technicals?.trend ?? null;
+  const sma50 = technicals?.sma50 ?? null;
+  const sma200 = technicals?.sma200 ?? null;
+  const hasCross = sma50 != null && sma200 != null;
+  if (trend != null || hasCross) {
     let m = 50;
-    if (technicals.trend === "up") m += 20;
-    else if (technicals.trend === "down") m -= 20;
+    if (trend === "up") m += 20;
+    else if (trend === "down") m -= 20;
 
-    if (technicals.sma50 != null && technicals.sma200 != null) {
-      if (technicals.sma50 > technicals.sma200) m += 10; // golden cross
+    if (hasCross) {
+      if (sma50 > sma200) m += 10; // golden cross
       else m -= 10; // death cross
     }
     momentumSub = clamp100(m);

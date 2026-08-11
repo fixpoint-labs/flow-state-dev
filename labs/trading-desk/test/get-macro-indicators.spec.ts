@@ -113,8 +113,13 @@ describe("get_macro_indicators per-series resilience", () => {
     expect(result.output.fedFundsRate).toBeCloseTo(0.041);
     // Index-level series are stored raw (no /100).
     expect(result.output.dollarIndex).toBeCloseTo(4.1);
-    // The one failed series degrades to 0 — not the whole payload.
-    expect(result.output.hyCreditSpread).toBe(0);
+    // The one failed series degrades to NULL — not to 0, and not the whole
+    // payload (FIX-1063). This is the partial-answer path and the most
+    // dangerous of the four: the payload still says `source: "fred"`, so the
+    // value is the ONLY thing that could mark the miss. Reading `0` here told
+    // the macro analyst high-yield credit spreads were measured at zero — a
+    // dramatic risk-on signal — on a series that 500'd.
+    expect(result.output.hyCreditSpread).toBeNull();
   });
 
   it("retries a transient 429 and recovers the series", async () => {
@@ -160,6 +165,33 @@ describe("get_macro_indicators per-series resilience", () => {
 
     expect(result.error).toBeNull();
     expect(result.output.source).toBe("unavailable");
-    expect(result.output.tenYearYield).toBe(0);
+    expect(result.output.tenYearYield).toBeNull();
+    expect(result.output.cpiYoy).toBeNull();
+    expect(result.output.unemployment).toBeNull();
+  });
+
+  it("reports cpiYoy null when the year-ago print is missing (FIX-1063)", async () => {
+    // CPI answers with a single observation — enough for a level, not enough
+    // for a year-over-year change. The old `?? 0` fallback published that as
+    // 0% inflation, which is a macro reading, not a gap.
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const u = String(url);
+      if (u.includes("series_id=CPIAUCSL")) {
+        return new Response("upstream error", { status: 500 });
+      }
+      return fredOk();
+    });
+
+    const result = await testBlock(get_macro_indicators, {
+      input: { date: "2026-05-06" },
+      flow: fixtureFlow,
+      session: sessionFor("live"),
+    });
+
+    expect(result.error).toBeNull();
+    expect(result.output.source).toBe("fred");
+    expect(result.output.cpiYoy).toBeNull();
+    // The series that DID answer are unaffected.
+    expect(result.output.tenYearYield).toBeCloseTo(0.041);
   });
 });

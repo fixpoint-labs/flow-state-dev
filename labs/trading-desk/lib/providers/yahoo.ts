@@ -136,19 +136,24 @@ export async function fetchYahooFundamentals(
   const detail = summary.summaryDetail ?? {};
   const fin = summary.financialData ?? {};
   const stats = summary.defaultKeyStatistics ?? {};
+  // A quoteSummary response can succeed and still omit fields. Those reads go
+  // through `observedNumberFrom` so an omission stays unobserved (FIX-1063);
+  // the P/E and dividend fields keep `nullableNumberFrom`, where a zero is
+  // itself non-physical (FIX-692).
+  const marketCapUsd = observedNumberFrom(detail.marketCap);
   return {
     source: "yahoo" as const,
     ticker: input.ticker,
     asOf: input.date,
     // Yahoo returns absolute USD; normalize to $B to match statements and fixtures.
-    marketCap: numberFrom(detail.marketCap) / 1_000_000_000,
+    marketCap: marketCapUsd == null ? null : marketCapUsd / 1_000_000_000,
     forwardPE:
       nullableNumberFrom(stats.forwardPE) ?? nullableNumberFrom(detail.forwardPE),
     trailingPE: nullableNumberFrom(detail.trailingPE),
-    priceToSales: numberFrom(detail.priceToSalesTrailing12Months),
-    returnOnEquity: numberFrom(fin.returnOnEquity),
-    operatingMargin: numberFrom(fin.operatingMargins),
-    grossMargin: numberFrom(fin.grossMargins),
+    priceToSales: observedNumberFrom(detail.priceToSalesTrailing12Months),
+    returnOnEquity: observedNumberFrom(fin.returnOnEquity),
+    operatingMargin: observedNumberFrom(fin.operatingMargins),
+    grossMargin: observedNumberFrom(fin.grossMargins),
     dividendYield: nullableNumberFrom(detail.dividendYield),
   };
 }
@@ -412,6 +417,30 @@ function numberFrom(raw: unknown): number {
 function nullableNumberFrom(raw: unknown): number | null {
   const n = numberFrom(raw);
   return Number.isFinite(n) && n !== 0 ? n : null;
+}
+
+/**
+ * ABSENCE-aware variant, for fields where `0` is a legitimate measurement —
+ * ROE, the margins, market cap, price-to-sales (FIX-1063).
+ *
+ * It keys on whether Yahoo answered at all, NOT on the value being falsy: an
+ * absent or non-numeric field reads `null`, and a finite `0` reads `0`. That
+ * distinction is the whole point of this issue in both directions. Using
+ * `numberFrom` here defaulted a field Yahoo omitted to `0`, so a sparse but
+ * SUCCESSFUL response (the routine case — no failure, no `unavailable` tag,
+ * nothing marking the gap) published fabricated zeros under a live `yahoo` tag.
+ * Using `nullableNumberFrom` here would be the mirror error: it tests `n !== 0`
+ * and would destroy a genuinely measured 0% operating margin.
+ */
+function observedNumberFrom(raw: unknown): number | null {
+  if (raw == null) return null;
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
+  if (typeof raw === "object" && "raw" in raw) {
+    const v = (raw as { raw?: unknown }).raw;
+    return typeof v === "number" && Number.isFinite(v) ? v : null;
+  }
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
 }
 
 /**

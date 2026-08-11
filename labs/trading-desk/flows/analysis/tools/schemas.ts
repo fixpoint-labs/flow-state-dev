@@ -146,17 +146,23 @@ export const recoveryAuditSchema = z.object({
 });
 export type RecoveryAudit = z.infer<typeof recoveryAuditSchema>;
 
+// Every numeric field is nullable for the same reason the statements above are:
+// a figure no provider reported is UNOBSERVED, and `0` is a measurement. The
+// difference is not cosmetic — a missing `marketCap` read as a real zero makes
+// enterprise value equal net debt and price-to-book read `0.00×` (cheap) on a
+// company nobody has data for (FIX-1063). The rule is *unobserved → null*, NOT
+// *falsy → null*: a genuinely measured 0% operating margin stays `0`.
 export const fundamentalsSchema = z.object({
   source: sourceTag,
   ticker: z.string(),
   asOf: z.string(),
-  marketCap: z.number(),
+  marketCap: z.number().nullable(),
   forwardPE: z.number().nullable(),
   trailingPE: z.number().nullable(),
-  priceToSales: z.number(),
-  returnOnEquity: z.number(),
-  operatingMargin: z.number(),
-  grossMargin: z.number(),
+  priceToSales: z.number().nullable(),
+  returnOnEquity: z.number().nullable(),
+  operatingMargin: z.number().nullable(),
+  grossMargin: z.number().nullable(),
   dividendYield: z.number().nullable(),
 });
 
@@ -176,21 +182,38 @@ export const priceHistorySchema = z.object({
   bars: z.array(priceBar),
 });
 
+// Nullable throughout: an indicator the series is too short to compute was NOT
+// measured. A 3-month-old listing has no 200-day average, and recording one as
+// `0` also labelled the name a "flat" trend the desk never read (FIX-1063).
+// `trend` widens to nullable rather than gaining a fourth enum member — "we did
+// not measure it" is an absence, not a fourth kind of trend.
 export const indicatorsSchema = z.object({
   source: sourceTag,
   ticker: z.string(),
   asOf: z.string(),
-  rsi14: z.number(),
-  macd: z.object({ line: z.number(), signal: z.number(), histogram: z.number() }),
-  atr14: z.number(),
-  trend: z.enum(["up", "down", "flat"]),
-  sma50: z.number(),
-  sma200: z.number(),
-  bollinger: z.object({ upper: z.number(), middle: z.number(), lower: z.number() }),
-  vwma20: z.number(),
-  stoch: z.object({ k: z.number(), d: z.number() }),
-  kdj: z.object({ k: z.number(), d: z.number(), j: z.number() }),
-  obv: z.number(),
+  rsi14: z.number().nullable(),
+  macd: z.object({
+    line: z.number().nullable(),
+    signal: z.number().nullable(),
+    histogram: z.number().nullable(),
+  }),
+  atr14: z.number().nullable(),
+  trend: z.enum(["up", "down", "flat"]).nullable(),
+  sma50: z.number().nullable(),
+  sma200: z.number().nullable(),
+  bollinger: z.object({
+    upper: z.number().nullable(),
+    middle: z.number().nullable(),
+    lower: z.number().nullable(),
+  }),
+  vwma20: z.number().nullable(),
+  stoch: z.object({ k: z.number().nullable(), d: z.number().nullable() }),
+  kdj: z.object({
+    k: z.number().nullable(),
+    d: z.number().nullable(),
+    j: z.number().nullable(),
+  }),
+  obv: z.number().nullable(),
 });
 
 const newsItem = z.object({
@@ -220,18 +243,24 @@ export const marketNewsSchema = z.object({
   items: z.array(newsItem),
 });
 
+// Nullable per series, because the read is PER SERIES: FRED can answer six of
+// the nine, and the payload still reports `source: "fred"`. Before FIX-1063 the
+// three misses were written as `0` under that live tag — 0% inflation, 0%
+// unemployment, 0% policy rate presented as measurements. The source tag is
+// unchanged by this issue (a partial answer still says "fred"); what changes is
+// that the values no longer imply the source measured them.
 export const macroIndicatorsSchema = z.object({
   source: sourceTag,
   asOf: z.string(),
-  cpiYoy: z.number(),
-  unemployment: z.number(),
-  fedFundsRate: z.number(),
-  tenYearYield: z.number(),
-  oilWtiUsd: z.number(),
-  yieldCurve2s10s: z.number(),
-  hyCreditSpread: z.number(),
-  dollarIndex: z.number(),
-  industrialProduction: z.number(),
+  cpiYoy: z.number().nullable(),
+  unemployment: z.number().nullable(),
+  fedFundsRate: z.number().nullable(),
+  tenYearYield: z.number().nullable(),
+  oilWtiUsd: z.number().nullable(),
+  yieldCurve2s10s: z.number().nullable(),
+  hyCreditSpread: z.number().nullable(),
+  dollarIndex: z.number().nullable(),
+  industrialProduction: z.number().nullable(),
 });
 
 /**
@@ -332,10 +361,15 @@ export const socialSentimentSchema = z.object({
   source: sourceTag,
   ticker: z.string(),
   asOf: z.string(),
-  score7d: z.number(),
-  positive: z.number(),
-  negative: z.number(),
-  neutral: z.number(),
+  // Nullable for the same reason `shortInterestPct` already is: the
+  // `unavailable` payload observed no chatter at all, and a `0` score reads to
+  // an analyst as measured neutrality (FIX-1063). The live xAI route is a
+  // GENERATOR whose own output schema stays strict — a model that read posts
+  // and scored them `0` genuinely measured a zero.
+  score7d: z.number().nullable(),
+  positive: z.number().nullable(),
+  negative: z.number().nullable(),
+  neutral: z.number().nullable(),
   /** Null when the provider can't measure short interest (e.g. xAI/xSearch
    *  reads X chatter, not exchange short-interest filings). Honest null
    *  beats a fabricated 0 — analysts must not read 0 as "no shorts." */
@@ -358,7 +392,9 @@ export const redditMentionsSchema = z.object({
   source: sourceTag,
   ticker: z.string(),
   asOf: z.string(),
-  mentions7d: z.number(),
+  /** Null when no provider could answer — "we did not count" is not the same
+   *  reading as "we counted zero mentions" (FIX-1063). */
+  mentions7d: z.number().nullable(),
   topThreads: z.array(redditMention),
 });
 

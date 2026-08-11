@@ -306,6 +306,66 @@ describe("computeSetupScore", () => {
     });
     expect(ss.evidenceBasis).toBe("thin");
   });
+
+  /**
+   * The momentum trap (FIX-1063), in BOTH of its shapes.
+   *
+   * The old gate was `if (technicals)` — a merely PRESENT payload counted as a
+   * momentum reading. That is wrong in two different ways, and the second is
+   * the one a naive fix leaves live because the payload looks populated.
+   *
+   * The stakes are not just the sub-score: `componentCount` feeds
+   * `evidenceBasis`, and the FIX-781 evidence gate caps NEW EXPOSURE on thin
+   * evidence. A phantom momentum component can carry a run over the
+   * `componentCount >= 3` line to "sufficient" — authorizing the desk to add
+   * to a position on a momentum reading that was never taken.
+   */
+  const scoreWithTechnicals = (technicals: {
+    trend?: string | null;
+    sma50?: number | null;
+    sma200?: number | null;
+  } | null) =>
+    computeSetupScore({
+      expectedReturn: computeExpectedReturn(nvdaStatements),
+      marginOfSafety: 0.1,
+      // Exactly two OTHER components, so componentCount lands on 2 or 3 purely
+      // on whether momentum counted — the boundary the evidence gate reads.
+      quantComposites: null,
+      factorRanks: { compositeFactorPercentile: 60 },
+      technicals,
+      valuation: null,
+    });
+
+  it("a fully unavailable indicator payload contributes no momentum component", () => {
+    // Every field null. The old code scored 50 − 10 = 40 here: two null moving
+    // averages fell into the `else` branch and were read as a DEATH CROSS on a
+    // name with no price data at all.
+    const ss = scoreWithTechnicals({ trend: null, sma50: null, sma200: null });
+    expect(ss.momentum).toBeNull();
+    expect(ss.evidenceBasis).toBe("thin");
+  });
+
+  it("a 50-199 bar history contributes no momentum component (the partial case)", () => {
+    // `sma50` is a real measured number; `sma200` and `trend` are not
+    // computable yet. No directional branch fires, so the old code recorded a
+    // neutral 50 and still incremented componentCount — a fabricated neutral
+    // momentum reading that also bought the run an evidence component.
+    const ss = scoreWithTechnicals({ trend: null, sma50: 128.4, sma200: null });
+    expect(ss.momentum).toBeNull();
+    expect(ss.evidenceBasis).toBe("thin");
+  });
+
+  it("still scores momentum when there IS a reading — either half suffices", () => {
+    // The narrowing is along the "was it measured" axis only. A measured trend
+    // with no 200-day average still counts, and so does a complete cross with
+    // no trend label — otherwise this would be a behaviour cut, not a fix.
+    expect(scoreWithTechnicals({ trend: "up", sma50: 128.4, sma200: null }).momentum)
+      .not.toBeNull();
+    expect(scoreWithTechnicals({ trend: null, sma50: 128.4, sma200: 120.1 }).momentum)
+      .not.toBeNull();
+    expect(scoreWithTechnicals({ trend: "up", sma50: 128.4, sma200: 120.1 }).evidenceBasis)
+      .toBe("sufficient");
+  });
 });
 
 // ── Rating Engine ───────────────────────────────────────────────────
