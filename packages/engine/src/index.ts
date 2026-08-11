@@ -64,6 +64,7 @@ export type {
   ConditionalRequestFields,
   ConditionalWriteResult,
   ContentScopeType,
+  StorageScopeType,
   ContentStore,
   LeaseStore,
   ResourceStateStore,

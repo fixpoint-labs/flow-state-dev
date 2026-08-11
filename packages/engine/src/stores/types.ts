@@ -901,6 +901,26 @@ export interface ActiveRequestRegistry {
 export type ContentScopeType = "session" | "user" | "org";
 
 /**
+ * The scope kind a resource row is STORED under (FIX-1068).
+ *
+ * Wider than {@link ContentScopeType}, which is the scope a resource is
+ * DECLARED at. The two differ for exactly one case: a session-scoped resource
+ * marked `sharedToWorkstream` stores in the `lineage` space, addressed by the
+ * lineage rather than by a session.
+ *
+ * They are separate types rather than one widened type because they answer
+ * different questions, and because a lineage bucket must not be expressible
+ * where a declared scope is expected. Keeping the lineage space out of
+ * `session` is the whole point: session scope ids are caller-chosen, so a
+ * lineage bucket sharing that space is one a caller can occupy by picking a
+ * session id.
+ *
+ * Adapters treat this as an opaque string — it is a plain `TEXT` column with no
+ * constraint — so widening it needs no schema change and no migration.
+ */
+export type StorageScopeType = ContentScopeType | "lineage";
+
+/**
  * Separates resource content persistence from scope record persistence.
  *
  * Content is addressed by (scopeType, scopeId, resourceKey). This allows
@@ -909,16 +929,16 @@ export type ContentScopeType = "session" | "user" | "org";
  */
 export interface ContentStore {
   /** Read a single resource's content. */
-  get(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<string | undefined>;
+  get(scopeType: StorageScopeType, scopeId: string, resourceKey: string): Promise<string | undefined>;
 
   /** Write a single resource's content. Creates or overwrites. */
-  set(scopeType: ContentScopeType, scopeId: string, resourceKey: string, content: string): Promise<void>;
+  set(scopeType: StorageScopeType, scopeId: string, resourceKey: string, content: string): Promise<void>;
 
   /** Delete a single resource's content. */
-  delete(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<void>;
+  delete(scopeType: StorageScopeType, scopeId: string, resourceKey: string): Promise<void>;
 
   /** Read all content for a scope instance. Used during state route reads (full-scope view). */
-  getAll(scopeType: ContentScopeType, scopeId: string): Promise<Record<string, string>>;
+  getAll(scopeType: StorageScopeType, scopeId: string): Promise<Record<string, string>>;
 
   /**
    * Read every content entry in a scope whose resourceKey starts with
@@ -927,10 +947,10 @@ export interface ContentStore {
    * only the content a flow declares — fixed resources by exact key, and
    * collections by their pattern prefix.
    */
-  getByPrefix(scopeType: ContentScopeType, scopeId: string, keyPrefix: string): Promise<Record<string, string>>;
+  getByPrefix(scopeType: StorageScopeType, scopeId: string, keyPrefix: string): Promise<Record<string, string>>;
 
   /** Delete all content for a scope instance. Used during scope record deletion. */
-  deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void>;
+  deleteAll(scopeType: StorageScopeType, scopeId: string): Promise<void>;
 }
 
 /**
@@ -1043,7 +1063,7 @@ export interface ResourceStateStore {
    * a key that never existed.
    */
   get(
-    scopeType: ContentScopeType,
+    scopeType: StorageScopeType,
     scopeId: string,
     resourceKey: string
   ): Promise<VersionedResourceState | undefined>;
@@ -1066,7 +1086,7 @@ export interface ResourceStateStore {
    * as "deleted" and stop — never as "reuse what I had cached".
    */
   set(
-    scopeType: ContentScopeType,
+    scopeType: StorageScopeType,
     scopeId: string,
     resourceKey: string,
     state: JsonObject,
@@ -1097,7 +1117,7 @@ export interface ResourceStateStore {
    * conflict" reports one to a caller that opted out of versions entirely.
    */
   delete(
-    scopeType: ContentScopeType,
+    scopeType: StorageScopeType,
     scopeId: string,
     resourceKey: string,
     expectedVersion: ExpectedVersion
@@ -1108,7 +1128,7 @@ export interface ResourceStateStore {
    * version. Used by full-scope reads (`/state`, debug snapshot).
    */
   getAll(
-    scopeType: ContentScopeType,
+    scopeType: StorageScopeType,
     scopeId: string
   ): Promise<Record<string, VersionedResourceState>>;
 
@@ -1120,7 +1140,7 @@ export interface ResourceStateStore {
    * by exact key, collections by their pattern prefix.
    */
   getByPrefix(
-    scopeType: ContentScopeType,
+    scopeType: StorageScopeType,
     scopeId: string,
     keyPrefix: string
   ): Promise<Record<string, VersionedResourceState>>;
@@ -1136,7 +1156,7 @@ export interface ResourceStateStore {
    * a never-existed key. Closing that needs a scope generation, not a per-key
    * predicate.
    */
-  deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void>;
+  deleteAll(scopeType: StorageScopeType, scopeId: string): Promise<void>;
 }
 
 /**

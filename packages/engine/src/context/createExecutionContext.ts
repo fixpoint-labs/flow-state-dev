@@ -87,6 +87,7 @@ import {
 } from "../stores/scope-keys";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { resolveOwnershipFlag } from "../resources/lineage-scope";
+import type { StorageScopeType } from "../stores/types";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
 import { createInitialRequestRecord } from "./initial-request-record";
 import {
@@ -1030,6 +1031,22 @@ export async function createExecutionContext<
   // disagreeing about which session a key belongs to.
   const resolveBucketFlag = (scope: ContentScopeType, storageKey: string): boolean | undefined =>
     resolveOwnershipFlag(scopeBuckets[scope], storageKey);
+
+  /**
+   * The scope kind a resolved address STORES under (FIX-1068).
+   *
+   * The lineage bucket is not a session bucket: session scope ids are
+   * caller-chosen, so a lineage address sharing that space is one a caller can
+   * occupy by picking the right session id. Giving it its own scope kind makes
+   * that collision unexpressible rather than merely unlikely — the two live in
+   * different key spaces, and no reservation has to hold at every entry point
+   * forever to keep them apart.
+   *
+   * Exactly the addresses `lineageRootSessionKey` names, which is the one
+   * address a session-scoped shared resource resolves to.
+   */
+  const storageScopeOf = (scope: ContentScopeType, scopeId: string): StorageScopeType =>
+    scope === "session" && scopeId === lineageRootSessionKey ? "lineage" : scope;
   const resolveResourceStorageScopeId = (
     scope: ContentScopeType,
     storageKey: string

@@ -22,7 +22,7 @@ import type Database from "better-sqlite3";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type {
   ResourceStateStore,
-  ContentScopeType,
+  StorageScopeType,
   ExpectedVersion,
   ResourceStateRow,
   SetResult,
@@ -109,7 +109,7 @@ export function createSQLiteResourceStateStore(
 
   /** Read the row and parse it into the shape the shared contract logic takes. */
   const readRow = (
-    scopeType: ContentScopeType,
+    scopeType: StorageScopeType,
     scopeId: string,
     resourceKey: string
   ): ResourceStateRow | undefined => {
@@ -192,7 +192,7 @@ export function createSQLiteResourceStateStore(
 
   return {
     async get(
-      scopeType: ContentScopeType,
+      scopeType: StorageScopeType,
       scopeId: string,
       resourceKey: string
     ): Promise<VersionedResourceState | undefined> {
@@ -202,7 +202,7 @@ export function createSQLiteResourceStateStore(
     },
 
     async set(
-      scopeType: ContentScopeType,
+      scopeType: StorageScopeType,
       scopeId: string,
       resourceKey: string,
       state: JsonObject,
@@ -261,7 +261,7 @@ export function createSQLiteResourceStateStore(
     },
 
     async delete(
-      scopeType: ContentScopeType,
+      scopeType: StorageScopeType,
       scopeId: string,
       resourceKey: string,
       expectedVersion: ExpectedVersion
@@ -322,7 +322,7 @@ export function createSQLiteResourceStateStore(
     },
 
     async getAll(
-      scopeType: ContentScopeType,
+      scopeType: StorageScopeType,
       scopeId: string
     ): Promise<Record<string, VersionedResourceState>> {
       const rows = getAllStmt.all(scopeType, scopeId) as Array<{
@@ -341,7 +341,7 @@ export function createSQLiteResourceStateStore(
     },
 
     async getByPrefix(
-      scopeType: ContentScopeType,
+      scopeType: StorageScopeType,
       scopeId: string,
       keyPrefix: string
     ): Promise<Record<string, VersionedResourceState>> {
@@ -361,7 +361,7 @@ export function createSQLiteResourceStateStore(
       return result;
     },
 
-    async deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void> {
+    async deleteAll(scopeType: StorageScopeType, scopeId: string): Promise<void> {
       deleteAllStmt.run(scopeType, scopeId);
     }
   };
