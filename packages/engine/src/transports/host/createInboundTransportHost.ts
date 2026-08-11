@@ -149,6 +149,47 @@ export function createInboundTransportHost(
   // misleading semantics (a `reject` lease freed at enqueue, not run-completion).
   const arbiter = createConcurrencyArbiter();
 
+  /**
+   * Hand a STARTED run's `finished` to the adapter's keep-alive hook, containing
+   * a synchronous throw from it.
+   *
+   * Both seams that start a run — `dispatch` and `continueRequest` — call the
+   * hook last, once the run is already under way, and both are synchronous from
+   * their caller's point of view (`continueRequest` via the promise it returns).
+   * The hook is adapter-supplied and does throw in practice: Next's `after()`
+   * and `waitUntil` both raise synchronously when called outside a request
+   * scope. An escaping throw would therefore make a synchronous failure mean two
+   * different things, and each caller reads it as only one — the pre-start one:
+   * `createDetachedStartOperation` reads it as "nothing was dispatched" and
+   * settles the row it handed over, and the resume route reads it as
+   * "setup failed" and reverts the suspension to `pending`, inviting a second
+   * resume against a request whose run is still going. Two writers, one row
+   * (FIX-982, FIX-1095).
+   *
+   * Containing it here is what makes "a synchronous throw is pre-start" a
+   * property those callers can rely on rather than one they assume.
+   *
+   * Failing to register keep-alive is real — on a freeze-after-response platform
+   * the run can stall — but it is not a failure to start, and the handle the
+   * caller gets back is honest either way. So it is logged, not raised.
+   */
+  const registerBackgroundWork = (
+    finished: Promise<unknown>,
+    context: { requestId: string; flowKind?: string }
+  ): void => {
+    if (onBackgroundWork === undefined) return;
+    try {
+      onBackgroundWork(finished);
+    } catch (error) {
+      logRuntimeEvent(
+        runtimeConfig.logger,
+        "error",
+        "[flow-state] onBackgroundWork threw; the run was started but is not registered as background work",
+        { ...context, error: summarizeForLog(error) }
+      );
+    }
+  };
+
   const dispatch = (envelope: InboundRequestEnvelope): DispatchHandle => {
     const flow = registry.get(envelope.flowKind);
     if (flow === undefined) {
@@ -453,31 +494,13 @@ export function createInboundTransportHost(
       stores.activeRequests.deregister(requestId).catch(() => {});
     });
 
-    // Contained, because this is the ONLY thing left in `dispatch` that can
-    // throw synchronously and the run has already been started above. The hook
-    // is adapter-supplied and does throw in practice — Next's `after()` and
-    // `waitUntil` both raise synchronously when called outside a request scope —
-    // and an escaping throw makes a synchronous failure from `dispatch` mean two
-    // different things. `createDetachedStartOperation` reads it as one: nothing
-    // was dispatched, so its caller settles the row it just handed over, while
-    // the child it was told never started is still running and still trying to
-    // settle the same row (FIX-982).
-    //
-    // Failing to register keep-alive is real — on a freeze-after-response
-    // platform the run can stall — but it is not a failed dispatch, and the
-    // handle below is honest either way. So it is logged rather than raised.
-    if (onBackgroundWork !== undefined) {
-      try {
-        onBackgroundWork(finished);
-      } catch (error) {
-        logRuntimeEvent(
-          runtimeConfig.logger,
-          "error",
-          "[flow-state] onBackgroundWork threw; the run was started but is not registered as background work",
-          { requestId, flowKind: dispatchEnvelope.flowKind, error: summarizeForLog(error) }
-        );
-      }
-    }
+    // Contained by `registerBackgroundWork`, because this is the ONLY thing left
+    // in `dispatch` that can throw synchronously and the run has already been
+    // started above — see that helper for why an escaping throw is damaging.
+    registerBackgroundWork(finished, {
+      requestId,
+      flowKind: dispatchEnvelope.flowKind
+    });
 
     // The HTTP 202 path awaits `accepted`, not `finished`, so a fire-and-forget
     // external dispatch can leave `finished` unobserved. Mark it handled to
@@ -517,11 +540,18 @@ export function createInboundTransportHost(
     // container — the resume appears to hang for tens of seconds, the flow's
     // remaining steps never run, and a refresh still shows `in_progress`.
     // Registering `finished` with `onBackgroundWork` (→ Next `after()` /
-    // waitUntil) lets it run to completion. `void .catch` marks it handled: the
-    // 202 path doesn't await `finished`, so an unobserved rejection must not
-    // surface as an unhandled rejection.
+    // waitUntil) lets it run to completion. Contained by
+    // `registerBackgroundWork`: `continueRequestImpl` above has already started
+    // the run, so a throw escaping from here would reject this promise and the
+    // resume route would read that as setup having failed — reverting the
+    // suspension of a request that is still running (FIX-1095).
+    //
+    // `void .catch` marks `finished` handled: the 202 path doesn't await it, so
+    // an unobserved rejection must not surface as an unhandled rejection. It
+    // stays inside the keep-alive branch, which is the only case where nothing
+    // else is guaranteed to observe the promise.
     if (onBackgroundWork !== undefined) {
-      onBackgroundWork(result.finished);
+      registerBackgroundWork(result.finished, { requestId: opts.requestId });
       void result.finished.catch(() => {});
     }
 
