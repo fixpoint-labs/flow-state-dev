@@ -130,29 +130,13 @@ for the code reviewer.
 
 So the failure mode here is not length — it is a reader who finishes six decisions unable to say
 which one they were supposed to decide. **A decision earns its place on this surface or it
-does not appear on it.** Two filters decide that, and a decision has to pass both.
+does not appear on it.**
 
-### Filter 1 — is it theirs?
-
-A wrong answer has to change one of four things:
-
-- **what a user experiences**
-- **what we've promised** anyone outside the team
-- **when something ships**
-- **what it costs to undo**
-
-If a wrong answer changes none of them, it is an engineer's call. It goes one line each in
-the collapsed **engineering calls** block, where the code reviewer wants it anyway — not on
-the surface a product owner reads. *"Feed the new lenses from the shared evidence bundle
-rather than wiring data to each one"* is a real decision, and it changes none of the four.
-
-### Filter 2 — is it worth their attention?
-
-A call that is obviously right, or reversible in an afternoon at near-zero cost, is one you
-make and note in a line ([`asking-for-decisions.md`](asking-for-decisions.md) → "When not to
-ask"). Surfacing it *as* a decision implies weight it doesn't have, and it spends the
-attention the decision beside it needed. *"An unrun panel says it didn't run instead of
-disappearing"* passes filter 1 — a reader sees it — and fails this one.
+**What survives is settled by the two filters in
+[`asking-for-decisions.md`](asking-for-decisions.md) → "What reaches them at all"** — *is it
+theirs?* and *is it worth their attention?* Canonical there, because they govern every ask
+and not just a PR's. What follows is the PR-specific half: the one inflation rule the filters
+don't catch, the shape, and a worked example of both filters run over a real block 3.
 
 ### The rule that catches the most inflation
 
@@ -190,7 +174,8 @@ ambiguous public guard surface, or a migration third parties didn't need" is a c
 owner can price. "The two guards would both have to be maintained" is a fact about our code,
 and it asks them to work out for themselves why that's bad.
 
-**Three decisions is the ceiling, hardest first**, plus zero to two live forks. Not a target —
+**Three is the ceiling, hardest first — and live forks count toward it.** Two ratified
+decisions and one fork is three; so is one ratified decision and two forks. Not a target —
 one decision and one fork is a healthy PR, and a change following an approved spec often has
 none. Past three, either the filters weren't applied or this PR carries more product surface
 than one PR should.
@@ -213,8 +198,9 @@ options: *"Hard ceiling at three, or a soft one?"*
 
 Three rules keep it from swallowing the block:
 
-- **Zero to two per PR.** Three is a signal the change went too long without checking in.
-  A fork the whole PR rests on should have been raised before the PR existed.
+- **Zero to two per PR**, inside the ceiling of three above. Three forks is a signal the
+  change went too long without checking in; a fork the whole PR rests on should have been
+  raised before the PR existed.
 - **One to three sentences per part; ~200 words for the whole fork** — the per-fork row in
   [`writing-for-humans.md`](writing-for-humans.md) → Budgets. A five-sentence recommendation
   is an argument with itself on the page. Make the call, give the reason that actually
@@ -359,8 +345,9 @@ What goes down here:
   stays complete. If this block is empty on a change of any size, the filters probably
   weren't applied — the rows are still in §3.
 - **The long-form case.** On a spec PR, the rest of Part I — tradeoffs, focus practices,
-  worked examples, the Decisions in full. Blocks 1–3 above are §1, §2 and the §6 index, so
-  the collapsed block picks up where they stop and nothing is said twice.
+  worked examples, the Decisions in full. Blocks 1–3 above are §1, §2 and the §6 Decisions
+  that passed the filters, so the collapsed block picks up where they stop and nothing is
+  said twice.
 - **Verification output.** Test runs, goal-check transcripts, red/green evidence. State
   the verdict above the fold in a clause; the scrollback lives here.
 - **File-by-file changes**, when there are enough to be a list rather than a sentence.
@@ -385,8 +372,8 @@ same review is the mistake this table exists to prevent.
 
 ## Where each block is authored
 
-- **Spec PR** — blocks 1–3 are the spec's own §1, §2 and §6 index, condensed by
-  `issue-spec` Step 6; contract from [`spec-template.md`](spec-template.md) → "How to
+- **Spec PR** — blocks 1–3 are the spec's own §1, §2 and the §6 Decisions that passed the
+  filters, condensed by `issue-spec` Step 6; contract from [`spec-template.md`](spec-template.md) → "How to
   review this".
 - **Epic PR** — authored by the `epic-agent` when it opens or refreshes the epic PR;
   contract from [`epic-spec-template.md`](epic-spec-template.md).

@@ -177,19 +177,19 @@ tenet, say which and why that's justified** — don't hide it.
 
 ### 6. Decisions & rules — the sign-off surface
 
-Numbered, ≤ 8, only the calls that **shape the outcome** — some interpretation room for
+Numbered, **at most three**, only the calls that **shape the outcome** — some interpretation room for
 the implementer is expected. Each: the decision, the alternative rejected, the
 ramification. Part II must not introduce a decision that isn't here.
 
-**Each one is a business decision or it does not belong here.** The test is the same one the
-PR body applies ([`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → §3): a wrong answer
-has to change **what a user experiences**, **what we've promised** anyone outside the team,
-**when something ships**, or **what it costs to undo**. If it changes none of those, or it
-only makes sense in terms of types, modules or call sites, it is an implementer's call and
-belongs in Part II. A spec whose §6 reads like a design review has put the owner in the
+**Each one is a business decision or it does not belong here.** It has to pass both filters
+in [`asking-for-decisions.md`](asking-for-decisions.md) → "What reaches them at all" — the
+same gate every other ask goes through. A call that passes neither, or that only makes sense
+in terms of types, modules or call sites, is an implementer's call and belongs in Part II. A spec whose §6 reads like a design review has put the owner in the
 engineer's chair, which [`asking-for-decisions.md`](asking-for-decisions.md) says should be
-rare and announced. **Most specs should have two or three rows here, not eight** — eight
-calls that genuinely reshape the outcome is a sign the issue is really several.
+rare and announced. **Three is the ceiling, and most specs land on two** — four calls that
+genuinely reshape the outcome is a sign the issue is really several. Calls that shape the
+*implementation* rather than the outcome are not Decisions and belong in Part II; they reach
+the spec PR's collapsed engineering block, not §6.
 
 Two rows are commonly mistaken for Decisions and are not. **A restatement of what the
 solution does** is §2's job, not a call anyone made. **A call that was obvious and costs
@@ -202,7 +202,7 @@ move. "Changing it later is a breaking change to a string we don't validate" pri
 decision; "both entry points would need updating" asks the reader to price it themselves.
 
 **Most of these are being ratified, not decided.** The human is confirming the direction is
-the one they want, which is why eight one-liners is a reasonable ask. **A row that is a genuine
+the one they want, which is why three one-liners is a small ask. **A row that is a genuine
 live fork** — you can't settle it alone, and the answer turns on something they know — is
 **pulled out and asked properly** in the spec PR description (block 3) using the six-part
 shape in [`asking-for-decisions.md`](asking-for-decisions.md), with the row itself left in

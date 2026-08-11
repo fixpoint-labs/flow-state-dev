@@ -110,7 +110,8 @@ more, since a small change is where a reviewer is most likely to assume the wron
 - Per-file, per-item, per-decision enumerations — **unless the enumeration *is* the ask.**
   The test is whether the reader is being asked to **decide** on each row or is merely being
   **informed** of it. What they decide goes above the fold — a heading and a line each,
-  never a table — however many there are; what they're informed of goes below it, however few.
+  never a table, **capped at three** ([`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) →
+  §3); what they're informed of goes below it, however many there are.
 
   Where an artifact defines a sign-off surface — a spec's §6 Decisions are what approval
   certifies — nothing on that surface is ever *dropped*, but it is **sorted** by that same

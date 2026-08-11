@@ -138,17 +138,46 @@ When it happens:
 Two rounds of this in a week is a signal to check whether they're really engineering calls or
 whether the translation is being skipped.
 
+## What reaches them at all — the two filters
+
+Before the shape, the gate. **Most decisions never reach the product owner**, and a surface
+that forwards all of them costs more than a long one: a reader who finishes six equally-weighted
+items cannot name which was theirs, so the ask becomes a rubber stamp.
+
+**Filter 1 — is it theirs?** A wrong answer has to change one of four things:
+
+- **what a user experiences**
+- **what we've promised** anyone outside the team
+- **when something ships**
+- **what it costs to undo**
+
+If a wrong answer changes none of them, it is an engineer's call. Decide it and record it where
+an engineer reads it. *"Feed the new lenses from the shared evidence bundle rather than wiring
+data to each one"* is a real decision and changes none of the four.
+
+**Filter 2 — is it worth their attention?** A call that is obviously right, or reversible in an
+afternoon at near-zero cost, is one you make and note. Surfacing it *as* a decision implies
+weight it doesn't have, and it spends the attention the decision beside it needed.
+
+**Filtering is sorting, not hiding.** Where the artifact defines a sign-off surface, everything
+on it stays in the artifact — what they don't own moves to a section addressed to the engineer,
+so nothing is approved unseen and nothing unactionable is put in front of them. On a PR that
+section is the collapsed **engineering calls** block
+([`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → §3, which carries the worked
+before/after and the shape rules).
+
+**Cap what survives at three, hardest first.** Past three, either the filters weren't applied or
+the artifact carries more product surface than one artifact should.
+
 ## When not to ask at all
 
-Asking is not free — it costs their attention and it costs a round-trip. Don't ask when:
+Two more cases the filters don't catch:
 
 - **It's the implementer's call.** Names, layout, which helper, local structure. That's the
   spec-review bar in [`orchestration.md`](orchestration.md) → "Spec review", and it applies to
   conversation too.
 - **The answer is derivable.** From the spec, the tenets, the code, or a decision they already
   made. Cite it and proceed.
-- **It's a coin flip with near-zero cost either way.** Decide, and note the call in one line
-  where they'd see it. A decision surfaced *as a decision* implies weight it doesn't have.
 - **You'd take their answer either way but haven't formed a view.** Form one first. An ask with
   no recommendation is usually an ask that isn't ready.
 
@@ -179,22 +208,11 @@ Each item is self-contained — they will answer #3 without re-reading #1.
 | **A gate** | The spec-approval and epic-objective gates, surfaced by the lifecycles ([`orchestration.md`](orchestration.md) → Gates) |
 | **A blocker** | A worker escalating a fork it can't settle — the escalation carries the parts, the coordinator surfaces them |
 
-**Most decisions are not live forks, and most don't reach them at all.** A decision reaches
-the product owner's surface only if a wrong answer changes what a user experiences, what
-we've promised, when something ships, or what it costs to undo — and if they'd plausibly
-answer differently than you did ([`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → §3
-carries both filters and the worked before/after). The rest are yours; record them where an
-engineer reads them.
-
-Of the few that do reach them, most are being *ratified* — a subheading naming the decision
-and a line on what a wrong one costs. The full six-part shape is for the one or two genuinely
-open, plus anything in a spec's §12. Applying it to every decision buries the live ones;
-applying it to none leaves them to be found.
-
-**Never a table.** Whatever the surface, the shape is a heading per decision with the detail
-under it. A grid asks the reader to compare cells before they can read a single decision, and
-it sizes the two things that matter — the call and its cost — to fit a column rather than to
-be understood ([`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → §3 "The shape").
+**Most decisions are not live forks, and most don't reach them at all** — see the two filters
+above. Of the few that do, most are being *ratified*: a subheading naming the decision and a
+line on what a wrong one costs. The full six-part shape is for the one or two genuinely open,
+plus anything in a spec's §12. Applying it to every decision buries the live ones; applying it
+to none leaves them to be found.
 
 ## Worked example
 
