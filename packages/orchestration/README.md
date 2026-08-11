@@ -358,6 +358,12 @@ Two bounds are worth knowing before you reach for this:
 - **Serverless without a queue adapter.** Detached work runs inside the
   invocation that started it and is bounded by that function's maximum duration.
   With a queue adapter it moves to a worker process and is not.
+- **The claim has to survive the wait before the child starts.** A claim carries
+  a lease (two minutes by default), and nothing extends it until the worker is
+  actually running. A Workstream that starts after its lease has run out does
+  nothing at all — the task is already back in the queue, and the next drain
+  picks it up. A deep queue backlog in front of the child is where this shows
+  up, and the board's lease is not configurable today.
 
 ### goalSeekLoop
 
