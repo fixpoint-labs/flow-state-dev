@@ -20,6 +20,7 @@ import { analyzeInputSchema } from "../flow-schema";
 import { computeAndStoreSpine } from "../compute-spine";
 import { computeAndStoreRewardToRisk } from "../compute-reward-to-risk";
 import { storePriceHistory } from "../store-price-history";
+import { resolveSubjectEntity } from "../resolve-subject-entity";
 import { resetLensConvergence } from "../agents/lenses/writer";
 import {
   checkAssetTypeSupported,
@@ -60,6 +61,15 @@ export const analyze = sequencer({
   .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
   .tap(checkTickerResolvable)
   .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)
+  // Resolve the subject's business identity before the bench fans out, so the
+  // discovery tools can validate their web-search results against the company
+  // they are supposed to be about (FIX-779). Warms the profile spine field the
+  // profile analyst reads back, so it is not an extra fetch. Only the `full`
+  // preset runs discovery, so only `full` needs the warm-up.
+  .tapIf(
+    (_v, ctx) => ctx.session.state.costPreset === "full",
+    resolveSubjectEntity,
+  )
   .step(analystFanOut)
   .tap(checkPhase1HasFundamentalsAndProfile)
   .exitIf((_v, ctx) => ctx.session.state.stoppedReason !== null)

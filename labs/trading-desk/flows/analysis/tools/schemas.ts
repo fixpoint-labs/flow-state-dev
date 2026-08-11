@@ -504,6 +504,31 @@ const discoveryItem = z.object({
   provider: z.enum(searchProviders),
 });
 
+/**
+ * Entity-identity verdict for the payload's surviving `items` (FIX-779):
+ *
+ *   - `"verified"`        — the subject entity was resolved and every item in
+ *                           `items` names it. Wrong-entity results were removed
+ *                           and are listed, URL-only, in `excluded`.
+ *   - `"unchecked"`       — the subject entity could not be resolved (profile
+ *                           unavailable, or a name with no distinctive tokens),
+ *                           so no item was validated. Items are UNVERIFIED
+ *                           context, not confirmed evidence about the subject.
+ *   - `"not-applicable"`  — the tool's query is about the environment (macro
+ *                           conditions, sector/peer context), not the entity,
+ *                           so naming the subject is not expected.
+ */
+const discoveryEntityCheck = z.enum(["verified", "unchecked", "not-applicable"]);
+
+/** A search result removed by the entity check. URL + reason only — the
+ *  wrong-company title and snippet are deliberately dropped so contaminated
+ *  prose never reaches an analyst prompt, while the audit trail of what was
+ *  removed, and why, survives. */
+const discoveryExclusion = z.object({
+  url: z.string(),
+  reason: z.string(),
+});
+
 export const discoveryPayloadSchema = z.object({
   source: discoverySourceTag,
   ticker: z.string(),
@@ -513,9 +538,24 @@ export const discoveryPayloadSchema = z.object({
    *  `"unavailable"` empty payload. */
   query: z.string(),
   items: z.array(discoveryItem),
+  entityCheck: discoveryEntityCheck,
+  excluded: z.array(discoveryExclusion),
 });
 
 export type DiscoveryPayload = z.infer<typeof discoveryPayloadSchema>;
+
+/** The eight tools that return a `DiscoveryPayload`. Declared here (not in the
+ *  discovery runtime) so `empty-payloads.ts` and `runtime/discover.ts` can both
+ *  name it without importing each other. */
+export type DiscoveryTool =
+  | "discover_fundamentals_context"
+  | "discover_sentiment_context"
+  | "discover_technical_context"
+  | "discover_profile_context"
+  | "discover_market_context"
+  | "discover_macro_context"
+  | "discover_quant_context"
+  | "discover_disclosure_context";
 
 /**
  * Sector context: how the name's sector is positioned vs. the broad market,

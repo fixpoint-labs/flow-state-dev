@@ -3,11 +3,12 @@
  * with retail-investor / forum chatter context. See
  * `discover_fundamentals_context.ts` for the discipline (cost-preset
  * short-circuit before fixture branch; live failure stays "unavailable").
+ *
+ * Entity-scoped: chatter about a different issuer is not this name's sentiment.
  */
 import { handler } from "@flow-state-dev/core";
-import { discoverWeb, SENTIMENT_QUERY } from "../runtime/discover";
-import { resolveToolPayload } from "../runtime/resolve";
-import { emptyPayload, skippedDiscoveryPayload } from "../empty-payloads";
+import { runDiscovery, SENTIMENT_QUERY } from "../runtime/discover";
+import { profileDataResource } from "../../profile-data-resource";
 import { toolInputSchemas, toolOutputSchemas } from "../schemas";
 
 export const discover_sentiment_context = handler({
@@ -17,20 +18,13 @@ export const discover_sentiment_context = handler({
     "context (forum chatter, analyst commentary) for the given ticker.",
   inputSchema: toolInputSchemas.discover_sentiment_context,
   outputSchema: toolOutputSchemas.discover_sentiment_context,
-  execute: async (input, ctx) => {
-    if (ctx.session.state.costPreset !== "full") {
-      return skippedDiscoveryPayload("discover_sentiment_context", input);
-    }
-    return resolveToolPayload("discover_sentiment_context", input, ctx, async () => {
-      try {
-        return await discoverWeb({
-          ticker: input.ticker,
-          date: input.date,
-          queryTemplate: SENTIMENT_QUERY,
-        });
-      } catch {
-        return emptyPayload("discover_sentiment_context", input);
-      }
-    });
-  },
+  resources: { profileData: profileDataResource },
+  execute: (input, ctx) =>
+    runDiscovery({
+      tool: "discover_sentiment_context",
+      input,
+      ctx,
+      queryTemplate: SENTIMENT_QUERY,
+      entityScoped: true,
+    }),
 });

@@ -7,7 +7,7 @@
  * unavailable — honest about coverage, no false fixture data masquerading as
  * live data.
  */
-import type { ToolInput, ToolName, ToolOutput } from "./schemas";
+import type { DiscoveryTool, ToolInput, ToolName, ToolOutput } from "./schemas";
 
 type EmptyBuilder<T extends ToolName> = (input: ToolInput<T>) => ToolOutput<T>;
 
@@ -166,6 +166,8 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     asOf: i.date,
     query: "",
     items: [],
+    entityCheck: "unchecked",
+    excluded: [],
   }),
   discover_sentiment_context: (i) => ({
     source: "unavailable",
@@ -173,6 +175,8 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     asOf: i.date,
     query: "",
     items: [],
+    entityCheck: "unchecked",
+    excluded: [],
   }),
   discover_technical_context: (i) => ({
     source: "unavailable",
@@ -180,6 +184,8 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     asOf: i.date,
     query: "",
     items: [],
+    entityCheck: "unchecked",
+    excluded: [],
   }),
   discover_profile_context: (i) => ({
     source: "unavailable",
@@ -187,6 +193,8 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     asOf: i.date,
     query: "",
     items: [],
+    entityCheck: "unchecked",
+    excluded: [],
   }),
   get_sector_context: (i) => ({
     source: "unavailable",
@@ -228,6 +236,8 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     asOf: i.date,
     query: "",
     items: [],
+    entityCheck: "unchecked",
+    excluded: [],
   }),
   discover_macro_context: (i) => ({
     source: "unavailable",
@@ -235,6 +245,8 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     asOf: i.date,
     query: "",
     items: [],
+    entityCheck: "unchecked",
+    excluded: [],
   }),
   get_factor_ranks: (i) => ({
     source: "unavailable",
@@ -315,6 +327,8 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     asOf: i.date,
     query: "",
     items: [],
+    entityCheck: "unchecked",
+    excluded: [],
   }),
   get_sec_filings: (i) => ({
     source: "unavailable",
@@ -351,6 +365,8 @@ const builders: { [K in ToolName]: EmptyBuilder<K> } = {
     asOf: i.date,
     query: "",
     items: [],
+    entityCheck: "unchecked",
+    excluded: [],
   }),
 };
 
@@ -365,16 +381,6 @@ export function emptyPayload<T extends ToolName>(tool: T, input: ToolInput<T>): 
  * downstream analysts that investigation was deliberately not run on this
  * preset, distinct from "tried and failed".
  */
-type DiscoveryTool =
-  | "discover_fundamentals_context"
-  | "discover_sentiment_context"
-  | "discover_technical_context"
-  | "discover_profile_context"
-  | "discover_market_context"
-  | "discover_macro_context"
-  | "discover_quant_context"
-  | "discover_disclosure_context";
-
 export function skippedDiscoveryPayload<T extends DiscoveryTool>(
   tool: T,
   input: ToolInput<T>,
