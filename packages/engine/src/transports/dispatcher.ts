@@ -52,6 +52,16 @@ export interface FlowDispatchHandle {
    * handle alone is not evidence the request exists.
    */
   readonly accepted?: Promise<void>;
+  /**
+   * Resolves once the request has entered execution, past every setup step that
+   * could fail without recording anything (FIX-982). Rejects with the run's own
+   * error when setup dies instead.
+   *
+   * Offered only by a dispatcher that starts the run within this call, which is
+   * why it is separate from `accepted`: a queued or remote start cannot honour
+   * it without making the caller wait out the queue.
+   */
+  readonly started?: Promise<void>;
   abort(): void;
 }
 
