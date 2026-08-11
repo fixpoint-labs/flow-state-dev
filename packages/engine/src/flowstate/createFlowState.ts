@@ -23,12 +23,16 @@ import { FlowStateConfigError, FlowStateDisposedError } from "../errors/flow-err
 import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store-adapter";
 import { resolveProfileStores } from "./resolve-slots";
 import type { FlowDispatcher } from "../transports/dispatcher";
+import { createDetachedStartOperation } from "../context/detached-start-operation";
+import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
+import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import type {
   CreateFlowStateOptions,
   FlowState,
   FlowStateModelsConfig,
   FlowStateRuntime,
-  WorkerHandle
+  WorkerHandle,
+  WorkerMode
 } from "./types";
 
 function toModelResolverOptions(
@@ -300,9 +304,10 @@ class InternalFlowState<TSettings extends object>
     //
     // The sweeper facts come from `resolveStaleSweep` — the same rule the
     // router applies to the pair it builds its own sweeper from — so the gate
-    // and the sweeper cannot describe different cadences. `startOperation` and
-    // `parentTask` stay unwired here: no host start operation exists yet, and
-    // the verb refuses by name rather than pretending otherwise.
+    // and the sweeper cannot describe different cadences. `startOperation` is
+    // wired at the bottom of this method, once the dispatcher it must go
+    // through is resolved; `parentTask` stays unwired here, and that verb
+    // refuses by name rather than pretending otherwise.
     //
     // Destructured rather than spread wholesale onto `requestHost`:
     // `queuedGraceMs` is a sweep bound, not a gate fact, and the liveness read
@@ -365,17 +370,95 @@ class InternalFlowState<TSettings extends object>
     // a queue-routed deployment whose queue is unreachable should fail
     // loudly, not limp along half-wired.
     const worker = this.#options.worker;
+    const workerMode = worker?.mode ?? "colocated";
     if (worker !== undefined) {
-      const mode = worker.mode ?? "colocated";
-      if (mode !== "worker-only") {
+      if (workerMode !== "worker-only") {
         this.#workerDispatcher = worker.createDispatcher(runtime);
       }
-      if (mode !== "dispatch-only") {
+      if (workerMode !== "dispatch-only") {
         this.#workerHandle = worker.startWorker(runtime);
       }
     }
 
+    this.#wireDetachedStart(runtime, workerMode);
+
     return runtime;
+  }
+
+  /**
+   * Give a router-less deployment a detached start operation (FIX-1077).
+   *
+   * `createFlowRouteHandlers` was the only thing that ever assigned one, so a
+   * process that resolves its runtime through `getRuntime()` and never asks for
+   * a router — `fsdev run` and `fsdev chat`, the tool `AGENTS.md` names as the
+   * DEFAULT way to verify a flow change — met `no-start-operation` on every
+   * detached dispatch. A flow that detaches simply could not be exercised
+   * through the path everyone is told to reach for first.
+   *
+   * Three things make this the same wiring the router does, not a parallel one:
+   *
+   * - **The seam is the SHARED `runtimeConfig.requestHost` object**, mutated
+   *   rather than replaced. `dispatchLocal` spreads the config per request and a
+   *   spread copies the *reference*, so one assignment reaches every request
+   *   this runtime serves — including the child's own, which is what lets
+   *   detached work detach again.
+   * - **The chicken-and-egg is broken by a closure**, exactly as the router
+   *   breaks it: the operation dispatches through a host, and the host reads the
+   *   config that carries the operation. Constructing the host first and
+   *   stamping onto the config it already captured needs no second pass.
+   * - **It runs after the worker wiring above**, so the host inherits the same
+   *   effective dispatcher the router would give it. Stamping earlier would have
+   *   pinned the in-process dispatcher into a deployment whose work belongs on a
+   *   queue.
+   *
+   * ## What it deliberately does not cover
+   *
+   * A `worker-only` process has no inbound transport by construction and no
+   * dispatcher to hand a job to — `createDispatcher` is skipped for it above. A
+   * host built here would fall back to in-process dispatch and quietly run
+   * detached work inside the worker instead of enqueuing it, which is worse than
+   * refusing. Its start operation is a queue-backed enqueue owned by the adapter
+   * that owns the queue, so it keeps refusing `no-start-operation` by name.
+   *
+   * A start operation already on the config is never overwritten either: a
+   * deployment that wired its own is the more specific answer.
+   *
+   * And a process that has already asked for a router is left exactly as it is
+   * today — see the guard below.
+   */
+  #wireDetachedStart(runtime: FlowStateRuntime, workerMode: WorkerMode): void {
+    const requestHost = runtime.runtimeConfig.requestHost;
+    if (requestHost === undefined) return;
+    if (requestHost.startOperation !== undefined) return;
+    if (workerMode === "worker-only") return;
+    // A router was asked for BEFORE the runtime resolved (`ready()` /
+    // `getRouter()` as the entry point — Next.js, `serve()`), so
+    // `createFlowRouteHandlers` wires its own host's operation and the HTTP path
+    // is already covered. Leaving that case untouched keeps this change to the
+    // topology it is about.
+    //
+    // The reverse order — `getRuntime()` first, then a router (`fsdev serve`'s
+    // bind guard, `fsdev dev`'s banner) — DOES wire here, and the operation
+    // stays. `createFlowApiRouter` copies `requestHost` onto its own config with
+    // a spread, so it inherits this one and its "carried through untouched"
+    // contract leaves it alone, exactly as it would a worker's. Nothing is taken
+    // away from the shared config afterwards: it is the only object a colocated
+    // worker or a direct `runAction` ever reads.
+    if (this.#routerRequested) return;
+
+    const host = createInboundTransportHost({
+      registry: runtime.registry,
+      stores: runtime.stores,
+      // Never consulted by `dispatch` — a detached envelope carries a
+      // server-derived principal — but it is what the router would pass, so the
+      // host is not subtly different from the one HTTP gets.
+      resolvePrincipal:
+        this.#options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
+      runtimeConfig: runtime.runtimeConfig,
+      dispatcher: this.#options.dispatcher ?? this.#workerDispatcher
+    });
+
+    requestHost.startOperation = createDetachedStartOperation({ host });
   }
 
   async #doInit(): Promise<FlowApiRouter> {
