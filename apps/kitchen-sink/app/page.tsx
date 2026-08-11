@@ -45,7 +45,7 @@ import { ArtifactPanel } from "@/components/artifact-panel";
 import { ArtifactDialog } from "@/components/artifact-dialog";
 import { ResizeHandle } from "@/components/resize-handle";
 import { SuggestionRow } from "@/components/suggestion-row";
-import { BackgroundWorkPanel } from "@/components/background-work-panel";
+import { BackgroundWorkPanel, BackgroundWorkRefresh } from "@/components/background-work-panel";
 import { VoiceToggle } from "@/components/voice-toggle";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
@@ -368,6 +368,13 @@ function KitchenSinkApp() {
           thinkingStyle={resolvedThinkingStyle ?? modeStatus?.thinkingStyle}
           activeSkills={modeStatus?.activeSkills}
         />
+
+        {/* Mounted HERE, above both responsive trees, and exactly once. The
+            mobile and desktop `ChatPanel`s are both alive at the same time —
+            one is hidden with CSS, not unmounted — so a side effect placed
+            inside either of them runs twice per turn. The panel itself is fine
+            to render twice; its stream-end re-read is not. */}
+        <BackgroundWorkRefresh session={session} />
 
         <div className="flex min-h-0 flex-1 sm:hidden">
           {mobilePanel === "chat" && (

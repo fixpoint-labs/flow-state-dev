@@ -238,10 +238,28 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
           (row.status === "errored" || row.status === "cancelled") && !row.reported,
       );
 
+      // This turn's own row. Matched on goal and taken newest-first, because
+      // asking the same question twice is a legitimate second row on the board.
+      const filed = handles
+        .filter((task) => task.goal === input.message)
+        .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0];
+      // A spawn refused at dispatch settles the row `errored` inside THIS turn.
+      // Leading with "it runs in its own workstream" over a row that never
+      // reached one, and then appending "did not run" below, hands the user two
+      // contradictory instructions in a single message.
+      const filedFailed =
+        filed !== undefined &&
+        (filed.status === "errored" || filed.status === "cancelled");
+
+      const label = labelFor(routingTopicFor(input.message));
       const parts = [
-        `Filed **${labelFor(routingTopicFor(input.message))}** as background work. It runs in its own ` +
-          `workstream, so this turn is done — open the Background work panel to watch it, ` +
-          `or ask me again in a moment and I'll report what came back.`,
+        filedFailed
+          ? `**${label}** could not be handed to a workstream — it was refused before it ` +
+            `started (${filed.status}), so nothing is running for it. The Background work ` +
+            `panel will not show a row for this one.`
+          : `Filed **${label}** as background work. It runs in its own ` +
+            `workstream, so this turn is done — open the Background work panel to watch it, ` +
+            `or ask me again in a moment and I'll report what came back.`,
       ];
 
       if (running.length > 1) {
@@ -253,21 +271,44 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
       }
 
       for (const row of broken) {
+        // The just-filed row, when it failed, is already the lead. Saying it
+        // again below the fold reads as two separate failures.
+        if (filedFailed && row.id === filed.id) continue;
         parts.push(`---\n\n**Background work did not run:** ${row.goal} (${row.status}).`);
-      }
-
-      // Mark what this reply just delivered, so a later turn does not say it
-      // again. Written AFTER the reply is assembled and only for the rows that
-      // are in it. `patchMetadata` merges, so the row's `topic` survives.
-      for (const row of [...finished, ...broken]) {
-        await board.patchMetadata(row.id, { reportedAtMs: Date.now() });
       }
 
       const reply = parts.join("\n\n");
       // Every other style ends in a generator, and a generator is what emits the
       // assistant message. This one answers without a model, so the message is
       // emitted here — otherwise the turn returns a string nothing renders.
+      //
+      // **Emit BEFORE marking, never after.** `reportedAtMs` is an
+      // acknowledgement that the user has been told, so it must not become
+      // durable until the telling has actually happened. Marking first and
+      // emitting second means a `patchMetadata` that throws part-way leaves
+      // earlier rows marked delivered while the reply never went out — those
+      // results are then filtered from every later turn and the user never sees
+      // work that completed fine. Silent and permanent. This way round the
+      // worst case is a row marked late or not at all, which repeats a report
+      // next turn: visible, harmless, and self-correcting.
       ctx.emit.message(reply);
+
+      // Now record what was just delivered. Only the rows actually in the reply.
+      // `patchMetadata` merges, so the row's `topic` survives.
+      //
+      // Contained per row, and deliberately: the reply is already out, so a
+      // failed marking must not fail the turn on top of it. An unmarked row is
+      // reported again next turn — the benign, self-correcting failure this
+      // ordering exists to prefer. Containing it per row also stops one bad
+      // write from stranding the rows behind it in the same loop.
+      for (const row of [...finished, ...broken]) {
+        try {
+          await board.patchMetadata(row.id, { reportedAtMs: Date.now() });
+        } catch {
+          ctx.emit.status(`Could not mark "${row.goal}" as reported; it may repeat.`);
+        }
+      }
+
       return reply;
     },
   });

@@ -13,8 +13,10 @@
  *
  * - **The list does not update on its own.** It is re-read on mount, at the
  *   start of each action, and on `session.refresh()`. On its own that hides the
- *   *first* job until the user does something else, so this re-reads once when
- *   a turn stops streaming — one read per turn, not a poll.
+ *   *first* job until the user does something else, so a sibling component —
+ *   {@link BackgroundWorkRefresh}, mounted once at the page level — re-reads
+ *   when a turn stops streaming. It is not in this component on purpose; see
+ *   its own doc for why a duplicated responsive tree makes that matter.
  * - **`workstreamsStale` means "this is the last list we could get".** The rows
  *   stay on screen and get marked, rather than disappearing.
  * - **`status` is absent until something has run**, and `"active"` means only
@@ -71,39 +73,53 @@ interface BackgroundWorkPanelProps {
 }
 
 /** The strip above the prompt input: one row per body of background work. */
-export function BackgroundWorkPanel({ session, flowKind }: BackgroundWorkPanelProps) {
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const { workstreams, workstreamsStale, refresh, isStreaming } = session;
-
-  // One re-read per finished turn. Without it the job a turn just filed stays
-  // invisible until the user sends another message, because the hook's own
-  // re-read happens at the START of an action. Guarded on the actual
-  // true → false transition, so a re-render never triggers a second read.
-  //
-  // **Demo debt — do not copy this into an application.** The Workstream axis
-  // has a pinned read budget: ONE `listWorkstreams` read per turn, taken by
-  // `useSession` at action start. That budget is a contract
-  // (`docs/architecture/server-and-client.md`), and it is why the DevTool's own
-  // panel reads one page plus a sentinel instead of walking the index. This
-  // effect adds a second read at stream end, which doubles the axis read for
-  // every turn on this page — the price paid here for the first filed job
-  // being visible without further user action.
-  //
-  // The intended fix is a framework opt-in rather than an app-level effect,
-  // tracked as **FIX-1109**: `useSession` grows an explicit
-  // `workstreams: { refreshOnTerminal: true }`, refreshing from the terminal
-  // branch it already has (`onRequestStatus`), so the pinned budget stays the
-  // default and the second read becomes a named choice. When FIX-1109 lands,
-  // delete this effect and pass that option instead. Until then, this is a
-  // reference demo teaching a pattern it should not — hence the comment rather
-  // than the silence.
+/**
+ * The stream-end re-read, as a component so it is mounted EXACTLY ONCE.
+ *
+ * Deliberately separate from {@link BackgroundWorkPanel}. The page keeps a
+ * mobile and a desktop `ChatPanel` tree alive at the same time and hides one
+ * with responsive CSS, so anything rendered inside a `ChatPanel` is mounted
+ * twice and every effect in it runs twice. With the effect living in the panel
+ * that meant two reads per finished turn, not one — a cost that is invisible
+ * from the panel's own source and contradicts what the comment below claims.
+ * Rendering the panel twice is harmless (both read the same hook state); firing
+ * its side effect twice is not. Mount this once, above those trees.
+ *
+ * Without it the job a turn just filed stays invisible until the user sends
+ * another message, because the hook's own re-read happens at the START of an
+ * action. Guarded on the actual true → false transition, so a re-render never
+ * triggers a second read.
+ *
+ * **Demo debt — do not copy this into an application.** The Workstream axis has
+ * a pinned read budget: ONE `listWorkstreams` read per turn, taken by
+ * `useSession` at action start. That budget is a contract
+ * (`docs/architecture/server-and-client.md`), and it is why the DevTool's own
+ * panel reads one page plus a sentinel instead of walking the index. This adds
+ * a second read at stream end — the price paid here for the first filed job
+ * being visible without further user action.
+ *
+ * The intended fix is a framework opt-in rather than an app-level effect,
+ * tracked as **FIX-1109**: `useSession` grows an explicit
+ * `workstreams: { refreshOnTerminal: true }`, refreshing from the terminal
+ * branch it already has (`onRequestStatus`), so the pinned budget stays the
+ * default and the second read becomes a named choice. When FIX-1109 lands,
+ * delete this component and pass that option instead.
+ */
+export function BackgroundWorkRefresh({ session }: { session: BackgroundWorkPanelProps["session"] }) {
+  const { refresh, isStreaming } = session;
   const wasStreaming = useRef(isStreaming);
   useEffect(() => {
     const finished = wasStreaming.current && !isStreaming;
     wasStreaming.current = isStreaming;
     if (finished) void refresh();
   }, [isStreaming, refresh]);
+  return null;
+}
+
+export function BackgroundWorkPanel({ session, flowKind }: BackgroundWorkPanelProps) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const { workstreams, workstreamsStale, refresh } = session;
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
