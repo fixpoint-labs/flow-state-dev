@@ -1066,6 +1066,115 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
   });
 
   /**
+   * The recovery sweep must finish before the stores it writes through close.
+   *
+   * A short-lived process is the normal case for the topology this sweep was
+   * added for: `fsdev run` resolves its runtime, does its work, and starts
+   * shutting down. Left fire-and-forget, the sweep is still mid-query when
+   * `dispose()` closes the adapters; its write throws, the best-effort catch
+   * swallows it, and the abandoned row stays `in_progress` — the exact outcome
+   * the sweep exists to prevent, reached through the fix for it.
+   *
+   * Driven against a store with real latency and a real close, deliberately.
+   * The in-memory store settles reads and writes in the same microtask, so it
+   * cannot lose this race and a test built on it would pass either way.
+   */
+  it("finishes the startup recovery sweep before it closes the stores", async () => {
+    const base = inMemoryStores();
+    const registry = await base.resolve(["primary"]);
+    const request = registry.request!;
+    const activeRequests = registry.activeRequests!;
+
+    // An abandoned run, seeded directly — no FlowState involved, so nothing
+    // has swept it yet.
+    const abandonedAt = Date.now() - 10 * 60_000;
+    await request.set(
+      "req_abandoned",
+      {
+        requestId: "req_abandoned",
+        sessionId: "s_abandoned",
+        userId: USER_ID,
+        flowKind: "sweep-race",
+        actionName: "launch",
+        status: "in_progress",
+        createdAt: abandonedAt,
+        updatedAt: abandonedAt
+      } as never,
+      "any"
+    );
+    await activeRequests.register({
+      requestId: "req_abandoned",
+      sessionId: "s_abandoned",
+      userId: USER_ID,
+      flowKind: "sweep-race",
+      actionName: "launch",
+      startedAt: abandonedAt,
+      lastHeartbeatAt: abandonedAt
+    } as never);
+
+    let closed = false;
+    // Closes for real: every call after disposal throws, the way a released
+    // pool does.
+    const guard = <T extends object>(target: T): T =>
+      new Proxy(target, {
+        get(t, key) {
+          const value = (t as Record<string | symbol, unknown>)[key];
+          if (typeof value !== "function") return value;
+          return (...args: unknown[]) => {
+            if (closed) throw new Error(`[test] store closed: ${String(key)}()`);
+            return (value as (...a: unknown[]) => unknown).apply(t, args);
+          };
+        }
+      }) as T;
+
+    // The scan is what takes time on a real store — an indexed query over the
+    // registry — and it is what puts the sweep's reads and writes on the far
+    // side of disposal.
+    const slowActiveRequests = new Proxy(activeRequests, {
+      get(t, key) {
+        const value = (t as unknown as Record<string | symbol, unknown>)[key];
+        if (key !== "listStale" || typeof value !== "function") return value;
+        return async (...args: unknown[]) => {
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          return (value as (...a: unknown[]) => unknown).apply(t, args);
+        };
+      }
+    });
+
+    const adapter: StoreAdapter = {
+      capabilities: base.capabilities,
+      resolve: async () => ({
+        ...registry,
+        request: guard(request),
+        activeRequests: guard(slowActiveRequests)
+      }),
+      dispose: async () => {
+        closed = true;
+      }
+    };
+
+    const state = createFlowState({
+      flows: { detaching: detachingFlow("sweep-race", { children: [] }) },
+      stores: { default: { primary: adapter } }
+    });
+
+    // The whole lifecycle of a one-shot invocation: come up, and go down.
+    await state.getRuntime();
+    const restore = console.error;
+    console.error = () => {};
+    try {
+      await state.dispose();
+    } finally {
+      console.error = restore;
+    }
+
+    // THE ASSERTION: the row was recovered, not orphaned by shutdown racing the
+    // sweep. Read through the raw registry, since the adapter is closed.
+    const record = await request.get("req_abandoned");
+    expect(record?.status).toBe("interrupted");
+  });
+
+  /**
    * A logger that throws must not strand the backend it was describing.
    *
    * The drain's waiting notice goes through a HOST-SUPPLIED `RuntimeLogger`.

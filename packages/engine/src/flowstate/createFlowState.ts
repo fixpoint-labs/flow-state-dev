@@ -110,6 +110,18 @@ const DETACHED_UNWIND_BUDGET_SHARE = 4;
 const DEFAULT_DETACHED_DRAIN_TIMEOUT_MS = 30_000;
 
 /**
+ * How long `dispose()` gives the startup recovery sweep to finish before it
+ * closes the stores out from under it.
+ *
+ * Bounded rather than awaited outright, for the same reason the detached drain
+ * is: a store that has stopped answering must not be able to wedge shutdown.
+ * Fixed rather than configurable — the sweep is one indexed query plus a write
+ * per stale row, so a host with an opinion about this number has a much larger
+ * problem than this bound.
+ */
+const RECOVERY_SWEEP_DRAIN_MS = 5_000;
+
+/**
  * Resolve the drain budget, rejecting values that cannot bound anything.
  *
  * `NaN` is what `Number(process.env.X)` yields from a typo, and every comparison
@@ -234,6 +246,12 @@ class InternalFlowState<TSettings extends object>
    */
   #resolvedRuntimeConfig: RuntimeConfig | undefined;
   /**
+   * The in-flight startup recovery sweep, held so `dispose()` can let it finish
+   * before the adapters it is writing through are closed. Never rejects — the
+   * sweep owns its own failure reporting.
+   */
+  #recoverySweep: Promise<void> | undefined;
+  /**
    * The one concurrency arbiter every host in this process shares (FIX-1077).
    *
    * Two hosts exist in a router deployment — the one the detached start
@@ -349,6 +367,15 @@ class InternalFlowState<TSettings extends object>
       await this.#drainDetachedChildren();
     } catch (err) {
       console.error("[flowstate] detached drain failed", err);
+    }
+
+    // The startup recovery sweep writes through these same adapters, and on a
+    // short-lived process it is entirely normal for shutdown to arrive while it
+    // is still running. Bounded, so a store that has stopped answering cannot
+    // wedge shutdown — the sweep is best-effort by design, and a later start
+    // sweeps whatever this one did not reach.
+    if (this.#recoverySweep !== undefined) {
+      await settledWithin(this.#recoverySweep, RECOVERY_SWEEP_DRAIN_MS);
     }
 
     // Stop the execution backend before the stores close: the worker drains
@@ -710,7 +737,18 @@ class InternalFlowState<TSettings extends object>
   ): void {
     if (this.#options.detectInterruptedOnStartup === false) return;
 
-    void detectInterruptedRequests({
+    // RETAINED, not fire-and-forget. `dispose()` waits on this before it closes
+    // any adapter, because the two race on a short-lived process and the sweep
+    // loses: `fsdev run` can resolve its runtime, do its work and start
+    // shutting down while the sweep is still mid-query. The store closes, the
+    // sweep's write throws, the `catch` below swallows it, and the abandoned
+    // row stays `in_progress` — which is the precise outcome this sweep exists
+    // to prevent, arrived at through the fix for it.
+    //
+    // Invisible on the in-memory store, whose reads and writes settle in the
+    // same microtask. It is the durable adapters — the ones that make an
+    // abandoned row matter at all — where the gap is wide enough to lose.
+    this.#recoverySweep = detectInterruptedRequests({
       stores,
       staleThresholdMs,
       queuedGraceMs,
@@ -721,11 +759,14 @@ class InternalFlowState<TSettings extends object>
       // recovering run emits — which is exactly the flag's job to suppress,
       // since a swept row is narration about the past, not this run's outcome.
       logger: this.#deferredLogger
-    }).catch((err: unknown) => {
-      // Never fails initialization: recovery is a courtesy pass over old rows,
-      // and a store that cannot answer it can still serve the run being started.
-      console.error("[flowstate] interrupted-request detection failed", err);
-    });
+    })
+      .then(() => undefined)
+      .catch((err: unknown) => {
+        // Never fails initialization: recovery is a courtesy pass over old rows,
+        // and a store that cannot answer it can still serve the run being
+        // started.
+        console.error("[flowstate] interrupted-request detection failed", err);
+      });
   }
 
   #init(): Promise<FlowApiRouter> {

@@ -142,16 +142,22 @@ it doesn't hold a board back from being considered quiet. See [the
 lease](../orchestration/task-substrate.md#the-lease) and [when a job keeps being
 abandoned](../orchestration/task-substrate.md#when-a-job-keeps-being-abandoned).
 
-**The request record for the run** stays `in_progress`. The next time a runtime
-starts against the same store, it sweeps for requests whose executor heartbeat
-has gone stale and marks them `interrupted`, the status a run can be resumed
-from. That startup pass is `detectInterruptedOnStartup`, a `createFlowState`
-option that is on by default. Client-driven recovery reaches the same sweep. For
-the staleness thresholds, see [Connection
+**The request record for the run** stays `in_progress`. A runtime starting
+against the same store sweeps for requests whose executor heartbeat has gone
+stale and marks them `interrupted`, the status a run can be resumed from. That
+startup pass is `detectInterruptedOnStartup`, a `createFlowState` option that is
+on by default. Client-driven recovery reaches the same sweep.
+
+The sweep only picks up a record once its heartbeat has been quiet for longer
+than the staleness threshold, so a start that happens moments after the process
+stopped leaves the record alone and a later one recovers it. That delay is
+deliberate: a request that has simply gone quiet for a second is not the same as
+one nobody is running, and treating them alike would reclaim live work. For the
+thresholds, see [Connection
 resilience](./connection-resilience.md#configuration).
 
 So a row reading in-progress just after a process stopped is expected, and it
-clears itself. The board reclaims the task on its lease. The next runtime start
+clears itself. The board reclaims the task on its lease. A later runtime start
 marks the request interrupted. What doesn't happen is the record being settled
 by the process that walked away: [`dispose()`](../api/server.md#shutdown)
 cancels background work, it doesn't mark it finished, failed, or aborted.
