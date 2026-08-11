@@ -98,18 +98,46 @@ describe("createFilesystemStores trace defaults", () => {
     process.env.NODE_ENV = originalEnv;
   });
 
-  it("retains up to 1000 requests in development and evicts the 1001st", async () => {
-    process.env.NODE_ENV = "development";
-    const rootDir = await freshRootDir();
-    const stores = createFilesystemStores({ rootDir });
-    for (let i = 0; i < 1001; i += 1) {
-      await stores.traces.appendEvent(`r${i}`, makeTraceEvent(`r${i}`, 1));
-    }
-    const ids = await stores.traces.listRequestIds();
-    expect(ids.length).toBe(1000);
-    expect(ids).not.toContain("r0");
-    expect(ids).toContain("r1000");
-  });
+  /**
+   * Budget raised from the 5s default because this test has no headroom for a
+   * loaded runner — not because it is slow.
+   *
+   * Measured: ~1269–1505ms locally, ~1408–1464ms on CI. CI is NOT slower at
+   * this; the numbers matter because a comment recording only the failure would
+   * send the next reader looking at runner disk speed, and that is not where the
+   * problem is. The one observed failure was 5037ms — a ~3.5x spike over the
+   * test's own CI median, in a job where turbo was executing a large fan of
+   * package suites concurrently. So the shape is "grazed a 5s line under
+   * contention", not "gradually got slower".
+   *
+   * The cost is filesystem I/O, not the 1001 iterations: the in-memory twin of
+   * this test does the same loop in ~4ms. It is the trace store's O(N^2) event
+   * persistence, which is a documented property of the filesystem adapter rather
+   * than something this test can avoid — the 1001st record is the whole point,
+   * since it is what proves the 1000-record eviction.
+   *
+   * 15s is ~10x the median and ~3x the worst observed, so a heavier fan-out than
+   * the one that failed still passes. Lower it only alongside a change that
+   * makes the persistence cheaper.
+   */
+  const LOADED_RUNNER_TIMEOUT_MS = 15_000;
+
+  it(
+    "retains up to 1000 requests in development and evicts the 1001st",
+    async () => {
+      process.env.NODE_ENV = "development";
+      const rootDir = await freshRootDir();
+      const stores = createFilesystemStores({ rootDir });
+      for (let i = 0; i < 1001; i += 1) {
+        await stores.traces.appendEvent(`r${i}`, makeTraceEvent(`r${i}`, 1));
+      }
+      const ids = await stores.traces.listRequestIds();
+      expect(ids.length).toBe(1000);
+      expect(ids).not.toContain("r0");
+      expect(ids).toContain("r1000");
+    },
+    LOADED_RUNNER_TIMEOUT_MS
+  );
 
   it("falls back to 50 in production and evicts the oldest", async () => {
     process.env.NODE_ENV = "production";
