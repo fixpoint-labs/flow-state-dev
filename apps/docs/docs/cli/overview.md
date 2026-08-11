@@ -43,7 +43,19 @@ When an `fsdev.config.ts` is present at your project root, the CLI skips auto-di
 
 ## Model overrides
 
-Use `-m` to swap models without code changes. Pass a model ID (e.g. `gpt-4o-mini`, `claude-3-haiku`). All generator blocks in the run use the overridden model. Useful for testing with cheaper or faster models during development.
+Use `-m` to swap models without code changes. Pass a model ID (e.g. `openai/gpt-5.4-mini`, `anthropic/claude-haiku-4-5`). Useful for testing with cheaper or faster models during development.
+
+Every generator that runs in the command's own process uses the override, including generators in [background work that runs there](#waiting-for-in-process-work).
+
+The override does not cross a queue. When background work is [handed to a queue](#with-a-queue-the-command-doesnt-wait), another process runs it under its own model configuration, so the generators inside it use whatever model that process resolves. A flow that detaches through a queue therefore runs on two models at once: the one you passed, and the worker's. If you are comparing models, or forcing a cheap one, the result only covers the part that ran here.
+
+You get a line on stderr at each dispatch that loses the override:
+
+```
+[flow-state] the model override on this run does NOT apply to background work dispatched to a queue: request "req_8f21c0" (flow "research") will run under the worker's own model configuration, not the override. Generators in this process still use it.
+```
+
+`--quiet` silences that line, the same as the other stderr notices.
 
 ## State seeding
 
