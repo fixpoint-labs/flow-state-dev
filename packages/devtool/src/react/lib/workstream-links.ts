@@ -69,6 +69,29 @@
  * A link is drawn only when exactly one candidate survives, and only when no
  * second board is contending for it.
  *
+ * ## The bound: this pairing is best-effort, and cannot be made otherwise here
+ *
+ * Board ownership is not verifiable from what the server sends, so the match is
+ * as strong as the data permits and no stronger. Contention between claimants is
+ * detected and refused, but a SINGLE claimant is taken as the owner — and a
+ * single *wrong* claimant is undetectable.
+ *
+ * The scenario that produces one: a task's topic is changed after its work was
+ * dispatched (`patchMetadata`). Its own board stops contributing a candidate,
+ * and an unrelated collection holding a task with the original topic and
+ * assignee becomes the sole claimant, so it gets the link.
+ *
+ * Read a link accordingly: it is a **navigation affordance, not an assertion of
+ * provenance**. It says "this is probably the session doing this work, go look",
+ * not "this session provably owns this task".
+ *
+ * Refusing to link without verified attribution is not an option that leaves the
+ * feature standing — attribution is not merely absent from the payload, it is
+ * inexpressible from it, so that rule would draw no link ever. The fix belongs
+ * in the substrate: **FIX-1088** tracks emitting the owning board's id on task
+ * events. Once attribution is verifiable the rules here get SIMPLER, and the
+ * contention pass above is retired rather than extended.
+ *
  * Two consequences, both real and both correct to show:
  *
  * - **Several tasks can share one Workstream.** That is the substrate's own
@@ -247,7 +270,7 @@ export function linkWorkstreamsToTasks(
   workstreams: readonly WorkstreamSummary[],
   collections: readonly CollectionView[]
 ): {
-  /** Workstream for a task, keyed `${collectionId} ${taskId}`. */
+  /** Workstream for a task, keyed `${collectionId}<NUL>${taskId}`. */
   byTask: Map<string, WorkstreamSummary>;
   /** Every task one Workstream covers, keyed by workstream id. */
   byWorkstream: Map<string, LinkedTask[]>;
@@ -315,8 +338,14 @@ export function linkWorkstreamsToTasks(
 /**
  * The `byTask` key. A NUL join rather than `:` — a `collectionId` and a task id
  * are both free-form, so any printable separator can appear inside one of them.
+ *
+ * Written as the escape sequence, never, never as a literal NUL byte. Git sniffs the
+ * first 8000 bytes of a file for one and renders the whole file as `Bin` if it
+ * finds it, so a raw separator here silently costs every reviewer the diff of
+ * this file — and does it intermittently, depending on whether the file has
+ * grown enough to push the byte past the sniff window.
  */
 export function taskLinkKey(collectionId: string, taskId: string): string {
-  return `${collectionId} ${taskId}`;
+  return `${collectionId}\u0000${taskId}`;
 }
 
