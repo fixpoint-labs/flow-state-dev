@@ -109,6 +109,47 @@ describe("useWorkstreams — reading the whole list", () => {
     });
   });
 
+  it("does not double-count a Workstream that spawns mid-read", async () => {
+    // The route orders `created_at DESC, id DESC`, so a child created between
+    // two page requests lands at the FRONT and shifts every later offset by one.
+    // A walk that advances by the number of rows it has KEPT then re-reads the
+    // row that straddled the boundary — the same session appears twice in the
+    // table and twice in the header's count.
+    //
+    // Driven through a real insertion rather than by stubbing the arithmetic:
+    // the arithmetic is not the bug, the moving boundary is.
+    const PAGE = 3;
+    const server = [
+      row("dsx_6"),
+      row("dsx_5"),
+      row("dsx_4"),
+      row("dsx_3"),
+      row("dsx_2"),
+      row("dsx_1"),
+    ];
+    let reads = 0;
+    sessionClientMock.listWorkstreams.mockImplementation(
+      async (_id: string, opts: { offset: number }) => {
+        const slice = server.slice(opts.offset, opts.offset + PAGE);
+        reads += 1;
+        // A detached worker spawns while the walk is between pages.
+        if (reads === 1) server.unshift(row("dsx_7"));
+        return slice;
+      }
+    );
+
+    const { result } = renderHook(() => useWorkstreams("sess_parent"));
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const ids = result.current.workstreams.map((w) => w.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    // Every row that existed when the walk began, each exactly once. The row
+    // that appeared mid-walk is missed rather than duplicated — an offset
+    // listing cannot see behind itself, and the next refresh picks it up.
+    expect(ids).toEqual(["dsx_6", "dsx_5", "dsx_4", "dsx_3", "dsx_2", "dsx_1"]);
+  });
+
   it("stops at the row bound and says the list is truncated", async () => {
     // The bound exists because every row costs the server a request-store
     // lookup. Hitting it silently would be the same lie as the first-page bug.

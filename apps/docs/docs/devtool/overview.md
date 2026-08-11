@@ -98,7 +98,7 @@ A few things worth knowing about a row:
 
 - **Status is coarse on purpose.** `active` means the work has not finished. It does not distinguish queued from running from paused waiting for someone. A row with no status has not run anything yet.
 - **Labels can be missing.** The topic and the board/worker labels are stamped by whatever started the work. A workstream started outside a task board may carry neither, and the row still renders — the session id is the address.
-- **The task link is a match, not a foreign key.** Where a row lines up with a task on a board in this session, the Tasks tab shows a link on that task's row and the Workstreams tab names the tasks. Several tasks sharing a topic share one workstream, which is how the board intends it.
+- **The task link is a match, not a foreign key.** Where a row lines up with a task on a board in this session, the Tasks tab shows a link on that task's row and the Workstreams tab names the tasks. Where a task cannot be matched to exactly one workstream, no link is shown rather than a guessed one.
 
 The list is read when you open a session and when you refresh; it does not update on its own while you watch. See [Work that outlives the turn](/guides/background-work).
 

@@ -429,7 +429,19 @@ function PanelContent({ className }: { className?: string }) {
   const handleSendAction = useCallback(
     async (action: string, input: unknown) => {
       if (!activeFlowKind || !effectiveSessionId) return;
+      const dispatchedFor = effectiveSessionId;
       const response = await sendAction(activeFlowKind, effectiveSessionId, action, input);
+      // The workspace can move while this is in flight — descending into a
+      // Workstream is a click away — and the session-change reset has already
+      // cleared both ids by the time we resume. Installing them now would put a
+      // request from the session just LEFT in front of the live stream, and
+      // render its items under the session now open.
+      //
+      // `descentSessionRef` is the panel's existing record of which session the
+      // workspace is on; it is updated eagerly on a descent and by the reset
+      // effect on a navigator pick, so it is the right thing to compare against
+      // rather than a second generation counter.
+      if (descentSessionRef.current !== dispatchedFor) return;
       if (response?.request.id) {
         setActiveRequestId(response.request.id);
         setDispatchedRequestId(response.request.id);

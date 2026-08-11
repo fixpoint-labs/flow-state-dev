@@ -141,6 +141,22 @@ describe("WorkstreamsView", () => {
     expect(screen.getByText("not started")).toBeInTheDocument();
   });
 
+  it("says the list is unknown after a failed read, not that it is empty", () => {
+    // The third face of the same defect the paging and truncation fixes address:
+    // the panel stating less than it knows. After a failed FIRST read the hook
+    // holds no rows, so an empty-state gated only on `length === 0` renders
+    // "No background work in this session" — and a count of zero — directly
+    // under the error. The list is UNKNOWN there, and on a debugging surface a
+    // confident zero is worse than an obvious gap.
+    renderView({ workstreams: [], error: "network down", isLoading: false });
+
+    expect(screen.getByText("network down")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/No background work in this session/i)
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/^0 workstreams/i)).not.toBeInTheDocument();
+  });
+
   it("opens a Workstream from the keyboard, not only by pointer", () => {
     // The row's onClick is a pointer convenience. A clickable `<tr>` takes no
     // focus, no Enter and announces nothing, so the tab's primary action has to

@@ -41,6 +41,14 @@ import { useDevTool } from "../context/devtool-context";
 export const MAX_WORKSTREAM_ROWS = 500;
 
 /**
+ * The largest `offset` the route accepts; past it the request is a 400.
+ *
+ * Reached only when duplicates have pushed the read position far beyond the
+ * rows actually kept, which also makes it the walk's termination guarantee.
+ */
+const MAX_WORKSTREAM_OFFSET = 10_000;
+
+/**
  * Read every page the server will give us for one session.
  *
  * `limit` is deliberately NOT sent: a host may configure `maxWorkstreamListLimit`
@@ -49,28 +57,54 @@ export const MAX_WORKSTREAM_ROWS = 500;
  * default, whatever the deployment set, and the walk advances by what actually
  * arrived.
  *
- * `truncated` has to be right in BOTH directions. Reporting less than exists is
- * the defect this paging fixed; reporting more than exists is the same defect
- * pointing the other way, and on a debugging surface it sends someone looking
- * for background work that is not there. So reaching the bound is not by itself
- * evidence of a remainder — a final page can land exactly on it — and the only
- * thing that settles it is asking whether a row follows.
+ * ## The read position is not the row count
+ *
+ * The listing is ordered `created_at DESC` — newest first — and it is a live
+ * table, not a snapshot. A Workstream that spawns between two page requests
+ * lands at the FRONT and shifts every later offset boundary by one, so a walk
+ * that advances by the rows it has KEPT re-reads whatever straddled the
+ * boundary. That shows up as a duplicate row and an inflated count.
+ *
+ * The route exposes only `limit`/`offset` — there is no cursor or snapshot to
+ * ask for — so the two are tracked separately: the read position advances by
+ * what each page actually contained, and identity is enforced on the way in.
+ * The dedupe is not belt-and-braces; it is the thing that makes the count
+ * truthful, because the shifted page really does hand back a row we hold.
+ *
+ * A row inserted ahead of the walk is missed rather than duplicated. An offset
+ * listing cannot see behind itself, and the next refresh picks it up — under-
+ * reporting one brand-new row for one read beats showing the same session twice.
+ *
+ * ## `truncated` has to be right in both directions
+ *
+ * Reporting less than exists is the defect this paging fixed; reporting more
+ * than exists is the same defect pointing the other way, and on a debugging
+ * surface it sends someone looking for background work that is not there. So
+ * reaching the bound is not by itself evidence of a remainder — a final page
+ * can land exactly on it — and the only thing that settles it is asking whether
+ * a row follows, at the READ POSITION rather than at the row count.
  */
 async function fetchAllWorkstreams(
   sessionClient: SessionClient,
   sessionId: string
 ): Promise<{ rows: WorkstreamSummary[]; truncated: boolean }> {
   const rows: WorkstreamSummary[] = [];
-  while (rows.length < MAX_WORKSTREAM_ROWS) {
-    const page = await sessionClient.listWorkstreams(sessionId, {
-      offset: rows.length,
-    });
+  const seen = new Set<string>();
+  let offset = 0;
+
+  while (rows.length < MAX_WORKSTREAM_ROWS && offset < MAX_WORKSTREAM_OFFSET) {
+    const page = await sessionClient.listWorkstreams(sessionId, { offset });
     // An empty page is the end of the list. It is also the terminating case if
     // the client's parent-mismatch filter ever drops a whole page — that is a
     // server bug the client already warns about, and stopping short beats
     // re-reading the same offset forever.
     if (page.length === 0) return { rows, truncated: false };
-    rows.push(...page);
+    offset += page.length;
+    for (const workstream of page) {
+      if (seen.has(workstream.id)) continue;
+      seen.add(workstream.id);
+      rows.push(workstream);
+    }
   }
 
   // Overshot the bound, because the server's page size need not divide it. The
@@ -79,12 +113,15 @@ async function fetchAllWorkstreams(
     return { rows: rows.slice(0, MAX_WORKSTREAM_ROWS), truncated: true };
   }
 
-  // Landed exactly on it. One probe for a sentinel row distinguishes "the list
-  // is this long" from "the list is longer", which is the only value where the
-  // loop's exit condition alone is wrong.
-  const beyond = await sessionClient.listWorkstreams(sessionId, {
-    offset: MAX_WORKSTREAM_ROWS,
-  });
+  // Stopped on the offset ceiling rather than on the end of the list, so what
+  // follows is unread by construction.
+  if (offset >= MAX_WORKSTREAM_OFFSET) return { rows, truncated: true };
+
+  // Landed exactly on the row bound. One probe for a sentinel distinguishes
+  // "the list is this long" from "the list is longer" — the only case where the
+  // loop's exit condition alone is wrong. It reads from the position the walk
+  // actually reached, which duplicates may have pushed past the row count.
+  const beyond = await sessionClient.listWorkstreams(sessionId, { offset });
   return { rows, truncated: beyond.length > 0 };
 }
 

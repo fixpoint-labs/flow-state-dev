@@ -76,6 +76,17 @@ export function WorkstreamsView({
     [workstreams, collections]
   );
 
+  // No rows AND an error means the read never landed, so the list is UNKNOWN
+  // rather than empty. Derived from what is already here rather than tracking a
+  // "has completed a read" flag: an error with rows behind it is a failed
+  // RE-read, where the rows on screen are still the best answer we have.
+  //
+  // This is the same defect as the first-page truncation, wearing a third face
+  // — the panel stating less than it knows. A confident "no background work" is
+  // the most expensive thing this surface can say wrongly, because it ends the
+  // search.
+  const unknown = error !== null && workstreams.length === 0;
+
   if (sessionId === null) {
     return <EmptyState message="Select a session to see the work running behind it." />;
   }
@@ -84,8 +95,14 @@ export function WorkstreamsView({
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-2 border-b border-slate-800 px-3 py-2">
         <span className="text-[10px] uppercase tracking-wide text-slate-500">
-          {workstreams.length} workstream{workstreams.length === 1 ? "" : "s"}
-          {truncated && " (first)"}
+          {unknown ? (
+            "workstreams unknown"
+          ) : (
+            <>
+              {workstreams.length} workstream{workstreams.length === 1 ? "" : "s"}
+              {truncated && " (first)"}
+            </>
+          )}
         </span>
         <Button
           variant="outline"
@@ -114,7 +131,9 @@ export function WorkstreamsView({
           message={
             isLoading
               ? "Loading workstreams…"
-              : "No background work in this session. A task board worker declared `dispatch: { mode: \"detached\" }` runs in a Workstream, and it shows up here once the board dispatches it."
+              : unknown
+                ? "This session's background work could not be read, so the list is unknown rather than empty. Refresh to try again."
+                : "No background work in this session. A task board worker declared `dispatch: { mode: \"detached\" }` runs in a Workstream, and it shows up here once the board dispatches it."
           }
         />
       ) : (

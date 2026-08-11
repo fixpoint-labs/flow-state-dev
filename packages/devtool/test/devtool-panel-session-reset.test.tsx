@@ -69,8 +69,11 @@ vi.mock("../src/react/hooks/use-workstreams", () => ({
   }),
 }));
 
+/** The dispatch the panel awaits, held open so a session change can race it. */
+const sendAction = vi.fn();
+
 vi.mock("../src/react/hooks/use-action-dispatch", () => ({
-  useActionDispatch: () => ({ sendAction: vi.fn(), isSending: false, lastResponse: null }),
+  useActionDispatch: () => ({ sendAction, isSending: false, lastResponse: null }),
 }));
 
 vi.mock("../src/react/hooks/use-request-stream", () => ({
@@ -134,6 +137,16 @@ vi.mock("../src/react/components/workspace/suspensions-view", () => ({
   ),
 }));
 
+// Same idea for the action bar: `handleSendAction` awaits the dispatch, so it
+// is the panel's one callback that can resume across a session change.
+vi.mock("../src/react/components/workspace/action-bar", () => ({
+  ActionBar: ({
+    onSendAction,
+  }: {
+    onSendAction: (action: string, input: unknown) => void;
+  }) => <button onClick={() => onSendAction("run", {})}>send-stub</button>,
+}));
+
 import { DevToolPanel } from "../src/react/DevToolPanel";
 
 /** What the panel most recently told `useLiveMode`. */
@@ -148,6 +161,45 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     liveModeCalls.length = 0;
     activeSession.activeSessionId = "sess_1";
     devToolState.activeSessionId = "sess_1";
+    sendAction.mockReset().mockResolvedValue(null);
+  });
+
+  it("discards a dispatch that resolves after the user moved to another session", async () => {
+    // `handleSendAction` awaits the dispatch, so it can resume on the other side
+    // of a session change — the same shape as the spinner the identity effect
+    // now retires, and newly reachable because this PR is what lets you click
+    // from a session into a Workstream mid-flight.
+    //
+    // Reinstalling the id here points the live stream at a request belonging to
+    // the session the user just left, and renders its items under the new one.
+    let resolveDispatch!: (value: unknown) => void;
+    sendAction.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveDispatch = resolve;
+      })
+    );
+
+    const { rerender } = await act(async () => render(<DevToolPanel userId="u1" />));
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("send-stub"));
+    });
+    // Nothing installed yet — the dispatch has not come back.
+    expect(latestDispatchedId()).toBeNull();
+
+    // The user descends into a Workstream while it is still in flight.
+    devToolState.activeSessionId = "sess_child";
+    activeSession.activeSessionId = "sess_child";
+    await act(async () => {
+      rerender(<DevToolPanel userId="u1" />);
+    });
+
+    await act(async () => {
+      resolveDispatch({ request: { id: "req_old_session" } });
+      await Promise.resolve();
+    });
+
+    expect(latestDispatchedId()).toBeNull();
   });
 
   it("clears dispatchedRequestId when the session changes, so live mode can follow the new one", async () => {
