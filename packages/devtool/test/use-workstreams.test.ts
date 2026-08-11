@@ -124,6 +124,43 @@ describe("useWorkstreams — reading the whole list", () => {
 });
 
 describe("useWorkstreams — superseded reads", () => {
+  it("clears the spinner when the session goes away while a read is in flight", async () => {
+    // Retiring an identity has to retire its SPINNER too, and the fence that
+    // makes the guards correct is what hides this: the in-flight read resolves
+    // after the generation moved, so its `finally` declines to touch the flag —
+    // correctly, it no longer owns it — and the replacement read takes the
+    // no-session path, which starts nothing and so clears nothing. Nobody owns
+    // the `true` that is already on screen, and the panel sits on
+    // "Loading workstreams…" until some later session completes a read.
+    //
+    // Driven through the real transition rather than the no-session path alone,
+    // because that path in isolation never sets the flag and would pass either
+    // way.
+    let resolveInFlight!: (rows: WorkstreamSummary[]) => void;
+    sessionClientMock.listWorkstreams.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveInFlight = resolve as (rows: WorkstreamSummary[]) => void;
+      })
+    );
+
+    const { result, rerender } = renderHook(
+      ({ sessionId }: { sessionId: string | null }) => useWorkstreams(sessionId),
+      { initialProps: { sessionId: "sess_parent" as string | null } }
+    );
+    await waitFor(() => expect(result.current.isLoading).toBe(true));
+
+    // The user picks a flow with no active session.
+    rerender({ sessionId: null });
+
+    await act(async () => {
+      resolveInFlight([row("dsx_1")]);
+      await Promise.resolve();
+    });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.workstreams).toEqual([]);
+  });
+
   it("drops the previous session's rows before the new session's read lands", async () => {
     sessionClientMock.listWorkstreams
       .mockResolvedValueOnce([row("dsx_parent")])
@@ -141,6 +178,12 @@ describe("useWorkstreams — superseded reads", () => {
     rerender({ sessionId: "sess_child" });
 
     expect(result.current.workstreams).toEqual([]);
+    // The other side of retiring the spinner with the identity: clearing it must
+    // not put a `false` on screen for a switch that immediately starts another
+    // read. Both effects run in one commit, so the clear and the new read's
+    // `true` batch into a single render — this pins that ordering, which is the
+    // only thing making the clear safe here.
+    expect(result.current.isLoading).toBe(true);
   });
 
   it("ignores a read that resolves after the session moved on", async () => {

@@ -129,11 +129,22 @@ export function useWorkstreams(sessionId: string | null): UseWorkstreamsResult {
   // Declared BEFORE the fetch effect so it runs first on the same commit: the
   // previous session's rows are dropped before the new session's read starts,
   // and the generation bump retires anything still in flight for the old one.
+  //
+  // `isLoading` is reset here for the same reason, and here rather than on the
+  // no-session path: retiring an identity retires its spinner, whichever way
+  // the identity changed. A read still in flight will decline to clear the flag
+  // once its generation is stale — correctly, it no longer owns it — so if this
+  // did not, a `true` left by the old identity would have no owner at all.
+  // Ordering makes it safe for an ordinary session switch: this effect and the
+  // fetch effect run in the same commit, this one first, and `refresh` sets the
+  // flag back to `true` synchronously before its first `await`, so the pair
+  // batches into one render — `true` for a real session, `false` for none.
   useEffect(() => {
     generationRef.current += 1;
     setWorkstreams([]);
     setError(null);
     setTruncated(false);
+    setIsLoading(false);
   }, [sessionId, sessionClient]);
 
   const refresh = useCallback(async () => {
