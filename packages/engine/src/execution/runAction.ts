@@ -634,6 +634,11 @@ export async function runActionInternal<
     // stale-heartbeat path, with no queued grace protecting it.
   });
 
+  // The run is discoverable from here, and that is the fact a fire-and-forget
+  // dispatcher needs before it reports the request as started (FIX-982). Placed
+  // immediately after the write it reports on, so it can never run ahead of it.
+  options.onRegistered?.();
+
   const heartbeatIntervalMs = options.flow.request?.heartbeatIntervalMs ?? 10_000;
 
   // --- Cross-process abort delivery (FIX-1026) ---

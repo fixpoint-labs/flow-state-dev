@@ -38,10 +38,15 @@
  * `responseEmitter: null` — the whole point is that the launching request
  * returns while this keeps running, so there is no live stream to attach and no
  * caller waiting on `finished`. Consumers read the child's progress the durable
- * way: enumerate the parent's Workstreams, then that Workstream's requests. The
- * returned promise resolves once the host has **accepted** the dispatch, so a
- * `Started` result means the request is discoverable rather than merely
- * intended.
+ * way: enumerate the parent's Workstreams, then that Workstream's requests.
+ *
+ * Fire-and-forget is exactly why the returned promise still waits for the host
+ * to have **accepted** the dispatch. Nobody is holding the child's `finished`,
+ * so a setup failure has nowhere to surface — the parent has already released
+ * the task and returned, and the row sits `in_progress` until lease recovery
+ * picks it up minutes later. Acceptance is the narrowest thing that rules that
+ * out: it says the request is discoverable, so a later failure is a failure
+ * something can see.
  */
 import type { DetachedStartOperation } from "./create-request-host";
 import type { InboundTransportHost } from "../transports/types";
@@ -85,11 +90,16 @@ export function createDetachedStartOperation(
       responseEmitter: null,
     });
 
-    // Under an external dispatcher `accepted` resolves once the enqueue-time
-    // writes have committed AND the queue took the job; in-process leaves it
-    // undefined because `dispatchLocal` has already written the record by the
-    // time the handle exists. Awaiting it is what makes a `Started` result mean
-    // "discoverable" rather than "we intended to".
+    // Awaiting acceptance is what makes a `Started` result mean "discoverable"
+    // rather than "we intended to" — see `DispatchHandle.accepted` for what each
+    // dispatch path can honour. It matters most on the ordinary in-process path,
+    // which is where a detached spawn actually lands by default: `dispatchLocal`
+    // returns while `runAction` is still at its first await, so without this the
+    // parent would release the task it just handed over and report success while
+    // the child's registration could still fail — and it would fail into a
+    // `finished` nobody is holding, leaving the row `in_progress` until lease
+    // recovery. The guard stays because the field is optional on the contract; a
+    // custom dispatcher that does not distinguish acceptance may omit it.
     //
     // `finished` is deliberately NOT awaited — awaiting it would make the
     // launching request block on the detached work, which is the exact property

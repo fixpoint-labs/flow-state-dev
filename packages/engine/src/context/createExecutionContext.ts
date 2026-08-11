@@ -85,6 +85,7 @@ import {
   tenantMatches
 } from "../stores/scope-keys";
 import { resourceStorageKeys } from "../resources/storage-keys";
+import { resolveOwnershipFlag } from "../resources/lineage-scope";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
 import { createInitialRequestRecord } from "./initial-request-record";
 import {
@@ -1003,21 +1004,12 @@ export async function createExecutionContext<
   // *longest* declared prefix that owns them, so nested prefixes (e.g. `a/` and
   // `a/b/`) route to the right collection rather than the first one declared;
   // an undeclared key falls back to the flow-flag bucket.
-  const resolveBucketFlag = (scope: ContentScopeType, storageKey: string): boolean | undefined => {
-    const buckets = scopeBuckets[scope];
-    const single = buckets.singles.get(storageKey);
-    if (single !== undefined) return single;
-    let flag: boolean | undefined;
-    let bestLen = -1;
-    for (const p of buckets.prefixes) {
-      const matches = p.prefix === "" || storageKey.startsWith(p.prefix);
-      if (matches && p.prefix.length > bestLen) {
-        bestLen = p.prefix.length;
-        flag = p.flag;
-      }
-    }
-    return flag;
-  };
+  // Ownership precedence lives in `resources/lineage-scope.ts` so the HTTP
+  // whole-scope reads resolve a key's owner with the same rule this does. Two
+  // implementations of "longest prefix wins" is how the two sides drift into
+  // disagreeing about which session a key belongs to.
+  const resolveBucketFlag = (scope: ContentScopeType, storageKey: string): boolean | undefined =>
+    resolveOwnershipFlag(scopeBuckets[scope], storageKey);
   const resolveResourceStorageScopeId = (
     scope: ContentScopeType,
     storageKey: string
@@ -1057,14 +1049,37 @@ export async function createExecutionContext<
     return groups;
   };
 
+  // Drop rows a bucket scan swept up but does not own. A collection is loaded by
+  // its pattern PREFIX, so a broad prefix scans keys a narrower sibling owns —
+  // shared `tasks/**` reads `tasks/meta/a` at the lineage root even though
+  // private `tasks/meta/*` owns it in this session. Per-key routing already
+  // decides that correctly, so re-check each returned key against it and keep
+  // only the ones this bucket is the address for. Without this the surviving
+  // copy depends on which collection was declared first.
+  const retainOwnedKeys = <T>(
+    scope: ContentScopeType,
+    scopeId: string,
+    rows: Record<string, T>
+  ): Record<string, T> => {
+    const owned: Record<string, T> = {};
+    for (const [key, value] of Object.entries(rows)) {
+      if (resolveResourceStorageScopeId(scope, key) === scopeId) owned[key] = value;
+    }
+    return owned;
+  };
+
   const loadScopeStateByBuckets = async (
     scope: ContentScopeType,
     configs: Record<string, ResourceConfig | ResourceCollectionConfig>
   ): Promise<Record<string, VersionedResourceState>> => {
     const groups = partitionConfigsByScopeId(scope, configs);
     const results = await Promise.all(
-      [...groups].map(([scopeId, sub]) =>
-        loadDeclaredResourceState(stores.resourceState, scope, scopeId, sub)
+      [...groups].map(async ([scopeId, sub]) =>
+        retainOwnedKeys(
+          scope,
+          scopeId,
+          await loadDeclaredResourceState(stores.resourceState, scope, scopeId, sub)
+        )
       )
     );
     return Object.assign({}, ...results) as Record<string, VersionedResourceState>;
@@ -1076,8 +1091,12 @@ export async function createExecutionContext<
   ): Promise<Record<string, string>> => {
     const groups = partitionConfigsByScopeId(scope, configs);
     const results = await Promise.all(
-      [...groups].map(([scopeId, sub]) =>
-        loadDeclaredScopeContent(stores.content, scope, scopeId, sub)
+      [...groups].map(async ([scopeId, sub]) =>
+        retainOwnedKeys(
+          scope,
+          scopeId,
+          await loadDeclaredScopeContent(stores.content, scope, scopeId, sub)
+        )
       )
     );
     return Object.assign({}, ...results) as Record<string, string>;
@@ -1387,10 +1406,15 @@ export async function createExecutionContext<
         await runSingleFlight(`${scope}:prefix:${keyPrefix}`, async () => {
           if (loadedCollectionPrefixes[scope].has(keyPrefix)) return;
           const started = Date.now();
-          const [rows, content] = await Promise.all([
+          // Same ownership re-check as the eager waves: a lazy collection is
+          // fetched by prefix too, so a broad prefix sweeps up keys a narrower
+          // sibling owns at a different address.
+          const [rawRows, rawContent] = await Promise.all([
             stores.resourceState.getByPrefix(scope, scopeId, keyPrefix),
             stores.content.getByPrefix(scope, scopeId, keyPrefix)
           ]);
+          const rows = retainOwnedKeys(scope, scopeId, rawRows);
+          const content = retainOwnedKeys(scope, scopeId, rawContent);
           durationMs = Date.now() - started;
           fetched = true;
           const state = toBareStates(rows);

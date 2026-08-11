@@ -12,11 +12,11 @@
  *    set that asked to be detached;
  * 3. `assertDetachedBoardSupported`, the construction-time refusals.
  *
- * **No execution lives here.** Nothing in P1 dispatches anything out of the
- * request — a worker declared `detached` is validated and then still runs
- * inline, because the spawn arrives in P3a. That is deliberate: the refusals
- * have to exist before the mechanism does, or the first detached board is
- * built against a backing that cannot settle it.
+ * **No execution lives here.** The spawn is `blocks/spawn-detached.ts` and the
+ * child's entry point is `detached-runner.ts`; this module only decides what a
+ * declaration *means* and refuses the ones that cannot work. The refusals
+ * landed before the mechanism did, deliberately — otherwise the first detached
+ * board is built against a backing that cannot settle it.
  *
  * ## Where the refusals live, and why two of them are not here
  *

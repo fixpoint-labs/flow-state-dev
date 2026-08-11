@@ -502,6 +502,13 @@ Resources close the gap that state does not, and they close it without a cross-s
 
 The HTTP read/write routes need the same answer and derive it from `packages/engine/src/resources/lineage-scope.ts` — `sessionResourceScopeId` where a route already holds the resource's config, `readSessionScopeWithLineage` for the whole-scope reads (`getPersistedData`, the state route). The whole-scope read drops shared keys from the session's own rows before folding in the root's, so a child's view is exactly what a block resolves rather than a union of two sessions' resources.
 
+**Ownership is one rule, in one place.** `resolveOwnershipFlag` (`resources/lineage-scope.ts`) decides which declaration owns a storage key: **an exact single wins outright, then the longest matching collection prefix.** Both `createExecutionContext`'s bucket resolution and the whole-scope reads call it, because two implementations of "longest prefix wins" is how the execution view and the HTTP view drift into disagreeing about which session holds a key.
+
+Two shapes make that precedence load-bearing rather than cosmetic:
+
+- A shared collection with an **empty storage prefix** — any parameterized pattern, e.g. `[topic]/observations` — matches every key in the scope. Treating "matches a shared prefix" as "is shared" hands the whole scope to the root and discards the child's private rows.
+- A **private prefix nested under a shared one** (`tasks/meta/*` under `tasks/**`) is owned by the longer prefix. A collection is loaded by prefix, so the broad scan sweeps up keys the narrow sibling owns; every prefix scan (the eager waves and the lazy `getByPrefix` alike) therefore re-checks each returned key against per-key routing and keeps only what that bucket is the address for. Without it, which copy survives depends on declaration order.
+
 **Sharing does not imply serialization.** Two workstreams writing one shared resource is ordinary same-resource contention, governed by the `expectedVersion` + `SetResult` contract every `ResourceStateStore` adapter implements (FIX-992). Nothing queues, locks or orders those writes.
 
 ## Streaming Integration

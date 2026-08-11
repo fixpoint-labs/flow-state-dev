@@ -89,9 +89,33 @@ Having its own session is also what it costs you. A workstream keeps its own sta
 
 For anything narrower, hand it over as input when the work starts and report it back when the work finishes. A session-scoped resource has a second route: mark it `sharedToWorkstream` and the conversation and every workstream under it resolve one copy of it. Session state has no such route; it is private to each session either way. See [State vs Resources](/docs/resources/storage#session-scope-and-background-work).
 
-This is where the task board's detached workers are headed. A board can declare that a worker's tasks belong outside the request that claimed them, addressed by the board's `boardId` plus that worker's coordinate so a later run can still find the block that does the work. Such a board needs a durable collection and an explicit `boardId`, because that id is part of the child session's identity. That declaration is groundwork today: a worker declared detached is validated and routed, and then still runs inline, inside the claiming request.
+This is what the task board's detached workers run in. A board can declare that a worker's tasks belong outside the request that claimed them:
 
-Starting a workstream is server-side only, and no stock server wires it yet.
+```ts
+import { taskBoard } from "@flow-state-dev/orchestration/task-board";
+
+const board = taskBoard({
+  name: "issue-work",
+  boardId: "issue-work",            // required once anything is detached
+  collection: workBoardCollection,  // must be a defineTaskCollection()
+  workers: {
+    summarize: summarizeBlock,      // a bare block still means inline
+    implement: { worker: implementBlock, dispatch: { mode: "detached" } },
+  },
+});
+```
+
+The drain claims the task, hands it to a workstream, and returns. The workstream re-reads the row, checks the claim is still the one it was sent for, runs the worker, and settles the task itself. Tasks that share a `topic` land in the same workstream and continue one history; a task with no topic falls back to its own id, so continuity is opted into rather than accidental.
+
+The `boardId` is required as soon as anything is detached, because it's hashed into the child session's id — renaming it re-keys work already in flight. A durable collection is required for the same reason the id is: the row has to outlive the request that claimed it.
+
+Two bounds are worth knowing before you reach for this.
+
+**The board has to be reachable from the child session.** The workstream settles its own task, and resource scope resolves against whichever session is running — so a session-scoped board hydrates empty inside a workstream and has nothing to settle. Give the collection `sharedToWorkstream: true` and the whole lineage settles against one ledger. `user` and `org` scope need nothing extra.
+
+**On serverless without a queue adapter, the work is bounded by the function.** Detached work runs inside the invocation that started it, so the function's maximum duration is the ceiling. Add a queue adapter and it moves to a worker process, where it isn't.
+
+Starting a workstream is server-side only — `ctx.requestHost.startDetached`, from inside a running request. There's no HTTP endpoint for it, by design.
 
 Read next: **[Background work](/docs/server/background-work)** for the HTTP surface, its paging, what `status` does and doesn't tell you, and what a stock server does about starting one; **[Client overview](/docs/client/overview#background-work)** for reading it from an app; and **[Durable execution](/docs/advanced/durable-execution)** for what happens to a run that was interrupted.
 

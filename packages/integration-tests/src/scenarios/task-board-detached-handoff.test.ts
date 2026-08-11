@@ -153,6 +153,37 @@ async function durableRow(
   return row?.state as Task | undefined;
 }
 
+/**
+ * Rewrite one durable row's fields in place, the way something outside this
+ * board would have.
+ *
+ * The ABA case below needs a row no API on the board can produce on demand: a
+ * different incarnation of the same task id, at the same attempt, wearing the
+ * same creation stamp. Reaching the store directly is what makes it
+ * deterministic — the alternative is deleting and recreating in a loop and
+ * hoping the millisecond clock collides, which is the very unreliability the
+ * gate's nonce exists to remove.
+ *
+ * Safe only BETWEEN runs. A running request holds its own hydrated view of the
+ * resource, so a write that goes around it is neither seen nor preserved.
+ */
+async function rewriteRow(
+  stores: StoreRegistry,
+  kind: string,
+  taskId: string,
+  patch: Partial<Task>
+): Promise<void> {
+  const key = `${kind}-ledger/${taskId}`;
+  const current = await stores.resourceState.get("user", USER_ID, key);
+  await stores.resourceState.set(
+    "user",
+    USER_ID,
+    key,
+    { ...(current!.state as object), ...patch } as never,
+    "any"
+  );
+}
+
 describe("a detached board's launching request returns while the work is outstanding", () => {
   it("completes the parent with the row still in progress, then settles it in the Workstream", async () => {
     const stores = createInMemoryStores();
@@ -222,6 +253,167 @@ describe("a detached board's launching request returns while the work is outstan
     expect(ran).toEqual(["t1"]);
     const afterChild = await durableRow(stores, "handoff-detached", "t1");
     expect(afterChild?.status).toBe("completed");
+  });
+
+  it("refuses a stale child whose row was recreated inside the same millisecond", async () => {
+    // The start gate asks whether the row it is about to work on is still the
+    // one this dispatch was addressed to. `attempts` cannot answer: a
+    // delete-and-recreate resets it, and the replacement's first claim puts it
+    // straight back where the dispatch left it. `createdAt` cannot answer
+    // either — it is a millisecond clock, and a recreate under the same id
+    // lands in the same millisecond often enough that the replacement wears the
+    // original's stamp.
+    //
+    // So the row below is reincarnated with `attempts` and `createdAt` held
+    // EXACTLY as the dispatch remembers them, and only the incarnation nonce
+    // moved. If the gate lets that through, a stale child runs its old payload
+    // and settles a row that has nothing to do with it.
+    const stores = createInMemoryStores();
+    const { flow, ran } = buildFlow({ kind: "handoff-aba", mode: "detached" });
+
+    const dispatched: RecordedDispatch[] = [];
+    const parent = await runAction({
+      flow,
+      actionName: "start",
+      input: {},
+      userId: USER_ID,
+      sessionId: "s_parent",
+      stores,
+      runtimeConfig: {
+        ...baseRuntimeConfig(),
+        requestHost: {
+          startOperation: async (spec) => {
+            dispatched.push({
+              sessionId: spec.sessionId,
+              actionName: spec.actionName,
+              input: spec.input,
+            });
+            return { requestId: "child_req_1" };
+          },
+        },
+      },
+    });
+    expect(parent.error).toBeUndefined();
+
+    const addressed = await durableRow(stores, "handoff-aba", "t1");
+    // The nonce has to be there for this to be a test of anything.
+    expect(addressed?.incarnationId).toBeDefined();
+
+    // The replacement: a different row wearing the same name, same attempt and
+    // same creation stamp. Everything the gate's other two arms compare is
+    // untouched, which is what makes this attributable to the nonce alone.
+    await rewriteRow(stores, "handoff-aba", "t1", {
+      incarnationId: `${addressed!.incarnationId}-recreated`,
+    });
+    const replacement = await durableRow(stores, "handoff-aba", "t1");
+    expect(replacement?.attempts).toBe(addressed?.attempts);
+    expect(replacement?.createdAt).toBe(addressed?.createdAt);
+
+    const child = await runAction({
+      flow,
+      actionName: dispatched[0]!.actionName as "start",
+      input: dispatched[0]!.input,
+      userId: USER_ID,
+      sessionId: dispatched[0]!.sessionId,
+      source: WORKSTREAM_SOURCE,
+      stores,
+      runtimeConfig: baseRuntimeConfig(),
+    });
+
+    // The gate stops before it stamps a claim, so nothing is written against
+    // the replacement — not a completion, and not a failure either. A
+    // superseded dispatch is a correct outcome, and the successor owns the row.
+    expect(child.error).toBeUndefined();
+    expect(ran).toEqual([]);
+    const afterChild = await durableRow(stores, "handoff-aba", "t1");
+    expect(afterChild?.status).toBe("in_progress");
+    expect(afterChild?.output).toBeUndefined();
+  });
+
+  it("refuses a child whose lease lapsed while it sat in the host's queue", async () => {
+    // Nothing renews a detached row's lease between the parent handing it off
+    // and the child actually starting, so a child that waits in the host's
+    // queue longer than the lease can start on a row the substrate already
+    // considers free. The other three gate arms all still pass — same attempt,
+    // same creation stamp, same incarnation, still `in_progress` — because no
+    // successor has come along and taken it yet.
+    //
+    // What makes that worse than a wasted run: the worker's side effects happen
+    // first and the refusal comes second. The settlement is fenced on the lease,
+    // so `complete()` is declined `lost-claim`, the row stays recoverable, and
+    // the next drain runs the same work again. Duplicate effects, and no error
+    // at the point they are committed.
+    //
+    // The lapse is written onto the durable row rather than waited out: the
+    // board's default lease is two minutes and no board-level knob shortens it,
+    // and a row whose `leaseUntil` has passed is exactly what those two minutes
+    // would produce. Same technique, and the same reason, as the reincarnation
+    // above.
+    const stores = createInMemoryStores();
+    const { flow, ran } = buildFlow({ kind: "handoff-lapsed", mode: "detached" });
+
+    const dispatched: RecordedDispatch[] = [];
+    const parent = await runAction({
+      flow,
+      actionName: "start",
+      input: {},
+      userId: USER_ID,
+      sessionId: "s_parent",
+      stores,
+      runtimeConfig: {
+        ...baseRuntimeConfig(),
+        requestHost: {
+          startOperation: async (spec) => {
+            dispatched.push({
+              sessionId: spec.sessionId,
+              actionName: spec.actionName,
+              input: spec.input,
+            });
+            return { requestId: "child_req_1" };
+          },
+        },
+      },
+    });
+    expect(parent.error).toBeUndefined();
+
+    const claimed = await durableRow(stores, "handoff-lapsed", "t1");
+    // The claim wrote a lease, or there is nothing here to lapse.
+    expect(claimed?.leaseUntil).toBeDefined();
+
+    // The deadline moves back to the instant the claim was committed, so the
+    // lease expired the moment it was granted. Derived from the row's own
+    // `updatedAt` rather than from a wall-clock read: that stamp was written by
+    // the claim on the collection's clock, which is the clock the gate and the
+    // fence both compare against, and it is strictly in the past by the time
+    // the child runs. Subtracting a wall-clock offset instead would be reading
+    // one clock to make a claim about another.
+    const lapsedAt = claimed!.updatedAt;
+    await rewriteRow(stores, "handoff-lapsed", "t1", { leaseUntil: lapsedAt });
+
+    const child = await runAction({
+      flow,
+      actionName: dispatched[0]!.actionName as "start",
+      input: dispatched[0]!.input,
+      userId: USER_ID,
+      sessionId: dispatched[0]!.sessionId,
+      source: WORKSTREAM_SOURCE,
+      stores,
+      runtimeConfig: baseRuntimeConfig(),
+    });
+
+    // THE ASSERTION THIS CASE EXISTS FOR: the worker never ran. Asserting on
+    // the row alone would pass without the gate too, since the fence declines
+    // the settlement either way — the row looks identical whether the work was
+    // refused or merely wasted.
+    expect(ran).toEqual([]);
+    expect(child.error).toBeUndefined();
+
+    const afterChild = await durableRow(stores, "handoff-lapsed", "t1");
+    expect(afterChild?.status).toBe("in_progress");
+    expect(afterChild?.output).toBeUndefined();
+    // Refused, not adopted: the child extended nothing, so the row is still as
+    // recoverable as the next drain found it.
+    expect(afterChild?.leaseUntil).toBe(lapsedAt);
   });
 
   it("still holds the request open for an inline worker on the same board shape", async () => {

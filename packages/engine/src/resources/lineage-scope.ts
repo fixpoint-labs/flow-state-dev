@@ -55,33 +55,82 @@ export function sessionResourceScopeId(
 }
 
 /**
- * The storage keys and key prefixes a flow's session scope shares with its
- * lineage. Empty when nothing is declared shared, which is the common case.
+ * Which declaration owns a storage key, expressed as the routing flag that
+ * declaration carries. Singles are matched exactly; collection instances by
+ * their pattern prefix.
+ *
+ * Shared by every reader that has to split one scope across two storage
+ * addresses, so the precedence rule below exists once rather than once per
+ * call site — two independent "longest prefix wins" implementations is how the
+ * two sides drift into disagreeing about who owns a key.
  */
-function sharedAddressing(flowResources: unknown): {
-  keys: Set<string>;
-  prefixes: string[];
+export type OwnershipBuckets = {
+  singles: ReadonlyMap<string, boolean>;
+  prefixes: ReadonlyArray<{ prefix: string; flag: boolean }>;
+};
+
+/**
+ * The flag of the declaration that owns `storageKey`, or `undefined` when no
+ * declaration claims it.
+ *
+ * **An exact single wins outright**, because a single's storage key names one
+ * slot and cannot be a prefix of anything it doesn't own. Otherwise the
+ * **longest matching prefix** wins: `tasks/meta/*` owns `tasks/meta/a` even
+ * when `tasks/**` is declared beside it, and the empty prefix a parameterized
+ * pattern produces (`[topic]/observations`) is the weakest possible match
+ * rather than a wildcard that swallows the scope.
+ */
+export function resolveOwnershipFlag(
+  buckets: OwnershipBuckets,
+  storageKey: string
+): boolean | undefined {
+  const single = buckets.singles.get(storageKey);
+  if (single !== undefined) return single;
+  let flag: boolean | undefined;
+  let bestLen = -1;
+  for (const p of buckets.prefixes) {
+    const matches = p.prefix === "" || storageKey.startsWith(p.prefix);
+    if (matches && p.prefix.length > bestLen) {
+      bestLen = p.prefix.length;
+      flag = p.flag;
+    }
+  }
+  return flag;
+}
+
+/**
+ * Ownership buckets for a flow's session scope, over **every** session-scoped
+ * declaration rather than only the shared ones.
+ *
+ * Reading only the shared declarations is what makes a private resource look
+ * shared: with nothing representing it, any shared prefix that happens to match
+ * its key claims it, and an empty prefix matches every key there is.
+ */
+function sessionOwnership(flowResources: unknown): {
+  buckets: OwnershipBuckets;
+  anyShared: boolean;
 } {
-  const keys = new Set<string>();
-  const prefixes: string[] = [];
+  const singles = new Map<string, boolean>();
+  const prefixes: Array<{ prefix: string; flag: boolean }> = [];
+  let anyShared = false;
   if (typeof flowResources !== "object" || flowResources === null) {
-    return { keys, prefixes };
+    return { buckets: { singles, prefixes }, anyShared };
   }
   const entries = Object.entries(flowResources as Record<string, unknown>).filter(
     ([, def]) => (def as { scope?: string } | null)?.scope === "session"
   );
-  const sessionConfigs = Object.fromEntries(entries);
-  const storageKeys = resourceStorageKeys(sessionConfigs);
+  const storageKeys = resourceStorageKeys(Object.fromEntries(entries));
   for (const [accessor, def] of entries) {
-    if ((def as SharedFlag).sharedToWorkstream !== true) continue;
+    const flag = (def as SharedFlag).sharedToWorkstream === true;
+    if (flag) anyShared = true;
     if (isCollection(def)) {
       const prefix = getPatternPrefix(def.pattern);
-      prefixes.push(prefix === "" ? "" : `${prefix}/`);
+      prefixes.push({ prefix: prefix === "" ? "" : `${prefix}/`, flag });
     } else {
-      keys.add(storageKeys[accessor] ?? accessor);
+      singles.set(storageKeys[accessor] ?? accessor, flag);
     }
   }
-  return { keys, prefixes };
+  return { buckets: { singles, prefixes }, anyShared };
 }
 
 /**
@@ -105,11 +154,12 @@ export async function readSessionScopeWithLineage<T>(
   const root = session.lineageRootSessionId;
   if (root == null) return readAll(session.id);
 
-  const { keys, prefixes } = sharedAddressing(flowResources);
-  if (keys.size === 0 && prefixes.length === 0) return readAll(session.id);
+  const { buckets, anyShared } = sessionOwnership(flowResources);
+  if (!anyShared) return readAll(session.id);
 
-  const isShared = (key: string): boolean =>
-    keys.has(key) || prefixes.some((p) => p === "" || key.startsWith(p));
+  // Ownership, not "matches some shared prefix" — a private declaration beside
+  // a shared one keeps the keys it owns.
+  const isShared = (key: string): boolean => resolveOwnershipFlag(buckets, key) === true;
 
   const [own, atRoot] = await Promise.all([
     readAll(session.id),

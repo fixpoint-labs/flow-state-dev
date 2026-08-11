@@ -119,6 +119,42 @@ export function assertJsonSafe(
       );
     }
 
+    // The other two ways a property escapes the walk below, which reads
+    // `Object.entries` — own, enumerable, string-keyed, and read once:
+    //
+    // - a NON-ENUMERABLE property (`Object.defineProperty(o, "token", { value:
+    //   "x" })`) is skipped by `Object.entries` AND by `JSON.stringify`. It is
+    //   the symbol-key case in a different spelling: dropped entirely, with
+    //   nothing on either side saying a property was there.
+    // - an ACCESSOR is read here and read AGAIN by `JSON.stringify`, and
+    //   nothing makes the two reads agree. A getter that counts, or that
+    //   returns a `Date` on its second call, ships a payload this gate never
+    //   saw — so what was validated is not what crosses.
+    //
+    // Checked on every object for the reason the symbol check is, arrays
+    // included: an array's own non-index property is dropped whether or not it
+    // is enumerable, and the extras check below sees only the enumerable ones.
+    // An array's `length` is non-enumerable by specification rather than by
+    // anyone's declaration, which is the one exemption.
+    const descriptors = Object.getOwnPropertyDescriptors(obj);
+    for (const key of Object.keys(descriptors)) {
+      if (key === "length" && Array.isArray(node)) continue;
+      const descriptor = descriptors[key]!;
+      if (descriptor.get !== undefined || descriptor.set !== undefined) {
+        throw new Error(
+          `${options.label} is not JSON-safe: ${joinPath(path)}.${key} is an accessor property. ` +
+            `Serialization reads it a second time, so the value that crosses need not be the one ` +
+            `checked here. Assign a plain value instead.`
+        );
+      }
+      if (!descriptor.enumerable) {
+        throw new Error(
+          `${options.label} is not JSON-safe: ${joinPath(path)}.${key} is a non-enumerable ` +
+            `property, which is dropped entirely. Make it enumerable, or omit it.`
+        );
+      }
+    }
+
     if (onPath.has(obj)) {
       throw new Error(
         `${options.label} is not JSON-safe: ${joinPath(path)} contains itself, so it cannot be ` +
@@ -144,9 +180,12 @@ export function assertJsonSafe(
         walk(node[index]);
         path.pop();
       }
-      // An array's own string-keyed properties beyond its indices are dropped
-      // the same way a symbol key is: `const a = [1]; a.total = 1` serializes to
-      // `[1]`, and the index loop above would never look at `total`.
+      // An array's own ENUMERABLE string-keyed properties beyond its indices
+      // are dropped the same way a symbol key is: `const a = [1]; a.total = 1`
+      // serializes to `[1]`, and the index loop above would never look at
+      // `total`. A non-enumerable one is dropped too and was already refused by
+      // the descriptor pass, which is why this reads `Object.keys` and needs
+      // no widening.
       const extras = Object.keys(node).filter(
         (key) => !/^(?:0|[1-9]\d*)$/.test(key) || Number(key) >= node.length
       );
