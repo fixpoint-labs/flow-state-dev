@@ -31,6 +31,7 @@ import { pickPrincipalResolver } from "../auth/pickPrincipalResolver";
 import type { FlowDispatcher, DispatchEnvelope } from "../dispatcher";
 import {
   createInProcessDispatcher,
+  isInProcessDispatcher,
   type InProcessDispatcher
 } from "./in-process-dispatcher";
 import type {
@@ -139,7 +140,7 @@ export function createInboundTransportHost(
   });
   const effectiveDispatcher: FlowDispatcher | InProcessDispatcher =
     options.dispatcher ?? inProcessDispatcher;
-  const isExternalDispatcher = !("dispatchLocal" in effectiveDispatcher);
+  const isExternalDispatcher = !isInProcessDispatcher(effectiveDispatcher);
 
   // One arbiter governs every in-process dispatch, so an action's concurrency
   // policy is enforced once at this shared seam (FIX-837). v1 enforces only the

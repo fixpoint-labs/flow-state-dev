@@ -53,6 +53,25 @@ export interface InProcessDispatcher extends FlowDispatcher {
 }
 
 /**
+ * Whether a dispatcher runs work in THIS process.
+ *
+ * `dispatchLocal` is the discriminator because it is the capability that cannot
+ * cross a serialization boundary — a dispatcher that accepts a live
+ * `AbortSignal` and `ResponseEmitter` is necessarily running the work here. An
+ * `undefined` dispatcher is in-process too: the host builds its own
+ * `createInProcessDispatcher` for that case.
+ *
+ * Shared rather than re-tested per call site so the host's dispatch branch and
+ * anything else keying on locality cannot drift apart and disagree about the
+ * same dispatcher (FIX-1077).
+ */
+export function isInProcessDispatcher(
+  dispatcher: FlowDispatcher | undefined
+): boolean {
+  return dispatcher === undefined || "dispatchLocal" in dispatcher;
+}
+
+/**
  * Create a dispatcher that runs actions in the current process. The host
  * delegates to `dispatchLocal` (which accepts non-serializable context)
  * while the generic `FlowDispatcher.dispatch` interface is also satisfied

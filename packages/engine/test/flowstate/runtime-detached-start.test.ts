@@ -128,6 +128,26 @@ function stubWorker(mode: WorkerAdapter["mode"]): WorkerAdapter {
   } as WorkerAdapter;
 }
 
+/**
+ * A worker adapter whose queue nobody is draining.
+ *
+ * `finished` never settles, which is not a broken dispatcher — it is what BullMQ
+ * reports (`subscriber.completed`) for a job sitting in a queue with no worker
+ * consuming it. A normal operational state, and one shutdown must survive.
+ */
+function stubWorkerWithNoConsumer(mode: WorkerAdapter["mode"]): WorkerAdapter {
+  return {
+    mode,
+    createDispatcher: () => ({
+      dispatch: async () => ({
+        requestId: "req_never_consumed",
+        finished: new Promise<never>(() => {})
+      })
+    }),
+    startWorker: () => ({ close: async () => undefined })
+  } as WorkerAdapter;
+}
+
 /** The `fsdev run` call shape: runtime config SPREAD, not passed by reference. */
 async function runLikeCli(
   runtime: FlowStateRuntime,
@@ -277,6 +297,35 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     expect(observed.children[0]!.input).toEqual({ note: "detached-payload" });
   });
 
+  it("NEGATIVE: does not wait on an externally dispatched child, whose queue may have no consumer", async () => {
+    const observed: Observed = { children: [] };
+    const flow = detachingFlow("runtime-dispatch-only", observed);
+
+    const state = createFlowState({
+      flows: { detaching: flow },
+      stores: { default: { primary: inMemoryStores() } },
+      modelResolver: markerResolver("app-default"),
+      // Router-less but queue-routed: the start operation is wired (this runtime
+      // CAN dispatch), and the child runs somewhere else.
+      worker: stubWorkerWithNoConsumer("dispatch-only")
+    });
+
+    const runtime = await state.getRuntime();
+    await runLikeCli(runtime, flow, "s_parent");
+    expect(observed.start).toMatchObject({ ok: true });
+
+    // The whole assertion: this returns. Tracking a remote job's `finished` as
+    // if it were local work blocks here forever whenever no worker is consuming
+    // the queue — and nothing is stranded by not waiting, because an enqueued
+    // job is durable and outliving this process is the point of enqueuing it.
+    await state.dispose();
+
+    // Vacuously-passing guard: if the child had somehow run in-process, the
+    // dispatcher assumption above would be wrong and the test would prove
+    // nothing about external dispatch.
+    expect(observed.children).toEqual([]);
+  });
+
   it("the drain survives a queued concurrency policy instead of wedging on it", async () => {
     const observed: Observed = { children: [] };
     const flow = detachingFlow("runtime-drain-queued", observed, {
@@ -303,6 +352,40 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     // a cycle.
     await state.dispose();
     expect(observed.children).toHaveLength(1);
+  });
+
+  it("routes the shutdown notice through the configured logger, so --quiet silences it", async () => {
+    const observed: Observed = { children: [] };
+    const flow = detachingFlow("runtime-quiet", observed, { coreDelayMs: 30 });
+
+    const state = createFlowState({
+      flows: { detaching: flow },
+      stores: { default: { primary: inMemoryStores() } },
+      modelResolver: markerResolver("app-default")
+    });
+
+    const runtime = await state.getRuntime();
+
+    // What `--quiet` installs, and it is installed AFTER the runtime resolved —
+    // the order the CLI actually works in, which is why the notice has to read
+    // the logger at call time rather than capture it at construction.
+    const warnings: string[] = [];
+    runtime.runtimeConfig.logger = {
+      warn: (message) => {
+        warnings.push(message);
+      }
+    };
+
+    await runLikeCli(runtime, flow, "s_parent");
+    await state.dispose();
+
+    // The child still drained — silencing the notice must not silence the work.
+    expect(observed.children).toHaveLength(1);
+
+    // ...and the notice went to the logger, which is what a silent one can then
+    // suppress. Writing straight to `console` bypassed it entirely.
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("detached request(s) to finish before shutdown");
   });
 
   it("the child inherits the CALLER's runtime config, not the host's", async () => {

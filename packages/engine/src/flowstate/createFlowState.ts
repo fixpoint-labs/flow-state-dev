@@ -17,7 +17,8 @@ import {
 } from "@flow-state-dev/core";
 import { createFlowRegistry, type FlowRegistry } from "../registry/flow-registry";
 import { createFlowApiRouter, type FlowApiRouter } from "../routes/createFlowApiRouter";
-import { createRuntimeConfig, resolveStaleSweep } from "../runtime-config";
+import { createRuntimeConfig, resolveStaleSweep, type RuntimeConfig } from "../runtime-config";
+import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent } from "../execution/logging";
 import { createCheckpointDurabilityProvider } from "../durability/checkpoint-durability-provider";
 import { FlowStateConfigError, FlowStateDisposedError } from "../errors/flow-error";
 import type { CapabilitySlot, StoreAdapter, StoresConfig } from "../stores/store-adapter";
@@ -25,6 +26,7 @@ import { resolveProfileStores } from "./resolve-slots";
 import type { FlowDispatcher } from "../transports/dispatcher";
 import { createDetachedStartOperation } from "../context/detached-start-operation";
 import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
+import { isInProcessDispatcher } from "../transports/host/in-process-dispatcher";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 import type {
   CreateFlowStateOptions,
@@ -112,6 +114,12 @@ class InternalFlowState<TSettings extends object>
    * not accumulate them.
    */
   readonly #detachedChildren = new Set<Promise<unknown>>();
+  /**
+   * The resolved runtime config, kept so `dispose()` can read the logger a host
+   * configured. Held as the object rather than the logger value: a host may
+   * install one after `getRuntime()` returns.
+   */
+  #resolvedRuntimeConfig: RuntimeConfig | undefined;
 
   constructor(options: CreateFlowStateOptions<TSettings>) {
     if (Object.hasOwn(options, "middleware")) {
@@ -257,11 +265,22 @@ class InternalFlowState<TSettings extends object>
       round += 1
     ) {
       const pending = [...this.#detachedChildren];
-      // stderr, like the rest of dispose: stdout is reserved for data streams
-      // such as `fsdev run`'s NDJSON. Printed because an unexplained pause at
-      // exit reads as a hang — this says what is being waited for.
-      console.error(
-        `[flowstate] waiting for ${pending.length} detached request(s) to finish before shutdown`
+      // Printed because an unexplained pause at exit reads as a hang — this says
+      // what is being waited for.
+      //
+      // Through the configured logger, not `console` directly: `fsdev run
+      // --quiet` promises to suppress runtime logs on stderr, and a host that
+      // installed a silent logger meant it. The user asked for silence and can
+      // re-run without the flag; an unsuppressable line is not ours to insist on.
+      //
+      // `warn`, not `info`, and that is about the SINK rather than the severity:
+      // `DEFAULT_RUNTIME_LOGGER.info` writes to `console.info` — stdout — which
+      // would corrupt the NDJSON stream `fsdev run` puts there. `warn` lands on
+      // stderr, where every other diagnostic in this file already goes.
+      this.#logShutdown(
+        "warn",
+        `[flowstate] waiting for ${pending.length} detached request(s) to finish before shutdown`,
+        { pending: pending.length }
       );
       // Settled, not all: a child that threw has already surfaced its own error,
       // and one failure must not abandon the rest of the drain.
@@ -269,11 +288,35 @@ class InternalFlowState<TSettings extends object>
     }
 
     if (this.#detachedChildren.size > 0) {
-      console.error(
+      this.#logShutdown(
+        "warn",
         `[flowstate] gave up waiting on ${this.#detachedChildren.size} detached request(s) ` +
-          `after ${MAX_DETACHED_DRAIN_ROUNDS} rounds; they may be truncated by shutdown`
+          `after ${MAX_DETACHED_DRAIN_ROUNDS} rounds; they may be truncated by shutdown`,
+        { pending: this.#detachedChildren.size, rounds: MAX_DETACHED_DRAIN_ROUNDS }
       );
     }
+  }
+
+  /**
+   * Emit a shutdown diagnostic through the runtime's configured logger.
+   *
+   * Read from the runtime config at call time rather than captured, because a
+   * host may install its logger after resolving the runtime — the CLI does
+   * exactly that, which is how `--quiet` reaches a line written during
+   * `dispose()`. Falls back to the framework default so a deployment that
+   * configures nothing still sees it.
+   */
+  #logShutdown(
+    level: "warn",
+    message: string,
+    context: Record<string, unknown>
+  ): void {
+    logRuntimeEvent(
+      this.#resolvedRuntimeConfig?.logger ?? DEFAULT_RUNTIME_LOGGER,
+      level,
+      message,
+      context
+    );
   }
 
   #init(): Promise<FlowApiRouter> {
@@ -425,6 +468,8 @@ class InternalFlowState<TSettings extends object>
       }
     });
 
+    this.#resolvedRuntimeConfig = runtimeConfig;
+
     const runtime: FlowStateRuntime = {
       registry: this.#registry,
       stores,
@@ -514,6 +559,8 @@ class InternalFlowState<TSettings extends object>
     // worker or a direct `runAction` ever reads.
     if (this.#routerRequested) return;
 
+    const dispatcher = this.#options.dispatcher ?? this.#workerDispatcher;
+
     const host = createInboundTransportHost({
       registry: runtime.registry,
       stores: runtime.stores,
@@ -523,12 +570,35 @@ class InternalFlowState<TSettings extends object>
       resolvePrincipal:
         this.#options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
       runtimeConfig: runtime.runtimeConfig,
-      dispatcher: this.#options.dispatcher ?? this.#workerDispatcher
+      dispatcher
     });
+
+    // Track children for the shutdown drain ONLY when they run here.
+    //
+    // The drain exists because truncating in-process work strands it: nothing
+    // else is holding the run, so a closed store mid-write leaves a task row
+    // `in_progress` forever. None of that is true of an enqueued child. That
+    // work is durable by construction and outliving this process is the point
+    // of putting it on a queue, so waiting buys nothing — and `finished` there
+    // resolves only when some worker completes the job, which means a runtime
+    // with no worker consuming its queue would block `dispose()` indefinitely.
+    // A queue with nobody draining it is a normal operational state, not a bug,
+    // and shutdown must not be hostage to it.
+    //
+    // Keyed on the effective DISPATCHER rather than on `worker.mode`, because
+    // the two genuinely disagree: `options.dispatcher` (mutually exclusive with
+    // `worker`, so `mode` reads as its `colocated` default) can be external, and
+    // a custom dispatcher exposing `dispatchLocal` is local whatever the mode
+    // says. `isInProcessDispatcher` is the host's own test, shared so this and
+    // the dispatch branch cannot come to different conclusions about the same
+    // dispatcher.
+    const runsHere = isInProcessDispatcher(dispatcher);
 
     requestHost.startOperation = createDetachedStartOperation({
       host,
-      onDispatched: (finished) => this.#trackDetachedChild(finished)
+      ...(runsHere
+        ? { onDispatched: (finished: Promise<unknown>) => this.#trackDetachedChild(finished) }
+        : {})
     });
   }
 

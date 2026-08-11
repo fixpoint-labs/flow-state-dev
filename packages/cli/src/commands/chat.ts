@@ -211,6 +211,14 @@ export async function executeChatCommand(
     }
 
     const logger = createCliLogger(resolveLogLevel(options, "warn"));
+
+    // Also on the app's own config, for the same reason `run` does it: the
+    // FlowState logs outside any request while `dispose()` drains detached work,
+    // and it reads this object rather than the copy below.
+    if (baseRuntimeConfig !== undefined) {
+      baseRuntimeConfig.logger = logger;
+    }
+
     const runtimeConfig: RuntimeConfig =
       baseRuntimeConfig !== undefined
         ? { ...baseRuntimeConfig, modelResolver, logger }

@@ -334,6 +334,15 @@ export async function executeRunCommand(
     const logLevel = resolveLogLevel(options, "info");
     const logger = createCliLogger(logLevel);
 
+    // Install it on the app's OWN runtime config too, not just on the derived
+    // copy below. The FlowState logs on its own account outside any request —
+    // notably while `dispose()` waits for detached work to finish — and it reads
+    // this object, never the copy. Without this, `--quiet` silenced the run and
+    // not the shutdown, which is the opposite of what the flag promises.
+    if (baseRuntimeConfig !== undefined) {
+      baseRuntimeConfig.logger = logger;
+    }
+
     // 7. Execute the flow action. With a config, forward the app's runtimeConfig
     // (durability, settings, ...), overriding only the logger (CLI
     // stderr discipline) and the model resolver (per --model).
