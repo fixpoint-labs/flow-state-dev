@@ -138,61 +138,60 @@ When it happens:
 Two rounds of this in a week is a signal to check whether they're really engineering calls or
 whether the translation is being skipped.
 
+## What reaches them at all — the two filters
+
+Before the shape, the gate. **Most decisions never reach the product owner**, and a surface
+that forwards all of them costs more than a long one: a reader who finishes six equally-weighted
+items cannot name which was theirs, so the ask becomes a rubber stamp.
+
+**Filter 1 — is it theirs?** A wrong answer has to change one of four things:
+
+- **what a user experiences**
+- **what we've promised** anyone outside the team
+- **when something ships**
+- **what it costs to undo**
+
+If a wrong answer changes none of them, it is an engineer's call. Decide it and record it where
+an engineer reads it. *"Feed the new lenses from the shared evidence bundle rather than wiring
+data to each one"* is a real decision and changes none of the four.
+
+**Filter 2 — is it worth their attention?** A call that is **both** obviously right **and**
+cheap to reverse is one you make and note. Surfacing it *as* a decision implies weight it
+doesn't have, and it spends the attention the decision beside it needed.
+
+**Both, not either.** A call that is obviously right but **expensive to reverse** — a
+migration, a deletion, a new dependency, a contract change — stays visible. Nobody disputing it
+is not the same as nobody needing to know, and an undisputed irreversible call is exactly the
+one that gets discovered too late. It isn't a *decision*, so it doesn't take one of the three
+slots; it is **news**, and news that is hard to reverse never collapses
+([`writing-for-humans.md`](writing-for-humans.md) → "What never gets collapsed"). Say it in a
+line, above the fold, where they'd see it.
+
+**Filtering is sorting, not hiding.** Where the artifact defines a sign-off surface, everything
+on it stays in the artifact — what they don't own moves to a section addressed to the engineer,
+so nothing is approved unseen and nothing unactionable is put in front of them. On a PR that
+section is the collapsed **engineering calls** block
+([`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → §3, which carries the worked
+before/after and the shape rules). **What never collapses stays out of it** — a risk, a known
+gap, or anything hard to reverse is news, not an engineering call.
+
+**Cap what survives at three, hardest first.** Past three, either the filters weren't applied or
+the artifact carries more product surface than one artifact should.
+
 ## When not to ask at all
 
-Asking is not free — it costs their attention and it costs a round-trip. Don't ask when:
+Two more cases the filters don't catch:
 
 - **It's the implementer's call.** Names, layout, which helper, local structure. That's the
   spec-review bar in [`orchestration.md`](orchestration.md) → "Spec review", and it applies to
   conversation too.
 - **The answer is derivable.** From the spec, the tenets, the code, or a decision they already
   made. Cite it and proceed.
-- **It's a coin flip with near-zero cost either way.** Decide, and note the call in one line
-  where they'd see it. A decision surfaced *as a decision* implies weight it doesn't have.
 - **You'd take their answer either way but haven't formed a view.** Form one first. An ask with
   no recommendation is usually an ask that isn't ready.
 
 The failure runs both directions. Under-asking hides a call that shapes the product; over-asking
 trains them to skim, which costs you the one they needed to read.
-
-## Scope the ask to the case that produced it
-
-The most expensive mistake in this document is not a badly-written ask. It is a **correctly-written
-ask about a choice that does not exist** — or a real decision quietly demoted to a setting. Both
-come from the same habit: **proving something on one case and stating it as a property of the
-mechanism.**
-
-It fails in both directions, and one round of it invites the other:
-
-- **Over-generalising a proof** promotes a calibration constant into a decision. You show the
-  constant changes the customer-facing output on the case in front of you, and ask the owner to set
-  it — when on most cases a rule elsewhere decides the outcome at every value.
-- **Over-generalising a disproof** demotes a real decision into a setting. You show the constant
-  *cannot* change the outcome on one case, generalise that to the constant as a whole, and withdraw
-  an ask the owner should have had.
-
-**The test, before you write an ask or withdraw one:** name the case your claim was proved on.
-Name a case outside it. Check the claim there. If you cannot name a case outside it, you have not
-established a property — you have one example.
-
-**When a rule and a constant both move the same output**, they are usually two asks, not one, and
-collapsing them is what produces the wrong sign-off:
-
-- **The rule is the business decision** and leads. It is the thing the owner would explain to a
-  customer.
-- **The constant is the implementer's** — *except* on the cases where it changes what the customer
-  actually reads. Those cases are the ask, and the ask should be written from them.
-
-A worked instance: a panel-agreement rule demoted "how much a flagged input counts" to calibration,
-on the correct observation that a *unanimous* panel's headline moves at any value below a whole
-seat — so the constant could not decide it. True, and scoped to unanimity. On a **split** panel the
-same constant chose between two different words on the report. The ask came back one round later,
-rewritten to lead with the split case, because that is the case the owner was actually deciding.
-Two wrong sign-offs in two rounds, in opposite directions, from one habit.
-
-When you catch this, **sweep the whole artifact** — a spec that disproves its own ask three
-sections below the ask has not converged, and the audit that found the defect has to be run back
-over every surface asserting the opposite.
 
 ## Batching
 
@@ -201,9 +200,10 @@ first. Two to four is a normal batch. Past four, either some of them aren't asks
 went too long without checking in.
 
 That count is a **turn's batch**, and it is not the per-artifact cap. A spec or a PR surfaces
-**zero to two live forks** — the ones that get the full six-part shape — while everything else
-in its §6 is being ratified at one line each. A turn can carry four asks because they come from
-four different places; one artifact asking four times means its direction isn't settled.
+**three asks at most, and forks share those slots** — zero to two of them get the full
+six-part shape, the rest are ratified decisions with a heading and a line each. Three ratified
+decisions plus a fork is four, and four is over. A turn can carry four asks because they come
+from four different places; one artifact asking four times means its direction isn't settled.
 
 Each item is self-contained — they will answer #3 without re-reading #1.
 
@@ -217,19 +217,22 @@ Each item is self-contained — they will answer #3 without re-reading #1.
 | **A gate** | The spec-approval and epic-objective gates, surfaced by the lifecycles ([`orchestration.md`](orchestration.md) → Gates) |
 | **A blocker** | A worker escalating a fork it can't settle — the escalation carries the parts, the coordinator surfaces them |
 
-**Most decisions are not live forks.** A spec's §6 lists up to eight Decisions and the human
-is *ratifying the direction* on most of them — those stay one line each with a cost column,
-which is what makes eight of them fit on a screen. The full six-part shape is for the one or
-two that are genuinely open, plus anything in §12. Applying it to all eight buries the live
-ones; applying it to none leaves them to be found.
+**Most decisions are not live forks, and most don't reach them at all** — see the two filters
+above. Of the few that do, most are being *ratified*: a subheading naming the decision and a
+line on what a wrong one costs. The full six-part shape is for the one or two genuinely open,
+plus anything in a spec's §12. Applying it to every decision buries the live ones; applying it
+to none leaves them to be found.
 
 ## Worked example
 
 Three asks from one turn. They're deliberately different lengths — the shape scales down, and
 the third one is mostly its calibration line. Read the three calibrations together
-(*moderate* · *the expensive one* · *near zero*): that contrast is the part doing the work,
-because it tells the reader where to spend their attention before they've read a word of the
-detail.
+(*moderate* · *the expensive one* · *low*): that contrast is the part doing the work, because
+it tells the reader where to spend their attention before they've read a word of the detail.
+
+**None of the three is free** — a genuinely near-zero, obviously-right call fails filter 2 and
+never reaches this batch at all. The cheap one here is cheap, not costless: it still turns on
+something only they know.
 
 ---
 
@@ -293,7 +296,12 @@ detail.
 > deferral was right, and nothing has changed since. Both pieces stay filed and get picked up
 > together later.
 >
-> **Cost of being wrong here: near zero.** This is the one where I'd just take your gut.
+> **What would change my mind:** if anyone outside the team has been told this epic closes this
+> quarter. Dropping the gate marks it done on a narrower promise than the one they heard.
+>
+> **Cost of being wrong: low, and it surfaces fast.** Worst case we mark an epic complete that
+> someone still counts as open, and they say so within a week. This is the cheap one in the
+> batch — read the three calibrations together and spend your time on #2.
 
 ---
 
