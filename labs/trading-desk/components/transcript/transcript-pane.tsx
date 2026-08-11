@@ -32,6 +32,7 @@ import { TxSpeak } from "./tx-speak";
 import { TxStruct } from "./tx-struct";
 import {
   buildTranscriptRows,
+  currentRunKey,
   TX_AGENT_ANCHOR_ATTR,
   type TranscriptRow,
 } from "./transcript-rows";
@@ -80,14 +81,21 @@ export function TranscriptPane({
     return () => el.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // A new session gets a fresh transcript, so it gets fresh auto-follow. This
-  // pane stays mounted across a session switch on desktop, so without the reset
-  // a jump taken in the previous report would leave the NEXT live run refusing
-  // to follow its own output until the user scrolled to the bottom by hand.
-  // Declared before the jump effect so a same-commit jump still wins.
+  // A NEW RUN gets fresh auto-follow. Two boundaries, because a jump turns
+  // auto-follow off and this pane stays mounted across both on desktop:
+  //   - a different session (opening another report);
+  //   - a re-run of the SAME input tuple, which dispatches into the same
+  //     session — `sessionId` never changes, so it needs the run key.
+  // Without either, a jump taken beforehand leaves the next live run refusing
+  // to follow its own output until the user scrolls to the bottom by hand: a
+  // run that looks stalled while it is actually streaming.
+  // `currentRunKey` is stable WITHIN a run, so a mid-run jump is not undone by
+  // the next item arriving. Declared before the jump effect so a same-commit
+  // jump still wins.
+  const runKey = useMemo(() => currentRunKey(items), [items]);
   useEffect(() => {
     stickToBottomRef.current = true;
-  }, [sessionId]);
+  }, [sessionId, runKey]);
 
   // Auto-scroll on new items if the user has not scrolled away.
   useEffect(() => {

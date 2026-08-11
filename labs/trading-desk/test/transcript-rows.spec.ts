@@ -19,6 +19,7 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import {
   agentsWithTranscriptRows,
   buildTranscriptRows,
+  currentRunKey,
 } from "../components/transcript/transcript-rows";
 
 let seq = 0;
@@ -251,5 +252,39 @@ describe("agentsWithTranscriptRows", () => {
     // transcript items were emitted with `history: false` and are gone. Every
     // memo header must therefore render WITHOUT the control.
     expect(agentsWithTranscriptRows([]).size).toBe(0);
+  });
+});
+
+/**
+ * The run key is what restores the transcript's auto-follow. A jump turns
+ * auto-follow OFF (a deliberate navigation must not be yanked back by a live
+ * run). Re-running the same input tuple dispatches into the SAME session, so
+ * the session id cannot signal "a new run started" — this key is the signal.
+ * Getting it wrong is visible: a run that streams but refuses to follow its own
+ * output reads as stalled.
+ */
+describe("currentRunKey", () => {
+  it("stays stable while a run streams, so a mid-run jump is not undone", () => {
+    const boundary = runStart();
+    const early = [boundary, toolRow("macroAnalyst", "get_macro_indicators")];
+    const later = [...early, speakRow("macroAnalyst", "Conditions are easing.")];
+
+    expect(currentRunKey(early)).toBe(currentRunKey(later));
+  });
+
+  it("changes when a re-run starts in the same session", () => {
+    const first = [runStart(), toolRow("macroAnalyst", "get_macro_indicators")];
+    // A re-run appends to the SAME item array — the session id is unchanged.
+    const rerun = [...first, runStart(), toolRow("quantAnalyst", "get_options_chain")];
+
+    expect(currentRunKey(rerun)).not.toBe(currentRunKey(first));
+  });
+
+  it("is null when the log carries no run boundary", () => {
+    // A re-opened report with no persisted items, and a run that stopped at a
+    // pre-Phase-1 guard, both land here. Null is stable, so auto-follow is not
+    // reset on every item that arrives before the first divider.
+    expect(currentRunKey([])).toBeNull();
+    expect(currentRunKey([speakRow("macroAnalyst", "Stopped.")])).toBeNull();
   });
 });

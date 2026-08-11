@@ -78,7 +78,9 @@ export function buildTranscriptRows(
 ): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
   const anchored = new Set<AgentName>();
-  const runStart = currentRunStartIndex(items);
+  // No divider at all (a session whose only run stopped at a pre-Phase-1
+  // guard, or a re-opened report) means the whole log is the run.
+  const runStart = runStartDividerIndex(items) ?? 0;
   // Set per item, so `claimAnchor` keeps its single-argument call sites.
   let inCurrentRun = false;
 
@@ -197,20 +199,34 @@ export function buildTranscriptRows(
   return rows;
 }
 
-/** Index of the first item belonging to the CURRENT analyze run.
+/** Index of the run-boundary divider, or null when the log carries none.
  *
  * The Phase 1 stage ships a `component: "analyst-phase"` container, once per
  * run and before any analyst row, so the LAST one marks where the current run's
- * transcript begins. No divider at all (a session whose only run stopped at a
- * pre-Phase-1 guard, or a re-opened report) means the whole log is the run. */
-function currentRunStartIndex(items: readonly OutputItem[]): number {
+ * transcript begins. */
+function runStartDividerIndex(items: readonly OutputItem[]): number | null {
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index] as OutputItem;
     if (item.transient === true || item.type !== "container") continue;
     const container = item as Extract<OutputItem, { type: "container" }>;
     if (container.component === "analyst-phase") return index;
   }
-  return 0;
+  return null;
+}
+
+/** Identity of the CURRENT analyze run — the run-boundary divider's item id,
+ *  or null when the log carries no boundary.
+ *
+ * Stable while a run streams and different for the next one, so a consumer can
+ * tell "more of this run" from "a new run started" without threading state out
+ * of the page. `TranscriptPane` uses it to restore auto-follow: a re-run of the
+ * same input tuple dispatches into the SAME session, so `sessionId` never
+ * changes and a jump taken before the re-run would otherwise leave the new run
+ * refusing to follow its own output. */
+export function currentRunKey(items: readonly OutputItem[]): string | null {
+  const index = runStartDividerIndex(items);
+  if (index === null) return null;
+  return (items[index] as OutputItem).id;
 }
 
 /** The agents that have at least one transcript row in the current run — i.e.
