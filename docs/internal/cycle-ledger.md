@@ -322,11 +322,21 @@ total, not the delta" defeated by its own trigger.
 
 ### Claim to test next cycle
 
-`over-engineered` falls **as a share of each cycle's findings** — the share metric this file
-declares in its header, not a raw count, so a shrinking sample can't read as improvement while
-the per-artifact rate worsens. **Baseline: 2 of 8 findings (25%) across this cycle's two rows.**
-And no file in a later cycle shows the grow-then-rewrite curve (a peak line count more than
-~1.3× its merged count). Fix A is prose, aimed at attention at edit time — the same shape
-cycle 2's round 8 note said it doubts. If the curve recurs, that is the second class where
-written guidance failed to change behavior, and the honest read is mechanical enforcement (a
-diff-size check on the round), not sharper prose. Do not spend a third cycle on rung 4 here.
+**Observable: at merge, no file in a PR sits above 6.5.2's growth trigger without a re-draft
+commit reconciling it.** If fix A works, growth is either avoided or reconciled *before* the PR
+closes, so merged artifacts carry no unreconciled accretion. If it doesn't, files merge over the
+trigger untouched and the accretion ships. **Baseline: both rows this cycle fail it** — #1169
+needed the owner to ask for the rewrite, #1166 merged with its growth intact.
+
+The criterion deliberately does **not** score a peak above 1.3× as failure. Fix A only fires
+*after* growth crosses the trigger, so a correct firing **requires** a peak and then a re-draft —
+scoring the peak would read every successful firing as a failure and trip the abandon-this-altitude
+conclusion on the best case. Three earlier drafts of this claim were wrong in three different ways
+(delta-vs-cumulative, raw-vs-share, and a criterion false under success), so this one is derived
+from what each world would *look* like rather than patched again. A fourth patch is not the move;
+if it's wrong again, the class being measured is not measurable from review data.
+
+Fix A is prose, aimed at attention at edit time — the same shape cycle 2's round 8 note said it
+doubts. If unreconciled growth still reaches merge, that is the second class where written guidance
+failed to change behavior, and the honest read is mechanical enforcement (CI computing the ratio at
+merge), not sharper prose. Do not spend a third cycle on rung 4 here.
