@@ -86,7 +86,7 @@ under.
 | Linear issue | ~100 — problem, who feels it, outcome |
 | Issue spec, Part I (The Case) | ~400 |
 | Epic spec, §1 (objective) | ~500 |
-| A live decision ask, per fork | ~200 — the six parts ([`asking-for-decisions.md`](asking-for-decisions.md)). Decisions the reader is only ratifying stay one line each |
+| A live decision ask, per fork | ~200 — the six parts, one to three sentences each ([`asking-for-decisions.md`](asking-for-decisions.md)). Decisions the reader is only ratifying get a heading and a line |
 
 Over budget is a signal to **cut**, not to collapse more. A 900-word collapsible is still
 900 words someone eventually reads, and the reflex to move rather than delete is how a
@@ -109,13 +109,13 @@ more, since a small change is where a reviewer is most likely to assume the wron
 - The path to the answer. The conclusion goes up; the derivation goes down.
 - Per-file, per-item, per-decision enumerations — **unless the enumeration *is* the ask.**
   The test is whether the reader is being asked to **decide** on each row or is merely being
-  **informed** of it. Rows they decide go above the fold, one line each, however many there
-  are; rows they're informed of go below it, however few.
+  **informed** of it. What they decide goes above the fold — a heading and a line each,
+  never a table — however many there are; what they're informed of goes below it, however few.
 
   Where an artifact defines a sign-off surface — a spec's §6 Decisions are what approval
   certifies — nothing on that surface is ever *dropped*, but it is **sorted** by that same
   test, so the reader approves nothing they can't see and reads nothing they can't act on.
-  A sign-off surface where most rows are informational is a signal the surface itself
+  A sign-off surface where most items are informational is a signal the surface itself
   collected the wrong things; fix it there rather than lengthening what a human reads
   ([`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → §3 carries the filters).
 - Verification output, test counts, tool transcripts, quoted evidence.

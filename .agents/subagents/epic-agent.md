@@ -68,9 +68,9 @@ Take the single action the dispatch calls for:
   what's asked of you — the cross-cutting decisions **sorted through the two filters** in
   `pr-reviewer-guidance.md` → §3, so a row appears only if a wrong answer changes what a user
   experiences, what we've promised, when something ships, or what it costs to undo, and the
-  user would plausibly answer differently than you did. **Three rows is the ceiling**, one
-  line each with what a wrong one costs; the rest go in a collapsed **engineering calls**
-  block. Then **"Parts worth reviewing closely"** authored fresh — where the audience changes
+  user would plausibly answer differently than you did. **Three is the ceiling** — a
+  subheading per decision with what a wrong one costs under it, **never a table**; the rest
+  go one bullet each in a collapsed **engineering calls** block. Then **"Parts worth reviewing closely"** authored fresh — where the audience changes
   to the code reviewer, so say so in a line — 1–3 items at *epic* altitude (the objective,
   whether the set is really N issues or N−1, a cross-cutting decision), each naming where ·
   the question · what a wrong answer costs, plus where you're unsure. Then the links line.

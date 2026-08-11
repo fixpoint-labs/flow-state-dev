@@ -128,9 +128,9 @@ Rules, all cheap to check:
 If they stop at the end of it, they should have done their whole job. Everything after it is
 for the code reviewer.
 
-So the failure mode here is not length — it is a reader who finishes six rows unable to say
+So the failure mode here is not length — it is a reader who finishes six decisions unable to say
 which one they were supposed to decide. **A decision earns its place on this surface or it
-does not appear on it.** Two filters decide that, and a row has to pass both.
+does not appear on it.** Two filters decide that, and a decision has to pass both.
 
 ### Filter 1 — is it theirs?
 
@@ -151,50 +151,65 @@ rather than wiring data to each one"* is a real decision, and it changes none of
 A call that is obviously right, or reversible in an afternoon at near-zero cost, is one you
 make and note in a line ([`asking-for-decisions.md`](asking-for-decisions.md) → "When not to
 ask"). Surfacing it *as* a decision implies weight it doesn't have, and it spends the
-attention the row beside it needed. *"An unrun panel says it didn't run instead of
+attention the decision beside it needed. *"An unrun panel says it didn't run instead of
 disappearing"* passes filter 1 — a reader sees it — and fails this one.
 
 ### The rule that catches the most inflation
 
-**A row describing what the change does belongs to block 2, not here.** *"A lens missing
+**A decision that merely describes what the change does belongs to block 2, not here.** *"A lens missing
 evidence counts for a fraction of a seat"* is the mechanism; it was already stated above.
 Block 3 is only for calls where a reasonable person could have gone the other way and the
 product owner would care which. Re-listing the mechanism as decisions is what turns a
-two-decision change into a six-row table.
+two-decision change into a six-item ask.
 
-### The shape
+### The shape — a subheading each, never a table
 
-**Three rows is the ceiling, hardest first**, plus zero to two live forks. Not a target —
-one row and one fork is a healthy PR, and a change following an approved spec often has
+**No table here.** A table asks the reader to parse a grid and compare cells before they can
+read a single decision, and it squeezes the two things that matter — the call, and what it
+costs — into cells sized for neither. Each decision gets **a subheading and two bullets**:
+
+```md
+### The claim ticket replaces `expectAttempt` rather than joining it
+
+- Callers presenting the old guard get one clear error and a one-line migration.
+- **If this is wrong:** a permanently ambiguous public guard surface, or a migration third
+  parties didn't need.
+```
+
+**The subheading states the decision, in plain language.** Same rule as a live fork's heading
+([`asking-for-decisions.md`](asking-for-decisions.md)): a reader skimming three subheadings
+should know what three decisions they're being asked about without reading a bullet. A
+subheading naming a *topic* — "Guard surface" — makes them read the body to find out whether
+they're being informed or asked.
+
+**Never a bare number.** "Decision 3" as a heading makes the reader rebuild a map they don't
+have; the substance goes in the heading, and the number, if the spec has one, goes after it.
+
+**Write the *If this is wrong* bullet in consequences, not mechanism.** "A permanently
+ambiguous public guard surface, or a migration third parties didn't need" is a cost a product
+owner can price. "The two guards would both have to be maintained" is a fact about our code,
+and it asks them to work out for themselves why that's bad.
+
+**Three decisions is the ceiling, hardest first**, plus zero to two live forks. Not a target —
+one decision and one fork is a healthy PR, and a change following an approved spec often has
 none. Past three, either the filters weren't applied or this PR carries more product surface
 than one PR should.
 
-Carry the substance alongside the number, never the number alone — a bare "Decision 3" makes
-the reader rebuild a map they don't have.
-
-```md
-| # | Decision | If it's wrong |
-|---|---|---|
-| 1 | The ticket **replaces** `expectAttempt` rather than joining it | A permanently ambiguous public guard surface, or a migration third parties didn't need |
-```
-
-**Write the cost column in consequences, not mechanism.** "A permanently ambiguous public
-guard surface, or a migration third parties didn't need" is a cost a product owner can price.
-"The two guards would both have to be maintained" is a fact about our code, and it asks them
-to work out for themselves why that's bad.
-
 > **On a spec PR the §6 Decisions are what approval certifies, so none is dropped — they are
-> *sorted*.** Rows that pass both filters go here; the rest go one line each in the collapsed
-> engineering block. Nothing is hidden and nothing is approved unseen. A §6 that yields six
-> product rows is a §6 that put the owner in the engineer's chair, and the fix for that is
-> upstream in the spec ([`spec-template.md`](spec-template.md) → §6), not a longer table here.
+> *sorted*.** The ones that pass both filters get a subheading here; the rest go one bullet
+> each in the collapsed engineering block. Nothing is hidden and nothing is approved unseen. A
+> §6 that yields six product decisions is a §6 that put the owner in the engineer's chair, and
+> the fix for that is upstream in the spec ([`spec-template.md`](spec-template.md) → §6), not
+> a longer list here.
 
-### The live forks — the full ask, under the table
+### The live forks — the full ask, below the ratified ones
 
-A decision the author can't settle alone isn't a table row. It gets the six-part shape from
-[`asking-for-decisions.md`](asking-for-decisions.md): the fork as a heading, plain terms, the
-trade-off, **your recommendation**, what would change your mind, and what being wrong costs.
-Canonical there; don't re-derive it here.
+A decision the author can't settle alone gets more than two bullets. It takes the six-part
+shape from [`asking-for-decisions.md`](asking-for-decisions.md): the fork as a heading, plain
+terms, the trade-off, **your recommendation**, what would change your mind, and what being
+wrong costs. Canonical there; don't re-derive it here. Same subheading convention as the
+ratified ones, so all of block 3 skims as one list of headings — the fork's just names both
+options: *"Hard ceiling at three, or a soft one?"*
 
 Three rules keep it from swallowing the block:
 
@@ -213,10 +228,10 @@ implements the approved direction* — and its absence reads as an omission.
 
 ### Before and after
 
-A real block 3, at six rows. The change adds investment "lenses" to an analysis panel and
+A real block 3, at six decisions. The change adds investment "lenses" to an analysis panel and
 discounts lenses that were missing data.
 
-**Before** — six rows and a fork, all looking equally weighty. Row 1 is the mechanism
+**Before** — six table rows and a fork, all looking equally weighty. Row 1 is the mechanism
 restated, row 3 fails filter 1, row 5 fails filter 2, and nothing tells the reader which of
 the six is theirs:
 
@@ -231,23 +246,35 @@ the six is theirs:
 | 6 | Ships as two PRs: the agreement-honesty fix first, the pack expansion second | The honesty half reaches readers weeks later than it needs to |
 ```
 
-**After** — same change, filters applied. The old row 1 was mechanism that block 2 already
-stated, and its live half is the fork. The old row 3 changes none of the four things. The old
-row 5 is obviously right and costs nothing to reverse. What's left is one fork and two rows,
-and the reader can see that all three are theirs:
+**After** — same change, filters applied and the grid gone. The old row 1 was mechanism block
+2 already stated, and its live half is the fork. The old row 3 changes none of the four
+things. The old row 5 is obviously right and costs nothing to reverse. What's left is one fork
+and two decisions, each answerable from its heading:
 
 ```md
-| # | Decision | If it's wrong |
-|---|---|---|
-| 1 | **Live fork — see below.** Thin data may downgrade the headline verdict, which sizes the position smaller | Good calls on partly-thin data get smaller positions than they get today, on every report from here |
-| 2 | Three of the six seated lenses read through a value frame, so the report says the panel is value-tilted rather than implying an even spread | We publish "the philosophies agree" when what we built was a panel that mostly shares one philosophy |
-| 3 | The honesty fix ships first, on its own, ahead of the larger pack expansion | Readers keep getting the overstated agreement number for the weeks the bigger change takes |
+### Thin data may downgrade the headline verdict — which sizes the position smaller
+
+*(the six-part fork goes here)*
+
+### Three of the six seated lenses read through a value frame, so the report says the panel is value-tilted
+
+- The original design named these two lenses; seating them tips the balance, so the report
+  states the tilt rather than implying an even spread.
+- **If this is wrong:** we publish "the philosophies agree" when what we built was a panel
+  that mostly shares one philosophy.
+
+### The honesty fix ships first, on its own, ahead of the larger pack expansion
+
+- Two PRs instead of one, so the agreement number stops overstating before the bigger change
+  lands.
+- **If this is wrong:** readers keep getting the overstated number for the weeks the pack
+  expansion takes.
 ```
 
-The shipping row survives because *when something ships* is one of the four — a sequencing
-call is a product call even though an engineer made it. And the two dropped rows didn't
-disappear: they moved to the collapsed engineering block, one line each, where the person who
-can actually evaluate them will read them.
+The shipping decision survives because *when something ships* is one of the four — a
+sequencing call is a product call even though an engineer made it. And the two dropped rows
+didn't disappear: they moved to the collapsed engineering block, one bullet each, where the
+person who can actually evaluate them will read them.
 
 ## 4. Parts worth reviewing closely
 
@@ -318,9 +345,10 @@ What goes down here:
 
 - **The reviewer contract**, always, and first.
 - **The engineering calls** — every decision §3's filters kept off the product owner's
-  surface, one line each with what a wrong one costs, in the engineer's register. This is
-  the block that makes the filters safe to apply: nothing is dropped from the record, it is
-  sorted by who it is addressed to, and the reader who wants it is the reader who opens it.
+  surface, **one bullet each** with what a wrong one costs, in the engineer's register. This
+  is the block that makes the filters safe to apply: nothing is dropped from the record, it
+  is sorted by who it is addressed to, and the reader who wants it is the reader who opens
+  it. A bullet list, not a table — same reason as §3, and these are one line each anyway.
 
   ```md
   <details>
@@ -524,19 +552,13 @@ sequenceDiagram
 
 ## What's asked of you
 
-Approve the direction, or push back on any of these. *(Three of §6's seven rows passed the
-two filters in §3 above; the other four were engineer's calls and are listed in the collapsed
-engineering block, so §6 stays complete.)*
+Approve the direction, or push back on any of these. *(Three of §6's seven Decisions passed
+the two filters in §3 above; the other four were engineer's calls and are listed in the
+collapsed engineering block, so §6 stays complete.)*
 
-| # | Decision | If it's wrong |
-|---|---|---|
-| 1 | The ticket **replaces** `expectAttempt` rather than joining it | A permanently ambiguous public guard surface, or a migration third parties didn't need |
-| 4 | `taskTools` outside a claimed-worker scope has no ticket, so nothing is checked | We claim a guarantee we don't have — the exact failure FIX-980 exists to eliminate |
-| 7 | The first deliverable is a characterization against merged `main`, not a fix | We build a second fence beside one FIX-992 already put there |
+### Replace the old guard, or keep both? — live fork
 
-### One live fork — replace the old guard, or keep both?
-
-**Plain terms.** Decision 1 retires a guard we already shipped and published an error for.
+**Plain terms.** The ticket retires a guard we already shipped and published an error for.
 Anyone who wrote code branching on that specific error would see different behaviour.
 
 **The trade-off.** Replacing it is a one-time break for anyone reading that error today.
@@ -555,6 +577,20 @@ we've told anyone this surface is stable. Then we keep both and retire the old o
 it and they get a broken build and a changelog line — annoying, recoverable, fixable in a
 patch. Keep both when we didn't need to and the ambiguity outlives 1.0, where removing it
 stops being cheap and becomes a breaking change we've promised not to make.
+
+### The model-facing tools carry no ticket, so nothing is checked when they're called outside a claimed scope
+
+- The guarantee holds where a worker claimed the task, and not where the model reached for
+  the tool on its own. We say so rather than implying it covers both.
+- **If this is wrong:** we claim a guarantee we don't have — the exact failure FIX-980 exists
+  to eliminate.
+
+### The first deliverable is a characterization test against merged `main`, not a fix
+
+- It pins how the system behaves today before anything moves, so we find out whether FIX-992
+  already closed part of this.
+- **If this is wrong:** we spend a deliverable building a second fence beside one that's
+  already there.
 
 ## Parts worth reviewing closely
 

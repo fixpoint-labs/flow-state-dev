@@ -162,9 +162,10 @@ first. Two to four is a normal batch. Past four, either some of them aren't asks
 went too long without checking in.
 
 That count is a **turn's batch**, and it is not the per-artifact cap. A spec or a PR surfaces
-**zero to two live forks** — the ones that get the full six-part shape — above at most three
-ratified rows, one line each. A turn can carry four asks because they come from four different
-places; one artifact asking four times means its direction isn't settled.
+**zero to two live forks** — the ones that get the full six-part shape — alongside at most
+three ratified decisions, a heading and a line each. A turn can carry four asks because they
+come from four different places; one artifact asking four times means its direction isn't
+settled.
 
 Each item is self-contained — they will answer #3 without re-reading #1.
 
@@ -185,9 +186,15 @@ answer differently than you did ([`pr-reviewer-guidance.md`](pr-reviewer-guidanc
 carries both filters and the worked before/after). The rest are yours; record them where an
 engineer reads them.
 
-Of the few that do reach them, most are being *ratified* — one line each with a cost column.
-The full six-part shape is for the one or two genuinely open, plus anything in a spec's §12.
-Applying it to every row buries the live ones; applying it to none leaves them to be found.
+Of the few that do reach them, most are being *ratified* — a subheading naming the decision
+and a line on what a wrong one costs. The full six-part shape is for the one or two genuinely
+open, plus anything in a spec's §12. Applying it to every decision buries the live ones;
+applying it to none leaves them to be found.
+
+**Never a table.** Whatever the surface, the shape is a heading per decision with the detail
+under it. A grid asks the reader to compare cells before they can read a single decision, and
+it sizes the two things that matter — the call and its cost — to fit a column rather than to
+be understood ([`pr-reviewer-guidance.md`](pr-reviewer-guidance.md) → §3 "The shape").
 
 ## Worked example
 
