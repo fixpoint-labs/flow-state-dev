@@ -134,10 +134,18 @@ vi.mock("../src/react/hooks/use-continue-request", () => ({
 // callback as a button. That callback is one of the two places the panel takes
 // ownership of a request id, and the only one reachable without driving the
 // action form.
+/**
+ * The `onResumed` the panel handed to the CURRENTLY rendered view. Captured so
+ * a test can hold one across a session change and invoke it afterwards — which
+ * is what an in-flight approval does when its component unmounts mid-`await`.
+ */
+let lastOnResumed: ((id: string) => void) | undefined;
+
 vi.mock("../src/react/components/workspace/suspensions-view", () => ({
-  SuspensionsView: ({ onResumed }: { onResumed: (id: string) => void }) => (
-    <button onClick={() => onResumed("req_dispatched")}>resume-stub</button>
-  ),
+  SuspensionsView: ({ onResumed }: { onResumed: (id: string) => void }) => {
+    lastOnResumed = onResumed;
+    return <button onClick={() => onResumed("req_dispatched")}>resume-stub</button>;
+  },
 }));
 
 // Same idea for the action bar: `handleSendAction` awaits the dispatch, so it
@@ -222,6 +230,42 @@ describe("DevToolPanel — session switch releases the dispatched request", () =
     });
 
     expect(refreshWorkstreams).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores a resume notification for a session the operator has left", async () => {
+    // An approval is pending; the operator navigates away; the unmounted view
+    // finishes its `await resume(...)` and invokes the `onResumed` it captured,
+    // which is the callback built for the OLD session.
+    //
+    // The read fence cannot cover this: `handleResumed` is not only a read. It
+    // installs a request id and forces a stream reconnect, and both happen
+    // before anything a fence would see — so the previous session's
+    // continuation streams under the session now open.
+    const { rerender } = await act(async () => render(<DevToolPanel userId="u1" />));
+    await act(async () => {
+      fireEvent.mouseDown(screen.getByRole("tab", { name: "Suspensions" }));
+    });
+
+    // Held while the parent was open, the way an in-flight handler holds it.
+    const staleOnResumed = lastOnResumed!;
+    expect(staleOnResumed).toBeDefined();
+
+    devToolState.activeSessionId = "sess_child";
+    activeSession.activeSessionId = "sess_child";
+    await act(async () => {
+      rerender(<DevToolPanel userId="u1" />);
+    });
+    expect(latestDispatchedId()).toBeNull();
+    refreshWorkstreams.mockClear();
+
+    await act(async () => {
+      staleOnResumed("req_from_old_session");
+    });
+
+    // Nothing from the session just left may be installed in front of the live
+    // stream, and no read is owed for it either.
+    expect(latestDispatchedId()).toBeNull();
+    expect(refreshWorkstreams).not.toHaveBeenCalled();
   });
 
   it("re-reads the Workstream axis when an interrupted request is continued", async () => {

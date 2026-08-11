@@ -447,6 +447,24 @@ function PanelContent({ className }: { className?: string }) {
   // and `handleReconnect`. Replay re-streams a request that already ran — it
   // starts no work and can create no Workstream, so a read there would be a
   // request per inspection with nothing to find.
+  //
+  // A SECOND enumeration over the same callbacks, because they carry a second
+  // hazard: which of them can still be invoked after the session has changed,
+  // and therefore act on one workspace while another is open? Only a callback
+  // reached across an `await` can — a click handler cannot fire after its
+  // component is gone.
+  //
+  // - `handleSendAction`  — awaits its dispatch. Fenced on `descentSessionRef`.
+  // - `handleResumed`     — invoked by `SuspensionsView` after ITS await, so it
+  //                         outlives the component. Fenced at entry, below.
+  // - `handleContinueItems` — fires during a continuation stream, but
+  //                         `useContinueRequest` carries an owner token bumped
+  //                         on `sessionId` precisely so it is not called into a
+  //                         stale view. Guarded upstream; nothing owed here.
+  // - `handleContinue`, `handleReplay*`, `handleReconnect`,
+  //   `handleOpenWorkstream`, `handleReturnTo` — synchronous click handlers
+  //   with no await before their writes, so there is no window in which the
+  //   session can move underneath them.
   const handleSendAction = useCallback(
     async (action: string, input: unknown) => {
       if (!activeFlowKind || !effectiveSessionId) return;
@@ -491,6 +509,27 @@ function PanelContent({ className }: { className?: string }) {
   // FIX-811), so the post-resume output renders without a manual refresh.
   const handleResumed = useCallback(
     (requestId: string) => {
+      // Fenced at ENTRY, covering everything below rather than each thing
+      // separately. `SuspensionsView`'s resume is an async handler: the operator
+      // can navigate while it awaits, and the unmounted component then invokes
+      // the `onResumed` it captured — this callback, built for the session that
+      // has been left. Installing that request id would put the previous
+      // session's continuation in front of the live stream.
+      //
+      // A read fence cannot reach this. That guards whether a RESPONSE may be
+      // written; the damage here is state writes and a forced reconnect, which
+      // happen before any read. One question, asked once, at the boundary the
+      // staleness actually crosses — so anything added to this callback later
+      // is covered by construction.
+      //
+      // Guarded here rather than in `SuspensionsView` because the only signal
+      // the child has is its own mounted-ness, which is a PROXY for session
+      // identity — and proxies for identity are what produced the last three
+      // findings on this surface. The panel owns the identity, so it owns the
+      // check. `useResumeSuspension` is no better a home: unlike
+      // `useContinueRequest`, which carries an owner token for exactly this, it
+      // takes no session and could not tell.
+      if (descentSessionRef.current !== effectiveSessionId) return;
       setActiveRequestId(requestId);
       setDispatchedRequestId(requestId);
       // Force a reconnect: the id is unchanged (same-request continuation), so
@@ -508,7 +547,7 @@ function PanelContent({ className }: { className?: string }) {
       // immediately, with nothing downstream able to skip it.
       void refreshWorkstreams();
     },
-    [refreshRequests, refreshWorkstreams],
+    [effectiveSessionId, refreshRequests, refreshWorkstreams],
   );
 
   // Per-row Continue action (FIX-865) — supersedes the legacy top-level
