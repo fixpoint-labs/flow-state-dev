@@ -189,7 +189,12 @@ export function applyEntityCheck(
     else {
       excluded.push({
         url: item.url,
-        reason: `entity-mismatch: names neither ${subject.ticker} nor ${subject.name}`,
+        // `name` is empty when the provider returned a profile without one; the
+        // ticker still identified the subject, so say only what we matched on.
+        reason:
+          subject.name === ""
+            ? `entity-mismatch: does not name ${subject.ticker}`
+            : `entity-mismatch: names neither ${subject.ticker} nor ${subject.name}`,
       });
     }
   }

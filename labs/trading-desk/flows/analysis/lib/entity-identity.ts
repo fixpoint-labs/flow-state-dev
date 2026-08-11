@@ -110,6 +110,34 @@ const ORDINARY_NAME_TOKENS = new Set([
   "works",
 ]);
 
+/**
+ * Corporate-form tokens SHORT enough to survive the short-name pass below.
+ * `entityNameTokens`'s 4+ character rule already drops `inc` / `ltd` before
+ * `GENERIC_NAME_TOKENS` is ever consulted, so that set never had to list them.
+ * The short-name pass has no length floor to hide behind and needs its own.
+ * Upper-case because that pass is case-sensitive.
+ */
+const SHORT_GENERIC_NAME_TOKENS = new Set([
+  "AB",
+  "AG",
+  "AS",
+  "BV",
+  "CO",
+  "INC",
+  "KK",
+  "LLC",
+  "LP",
+  "LTD",
+  "NV",
+  "OY",
+  "PLC",
+  "PTE",
+  "PTY",
+  "SA",
+  "SE",
+  "SPA",
+]);
+
 /** Lower-case, strip every non-alphanumeric run to a single space, trim. */
 export function normalizeEntityName(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -134,26 +162,86 @@ export function entityNameTokens(name: string): Set<string> {
   );
 }
 
+/**
+ * The SHORT identifying tokens of a company name — `3M`, `XP`, `BP` — kept in
+ * their original case and matched case-sensitively, exactly like the ticker.
+ *
+ * These exist because `entityNameTokens` drops everything under 4 characters,
+ * which leaves `3M Company` and `XP Inc.` with no name signal at all. Without
+ * them the guard has nothing but the ticker for such issuers, and coverage says
+ * "3M" far more often than it says "MMM".
+ *
+ * **Case-sensitivity is the whole safety argument, and it is the ticker rule's.**
+ * A 2-character token matched case-insensitively is the `ON` / `IT` hazard that
+ * made the ticker rule case-sensitive in the first place; `xp` and `3m` in
+ * running prose must not verify anything. Requiring the upper-case form leaves
+ * the same residual the ticker rule already accepts (an ALL-CAPS headline can
+ * collide) and no new one — this pass is deliberately no more permissive than
+ * the rule it copies.
+ *
+ * Restricted to 2–3 characters and all-caps: a single letter (`T`) is too noisy
+ * to carry identity, and the all-caps test is what excludes the mixed-case
+ * corporate forms (`Inc`, `Co`, `The`) without needing to enumerate them.
+ * `SHORT_GENERIC_NAME_TOKENS` then removes the forms that ARE written in caps.
+ */
+export function shortNameTokens(name: string): Set<string> {
+  return new Set(
+    name
+      .split(/[^A-Za-z0-9]+/)
+      .filter(
+        (t) =>
+          t.length >= 2 &&
+          t.length <= 3 &&
+          // All-caps, and containing at least one letter (excludes `35`).
+          t === t.toUpperCase() &&
+          t !== t.toLowerCase() &&
+          !SHORT_GENERIC_NAME_TOKENS.has(t),
+      ),
+  );
+}
+
 /** The resolved identity of the run's subject, as far as we know it. */
 export type SubjectEntity = {
-  /** The requested ticker, upper-cased. */
+  /** The requested ticker, upper-cased. Matched case-sensitively. */
   ticker: string;
-  /** Conformed company name from the resolved profile. Never empty. */
+  /** Conformed company name from the resolved profile. May be empty when the
+   *  provider returned a profile with no name — the ticker still identifies. */
   name: string;
   /** The company's own site hostname (`nvidia.com`), when the profile carries
    *  one — a first-party publisher is the subject by definition. */
   websiteHost: string | null;
-  /** Identifying name tokens, precomputed. May be empty (short-token names). */
+  /** Identifying 4+ character name tokens, lower-cased, matched
+   *  case-insensitively. May be empty (`3M Company`, `XP Inc.`). */
   nameTokens: Set<string>;
+  /** Short all-caps name tokens (`3M`), matched case-sensitively. Usually
+   *  empty; the reason a short-named issuer still has a name signal. */
+  shortNameTokens: Set<string>;
 };
 
 /**
- * Build a subject identity from a resolved company profile. Returns `null`
- * when there is no trustworthy name to match against — an unavailable profile,
- * an empty name, or a name with no distinctive tokens. A null subject must
- * disable the check, never fail it closed: dropping every snippet because we
- * could not identify the company would be a worse failure than the one this
- * guards against.
+ * Build a subject identity from a resolved company profile. Returns `null` only
+ * when the profile itself never resolved, or when it resolved to an identity
+ * that could not match anything at all.
+ *
+ * **A thin name is not an absent identity.** This used to return `null` the
+ * moment `entityNameTokens` came back empty, which is the case for every issuer
+ * whose name is short or all-boilerplate — `XP Inc.`, `3M Company`. A null
+ * subject makes `applyEntityCheck` tag the payload `unchecked` and keep every
+ * result, so those issuers received NONE of this guard's protection, and short
+ * ambiguous symbols are precisely the ones whose searches pull another
+ * company's pages. The identity was never actually missing: the ticker, the
+ * first-party domain, and the short name tokens were all sitting right here.
+ * This is the same correction made for ordinary-word tokens, which are demoted
+ * at match time rather than filtered out for exactly this reason — the
+ * principle was right, it just was not applied to the inputs.
+ *
+ * The one case that still returns null is a subject with NO signal whatsoever:
+ * no ticker, no host, no name token of either kind. Such a subject matches
+ * nothing, so every result would be dropped — and dropping every snippet
+ * because we could not identify the company is a worse failure than the one
+ * this guards against. An unresolved or `"unavailable"` profile stays null for
+ * the same reason it always did: we would be running the check on a ticker
+ * nothing has confirmed, and the honest answer there is `unchecked`.
  */
 export function subjectEntityFromProfile(
   ticker: string,
@@ -161,14 +249,26 @@ export function subjectEntityFromProfile(
 ): SubjectEntity | null {
   if (profile == null || profile.source === "unavailable") return null;
   const name = typeof profile.name === "string" ? profile.name.trim() : "";
-  if (name === "") return null;
+  const normalizedTicker = ticker.toUpperCase().trim();
   const nameTokens = entityNameTokens(name);
-  if (nameTokens.size === 0) return null;
+  const shortTokens = shortNameTokens(name);
+  const websiteHost = hostOf(typeof profile.website === "string" ? profile.website : null);
+  // Nothing to match on at all — see the note above on why this must disable
+  // the check rather than fail it closed.
+  if (
+    normalizedTicker === "" &&
+    websiteHost === null &&
+    nameTokens.size === 0 &&
+    shortTokens.size === 0
+  ) {
+    return null;
+  }
   return {
-    ticker: ticker.toUpperCase(),
+    ticker: normalizedTicker,
     name,
-    websiteHost: hostOf(typeof profile.website === "string" ? profile.website : null),
+    websiteHost,
     nameTokens,
+    shortNameTokens: shortTokens,
   };
 }
 
@@ -203,9 +303,10 @@ function casedTokenRun(text: string): string {
 
 /**
  * True when `text` names the subject — the ticker as a standalone token, a
- * distinctive token of the company name, or two of its ordinary-word tokens
- * ADJACENT to one another. Substring matching is deliberately avoided (token
- * equality only), so `marks` does not match `marketwatch`.
+ * short all-caps name token (`3M`), a distinctive token of the company name, or
+ * two of its ordinary-word tokens ADJACENT to one another. Substring matching is
+ * deliberately avoided (token equality only), so `marks` does not match
+ * `marketwatch`.
  *
  * **An ordinary-word name token never verifies alone.** `Target Corporation`
  * reduces to `target`, and "the analyst raises the price target" is prose about
@@ -247,8 +348,14 @@ function casedTokenRun(text: string): string {
 export function textMentionsEntity(text: string, subject: SubjectEntity): boolean {
   // Padded-token-run for the ticker so a dotted class share (`BRK.B` → `BRK B`)
   // matches as a token sequence rather than a single token.
+  const casedText = casedTokenRun(text);
   const tickerRun = casedTokenRun(subject.ticker);
-  if (tickerRun.trim() !== "" && casedTokenRun(text).includes(tickerRun)) return true;
+  if (tickerRun.trim() !== "" && casedText.includes(tickerRun)) return true;
+  // Short name tokens ride the same case-SENSITIVE run as the ticker, for the
+  // same reason: `3m` in prose is not a mention of 3M.
+  for (const t of subject.shortNameTokens) {
+    if (casedText.includes(` ${t} `)) return true;
+  }
   const normalized = normalizeEntityName(text);
   if (normalized === "") return false;
   // Ordered, because the ordinary-token rule is about adjacency; the set is the

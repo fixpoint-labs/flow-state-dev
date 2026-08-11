@@ -57,11 +57,50 @@ describe("subjectEntityFromProfile", () => {
     expect(subjectEntityFromProfile("NVDA", null)).toBeNull();
   });
 
-  it("returns null when the name carries no distinctive tokens", () => {
-    // `XP Inc.` is entirely short + boilerplate tokens. Checking snippets
-    // against an empty token set would reject every legitimate result, so the
-    // leaf reports "unknown identity" and lets the caller skip the check.
-    expect(subjectEntityFromProfile("XP", { source: "yahoo", name: "XP Inc." })).toBeNull();
+  it("keeps the guard ON for a name with no 4+ character tokens", () => {
+    // `XP Inc.` and `3M Company` reduce to nothing under the 4-char rule. This
+    // used to return null, which tags every payload `unchecked` and RETAINS all
+    // results — so the issuers most likely to pull another company's pages got
+    // no protection at all. The identity was never missing: ticker, domain, and
+    // the short all-caps name token were all present.
+    const xp = subjectEntityFromProfile("XP", {
+      source: "yahoo",
+      name: "XP Inc.",
+      website: "https://www.xpinc.com",
+    }) as SubjectEntity;
+    expect(xp).not.toBeNull();
+    expect(xp.nameTokens.size).toBe(0);
+    expect([...xp.shortNameTokens]).toEqual(["XP"]);
+    expect(xp.websiteHost).toBe("xpinc.com");
+
+    const mmm = subjectEntityFromProfile("MMM", {
+      source: "finnhub",
+      name: "3M Company",
+    }) as SubjectEntity;
+    expect(mmm).not.toBeNull();
+    expect(mmm.nameTokens.size).toBe(0);
+    // `Company` is boilerplate; `3M` is the identity coverage actually uses.
+    expect([...mmm.shortNameTokens]).toEqual(["3M"]);
+  });
+
+  it("does not treat a short corporate form as an identity", () => {
+    // `Siemens AG` must not resolve `AG` as a short name token — it is a
+    // corporate form, and the all-caps test alone would let it through.
+    const siemens = subjectEntityFromProfile("SIEGY", {
+      source: "yahoo",
+      name: "Siemens AG",
+    }) as SubjectEntity;
+    expect([...siemens.shortNameTokens]).toEqual([]);
+    expect([...siemens.nameTokens]).toEqual(["siemens"]);
+  });
+
+  it("returns null only when nothing at all can be matched on", () => {
+    // The remaining honest no-identity case: no ticker, no host, no name token
+    // of either kind. Such a subject matches nothing, so running the check
+    // would drop every result — worse than the contamination it guards against.
+    expect(
+      subjectEntityFromProfile("", { source: "yahoo", name: "Inc.", website: null }),
+    ).toBeNull();
   });
 });
 
@@ -179,6 +218,37 @@ describe("textMentionsEntity", () => {
     expect(
       textMentionsEntity("Q3 results https://ex.com/american-financial-group-q3", afg),
     ).toBe(true);
+  });
+
+  it("matches a short name token case-sensitively, like the ticker", () => {
+    // `3M Company` has no 4+ character token, so `3M` IS the name signal.
+    // Coverage says "3M" far more often than "MMM", and without this the guard
+    // would drop most genuine 3M articles the moment it started running.
+    const mmm = subjectEntityFromProfile("MMM", {
+      source: "finnhub",
+      name: "3M Company",
+    }) as SubjectEntity;
+    expect(textMentionsEntity("3M lifts full-year guidance", mmm)).toBe(true);
+    expect(textMentionsEntity("MMM declares a dividend", mmm)).toBe(true);
+    // Case-sensitive for the same reason the ticker rule is: a 2-character
+    // token matched loosely lets routine prose verify anything.
+    expect(textMentionsEntity("the 3m distance was measured", mmm)).toBe(false);
+    // And a genuinely unrelated company is now DROPPED rather than retained —
+    // the whole point of keeping the guard on for short names.
+    expect(textMentionsEntity("Tesla raises the price target", mmm)).toBe(false);
+  });
+
+  it("checks a short-named issuer against the wrong company's prose", () => {
+    // The defect this closes, end to end: XP Inc. used to resolve to no
+    // identity, so an unrelated result was retained as `unchecked` evidence.
+    const xp = subjectEntityFromProfile("XP", {
+      source: "yahoo",
+      name: "XP Inc.",
+    }) as SubjectEntity;
+    expect(textMentionsEntity("XP Inc. posts record client assets", xp)).toBe(true);
+    expect(textMentionsEntity("Nvidia's data-center mix keeps climbing", xp)).toBe(false);
+    // Lower-case `xp` is ordinary prose ("gained xp"), not a mention.
+    expect(textMentionsEntity("the player gained xp quickly", xp)).toBe(false);
   });
 
   it("still verifies a distinctive token with no adjacency requirement", () => {
