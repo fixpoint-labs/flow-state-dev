@@ -216,6 +216,43 @@ describe("the detached payload gate rejects what a round-trip would mangle", () 
     );
   });
 
+  it("rejects a non-enumerable property, which vanishes with no trace", () => {
+    // `Object.entries` does not see it and neither does `JSON.stringify`, so
+    // the walk would never look at it and the value would arrive `{}` with
+    // nothing saying a property was dropped — the symbol-key failure in a
+    // different spelling.
+    const auth: Record<string, unknown> = {};
+    Object.defineProperty(auth, "token", { value: "secret", enumerable: false });
+    expect(() => assertJsonSafe({ auth }, { label })).toThrow(
+      /\.auth\.token is a non-enumerable property/
+    );
+  });
+
+  it("rejects an accessor, because serialization reads it a second time", () => {
+    // The walk validates what the getter returns NOW; `JSON.stringify` calls it
+    // again and ships whatever it returns THEN. Nothing makes the two agree, so
+    // a gate that accepted this would be checking a value that never crossed.
+    let reads = 0;
+    const payload = {
+      auth: {
+        get token() {
+          reads += 1;
+          return reads === 1 ? "safe" : new Date();
+        },
+      },
+    };
+    expect(() => assertJsonSafe(payload, { label })).toThrow(
+      /\.auth\.token is an accessor property/
+    );
+  });
+
+  it("accepts a non-enumerable property that is an array's own length", () => {
+    // `length` is non-enumerable by specification rather than by anyone's
+    // declaration, and it is not dropped — it IS the array. Rejecting it would
+    // refuse every array the gate ever sees.
+    expect(() => assertJsonSafe({ rows: [1, 2, 3] }, { label })).not.toThrow();
+  });
+
   it("rejects an array's non-index properties, dropped the same way", () => {
     const rows: unknown[] & { total?: number } = [1, 2];
     rows.total = 2;

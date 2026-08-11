@@ -45,12 +45,20 @@ import {
   type CheckBoardOutput,
 } from "../schemas";
 import { boardQuiescence } from "../quiescence";
+import type { RunsElsewhere } from "../shared";
 
 export interface CheckBoardOptions {
   name: string;
   collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
   onIdle: "wait" | "complete" | "complete-or-blocked";
   shouldExit?: (collection: TaskCollectionRef) => boolean;
+  /**
+   * Rows a Workstream is running (FIX-982). Forwarded verbatim to
+   * `boardQuiescence`, which is the only thing that reads it — this block
+   * keeps mapping the verdict straight onto its `reason` and holds no second
+   * opinion about what counts as in-flight.
+   */
+  runsElsewhere?: RunsElsewhere;
 }
 
 export function createCheckBoard(options: CheckBoardOptions) {
@@ -59,6 +67,7 @@ export function createCheckBoard(options: CheckBoardOptions) {
     collection: collectionFactory,
     onIdle,
     shouldExit,
+    runsElsewhere,
   } = options;
 
   return handler({
@@ -79,6 +88,7 @@ export function createCheckBoard(options: CheckBoardOptions) {
       const verdict = boardQuiescence(collection, {
         onIdle,
         ...(shouldExit !== undefined ? { shouldExit } : {}),
+        ...(runsElsewhere !== undefined ? { runsElsewhere } : {}),
       });
       if (verdict !== "continue") {
         return { shouldContinue: false, reason: verdict };

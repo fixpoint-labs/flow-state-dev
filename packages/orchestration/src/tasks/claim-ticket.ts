@@ -22,6 +22,12 @@
  *   ticket match again (the ABA case). `Task.createdAt` is already persisted,
  *   so this costs no schema change.
  *
+ * A fifth field, `incarnationId`, is **carried and not compared here**. The
+ * guard's four fields are the ones every write presents; the nonce is for the
+ * one holder that re-verifies its claim in a different process, where a
+ * millisecond stamp is not enough to tell two incarnations apart. See its own
+ * doc on {@link TaskClaimTicket}.
+ *
  * Tickets are **server-derived and never caller-supplied** (BP-031): they are
  * minted here from a claim the substrate just committed. A model naming a task
  * id therefore supplies the *target* of a check and never the *authority* for
@@ -46,6 +52,23 @@ export interface TaskClaimTicket {
   readonly attempt: number;
   /** `task.createdAt` as of the claim — task identity across delete/recreate. */
   readonly createdAt: number;
+  /**
+   * `task.incarnationId` as of the claim — the row's identity nonce, and the
+   * only one of these fields that survives a same-millisecond recreate.
+   *
+   * `createdAt` above is a millisecond clock, and a delete-then-recreate under
+   * the same id lands in the same millisecond often enough (measured 198/200,
+   * see `schema/task.ts`) that the two rows share it. Carried so a holder that
+   * has to re-verify its claim *across a process boundary* — the detached start
+   * gate is the one that does — can ask the question `createdAt` cannot answer.
+   *
+   * **Absent on a row persisted before `incarnationId` shipped, and on any
+   * hand-written `TaskCollectionRef` that maintains no provenance** (BP-030).
+   * A reader compares it only when both sides carry one, exactly as
+   * `didWriteLand`'s incarnation arm does; absent is "cannot tell", never "does
+   * not match".
+   */
+  readonly incarnationId?: string;
 }
 
 /**
@@ -60,6 +83,11 @@ export const taskClaimTicketSchema = z.object({
   taskId: z.string(),
   attempt: z.number(),
   createdAt: z.number(),
+  // Declared, not merely allowed: a Zod object strips keys it does not name, so
+  // an undeclared field would be dropped the moment the board patches the
+  // ticket onto its worker-body state. Optional because the row it is copied
+  // from may not carry one (BP-030).
+  incarnationId: z.string().optional(),
 });
 
 /**
@@ -75,6 +103,13 @@ export function ticketForClaim(collectionId: string, claimed: Task): TaskClaimTi
     taskId: claimed.id,
     attempt: claimed.attempts,
     createdAt: claimed.createdAt,
+    // Spread conditionally so an absent nonce stays an ABSENT KEY. A present
+    // key holding `undefined` reads the same to `ticketNamesTask` and does not
+    // to a JSON boundary, and this ticket's fields are copied onto a detached
+    // dispatch envelope that has to survive one.
+    ...(claimed.incarnationId !== undefined
+      ? { incarnationId: claimed.incarnationId }
+      : {}),
   };
 }
 

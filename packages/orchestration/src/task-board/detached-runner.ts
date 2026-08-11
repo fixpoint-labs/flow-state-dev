@@ -17,7 +17,8 @@
  *    cancel or a reclaim landing in that gap leaves the claimant proceeding from
  *    a stale snapshot — a cancelled task running to completion. The gate re-reads
  *    the row and aborts unless the claim is still current: `attempts` matches,
- *    `createdAt` matches, and the status is still `in_progress`.
+ *    `createdAt` matches, the row's incarnation matches, and the status is still
+ *    `in_progress`.
  * 2. **Worker selection.** The route comes from the row's own `assignee`, not
  *    from the dispatch envelope (BP-031). The envelope names a board; the ledger
  *    names the worker.
@@ -34,13 +35,24 @@
  *    calls running unfenced, silently: "no ticket presented" and "not a claimed
  *    worker" are the same condition to the guard.
  *
- * ## `createdAt` is why this is an identity check and not a counter check
+ * ## Why this is an identity check and not a counter check
  *
  * A task deleted and recreated under the same id inside the claim→spawn window
- * passes an attempt-only gate. Comparing `createdAt` closes that with a fact the
- * ticket already carries, so it costs no extra read.
+ * passes an attempt-only gate: the recreate resets `attempts`, and the
+ * replacement's first claim lands the counter right back where the dispatch
+ * left it. The gate therefore checks *which row* as well as *which attempt*.
+ *
+ * `createdAt` is the cheap half and not the sound half. It is a millisecond
+ * clock, and a delete-then-recreate under the same id lands inside the same
+ * millisecond often enough (measured 198/200, see `tasks/schema/task.ts`) that
+ * the replacement wears the original's stamp. `incarnationId` is the nonce
+ * minted per incarnation for exactly this, and it is the field that actually
+ * separates the two rows — with `createdAt` kept as the arm that still works on
+ * a row or an envelope predating the nonce. Both ride the ticket the board
+ * minted from the row it claimed, so neither costs an extra read.
  */
 import { sequencer, utility } from "@flow-state-dev/core";
+import type { DefinedCapability } from "@flow-state-dev/core";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import type { WorkstreamDispatchInput } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -130,6 +142,19 @@ export interface BuildDetachedRunnerOptions {
    * the slots and route a dispatch at a worker with no binding.
    */
   detached: readonly ResolvedWorkerSlot[];
+  /**
+   * The board's own resource declarations — the same `uses` the drain carries
+   * (FIX-982).
+   *
+   * **The runner is a second action root, not a step under the drain.** A
+   * detached dispatch enters here directly, so nothing the drain installed is
+   * in scope: without this the durable ledger resolves as a freshly-declared,
+   * empty collection and the start gate rejects every dispatch with "no such
+   * row on board" — the row is there, this execution simply never declared the
+   * resource holding it. Failing that way is what makes it worth naming: the
+   * message reads as a stale claim, and the claim is perfectly current.
+   */
+  uses?: readonly DefinedCapability[];
 }
 
 /**
@@ -171,7 +196,7 @@ function coordinateForTask(
 export function buildDetachedRunner(
   options: BuildDetachedRunnerOptions
 ): BlockDefinition<any, any> | undefined {
-  const { name, boardId, collection: collectionFactory, detached } = options;
+  const { name, boardId, collection: collectionFactory, detached, uses } = options;
   if (detached.length === 0) return undefined;
 
   // The same recorders the inline drain composes, bound to this board's
@@ -233,6 +258,9 @@ export function buildDetachedRunner(
   return sequencer({
     name: `${name}-workstream-runner`,
     stateSchema: detachedRunnerStateSchema,
+    // Same declarations the drain carries — see `uses` on the options type for
+    // why a second action root has to repeat them.
+    ...(uses !== undefined ? { uses } : {}),
   })
     .tap(async (dispatch: WorkstreamDispatchInput, ctx) =>
       // Same first-statement discipline the drain's worker body uses: the lease
@@ -264,6 +292,24 @@ export function buildDetachedRunner(
           throw new StaleDetachedClaimError(
             dispatch.taskId,
             "the row was deleted and recreated under the same id after this dispatch was addressed"
+          );
+        }
+        // The same question `createdAt` above asks, asked with a value that can
+        // actually answer it. Compared only when BOTH sides carry a nonce
+        // (BP-030): a row persisted before `incarnationId` shipped has none,
+        // and so does an envelope enqueued by the previous version, and neither
+        // is evidence of a recreate. Absence therefore leaves exactly the
+        // protection this gate had before — `createdAt` alone — rather than
+        // refusing work that is perfectly current.
+        if (
+          row.incarnationId !== undefined &&
+          dispatch.incarnationId !== undefined &&
+          row.incarnationId !== dispatch.incarnationId
+        ) {
+          throw new StaleDetachedClaimError(
+            dispatch.taskId,
+            "the row was deleted and recreated under the same id after this dispatch was " +
+              "addressed (its incarnation differs, though its creation stamp does not)"
           );
         }
         if (row.status !== "in_progress") {

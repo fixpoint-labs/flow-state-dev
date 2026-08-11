@@ -10,11 +10,13 @@
 import {
   fifoDispatcher,
   isClaimable,
+  leaseLapsed,
   priorityDispatcher,
   topologicalDispatcher,
   type Task,
   type TaskCollectionRef,
   type TaskDispatcher,
+  type TaskStatus,
 } from "../tasks";
 
 /**
@@ -67,14 +69,150 @@ export function depsSatisfied(
 }
 
 /**
+ * Would this row's work be *routed* to a Workstream rather than run in the
+ * drain that is asking (FIX-982)?
+ *
+ * A board that declares a worker `dispatch: { mode: "detached" }` hands its
+ * claimed rows to a Workstream, which settles them from its own session. The
+ * launching request must not wait on those — waiting on them is precisely the
+ * thing detachment exists to stop.
+ *
+ * Supplied by the board, which derives it from its own detached declarations,
+ * so a board with nothing detached passes nothing and every count below is the
+ * `count()` it always was.
+ *
+ * **A routing question, not a liveness one.** It answers *where this row's work
+ * belongs*, which is durable and knowable from declarations. Whether anybody is
+ * actually on the row right now is the lease's answer, and {@link countWaitable}
+ * asks it separately — see the "and only while the lease is live" section there
+ * for why the two cannot be collapsed.
+ */
+export type RunsElsewhere = (task: Task) => boolean;
+
+/**
+ * Count rows in `statuses`, minus the `in_progress` ones `runsElsewhere`
+ * places outside this drain.
+ *
+ * **Reads through `list` rather than `count` because `TaskFilter` has no
+ * predicate slot** — it matches on status, assignee and labels only, and
+ * "…and not running elsewhere" is expressible as none of the three. A detached
+ * coordinate is usually an assignee and would *almost* fit `filter.assignee`,
+ * but the uniform and floor cases do not (a floor worker is defined by the
+ * assignees it is NOT), so the predicate has to see the row. One pass either
+ * way; both callers below already ran one.
+ *
+ * **Only `in_progress` is subject to the exclusion**, and the other two
+ * statuses are deliberate omissions rather than oversights:
+ *
+ * - a `pending` detached row is work this drain has yet to claim and dispatch,
+ *   so excluding it would let the drain exit *before* spawning anything — the
+ *   feature inverted into a board that silently runs nothing;
+ * - an `awaiting_review` row is parked for an external actor whichever way it
+ *   was dispatched. That wait predates detachment and is not what the hand-off
+ *   changed, so it keeps holding the drain open. A detached board that parks
+ *   for review therefore still blocks its launching request; closing that is a
+ *   separate question about who owns a parked row, not this one.
+ *
+ * ## …and only while the lease is live
+ *
+ * `runsElsewhere` says where a row's work *belongs*. It cannot say whether
+ * anyone is on it, because it reads declarations and an assignee — facts that
+ * are just as true of a row nobody is running. A claimant that dies between
+ * `claim()` and the child's first breath leaves exactly that: `in_progress`,
+ * detached assignee, no worker anywhere. So does a child that was accepted and
+ * then died. Both become recoverable when the deadline passes, and excluding
+ * them on routing alone hides them from the drain at the moment they become so.
+ *
+ * **Where that bites is the worker loop's own ordering.** `claimTask` runs
+ * before `checkBoard`, so a drain that *starts* on a lapsed row reclaims it on
+ * its first iteration whatever this says. The reachable case is a worker
+ * already in flight: it parks in `idleWait`, the row's deadline passes, the
+ * wake test fires because `hasClaimableTask` now sees it — and the very next
+ * step is `checkBoard`, which without the conjunct below reports `drained` and
+ * ends the loop before it can circle back to `claimTask`. The board is declared
+ * drained with a claimed row on it that nothing will settle, and the two halves
+ * of the exit question have contradicted each other, which is the drift this
+ * module was collapsed to prevent.
+ *
+ * **No persisted "the hand-off was accepted" mark distinguishes those states**,
+ * which is why this is a lease check and not a new field. Whichever side of the
+ * spawn such a mark were written on, a crash lands in the gap: write it first
+ * and it is present for a hand-off that never happened; write it after and a
+ * crash between acceptance and the write leaves it absent for one that did. A
+ * mark moves the window; it does not close it — and it says nothing at all
+ * about a child that started and then died.
+ *
+ * The lease answers because it is the one fact here that *expires*. It is
+ * renewed from inside the child for as long as the child lives, so a live lease
+ * means a live worker somewhere and a lapsed one means the row is recoverable —
+ * the same reading `hasClaimableTask` and the substrate's own `claim` already
+ * take (FIX-1005).
+ *
+ * **The clock comes from the collection** for the reason `hasClaimableTask`
+ * names: the deadline was stamped against that clock by the claim write.
+ */
+function countWaitable(
+  collection: TaskCollectionRef,
+  statuses: TaskStatus[],
+  runsElsewhere?: RunsElsewhere
+): number {
+  if (runsElsewhere === undefined) return collection.count({ status: statuses });
+  const rows = collection.list({ status: statuses });
+  const now = collection.now();
+  let waiting = 0;
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i]!;
+    if (
+      row.status === "in_progress" &&
+      runsElsewhere(row) &&
+      !leaseLapsed(row, now)
+    ) {
+      continue;
+    }
+    waiting += 1;
+  }
+  return waiting;
+}
+
+/**
  * Count tasks the loop must wait on. `pending`, `in_progress`, and
  * `awaiting_review` are all in-flight — `awaiting_review` per FIX-443
  * §10.1, the others by definition. Terminal statuses don't count.
+ *
+ * `runsElsewhere` (FIX-982) drops the rows a Workstream is running. See
+ * {@link countWaitable} for which statuses it reaches and why.
  */
-export function inFlightCount(collection: TaskCollectionRef): number {
-  return collection.count({
-    status: ["pending", "in_progress", "awaiting_review"],
-  });
+export function inFlightCount(
+  collection: TaskCollectionRef,
+  runsElsewhere?: RunsElsewhere
+): number {
+  return countWaitable(
+    collection,
+    ["pending", "in_progress", "awaiting_review"],
+    runsElsewhere
+  );
+}
+
+/**
+ * Count the rows an active worker is holding — `in_progress` or
+ * `awaiting_review`. The `complete-or-blocked` arm reads this to ask whether
+ * anything is still producing state changes *in this drain*.
+ *
+ * Split out of `boardQuiescence`'s inline `count` so it takes the same
+ * `runsElsewhere` exclusion `inFlightCount` does. Without that the two arms
+ * would disagree about the same handed-off row — one calling the board drained,
+ * the other still seeing an active worker — which is the drift the quiescence
+ * module exists to prevent.
+ */
+export function activeWorkerCount(
+  collection: TaskCollectionRef,
+  runsElsewhere?: RunsElsewhere
+): number {
+  return countWaitable(
+    collection,
+    ["in_progress", "awaiting_review"],
+    runsElsewhere
+  );
 }
 
 /**
