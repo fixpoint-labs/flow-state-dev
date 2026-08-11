@@ -3,7 +3,11 @@
  *
  *   - fixture handler: loads the curated NVDA (or other ticker) fixture
  *   - Grok generator: live X/Twitter sentiment via Grok + xSearch hosted tool
- *   - unavailable handler: zeroed schema-valid payload tagged `unavailable`
+ *   - unavailable handler: schema-valid payload tagged `unavailable`, with
+ *     `null` for every score (nothing was read) rather than `0`, which is a
+ *     real sentiment reading an analyst would act on (FIX-1063). The Grok
+ *     route's own generator output schema stays strict — a model that read
+ *     posts and scored them `0` genuinely measured a zero.
  *
  * Live mode prefers Grok when `XAI_API_KEY` is set; otherwise it returns
  * `unavailable` (BP-020: no silent fallback to fixture data). Fixture mode

@@ -45,7 +45,15 @@ export function buildValuationSpine(args: {
   sector: string | null;
   quantComposites: { piotroskiF?: number; altmanZone?: string } | null;
   factorRanks: { compositeFactorPercentile?: number } | null;
-  technicals: { trend?: string; sma50?: number; sma200?: number } | null;
+  // Nullable per field: a short history yields a real `sma50` with no `sma200`
+  // and no `trend` (FIX-1063). Passed straight to `computeSetupScore`, which
+  // treats a missing reading as no momentum component rather than a neutral
+  // one — keep the two signatures in step.
+  technicals: {
+    trend?: string | null;
+    sma50?: number | null;
+    sma200?: number | null;
+  } | null;
   valuation: DerivedValuation | null;
 }): ValuationSpine {
   const er = computeExpectedReturn({

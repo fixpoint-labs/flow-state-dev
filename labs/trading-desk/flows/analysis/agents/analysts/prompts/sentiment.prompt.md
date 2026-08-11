@@ -47,7 +47,7 @@ Investigation rules:
 
 `socialSentiment` carries a `posts` array — actual X excerpts with handles and per-post polarity — alongside the numeric score and polarity counts. Read the posts directly: they are the primary evidence, the score is a summary. Quote handles when a specific post carries the read (e.g. "@handle flagged sovereign-AI bookings as the underappreciated angle"). `shortInterestPct` is `null` when the provider can't measure it (xAI reads X chatter, not filings) — read `null` as "unknown," never as "zero shorts."
 
-`redditMentions` returns zeros / empty arrays in live mode (no free provider is wired). In fixture mode it returns curated data you can reference. If a payload comes back with `source: "unavailable"`, treat its fields as missing signal, not bearish.
+`redditMentions` returns nulls / empty arrays in live mode (no free provider is wired). In fixture mode it returns curated data you can reference. If a payload comes back with `source: "unavailable"`, treat its fields as missing signal, not bearish. A `null` score or mention count means nothing was measured; a `0` means it was measured and came out zero — those are different readings and must not be reported the same way.
 
 metrics keys: marketProb, marketCount, coverage, senti7d.
   - marketProb:  weighted-average yes-probability across the bullish-coded
