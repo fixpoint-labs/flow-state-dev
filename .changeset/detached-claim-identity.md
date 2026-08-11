@@ -1,5 +1,6 @@
 ---
 "@flow-state-dev/orchestration": patch
+"@flow-state-dev/engine": patch
 "@flow-state-dev/core": patch
 ---
 
@@ -30,3 +31,23 @@ accessor properties by name. Both were invisible to the check and neither
 survives serialization intact: a non-enumerable property is dropped entirely, and
 a getter is read again during serialization and can return something other than
 the value that was checked.
+
+A request dispatched in-process is no longer reported as started before it has
+been registered. Registration is one store write and it can fail; until now that
+failure landed only on the run's own promise, which fire-and-forget callers do
+not hold. The visible effect: a task handed to a Workstream whose child never
+registered used to leave the task sitting untouched until lease recovery picked
+it up minutes later, and a `POST` to an action could ack a request that a later
+`GET` on its stream would not find. Both now fail at the point they went wrong.
+
+Handing a task to a Workstream is settled before the dispatch rather than after
+it, so the parent can no longer mark a task failed after successfully giving it
+away. A refused spawn still fails the task exactly as before; a dispatch that
+threw leaves the row for the next drain rather than settling work a child may
+already be running.
+
+A flow that declares detached work on a single board now checks which board a
+dispatch was addressed to. It previously skipped that check as an optimization,
+so a stored dispatch naming a board that had since been removed or renamed was
+run by whichever board was left — and if the two shared a ledger, nothing
+downstream could tell.

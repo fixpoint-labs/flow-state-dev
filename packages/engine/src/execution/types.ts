@@ -130,6 +130,24 @@ export type RunActionOptions<
    */
   onItem?: (item: OutputItem, kind: "added" | "updated" | "done") => void;
   /**
+   * Fired once this run's `activeRequests` entry has committed — the point the
+   * request becomes discoverable to a stream read, the stale-request sweeper
+   * and recovery (FIX-982).
+   *
+   * Exists because starting a run and having a run are different facts, and
+   * only `runAction` knows when the second one becomes true. `runAction` is
+   * async, so a caller holding its promise has a run that may still fail during
+   * registration; a caller that wants "it exists" without waiting for "it
+   * finished" has nothing else to await. The in-process dispatcher turns this
+   * into its handle's `accepted`, which is what a detached spawn awaits before
+   * it lets go of the task it handed over.
+   *
+   * Fires at most once, and never at all for a run that dies before
+   * registration — that failure surfaces on the returned promise, which is the
+   * signal a consumer pairs this with.
+   */
+  onRegistered?: () => void;
+  /**
    * Same-request continuation flag (FIX-811). Set by `continueRequest` when a
    * suspended/interrupted request re-enters under its OWN id. Triggers replay
    * mode: prior persisted items are loaded into a `ReplayLog` so completed
