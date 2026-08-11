@@ -49,6 +49,7 @@ import {
   type RunSummaryMemoInput,
 } from "./run-summary";
 import type { SessionState } from "./state";
+import { isPreDataHonestyFix } from "./data-honesty-contract";
 import {
   rewardToRiskStateSchema,
   type RewardToRiskState,
@@ -96,6 +97,11 @@ export const runArtifactsStateSchema = z.object({
   // (a completeness check can't otherwise tell a valid no-thesis run from a run
   // that silently dropped the thesis-alignment memo).
   hasUserThesis: z.boolean(),
+  // True when this run predates the data-honesty contract (FIX-1063) and its
+  // figures may therefore contain values nobody measured. Defaults TRUE, so a
+  // bundle read from a legacy session — or one where the field never wrote —
+  // is treated as unverified rather than silently vouched for.
+  preDataHonestyFix: z.boolean().default(true),
   // Phase-2 round-robin turn transcript. `null` when Phase 2 never produced a
   // turn (the debate-engagement judge needs the raw turns, not just the
   // consolidated bull/bear/RM memos) — never `{entries: []}` (see `buildRunArtifacts`).
@@ -205,6 +211,11 @@ export function buildRunArtifacts(
     // `!= null` (not `!== null`) so an absent field on a partial / legacy
     // session reads as "no thesis" rather than truthy-undefined (BP-030).
     hasUserThesis: sessionState.userThesis != null,
+    // Whether this run's stored figures predate the data-honesty contract
+    // (FIX-1063). Derived through the SAME predicate the Summary marker uses,
+    // so a scored artifact bundle and a rendered report can never disagree
+    // about whether a run is trustworthy. Absent stamp → pre-fix.
+    preDataHonestyFix: isPreDataHonestyFix(sessionState.dataHonestyContractVersion),
     p2Contributions: hasTranscript(p2Contributions) ? p2Contributions : null,
     memos: memos.map((memo) => ({
       key: memo.key,

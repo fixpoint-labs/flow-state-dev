@@ -55,6 +55,10 @@ function sessionState(overrides: Partial<SessionState> = {}): SessionState {
     portfolioMandate: null,
     householdTickerWeightPct: null,
     standingThesis: null,
+    // Default UNSTAMPED, so every test that doesn't opt in exercises the
+    // legacy/pre-fix read path (FIX-1063). The stamped case is asserted
+    // explicitly below.
+    dataHonestyContractVersion: null,
     ...overrides,
   };
 }
