@@ -47,6 +47,8 @@ pnpm fsdev run ... 2>/dev/null | jq -r 'select(.type=="content_delta") | .delta'
 
 `--quiet` silences stderr when you only want the NDJSON. `--log-level debug` adds nested-block events for tracing inside sequencers and routers.
 
+A run that prints `flow_complete` and then sits there is usually waiting on background work the flow started; stderr says so, unless you silenced it. See [Background work](./overview.md#background-work).
+
 ## Useful flag combinations
 
 | Flag | What it does | When to reach for it |

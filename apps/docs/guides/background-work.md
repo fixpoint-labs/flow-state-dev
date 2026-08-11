@@ -131,6 +131,8 @@ A task with no topic, or a blank one, falls back to its own task id. So a task t
 
 Starting a workstream is server-side only. There's no client call for it.
 
+You can exercise all of it from the terminal by running the flow against an `fsdev.config.*`. Whether the command waits for the background work before exiting depends on whether a queue is configured, and running without a config can't start it at all. See [Background work from the CLI](/docs/cli/overview#background-work).
+
 Read next: **[Background work](/docs/server/background-work)** for the HTTP surface, its paging, what `status` does and doesn't tell you, and the access rules the listing endpoint applies; **[Client overview](/docs/client/overview#background-work)** for reading it from an app; and **[Durable execution](/docs/advanced/durable-execution)** for what happens to a run that was interrupted.
 
 ## Nearby, and often confused

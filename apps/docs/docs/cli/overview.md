@@ -49,6 +49,65 @@ Use `-m` to swap models without code changes. Pass a model ID (e.g. `gpt-4o-mini
 
 `--seed-session`, `--seed-user`, and `--seed-org` let you start with specific state for debugging. Pass inline JSON or a file path. The seeded state is merged into the scopes before execution. Handy for reproducing issues that depend on prior state.
 
+## Background work
+
+A flow can hand a unit of work to a *workstream*, a background child session that keeps running after the request that started it has returned. `fsdev run` and `fsdev chat` can start one. What the command does about it depends on how the app is wired.
+
+| Your setup | What the command does |
+|---|---|
+| `fsdev.config.*`, no queue | Runs the work in this process, and waits for it before exiting |
+| `fsdev.config.*` with a queue adapter | Hands the work to the queue, and returns without waiting for it to run |
+| No config (directory discovery or `--no-config`) | Can't start background work; the call fails by name |
+| A `worker-only` process | Can't start background work; the call refuses by name |
+
+For what a workstream is and how tasks group into one, see [Work that outlives the turn](/guides/background-work).
+
+### Waiting for in-process work
+
+Without a queue, the workstream runs inside the same process as the command. The action that launched it returns straight away, which is what detaching means, so `flow_complete` lands on stdout while the background work is still going. The command holds the process open until that work finishes, and says so on stderr:
+
+```
+[flowstate] waiting for 1 detached request(s) to finish before shutdown {"pending":1}
+```
+
+A run whose NDJSON already looks complete but whose shell prompt hasn't come back is usually sitting here.
+
+`--quiet` suppresses the line, not the wait. So does `--log-level error`, since the notice is logged at `warn`. Either way the command stays up until the work is done.
+
+Background work can start more background work, and the wait covers descendants too. A flow that spawns without end won't wedge the command: after enough rounds it stops waiting and warns that the remaining work may be truncated by shutdown.
+
+`fsdev chat` waits at the equivalent point in its own life, which is when you leave the session rather than at the end of each turn.
+
+### With a queue, the command doesn't wait
+
+When the config hands `createFlowState` a worker adapter, background work goes to the queue instead of running in the command's own process, and the wait above doesn't apply.
+
+By the time the command returns, the request has been recorded and the queue has accepted the job. A failed store write or a rejected enqueue fails the dispatch rather than reporting a start, so a queue you can't reach surfaces as an error instead of as silence.
+
+None of that says the job survives, or that it ever runs. Whatever consumes the queue decides that, and a queue with nothing draining it is an ordinary state: the job sits in it, and the command finishes the same way it would if a worker were pulling from it. Read the workstream's own requests to find out what became of it. See [Background work](/docs/server/background-work).
+
+### Without a config, background work can't start
+
+Directory discovery and `--no-config` give the CLI flows and stores, and no runtime host for a workstream to start through. A block that reaches for one throws:
+
+```
+NoRequestHostError: This capability needs a runtime host, and none is wired on this context.
+```
+
+The error carries `code: "no-request-host"`, and on a task board the row the work was claimed for is recorded failed.
+
+Run against an `fsdev.config.*` to exercise a flow's background work from the terminal.
+
+### From a worker-only process
+
+A process whose worker adapter runs `mode: "worker-only"` consumes the queue and dispatches nothing, so a start is refused rather than run inside the worker:
+
+```ts
+{ ok: false, refused: "no-start-operation", detail: "…" }
+```
+
+Refusals come back as values rather than thrown errors, so a caller branches on `refused`. A task board turns one into a failed task row naming the refusal.
+
 ## Next steps
 
 - [Agent Dev Loop](./agent-dev-loop.md) — The recommended edit → `fsdev run` → read NDJSON loop, with worked examples and `jq` recipes. If you're iterating on a flow, start here.
