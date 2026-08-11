@@ -161,6 +161,29 @@ export interface CreateFlowStateOptions<
    */
   detectInterruptedOnStartup?: boolean;
 
+  /**
+   * How long `dispose()` waits for detached work running IN THIS PROCESS before
+   * shutting down anyway. Default: 30000 (30s). Queue-backed work is never
+   * waited for and this does not apply to it.
+   *
+   * A ceiling, not a target: work that finishes sooner is never delayed. When it
+   * expires, shutdown proceeds and reports the request and session ids it did
+   * not wait out, so abandoned work is named rather than silently dropped.
+   *
+   * Configurable because the two callers have genuinely different tolerances and
+   * no single number serves both well. A server disposing under a termination
+   * signal lives inside a platform grace period (commonly 30s) and cannot
+   * usefully exceed it — the process is killed regardless. A `fsdev run`
+   * verifying a slow flow has no such ceiling and may reasonably wait longer for
+   * an agent turn to finish, since watching that finish is the point of the run.
+   * The default is set for the first, because exceeding it there is futile;
+   * raise it for the second.
+   *
+   * `0` disables waiting entirely — a legitimate choice for a host that wants
+   * immediate shutdown, and it still reports what it left behind.
+   */
+  detachedDrainTimeoutMs?: number;
+
   /** Forwarded to `createFlowApiRouter` for power users (custom transports). */
   adapters?: CreateFlowApiRouterOptions["adapters"];
 

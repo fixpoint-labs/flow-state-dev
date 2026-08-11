@@ -713,6 +713,7 @@ export async function createExecutionContext<
           },
           startOperation: options.requestHost.startOperation,
           parentTask: options.requestHost.parentTask,
+          effectiveRuntimeConfig: options.effectiveRuntimeConfig,
           liveness: {
             heartbeatIntervalMs: flow.request?.heartbeatIntervalMs,
             staleThresholdMs: options.requestHost.staleThresholdMs,

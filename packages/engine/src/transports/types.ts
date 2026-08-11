@@ -23,6 +23,7 @@ import type { ResponseEmitter } from "../streaming/response-emitter";
 import type { LiveRequestStream } from "../streaming/live-stream";
 import type { StoreRegistry } from "../stores/types";
 import type { RuntimeLogger } from "../execution/logging";
+import type { RuntimeConfig } from "../runtime-config";
 import type { ExecutionResult } from "../execution/types";
 import type {
   ContinueRequestOptions,
@@ -95,6 +96,38 @@ export interface InboundRequestEnvelope {
 
   /** Adapter-specific provenance (webhook headers, MCP session ids, etc.). */
   metadata?: Record<string, unknown>;
+
+  /**
+   * Runtime config to run this dispatch under, instead of the host's own
+   * (FIX-1077).
+   *
+   * Server-set and internal, like `source` and `resolvedActionCore` — never read
+   * from a request body, so it adds no caller-facing surface. Today's one writer
+   * is the detached start operation: a child continues the launching request's
+   * work, and that request may be running under a config the caller derived
+   * (`fsdev run` builds one so `--model` applies), which the host was never
+   * constructed with.
+   *
+   * **The rule this field exists for: a detached child inherits the LAUNCHING
+   * REQUEST's effective config, not the host's construction-time one.** A host
+   * is built once; a caller may run any given request under a config it derived
+   * (`fsdev run` builds `{ ...appConfig, modelResolver, logger }` so `--model`
+   * takes effect), and the child is that request's own work continued in the
+   * background.
+   *
+   * **And the limit, which is part of the rule rather than an exception to it:
+   * it cannot cross a serialization boundary.** A `RuntimeConfig` holds live
+   * resolvers and providers, so the external-dispatcher branch ignores this — a
+   * queued job runs under its own worker's config, which is the only thing that
+   * process can honour. Carrying just a model *id* across would not fix it: the
+   * worker has its own gateways and keys, so a forced id may not resolve there
+   * at all. The host therefore WARNS at the dispatch that drops an override
+   * rather than pretending it applied.
+   *
+   * Three separate rounds of fixes rediscovered this limit one instance at a
+   * time. It is written here so the fourth does not have to.
+   */
+  runtimeConfig?: RuntimeConfig;
 
   /**
    * Pre-resolved action core, set ONLY by adapters for an event dispatch that

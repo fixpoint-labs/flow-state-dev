@@ -41,14 +41,14 @@ For production, `fsdev serve` runs the same flow API and MCP endpoints with no D
 |------|---------|-------------|
 | `-p, --port <port>` | `4200` | Port to listen on |
 | `--flow-dir <path>` | auto-discover | Override flow discovery root (repeatable) |
-| `-m, --model <model>` | — | Override model for all generator blocks |
+| `-m, --model <model>` | — | Override model for generator blocks that run in this process. See [Model overrides](/docs/cli/overview#model-overrides) |
 | `--no-open` | — | Don't open the browser automatically |
 
 ### Example
 
 ```bash
 # Start with a custom port and model override
-fsdev dev --port 3000 --model gpt-4o-mini
+fsdev dev --port 3000 --model openai/gpt-5.4-mini
 
 # Point at a specific flow directory
 fsdev dev --flow-dir ./my-flows

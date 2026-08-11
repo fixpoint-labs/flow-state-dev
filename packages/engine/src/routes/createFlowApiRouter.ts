@@ -46,6 +46,7 @@ import type {
   TransportRoute
 } from "../transports/types";
 import type { FlowDispatcher } from "../transports/dispatcher";
+import type { ConcurrencyArbiter } from "../transports/concurrency/arbiter";
 
 /**
  * Public router adapter options.
@@ -242,6 +243,14 @@ export type CreateFlowApiRouterOptions = {
    * external worker (e.g., BullMQ WorkerDispatcher).
    */
   dispatcher?: FlowDispatcher;
+  /**
+   * Concurrency arbiter for this router's host. Defaults to a fresh one.
+   *
+   * Passed by `createFlowState` when it also built a host for detached
+   * dispatch, so a declared `queue`/`reject` policy is enforced once across the
+   * process rather than once per host (FIX-1077).
+   */
+  arbiter?: ConcurrencyArbiter;
 
   /**
    * @internal — set by `createFlowState`, which has already resolved its
@@ -457,7 +466,8 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     ...options,
     runtimeConfig,
     internalSeams: NOOP_INTERNAL_ROUTE_SEAMS,
-    dispatcher: options.dispatcher
+    dispatcher: options.dispatcher,
+    arbiter: options.arbiter
   });
 
   const sweeper = createStaleRequestSweeper({

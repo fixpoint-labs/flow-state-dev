@@ -12,6 +12,7 @@ import type { RuntimeLogger } from "../execution/logging";
 import type { StoreRegistry } from "../stores/types";
 import type { ErrorCaptureBlockInfo, ErrorCaptureHandler } from "../errors/error-capture";
 import type { DetachedStartOperation, ParentTaskBinding } from "./create-request-host";
+import type { RuntimeConfig } from "../runtime-config";
 
 export type RequestRuntime = {
   requestId: string;
@@ -105,6 +106,22 @@ export type CreateExecutionContextOptions<
    * through a host (a unit test, a hand-built context).
    */
   requestHost?: RequestHostConstructionInputs;
+  /**
+   * The runtime config THIS request is actually running under (FIX-1077).
+   *
+   * Deliberately not folded into `requestHost` above: that bag rides the shared
+   * `runtimeConfig.requestHost` object, which is process-wide, and this value is
+   * per-request. A caller may hand `runAction` a derived config — `fsdev run`
+   * builds `{ ...appConfig, modelResolver, logger }` so `--model` applies — and
+   * a detached child is that request's own work continued in the background, so
+   * it inherits this rather than whatever the host was constructed with. Without
+   * it a `--model` run's background work silently resolved the app's default
+   * model, which is precisely what `--model` exists to control.
+   *
+   * Absent → a detached child falls back to the dispatching host's own config,
+   * which is the correct answer when no caller derived one.
+   */
+  effectiveRuntimeConfig?: RuntimeConfig;
 };
 
 /**
