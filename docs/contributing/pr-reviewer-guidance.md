@@ -345,11 +345,17 @@ What goes down here:
   <summary><b>Engineering calls</b> — decided along the way, no product sign-off needed</summary>
   ```
 
-  On a spec PR this is where the §6 Decisions that aren't product decisions live, so §6
-  stays complete. **Omit the block when nothing was filtered out** — never pad it, and never
-  keep a decision out of §6 just to have something to put here. Expect it empty on a spec PR
-  whose §6 is already product-only, and non-empty on most implementation PRs, where the
-  decisions made while building genuinely mix the two.
+  **Omit the block when nothing was filtered out** — never pad it, and never keep a decision
+  out of §6 just to have something to put here.
+
+  It earns its place on an **implementation PR**, where the decisions made while building
+  genuinely mix the two and the PR body is the only place they are written down. On a **spec
+  PR** it is a safety net rather than a section: a compliant §6 is product-only by
+  construction ([`spec-template.md`](spec-template.md) → §6), so normally nothing filters out
+  and the block is omitted. It appears only when §6 collected an implementation call the
+  filters caught, which keeps §6 complete without the reader having to approve it.
+  **Implementation calls a compliant spec made deliberately live in Part II**, which is in the
+  committed doc diff a reviewer already reads — don't copy them into the body.
 - **The long-form case.** On a spec PR, the rest of Part I — tradeoffs, focus practices,
   worked examples, the Decisions in full. Blocks 1–3 above are §1, §2 and the §6 Decisions
   that passed the filters, so the collapsed block picks up where they stop and nothing is
