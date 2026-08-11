@@ -23,7 +23,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler, requireRequestHost } from "@flow-state-dev/core";
-import type { StartDetachedResult } from "@flow-state-dev/core/types";
+import type { ModelResolver, StartDetachedResult } from "@flow-state-dev/core/types";
 import { createFlowState, inMemoryStores, runAction } from "../../src";
 import type { FlowStateRuntime, WorkerAdapter } from "../../src/flowstate/types";
 
@@ -34,8 +34,15 @@ type Observed = {
   start?: StartDetachedResult;
   error?: string;
   /** One entry per child request that executed the workstream core. */
-  children: { sessionId: string; input: unknown }[];
+  children: { sessionId: string; input: unknown; model?: string }[];
 };
+
+/** A resolver that reports its own identity, so the child's is observable. */
+function markerResolver(marker: string): ModelResolver {
+  const resolver = ((): unknown => ({ modelId: marker })) as unknown as ModelResolver;
+  (resolver as unknown as { resolveId: (id: string) => string }).resolveId = (id) => id;
+  return resolver;
+}
 
 /**
  * A flow whose action detaches, plus the workstream core the child enters.
@@ -46,7 +53,14 @@ type Observed = {
  * without it `startDetached` refuses `no-workstream-core` long before it reaches
  * the start operation.
  */
-function detachingFlow(kind: string, observed: Observed) {
+function detachingFlow(
+  kind: string,
+  observed: Observed,
+  options: {
+    coreDelayMs?: number;
+    concurrency?: { policy: "queue" | "reject" | "allow"; key: "user" | "session" };
+  } = {}
+) {
   const launcher = handler({
     name: "launch",
     inputSchema: z.object({}),
@@ -69,14 +83,27 @@ function detachingFlow(kind: string, observed: Observed) {
     inputSchema: z.object({}).passthrough(),
     outputSchema: z.object({}),
     execute: async (input, ctx) => {
-      observed.children.push({ sessionId: ctx.session.identity.id, input });
+      // Deliberately slow when asked: a child that finishes inside the parent's
+      // own turn cannot show whether anything waited for it.
+      if (options.coreDelayMs !== undefined) {
+        await new Promise((resolve) => setTimeout(resolve, options.coreDelayMs));
+      }
+      const resolved = (await ctx.resolveModel("probe")) as { modelId?: string };
+      observed.children.push({
+        sessionId: ctx.session.identity.id,
+        input,
+        model: resolved?.modelId
+      });
       return {};
     }
   });
 
   const flow = defineFlow({
     kind,
-    actions: { launch: { inputSchema: z.object({}), block: launcher } }
+    actions: { launch: { inputSchema: z.object({}), block: launcher } },
+    ...(options.concurrency !== undefined
+      ? { request: { concurrency: options.concurrency } }
+      : {})
   })({ id: kind });
 
   (flow as { workstream?: unknown }).workstream = { block: core };
@@ -126,7 +153,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     const state = createFlowState({
       flows: { detaching: flow },
       stores: { default: { primary: inMemoryStores() } },
-      modelResolver: (() => undefined) as never
+      modelResolver: markerResolver("app-default")
     });
 
     // getRouter()/ready() is never called. This is the whole topology.
@@ -194,7 +221,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     const state = createFlowState({
       flows: { detaching: flow },
       stores: { default: { primary: inMemoryStores() } },
-      modelResolver: (() => undefined) as never
+      modelResolver: markerResolver("app-default")
     });
 
     // The `fsdev serve` / `fsdev dev` order: the runtime resolves first (the
@@ -219,6 +246,102 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     await state.dispose();
   });
 
+  it("dispose() waits for an in-flight child instead of closing the stores under it", async () => {
+    const observed: Observed = { children: [] };
+    // Slow enough that the child is provably mid-flight when the parent returns.
+    const flow = detachingFlow("runtime-drain", observed, { coreDelayMs: 60 });
+
+    const state = createFlowState({
+      flows: { detaching: flow },
+      stores: { default: { primary: inMemoryStores() } },
+      modelResolver: markerResolver("app-default")
+    });
+
+    const runtime = await state.getRuntime();
+    await runLikeCli(runtime, flow, "s_parent");
+    expect(observed.start).toMatchObject({ ok: true });
+
+    // The launching request returned first — that is detachment working, and it
+    // is also the exact window in which the CLI used to tear everything down.
+    expect(observed.children).toEqual([]);
+
+    await state.dispose();
+
+    // Without the drain, `fsdev run` disposed here: pooled stores closed while
+    // the child was still writing, the child failed on a closed store, and its
+    // task row was stranded `in_progress` forever. Nothing in the parent's own
+    // output said so.
+    expect(observed.children).toHaveLength(1);
+
+    // And the child got far enough to do real work, not merely to start.
+    expect(observed.children[0]!.input).toEqual({ note: "detached-payload" });
+  });
+
+  it("the drain survives a queued concurrency policy instead of wedging on it", async () => {
+    const observed: Observed = { children: [] };
+    const flow = detachingFlow("runtime-drain-queued", observed, {
+      coreDelayMs: 30,
+      // The shape that makes a detached child queue on the same key its parent
+      // would hold. A drain that waited for the child to be *executing* from
+      // inside the parent would deadlock here — the child cannot start until the
+      // key is free, and the key is not free until the parent returns.
+      concurrency: { policy: "queue", key: "user" }
+    });
+
+    const state = createFlowState({
+      flows: { detaching: flow },
+      stores: { default: { primary: inMemoryStores() } },
+      modelResolver: markerResolver("app-default")
+    });
+
+    const runtime = await state.getRuntime();
+    await runLikeCli(runtime, flow, "s_parent");
+    expect(observed.start).toMatchObject({ ok: true });
+
+    // The drain runs at dispose, after the launching request has settled, so the
+    // key it might have held is already released. Waiting here is a wait, never
+    // a cycle.
+    await state.dispose();
+    expect(observed.children).toHaveLength(1);
+  });
+
+  it("the child inherits the CALLER's runtime config, not the host's", async () => {
+    const observed: Observed = { children: [] };
+    const flow = detachingFlow("runtime-config-inherit", observed);
+
+    const state = createFlowState({
+      flows: { detaching: flow },
+      stores: { default: { primary: inMemoryStores() } },
+      modelResolver: markerResolver("app-default")
+    });
+
+    const runtime = await state.getRuntime();
+
+    // Exactly what `fsdev run --model` builds: the app's config with the
+    // resolver swapped, handed to `runAction` as a DERIVED object. The host was
+    // constructed with the pristine one, so a child that reads the host's
+    // config silently runs the app's default model — which defeats the flag
+    // whose entire purpose is choosing the model.
+    await runAction({
+      flow,
+      actionName: "launch",
+      input: {},
+      userId: USER_ID,
+      sessionId: "s_parent",
+      stores: runtime.stores,
+      runtimeConfig: {
+        ...runtime.runtimeConfig,
+        modelResolver: markerResolver("cli-override")
+      }
+    });
+
+    expect(observed.start).toMatchObject({ ok: true });
+    await until(() => observed.children.length === 1, "the child to run");
+    expect(observed.children[0]!.model).toBe("cli-override");
+
+    await state.dispose();
+  });
+
   it("a router-first init is left exactly as it was — the router wires its own", async () => {
     const observed: Observed = { children: [] };
     const flow = detachingFlow("router-first", observed);
@@ -226,7 +349,7 @@ describe("detached start on a runtime-only init (FIX-1077)", () => {
     const state = createFlowState({
       flows: { detaching: flow },
       stores: { default: { primary: inMemoryStores() } },
-      modelResolver: (() => undefined) as never
+      modelResolver: markerResolver("app-default")
     });
 
     // Next.js / `serve()` order: the router is the entry point, so

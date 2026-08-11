@@ -28,6 +28,7 @@ import type {
 import type { SessionRecord, StoreRegistry } from "../stores/types";
 import { workstreamBindingKey } from "@flow-state-dev/core/types";
 import { workstreamDispatchInputSchema } from "@flow-state-dev/core";
+import type { RuntimeConfig } from "../runtime-config";
 import { resolveSessionStorageKey } from "../stores/scope-keys";
 import { deriveChildSessionId, evaluateAdoption } from "./detached-child";
 import { evaluateLivenessGate, type LivenessGateInputs } from "./liveness-gate";
@@ -64,6 +65,17 @@ export type DetachedStartOperation = (spec: {
    * never the caller's bag.
    */
   metadata?: Record<string, unknown>;
+  /**
+   * The runtime config the LAUNCHING request is running under, for the child to
+   * inherit (FIX-1077).
+   *
+   * A host is built once, but a caller may run a given request under a derived
+   * config — `fsdev run` builds `{ ...appConfig, modelResolver, logger }` so
+   * `--model` takes effect. The child is that request's own work continued in
+   * the background, so it runs under the same resolvers and logger rather than
+   * the host's construction-time ones. Absent → the host's own config applies.
+   */
+  runtimeConfig?: RuntimeConfig;
 }) => Promise<
   | { requestId: string }
   /**
@@ -94,6 +106,12 @@ export type RequestHostInputs = {
   };
   /** Absent when this process executes requests but cannot start one. */
   startOperation?: DetachedStartOperation;
+  /**
+   * The config this request runs under, handed to the start operation so a
+   * detached child inherits it rather than the host's construction-time one
+   * (FIX-1077). See `DetachedStartOperation`.
+   */
+  effectiveRuntimeConfig?: RuntimeConfig;
   /** Absent unless this request was dispatched for a parent-board task. */
   parentTask?: ParentTaskBinding;
   /** Everything the liveness gate needs. The gate runs here, once. */
@@ -349,7 +367,12 @@ export function createRequestHost(inputs: RequestHostInputs): RequestHostBuild {
             ? { taskId: args.provenance.taskId }
             : {})
         }
-      }
+      },
+      // The child continues THIS request's work, so it runs under THIS
+      // request's config — not the host's construction-time one.
+      ...(inputs.effectiveRuntimeConfig !== undefined
+        ? { runtimeConfig: inputs.effectiveRuntimeConfig }
+        : {})
     });
 
     if ("notStarted" in started) {

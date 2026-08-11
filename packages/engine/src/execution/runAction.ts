@@ -1228,7 +1228,11 @@ export async function runActionInternal<
       tracingLevel: options.runtimeConfig.tracingLevel,
       durabilityEnabled: options.runtimeConfig.durabilityProvider !== undefined,
       errorCapture: options.runtimeConfig.errorCapture,
-      requestHost: options.runtimeConfig.requestHost
+      requestHost: options.runtimeConfig.requestHost,
+      // What THIS request is running under, which is not always what the host
+      // was built with — a caller may derive a config (`fsdev run` does, for
+      // `--model`). A detached child inherits it. See `effectiveRuntimeConfig`.
+      effectiveRuntimeConfig: options.runtimeConfig
     });
 
     // Resume mode: load the suspension record + checkpoint to restore the durable

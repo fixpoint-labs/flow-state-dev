@@ -226,12 +226,19 @@ export function createInboundTransportHost(
       : arbiter.resolve(flow, envelope.action, dispatchEnvelope);
     const gateStart = arbiter.gate(decision, requestId);
 
+    // The config this dispatch runs under. Normally the host's own; a detached
+    // child carries the LAUNCHING request's, because the caller may have derived
+    // one the host was never built with — `fsdev run` does, so `--model` reaches
+    // background work rather than silently resolving the app's default
+    // (FIX-1077). Server-set only; see `InboundRequestEnvelope.runtimeConfig`.
+    const dispatchRuntimeConfig = envelope.runtimeConfig ?? runtimeConfig;
+
     // Per-flow `voice.provider` wins over the router-level provider, mirroring
     // the principal-resolver override pattern below. Merged once here so
     // `runAction` receives the effective value (via `runtimeConfig.voiceProvider`)
     // and never re-merges.
     const effectiveVoiceProvider =
-      flow.voice?.provider ?? runtimeConfig.voiceProvider;
+      flow.voice?.provider ?? dispatchRuntimeConfig.voiceProvider;
 
     // Per-flow SSE heartbeat override wins over the host default.
     const flowHeartbeatMs = flow.request?.sseHeartbeatMs;
@@ -300,7 +307,7 @@ export function createInboundTransportHost(
             signal: envelope.signal,
             responseEmitter,
             effectiveRuntimeConfig: {
-              ...runtimeConfig,
+              ...dispatchRuntimeConfig,
               voiceProvider: effectiveVoiceProvider
             }
           }

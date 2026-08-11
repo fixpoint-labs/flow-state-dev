@@ -35,6 +35,15 @@ import type {
   WorkerMode
 } from "./types";
 
+/**
+ * How many times `dispose()` re-checks for detached work before giving up.
+ *
+ * Each round exists only because the previous one's children started more, so
+ * reaching the bound means a flow is spawning without end rather than that the
+ * work is slow. High enough that legitimate nesting never hits it.
+ */
+const MAX_DETACHED_DRAIN_ROUNDS = 32;
+
 function toModelResolverOptions(
   models: FlowStateModelsConfig | undefined
 ): CreateModelResolverOptions {
@@ -94,6 +103,15 @@ class InternalFlowState<TSettings extends object>
   #workerDispatcher: FlowDispatcher | undefined;
   /** Started worker, closed by dispose() before store adapters. */
   #workerHandle: WorkerHandle | undefined;
+  /**
+   * In-process detached children still running, drained by `dispose()`.
+   *
+   * Only ever populated by the start operation `#wireDetachedStart` installs —
+   * a queue-backed child runs in another process and is not this one's to wait
+   * for. Entries remove themselves when they settle, so a long-lived server does
+   * not accumulate them.
+   */
+  readonly #detachedChildren = new Set<Promise<unknown>>();
 
   constructor(options: CreateFlowStateOptions<TSettings>) {
     if (Object.hasOwn(options, "middleware")) {
@@ -185,6 +203,10 @@ class InternalFlowState<TSettings extends object>
       }
     }
 
+    // Detached children first, for the same reason the worker is stopped before
+    // the stores: they are still writing. See `#drainDetachedChildren`.
+    await this.#drainDetachedChildren();
+
     // Stop the execution backend before the stores close: the worker drains
     // in-flight jobs (which write to the stores), then the adapter releases
     // its queue/connections.
@@ -205,6 +227,52 @@ class InternalFlowState<TSettings extends object>
       } catch (err) {
         console.error("[flowstate] adapter dispose failed", err);
       }
+    }
+  }
+
+  /**
+   * Wait for in-process detached work before anything it writes to is closed.
+   *
+   * Detachment means the launching *request* does not wait. It cannot mean the
+   * *process* does not wait, because in a one-shot process — `fsdev run`, a
+   * script, a test — outliving the request would mean outliving the process, and
+   * that is not on offer. The only two options there are draining and silently
+   * truncating, and truncating is how a `fsdev run` of a detached board left its
+   * task row stranded `in_progress` with the child failing on a closed store
+   * (FIX-1077). For the tool `AGENTS.md` names as the default way to verify a
+   * flow change, that is the worse answer.
+   *
+   * A long-lived server is unaffected in practice: it disposes at shutdown, when
+   * waiting for background work to finish is what you want anyway.
+   *
+   * Rounds, not one pass: detached work may itself detach, and a grandchild
+   * registered while we await belongs to this drain too. Bounded so a flow that
+   * spawns without end cannot hang shutdown outright — that is a runaway flow,
+   * and the bound turns it into a warning instead of a wedged process.
+   */
+  async #drainDetachedChildren(): Promise<void> {
+    for (
+      let round = 0;
+      this.#detachedChildren.size > 0 && round < MAX_DETACHED_DRAIN_ROUNDS;
+      round += 1
+    ) {
+      const pending = [...this.#detachedChildren];
+      // stderr, like the rest of dispose: stdout is reserved for data streams
+      // such as `fsdev run`'s NDJSON. Printed because an unexplained pause at
+      // exit reads as a hang — this says what is being waited for.
+      console.error(
+        `[flowstate] waiting for ${pending.length} detached request(s) to finish before shutdown`
+      );
+      // Settled, not all: a child that threw has already surfaced its own error,
+      // and one failure must not abandon the rest of the drain.
+      await Promise.allSettled(pending);
+    }
+
+    if (this.#detachedChildren.size > 0) {
+      console.error(
+        `[flowstate] gave up waiting on ${this.#detachedChildren.size} detached request(s) ` +
+          `after ${MAX_DETACHED_DRAIN_ROUNDS} rounds; they may be truncated by shutdown`
+      );
     }
   }
 
@@ -458,7 +526,26 @@ class InternalFlowState<TSettings extends object>
       dispatcher: this.#options.dispatcher ?? this.#workerDispatcher
     });
 
-    requestHost.startOperation = createDetachedStartOperation({ host });
+    requestHost.startOperation = createDetachedStartOperation({
+      host,
+      onDispatched: (finished) => this.#trackDetachedChild(finished)
+    });
+  }
+
+  /**
+   * Hold a detached child's completion until it settles, so `dispose()` can wait
+   * for it. Self-removing, so a long-lived server does not accumulate entries.
+   *
+   * The rejection is swallowed **on the tracking chain only** — the original
+   * promise is what `dispose()` awaits, and the host has already marked it
+   * handled. Without the `catch` here, the `finally` link would itself reject
+   * and become the unhandled rejection this is meant to avoid.
+   */
+  #trackDetachedChild(finished: Promise<unknown>): void {
+    this.#detachedChildren.add(finished);
+    void finished
+      .catch(() => undefined)
+      .finally(() => this.#detachedChildren.delete(finished));
   }
 
   async #doInit(): Promise<FlowApiRouter> {

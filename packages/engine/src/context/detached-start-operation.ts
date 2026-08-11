@@ -65,6 +65,30 @@ export type DetachedStartOperationInputs = {
    * request's own kind. A child always belongs to its parent's flow.
    */
   host: Pick<InboundTransportHost, "dispatch">;
+  /**
+   * Called with the child's `finished` promise the moment the dispatch is made.
+   *
+   * Fire-and-forget is a statement about the *launching request*, not about the
+   * process: the request must not wait, but something has to know the work
+   * exists, or a host that can be torn down will tear it down mid-flight. That is
+   * exactly what happened under `fsdev run` — the CLI disposes the runtime the
+   * moment the parent returns, closing pooled stores while an in-process child
+   * was still writing, and the child's task row was stranded `in_progress`
+   * forever (FIX-1077).
+   *
+   * A host that owns a process lifetime (`FlowState.dispose`) uses this to drain
+   * before shutting down. A long-lived server has nothing to do here and leaves
+   * it unset.
+   *
+   * Named for the *dispatch*, not for `DispatchHandle.started`: this fires
+   * before either milestone is awaited, and deliberately so — a queued or
+   * externally dispatched child resolves neither promptly, and it must be
+   * tracked all the same.
+   *
+   * Never awaited by this operation — that would reintroduce the wait the whole
+   * feature exists to remove.
+   */
+  onDispatched?: (finished: Promise<unknown>) => void;
 };
 
 /**
@@ -105,6 +129,10 @@ export function createDetachedStartOperation(
       ...(spec.orgId !== undefined ? { orgId: spec.orgId } : {}),
       ...(spec.tenantId !== undefined ? { tenantId: spec.tenantId } : {}),
       ...(spec.metadata !== undefined ? { metadata: spec.metadata } : {}),
+      // The launching request's effective config, so a child inherits the
+      // resolvers and logger that request is actually running under rather than
+      // the host's construction-time ones (FIX-1077).
+      ...(spec.runtimeConfig !== undefined ? { runtimeConfig: spec.runtimeConfig } : {}),
       // Fire-and-forget: no live stream, nobody attached, nothing awaiting the
       // result inline. See the file header.
         responseEmitter: null,
@@ -115,6 +143,11 @@ export function createDetachedStartOperation(
         reason: error instanceof Error ? error.message : String(error)
       };
     }
+
+    // Handed over BEFORE the await below, so the child is known to its host from
+    // the instant it exists rather than from the instant it is confirmed —
+    // including on the paths that await nothing at all.
+    inputs.onDispatched?.(handle.finished);
 
     // Awaiting acceptance is what makes a `Started` result mean "discoverable"
     // rather than "we intended to". It is deliberately the ONLY thing awaited,

@@ -23,6 +23,7 @@ import type { ResponseEmitter } from "../streaming/response-emitter";
 import type { LiveRequestStream } from "../streaming/live-stream";
 import type { StoreRegistry } from "../stores/types";
 import type { RuntimeLogger } from "../execution/logging";
+import type { RuntimeConfig } from "../runtime-config";
 import type { ExecutionResult } from "../execution/types";
 import type {
   ContinueRequestOptions,
@@ -95,6 +96,24 @@ export interface InboundRequestEnvelope {
 
   /** Adapter-specific provenance (webhook headers, MCP session ids, etc.). */
   metadata?: Record<string, unknown>;
+
+  /**
+   * Runtime config to run this dispatch under, instead of the host's own
+   * (FIX-1077).
+   *
+   * Server-set and internal, like `source` and `resolvedActionCore` — never read
+   * from a request body, so it adds no caller-facing surface. Today's one writer
+   * is the detached start operation: a child continues the launching request's
+   * work, and that request may be running under a config the caller derived
+   * (`fsdev run` builds one so `--model` applies), which the host was never
+   * constructed with.
+   *
+   * **In-process dispatch only.** A `RuntimeConfig` holds resolvers and
+   * providers and does not serialize, so the external-dispatcher branch ignores
+   * it — a queued job runs under its own worker's config, which is the right
+   * answer there because that process resolved its own.
+   */
+  runtimeConfig?: RuntimeConfig;
 
   /**
    * Pre-resolved action core, set ONLY by adapters for an event dispatch that
