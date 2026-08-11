@@ -27,8 +27,10 @@ rather than at the first restart:
   session's id
 - the collection must be durable (`defineTaskCollection()`); request, sequencer,
   and caller-supplied factory backings are refused
-- a detached worker may not declare `sessionStateSchema`, since detached workers
-  share one execution flow
+- a detached worker may not declare `sessionStateSchema` anywhere in its
+  composition, since detached workers share one execution flow. A schema declared
+  by a step inside the worker collides exactly as one on the block handed to the
+  board does, and the refusal names the inner block when that is where it is
 - the collection may not be `scope: "session"`. A Workstream runs in its own
   session, so a session-scoped ledger resolves empty there and the child never
   finds the row it was dispatched for — declare it `scope: "user"` or

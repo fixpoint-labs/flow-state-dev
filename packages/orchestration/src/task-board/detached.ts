@@ -278,6 +278,47 @@ function authoredSessionStateSchema(worker: TaskWorker): unknown {
 }
 
 /**
+ * The first block at or under `worker` that authors a session-state schema.
+ *
+ * Composed children are the reachable half of this refusal. A detached worker is
+ * routinely a sequencer or a router, and the block that declares the schema is
+ * usually a step inside it — which runs in the Workstream's session exactly as
+ * the root does, and collides with a sibling route's key exactly as the root
+ * would. Inspecting only the root accepted the board and left the declaration to
+ * surface as a missing typed key inside the child.
+ *
+ * **Composition is walkable; capabilities are not.** A capability that
+ * contributes `sessionStateSchema` — at its top level or through a preset —
+ * never writes it onto the consuming block's `config`, so no walk of this shape
+ * can see it. That is the same separate-channel problem `tools` has, and closing
+ * it is a different piece of work: a preset's contribution is conditional on
+ * runtime opt-out, so a definition-time walk of `__presetDefs` would refuse
+ * boards whose preset never activates.
+ *
+ * Visited-set rather than a depth bound, for the reason the flow's own binding
+ * walk uses one: blocks are shared and a router route may point back up.
+ */
+function nestedSessionStateSchema(
+  worker: TaskWorker
+): { block: { name: string }; schema: unknown } | undefined {
+  const seen = new Set<unknown>();
+  const queue: unknown[] = [worker];
+  while (queue.length > 0) {
+    const block = queue.pop();
+    if (block == null || seen.has(block)) continue;
+    seen.add(block);
+    const schema = authoredSessionStateSchema(block as TaskWorker);
+    if (schema !== undefined) {
+      return { block: block as { name: string }, schema };
+    }
+    for (const child of (block as { childBlocks?: unknown[] }).childBlocks ?? []) {
+      queue.push(child);
+    }
+  }
+  return undefined;
+}
+
+/**
  * Construction-time refusals for a board with at least one detached worker.
  *
  * Every refusal is **by name and loud** — never a warning, never a degrade.
@@ -371,9 +412,14 @@ export function assertDetachedBoardSupported(options: {
   // and at write time. One construction-time refusal is the whole fix for now;
   // key-shape compatibility validation is a follow-up nothing yet needs.
   for (const slot of detached) {
-    if (authoredSessionStateSchema(slot.worker) !== undefined) {
+    const authored = nestedSessionStateSchema(slot.worker);
+    if (authored !== undefined) {
+      const where =
+        authored.block.name === slot.worker.name
+          ? `("${slot.worker.name}")`
+          : `("${slot.worker.name}", via composed block "${authored.block.name}")`;
       throw new Error(
-        `[task-board] "${name}" detached worker ${slot.label} ("${slot.worker.name}") declares ` +
+        `[task-board] "${name}" detached worker ${slot.label} ${where} declares ` +
           `sessionStateSchema — detached workers share one Workstream flow, where two routes ` +
           `choosing the same key with different shapes corrupt each other with no error. ` +
           `Keep the worker's state on the task instead.`

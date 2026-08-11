@@ -20,7 +20,7 @@
  *   failure rather than a passing test about the wrong thing.
  */
 import { describe, expect, it } from "vitest";
-import { handler } from "@flow-state-dev/core";
+import { handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   defineTaskCollection,
@@ -314,6 +314,69 @@ describe("detached dispatch — a session-scoped ledger is refused at constructi
         workers: {
           implement: { worker: worker("impl-user"), dispatch: { mode: "detached" } },
         },
+      })
+    ).not.toThrow();
+  });
+});
+
+describe("the session-schema refusal sees composed children", () => {
+  it("refuses a schema declared by a step inside the worker", () => {
+    // A detached worker is routinely a sequencer, and the block declaring the
+    // schema is usually a step inside it. It runs in the Workstream's session
+    // exactly as the root would, and collides with a sibling route's key
+    // exactly as the root would — so inspecting only the root accepted the
+    // board and left the declaration to surface as a missing typed key inside
+    // the child.
+    const nested = sequencer({ name: "outer" }).tap(
+      handler({
+        name: "inner-with-state",
+        sessionStateSchema: z.object({ needed: z.string() }),
+        execute: () => null,
+      })
+    );
+
+    expect(() =>
+      taskBoard({
+        name: "nested-session-state",
+        boardId: "nested-session-state",
+        collection: durable,
+        workers: { implement: { worker: nested as never, dispatch: { mode: "detached" } } },
+      })
+    ).toThrow(/sessionStateSchema/);
+  });
+
+  it("names the composed block, not just the worker", () => {
+    const nested = sequencer({ name: "outer-2" }).tap(
+      handler({
+        name: "inner-named",
+        sessionStateSchema: z.object({ needed: z.string() }),
+        execute: () => null,
+      })
+    );
+
+    expect(() =>
+      taskBoard({
+        name: "nested-session-named",
+        boardId: "nested-session-named",
+        collection: durable,
+        workers: { implement: { worker: nested as never, dispatch: { mode: "detached" } } },
+      })
+    ).toThrow(/inner-named/);
+  });
+
+  it("leaves a composed worker that declares none alone", () => {
+    // The control. A walk that flagged any sequencer would refuse most detached
+    // boards in the codebase.
+    const plain = sequencer({ name: "outer-plain" }).tap(
+      handler({ name: "inner-plain", execute: () => null })
+    );
+
+    expect(() =>
+      taskBoard({
+        name: "nested-session-clean",
+        boardId: "nested-session-clean",
+        collection: durable,
+        workers: { implement: { worker: plain as never, dispatch: { mode: "detached" } } },
       })
     ).not.toThrow();
   });
