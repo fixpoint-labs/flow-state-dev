@@ -265,6 +265,32 @@ describe("the detached payload gate rejects what a round-trip would mangle", () 
     expect(() => assertJsonSafe({ delta: -0 }, { label })).toThrow(/\.delta is -0/);
   });
 
+  it("rejects a null-prototype object, which arrives with Object.prototype", () => {
+    // The same identity loss the class-instance branch rejects, running the
+    // other way: the data survives and the prototype does not. `Object.create(
+    // null)` is a real idiom for a dictionary that cannot collide with
+    // inherited keys, and on the far side it is an ordinary object again —
+    // `hasOwnProperty` goes from `undefined` to a function, and a key lookup
+    // that could never hit `Object.prototype` now can.
+    const dict: Record<string, unknown> = Object.create(null);
+    dict.token = "x";
+    expect(() => assertJsonSafe({ dict }, { label })).toThrow(
+      /\.dict has a null prototype/
+    );
+  });
+
+  it("names what to do about it, since the remedy is one spread", () => {
+    expect(() => assertJsonSafe({ dict: Object.create(null) }, { label })).toThrow(
+      /\{ \.\.\.value \}/
+    );
+  });
+
+  it("still accepts an ordinary object literal", () => {
+    // The control. A guard keyed on "not Object.prototype" rather than on
+    // "null prototype" would reject every payload the gate exists to pass.
+    expect(() => assertJsonSafe({ dict: { token: "x" } }, { label })).not.toThrow();
+  });
+
   it("accepts the same object appearing twice on separate branches", () => {
     // Not a cycle — it round-trips as two copies. Tracking every object seen
     // rather than the current path would reject this legitimate shape.
