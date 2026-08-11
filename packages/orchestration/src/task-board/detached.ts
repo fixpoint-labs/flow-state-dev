@@ -21,7 +21,7 @@
  * ## Where the refusals live, and why two of them are not here
  *
  * The spec (§6 decision 11, §8 P1) asks for six construction-time refusals.
- * Three of them are decidable from what `taskBoard()` is handed and are
+ * Four of them are decidable from what `taskBoard()` is handed and are
  * enforced below. Two are not, and the enforcement point had to move to where
  * the fact first exists:
  *
@@ -39,7 +39,12 @@
  * cannot see is how a guard becomes a silent no-op, which is the failure class
  * this whole issue exists to remove.
  */
-import type { Task, TaskWorker, TaskWorkerRegistry } from "../tasks";
+import type {
+  DefinedTaskCollection,
+  Task,
+  TaskWorker,
+  TaskWorkerRegistry,
+} from "../tasks";
 import { coordinateLabel, type WorkerCoordinate } from "./coordinate";
 import type { TaskBoardBacking } from "./index";
 
@@ -286,9 +291,17 @@ export function assertDetachedBoardSupported(options: {
   name: string;
   boardId: string | undefined;
   backing: TaskBoardBacking;
+  /**
+   * The durable collection's own declaration, when the backing has one.
+   *
+   * The declaration rather than a field off it, so the predicate below can be
+   * relaxed by reading one more thing about the collection instead of by
+   * changing this signature and every caller.
+   */
+  collection?: DefinedTaskCollection;
   detached: readonly ResolvedWorkerSlot[];
 }): void {
-  const { name, boardId, backing, detached } = options;
+  const { name, boardId, backing, collection, detached } = options;
   if (detached.length === 0) return;
 
   const declared = detached.map((slot) => slot.label).join(", ");
@@ -316,6 +329,38 @@ export function assertDetachedBoardSupported(options: {
       `[task-board] "${name}" declares detached workers (${declared}) on a ${backing}-backed ` +
         `collection — detached work outlives the request that claimed it, so the board must be ` +
         `durable. Pass a defineTaskCollection() to \`collection\`.`
+    );
+  }
+
+  // A Workstream runs in its OWN session, and a session-scoped collection
+  // resolves against the running session — so the child would address an empty
+  // ledger rather than the one that claimed the row. Nothing about that failure
+  // announces itself: the start gate reads the missing row as a stale claim and
+  // returns, the row stays `in_progress`, the next drain reclaims and
+  // redispatches it, and the board loops until the abandonment cap finally
+  // errors it out. A board that never dispatches is easier to fix than a board
+  // that dispatches forever (FIX-1074).
+  //
+  // **One condition, deliberately.** A session-scoped collection becomes
+  // REACHABLE FROM ITS WORKSTREAM the moment it resolves to the lineage root
+  // rather than to the running session, because parent and child then address
+  // the same rows. When a declaration can say that, this refusal narrows to
+  // "session-scoped AND not resolving to the lineage root" — a change to the
+  // predicate on this line, not to the shape of the guard.
+  //
+  // Reachable is all it becomes, and the word is chosen against the obvious
+  // looser one: it says the child can FIND the row, not that the claim on it is
+  // still live. The hand-off lease bound this module's runner documents
+  // (FIX-1070 — nothing renews a detached row's lease between hand-off and the
+  // child's first breath) applies to a lineage-rooted board exactly as it does
+  // to a user- or org-scoped one. It is also the runner's own wording, so this
+  // build-time refusal and the runtime stale-claim error name the same thing.
+  if (collection?.scope === "session") {
+    throw new Error(
+      `[task-board] "${name}" declares detached workers (${declared}) on a session-scoped ` +
+        `collection — a Workstream runs in its own session, so it would resolve an empty ledger ` +
+        `and never find the row it was dispatched for. Declare the collection \`scope: "user"\` ` +
+        `or \`scope: "org"\` so the child can address the same rows the board claimed.`
     );
   }
 

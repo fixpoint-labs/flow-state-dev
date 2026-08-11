@@ -704,8 +704,14 @@ export function taskBoard<
     collectionConfig,
     caps
   );
-  const { collectionFactory, collectionId, capability, backing, drainUses } =
-    binding;
+  const {
+    collectionFactory,
+    collectionId,
+    capability,
+    backing,
+    collectionDeclaration,
+    drainUses,
+  } = binding;
 
   // FIX-982 decision 11 — a detached board is refused here, loudly and by
   // name, never degraded with a warning. Runs after the binding so the
@@ -716,6 +722,9 @@ export function taskBoard<
     name,
     boardId,
     backing,
+    ...(collectionDeclaration !== undefined
+      ? { collection: collectionDeclaration }
+      : {}),
     detached: resolvedWorkers.detached,
   });
 
@@ -737,10 +746,18 @@ export function taskBoard<
     collectionId,
   });
 
+  // One predicate, built once and handed to EVERY consumer (FIX-982). Building
+  // it per call site is how the wake test and the exit check drifted apart
+  // before; the completion meta is the third reader (FIX-1074), and it has to
+  // agree with the other two — a board that exited because its work is running
+  // elsewhere must not then report that exit as a failure.
+  const runsElsewhere = detachedTaskPredicate(resolvedWorkers.slots);
+
   const boardMetaCompleted = createBoardMetaCompleted({
     name: `${name}-meta-completed`,
     collection: collectionFactory,
     collectionId,
+    ...(runsElsewhere !== undefined ? { runsElsewhere } : {}),
   });
 
   const claimStepName = `${name}-worker-claim`;
@@ -832,11 +849,6 @@ export function taskBoard<
     collection: collectionFactory,
     onError,
   });
-
-  // One predicate, built once and handed to BOTH halves of the exit question
-  // (FIX-982). Building it per call site is how the wake test and the exit
-  // check drifted apart before, so they are given the same value or neither.
-  const runsElsewhere = detachedTaskPredicate(resolvedWorkers.slots);
 
   const checkBoard = createCheckBoard({
     name: `${name}-worker-check-board`,
@@ -1234,6 +1246,12 @@ interface CollectionBinding<TInput, TOutput, TName extends string> {
   >;
   /** The once-chosen backing, surfaced on the handle (FIX-910). */
   backing: TaskBoardBacking;
+  /**
+   * The durable collection's own declaration, when there is one (FIX-1074).
+   * Only the `resource` backing has one; the others carry no scope at all, and
+   * a detached board on them is already refused on `backing`.
+   */
+  collectionDeclaration?: DefinedTaskCollection;
   drainUses?: readonly DefinedCapability[];
 }
 
@@ -1302,6 +1320,7 @@ function resolveCollectionBinding<TInput, TOutput, const TName extends string>(
       collectionFactory,
       collectionId,
       backing: "resource",
+      collectionDeclaration: definedCollection,
       capability: createTaskBoardCapability<TInput, TOutput, TName>({
         backing: "resource",
         boardName,

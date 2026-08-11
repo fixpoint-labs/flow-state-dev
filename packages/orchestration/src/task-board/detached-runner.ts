@@ -152,9 +152,14 @@ export interface BuildDetachedRunnerOptions {
    * and that is a real bound rather than an oversight: the general
    * resolve-the-parent's-board seam is settlement's, and a board whose rows a
    * detached worker must reach has to be addressable from the child — user or
-   * org scope, or a session-scoped board keyed by the parent session id. The
-   * refusal below names it rather than hydrating an empty board and settling
-   * nothing.
+   * org scope, or a session-scoped board that resolves to the lineage root.
+   *
+   * A board declared that way no longer reaches this code: `taskBoard()`
+   * refuses it at construction (FIX-1074), because arriving here means the gate
+   * reads an empty ledger, calls the claim stale, and leaves the row to be
+   * reclaimed and redispatched forever. The gate's own `no such row` refusal
+   * still names the possibility, since a board can also resolve to a different
+   * ledger for reasons construction cannot see.
    */
   collection: (ctx: BlockContext) => Promise<TaskCollectionRef>;
   /**
