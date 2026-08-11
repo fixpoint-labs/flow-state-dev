@@ -64,7 +64,9 @@ A dynamic schedule whose resolver returns a handler containing a detached board
 is now refused at dispatch, naming the board and the flow, instead of claiming a
 task it cannot start. The resolver's handler is built after the flow is, so its
 board never reached the flow's routing; the refusal happens before the board
-claims anything, so nothing is left half-done.
+claims anything, so nothing is left half-done. The check covers the handler's
+`onCompleted` and `onErrored` observers too, since those run as real blocks and
+a board under one claims work exactly as a board under the handler does.
 
 The safety check on a detached worker's payload now rejects a null-prototype
 object (`Object.create(null)`). Its data survives serialization and its prototype

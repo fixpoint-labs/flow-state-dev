@@ -57,19 +57,35 @@ export type DetachedRoutingSeed = {
  * own name instead, and the name is the contract: *put a fact here only when the
  * runtime produced it.*
  *
- * **What that does and does not buy.** The seam cannot verify these — it has no
- * board and no ledger, and `core` cannot name `orchestration`'s types. What
- * makes them trustworthy is reach, not a check: `startDetached` is on the block
- * context, so only flow-internal code calls it, and the one shipped caller (the
- * task board's spawn block) takes the id off the claim ticket the board minted
- * from the row it had already claimed. No transport, and no task author, can
- * reach this.
+ * **What that does and does not buy — and it buys less than "server-derived"
+ * suggests.** The seam cannot verify these: it has no board and no ledger, and
+ * `core` cannot name `orchestration`'s types. Nor does reach close the gap.
+ * `startDetached` is on the *block context*, which every block author reaches —
+ * an application block or a custom capability can call it and pass any `taskId`
+ * it likes, and the resulting request still carries the framework-stamped
+ * `source: "workstream"`. So this is caller-populatable in the sense BP-031
+ * names; the caller is an application block rather than an HTTP client, which
+ * narrows who can do it and not whether they can.
+ *
+ * What is genuinely derived is the rest of the bag: `topic` and `key` come from
+ * the seed this call already consumed to derive the child key, so they cannot
+ * disagree with the child they name. `taskId` is the one field taken on trust,
+ * and the shipped caller (the task board's spawn block) does take it off the
+ * claim ticket the board minted from the row it had claimed — which makes the
+ * value right in practice without making it checked.
  *
  * **It carries no authority**, exactly as `SessionRecord.topic` and `coordinate`
- * carry none. Nothing routes, authorizes, settles or fences on it. The runner's
- * start gate verifies `attempt` / `createdAt` / `incarnationId` off the dispatch
- * *input* against the row it re-read, and never consults request metadata — so a
- * wrong value here mislabels a record for a reader and grants nothing.
+ * carry none, and that — not reach — is what contains the gap above. Nothing
+ * routes, authorizes, settles or fences on it. The runner's start gate verifies
+ * `attempt` / `createdAt` / `incarnationId` off the dispatch *input* against the
+ * row it re-read, and never consults request metadata — so a wrong value here
+ * mislabels a record for a reader and grants nothing.
+ *
+ * The consequence to keep in view is therefore a *reporting* one: anything that
+ * presents this correlation as a framework guarantee is promising more than the
+ * mechanism delivers. Making it one would mean deriving it where it can be
+ * checked — the child's start gate re-reads the row and could record the
+ * correlation itself — rather than accepting it here.
  *
  * Adding a member is a deliberate decision, like adding a verb to the seam: each
  * one has to be server-derived at the point `startDetached` is called, and has
