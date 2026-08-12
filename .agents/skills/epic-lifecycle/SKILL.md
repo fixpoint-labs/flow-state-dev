@@ -633,6 +633,16 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   every surface of the epic-spec restating that decision moves with it — and `epic-agent` owns
   that check at edit time, so don't re-derive it here.
   Nothing here pulls epic-comment *content* into the coordinator's context.
+- **Close an approved spec PR yourself, on the wake the approval lands** — mirror Linear from
+  the spec branch head first, close unmerged, keep the branch
+  ([`orchestration.md`](../../../docs/contributing/orchestration.md) → "Closing the spec PR").
+  **Do not wait for the row to be dispatched.** Normally the `issue-worker` chains through
+  approval and closes it on the way to implementing, but an approved row is held with **no
+  action at all** while the cross-spec coherence pass is outstanding — so under a multi-spec
+  epic the first approved spec PR would otherwise sit open, re-scanned every wake, which is
+  precisely the artifact the close exists to remove. The close is a `gh` call the workflow
+  script cannot make and needs no worktree, so it is yours. It is idempotent with the worker's:
+  whichever gets there first, the other finds it closed.
 - **Wrap.** When the epic finishes, the epic PR closes **unmerged**; the **branch is never
   deleted** and stays discoverable via the Epic issue (its attached document + `Epic` label).
   Closing needs no sign-off.

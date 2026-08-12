@@ -224,22 +224,26 @@ on the same surface:
 
 1. Check out the retained branch (`git fetch origin spec/<ISSUE-ID> && git checkout -B spec/<ISSUE-ID> origin/spec/<ISSUE-ID>` — never re-base it on `main`), commit the POC under `spec-poc/<ISSUE-ID>-<slug>/`, push.
 2. **Re-open the closed spec PR** (`gh pr reopen <spec-pr>`) with a comment saying what the POC answers and how to run it. Same PR, same review history, same reviewers.
-3. Record what it showed in §7, on the branch **and** mirrored to Linear.
+3. Record what it showed in §7, **commit and push that to the branch**, and mirror it to
+   Linear. The canonical rule is that the PR closes only once §7 carries the result — an
+   unpushed §7 freezes the branch without it.
 4. **Then close it again, unmerged — unless the POC changed the direction.** If it did, keep
-   the PR open for that round so the fold has a live thread, and route the re-approval by
-   **where the issue actually is**:
+   the PR open for that round so the fold has a live thread, and **escalate the fold to the
+   human as an explicit blocker**. Never assume a gate will re-raise itself:
 
-   - **Implementation hasn't started** (the row is still awaiting spec approval): the ordinary
-     spec gate is still live. Fold, and it is re-approved through that gate as normal.
-   - **Implementation has started** (there is an impl PR): **escalate it as a blocker** — the
-     same path a late `REFUTED` settlement and a challenger-surfaced spec blind spot take. Do
-     **not** expect the spec-approval gate to come back: the lifecycle deliberately refuses to
-     regress a row that already has an impl PR, so a spec gate re-raised there is one nothing
-     will surface. A blocker parks the row and puts the fork to the human, which is the gate
-     that actually exists at this point.
+   - **After implementation starts**, no spec gate can come back at all — the lifecycle
+     refuses to regress a row that already has an impl PR, and only pre-approval rows are
+     offered a spec gate. The blocker is the only gate that exists there.
+   - **Before implementation starts**, the spec gate still exists but **may already read as
+     satisfied**. If the original sign-off came via the `spec approved` **label**, that label
+     is standing state — it does not expire on a push, and only the owner removing it revokes
+     it — so a fold pushed under it would release the *changed* direction with no new human
+     act. (A comment- or review-based approval goes stale on the push and does re-gate, but
+     you must not depend on which channel was used.)
 
-   Either way the fold reaches a human before the superseded direction is built on. What must
-   not happen is closing the PR and assuming the re-approval will find its own way back.
+   So the ask goes up either way, naming that the standing approval predates the change. The
+   owner clears it by removing and re-applying the label, or by approving the new head. **You
+   never touch the label yourself** — writing it would manufacture the sign-off it reports.
 
 **A re-opened spec PR is the one exception to the branch freeze.** A closed spec branch is
 otherwise a frozen record and post-approval edits go to Linear (BP-037); while the PR is

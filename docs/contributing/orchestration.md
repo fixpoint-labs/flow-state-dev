@@ -595,11 +595,19 @@ has done its job, and an open PR past that point is an artifact every wake re-sc
 re-surfaces for a decision that has already been made.
 
 **The trigger is the gate, so whoever sees the gate pass does the close.** Under
-`issue-lifecycle` that is the lifecycle at the approval gate; under `epic-lifecycle` it is the
-`issue-worker`, in the same dispatch that chains into implementation. Standalone
+`issue-lifecycle` that is the lifecycle at the approval gate; under `epic-lifecycle` it is
+normally the `issue-worker`, in the same dispatch that chains into implementation. Standalone
 `issue-implement` closes it at Step 3 as a **backstop**, for a spec approved with no lifecycle
-watching. Either way the close rides the same release that starts implementation — it is never
-a separate wait, and it never gates the code.
+watching. The close rides the same release that starts implementation — it is never a separate
+wait, and it never gates the code.
+
+**But it is tied to the approval, not to the dispatch.** An approved row can be held without
+being dispatched at all — under a multi-spec epic, the cross-spec coherence pass holds every
+approved row until the set is ready — and a close that waits for a worker would leave that
+first approved PR open and re-scanned for as long as the hold lasts. So **the coordinator
+closes it directly when no worker will**, which it can do because a close needs no worktree
+(and the workflow script can't: it makes no side-effecting calls). The two paths are
+idempotent; whichever runs first, the other finds it closed.
 
 Three things happen, in this order:
 
@@ -636,20 +644,24 @@ PR closes again.
 
 Re-opening does not, on its own, re-open the **gate**. The spec is approved; a POC informs, it
 never re-decides. But if what it shows *changes the direction*, that fold needs fresh sign-off,
-and **which gate it goes to depends on where the issue already is** — keep the PR open for the
-round either way, so the fold has a live thread:
+and **it is escalated as an explicit blocker rather than left to a gate.** Keep the PR open for
+that round so the fold has a live thread, and put the ask up.
 
-- **Before implementation starts**, the spec-approval gate is still live and the fold is
-  re-approved through it as normal.
-- **After implementation starts**, it goes up as a **blocker**, exactly like a late `REFUTED`
-  settlement or a challenger-surfaced spec blind spot. This is not a preference: a row that
-  already has an impl PR **cannot** regress to `AWAITING_SPEC_APPROVAL` (`epic-wake.js`
-  refuses it, and only pre-approval rows are offered a spec gate), so a spec gate re-raised
-  there is one nothing will ever surface. The blocker parks the row and puts the fork to the
-  human, which is the gate that exists at that point.
+Neither phase can be trusted to re-gate on its own, for two different reasons:
 
-Closing the PR and assuming a re-approval will find its own way back is the failure mode both
-branches exist to prevent — the same one the settlement deferral above guards.
+- **After implementation starts, no spec gate can return.** A row that already has an impl PR
+  cannot regress to `AWAITING_SPEC_APPROVAL` (`epic-wake.js` refuses it, and only pre-approval
+  rows are offered a spec gate). A spec gate re-raised there is one nothing will ever surface.
+- **Before implementation starts, the gate may already read satisfied.** If the sign-off came
+  by `spec approved` **label**, that label is standing state that survives any push — so a fold
+  pushed under it releases the *changed* direction with no new human act. A comment or review
+  approval does go stale on the push, but the fold must not depend on which channel was used.
+
+The blocker parks the issue and puts the fork to the human either way, which is what "fresh
+sign-off" has to mean here. The owner clears it by removing and re-applying the label or by
+approving the new head; **no agent writes that label.** Closing the PR and assuming a
+re-approval finds its own way back is the failure mode this prevents — the same one the
+settlement deferral above guards.
 
 **Two things a re-open is not.** It is not a way to resume spec review — feedback arriving on a
 closed spec PR is carried as implementer notes, never a new round. And it is not a route to
