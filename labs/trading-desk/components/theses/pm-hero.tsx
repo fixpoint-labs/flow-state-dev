@@ -110,20 +110,21 @@ export type PmHeroProps = {
 };
 
 /**
- * The metric chips that exist on every decision, in display order. The LEVEL
- * chips are deliberately NOT listed: what a level is called depends on the
- * stance the desk took, so the commit derives those keys through the one rule
- * in `flows/analysis/lib/trade-levels.ts` (FIX-780) and this component renders
- * whatever it finds. Hardcoding "stop" and "target" here is what put a
- * stop-loss on a stand-aside Hold — the `<dt>` IS the key.
+ * The metric chips that exist on every decision, in display order.
+ *
+ * The LEVEL chips are deliberately NOT listed here, and are NOT read off the
+ * stored `metrics` map either. What a level is called depends on the stance the
+ * desk took, so they come from the trader's recorded stance through the one rule
+ * in `flows/analysis/lib/trade-levels.ts` (`tradeLevelChips`, FIX-780).
+ *
+ * Two failures, one per approach, and the `<dt>` IS the key in both: hardcoding
+ * "stop" and "target" here is what put a stop-loss on a stand-aside Hold, and
+ * rendering whatever keys the stored map happened to carry is what kept it there
+ * when a pre-fix report was reopened — those records carry `stop` / `target`
+ * whatever the desk actually decided, and no commit runs on that path to correct
+ * them.
  */
 const FIXED_METRIC_ORDER = ["rating", "ticker", "window", "size"] as const;
-
-// The LEVEL chips are not listed above and are not read off the stored
-// `metrics` map either — they are derived from the trader's stance through
-// `tradeLevelChips` (FIX-780). Hardcoding "stop" and "target" here is what put
-// a stop-loss on a stand-aside Hold; reading the stored keys is what kept it
-// there on a reopened report.
 
 export function PmHero({
   agent,
