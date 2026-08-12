@@ -74,8 +74,18 @@ the refusal is reachable only on a runtime config assembled without either.
 `startDetached` returns once the child is *accepted*, and what that guarantees
 differs by row above.
 
-**In-process.** The child request is running in this process. Nothing else is
-holding it, so the guarantee ends at the process boundary.
+**In-process.** The child's records are committed and the child is discoverable
+in this process. Which write that is depends on the action's concurrency policy.
+Under `allow` and `reject` it is the run's own `activeRequests` registration, so
+the request has started by the time acceptance resolves. Under `queue` it is the
+enqueue-time registration and request record, both written *before* the
+concurrency gate releases — so a child whose key is already held is accepted
+while it is still waiting its turn, and has not started. Either way nothing
+outside this process is holding the work, so the guarantee ends at the process
+boundary.
+
+Accepted-and-still-waiting is the state shutdown handles worst: a child cancelled
+in that window is written `aborted` without ever having run (FIX-1121).
 
 **Queued.** The request record has been written and the queue has accepted the
 job. Both are confirmed before `startDetached` returns: a failed store write or

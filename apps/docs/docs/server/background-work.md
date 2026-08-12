@@ -134,6 +134,13 @@ until a record's heartbeat has been quiet longer than the staleness threshold,
 so a job that has simply gone quiet for a second is never mistaken for an
 abandoned one.
 
+That protection is the heartbeat, so it doesn't cover a flow that turns the
+heartbeat off. With `request: { heartbeatIntervalMs: 0 }` nothing refreshes the
+record while the work runs, and a run lasting longer than the staleness
+threshold can be marked `interrupted` while it is still going — which also
+offers it for resume, so the same work can be started a second time. Keep the
+heartbeat on for any flow whose requests outlive the threshold.
+
 The process that walked away mostly doesn't settle the record on its way out:
 [`dispose()`](../api/server.md#shutdown) cancels background work rather than
 marking it finished or failed. One case doesn't follow that yet — work still
