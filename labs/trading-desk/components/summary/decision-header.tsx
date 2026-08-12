@@ -19,8 +19,7 @@ import type {
 } from "./aggregate";
 import {
   buildTradeLevelModel,
-  LEGACY_LEVELS_CAPTION,
-  type TradeLevelModel,
+  tradeLineParts,
 } from "@/flows/analysis/lib/trade-levels";
 import { InvalidationList } from "./invalidation-list";
 import { cn } from "@/lib/utils";
@@ -236,32 +235,3 @@ function TradeBlock({ trade }: { trade: TradeLevels }): ReactElement | null {
   );
 }
 
-/**
- * The trade one-liner's segments, in display order. An unpublished leg
- * contributes no segment rather than a `—` placeholder, so an empty result means
- * the trader published no levels at all.
- *
- * The level segments are named by the shared rule (FIX-780), never here: this
- * line said "stop 320 · target 195" on a flat, no-position call before that rule
- * existed. A pre-fix record's two numbers collapse into one captioned segment,
- * because the record supports a name for the pair and not for either one.
- */
-export function tradeLineParts(
-  trade: NonNullable<TradeLevels>,
-  levels: TradeLevelModel,
-): ReadonlyArray<string> {
-  const parts: string[] = [];
-  if (trade.direction !== null) parts.push(trade.direction.toUpperCase());
-  // `sizePct` is "% of NAV as the trader proposed it" — labeled exactly that,
-  // never a dollar amount (no account value in scope; spec 06 §9.1).
-  if (trade.sizePct !== null) parts.push(`${trade.sizePct}% NAV`);
-  if (levels.predatesLabelingFix) {
-    parts.push(
-      `${LEGACY_LEVELS_CAPTION}: ${levels.rows.map((r) => r.value).join(", ")}`,
-    );
-  } else {
-    for (const row of levels.rows) parts.push(`${row.label} ${row.value}`);
-  }
-  if (trade.holdingPeriod !== null) parts.push(trade.holdingPeriod);
-  return parts;
-}

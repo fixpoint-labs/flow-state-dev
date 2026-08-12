@@ -225,6 +225,26 @@ export function buildTradeLevelModel(
 }
 
 /**
+ * The ONE way a pre-FIX-780 record's unlabeled levels are captioned, as a single
+ * segment: `levels recorded: 195, 320`.
+ *
+ * Both surfaces that show a legacy record read this — the decision one-liner and
+ * the trade-proposal prompt block — so the screen and the desk's own prompt
+ * cannot caption the same two numbers differently. Only `formatValue` varies
+ * (the prompt writes `$195`, the screen writes `195`); the caption word and the
+ * join are the shared part, which is the part that would otherwise drift.
+ *
+ * A surface with a different house style may re-case the result, the same
+ * latitude {@link TradeLevelRow.label} grants — but must not re-word it.
+ */
+export function formatLegacyLevels(
+  rows: readonly TradeLevelRow[],
+  formatValue: (value: number) => string = String,
+): string {
+  return `${LEGACY_LEVELS_CAPTION}: ${rows.map((r) => formatValue(r.value)).join(", ")}`;
+}
+
+/**
  * The level entries of the trader memo's display `metrics` row, derived from the
  * typed level fields through {@link buildTradeLevelModel} rather than taken from
  * the model's own metric strings.
@@ -250,6 +270,53 @@ export function tradeLevelMetricEntries(
     entries[row.label] = `$${row.value}`;
   }
   return entries;
+}
+
+/**
+ * The non-level fields the trade one-liner shows around its levels.
+ *
+ * Structural rather than an import of `components/summary/aggregate`'s
+ * `TradeLevels`: this leaf is dependency-free by design (it is imported from
+ * both the server-side flow and the client bundle), so it describes the shape it
+ * needs and lets the aggregate's type satisfy it.
+ */
+type TradeLineFields = {
+  direction: TradeStance;
+  sizePct: number | null;
+  holdingPeriod: string | null;
+};
+
+/**
+ * The trade one-liner's segments, in display order. An unpublished leg
+ * contributes no segment rather than a `—` placeholder, so an empty result means
+ * the trader published no levels at all.
+ *
+ * The level segments are named by {@link buildTradeLevelModel}, never here: this
+ * line said "stop 320 · target 195" on a flat, no-position call before that rule
+ * existed. A pre-fix record's two numbers collapse into one captioned segment
+ * ({@link formatLegacyLevels}), because the record supports a name for the pair
+ * and not for either one.
+ *
+ * Lives beside the rule rather than in the component that renders it: it is a
+ * domain formatter over a stored record, and the tests that pin the one-liner's
+ * wording should not have to import a React module to reach it.
+ */
+export function tradeLineParts(
+  trade: TradeLineFields,
+  levels: TradeLevelModel,
+): ReadonlyArray<string> {
+  const parts: string[] = [];
+  if (trade.direction !== null) parts.push(trade.direction.toUpperCase());
+  // `sizePct` is "% of NAV as the trader proposed it" — labeled exactly that,
+  // never a dollar amount (no account value in scope; spec 06 §9.1).
+  if (trade.sizePct !== null) parts.push(`${trade.sizePct}% NAV`);
+  if (levels.predatesLabelingFix) {
+    parts.push(formatLegacyLevels(levels.rows));
+  } else {
+    for (const row of levels.rows) parts.push(`${row.label} ${row.value}`);
+  }
+  if (trade.holdingPeriod !== null) parts.push(trade.holdingPeriod);
+  return parts;
 }
 
 /** The four level fields as they are stored on a memo, snapshot, or run

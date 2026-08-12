@@ -17,7 +17,11 @@ import type { PortfolioContextInput } from "../flow-schema";
 import type { LensConvergenceState } from "../agents/lenses/lens-convergence-resource";
 import type { RewardToRiskState } from "../reward-to-risk-resource";
 import type { RiskMandate } from "./risk-mandate";
-import { buildTradeLevelModel } from "./trade-levels";
+import {
+  buildTradeLevelModel,
+  formatLegacyLevels,
+  PRE_FLAT_STANCE_LABELING_FIX_REASON,
+} from "./trade-levels";
 import type { ThesisRecord } from "@/domain/portfolio/schema/thesis-schema";
 import {
   timeHorizonCategoryFor,
@@ -92,9 +96,17 @@ export function formatTradeProposalExtensions(memo: any): string {
     // later phase against its stored trader memo. Nothing in that memo says
     // which number was which, so it is passed through unnamed rather than
     // guessed at — the same call the screen makes for a legacy report.
+    //
+    // Caption and disclosure both come from the shared leaf rather than being
+    // spelled here: the desk must not tell the model one thing about these two
+    // numbers and the user another. Only the casing and the `$` are this
+    // surface's own, and the trailing sentence is the prompt-only directive —
+    // the model needs to be told what NOT to do with them, where a reader of the
+    // report just needs the fact.
+    const caption = formatLegacyLevels(levels.rows, (v) => `$${v}`);
     lines.push(
-      `Levels recorded: ${levels.rows.map((r) => `$${r.value}`).join(", ")}`,
-      "(this proposal predates the flat-stance labeling fix — the desk cannot say which level is which, so do not read them as a stop and a target)",
+      `${caption.charAt(0).toUpperCase()}${caption.slice(1)}`,
+      `(${PRE_FLAT_STANCE_LABELING_FIX_REASON} Do not read them as a stop and a target.)`,
     );
   } else {
     for (const row of levels.rows) {

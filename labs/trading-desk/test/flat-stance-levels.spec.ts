@@ -23,13 +23,14 @@
 import { describe, expect, it } from "vitest";
 import {
   buildTradeLevelModel,
+  LEGACY_LEVELS_CAPTION,
   levelsForStance,
   PRE_FLAT_STANCE_LABELING_FIX_REASON,
   tradeLevelMetricEntries,
+  tradeLineParts,
   type StoredTradeLevels,
 } from "../flows/analysis/lib/trade-levels";
 import { formatTradeProposalExtensions } from "../flows/analysis/lib/format";
-import { tradeLineParts } from "../components/summary/decision-header";
 import type { TradeLevels } from "../components/summary/aggregate";
 
 /** The MRVL-shaped flat report from the issue: a post-fix record. */
@@ -295,8 +296,26 @@ describe("formatTradeProposalExtensions — what the risk officers and the PM re
       sizePct: 0,
     });
     expect(out).toContain("Levels recorded: $195, $320");
-    expect(out).toContain("predates the flat-stance labeling fix");
+    expect(out).toContain(PRE_FLAT_STANCE_LABELING_FIX_REASON);
     expect(out).not.toContain("Stop:");
+  });
+
+  it("tells the model the same thing about these levels that it tells the user", () => {
+    // The prompt and the screen are two renderings of ONE disclosure. When they
+    // were worded independently the desk could drift into telling the model the
+    // two numbers are unidentifiable while the report told the reader something
+    // else about the same record — an inconsistency that spans prompt and
+    // screen, which is worse than either wording being wrong alone. Both now
+    // read the shared caption + reason from `lib/trade-levels.ts`.
+    const out = formatTradeProposalExtensions({ ...FLAT_PRE_FIX, sizePct: 0 });
+
+    // The user-facing disclosure, verbatim — not a paraphrase of it.
+    expect(out).toContain(PRE_FLAT_STANCE_LABELING_FIX_REASON);
+    // The caption word is the screen's, differing only in this surface's casing.
+    expect(out.toLowerCase()).toContain(`${LEGACY_LEVELS_CAPTION}:`);
+    // The one part that is prompt-only: the model is told what NOT to do with
+    // them. A reader of the report needs the fact; the model needs the rule.
+    expect(out).toContain("Do not read them as a stop and a target.");
   });
 });
 
