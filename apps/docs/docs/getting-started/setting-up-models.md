@@ -52,7 +52,7 @@ small = [
 
 If only `ANTHROPIC_API_KEY` is set, `preset/small` resolves to `claude-haiku-4-5`. If Anthropic is down, the resolver retries, then falls back to the next available model in the list. Your generator code doesn't change.
 
-The full list of built-in presets (`tiny`, `small`, `medium`, `large`, `thinking-small`, `thinking-medium`, `thinking-large`) is documented in [Models — Built-in Presets](/docs/fundamentals/models#built-in-presets).
+The full list is documented in [Models](/docs/fundamentals/models#migration-from-presets).
 
 ## Override a preset
 

@@ -112,6 +112,9 @@ override rather than pretending it applied.
 A custom host or dispatcher should read this as: honour `envelope.runtimeConfig`
 when you run work in-process, and expect not to receive it when you don't.
 
+Which dispatches run in-process, and what else changes with that answer, is
+[Detached Work](./detached-work.md).
+
 ### The shared action core
 
 Every action — caller-addressed or event-addressed — is built on one shape:

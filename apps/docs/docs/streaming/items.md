@@ -246,7 +246,7 @@ type ContinuationItem = {
 
 See [Durable execution](/docs/advanced/durable-execution) for the resume lifecycle and [Block memoization and replay](/docs/advanced/block-memoization-and-replay) for what gets restored versus re-run.
 
-## `content.audio.delta` — streaming TTS audio chunks
+## `content.audio.delta` — streaming TTS audio chunks {#contentaudiodelta-streaming-tts-audio-chunks}
 
 When the configured voice provider supports streaming TTS, the server emits `content.audio.delta` events carrying base64-encoded audio chunks for an in-flight `OutputAudioContent` part. These are live-only — they do not replay on reconnect. The durable representation is the eventual `OutputAudioContent` delivered via `content.added`.
 

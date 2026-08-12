@@ -47,18 +47,27 @@ export function extractDeclaredResources(config: {
  * Effective-storage-key collisions (different accessor keys pointing at the
  * same `(scope, ref, flowIsolation)`) are detected at flow-build time, not
  * here — this layer only merges the bubble-up sets.
+ *
+ * **Never writes to either argument, and never returns one — the result is
+ * always a fresh object.** Builders hand this function sets a block has already
+ * published, and some pass ONE reference as both a block's own set and its
+ * bubble-up accumulator (a sequencer's capability resources, a leaf's
+ * `resources`). Merging in place therefore rewrote the published
+ * `ownDeclaredResources` that FIX-688's prefetch hook reads (FIX-1052,
+ * FIX-1051). Copying is what lets callers keep sharing that reference.
  */
 export function mergeDeclaredResources(
   target: DeclaredResources | undefined,
   source: DeclaredResources | undefined
 ): DeclaredResources | undefined {
-  if (source === undefined) return target;
+  if (source === undefined) return target === undefined ? undefined : { ...target };
   if (target === undefined) return { ...source };
 
+  const merged = { ...target };
   for (const [name, resource] of Object.entries(source)) {
-    const existing = target[name];
+    const existing = merged[name];
     if (existing === undefined) {
-      target[name] = resource;
+      merged[name] = resource;
       continue;
     }
     if (existing === resource) continue;
@@ -67,7 +76,7 @@ export function mergeDeclaredResources(
     );
   }
 
-  return target;
+  return merged;
 }
 
 type ExecuteFn<

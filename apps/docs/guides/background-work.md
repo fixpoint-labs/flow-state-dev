@@ -63,7 +63,7 @@ export const flowstate = createFlowState({
 
 A POST to an action now returns a request id instead of running the action. A worker picks the job up, runs it against the same stores, and the client attaches to `GET /requests/:id/stream` exactly as it would for an in-process run. Same request, same session. A worker that dies mid-action retries the job.
 
-The configuration above runs in `colocated` mode, the default: one process both accepts jobs and consumes them, so you get the queue's durability and its retries without deploying anything new. Separating the tiers is a mode flag rather than a rewrite — `dispatch-only` on the web process, `worker-only` on a dedicated worker that calls `flowstate.ready()` to start consuming.
+The configuration above runs in `colocated` mode, the default: one process both accepts jobs and consumes them, so you get the queue's durability and its retries without deploying anything new. Separating the tiers is a mode flag rather than a rewrite — `dispatch-only` on the web process, `worker-only` on a dedicated worker that calls `flowstate.ready()` to start consuming. A `worker-only` process only consumes: it installs no dispatcher, so an action that reaches a router in that process runs inline instead of becoming a job. Keep the router on the dispatching tier.
 
 Reach for it when the run is long or heavy enough that you don't want it on the web tier at all, or when you want to scale workers separately.
 
@@ -117,11 +117,13 @@ const board = taskBoard({
 
 Tasks are seeded here to keep the example in one piece. A task added later with `addTask` carries the same `assignee` and `metadata` fields.
 
-Two bounds are worth knowing before you reach for this.
+Some bounds are worth knowing before you reach for this.
 
 **The board has to be reachable from the child session.** The workstream settles its own task, and resource scope resolves against whichever session is running — so a session-scoped board hydrates empty inside a workstream and has nothing to settle. Give the collection `sharedToWorkstream: true` and the whole lineage settles against one ledger. `user` and `org` scope need nothing extra.
 
-**On serverless without a queue adapter, the work is bounded by the function.** Detached work runs inside the invocation that started it, so the function's maximum duration is the ceiling. Add a queue adapter and it moves to a worker process, where it isn't.
+**On serverless, the work is bounded by the function unless something else consumes the queue.** Detached work runs inside the invocation that started it, so the function's maximum duration is the ceiling. A queue adapter alone does not lift it: in `colocated` mode the same process both enqueues *and* consumes, so the job is picked up by the invocation that is already running out of time. What lifts the ceiling is a consumer with its own lifetime — run the function in `dispatch-only` mode and host the worker separately, as a container or a long-lived process in `worker-only` mode. `colocated` is the right answer on a server you keep running, not on a function.
+
+**A `worker-only` process starts workstreams that aren't durable.** That mode dispatches nothing, so the work runs in the worker process and nothing re-runs it if that process stops. See [From a worker-only process](/docs/cli/overview#from-a-worker-only-process).
 
 ### Which tasks share a workstream
 
