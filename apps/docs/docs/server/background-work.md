@@ -121,43 +121,29 @@ because nothing discharges an approval except answering it.
 
 ### What a stopped process leaves behind
 
-A process can stop while background work is still running. A shutdown that ran
-out of its wait budget does it, and so does a process killed outright. Either
-way the work is cancelled without being settled. The task it was claimed for and
-the request record for the run both stay mid-flight, and each has its own way
-back.
+A process can stop while background work is still running, and the work is then
+cancelled without being settled. So a job can read `active` with nothing running
+it, and the request records under it can read in-progress, for a while after the
+process is gone. Neither is a stuck row.
 
-**The task** stays `in_progress`, holding a lease nobody is renewing. Once the
-lease deadline passes, the board is entitled to hand the task out again, and
-does: back to `pending`, with `abandonments` incremented. A task that keeps
-being handed out and abandoned is settled `errored` rather than recycled
-forever. A task whose lease has passed also stops counting as work in flight, so
-it doesn't hold a board back from being considered quiet. See [the
+Both clear themselves. The task returns to its board once its lease lapses and
+some worker claims it again. The request record is marked `interrupted` — the
+status a run can be resumed from — by a sweep that runs at runtime start, on a
+timer while a server is up, and on demand when a client asks. The sweep waits
+until a record's heartbeat has been quiet longer than the staleness threshold,
+so a job that has simply gone quiet for a second is never mistaken for an
+abandoned one.
+
+What does not happen is the record being settled by the process that walked
+away: [`dispose()`](../api/server.md#shutdown) cancels background work, it
+doesn't mark it finished, failed, or aborted. And if nothing ever runs against
+that store again, nothing sweeps it, and the row stays as it is.
+
+For the thresholds, see [Connection
+resilience](./connection-resilience.md#configuration). For the lease and the
+abandonment allowance, see [the
 lease](../orchestration/task-substrate.md#the-lease) and [when a job keeps being
 abandoned](../orchestration/task-substrate.md#when-a-job-keeps-being-abandoned).
-
-**The request record for the run** stays `in_progress`. A runtime starting
-against the same store sweeps for requests whose executor heartbeat has gone
-stale and marks them `interrupted`, the status a run can be resumed from. That
-startup pass is `detectInterruptedOnStartup`, a `createFlowState` option that is
-on by default. Client-driven recovery reaches the same sweep.
-
-The sweep only picks up a record once its heartbeat has been quiet for longer
-than the staleness threshold, so a start that happens moments after the process
-stopped leaves the record alone and a later one recovers it. That delay is
-deliberate: a request that has simply gone quiet for a second is not the same as
-one nobody is running, and treating them alike would reclaim live work. For the
-thresholds, see [Connection
-resilience](./connection-resilience.md#configuration).
-
-So a row reading in-progress just after a process stopped is expected, and it
-clears itself. The board reclaims the task on its lease. A later runtime start
-marks the request interrupted. What doesn't happen is the record being settled
-by the process that walked away: [`dispose()`](../api/server.md#shutdown)
-cancels background work, it doesn't mark it finished, failed, or aborted.
-
-If nothing ever runs against that store again, nothing sweeps it, and the row
-stays as it is.
 
 ## Reading one job's history
 

@@ -123,7 +123,7 @@ Some bounds are worth knowing before you reach for this.
 
 **On serverless without a queue adapter, the work is bounded by the function.** Detached work runs inside the invocation that started it, so the function's maximum duration is the ceiling. Add a queue adapter in `colocated` or `dispatch-only` mode and it moves to a worker process, where it isn't.
 
-**A `worker-only` process starts workstreams that aren't durable.** That mode consumes the queue and dispatches nothing, so a workstream started there runs inside the worker process instead of going onto the queue — and if the process stops, nothing re-runs it. It's a good place to consume durable jobs and a poor place to start them. Start them from a process that dispatches: `colocated` or `dispatch-only`.
+**A `worker-only` process starts workstreams that aren't durable.** That mode dispatches nothing, so the work runs in the worker process and nothing re-runs it if that process stops. See [From a worker-only process](/docs/cli/overview#from-a-worker-only-process).
 
 ### Which tasks share a workstream
 

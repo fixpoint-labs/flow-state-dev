@@ -143,12 +143,34 @@ A process can stop while detached work is still running — a shutdown that ran
 out of budget, or a kill. Either way the work is cancelled without being
 settled, and two records are left mid-flight. Each has its own way back.
 
-**The task** stays `in_progress`, holding a lease nobody is renewing. Once the
-lease deadline passes the board is entitled to hand it out again, and does: back
-to `pending`, with `abandonments` incremented. A task that keeps being handed
-out and abandoned settles `errored` rather than recycling forever. A task whose
-lease has passed also stops counting as work in flight, so it does not hold a
-board back from being considered quiet.
+**The task** stays `in_progress`, holding a lease nobody is renewing. Recovery
+happens on the next claim, and it does **not** route through `pending`:
+`isClaimable` admits a row whose lease has lapsed, and `applyClaimToTask` hands
+it straight back out inside the atomic claim write — the row stays
+`in_progress` while `attempts` and `abandonments` both advance. Counting the
+abandonment in the same write as the hand-off is what leaves no window where a
+row has been re-dispatched but not yet charged for it.
+
+Past the abandonment allowance that same write settles the row `errored`
+(`applyAbandonmentSettlement`) rather than handing out another duplicate
+execution. Settling *inside the claim write* is what keeps the board's exit
+question answerable: a row left `in_progress` with nobody on it still counts as
+in-flight, so a board that neither re-claimed nor settled it would never report
+`drained` or `blocked`.
+
+`reclaim()` is a different thing and is easy to confuse with the above. It is an
+explicit verb that returns a row to `pending` without touching `attempts`.
+Lease-lapse recovery does not call it.
+
+**A lapsed detached row resumes holding the launching drain open.** The
+exclusion that lets a handed-off row drop out of the board's in-flight count
+requires a live lease: `isHandedOff` is `in_progress && runsElsewhere(task) &&
+!leaseLapsed(...)`. Routing says where the work belongs, the lease says whether
+anyone is actually on it, and a claimant that died before its child ever started
+leaves a row that is detached by routing and abandoned in fact. So the row is
+invisible to the drain while the lease is live and visible again once it lapses,
+until some claim takes it back. The wake test reads the same lease, so a worker
+stirs into an exit check that no longer calls the board drained.
 
 **The request record** stays `in_progress` until a sweep marks it `interrupted`,
 the status a run can be resumed from. Three things run that sweep:

@@ -215,6 +215,29 @@ auth themselves — see the [Authentication](/docs/server/authentication) page f
 the resolver contract, `requireUser` semantics, and the bundled HMAC and
 JWT helper utilities.
 
+## Execution configuration and the queue
+
+A host's `runtimeConfig` is the execution configuration for everything it
+dispatches: the model resolver, the providers, the logger. When a dispatch runs
+in the same process, work started from it inherits the launching request's
+effective config, so a config a caller derived for one request reaches the
+background work that request spawns.
+
+That inheritance stops at a serialization boundary. A `RuntimeConfig` holds live
+resolvers and provider instances, so a dispatcher that hands work to another
+process — a queue adapter, a separate worker tier — cannot carry it. The job
+carries the serializable envelope only, and the worker runs it under its own
+configuration.
+
+Carrying just the selected model *id* across would not fix it. The worker is a
+different process with its own gateways and keys, so a forced id may not resolve
+there at all, replacing a silently wrong model with a failure surfacing where the
+caller cannot see it. The host logs a warning at each dispatch that drops a
+caller-derived config rather than pretending it applied.
+
+Writing a custom host or dispatcher, read this as: honour the inherited config
+when you run work in-process, and expect not to receive it when you don't.
+
 ## Per-registry, not per-flow
 
 Adapters mount onto a host built from one `FlowRegistry`. One adapter

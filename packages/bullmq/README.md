@@ -59,33 +59,31 @@ A `worker-only` process installs no dispatcher and typically never serves the ro
 
 Options: `connection`, `mode`, `retry`, `concurrency` (default 2), `lockDuration` (default 300000 — LLM calls are slow), `prefix`, `queueName`, `channelPrefix`. The adapter also exposes `queue` and `runtime` for admin consoles and direct `enqueueAction` use.
 
-## What crosses the queue, and what doesn't
+## Limits
 
-Some limits are worth knowing before you rely on the queue for durability.
+Some things do not behave the way "durable background jobs" suggests. Each is
+covered in full elsewhere; the short version belongs here, where you wire it.
 
-### A per-request runtime config does not cross
+**A per-request `RuntimeConfig` does not cross the queue.** It holds live model
+resolvers and providers, which do not serialize, so a queued job runs under the
+worker's own configuration. `fsdev run --model` is the case you will hit: the
+override applies in the command's process and stops at Redis, and each dispatch
+that loses it logs a warning. See [Inbound
+transports](https://flow-state.dev/docs/advanced/inbound-transports#execution-configuration-and-the-queue).
 
-A `RuntimeConfig` holds live model resolvers, providers and loggers, and none of them serialize. The job payload carries the serializable envelope only: flow kind, action, input, identity, source, metadata, request id. The worker runs it under the config that worker was built with.
+**`worker-only` starts background work in-process, and it is not durable.** That
+mode installs no dispatcher, so `ctx.requestHost.startDetached` — what a task
+board's `dispatch: { mode: "detached" }` worker uses — runs the child inside the
+worker process and enqueues nothing. If the process stops, nothing re-runs it. A
+`worker-only` process is a good place to *consume* durable jobs and a poor place
+to *start* them; start them from `colocated` or `dispatch-only`. See [Work that
+outlives the turn](https://flow-state.dev/guides/background-work).
 
-The case you will hit is `fsdev run --model`. The override applies to every generator in the command's own process and stops at the queue, so a flow that dispatches through Redis runs on two models at once: the one you passed, and the worker's. Each dispatch that loses the override logs a warning naming the request.
-
-Serializing just the model id would be worse. The worker is a different process with its own gateways and keys, so a forced id may not resolve there at all.
-
-### Background work started from a `worker-only` process is not durable
-
-`worker-only` installs no dispatcher. Background work started there runs **inside the worker process itself**, and nothing is enqueued. That covers `ctx.requestHost.startDetached`, which is what a task board's `dispatch: { mode: "detached" }` worker uses.
-
-That work belongs to the process, not to the queue. If the process stops, the run stops with it and nothing re-runs it: the request record stays where it stopped, and a task-board row the work had claimed is left for lease recovery. An enqueued job, by contrast, costs a retry rather than the work.
-
-A `worker-only` process is a good place to *consume* durable jobs and a poor place to *start* them. For the queue to own the work, start it from a process that has a dispatcher, which means `colocated` or `dispatch-only`.
-
-### `dispose()` does not wait for queued work
-
-`FlowState.dispose()` closes the worker, which drains the jobs this process is currently running, then releases connections. It does not wait for jobs sitting in the queue, or for jobs running in another container. Waiting on those would block shutdown on a process this one does not control.
-
-Background work that runs *in-process* is waited for, bounded by `detachedDrainTimeoutMs`. Work handed to the queue is not.
-
-Shutdown also never writes a terminal status on cancelled work's behalf. The task returns to the board when its lease lapses; the request record is marked `interrupted` by a later sweep.
+**`dispose()` does not wait for queued work.** Closing the worker drains the
+jobs this process is running, not jobs sitting in the queue or running in
+another container. In-process background work is waited for, bounded by
+`detachedDrainTimeoutMs`. See
+[Shutdown](https://flow-state.dev/docs/api/server#shutdown).
 
 ### Lower-level composition
 
