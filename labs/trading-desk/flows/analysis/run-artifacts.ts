@@ -214,7 +214,12 @@ export function buildRunArtifacts(
     // Whether this run's stored figures predate the data-honesty contract
     // (FIX-1063). Derived through the SAME predicate the Summary marker uses,
     // so a scored artifact bundle and a rendered report can never disagree
-    // about whether a run is trustworthy. Absent stamp → pre-fix.
+    // about whether a run is PRE-FIX. Absent stamp → pre-fix.
+    //
+    // `false` means "not known to predate the corrections", NOT "trustworthy":
+    // the contract version covers the surfaces named in
+    // `data-honesty-contract.ts`, not every figure in the bundle. A judge or
+    // scorer reading this must not treat it as a quality signal.
     preDataHonestyFix: isPreDataHonestyFix(sessionState.dataHonestyContractVersion),
     p2Contributions: hasTranscript(p2Contributions) ? p2Contributions : null,
     memos: memos.map((memo) => ({
