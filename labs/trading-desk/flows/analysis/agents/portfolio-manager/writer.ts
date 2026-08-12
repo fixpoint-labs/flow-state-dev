@@ -42,6 +42,7 @@ import {
 } from "../../decision-snapshot-resource";
 import { clampRatingToBand } from "../../lib/rating-engine";
 import {
+  levelsForStance,
   withDerivedLevelMetrics,
   type TradeStance,
 } from "../../lib/trade-levels";
@@ -508,14 +509,38 @@ export const commitPortfolioManagerMemo = handler({
           ? traderDirection
           : null,
       entryPrice: null, // TODO(outcome-tracking): source from price-history resource
-      // FIX-780 — mirror all four level fields verbatim from the trader memo,
-      // which the trader's own commit already gated by stance. The snapshot
-      // never re-derives them: a mirror that disagreed with the memo is exactly
-      // what the eval invariant checks for.
-      stopPrice: traderState?.stopPrice ?? null,
-      targetPrice: traderState?.targetPrice ?? null,
-      reassessBelowPrice: traderState?.reassessBelowPrice ?? null,
-      invalidateAbovePrice: traderState?.invalidateAbovePrice ?? null,
+      // FIX-780 — the four level fields pass through the WRITE half of the rule
+      // (`levelsForStance`) rather than being mirrored verbatim, because THIS IS
+      // A WRITE and its field names are claims: `stopPrice` asserts "the desk's
+      // stop".
+      //
+      // The trader's own commit applies the same gate, so for any run written
+      // after FIX-780 this is a no-op and the snapshot still equals the memo. It
+      // is NOT a no-op for a session written BEFORE the fix and resumed into
+      // Phase 5: that memo predates the gate, so a flat record carries its two
+      // monitoring levels in `stopPrice` / `targetPrice`. Mirroring verbatim
+      // copied that mislabeling into a durable record, and out through
+      // `run-summary` and `adopt-thesis` — which turns `snapshot.stopPrice` into
+      // a standing-thesis stop and a "Price through the stop level" TRIPWIRE.
+      // That is the defect escaping the report and becoming persistent user data
+      // with an alert attached, on a position the desk declined to take.
+      //
+      // The gate drops the pair the stance cannot carry, so a legacy flat record
+      // records no levels at all here. The numbers are not lost — the trader memo
+      // still holds them and the report renders them captioned and unlabeled —
+      // but they never enter a NAMED field again. Nothing in the old record says
+      // which number was which, so re-filing them as `reassessBelowPrice` would
+      // be the same guess wearing a stored value's authority that the legacy
+      // display rule already refuses.
+      ...levelsForStance(
+        (traderDirection ?? null) as TradeStance,
+        {
+          stopPrice: traderState?.stopPrice,
+          targetPrice: traderState?.targetPrice,
+          reassessBelowPrice: traderState?.reassessBelowPrice,
+          invalidateAbovePrice: traderState?.invalidateAbovePrice,
+        },
+      ),
       sizePct: traderState?.sizePct ?? null,
       holdingPeriod: traderState?.holdingPeriod ?? null,
       // Risk-mandate decision (FIX-752) — the FIX-614 sensitivity-benchmark

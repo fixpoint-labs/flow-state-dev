@@ -313,6 +313,59 @@ describe("checkRun — snapshot ↔ trader level mirrors (FIX-780)", () => {
       byId(checkRun(b).checks, "decision-consistency/snapshot-trader")?.status,
     ).toBe("pass");
   });
+
+  it("passes when a resumed LEGACY flat run records no levels in the snapshot", () => {
+    // The durable-write case. A session written before FIX-780 and resumed into
+    // Phase 5 has a flat trader memo whose two MONITORING levels are still filed
+    // as `stopPrice` / `targetPrice` — that memo predates the commit gate. The
+    // snapshot write applies `levelsForStance`, so it records NO levels, and
+    // that is agreement with the rule, not drift from the memo.
+    const b = flatBundle();
+    const trader = b.memos.find(
+      (m) => m.key === ALL_MEMO_KEYS.trader.collectionKey,
+    )!.state as MemoState;
+    Object.assign(trader, {
+      stopPrice: 320,
+      targetPrice: 195,
+      reassessBelowPrice: null,
+      invalidateAbovePrice: null,
+    });
+    Object.assign(b.decisionSnapshot!, {
+      stopPrice: null,
+      targetPrice: null,
+      reassessBelowPrice: null,
+      invalidateAbovePrice: null,
+    });
+    expect(
+      byId(checkRun(b).checks, "decision-consistency/snapshot-trader")?.status,
+    ).toBe("pass");
+  });
+
+  it("fails if a resumed legacy flat run copies its mislabeled stop into the snapshot", () => {
+    // The defect itself: mirroring verbatim put `stopPrice: 320` into a durable
+    // record, and `adopt-thesis` turns that into a standing-thesis stop with a
+    // "Price through the stop level" tripwire — on a position the desk declined
+    // to take.
+    const b = flatBundle();
+    const trader = b.memos.find(
+      (m) => m.key === ALL_MEMO_KEYS.trader.collectionKey,
+    )!.state as MemoState;
+    Object.assign(trader, {
+      stopPrice: 320,
+      targetPrice: 195,
+      reassessBelowPrice: null,
+      invalidateAbovePrice: null,
+    });
+    Object.assign(b.decisionSnapshot!, {
+      stopPrice: 320,
+      targetPrice: 195,
+      reassessBelowPrice: null,
+      invalidateAbovePrice: null,
+    });
+    expect(
+      byId(checkRun(b).checks, "decision-consistency/snapshot-trader")?.status,
+    ).toBe("fail");
+  });
 });
 
 describe("checkRun — rating-envelope", () => {

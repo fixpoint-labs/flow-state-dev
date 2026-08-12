@@ -28,6 +28,10 @@ import { computeEvidenceGate } from "../flows/analysis/lib/evidence-gate";
 import { computeRewardToRisk } from "../flows/analysis/lib/reward-to-risk";
 import { DIVERGENCE_THRESHOLD } from "../flows/analysis/lib/triangulation";
 import {
+  levelsForStance,
+  type TradeStance,
+} from "../flows/analysis/lib/trade-levels";
+import {
   modelImpliedRating,
   ratingIndex,
   type FinalRating,
@@ -841,23 +845,30 @@ function checkDecisionConsistency(bundle: RunArtifactsBundle, c: Checks, memos: 
     if (snapshot.direction !== (trader.direction ?? null)) {
       tradeMismatches.push(`direction ${snapshot.direction} vs ${trader.direction}`);
     }
+    // FIX-780 — the snapshot mirrors the STANCE-GATED levels, not the memo's
+    // raw fields, because the snapshot write applies `levelsForStance` (the PM
+    // writer). For any run written after FIX-780 the two are identical: the
+    // trader's own commit already gated them, so the gate is idempotent. They
+    // differ only for a pre-fix session resumed into Phase 5, whose flat memo
+    // still carries its monitoring levels under `stopPrice` / `targetPrice` —
+    // and there the snapshot recording NOTHING is the correct outcome, not
+    // drift. Comparing against the raw memo would demand the snapshot reproduce
+    // the mislabeling.
+    const gated = levelsForStance((trader.direction ?? null) as TradeStance, {
+      stopPrice: trader.stopPrice,
+      targetPrice: trader.targetPrice,
+      reassessBelowPrice: trader.reassessBelowPrice,
+      invalidateAbovePrice: trader.invalidateAbovePrice,
+    });
     const numPairs: Array<[string, number | null, number | null]> = [
       ["sizePct", snapshot.sizePct, trader.sizePct ?? null],
-      ["stopPrice", snapshot.stopPrice, trader.stopPrice ?? null],
-      ["targetPrice", snapshot.targetPrice, trader.targetPrice ?? null],
-      // FIX-780 — the flat run's monitoring pair mirrors like any other level.
-      // `?? null` collapses the pre-FIX-780 missing key to the absence the
-      // snapshot records for it, so a legacy run reads as agreeing rather than
-      // as drift.
-      [
-        "reassessBelowPrice",
-        snapshot.reassessBelowPrice,
-        trader.reassessBelowPrice ?? null,
-      ],
+      ["stopPrice", snapshot.stopPrice, gated.stopPrice],
+      ["targetPrice", snapshot.targetPrice, gated.targetPrice],
+      ["reassessBelowPrice", snapshot.reassessBelowPrice, gated.reassessBelowPrice],
       [
         "invalidateAbovePrice",
         snapshot.invalidateAbovePrice,
-        trader.invalidateAbovePrice ?? null,
+        gated.invalidateAbovePrice,
       ],
     ];
     for (const [name, a, b] of numPairs) {
