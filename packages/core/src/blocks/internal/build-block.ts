@@ -48,16 +48,13 @@ export function extractDeclaredResources(config: {
  * same `(scope, ref, flowIsolation)`) are detected at flow-build time, not
  * here — this layer only merges the bubble-up sets.
  *
- * **Neither argument is written to, and the result is always a fresh object —
- * never one of the arguments.** Builders routinely hand this function a set
- * that a block has already published — and where a block passes
- * ONE reference as both its own set and its bubble-up accumulator (a
- * sequencer's capability resources, a leaf's `resources`), writing into the
- * accumulator retroactively rewrote that block's `ownDeclaredResources`, which
- * FIX-688's prefetch hook reads as the block's own declarations. Returning a
- * copy is what keeps `ownDeclaredResources` meaning what its name says, so the
- * callers may keep sharing a reference between the two rails (FIX-1052,
- * FIX-1051).
+ * **Never writes to either argument, and never returns one — the result is
+ * always a fresh object.** Builders hand this function sets a block has already
+ * published, and some pass ONE reference as both a block's own set and its
+ * bubble-up accumulator (a sequencer's capability resources, a leaf's
+ * `resources`). Merging in place therefore rewrote the published
+ * `ownDeclaredResources` that FIX-688's prefetch hook reads (FIX-1052,
+ * FIX-1051). Copying is what lets callers keep sharing that reference.
  */
 export function mergeDeclaredResources(
   target: DeclaredResources | undefined,

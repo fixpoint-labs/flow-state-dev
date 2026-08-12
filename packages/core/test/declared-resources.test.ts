@@ -265,28 +265,17 @@ describe("mergeDeclaredResources", () => {
 // --- ownDeclaredResources survives composition (FIX-1052, carries FIX-1051) ---
 
 /**
- * `ownDeclaredResources` is the block's OWN declarations, and FIX-688's
- * block-dispatch prefetch hook reads it specifically to load those without
- * re-loading a descendant's. That only holds if composing onto a block cannot
- * reach back and edit what the block already published.
+ * Regression for FIX-1052 (and FIX-1051, the same defect via `.rescue()`):
+ * composing onto a block must not reach back and edit the
+ * `ownDeclaredResources` it already published. See `mergeDeclaredResources`
+ * for why the builders' shared reference made that possible.
  *
- * It could. Every builder hands `mergeDeclaredResources` an object it does not
- * own, and the function wrote into it in place. Where a block passes ONE
- * reference as both rails — a sequencer's capability resources are both its own
- * set and the seed of its bubble-up accumulator (`sequencer.ts`), and a leaf's
- * own set IS its bubble-up set (`handler.ts`, `generator.ts`) — a later
- * `.step()` or `.rescue()` edited the published `ownDeclaredResources` of a
- * block that was already built.
- *
- * The three cases below are the three shapes that reached it. They are written
- * against the ALREADY-BUILT block, not the one composition returns: the defect
- * is retroactive, so asserting on the new block would pass while the old one
- * had silently grown a key.
- *
- * The common case hid this for as long as it did by accident — with no `uses:`
- * the shared reference is `undefined`, and merging into `undefined` always
- * cloned. Every test here therefore carries a capability resource; without one
- * they pass against the defect.
+ * Two things these tests depend on. They assert on the ALREADY-BUILT block
+ * rather than the one composition returns — the defect is retroactive, so
+ * asserting on the returned block passes against the bug. And every case
+ * carries a capability resource, since that is what makes a block pass one
+ * reference as both rails; with no `uses:` the shared reference is `undefined`
+ * and the merge always copied.
  */
 describe("ownDeclaredResources is unaffected by later composition", () => {
   const capResource = defineResource({
@@ -353,6 +342,9 @@ describe("ownDeclaredResources is unaffected by later composition", () => {
     expect(Object.keys(seq.ownDeclaredResources ?? {})).toEqual(["capResource"]);
   });
 
+  // The over-correction guard for the sequencer rail (the leaf's is inline
+  // above): a merge that stopped mutating by dropping the child's resource
+  // would satisfy every assertion above and break resolution at run time.
   it("the composed block still collects the child's resource", () => {
     const parent = sequencer({
       name: "collects",
