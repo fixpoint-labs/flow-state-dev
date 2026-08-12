@@ -13,8 +13,10 @@ A developer meeting FSD cannot tell which of our statements to trust, and the on
 first are the ones they meet first. When this epic lands, the four places we are provably
 lying have stopped lying.
 
-This is the last cheap moment. `@flow-state-dev/core` is `0.0.0` and unpublished, so none of
-these has an external consumer to migrate.
+This is the last cheap moment. `@flow-state-dev/core` and `@flow-state-dev/patterns` are both
+`0.0.0` and unpublished, so none of these has an external consumer to migrate today. Two of
+them are nonetheless already written down as contracts — FIX-1048's four type fields and
+FIX-754's exported block — and that is what decides how each is gated, below.
 
 **Holistic necessity.** Four issues, and the honest question is whether it's three.
 
@@ -36,31 +38,69 @@ these has an external consumer to migrate.
   (`mergeDeclaredResources` stops mutating its target) closes it, closes FIX-1051, and closes
   an unfiled third variant. **If the fix grows past making that function pure, that is the
   signal something larger was found and it should be re-scoped, not absorbed.**
-- **FIX-754 is the weakest, and it is kept rescoped.** Its filed harm — "redundant
-  `block_output` echoes in the user-visible log" — was priced against a taxonomy that no longer
-  exists. `block_output` is gone as a type (`packages/contracts/src/items/types.ts:702-716`),
-  replaced by `block_trace`, which is a trace type and never reaches a client or a history
-  (`docs/architecture/items.md:24`). A read of `main` closes the rest: **`.tap()` suppresses no
-  item that `.step()` emits** — both dispatch through the same `runChild`, and the only delta
-  is `recordSequentialChild` advancing the chain pointer, which for a block returning its input
-  unchanged resolves to the identical ref. So the fix has **zero observable effect**, and its
-  real scope is **two sites, not four**: `captureContext` in `patterns/src/response-auditor/index.ts`
-  (~:51-62, wired at :213) and `stashTaskId` in `patterns/src/eventActors/index.ts` (:423, wired
-  at :439). Both `tools/src/bash/blocks.ts` sites are **already correct** — the audit cited
-  handler definitions rather than their wiring, which is `.workIf` at :951 and `.tapIf` at :953.
+- **FIX-754 is the one that grew under review, twice.** Its filed harm —
+  "redundant `block_output` echoes in the user-visible log" — was priced against a taxonomy that
+  no longer exists. `block_output` is gone as a type
+  (`packages/contracts/src/items/types.ts:702-716`), replaced by `block_trace`, which is a trace
+  type and never reaches a client or a history (`docs/architecture/items.md:24`). That much
+  stands, and so does the runtime reading behind it: **`.tap()` suppresses no item that
+  `.step()` emits** — both dispatch through the same `runChild`, and the only delta is
+  `recordSequentialChild` advancing the chain pointer.
 
-  **Kept, at two one-word edits.** Not for observable harm — there is none — but because the
-  repo declares BP-012/BP-014 and this code contradicts them in the packages developers read as
-  the model. That is this epic's objective applied to our own standards, which is the one place
-  a "declared surface" epic cannot exempt itself. It also unblocks FIX-625 (the BP-014
-  enforcement guard), which cannot land against known violations.
+  **"Zero observable effect" does not stand, and is withdrawn.** `captureContext` is exported
+  from `@flow-state-dev/patterns` (`packages/patterns/src/index.ts:86`) — a publishable package,
+  with no `private` field and `publishConfig.access: "public"` — and
+  `apps/docs/docs/patterns/response-auditor.md:250` explicitly invites flow authors to remix it.
+  Dropping its `outputSchema` and identity return changes a third-party `.step(captureContext)`
+  from receiving `{ userInput, response }` to receiving **`undefined`, silently**.
+  `block_trace.output` changes for all four blocks as well
+  (`packages/engine/src/context/createExecutionContext.ts:3484-3486,3509`). **In-repo nothing
+  breaks** — `.tap()` returns `{ value }` unchanged
+  (`packages/core/src/blocks/sequencer.ts:1930,1963`), so the downstream `.map` chains at
+  `response-auditor/index.ts:214` and `eventActors/index.ts:440` are fine. The breakage is
+  **external only**, and with both packages unpublished there is no external consumer to break
+  today. What the change reaches is the contract, not a live migration — and that is enough to
+  gate it.
+
+  **The scope is four handler definitions, not two.** BP-012's second clause governs the
+  *definition*, not the wiring: *"Such handlers must not declare `outputSchema` and must not
+  `return input`"* (`docs/contributing/best-practices/blocks.md:20-28`). `.tapIf`/`.workIf`
+  wiring satisfies one clause only, so all four are non-compliant — `ensureSandbox`
+  (`packages/tools/src/bash/blocks.ts:780`, `:787`), `purgeStaleContainers` (`:800`, `:815`),
+  `stashTaskId` (`packages/patterns/src/eventActors/index.ts:426`, `:430`, `.step`→`.tap` at
+  `:439`) and `captureContext` (`packages/patterns/src/response-auditor/index.ts:54`, `:61`,
+  `.step`→`.tap` at `:213`). The two bash *wirings* are already correct (`.workIf` at `:951`,
+  `.tapIf` at `:953`); only their definitions change.
+
+  **Kept, and now on the spec route.** Still not for observable harm inside this repo — but
+  because the repo declares BP-012/BP-014 and this code contradicts them in the packages
+  developers read as the model. That is this epic's objective applied to our own standards,
+  which is the one place a "declared surface" epic cannot exempt itself. It also unblocks
+  FIX-625 (the BP-014 enforcement guard), which cannot land against known violations — and could
+  not have at the two-site scope, since the two it missed are violations too.
+
+  **But the price went up, so "is it three?" is a live question rather than a rhetorical one.**
+  It was kept as two one-word edits with no gate. It is now four definitions, a spec, a spec
+  gate, a docs section to reconcile, and a changeset. That is still small, and the FIX-625
+  unblock is still real — but it is no longer free, and this is the row to cut if the set has to
+  give one up.
+
+**One issue now carries a spec gate.** FIX-754 changes an exported, documented block contract in
+a publishable package, and `orchestration.md:245-248` sends exactly that back: a purported bug
+whose fix *"changes a contract other code depends on"* is promoted, because a contract change
+must not reach `main` through the one route with no gate in front of it. Its Linear category is
+now **Improvement**. **So this epic has two approvals ahead of it, not one** — this objective,
+and then FIX-754's spec. The other three stay on the direct route, where the implementation PR
+is the only gate.
 
 **Not doing.** This is four verified defects, not a sweep. An objective phrased as "everything
 declared is true" invites an unbounded audit of every declaration in the framework; that is
 explicitly not this epic, and a fifth site discovered during the work is filed, not folded.
 Also out: **FIX-852** (model-layer complexity — a different objective, runs standalone after)
-and **FIX-766** (`work` → `sideChain` — same family, but it became a public-contract and
-persisted-format migration, so it takes the spec route and its own lifecycle).
+and **FIX-766** (`work` → `sideChain` — same family, but it grew into a persisted-format
+migration with a rollout, an order of magnitude larger than anything here, so it runs its own
+lifecycle). **The reason is the size and the migration, not the route:** FIX-754 is spec-route
+now too and stays in the set.
 
 ## 2. Themes & long-horizon direction
 
@@ -68,8 +108,14 @@ persisted-format migration, so it takes the spec route and its own lifecycle).
    default and it binds every issue here. **One deliberate exception:** where the declaration
    was never meant to be supported, removing it from the type — so misuse fails at compile
    time — closes the gap just as well. **Taking that exception is not an implementer's call**,
-   because it decides what the framework offers rather than how a fix is written. FIX-1048 is
-   the only issue where both resolutions are available, and it is open in §5.
+   because it decides what the framework offers rather than how a fix is written.
+
+   **Two issues can take it, and they are gated differently.** FIX-1048 — wire the four fields
+   or delete them — is open with the product owner in §5, because there is no other gate in
+   front of it. FIX-754 reaches the same fork one level up: keep exporting `captureContext` as a
+   `.tap`-only block, or unexport it so a `.step(captureContext)` stops compiling. That one is
+   settled in FIX-754's spec and signed off at its spec-approval gate, which is what the
+   promotion to the spec route bought. Neither is decided in a diff.
 
 2. **A carrier PR names its passenger.** FIX-502 rides FIX-1126 and FIX-1051 rides FIX-1052
    rather than each getting its own row. The carrier's description names the passenger, or the
@@ -78,44 +124,60 @@ persisted-format migration, so it takes the spec route and its own lifecycle).
    is docs-and-examples-only across private packages, which take no changeset at all
    ([`release-notes-workflow.md`](../../docs/contributing/release-notes-workflow.md)).
 
-3. **No sequencing between the four.** They touch disjoint surfaces, can run in parallel, and
-   can merge in any order. Stated because a four-issue epic invites a reader to look for the
-   dependency graph, and there isn't one. The one near-seam — `docs/patterns/response-auditor.md`
-   carries a stale preset example, and FIX-754 edits the block that page describes — is not a
-   real collision: the page documents the pattern's composition, not its block output.
+3. **One sequencing constraint, and it is FIX-754 → FIX-1126.** Every other pair is disjoint:
+   different files, parallel, any merge order. The exception is one page. FIX-1126 edits
+   `apps/docs/docs/patterns/response-auditor.md` for stale `preset/*` strings (`:67`, `:147`,
+   `:193`), while FIX-754 decides whether `captureContext` stays exported — which is precisely
+   what `:246-250` of that same page documents ("The internal blocks … are exported for flow
+   authors who want to remix the pipeline"). **FIX-1126 must not rewrite `:237-250`.** That
+   section is FIX-754's to reconcile once its spec settles the export, or the two coordinate
+   explicitly before either touches it. Recorded because the earlier reading of this seam — "the
+   page documents the pattern's composition, not its block output" — was wrong: the page
+   documents the export contract itself, which is the thing FIX-754 changes.
 
 ## 3. Shape of the whole *(POC)*
 
-**`spec_poc: skipped`** — the trigger an end-state POC answers (*does the division into issues
-hold once it's all there?*) does not fire: the four fixes touch disjoint files, share no seam,
-and none creates surface another consumes.
+**`spec_poc: skipped`** — still skipped, but no longer for the reason first given. The original
+justification was that the four fixes touch disjoint files and share no seam; round 2 falsified
+both halves, because FIX-754 reaches an exported contract and a docs section FIX-1126 also
+edits. The skip now rests on something narrower: the seam is **known and named** (theme 3), and
+the artifact that settles it is FIX-754's spec, which the promotion to the spec route requires
+anyway. An end-state POC asks whether the division into issues holds; it does — the one place
+the issues rub is a documentation section with a named owner, and rendering four independent
+fixes would show nothing the constraint statement doesn't already say.
 
-What a POC would have shown, reading `main` showed directly and cheaper — and it is where every
-scope correction in this epic came from, first at drafting (FIX-754's premise names a removed
-item type) and again at review (that fix has no observable effect at all, and covers two sites
-rather than four; FIX-1126's boundary is semantic rather than textual). Both are folded into §1
-rather than discovered later in a worktree.
+**What reading `main` bought, and what it cost.** Every scope correction here came from reading
+`main` rather than from a POC, and one of those readings was wrong. It established correctly
+that `.tap()` suppresses no item `.step()` emits — then concluded "therefore zero observable
+effect", having never left the runtime to check the package's export surface or the docs page
+describing it. Review round 2 caught it. Kept as this epic's own evidence standard, since the
+epic is about honest declarations: **a claim about what is observable has to be checked at the
+boundary the observer is standing on**, not only at the layer the change is made in.
 
 ## 4. Running index
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| [FIX-1126](https://linear.app/fixpoint-labs/issue/FIX-1126) | Every stale `preset/*` example stops teaching syntax that throws; getting-started rewritten around `intent/*` (carries FIX-502) | **bug** | — | — | Todo |
-| [FIX-1048](https://linear.app/fixpoint-labs/issue/FIX-1048) | `FlowInstanceOptions.webhooks/chat/schedules/mcp` either apply at instance creation or stop type-checking | **bug** | — | — | Todo |
-| [FIX-1052](https://linear.app/fixpoint-labs/issue/FIX-1052) | `mergeDeclaredResources` stops mutating its target, so `ownDeclaredResources` stays a block's own (carries FIX-1051) | **bug** | — | — | Todo |
-| [FIX-754](https://linear.app/fixpoint-labs/issue/FIX-754) | Two state-only blocks stop declaring an `outputSchema` and returning their input (BP-012/BP-014); unblocks FIX-625 | **bug** | — | — | Backlog |
+| [FIX-1126](https://linear.app/fixpoint-labs/issue/FIX-1126) | Every stale `preset/*` example stops teaching syntax that throws; getting-started rewritten around `intent/*` (carries FIX-502) | **direct** | — | — | Todo |
+| [FIX-1048](https://linear.app/fixpoint-labs/issue/FIX-1048) | `FlowInstanceOptions.webhooks/chat/schedules/mcp` either apply at instance creation or stop type-checking | **direct** | — | — | Todo |
+| [FIX-1052](https://linear.app/fixpoint-labs/issue/FIX-1052) | `mergeDeclaredResources` stops mutating its target, so `ownDeclaredResources` stays a block's own (carries FIX-1051) | **direct** | — | — | Todo |
+| [FIX-754](https://linear.app/fixpoint-labs/issue/FIX-754) | Four state-only handler definitions stop declaring an `outputSchema` and returning their input (BP-012/BP-014); settles whether `captureContext` stays exported; unblocks FIX-625 | **spec** | *not yet opened* | — | Backlog |
 
-*Every row is `direct` route, so **no row will ever carry a spec PR** — an empty Spec PR cell
-here is correct by design, not a gap ([`orchestration.md`](../../docs/contributing/orchestration.md)
-→ "Which issues get a spec"). Each row's per-issue evidence and implementer notes live on its
-Linear issue, not here.*
+*Route is derived from each issue's Linear category on every refresh
+([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a spec"),
+and this set is **mixed**. The three `direct` rows will never carry a spec PR — an empty Spec PR
+cell there is correct by design, not a gap. **FIX-754 is the one `spec` row**: its Spec PR cell
+is a real gap until that PR opens, and it is the only row with a spec-approval gate in front of
+implementation. Each row's per-issue evidence and implementer notes live on its Linear issue,
+not here.*
 
 ## 5. Open cross-cutting questions
 
 - **Do the four dead `FlowInstanceOptions` fields get wired, or deleted?** Raised by review on
-  this PR. It is theme 1's exception, and it is the one issue where both resolutions are
-  genuinely available — so it is a call about what the framework offers, not about how a fix is
-  written. **With the product owner**, alongside the objective gate. **Blocks FIX-1048 only**;
+  this PR. It is theme 1's exception — a call about what the framework offers, not about how a
+  fix is written. It comes to you here rather than in a spec because FIX-1048 is a direct-route
+  row with no gate of its own; FIX-754's version of the same fork is settled at its spec gate
+  instead. **With the product owner**, alongside the objective gate. **Blocks FIX-1048 only**;
   the other three proceed either way.
 
   *The ask:*
@@ -162,14 +224,36 @@ Linear issue, not here.*
     Without it, the same class of failure returns on the next syntax removal, and the cost is
     paid by whoever is evaluating FSD that week.
   - **My recommendation: fix the stale examples now, file the guard separately, don't fold it in.**
-    The four issues here are all verified and small; adding an unscoped infrastructure issue
-    to the set is exactly the "does the whole overbuild" failure this epic-spec exists to
-    catch. Filing it keeps it from being forgotten without holding this epic's objective open.
+    The four issues here are small and individually verified — one of them twice over, after
+    review corrected it. Adding an unscoped infrastructure issue to that set is exactly the
+    "does the whole overbuild" failure this epic-spec exists to catch, and filing it keeps it
+    from being forgotten without holding this epic's objective open.
   - **What would change my mind.** If we're near a public launch of the docs site, the
     recurrence risk stops being theoretical and the guard becomes part of shipping them.
   - **Cost of being wrong.** Low and reversible either way. Fold it in and this epic grows an
     unbounded issue. Defer it and the worst case is a second doc-cleanup pass later — annoying,
     not expensive, and cheaper while we're pre-1.0 with no external consumers.
+
+- **What FIX-754's spec owes — recorded here, but not an ask to you now.** Promoting the row
+  moved this decision into a document, and it reaches you as that spec's approval gate rather
+  than alongside the objective. Naming it here so the spec author inherits it and a sibling
+  issue doesn't reopen it:
+
+  - **The export, either way, in writing.** Either `captureContext` stays exported as a
+    `.tap`-only block — and `apps/docs/docs/patterns/response-auditor.md:246-250` stops
+    describing it as something an author can `.step()` into a custom pipeline — or it is
+    unexported and that remix affordance is retracted for it. What the spec must not do is
+    change the block and leave the page saying the old thing. This is also the FIX-1126 seam in
+    theme 3; the page section has one owner and it is this spec.
+  - **A changeset.** `@flow-state-dev/patterns` is publishable, so this row takes one under
+    BP-022. Theme 2's changeset rule is about a *carrier* naming its passenger and doesn't reach
+    here — FIX-754 carries nobody — but the plain requirement still applies, and the row was
+    previously assumed changeset-free at its old scope.
+  - **A dead import to clear while there.** `packages/patterns/test/response-auditor.test.ts:7`
+    imports `captureContext` and never uses it.
+
+  **Blocks nothing else.** The other three proceed regardless; only FIX-754 waits on its own
+  gate.
 
 ---
 
@@ -187,9 +271,29 @@ Linear issue, not here.*
 - **After epic review (round 1)** — FIX-754's keep is now argued on standards conformance and
   on unblocking FIX-625, not on observable harm, because reading `main` established there is
   none: `.tap()` suppresses no item `.step()` emits, and the real scope is two sites, not four.
+  *(Partly superseded in round 2 — the conformance argument holds; "no observable harm" and the
+  two-site scope do not.)*
 - **After epic review (round 1)** — theme 1's compile-time-removal exception stopped being the
   implementer's call and became an open question with the product owner, because choosing it for
   FIX-1048 adds or retracts a capability rather than settling how a fix is written.
 - **After epic review (round 1)** — FIX-1126 is scoped by semantically stale usage rather than
   by textual match, because the file count included pages that correctly teach the migration and
   excluded broken examples living outside `apps/docs/`.
+- **After epic review (round 2)** — FIX-754's "zero observable effect" is **withdrawn**.
+  `captureContext` is an export of a publishable package that the docs invite authors to remix,
+  so dropping its output contract silently changes a third-party `.step()` to `undefined`, and
+  `block_trace.output` changes for all four blocks. In-repo nothing breaks — `.tap()` passes
+  `{ value }` through untouched — so the breakage is external only, and it is a contract change
+  rather than a live migration.
+- **After epic review (round 2)** — FIX-754's scope is **four handler definitions, not two**,
+  because BP-012's second clause governs the handler definition and `.tapIf`/`.workIf` wiring
+  satisfies only the first. The two bash handlers were wrongly cleared on their wiring; their
+  definitions still declare `outputSchema` and return their input.
+- **After epic review (round 2)** — FIX-754 moved from the **direct route to the spec route**
+  and its Linear category from Bug to Improvement, because a fix that changes a contract other
+  code depends on is promoted rather than passed through the ungated route
+  (`orchestration.md:245-248`). The epic now has one spec-approval gate alongside the objective
+  gate; §1 and §4 no longer say the set is uniformly direct.
+- **After epic review (round 2)** — theme 3 stopped claiming the four are independent. FIX-754's
+  export decision governs `response-auditor.md:246-250`, and FIX-1126 edits that same page, so
+  the near-seam is a real constraint: FIX-1126 leaves that section alone, or the two coordinate.
