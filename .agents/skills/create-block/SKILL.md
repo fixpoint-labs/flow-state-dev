@@ -74,7 +74,7 @@ export interface <Name>Config<
 > {
   /** Block instance name. */
   name: string;
-  /** Model to use. Defaults to "openai/gpt-5.4-mini". */
+  /** Model to use. Defaults to "intent/utility". */
   model?: GeneratorConfig["model"];
   /** Override the output schema. */
   outputSchema?: TOutputSchema;
@@ -91,7 +91,7 @@ export function <name><
 
   return generator({
     name: config.name,
-    model: config.model ?? "openai/gpt-5.4-mini",
+    model: config.model ?? "intent/utility",
     outputSchema,
     prompt: [
       "You are a <role> assistant.",
@@ -195,7 +195,7 @@ const memoryCapability = defineCapability({
 const agent = generator({
   name: "agent",
   uses: [memoryCapability],
-  model: "openai/gpt-4",
+  model: "intent/chat",
   prompt: "You are a helpful assistant.",
 });
 
@@ -203,7 +203,7 @@ const agent = generator({
 const agentNoTools = generator({
   name: "agent-no-tools",
   uses: [memoryCapability.presets({ tools: false })],
-  model: "openai/gpt-4",
+  model: "intent/chat",
   prompt: "...",
 });
 ```
@@ -227,7 +227,7 @@ const agentNoTools = generator({
 - **BP-012**: If the block only mutates state, use `.tap()`. No `outputSchema`, no `return input`.
 - **BP-014**: Never `return input` from a handler. Return a transformation or use `.tap()`.
 - **BP-007**: File header comment required. Document all exports.
-- All generators default to a direct `"provider/model"` string such as `"openai/gpt-5.4-mini"` unless the task requires stronger reasoning.
+- Generators default to an `"intent/<name>"` string, not a specific model — `"intent/utility"` for utility blocks, `"intent/chat"` or a heavier intent where the task needs it. The app declares what each intent resolves to in `createFlowState({ models })`, so a block that names a provider directly bypasses that configuration and pins the app to one provider. Name a model outright only when the block genuinely depends on that specific model, and say why in a comment.
 - Schemas belong with their blocks — define `inputSchema` and `outputSchema` in the same file.
 - Trust the type system. Don't re-validate typed inputs.
 

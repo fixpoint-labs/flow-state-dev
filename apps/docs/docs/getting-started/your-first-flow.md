@@ -23,7 +23,7 @@ We'll build it in five steps. Each step is runnable on its own.
 
 ## Step 0. Prerequisites
 
-If you haven't yet, follow [Setting Up Models](/docs/getting-started/setting-up-models) to install the framework and configure an API key. The rest of this page assumes you have `@flow-state-dev/core`, `@flow-state-dev/engine`, `@flow-state-dev/react`, and `zod` installed, and that one of `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` is set in your environment.
+If you haven't yet, follow [Setting Up Models](/docs/getting-started/setting-up-models) to install the framework and configure an API key. The rest of this page assumes you have `@flow-state-dev/core`, `@flow-state-dev/engine`, `@flow-state-dev/react`, and `zod` installed, along with the SDK package for your provider (`@ai-sdk/openai`, `@ai-sdk/anthropic`, or `@ai-sdk/google`), and that the matching API key is set in your environment.
 
 ## Step 1. A generator on its own
 
@@ -181,7 +181,11 @@ export const flowstate = createFlowState({
   models: {
     default: "openai/gpt-5.4-mini",
     intents: {
-      chat: ["anthropic/claude-sonnet-4-6", "openai/gpt-5.4-mini"],
+      chat: [
+        "anthropic/claude-sonnet-4-6",
+        "openai/gpt-5.4-mini",
+        "google/gemini-3.1-pro",
+      ],
     },
   },
   stores: { default: { primary: inMemoryStores() } },

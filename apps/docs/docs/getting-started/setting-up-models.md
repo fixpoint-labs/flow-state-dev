@@ -53,13 +53,23 @@ export const flowstate = createFlowState({
   models: {
     default: "openai/gpt-5.4-mini",
     intents: {
-      utility: ["anthropic/claude-haiku-4-5", "openai/gpt-5.4-mini"],
-      chat: ["anthropic/claude-sonnet-4-6", "openai/gpt-5.5"],
+      utility: [
+        "anthropic/claude-haiku-4-5",
+        "openai/gpt-5.4-mini",
+        "google/gemini-3.1-flash-lite",
+      ],
+      chat: [
+        "anthropic/claude-sonnet-4-6",
+        "openai/gpt-5.5",
+        "google/gemini-3.1-pro",
+      ],
     },
   },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```
+
+Each ladder lists a candidate for all three direct providers, so this same config works whichever key you set above.
 
 Then point a generator at the name:
 
@@ -69,9 +79,11 @@ const chat = generator({ name: "chat", model: "intent/chat", /* ... */ });
 
 ### How a candidate gets picked
 
-The framework walks the list in order and takes the first candidate you can actually serve — one whose provider has a working key *and* an installed SDK package. Everything else is skipped. With only `ANTHROPIC_API_KEY` set, `intent/chat` above resolves to `claude-sonnet-4-6`; with only `OPENAI_API_KEY`, the Anthropic entry is skipped and it resolves to `gpt-5.5`. If a model fails at runtime, it retries, then moves to the next candidate. Your block code doesn't change in any of these cases.
+The framework walks the list in order and takes the first candidate you can actually serve — one whose provider has a working key *and* an installed SDK package. Everything else is skipped. With only `ANTHROPIC_API_KEY` set, `intent/chat` above resolves to `claude-sonnet-4-6`; with only `OPENAI_API_KEY` it resolves to `gpt-5.5`; with only `GOOGLE_GENERATIVE_AI_API_KEY`, to `gemini-3.1-pro`. A gateway key covers all three at once. If a model fails at runtime, it retries, then moves to the next candidate. Your block code doesn't change in any of these cases.
 
 `default` is what an intent falls back to when none of its candidates are reachable, and what a generator gets if it names an intent you never declared. Declaring any intent makes `default` required, and it has to name a model directly rather than another intent. Both rules are checked when the runtime is built, so a mistake surfaces at startup rather than mid-request.
+
+**Point `default` at a model you can actually serve.** It's a plain model string, so it gets no ladder of its own — if it names a provider you have no key for, anything that falls through to it fails. The example above defaults to OpenAI; change it to your own provider if that isn't you.
 
 ### Why roles instead of model names
 
