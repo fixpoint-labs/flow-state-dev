@@ -102,29 +102,94 @@ export type PmHeroProps = {
   // FIX-781 — always-on evidence-sufficiency gate. Null only on a legacy run
   // predating the gate (the panel is omitted, like the siblings above).
   evidenceDecision: EvidenceDecision | null;
-  // FIX-780 — the level chips, named from the trader's stance and typed levels.
-  // Null when the trader memo is not readable (a run that never reached Phase 3,
-  // or a still-loading resource): no level chips rather than the stored keys,
-  // which on a legacy record are the mislabeled pair this issue exists to remove.
+  // FIX-780 — the TRADER's price levels, named from its recorded stance and typed
+  // fields. Rendered under their own "trader proposal" label, never inside the
+  // PM's metric grid. Null when the trader memo is not readable (a run that never
+  // reached Phase 3, or a still-loading resource): no level block rather than the
+  // stored keys, which on a legacy record are the mislabeled pair this issue
+  // exists to remove.
   levels: TradeLevelModel | null;
 };
 
 /**
- * The metric chips that exist on every decision, in display order.
+ * The PM's own decision chips, in display order. This grid is the PORTFOLIO
+ * MANAGER's call and contains no price levels at all.
  *
- * The LEVEL chips are deliberately NOT listed here, and are NOT read off the
- * stored `metrics` map either. What a level is called depends on the stance the
- * desk took, so they come from the trader's recorded stance through the one rule
- * in `flows/analysis/lib/trade-levels.ts` (`tradeLevelChips`, FIX-780).
+ * Price levels are the TRADER's and render in {@link TraderLevelChips} below,
+ * under their own label. Three ways to get this wrong, and all three have been
+ * shipped on this surface — the `<dt>` IS the claim in every one:
  *
- * Two failures, one per approach, and the `<dt>` IS the key in both: hardcoding
- * "stop" and "target" here is what put a stop-loss on a stand-aside Hold, and
- * rendering whatever keys the stored map happened to carry is what kept it there
- * when a pre-fix report was reopened — those records carry `stop` / `target`
- * whatever the desk actually decided, and no commit runs on that path to correct
- * them.
+ *  1. Hardcoding "stop" and "target" here put a stop-loss on a stand-aside Hold.
+ *  2. Rendering whatever keys the stored `metrics` map carried kept it there on
+ *     a reopened report — a pre-fix record carries `stop` / `target` whatever the
+ *     desk decided, and no commit runs on that path to correct it.
+ *  3. Deriving them correctly from the trader but showing them INSIDE this grid
+ *     put one participant's levels under another participant's decision.
  */
 const FIXED_METRIC_ORDER = ["rating", "ticker", "window", "size"] as const;
+
+/**
+ * The trader's price levels, as a labeled SIBLING of the PM's decision metrics —
+ * never chips inside that grid.
+ *
+ * These levels come from the TRADER memo; the grid above them is the PM's
+ * decision. The desk supports the two disagreeing (it derives `agreesWithTrader`
+ * at commit precisely to record it), so mixing them put a long trader's stop and
+ * target inside a PM Hold's metric row, and a flat trader's monitoring levels
+ * inside a PM Buy's — the same labeling contradiction FIX-780 exists to remove,
+ * one participant further down.
+ *
+ * Attribution, not suppression. Hiding the levels when the two differ would
+ * destroy what a reader most wants there: what the trader proposed, and that the
+ * PM departed from it. The disagreement is signal.
+ *
+ * Follows the FIX-1060 treatment for exactly this confusion on the Summary,
+ * where the trade block is a sibling of the decision block labeled "trader
+ * proposal" so it can never be read as the PM's call (`decision-header.tsx`).
+ * Same problem, same surface family, same spelling — a third treatment here is
+ * the drift this issue exists to end.
+ *
+ * When the trader published no levels, this renders nothing. On a PM Buy off a
+ * flat trader that is a REAL gap — the desk holds no stop and no target for the
+ * position the PM just decided to take — and it stays visible as absence rather
+ * than being filled from the PM's own stance. Absent stays absent.
+ */
+function TraderLevelChips({
+  levels,
+  agreesWithTrader,
+}: {
+  levels: TradeLevelModel | null;
+  agreesWithTrader: boolean | null;
+}): ReactElement | null {
+  const chips = tradeLevelChips(levels);
+  if (chips.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
+        trader proposal
+        {agreesWithTrader === false ? " · the decision above differs" : ""}
+      </span>
+      <dl
+        className={cn(
+          "grid grid-cols-3 gap-3 rounded-md border p-3 sm:grid-cols-6",
+          "border-[color:var(--c-border)] bg-[color:var(--c-surface)]",
+        )}
+        aria-label="Trader price levels"
+      >
+        {chips.map((chip) => (
+          <div key={chip.key} className="flex flex-col gap-0.5">
+            <dt className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
+              {chip.label}
+            </dt>
+            <dd className="text-[12.5px] text-[color:var(--c-fg)]">
+              {chip.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
 
 export function PmHero({
   agent,
@@ -262,25 +327,20 @@ export function PmHero({
           )}
           aria-label="Decision metrics"
         >
-          {[
-            ...FIXED_METRIC_ORDER.map((key) => ({
-              key,
-              label: key,
-              value: metrics[key] ?? "—",
-            })),
-            ...tradeLevelChips(levels),
-          ].map((chip) => (
-            <div key={chip.key} className="flex flex-col gap-0.5">
+          {FIXED_METRIC_ORDER.map((key) => (
+            <div key={key} className="flex flex-col gap-0.5">
               <dt className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
-                {chip.label}
+                {key}
               </dt>
               <dd className="text-[12.5px] text-[color:var(--c-fg)]">
-                {chip.value}
+                {metrics[key] ?? "—"}
               </dd>
             </div>
           ))}
         </dl>
       ) : null}
+
+      <TraderLevelChips levels={levels} agreesWithTrader={agreesWithTrader} />
 
       {portfolioFit !== null ? (
         <PortfolioFitPanel fit={portfolioFit} snapshotAsOf={snapshotAsOf} />
