@@ -601,13 +601,17 @@ normally the `issue-worker`, in the same dispatch that chains into implementatio
 watching. The close rides the same release that starts implementation — it is never a separate
 wait, and it never gates the code.
 
-**But it is tied to the approval, not to the dispatch.** An approved row can be held without
-being dispatched at all — under a multi-spec epic, the cross-spec coherence pass holds every
-approved row until the set is ready — and a close that waits for a worker would leave that
-first approved PR open and re-scanned for as long as the hold lasts. So **the coordinator
-closes it directly when no worker will**, which it can do because a close needs no worktree
-(and the workflow script can't: it makes no side-effecting calls). The two paths are
-idempotent; whichever runs first, the other finds it closed.
+**Two things legitimately hold a spec PR open past its approval**, and both are cases where the
+document is signed off but not yet *finished*:
+
+- **A POC settlement in flight** on a load-bearing claim — see the deferral below.
+- **The cross-spec coherence pass**, under a multi-spec epic. An individually-approved spec can
+  still be handed an alignment edit, which is spec-level by construction and earns a fresh
+  review round on that PR. Closing at the individual approval would remove the surface the
+  alignment needs. The close waits for the set to clear (`crossSpecCleared`).
+
+In both cases the PR staying open is the point, not an oversight — it is still the review
+surface for a change that hasn't landed. Everything else closes on approval.
 
 Three things happen, in this order:
 
