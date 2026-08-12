@@ -42,7 +42,7 @@ import { z } from "zod";
 
 const agent = generator({
   name: "agent",
-  model: "preset/fast",
+  model: "openai/gpt-5.4-mini",
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
   history: true,
@@ -95,7 +95,7 @@ const memoryObserver = generator({ itemVisibility: { client: false, history: fal
 // Pure structured-output transformer. Feeds its typed output to the next
 // block via graph edges. No session items at all.
 const classifier = generator({
-  model: "preset/fast",
+  model: "openai/gpt-5.4-mini",
   prompt: "Classify input as A, B, or C.",
   outputSchema: z.enum(["A", "B", "C"]),
   // itemVisibility omitted — no auto-emission.
@@ -514,7 +514,7 @@ execute: async (input, ctx) => {
   await ctx.emit.component("progress-bar", { percent: 50 });
 
   // Resolve AI models
-  const model = ctx.resolveModel("preset/fast");
+  const model = ctx.resolveModel("openai/gpt-5.4-mini");
 
   // Access typed targets — named ancestor blocks declared in config
   const research = ctx.targets.research;  // StateRef<{ progress: number }> | undefined

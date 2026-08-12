@@ -35,7 +35,7 @@ const block = utility.summarizer({ name: "my-summarizer", granularity: "brief" }
 | [`intentRouter`](#intentrouter) | sequencer | Pre-wired classifier + router for classification-driven branching |
 | [`sessionTitleGenerator`](#sessiontitlegenerator) | sequencer | Auto-generate a session title from conversation messages |
 
-Every generator-based utility defaults to `"preset/fast"` and accepts a `model` override. All utilities accept an optional `outputSchema` to replace the default output shape with full type inference.
+Every generator-based utility accepts a `model` override. Most default to `"intent/utility"`; `decomposer` and `sessionTitleGenerator` name a model directly, and each block's reference below carries its own default. All utilities accept an optional `outputSchema` to replace the default output shape with full type inference.
 
 ---
 
@@ -1015,7 +1015,7 @@ The whole block is `transient: true`, so it produces no visible items in the str
 ```ts
 utility.sessionTitleGenerator({
   name: string,           // required — used as block name and for sub-block names
-  model?: string,         // model ID (default: "preset/fast")
+  model?: string,         // model ID (default: "openai/gpt-5-nano")
   messageLimit?: number,  // recent LLM messages to include (default: 4)
 });
 ```

@@ -186,7 +186,7 @@ import { z } from "zod";
 
 const chatGenerator = generator({
   name: "chat-generator",
-  model: "preset/fast",
+  model: "openai/gpt-5.4-mini",
   prompt: "You are a helpful, concise assistant.",
   inputSchema: z.object({ message: z.string().min(1) }),
   // Default outputSchema is z.string() — enables text streaming

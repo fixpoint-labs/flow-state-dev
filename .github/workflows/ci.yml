@@ -96,6 +96,11 @@ jobs:
       - name: No literal NUL bytes in source
         run: node scripts/validate-no-nul-bytes.mjs
 
+      # Also unconditional — a doc teaching removed syntax is as broken on a
+      # push to main as on a PR. The script header owns the rest.
+      - name: No removed model-string syntax in docs
+        run: node scripts/validate-model-strings.mjs
+
   knip:
     name: Knip (unused files & broken imports)
     runs-on: ubuntu-latest

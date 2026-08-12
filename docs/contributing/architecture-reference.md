@@ -146,7 +146,7 @@ Ten pre-built utility factories wrapping generator/handler blocks:
 | `intentRouter` | sequencer | Pre-wired classifier + router for classification-driven branching |
 
 - Access via `utility.<name>(config)` — returns a standard `BlockDefinition`
-- All generators default to `"preset/fast"` model
+- Generator utilities mostly default to `"intent/utility"`; `decomposer` and `sessionTitleGenerator` name a model directly
 - All utilities accept optional `outputSchema` override
 - Combiner is handler-based (deterministic, no model)
 
