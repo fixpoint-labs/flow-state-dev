@@ -27,7 +27,7 @@ const pipeline = sequencer({
   .step(analyze);
 ```
 
-Every utility factory accepts a `name` (required) and returns a block that can be chained via `.step()`, composed in `.parallel()`, or used as a router route. Generator-based utilities accept an optional `model` and an optional `outputSchema` to override the default output shape. Most default to `"intent/utility"`; `decomposer` is the exception. Each block's table below carries its own default.
+Every utility factory accepts a `name` (required) and returns a block that can be chained via `.step()`, composed in `.parallel()`, or used as a router route. Generator-based utilities accept an optional `model` and an optional `outputSchema` to override the default output shape. Most default to `"intent/utility"`; `decomposer` (`"openai/gpt-5.4-mini"`) and `sessionTitleGenerator` (`"openai/gpt-5-nano"`) name a model directly. Each catalog block's table below carries its own default.
 
 ## Utility catalog
 
