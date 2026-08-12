@@ -110,6 +110,17 @@ describe("scan surface", () => {
     ["packages/core/README.md"],
     ["README.md"],
     ["labs/demo/agent.ts"],
+    // Ordinary package source. These sit beside the files that implement the
+    // rejection, and the guard once excluded the whole tree to spare those —
+    // so a preset/* written here throws at runtime with CI green behind it.
+    ["packages/core/src/utility/decomposer.ts"],
+    ["packages/patterns/src/plan-and-execute/index.ts"],
+    // A sibling of three excluded files, in the same directory: the exclusion
+    // is those files, not the folder they happen to share.
+    ["packages/core/test/models/create-model-resolver-loading.test.ts"],
+    // Sibling guards. A future one that needs to quote the removed syntax has
+    // to be argued into the exclusion list, not covered by a tree rule.
+    ["scripts/validate-package-boundaries.mjs"],
   ])("scans %s", (path) => {
     expect(scanned(path)).toBe(true);
   });
@@ -118,6 +129,9 @@ describe("scan surface", () => {
     // The rejection's own implementation: these must name preset/* in quotes.
     ["packages/core/src/models/providerDetection.ts"],
     ["packages/core/test/model-strings-check.test.ts"],
+    ["packages/core/test/models/create-model-resolver-intents.test.ts"],
+    ["packages/core/test/models/create-model-resolver-env-overrides.test.ts"],
+    ["packages/core/test/models/provider-detection.test.ts"],
     ["scripts/validate-model-strings.mjs"],
     // Not authored here.
     ["node_modules/some-pkg/index.js"],
@@ -136,5 +150,20 @@ describe("scan surface", () => {
 
   it("attributes a hit to the file it came from", () => {
     expect(scan(`model: "preset/fast"`, "labs/demo/agent.ts")[0]?.file).toBe("labs/demo/agent.ts");
+  });
+
+  /**
+   * The two halves of the fix, together: package source is in the surface, and
+   * a violation written there is reported. The guard shipped excluding every
+   * package's src and test directory wholesale, so this exact string sat behind
+   * a green check while throwing on the first run.
+   */
+  it("catches a violation in ordinary package source, not just in docs", () => {
+    const path = "packages/core/src/utility/decomposer.ts";
+
+    expect(scanned(path)).toBe(true);
+    expect(scan(`const block = generator({ model: "preset/fast" });`, path)).toEqual([
+      expect.objectContaining({ file: path, rule: "preset-string" }),
+    ]);
   });
 });

@@ -97,8 +97,9 @@ jobs:
         run: node scripts/validate-no-nul-bytes.mjs
 
       # Also unconditional — a doc teaching removed syntax is as broken on a
-      # push to main as on a PR. The script header owns the rest.
-      - name: No removed model-string syntax in docs
+      # push to main as on a PR, and package source carrying it is worse: that
+      # one throws. The script header owns the rest.
+      - name: No removed model-string syntax
         run: node scripts/validate-model-strings.mjs
 
   knip:

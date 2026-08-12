@@ -14,10 +14,21 @@
  *
  * ## What this checks, and what it does not
  *
- * **It checks everything authored in this repo except the code that
- * implements the rejection.** The scanned surface is defined by what is
+ * **It checks everything authored in this repo except the individual files
+ * that implement the rejection.** The scanned surface is defined by what is
  * *excluded*, not by a list of roots that are included — see `isScannedPath`.
  * Anything a person reads, an agent copies, or a runtime executes is in.
+ *
+ * **That exclusion is a set of files, never a tree.** A file is out only when
+ * naming the rejected syntax in quotes *is its job* — the parser that throws on
+ * it, the tests that pin the throw, this script that matches it. Everything
+ * else is in, ordinary package source included, because a `model: "preset/…"`
+ * there is executable configuration that throws on someone's first run. That
+ * is the whole rule; extend the list by it, and write the argument beside the
+ * entry rather than leaving it for a reviewer to reconstruct.
+ *
+ * `scripts/` is in scope under that rule, so a future sibling guard that needs
+ * to quote the removed syntax has to be added deliberately.
  *
  * **It does not compile doc examples.** A quoted model string is the shape
  * that broke, and it is the shape this catches. An example can still be wrong
@@ -76,11 +87,42 @@ const SKIP_DIRS = new Set([
  * — `parseModelString` and `createModelResolver` to reject it, their tests to
  * pin the throw, and this script to match it. Scanning them would flag the
  * rejection for existing.
+ *
+ * **Six files, not the `packages/*` tree they sit in.** This shipped as
+ * `/^packages\/[^/]+\/(src|test)(\/|$)/`, which excluded 1624 files to spare
+ * these six — so a `model: "preset/fast"` written anywhere in package source
+ * would throw at runtime with CI green behind it, and a guard that reports
+ * green over a real violation is worse than no guard. Narrowing to the file
+ * list puts those 1624 back in scope and finds nothing, which is the evidence
+ * the tree bought nothing.
+ *
+ * To add one: quoting the rejected syntax must be the file's purpose, not an
+ * incidental example. Say why, here.
  */
-const REJECTION_IMPL = /^packages\/[^/]+\/(src|test)(\/|$)/;
 const REJECTION_IMPL_FILES = new Set([
+  // The guard, and the test pinning its rules.
+  //
+  // `model-strings-check.test.ts` has to stay listed for a second reason: the
+  // `presets-option` rule fires on its own test titles (`it("ignores a
+  // presets: key…")`) and on its negative-case fixtures. Drop it from this set
+  // and the guard fails on the test that proves the guard works.
   "scripts/validate-model-strings.mjs",
   "packages/core/test/model-strings-check.test.ts",
+
+  // The parser that implements the rejection — listed by the rule above, not
+  // because it fails today. It escapes `QUOTED_PRESET` only by an accident of
+  // formatting: its migration message opens `"preset/* model strings…"` (the
+  // `*` is outside the name character class) and `"  preset/fast, …"` (the
+  // leading spaces put the quote nowhere near the string). Reflow either line
+  // and the one file whose literal job is naming the removed syntax starts
+  // failing. It is not dead weight; do not prune it for passing.
+  "packages/core/src/models/providerDetection.ts",
+
+  // The tests that pin the throw, one per entry point: the resolver's
+  // `defaultModel` and `intents`, its env overrides, and the parser directly.
+  "packages/core/test/models/create-model-resolver-intents.test.ts",
+  "packages/core/test/models/create-model-resolver-env-overrides.test.ts",
+  "packages/core/test/models/provider-detection.test.ts",
 ]);
 
 /**
@@ -100,7 +142,9 @@ const REJECTION_IMPL_FILES = new Set([
  * someone argues it out, and the argument has to be written here.
  *
  * Only two things are out, and both are the same reason: we did not author
- * it, or it is the code that implements the rejection.
+ * it, or it is the code that implements the rejection. The second is named
+ * file by file — a tree exclusion sweeps up the neighbours, and the
+ * neighbours here are executable model configuration.
  *
  * Pure and filesystem-free so the surface is testable directly.
  */
@@ -108,7 +152,6 @@ export function isScannedPath(relPath) {
   const norm = relPath.split("\\").join("/");
   if (norm === "" || norm.startsWith("..")) return false;
   if (norm.split("/").some((segment) => SKIP_DIRS.has(segment))) return false;
-  if (REJECTION_IMPL.test(norm)) return false;
   if (REJECTION_IMPL_FILES.has(norm)) return false;
   return SCAN_EXTENSIONS.test(norm);
 }
@@ -154,7 +197,6 @@ function collectFiles() {
       const rel = relative(ROOT, abs);
       if (entry.isDirectory()) {
         if (SKIP_DIRS.has(entry.name)) continue;
-        if (REJECTION_IMPL.test(rel.split("\\").join("/"))) continue;
         walk(abs);
       } else if (entry.isFile() && isScannedPath(rel)) {
         files.push(abs);
