@@ -42,13 +42,16 @@ Everything below follows from that one test.
 
 ## Topology matrix
 
-| Topology | Effective dispatcher | Where the child runs | "Started" means | Survives the process? | `dispose()` waits? |
+| Topology | Effective dispatcher | Where the child runs | Acceptance means | Survives the process? | `dispose()` waits? |
 |---|---|---|---|---|---|
-| No worker adapter | none (`undefined`) | this process | the child request is running here | no | **yes**, bounded |
+| No worker adapter | none (`undefined`) | this process | the child is registered here, and may still be awaiting execution | no | **yes**, bounded |
 | `colocated` | queue dispatcher | a worker (may be this process) | the job is on the queue | yes | no |
 | `dispatch-only` | queue dispatcher | another container | the job is on the queue | yes | no |
-| `worker-only` | **none** | this process | the child request is running here | **no** | **yes**, bounded |
+| `worker-only` | **none** | this process | the child is registered here, and may still be awaiting execution | **no** | **yes**, bounded |
 | No request host (CLI with no config) | — | nowhere | `NoRequestHostError` is thrown | — | — |
+
+There is no "started" milestone to report — the column is acceptance, and
+[What acceptance means](#what-acceptance-means) is the long form of these cells.
 
 **`worker-only` is the trap.** It is the natural place to start durable jobs and
 the one place they silently are not durable. The mode consumes the queue and

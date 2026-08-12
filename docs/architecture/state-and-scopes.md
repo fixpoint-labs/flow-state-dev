@@ -523,9 +523,9 @@ session key itself, an unstamped session's shared and unshared buckets would be
 indistinguishable — routing unshared resources into the lineage namespace.
 
 **Where the id comes from, and where it must not come from.** Two invariants
-hold for every creator, however it writes: the record is stamped with a
-`lineageId` before it lands, and it lands through create-if-absent rather than
-`get`-then-`set`. Both halves are the point. A creator that omits the id leaves
+hold for every creator on the production path, however it writes: the record is
+stamped with a `lineageId` before it lands, and it lands through
+create-if-absent rather than `get`-then-`set`. Both halves are the point. A creator that omits the id leaves
 a session on the derived fallback, where delete-and-recreate lands on the same
 address again; and `get`-then-`set` lets a concurrent first action's loser
 overwrite the winner with a *different* id, stranding its shared writes at an
@@ -554,6 +554,16 @@ helper. **A new creator on the child side that reaches for `ensureSessionRecord`
 mints a fresh lineage for a session that should have inherited one** — which
 silently splits a Workstream's shared resources away from the conversation that
 owns them.
+
+**The testing helpers are outside this contract, and that costs coverage rather
+than correctness.** `createTestContext` and `testFlow` seed a session record
+directly — no `lineageId`, written `"any"` — so a session either one creates
+lands on the derived fallback instead of a minted lineage. The consequence is
+not a broken invariant in production but an unguarded one: a test whose session
+comes from a helper exercises the fallback, and the lineage tests that do exist
+hand-seed a `lineageId` themselves, so nothing in the suite drives the minting
+path. Removing the mint from `ensureSessionRecord` entirely leaves both the
+engine and integration suites green. FIX-1132 tracks closing that.
 
 Descendants get the id from `createRequestHost.startDetached`, copied verbatim.
 It is also part of the derived child session id, because otherwise a recreated
