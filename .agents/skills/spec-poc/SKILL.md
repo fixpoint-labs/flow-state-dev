@@ -249,6 +249,12 @@ on the same surface:
    chooses to re-apply is a fine record; it is not what unparks the row. **You never write that
    label yourself** — it would manufacture the sign-off it reports.
 
+   **Whoever applies the answer closes the PR.** The re-open lasts exactly as long as the
+   decision that kept it open: once the fold is applied and mirrored, the PR closes unmerged
+   on the normal rule. Nothing downstream picks this up for you — the decision-application
+   pass is the last one that knows the PR is open, so an unclosed one just keeps being
+   scanned.
+
 **A re-opened spec PR is the one exception to the branch freeze.** A closed spec branch is
 otherwise a frozen record and post-approval edits go to Linear (BP-037); while the PR is
 re-opened it is live again, so §7 is written on the branch *and* mirrored, exactly as during

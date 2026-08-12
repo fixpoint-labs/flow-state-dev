@@ -665,7 +665,8 @@ The blocker parks the issue and puts the fork to the human either way, which is 
 sign-off" has to mean here, and it clears the way any blocker does — the coordinator surfaces
 it and records the answer. Not by an approval left on the PR: a row parked on a blocker is
 carried forward without a PR scan, so nothing would observe one. **No agent writes that
-label.** Closing the PR and assuming a
+label.** And the re-open ends with that decision: whoever applies the answer folds it and then
+closes the PR unmerged, since no later pass knows it is still open. Closing the PR and assuming a
 re-approval finds its own way back is the failure mode this prevents — the same one the
 settlement deferral above guards.
 
