@@ -2,7 +2,8 @@
 "@flow-state-dev/core": patch
 ---
 
-Point the two model-configuration migration errors at the published docs. The
+Point the two model-configuration migration errors at the published docs
+(FIX-939). The
 `preset/*` removal error and the `selectModel` `prefer` removal error both ended
 with an internal tracker reference, one of them a URL that resolved to nothing.
 Both now link to the models reference.
