@@ -96,7 +96,7 @@ describe("scanned surface", () => {
     expect(scanRoots).toContain(".github");
   });
 
-  it("guards spec-poc/ as well as spec/ — both die with the spec PR", () => {
+  it("guards spec-poc/ as well as spec/ — both stay on the spec branch", () => {
     expect(ephemeralDirs).toEqual(expect.arrayContaining(["spec", "spec-poc"]));
   });
 

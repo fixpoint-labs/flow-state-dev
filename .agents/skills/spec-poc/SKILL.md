@@ -25,7 +25,7 @@ the whole effort:
 | **Audience** | you | the review thread | spec/epic PR reviewers + the human at the gate |
 | **Lives** | `_prototypes/` in a host app | a throwaway worktree | the never-merged `spec/` or `epic/` branch |
 | **Output** | an answer, in `NOTES.md` | `CONFIRMED` / `REFUTED` / `INCONCLUSIVE` | a summary in the spec + code a reviewer can run |
-| **Survives?** | deleted or absorbed | deleted | closes with the PR, unmerged |
+| **Survives?** | deleted or absorbed | deleted | the PR closes unmerged; the branch is kept |
 
 If nobody but you will read it, it's a `prototype`. If two reviewers keep reversing each
 other on a factual claim, it's `settle-claim`. If the point is to show someone the shape so
@@ -209,11 +209,27 @@ that a quiet POC was a failure.
 
 ## Exit — it never merges
 
-The spec PR closes **unmerged** when implementation starts and its branch is **deleted**
-(BP-037), so the POC's working life ends there. **Its value is meant to be consumed before
-that point** — a POC exists to inform the gate, and by the time implementation starts the gate
-has passed. What survives is the record: the spec's §7/§12 summary, and the closed PR, whose
-diff GitHub keeps viewable after the branch is gone. **Cite the PR, never the branch.**
+The spec PR closes **unmerged** the moment the spec is approved, and **its branch is kept**
+(BP-037), so the POC's working life ends at the gate but its code stays reachable. **Its value
+is meant to be consumed before that point** — a POC exists to inform the gate. What survives is
+the record: the spec's §7/§12 summary, the closed PR whose diff GitHub keeps viewable, and the
+retained `spec/<ISSUE-ID>` branch. **Cite the PR** — it renders the POC with no checkout — and
+reach for the branch when someone wants to run it.
+
+### Building one *after* approval — re-open, don't start a second PR
+
+A direction can be signed off and still rest on something nobody has run: the human approves,
+and then wants to see it. Then the POC is built on the **already-approved spec**, and it goes
+on the same surface:
+
+1. Check out the retained branch (`git fetch origin spec/<ISSUE-ID> && git checkout -B spec/<ISSUE-ID> origin/spec/<ISSUE-ID>` — never re-base it on `main`), commit the POC under `spec-poc/<ISSUE-ID>-<slug>/`, push.
+2. **Re-open the closed spec PR** (`gh pr reopen <spec-pr>`) with a comment saying what the POC answers and how to run it. Same PR, same review history, same reviewers.
+3. Record what it showed in §7 and mirror to Linear, then **close it again, unmerged.**
+
+Re-opening does **not** re-open the approval gate — the spec is approved and a POC informs
+rather than re-decides. If the run actually changes the direction, that is an ordinary fold and
+a fresh sign-off, not something the re-open bought. And it is still never merged: implementation
+is already cut from fresh `origin/main`, so nothing here reaches the codebase.
 
 That the POC can't leak into the codebase rests on one mechanical fact worth stating: the
 implementation branch is cut from **fresh `origin/main`**, never from the spec branch (see

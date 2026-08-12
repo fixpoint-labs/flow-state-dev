@@ -530,8 +530,8 @@ in and gets routed continuously, and the objective gate still turns only on a hu
 
 Three facts make that budget safe rather than reckless:
 
-- **An unresolved thread on a spec PR blocks nothing.** The spec PR is *never merged* —
-  `issue-implement` closes it unmerged when implementation starts. It has no merge gate,
+- **An unresolved thread on a spec PR blocks nothing.** The spec PR is *never merged* — it
+  closes unmerged the moment the spec is approved. It has no merge gate,
   so open threads have no gating power. Do not drive them to zero; that's a habit borrowed
   from code PRs, where it's correct, and it does not transfer.
 - **Nothing is lost by converging.** Below-the-bar feedback lands in the notes section and
@@ -586,6 +586,59 @@ So the discipline is ours, not theirs:
   (`.agents/workflows/verify.mjs`) is where the rule's edge cases are pinned down.
 - **`issue-implement`** — reads the notes section as input; an unaddressed below-the-bar
   spec comment is **not** a blocker to starting implementation.
+
+## Closing the spec PR (at approval — branch kept, never merged)
+
+A spec PR is a review surface with a defined end: **approval closes it.** Not the merge (it
+never merges), and not the start of implementation — the moment the gate passes the document
+has done its job, and an open PR past that point is an artifact every wake re-scans and
+re-surfaces for a decision that has already been made.
+
+**The trigger is the gate, so whoever sees the gate pass does the close.** Under
+`issue-lifecycle` that is the lifecycle at the approval gate; under `epic-lifecycle` it is the
+`issue-worker`, in the same dispatch that chains into implementation. Standalone
+`issue-implement` closes it at Step 3 as a **backstop**, for a spec approved with no lifecycle
+watching. Either way the close rides the same release that starts implementation — it is never
+a separate wait, and it never gates the code.
+
+Three things happen, in this order:
+
+1. **Mirror, then close.** The repo copy on the spec branch is authoritative while the PR is
+   open, so the Linear document can be behind it — the last folded round usually is.
+   Reconcile Linear against the branch head **before** closing. A close over a stale mirror is
+   how a spec silently loses its final round, and after the close Linear is the only live copy.
+2. **Close unmerged, with a comment saying where the spec went**: the Linear document
+   (canonical from here on), the retained branch name, and that implementation is starting. A
+   close with no pointer reads to a human as an abandoned spec.
+3. **Keep the branch.** `spec/<ISSUE-ID>` is **never deleted** — the same rule the epic branch
+   has always had. It costs nothing and it keeps the reviewed artifact fetchable as a git ref
+   instead of only as a rendered diff, which is what anyone reading the spec after the close
+   actually needs.
+
+**Never merge it.** Merging lands a point-in-time plan on `main`, where it reads as current
+truth and decays without anyone noticing (BP-037). CI enforces the file half of that; the
+don't-merge half is ours to hold.
+
+**One deferral.** A POC settlement in flight on a load-bearing claim keeps the PR open until
+the verdict lands — a `REFUTED` verdict needs a live artifact and a live thread to be folded
+into. That defers *cleanup* only, never implementation. See "Settling a disputed claim".
+
+### Re-opening for a POC (the one legitimate re-open)
+
+Approval sometimes lands on a direction nobody has run. When a
+[spec POC](#spec-branch-pocs-learn-before-implementing) is worth building *after* sign-off,
+**re-open the spec PR** rather than opening a second one: commit the POC to the retained
+branch, re-open, and reviewers and the human get the surface they already know with its review
+history attached. Close it again — unmerged — once §7 carries what the POC showed and Linear
+has the update.
+
+Re-opening does not re-open the **gate**. The spec is approved; a POC informs, it never
+re-decides. If what it shows changes the direction, that is an ordinary fold and a fresh
+sign-off, not a property of the re-open.
+
+**Two things a re-open is not.** It is not a way to resume spec review — feedback arriving on a
+closed spec PR is carried as implementer notes, never a new round. And it is not a route to
+merging: a re-opened spec PR closes again unmerged, every time.
 
 ## PR feedback: the round cap
 
@@ -737,10 +790,10 @@ flowchart LR
   nothing on the spec branch reaches `main` by default. **Whatever an implementation PR does or
   doesn't carry over from the spec branch, the POC is never part of it** — a characterization
   test worth keeping is re-written under `tdd` as a real CI spec or a `goals/` entry, graduated
-  rather than copied. Closing the spec PR also **deletes its branch** (BP-037), which is fine
-  because the POC's job finished at the gate — but it means the durable citation is **the PR**
-  (GitHub keeps a closed PR's diff viewable), never the branch. An *epic* branch is never
-  deleted, so an epic POC keeps a live home for the life of the epic.
+  rather than copied. The spec PR closes at approval and **its branch is kept** (see "Closing
+  the spec PR"), so a POC stays fetchable after the gate — cite the **PR**, whose diff renders
+  the POC without a checkout, and reach for the branch when you want to run it. A POC worth
+  building *after* approval re-opens that same PR rather than starting a new one.
 - **CI stays green without weakening it.** POCs live in `spec-poc/<ISSUE-ID>-<slug>/`, outside
   every pnpm workspace, so `turbo`-driven typecheck and test never reach them. That matters
   because CI runs on every PR into `main`, spec PRs included, and the coordinator reads that
@@ -920,9 +973,10 @@ implementation starts. Two rules keep that from stranding a `REFUTED` verdict:
 
 - **Keep the spec PR open while a settlement on a load-bearing claim is in flight.** Approval
   still releases implementation immediately — nothing blocks — but the coordinator *defers the
-  spec PR's close-and-delete* until the verdict lands, so the fold has a live artifact and a
-  live thread. Closing it is cleanup, not a precondition for implementing. (If it was already
-  closed, the Linear document is canonical from then on and the fold goes there.)
+  close* until the verdict lands, so the fold has a live artifact and a live thread. Closing it
+  is cleanup, not a precondition for implementing. (If it was already closed, the Linear
+  document is canonical from then on and the fold goes there; the branch is still there, so a
+  fold that genuinely needs the thread back can re-open the PR.)
 - **A late `REFUTED` is a spec blind spot, handled by the path that already exists.** Fold it
   into the spec, tell the in-flight implementation, and re-gate if the direction actually
   changed — exactly what `issue-implement`'s challenger does when it finds the design wrong

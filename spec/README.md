@@ -2,10 +2,11 @@
 
 This folder holds **one spec at a time, on a spec branch, and never on `main`.**
 
-`issue-spec` writes `spec/<ISSUE-ID>.md` here on branch `spec/<ISSUE-ID>`, opens the spec PR
-for review, and that copy dies with the PR. CI blocks any other PR that carries a file here,
-so a spec cannot reach `main` by accident or by a well-meaning "land the approved spec"
-commit.
+`issue-spec` writes `spec/<ISSUE-ID>.md` here on branch `spec/<ISSUE-ID>` and opens the spec
+PR for review. The PR closes unmerged once the spec is approved; the branch is kept, so the
+reviewed copy stays fetchable, but it never lands on `main`. CI blocks any other PR that
+carries a file here, so a spec cannot reach `main` by accident or by a well-meaning "land the
+approved spec" commit.
 
 ## Where specs actually live
 
@@ -35,7 +36,8 @@ one.
 
 - One spec per spec branch. Parallel issues run on their own branches and worktrees, so their
   `spec/` folders never collide.
-- Never edit a spec here after its PR closes — edit the Linear document.
+- Never edit a spec here after its PR closes — edit the Linear document. The retained branch
+  is a frozen record of what was reviewed, not a live copy.
 - Throwaway proofs-of-concept for a spec go in `spec-poc/<ISSUE-ID>-<slug>/`, also never merged.
 
 See [BP-037](../docs/contributing/best-practices/process.md) and
