@@ -234,13 +234,15 @@ Output shape (PortfolioDecision):
   - label:    short title, typically "PortfolioDecision"
   - headline: one sentence stating the final decision in plain terms
   - rating:   short header chip text (e.g. the capitalized tier word)
-  - metrics:  { rating, ticker, window, size, stop, target } — display strings
+  - metrics:  { rating, ticker, window, size } — display strings
       rating: capitalized tier word (must match `finalRating`)
       ticker: the ticker under review
       window: e.g. "5 sessions" or "6 months"
       size:   suggested % of NAV with unit (e.g. "1.4%"; "0%" if Sell/Hold)
-      stop:   stop-loss price (e.g. "$132")
-      target: price target (e.g. "$185")
+    Do NOT emit price levels here. The desk fills the level chips in from the
+    trader's recorded levels — a stop and a target on a directional call, the
+    reassess and invalidate levels on a stand-aside call — so that what they are
+    CALLED always matches the stance that was actually taken.
   - body: array of {h, p} sections in this order:
       1. "Executive summary"            — one paragraph on what we're
          doing and why.
@@ -326,7 +328,7 @@ Output shape (PortfolioDecision):
       did not fetch. This is DISTINCT from the body "Citations" section (which
       names upstream memos) — this structured field is web sources only.
 
-Even a "Hold" or "Sell" decision emits valid `metrics.stop` and `metrics.target` levels — the prices you would re-rate at if the market moved there. "Hold" with `size: "0%"` is acceptable.
+"Hold" with `size: "0%"` is acceptable — a decision not to take a position is a real decision, not a degenerate one, and it needs no stop-loss because there is no position to stop out of.
 </system>
 
 <user>

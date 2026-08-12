@@ -43,13 +43,17 @@ export const portfolioDecisionOutputSchema = z.object({
   label: z.string(),
   headline: z.string(),
   rating: z.string(),
+  // No `stop` / `target` here, mirroring the trader's schema (FIX-780): a level
+  // key IS a level name, and the desk derives those from the trader's typed
+  // levels at commit rather than asking the model for them. Requiring them made
+  // a flat, zero-size Hold emit a stop-loss for a position it had just declined
+  // to take, and the hero renders each key as its own label — so the mislabeled
+  // pair reached the PM decision surface, the one a user actually reads.
   metrics: z.object({
     rating: z.string(),
     ticker: z.string(),
     window: z.string(),
     size: z.string(),
-    stop: z.string(),
-    target: z.string(),
   }),
   body: z.array(thesisSection),
   finalRating: ratingSchema,

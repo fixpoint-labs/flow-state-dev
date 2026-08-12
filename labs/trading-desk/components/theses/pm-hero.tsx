@@ -100,7 +100,25 @@ export type PmHeroProps = {
   evidenceDecision: EvidenceDecision | null;
 };
 
-const METRIC_ORDER = ["rating", "ticker", "window", "size", "stop", "target"] as const;
+/**
+ * The metric chips that exist on every decision, in display order. The LEVEL
+ * chips are deliberately NOT listed: what a level is called depends on the
+ * stance the desk took, so the commit derives those keys through the one rule
+ * in `flows/analysis/lib/trade-levels.ts` (FIX-780) and this component renders
+ * whatever it finds. Hardcoding "stop" and "target" here is what put a
+ * stop-loss on a stand-aside Hold — the `<dt>` IS the key.
+ */
+const FIXED_METRIC_ORDER = ["rating", "ticker", "window", "size"] as const;
+
+/**
+ * The level chips a stored decision actually carries, in stored order — a
+ * directional call's stop and target, a flat call's reassess and invalidate
+ * levels, or nothing at all for a record that names neither.
+ */
+function levelMetricKeys(metrics: Record<string, string>): string[] {
+  const fixed = new Set<string>(FIXED_METRIC_ORDER);
+  return Object.keys(metrics).filter((k) => !fixed.has(k));
+}
 
 export function PmHero({
   agent,
@@ -237,7 +255,7 @@ export function PmHero({
           )}
           aria-label="Decision metrics"
         >
-          {METRIC_ORDER.map((key) => (
+          {[...FIXED_METRIC_ORDER, ...levelMetricKeys(metrics)].map((key) => (
             <div key={key} className="flex flex-col gap-0.5">
               <dt className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
                 {key}

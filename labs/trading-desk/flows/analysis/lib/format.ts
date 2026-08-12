@@ -21,6 +21,7 @@ import {
   buildTradeLevelModel,
   formatLegacyLevels,
   PRE_FLAT_STANCE_LABELING_FIX_REASON,
+  withDerivedLevelMetrics,
 } from "./trade-levels";
 import type { ThesisRecord } from "@/domain/portfolio/schema/thesis-schema";
 import {
@@ -43,10 +44,32 @@ export function formatMemoBlock(label: string, memo: any): string {
   }
   lines.push(`Rating: ${memo.rating ?? "—"}`, `Headline: ${memo.headline}`);
   if (memo.metrics != null) {
-    const metricsLine = Object.entries(memo.metrics as Record<string, string>)
+    // The metrics map is free-form, so it carries a SECOND, untyped copy of the
+    // level names — and a memo written before FIX-780 has `stop` / `target`
+    // frozen into it. This is the one seam every memo's metrics are serialized
+    // through, so the correction belongs here rather than at each consumer: a
+    // memo that records a stance has its level entries re-derived from its typed
+    // fields, and one that records no stance (the analysts, the lenses) is
+    // untouched. Without this, a resumed pre-fix session hands the risk officers
+    // and the PM `stop=$320, target=$195` two lines above the note saying the
+    // desk cannot say which is which.
+    const metrics =
+      memo.direction === undefined
+        ? (memo.metrics as Record<string, string>)
+        : withDerivedLevelMetrics(
+            {
+              direction: memo.direction ?? null,
+              stopPrice: memo.stopPrice,
+              targetPrice: memo.targetPrice,
+              reassessBelowPrice: memo.reassessBelowPrice,
+              invalidateAbovePrice: memo.invalidateAbovePrice,
+            },
+            memo.metrics as Record<string, string>,
+          );
+    const metricsLine = Object.entries(metrics)
       .map(([k, v]) => `${k}=${v}`)
       .join(", ");
-    lines.push(`Metrics: ${metricsLine}`);
+    if (metricsLine !== "") lines.push(`Metrics: ${metricsLine}`);
   }
   if (Array.isArray(memo.body)) {
     for (const section of memo.body as Array<{

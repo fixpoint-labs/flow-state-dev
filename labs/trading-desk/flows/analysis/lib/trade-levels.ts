@@ -273,6 +273,64 @@ export function tradeLevelMetricEntries(
 }
 
 /**
+ * Every metric key that NAMES a price level — the keys this rule owns.
+ *
+ * `stop` / `target` are here because they are what a pre-FIX-780 record's
+ * `metrics` map persisted, and that stored map is a second, untyped copy of the
+ * level names that no schema constrains.
+ */
+const LEVEL_METRIC_KEYS: ReadonlySet<string> = new Set([
+  "stop",
+  "target",
+  REASSESS_BELOW_LABEL,
+  INVALIDATE_ABOVE_LABEL,
+]);
+
+/**
+ * Re-derive a stored `metrics` map's level entries from the typed levels.
+ *
+ * The display `metrics` map is free-form `Record<string, string>` — no schema
+ * constrains its keys — so it is a SECOND copy of the level names sitting
+ * outside {@link buildTradeLevelModel}'s reach. A record written before FIX-780
+ * has `stop` / `target` frozen into it, and it is rendered `key=value` straight
+ * into the prompt the risk officers and the PM read. Left alone, a resumed
+ * pre-fix session hands them `stop=$320, target=$195` and, two lines later, a
+ * note saying the desk cannot tell which level is which.
+ *
+ * So the map is not exempt from the one rule: the level keys are DROPPED and
+ * replaced by what the typed fields actually support. A legacy flat record
+ * supports no name for either number, so it contributes no entry at all and the
+ * numbers are carried by the captioned line instead. Non-level keys
+ * (`rating`, `size`, `conviction`, …) pass through untouched.
+ *
+ * Position is preserved: the derived entries land where the first level key sat,
+ * so a post-fix record's prompt block reads exactly as it did before. Only a
+ * record that was actually mislabeled changes.
+ */
+export function withDerivedLevelMetrics(
+  stored: StoredTradeLevels,
+  metrics: Record<string, string> | null | undefined,
+): Record<string, string> {
+  const derived = tradeLevelMetricEntries(stored);
+  const out: Record<string, string> = {};
+  let placed = false;
+  for (const [key, value] of Object.entries(metrics ?? {})) {
+    if (!LEVEL_METRIC_KEYS.has(key)) {
+      out[key] = value;
+      continue;
+    }
+    // The first level key is where the derived pair goes; the rest are the
+    // stale copies this rule exists to remove.
+    if (!placed) {
+      placed = true;
+      Object.assign(out, derived);
+    }
+  }
+  if (!placed) Object.assign(out, derived);
+  return out;
+}
+
+/**
  * The non-level fields the trade one-liner shows around its levels.
  *
  * Structural rather than an import of `components/summary/aggregate`'s

@@ -28,9 +28,13 @@ import {
   PRE_FLAT_STANCE_LABELING_FIX_REASON,
   tradeLevelMetricEntries,
   tradeLineParts,
+  withDerivedLevelMetrics,
   type StoredTradeLevels,
 } from "../flows/analysis/lib/trade-levels";
-import { formatTradeProposalExtensions } from "../flows/analysis/lib/format";
+import {
+  formatMemoBlock,
+  formatTradeProposalExtensions,
+} from "../flows/analysis/lib/format";
 import type { TradeLevels } from "../components/summary/aggregate";
 
 /** The MRVL-shaped flat report from the issue: a post-fix record. */
@@ -258,6 +262,120 @@ describe("tradeLevelMetricEntries — the memo's display metrics row", () => {
       stop: "$132",
       target: "$185",
     });
+  });
+});
+
+describe("withDerivedLevelMetrics — the stored metrics map is not exempt", () => {
+  // The `metrics` map is free-form `Record<string, string>`, so it is a SECOND
+  // copy of the level names that no schema constrains — and it is rendered
+  // `key=value` into the prompt AND as the PM hero's chip labels. These tests
+  // pin that it is re-derived from the typed fields wherever it is read.
+
+  it("strips a legacy flat record's stop and target rather than passing them on", () => {
+    // The defect: a resumed pre-fix session handed the risk officers
+    // `stop=$320, target=$195` — the exact mislabeled pair — and, two lines
+    // later, a note saying the desk cannot tell which level is which.
+    expect(
+      withDerivedLevelMetrics(FLAT_PRE_FIX, {
+        rating: "Hold",
+        size: "0%",
+        stop: "$320",
+        target: "$195",
+      }),
+    ).toEqual({ rating: "Hold", size: "0%" });
+  });
+
+  it("replaces a flat record's level keys with the monitoring pair", () => {
+    expect(
+      withDerivedLevelMetrics(FLAT_POST_FIX, {
+        rating: "Hold",
+        stop: "$320",
+        target: "$195",
+      }),
+    ).toEqual({
+      rating: "Hold",
+      "reassess below": "$195",
+      "invalidate above": "$320",
+    });
+  });
+
+  it("leaves a directional record's stop and target, sourced from the typed fields", () => {
+    // Same keys as the model would have emitted, but they now trace to
+    // `stopPrice` / `targetPrice` rather than to a string the model wrote.
+    expect(
+      withDerivedLevelMetrics(DIRECTIONAL, {
+        rating: "Buy",
+        stop: "$1",
+        target: "$2",
+      }),
+    ).toEqual({ rating: "Buy", stop: "$132", target: "$185" });
+  });
+
+  it("keeps the level chips where they sat, so a post-fix prompt block is unchanged", () => {
+    // Position matters only to avoid unrelated churn in prompts the risk
+    // officers read: the derived pair lands where the first level key was.
+    expect(
+      Object.keys(
+        withDerivedLevelMetrics(DIRECTIONAL, {
+          direction: "long",
+          size: "1.4%",
+          stop: "$1",
+          target: "$2",
+          conviction: "0.7",
+        }),
+      ),
+    ).toEqual(["direction", "size", "stop", "target", "conviction"]);
+  });
+
+  it("adds the levels when the stored map never had a level key", () => {
+    expect(withDerivedLevelMetrics(FLAT_POST_FIX, { rating: "Hold" })).toEqual({
+      rating: "Hold",
+      "reassess below": "$195",
+      "invalidate above": "$320",
+    });
+  });
+});
+
+describe("formatMemoBlock — the composition seam every memo's metrics pass through", () => {
+  it("does not hand a resumed pre-fix proposal a stop and a target", () => {
+    // The `tradeProposal` capability composes this block ABOVE the corrected
+    // extension block, so leaving it alone made the prompt contradict itself
+    // two lines apart — the exact failure this PR's own description predicted
+    // for the trader's row and closed only for the new path.
+    const out = formatMemoBlock("Trade proposal", {
+      headline: "Stand aside on NVDA.",
+      rating: "flat",
+      metrics: { direction: "flat", size: "0%", stop: "$320", target: "$195" },
+      ...FLAT_PRE_FIX,
+    });
+    expect(out).not.toContain("stop=");
+    expect(out).not.toContain("target=");
+    expect(out).toContain("direction=flat");
+    expect(out).toContain("size=0%");
+  });
+
+  it("renames a post-fix flat memo's level chips to the monitoring pair", () => {
+    const out = formatMemoBlock("Trade proposal", {
+      headline: "Stand aside on NVDA.",
+      rating: "flat",
+      metrics: { direction: "flat", size: "0%", stop: "$320", target: "$195" },
+      ...FLAT_POST_FIX,
+    });
+    expect(out).toContain("reassess below=$195");
+    expect(out).toContain("invalidate above=$320");
+    expect(out).not.toContain("stop=");
+  });
+
+  it("leaves a stance-less memo's metrics completely alone", () => {
+    // Phase 1 analysts and the lenses record no stance, so nothing in their
+    // metrics is a level name — this rule must not touch them.
+    const out = formatMemoBlock("Fundamentals", {
+      headline: "Margins compressed.",
+      rating: "Underweight",
+      metrics: { conviction: "0.7", horizon: "6mo", target: "$185" },
+    });
+    expect(out).toContain("target=$185");
+    expect(out).toContain("conviction=0.7");
   });
 });
 

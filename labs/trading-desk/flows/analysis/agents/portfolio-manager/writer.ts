@@ -41,6 +41,10 @@ import {
   type DecisionSnapshotState,
 } from "../../decision-snapshot-resource";
 import { clampRatingToBand } from "../../lib/rating-engine";
+import {
+  withDerivedLevelMetrics,
+  type TradeStance,
+} from "../../lib/trade-levels";
 import { clampTargetWeight, computeMandateGates } from "../../lib/mandate-gates";
 import { computePolicyGate } from "../../lib/policy-gate";
 import { computeEvidenceGate, deriveCriticalDataThin } from "../../lib/evidence-gate";
@@ -369,12 +373,31 @@ export const commitPortfolioManagerMemo = handler({
     // the one the desk stands behind). Untouched when no clamp fired (preserve the
     // model's own precision/format).
     const sizeWasClamped = targetWeightPct < decision.portfolioFit.targetWeightPct;
-    const displayMetrics = sizeWasClamped
+    const sizedMetrics = sizeWasClamped
       ? {
           ...decision.metrics,
           size: `${Number.isInteger(targetWeightPct) ? targetWeightPct : targetWeightPct.toFixed(1)}%`,
         }
       : decision.metrics;
+
+    // The level chips are DERIVED from the trader's typed levels, never emitted
+    // by the PM (the `agreesWithTrader` precedent — the desk does not ask the
+    // model for what it can compute). The hero renders each metric key as its
+    // own label, so these keys ARE level names and fall under the one rule in
+    // `lib/trade-levels.ts` exactly as the trader's row does. A flat call
+    // contributes `reassess below` / `invalidate above`, a directional one
+    // `stop` / `target`, and a legacy record contributes neither rather than a
+    // pair it cannot name.
+    const displayMetrics = withDerivedLevelMetrics(
+      {
+        direction: (traderDirection ?? null) as TradeStance,
+        stopPrice: traderState?.stopPrice,
+        targetPrice: traderState?.targetPrice,
+        reassessBelowPrice: traderState?.reassessBelowPrice,
+        invalidateAbovePrice: traderState?.invalidateAbovePrice,
+      },
+      sizedMetrics,
+    );
 
     // Validate the LLM's suggested account LABEL against the real account list.
     // A hallucinated / absent label (or no portfolio) resolves to "" — never
