@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 // @ts-expect-error — root check script, plain .mjs with no type declarations.
 import {
   isScannedPath,
+  rejectionImplFiles,
   resolverWindow,
   scanSources,
 } from "../../../scripts/validate-model-strings.mjs";
@@ -110,29 +111,20 @@ describe("scan surface", () => {
     ["packages/core/README.md"],
     ["README.md"],
     ["labs/demo/agent.ts"],
-    // Ordinary package source. These sit beside the files that implement the
-    // rejection, and the guard once excluded the whole tree to spare those —
-    // so a preset/* written here throws at runtime with CI green behind it.
+    // Ordinary package source — executable model configuration, so a bad
+    // string here throws rather than merely misleading.
     ["packages/core/src/utility/decomposer.ts"],
     ["packages/patterns/src/plan-and-execute/index.ts"],
     // A sibling of three excluded files, in the same directory: the exclusion
-    // is those files, not the folder they happen to share.
+    // is those files, not the folder they share.
     ["packages/core/test/models/create-model-resolver-loading.test.ts"],
-    // Sibling guards. A future one that needs to quote the removed syntax has
-    // to be argued into the exclusion list, not covered by a tree rule.
+    // Sibling guards, in scope like anything else.
     ["scripts/validate-package-boundaries.mjs"],
   ])("scans %s", (path) => {
     expect(scanned(path)).toBe(true);
   });
 
   it.each([
-    // The rejection's own implementation: these must name preset/* in quotes.
-    ["packages/core/src/models/providerDetection.ts"],
-    ["packages/core/test/model-strings-check.test.ts"],
-    ["packages/core/test/models/create-model-resolver-intents.test.ts"],
-    ["packages/core/test/models/create-model-resolver-env-overrides.test.ts"],
-    ["packages/core/test/models/provider-detection.test.ts"],
-    ["scripts/validate-model-strings.mjs"],
     // Not authored here.
     ["node_modules/some-pkg/index.js"],
     ["apps/docs/build/assets/js/chunk.js"],
@@ -153,10 +145,8 @@ describe("scan surface", () => {
   });
 
   /**
-   * The two halves of the fix, together: package source is in the surface, and
-   * a violation written there is reported. The guard shipped excluding every
-   * package's src and test directory wholesale, so this exact string sat behind
-   * a green check while throwing on the first run.
+   * Both halves together: package source is inside the surface, and a
+   * violation written there is actually reported.
    */
   it("catches a violation in ordinary package source, not just in docs", () => {
     const path = "packages/core/src/utility/decomposer.ts";
@@ -165,5 +155,29 @@ describe("scan surface", () => {
     expect(scan(`const block = generator({ model: "preset/fast" });`, path)).toEqual([
       expect.objectContaining({ file: path, rule: "preset-string" }),
     ]);
+  });
+});
+
+/**
+ * Driven from the guard's own export rather than a second copy of the list —
+ * one fact in two places is the shape of bug this exclusion just had.
+ */
+describe("the rejection-implementation exclusion", () => {
+  const excluded = rejectionImplFiles as string[];
+
+  it.each(excluded)("excludes %s", (path) => {
+    expect((isScannedPath as (p: string) => boolean)(path)).toBe(false);
+  });
+
+  /**
+   * The load-bearing one. Every entry must name a single file, so the list
+   * cannot quietly grow back into the directory rule it replaced — which is
+   * how a `preset/*` in ordinary package source got a green check.
+   */
+  it("names individual files, never a directory or a pattern", () => {
+    for (const path of excluded) {
+      expect(path).toMatch(/\.(ts|mjs)$/);
+      expect(path).not.toMatch(/[*?]/);
+    }
   });
 });

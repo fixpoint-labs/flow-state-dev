@@ -83,39 +83,25 @@ const SKIP_DIRS = new Set([
 ]);
 
 /**
- * The rejection's own implementation. These have to name `preset/…` in quotes
- * — `parseModelString` and `createModelResolver` to reject it, their tests to
- * pin the throw, and this script to match it. Scanning them would flag the
- * rejection for existing.
- *
- * **Six files, not the `packages/*` tree they sit in.** This shipped as
- * `/^packages\/[^/]+\/(src|test)(\/|$)/`, which excluded 1624 files to spare
- * these six — so a `model: "preset/fast"` written anywhere in package source
- * would throw at runtime with CI green behind it, and a guard that reports
- * green over a real violation is worse than no guard. Narrowing to the file
- * list puts those 1624 back in scope and finds nothing, which is the evidence
- * the tree bought nothing.
- *
- * To add one: quoting the rejected syntax must be the file's purpose, not an
- * incidental example. Say why, here.
+ * The rejection's own implementation — the files the header's rule excludes.
+ * Add one only by that rule, and say why beside the entry.
  */
 const REJECTION_IMPL_FILES = new Set([
-  // The guard, and the test pinning its rules.
-  //
-  // `model-strings-check.test.ts` has to stay listed for a second reason: the
-  // `presets-option` rule fires on its own test titles (`it("ignores a
-  // presets: key…")`) and on its negative-case fixtures. Drop it from this set
-  // and the guard fails on the test that proves the guard works.
+  // The guard, and the test pinning its rules. That test has to stay listed
+  // for a second reason: the `presets-option` rule fires on its own test
+  // titles (`it("ignores a presets: key…")`) and on its negative-case
+  // fixtures, so dropping it makes the guard fail on the test that proves the
+  // guard works.
   "scripts/validate-model-strings.mjs",
   "packages/core/test/model-strings-check.test.ts",
 
-  // The parser that implements the rejection — listed by the rule above, not
-  // because it fails today. It escapes `QUOTED_PRESET` only by an accident of
+  // The parser that implements the rejection — listed by the rule, not because
+  // it fails today. It escapes `QUOTED_PRESET` only by an accident of
   // formatting: its migration message opens `"preset/* model strings…"` (the
   // `*` is outside the name character class) and `"  preset/fast, …"` (the
   // leading spaces put the quote nowhere near the string). Reflow either line
   // and the one file whose literal job is naming the removed syntax starts
-  // failing. It is not dead weight; do not prune it for passing.
+  // failing. Not dead weight; do not prune it for passing.
   "packages/core/src/models/providerDetection.ts",
 
   // The tests that pin the throw, one per entry point: the resolver's
@@ -142,9 +128,7 @@ const REJECTION_IMPL_FILES = new Set([
  * someone argues it out, and the argument has to be written here.
  *
  * Only two things are out, and both are the same reason: we did not author
- * it, or it is the code that implements the rejection. The second is named
- * file by file — a tree exclusion sweeps up the neighbours, and the
- * neighbours here are executable model configuration.
+ * it, or it is the code that implements the rejection.
  *
  * Pure and filesystem-free so the surface is testable directly.
  */
@@ -269,7 +253,7 @@ function main() {
   const hits = collectFiles().flatMap(scanFile);
 
   if (hits.length === 0) {
-    console.log("✓ No removed model-string syntax in docs or examples.");
+    console.log("✓ No removed model-string syntax.");
     return;
   }
 
@@ -286,6 +270,12 @@ function main() {
 }
 
 export const resolverWindow = RESOLVER_WINDOW;
+
+/**
+ * The exclusion, exported so its test drives cases from the real set instead
+ * of holding a second copy of the list.
+ */
+export const rejectionImplFiles = [...REJECTION_IMPL_FILES];
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
