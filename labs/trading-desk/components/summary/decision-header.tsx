@@ -234,4 +234,3 @@ function TradeBlock({ trade }: { trade: TradeLevels }): ReactElement | null {
     </div>
   );
 }
-
