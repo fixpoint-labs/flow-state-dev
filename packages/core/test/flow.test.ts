@@ -26,6 +26,54 @@ describe("defineFlow", () => {
     );
   });
 
+  // FIX-1048. `webhooks`/`chat`/`schedules`/`mcp` were declared on
+  // `FlowInstanceOptions` and never read: the instance always carried the
+  // DEFINITION's values, so a per-instance override type-checked, looked
+  // configured, and did nothing. They are gone from the type, which makes the
+  // misuse a compile error — the `as any` below is what lets these tests reach the
+  // runtime guard that catches a caller reaching past the types.
+  //
+  // These assertions are runtime rather than type-level on purpose: this package's
+  // `typecheck` compiles `src/**/*` only, so a `@ts-expect-error` in a test file is
+  // never verified by anything. An unenforced assertion is the same class of defect
+  // as the bug itself.
+  it.each(["webhooks", "chat", "schedules", "mcp"])(
+    "fails closed when definition-only %s is passed to flow instance options",
+    (option) => {
+      const flow = defineFlow({ kind: "instance-transport-override", actions: {} });
+
+      expect(() => flow({ [option]: {} } as any)).toThrow(
+        new RegExp(`instance options set "${option}", which is not an instance option`)
+      );
+    }
+  );
+
+  it("still applies a transport config declared on the flow definition", () => {
+    const webhookHandler = handler({
+      name: "definition-webhook-handler",
+      execute: () => ({ ok: true })
+    });
+
+    const flow = defineFlow({
+      kind: "definition-transport",
+      authentication: { defaultUserId: "system", requireUser: false },
+      actions: {},
+      webhooks: {
+        stripe: {
+          on: {
+            "invoice.paid": { block: webhookHandler, input: () => ({}) }
+          }
+        }
+      }
+    });
+
+    // The guard reads instance options only. A definition-declared transport is
+    // the supported shape and must survive instantiation untouched.
+    const instance = flow({ id: "definition-transport-instance" });
+
+    expect(instance.webhooks?.stripe.on["invoice.paid"]).toBeDefined();
+  });
+
   it("fails closed when removed middleware is passed to a block", () => {
     expect(() =>
       handler({

@@ -155,6 +155,31 @@ function rejectRemovedMiddleware(value: object | undefined, location: string): v
   }
 }
 
+/**
+ * Transport configs that are declared on the flow DEFINITION only. Passing any of
+ * them as an instance option used to type-check and then do nothing at all — the
+ * instance carried the definition's values either way (FIX-1048).
+ *
+ * They are gone from {@link FlowInstanceOptions}, so a TypeScript caller now fails
+ * to compile. This is the runtime half, for the caller who reaches past the types
+ * (plain JS, or an `as any` cast): fail loudly rather than accept-and-ignore.
+ */
+const DEFINITION_ONLY_INSTANCE_OPTIONS = ["webhooks", "chat", "schedules", "mcp"] as const;
+
+function rejectDefinitionOnlyOptions(value: object | undefined, flowKind: string): void {
+  if (value === undefined) return;
+
+  for (const key of DEFINITION_ONLY_INSTANCE_OPTIONS) {
+    if (Object.hasOwn(value, key)) {
+      throw new Error(
+        `Flow "${flowKind}" instance options set "${key}", which is not an instance option. ` +
+        `Per-instance ${DEFINITION_ONLY_INSTANCE_OPTIONS.join("/")} were never applied — the instance ` +
+        `always used the definition's. Declare "${key}" on defineFlow(...) instead.`
+      );
+    }
+  }
+}
+
 function mergeToolsConfig(base: ToolsConfig | undefined, override: ToolsConfig | undefined): ToolsConfig | undefined {
   if (base === undefined && override === undefined) {
     return undefined;
@@ -887,6 +912,7 @@ function createFlowInstance(
 ): FlowInstance<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg, AnyWork> {
   rejectRemovedMiddleware(definition, `Flow "${definition.kind}"`);
   rejectRemovedMiddleware(options, `Flow "${definition.kind}" instance options`);
+  rejectDefinitionOnlyOptions(options, definition.kind);
 
   const authentication = mergeAuthentication(
     definition.authentication,
@@ -932,6 +958,11 @@ function createFlowInstance(
   // event binding's handler block participates in resource/`requireOrg`
   // collection, so a malformed binding must be rejected here with a clear
   // message rather than crashing the aggregation (or the tools wrap below).
+  //
+  // Reading `definition.*` rather than a merge is complete, not a gap: these are
+  // definition-only options (see `rejectDefinitionOnlyOptions`), so the definition
+  // is the ONLY source a config can arrive from. There is no instance-supplied
+  // transport config that could slip past these three.
   validateChatConfig(kind, definition.chat);
   validateWebhookConfig(kind, definition.webhooks);
   validateSchedulesConfig(kind, definition.schedules);
