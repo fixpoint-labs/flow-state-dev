@@ -27,7 +27,7 @@ const pipeline = sequencer({
   .step(analyze);
 ```
 
-Every utility factory accepts a `name` (required) and returns a block that can be chained via `.step()`, composed in `.parallel()`, or used as a router route. Generator-based utilities accept an optional `model` (defaults to `"preset/fast"`) and an optional `outputSchema` to override the default output shape.
+Every utility factory accepts a `name` (required) and returns a block that can be chained via `.step()`, composed in `.parallel()`, or used as a router route. Generator-based utilities accept an optional `model` and an optional `outputSchema` to override the default output shape. Most default to `"intent/utility"`; `decomposer` is the exception. Each block's table below carries its own default.
 
 ## Utility catalog
 
@@ -63,7 +63,7 @@ const reduce = utility.contextReducer({
 |-----------|------|---------|-------------|
 | `name` | `string` | — | Block name (required) |
 | `mode` | `"distill" \| "denoise" \| "compress"` | `"distill"` | Reduction strategy |
-| `model` | `string` | `"preset/fast"` | Model identifier |
+| `model` | `string` | `"intent/utility"` | Model identifier |
 | `outputSchema` | `ZodTypeAny` | mode-specific | Override the default output schema |
 
 **Modes and default output schemas:**
@@ -133,7 +133,7 @@ const extract = utility.memoryExtractor({
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `name` | `string` | — | Block name (required) |
-| `model` | `string` | `"preset/fast"` | Model identifier |
+| `model` | `string` | `"intent/utility"` | Model identifier |
 | `outputSchema` | `ZodTypeAny` | `memoryExtractorOutputSchema` | Override the default output schema |
 
 **Default output schema:**
@@ -192,7 +192,7 @@ const decompose = utility.decomposer({
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `name` | `string` | — | Block name (required) |
-| `model` | `string` | `"preset/fast"` | Model identifier |
+| `model` | `string` | `"openai/gpt-5.4-mini"` | Model identifier |
 | `outputSchema` | `ZodTypeAny` | `decomposerOutputSchema` | Override the default output schema |
 
 **Default output schema:**
@@ -260,7 +260,7 @@ const summarize = utility.summarizer({
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `name` | `string` | — | Block name (required) |
-| `model` | `string` | `"preset/fast"` | Model identifier |
+| `model` | `string` | `"intent/utility"` | Model identifier |
 | `granularity` | `"brief" \| "detailed" \| "executive"` | `"brief"` | Summary depth |
 | `objectives` | `string \| string[]` | — | Focus areas for the summary |
 | `outputSchema` | `ZodTypeAny` | `summarizerOutputSchema` | Override the default output schema |
@@ -378,7 +378,7 @@ const analyze = utility.analyzer({
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `name` | `string` | — | Block name (required) |
-| `model` | `string` | `"preset/fast"` | Model identifier |
+| `model` | `string` | `"intent/utility"` | Model identifier |
 | `criteria` | `string[]` | `["quality", "risk", "coverage", "confidence"]` | Evaluation criteria |
 | `outputSchema` | `ZodTypeAny` | `analyzerOutputSchema` | Override the default output schema |
 
@@ -451,7 +451,7 @@ const classify = utility.intentClassifier({
 |-----------|------|---------|-------------|
 | `name` | `string` | — | Block name (required) |
 | `categories` | `Record<string, string>` | — | Category name → description map (minimum 2 categories, required) |
-| `model` | `string` | `"preset/fast"` | Model identifier |
+| `model` | `string` | `"intent/utility"` | Model identifier |
 | `outputSchema` | `ZodTypeAny` | auto-generated | Override the default output schema |
 
 **Default output schema:**
@@ -546,7 +546,7 @@ const triage = utility.intentRouter({
 |-----------|------|---------|-------------|
 | `name` | `string` | — | Block name (required) |
 | `categories` | `Record<string, { description: string; handler: BlockDefinition }>` | — | Category name → description + handler map (minimum 2, required) |
-| `model` | `string` | `"preset/fast"` | Model identifier for the internal classifier |
+| `model` | `string` | `"intent/utility"` | Model identifier for the internal classifier |
 | `fallback` | `BlockDefinition` | — | Block to execute for low-confidence or unmatched results |
 | `confidenceThreshold` | `number` (0–1) | — | Below this confidence, route to fallback |
 
@@ -782,7 +782,7 @@ Represents the classification result produced by the intentClassifier.
 
 ## Key properties
 
-- All generator-based utilities default to `"preset/fast"` and accept a `model` override.
+- Generator-based utilities accept a `model` override. Most default to `"intent/utility"`; `decomposer` defaults to `"openai/gpt-5.4-mini"`.
 - All utilities export their default output schema as a named Zod object (e.g., `summarizerOutputSchema`) for reference or reuse.
 - The `outputSchema` parameter on every utility accepts a generic type, providing full type inference on the block's output.
 - Combiner is handler-based — it runs deterministic logic with no LLM call.

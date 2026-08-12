@@ -24,7 +24,7 @@ import { z } from "zod";
 
 export const chatGen = generator({
   name: "chat",
-  model: "preset/fast",
+  model: "openai/gpt-5.4-mini",
   prompt: "You are a helpful assistant. Be concise and friendly.",
   inputSchema: z.object({ message: z.string() }),
   history: true,

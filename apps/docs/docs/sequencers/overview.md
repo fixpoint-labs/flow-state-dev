@@ -28,7 +28,7 @@ const validate = handler({
 
 const agent = generator({
   name: "agent",
-  model: "preset/fast",
+  model: "openai/gpt-5.4-mini",
   prompt: "You are a helpful assistant.",
   inputSchema: chatInputSchema,
   user: (input) => input.message,

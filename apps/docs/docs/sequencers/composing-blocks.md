@@ -49,7 +49,7 @@ const validateOrder = handler({
 // Generator: applies pricing rules to the order.
 const priceOrder = generator({
   name: "price-order",
-  model: "preset/fast",
+  model: "openai/gpt-5.4-mini",
   prompt: "You apply customer-specific pricing rules.",
   inputSchema: orderInput,
   outputSchema: pricedOrder,

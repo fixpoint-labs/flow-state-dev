@@ -37,7 +37,7 @@ export const inputSchema = z.object({ message: z.string() });
 
 export const chat = generator({
   name: "chat",
-  model: "preset/small",
+  model: "openai/gpt-5.4-mini",
   prompt: "You are a helpful assistant.",
   inputSchema,
   history: true,
@@ -48,7 +48,7 @@ export const chat = generator({
 A few things to notice:
 
 - **`name`** is the block's identifier. It shows up in traces and the DevTool.
-- **`model`** is a string. `"preset/small"` resolves at runtime to the first small-tier model whose provider has a key. See [Setting Up Models](/docs/getting-started/setting-up-models).
+- **`model`** is a string. `"openai/gpt-5.4-mini"` names one provider and one model. Swap it for `anthropic/claude-haiku-4.5` if that's the key you set. To route across several providers under one name, see [Setting Up Models](/docs/getting-started/setting-up-models).
 - **`inputSchema`** is a Zod schema. It's what the framework validates incoming data against, and what TypeScript uses to type the `input` parameter in `user`.
 - **`history: true`** tells the generator to read prior conversation turns out of the session and include them in the LLM call. You don't manage messages yourself.
 - **`user`** is a function that builds the user message from the input. The system prompt comes from `prompt`.
@@ -90,7 +90,7 @@ export const sessionStateSchema = z.object({
 
 export const chat = generator({
   name: "chat",
-  model: "preset/small",
+  model: "openai/gpt-5.4-mini",
   prompt: "You are a helpful assistant.",
   inputSchema,
   history: true,

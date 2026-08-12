@@ -12,7 +12,7 @@ Every AI feature needs the same infrastructure: call an LLM, stream the response
 
 ```ts
 // Define blocks
-const chat = generator({ name: "chat", model: "preset/fast", prompt: "..." });
+const chat = generator({ name: "chat", model: "openai/gpt-5.4-mini", prompt: "..." });
 const track = handler({ name: "track", execute: async (input, ctx) => {
   await ctx.session.incState({ count: 1 });
   return input;

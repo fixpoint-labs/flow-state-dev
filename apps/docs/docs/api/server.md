@@ -175,7 +175,7 @@ const stores = createInMemoryStores();
 
 ### `createModelResolver(options?)`
 
-Create a model resolver. Auto-detects providers from environment variables with zero config, or accepts explicit keys, presets, and retry policy.
+Create a model resolver. Auto-detects providers from environment variables with zero config, or accepts explicit keys, intents, and retry policy.
 
 ```ts
 import { createModelResolver } from "@flow-state-dev/core/models";
@@ -186,7 +186,8 @@ const resolver = createModelResolver();
 // With options:
 const resolver = createModelResolver({
   keys: { openai: "sk-..." },
-  presets: { fast: { models: ["openai/gpt-5.4-mini"] } },
+  defaultModel: "openai/gpt-5.4-mini",
+  intents: { utility: ["openai/gpt-5.4-mini", "anthropic/claude-haiku-4.5"] },
   retryPolicy: { maxAttemptsPerModel: 3 },
 });
 ```

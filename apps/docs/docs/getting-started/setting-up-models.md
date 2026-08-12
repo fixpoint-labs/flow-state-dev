@@ -38,25 +38,23 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 That's the whole configuration step for the default setup. The framework will detect the key when it boots.
 
-## What `preset/small` resolves to
+## Name a model
 
-The quick-start uses `model: "preset/small"`. A **preset** is a named list of models tried in order. The resolver picks the first one whose provider has a working key:
+The quick-start uses `model: "openai/gpt-5.4-mini"`. That's the whole configuration for one model: a provider name, a slash, a model ID.
 
 ```ts
-small = [
-  "openai/gpt-5.4-mini",
-  "anthropic/claude-haiku-4-5",
-  "google/gemini-3-flash",
-]
+const chat = generator({
+  name: "chat",
+  model: "anthropic/claude-sonnet-4.6",
+  prompt: "...",
+});
 ```
 
-If only `ANTHROPIC_API_KEY` is set, `preset/small` resolves to `claude-haiku-4-5`. If Anthropic is down, the resolver retries, then falls back to the next available model in the list. Your generator code doesn't change.
+The format is `provider/model-id`, or `gateway/provider/model-id` for gateway routing (`"vercel/openai/gpt-5.4"`). Match the provider to the key you set, and the generator will run.
 
-The full list of built-in presets (`tiny`, `small`, `medium`, `large`, `thinking-small`, `thinking-medium`, `thinking-large`) is documented in [Models — Built-in Presets](/docs/fundamentals/models#built-in-presets).
+## Route across providers with an intent
 
-## Override a preset
-
-You can replace any built-in preset or define a new one when you create the resolver:
+A direct string pins you to one provider. If that provider is down, the call fails. An **intent** is a name you point at an ordered list of models instead:
 
 ```ts title="app/api/flows/[...path]/route.ts"
 import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/engine";
@@ -69,15 +67,10 @@ registry.register(chatFlow);
 const router = createFlowApiRouter({
   registry,
   modelResolver: createModelResolver({
-    presets: {
-      // Override `small` to prefer Anthropic
-      small: { models: ["anthropic/claude-haiku-4-5", "openai/gpt-5.4-mini"] },
-
-      // Add a new preset
-      coding: {
-        models: ["anthropic/claude-opus-4-6", "openai/gpt-5.4"],
-        defaults: { maxTokens: 8192 },
-      },
+    defaultModel: "openai/gpt-5.4-mini",
+    intents: {
+      utility: ["anthropic/claude-haiku-4.5", "openai/gpt-5.4-mini"],
+      chat: ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
     },
   }),
 });
@@ -87,25 +80,17 @@ export const POST = router.POST;
 export const DELETE = router.DELETE;
 ```
 
-Use the new preset like any other:
+Point a generator at the name:
 
 ```ts
-const coder = generator({ name: "coder", model: "preset/coding", /* ... */ });
+const chat = generator({ name: "chat", model: "intent/chat", /* ... */ });
 ```
 
-## Use a specific model directly
+The resolver picks the first candidate whose provider has a working key. If that model fails at runtime it retries, then moves to the next one. Your generator code doesn't change.
 
-Skip presets if you want exactly one model:
+`defaultModel` is required once you declare any intent, and it has to be a `provider/model` string rather than another intent. Both rules are checked when the resolver is built, so a mistake surfaces at startup. It's what a generator gets when it names an intent you haven't configured, or when every candidate in the list is unreachable.
 
-```ts
-const chat = generator({
-  name: "chat",
-  model: "anthropic/claude-sonnet-4-6",
-  prompt: "...",
-});
-```
-
-The format is `provider/model-id`, or `gateway/provider/model-id` for gateway routing (`"vercel/openai/gpt-5.4"`).
+Intent names are yours to choose. [Models](/docs/fundamentals/models) lists six the framework documents (`utility`, `chat`, `plan`, `synthesize`, `code`, `reason`) and describes what each is for.
 
 ## Plug in a custom resolver
 

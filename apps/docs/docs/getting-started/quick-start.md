@@ -28,7 +28,7 @@ export OPENAI_API_KEY=sk-...
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-The framework auto-detects whichever providers it finds keys for. The example below uses `model: "preset/small"`, which resolves to the first available small-tier model across providers. For multi-provider fallback, gateways, and custom presets, see [Setting Up Models](/docs/getting-started/setting-up-models).
+The framework auto-detects whichever providers it finds keys for. The example below uses `model: "openai/gpt-5.4-mini"`, a `provider/model` string naming one model directly. If you set an Anthropic key instead, use `anthropic/claude-haiku-4.5`. For fallback across several providers, gateways, and named routing groups, see [Setting Up Models](/docs/getting-started/setting-up-models).
 
 ## 3. Define a flow
 
@@ -44,7 +44,7 @@ const inputSchema = z.object({ message: z.string() });
 
 const chat = generator({
   name: "chat",
-  model: "preset/small",
+  model: "openai/gpt-5.4-mini",
   prompt: "You are a helpful assistant.",
   inputSchema,
   history: true,
@@ -170,6 +170,6 @@ Or open the visual inspector with `fsdev dev` — see the [DevTool guide](/docs/
 ## Next steps
 
 - **[Your First Flow](/docs/getting-started/your-first-flow)** — A narrative walkthrough that explains each concept as you build.
-- **[Setting Up Models](/docs/getting-started/setting-up-models)** — Provider keys, presets, gateways, custom resolvers.
+- **[Setting Up Models](/docs/getting-started/setting-up-models)** — Provider keys, intents, gateways, custom resolvers.
 - **[Project Structure](/docs/getting-started/project-structure)** — How to organize flows, blocks, and tools.
 - **[Blocks](/docs/fundamentals/blocks)** — The four block kinds in depth.

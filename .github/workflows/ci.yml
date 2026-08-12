@@ -96,6 +96,13 @@ jobs:
       - name: No literal NUL bytes in source
         run: node scripts/validate-no-nul-bytes.mjs
 
+      # Also unconditional. Removed model syntax reaching main is what this
+      # already cost us once: preset/* left the framework, the docs kept
+      # teaching it, and the first person to notice was a reader whose first
+      # run threw.
+      - name: No removed model-string syntax in docs
+        run: node scripts/validate-model-strings.mjs
+
   knip:
     name: Knip (unused files & broken imports)
     runs-on: ubuntu-latest

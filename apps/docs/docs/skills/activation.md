@@ -48,7 +48,7 @@ It reads `input.message`, decides what (if any) skills apply, and writes the mat
 
 1. **Slash match.** If the message starts with `/<skill-name>`, look up the skill in the collection and activate it. Deterministic, no LLM call. The argument tail (`/check-news quantum computing`) becomes `$ARGUMENTS` in the body.
 2. **Keyword scan.** Each skill's `keywords` frontmatter is matched as plain substrings against the lowercased message. Every skill whose keywords match activates with `source: "keyword"`. Local, no LLM call.
-3. **LLM classifier.** A `preset/fast` generator with structured output looks at the skill descriptions and decides whether any apply. Runs only when tiers 1 and 2 didn't resolve. Catalog-validated and confidence-gated (default 0.65).
+3. **LLM classifier.** An `intent/utility` generator with structured output looks at the skill descriptions and decides whether any apply. Runs only when tiers 1 and 2 didn't resolve. Catalog-validated and confidence-gated (default 0.65).
 
 A turn that hits tier 1 or 2 pays no LLM cost for the classification. A turn that falls through pays one fast-model call.
 
@@ -60,8 +60,8 @@ createSkillActivator({
   collectionKey: "skills",
   // Scope to read the collection from. Must match the skills capability.
   scope: "user",
-  // Model the tier-3 classifier uses. Default "preset/fast".
-  classifierModel: "preset/fast",
+  // Model the tier-3 classifier uses. Default "intent/utility".
+  classifierModel: "intent/utility",
   // Per-match confidence threshold (0..1). Default 0.65.
   confidenceThreshold: 0.65,
   // Cap on skills described in the classifier prompt. Default 20.

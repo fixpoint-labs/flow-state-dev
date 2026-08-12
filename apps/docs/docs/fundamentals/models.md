@@ -635,10 +635,11 @@ preset/fast, preset/tiny, preset/small  → intent/utility
 preset/medium                           → intent/chat
 preset/large                            → intent/code or intent/reason
 preset/thinking-*                       → intent/reason or intent/plan
-                                          with reasoning enabled (FIX-517)
 ```
 
-The runtime error still references FIX-517 (normalized reasoning levels). That feature was deferred and never shipped; for callers migrating from `preset/thinking-*`, see [Thinking and reasoning](#thinking-and-reasoning) above for the `providerOptions` escape hatch that ships today.
+An intent is a name pointing at a list of models, so the swap isn't only in the generator. Declare the intent on the resolver, then point the generator at `intent/<name>`. [Configuring intents](#configuring-intents) above has the shape.
+
+Normalized reasoning levels are not part of the mapping. For callers migrating from `preset/thinking-*`, [Thinking and reasoning](#thinking-and-reasoning) covers the `providerOptions` escape hatch that ships today.
 
 ## AI SDK 7
 
