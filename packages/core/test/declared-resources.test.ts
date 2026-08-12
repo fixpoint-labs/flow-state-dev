@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { handler, generator, router, sequencer } from "../src";
+import { defineCapability, handler, generator, router, sequencer } from "../src";
 import { defineResource } from "../src/types/resource";
 import { extractDeclaredResources, mergeDeclaredResources } from "../src/blocks/internal/build-block";
 import { createMockContext, runForTest } from "./helpers";
@@ -192,9 +192,16 @@ describe("mergeDeclaredResources", () => {
     expect(mergeDeclaredResources(undefined, undefined)).toBeUndefined();
   });
 
-  it("returns target when source is undefined", () => {
+  // Was `toBe(target)`. Identity is deliberately no longer promised on any
+  // path: a caller that gets its own object back is exactly how a block's
+  // published `ownDeclaredResources` became writable by a later `.step()`
+  // (FIX-1052). Checked before rewriting — all six call sites reassign the
+  // result, and no consumer compares it by reference.
+  it("returns an equal copy when source is undefined", () => {
     const target = { observations: observationsResource };
-    expect(mergeDeclaredResources(target, undefined)).toBe(target);
+    const result = mergeDeclaredResources(target, undefined);
+    expect(result).toEqual(target);
+    expect(result).not.toBe(target);
   });
 
   it("returns copy of source when target is undefined", () => {
@@ -244,6 +251,120 @@ describe("mergeDeclaredResources", () => {
     const target = { observations: observationsResource };
     const source = { observations: otherObservations };
     expect(() => mergeDeclaredResources(target, source)).toThrow("Resource conflict");
+  });
+
+  it("never mutates the target it was handed", () => {
+    const target = { observations: observationsResource };
+    const result = mergeDeclaredResources(target, { artifacts: artifactsResource });
+
+    expect(target).toEqual({ observations: observationsResource });
+    expect(result).not.toBe(target);
+  });
+});
+
+// --- ownDeclaredResources survives composition (FIX-1052, carries FIX-1051) ---
+
+/**
+ * `ownDeclaredResources` is the block's OWN declarations, and FIX-688's
+ * block-dispatch prefetch hook reads it specifically to load those without
+ * re-loading a descendant's. That only holds if composing onto a block cannot
+ * reach back and edit what the block already published.
+ *
+ * It could. Every builder hands `mergeDeclaredResources` an object it does not
+ * own, and the function wrote into it in place. Where a block passes ONE
+ * reference as both rails — a sequencer's capability resources are both its own
+ * set and the seed of its bubble-up accumulator (`sequencer.ts`), and a leaf's
+ * own set IS its bubble-up set (`handler.ts`, `generator.ts`) — a later
+ * `.step()` or `.rescue()` edited the published `ownDeclaredResources` of a
+ * block that was already built.
+ *
+ * The three cases below are the three shapes that reached it. They are written
+ * against the ALREADY-BUILT block, not the one composition returns: the defect
+ * is retroactive, so asserting on the new block would pass while the old one
+ * had silently grown a key.
+ *
+ * The common case hid this for as long as it did by accident — with no `uses:`
+ * the shared reference is `undefined`, and merging into `undefined` always
+ * cloned. Every test here therefore carries a capability resource; without one
+ * they pass against the defect.
+ */
+describe("ownDeclaredResources is unaffected by later composition", () => {
+  const capResource = defineResource({
+    scope: "session",
+    stateSchema: z.object({ seen: z.array(z.string()) })
+  });
+  const childResource = defineResource({
+    scope: "user",
+    stateSchema: z.object({ notes: z.array(z.string()) })
+  });
+
+  const resourceCap = defineCapability({
+    name: "resource-cap",
+    resources: { capResource }
+  });
+
+  const childBlock = () =>
+    handler({
+      name: "child",
+      resources: { childResource },
+      execute: () => "ok"
+    });
+
+  it("a sequencer's .step() does not add the child's resource to the parent's own set", () => {
+    const parent = sequencer({
+      name: "parent",
+      uses: [resourceCap]
+    });
+
+    parent.step(childBlock());
+
+    expect(Object.keys(parent.ownDeclaredResources ?? {})).toEqual(["capResource"]);
+  });
+
+  it("a leaf's .rescue() does not add the handler's resource to the leaf's own set", () => {
+    const leaf = handler({
+      name: "leaf",
+      uses: [resourceCap],
+      execute: () => "ok"
+    });
+
+    const rescued = leaf.rescue([{ block: childBlock() }]);
+
+    expect(Object.keys(leaf.ownDeclaredResources ?? {})).toEqual(["capResource"]);
+    // A leaf passes one reference as BOTH rails, so the same write also
+    // rewrote the bubble-up set the flow collects from.
+    expect(Object.keys(leaf.declaredResources ?? {})).toEqual(["capResource"]);
+    // The handler's resource still has to reach the rescued block, or the fix
+    // has traded a stale superset for a set that never resolves at run time.
+    expect(Object.keys(rescued.declaredResources ?? {}).sort()).toEqual([
+      "capResource",
+      "childResource"
+    ]);
+  });
+
+  it("a sequencer's .rescue() does not add the handler's resource to the sequencer's own set", () => {
+    const seq = sequencer({
+      name: "rescued",
+      uses: [resourceCap]
+    });
+
+    seq.rescue([{ block: childBlock() }]);
+
+    expect(Object.keys(seq.ownDeclaredResources ?? {})).toEqual(["capResource"]);
+  });
+
+  it("the composed block still collects the child's resource", () => {
+    const parent = sequencer({
+      name: "collects",
+      uses: [resourceCap]
+    });
+
+    const composed = parent.step(childBlock());
+
+    expect(Object.keys(composed.declaredResources ?? {}).sort()).toEqual([
+      "capResource",
+      "childResource"
+    ]);
   });
 });
 
