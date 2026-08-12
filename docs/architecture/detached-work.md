@@ -44,7 +44,9 @@ Everything below follows from that one test.
 
 | Topology | Effective dispatcher | Where the child runs | Acceptance means | Survives the process? | `dispose()` waits? |
 |---|---|---|---|---|---|
-| No worker adapter | none (`undefined`) | this process | the child is registered here, and may still be awaiting execution | no | **yes**, bounded |
+| No `worker`, no `dispatcher` | none (`undefined`) | this process | the child is registered here, and may still be awaiting execution | no | **yes**, bounded |
+| Custom `dispatcher` exposing `dispatchLocal` | that dispatcher, **in-process** | this process | the child is registered here, and may still be awaiting execution | no | **yes**, bounded |
+| Custom `dispatcher` without `dispatchLocal` | that dispatcher, **external** | wherever it routes the job | whatever that dispatcher confirms on accept | its dispatcher's answer, not ours | **no** — the child is never tracked, so nothing drains it |
 | `colocated` | queue dispatcher | a worker (may be this process) | the job is on the queue | yes | a job this process has **claimed**: yes, *unbounded*; one still queued: no |
 | `dispatch-only` | queue dispatcher | another container | the job is on the queue | yes | no |
 | `worker-only` | **none** | this process | the child is registered here, and may still be awaiting execution | **no** | detached children **yes**, bounded; a claimed job yes, *unbounded* |
@@ -52,6 +54,14 @@ Everything below follows from that one test.
 
 There is no "started" milestone to report — the column is acceptance, and
 [What acceptance means](#what-acceptance-means) is the long form of these cells.
+
+**Read the rows by what the runtime resolved, not by which option you typed.**
+`worker` and `dispatcher` are mutually exclusive — `createFlowState` throws when
+given both — and the low-level `dispatcher` option is the one that most easily
+gets misread here: it produces no `worker` and no `mode`, so it looks like the
+first row and behaves like the third if the dispatcher it installs is external.
+The effective dispatcher is `options.dispatcher ?? worker.createDispatcher(...)`,
+and `isInProcessDispatcher` decides everything downstream of it.
 
 **Two different waits hide in that last column, and only one of them is
 bounded.** The drain below waits for *in-process detached children* and races
