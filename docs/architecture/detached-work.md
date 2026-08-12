@@ -74,15 +74,16 @@ the refusal is reachable only on a runtime config assembled without either.
 `startDetached` returns once the child is *accepted*, and what that guarantees
 differs by row above.
 
-**In-process.** The child's records are committed and the child is discoverable
-in this process. Which write that is depends on the action's concurrency policy.
-Under `allow` and `reject` it is the run's own `activeRequests` registration, so
-the request has started by the time acceptance resolves. Under `queue` it is the
-enqueue-time registration and request record, both written *before* the
-concurrency gate releases — so a child whose key is already held is accepted
-while it is still waiting its turn, and has not started. Either way nothing
-outside this process is holding the work, so the guarantee ends at the process
-boundary.
+**In-process.** The child is discoverable in this process, and what that rests
+on depends on the action's concurrency policy. Under `allow` and `reject` it is
+the run's own `activeRequests` registration — the request is discoverable, but
+has not necessarily begun executing, and its request record lands a few store
+round-trips later, so `GET /requests/:id` can still 404 in that window. Under
+`queue` it is the enqueue-time registration *and* request record, both written
+before the concurrency gate releases — the same stub the external path writes,
+so this arm has no such window, but a child whose key is already held is
+accepted while it is still waiting its turn. Either way nothing outside this
+process is holding the work, so the guarantee ends at the process boundary.
 
 Accepted-and-still-waiting is the state shutdown handles worst: a child cancelled
 in that window is written `aborted` without ever having run (FIX-1121).
@@ -207,9 +208,12 @@ one status. Three things run the sweep that clears the third case:
 1. **Runtime init** — `createFlowState`'s `#detectInterruptedOnStartup`, on every
    runtime init, router or not, honouring the `detectInterruptedOnStartup`
    option. Retained rather than fire-and-forget, so `dispose()` can let it finish
-   before closing adapters.
+   before closing adapters — within a bound (`RECOVERY_SWEEP_DRAIN_MS`, 5 s), so
+   a store that has stopped answering cannot wedge shutdown.
 2. **A periodic sweeper** — `createStaleRequestSweeper`, built by
-   `createFlowApiRouter`, so it runs wherever a router exists.
+   `createFlowApiRouter`, so it runs wherever a router exists *and* sweeping is
+   on: at `staleSweepIntervalMs <= 0` the factory returns a no-op handle and
+   nothing periodic ever runs.
 3. **A client poke** — `POST .../check-interrupted`, which the DevTool calls on
    mount and on every session-list refresh.
 
