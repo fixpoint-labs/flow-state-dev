@@ -38,9 +38,53 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 That's the whole configuration step for the default setup. The framework will detect the key when it boots.
 
-## Name a model
+## Declare your intents
 
-The quick-start uses `model: "openai/gpt-5.4-mini"`. That's the whole configuration for one model: a provider name, a slash, a model ID.
+Blocks don't have to name a model. An **intent** is a role — `chat`, `utility`, `plan` — that you point at an ordered list of models once, in your runtime config. Blocks ask for the role; the config decides what fills it.
+
+Declare the map on `createFlowState`, alongside your flows and stores:
+
+```ts title="lib/flowstate.ts"
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
+import chatFlow from "@/flows/hello-chat/flow";
+
+export const flowstate = createFlowState({
+  flows: { chatFlow },
+  models: {
+    default: "openai/gpt-5.4-mini",
+    intents: {
+      utility: ["anthropic/claude-haiku-4-5", "openai/gpt-5.4-mini"],
+      chat: ["anthropic/claude-sonnet-4-6", "openai/gpt-5.5"],
+    },
+  },
+  stores: { default: { primary: inMemoryStores() } },
+});
+```
+
+Then point a generator at the name:
+
+```ts
+const chat = generator({ name: "chat", model: "intent/chat", /* ... */ });
+```
+
+### How a candidate gets picked
+
+The framework walks the list in order and takes the first candidate you can actually serve — one whose provider has a working key *and* an installed SDK package. Everything else is skipped. With only `ANTHROPIC_API_KEY` set, `intent/chat` above resolves to `claude-sonnet-4-6`; with only `OPENAI_API_KEY`, the Anthropic entry is skipped and it resolves to `gpt-5.5`. If a model fails at runtime, it retries, then moves to the next candidate. Your block code doesn't change in any of these cases.
+
+`default` is what an intent falls back to when none of its candidates are reachable, and what a generator gets if it names an intent you never declared. Declaring any intent makes `default` required, and it has to name a model directly rather than another intent. Both rules are checked when the runtime is built, so a mistake surfaces at startup rather than mid-request.
+
+### Why roles instead of model names
+
+Two reasons, and the second is the one that compounds:
+
+- **One place to change.** Moving your chat traffic to a new model is an edit to this map, not a search across every block that calls an LLM.
+- **Role names outlive model names.** `intent/chat` reads the same in a year. A specific model ID is a moving target — it gets superseded, renamed, or retired, and every copy of it in your code and docs quietly goes stale.
+
+Intent names are yours to choose. [Models](/docs/fundamentals/models) lists six the framework documents (`utility`, `chat`, `plan`, `synthesize`, `code`, `reason`) and describes what each is for.
+
+## Name a model directly
+
+You can also skip the indirection and name a model on the block:
 
 ```ts
 const chat = generator({
@@ -52,45 +96,7 @@ const chat = generator({
 
 The format is `provider/model-id`, or `gateway/provider/model-id` for gateway routing (`"vercel/openai/gpt-5.4"`). Match the provider to the key you set, and the generator will run.
 
-## Route across providers with an intent
-
-A direct string pins you to one provider. If that provider is down, the call fails. An **intent** is a name you point at an ordered list of models instead:
-
-```ts title="app/api/flows/[...path]/route.ts"
-import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/engine";
-import { createModelResolver } from "@flow-state-dev/core/models";
-import chatFlow from "@/flows/hello-chat/flow";
-
-const registry = createFlowRegistry();
-registry.register(chatFlow);
-
-const router = createFlowApiRouter({
-  registry,
-  modelResolver: createModelResolver({
-    defaultModel: "openai/gpt-5.4-mini",
-    intents: {
-      utility: ["anthropic/claude-haiku-4-5", "openai/gpt-5.4-mini"],
-      chat: ["anthropic/claude-sonnet-4-6", "openai/gpt-5.5"],
-    },
-  }),
-});
-
-export const GET = router.GET;
-export const POST = router.POST;
-export const DELETE = router.DELETE;
-```
-
-Point a generator at the name:
-
-```ts
-const chat = generator({ name: "chat", model: "intent/chat", /* ... */ });
-```
-
-The resolver picks the first candidate whose provider has a working key. If that model fails at runtime it retries, then moves to the next one. Your generator code doesn't change.
-
-`defaultModel` is required once you declare any intent, and it has to be a `provider/model` string rather than another intent. Both rules are checked when the resolver is built, so a mistake surfaces at startup. It's what a generator gets when it names an intent you haven't configured, or when every candidate in the list is unreachable.
-
-Intent names are yours to choose. [Models](/docs/fundamentals/models) lists six the framework documents (`utility`, `chat`, `plan`, `synthesize`, `code`, `reason`) and describes what each is for.
+This is the right call when a block genuinely needs one specific model — an eval pinned to a known baseline, or a block that depends on a quirk of a particular model. It pins that block to one provider, so it fails if that provider is unreachable, and it's a string you'll have to revisit when the model is superseded.
 
 ## Plug in a custom resolver
 

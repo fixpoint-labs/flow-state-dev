@@ -55,21 +55,25 @@ The framework documents six intent names. Apps configure their own model lists p
 
 ### Configuring intents
 
-Intents are configured on the model resolver:
+Apps declare intents on `createFlowState`, in the `models` block:
 
-```ts
-import { createModelResolver } from "@flow-state-dev/core/models";
-
-const resolver = createModelResolver({
-  defaultModel: "anthropic/claude-sonnet-4.6",
-  intents: {
-    utility: ["anthropic/claude-haiku-4.5", "openai/gpt-5.4-nano"],
-    chat: ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
-    plan: ["anthropic/claude-opus-4.7"],
-    synthesize: ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
+```ts title="lib/flowstate.ts"
+export const flowstate = createFlowState({
+  flows: { chatFlow },
+  models: {
+    default: "anthropic/claude-sonnet-4-6",
+    intents: {
+      utility: ["anthropic/claude-haiku-4-5", "openai/gpt-5.4-nano"],
+      chat: ["anthropic/claude-sonnet-4-6", "openai/gpt-5.5"],
+      plan: ["anthropic/claude-opus-4-7"],
+      synthesize: ["anthropic/claude-sonnet-4-6", "openai/gpt-5.5"],
+    },
   },
+  stores: { default: { primary: inMemoryStores() } },
 });
 ```
+
+`models.default` and `models.intents` are forwarded to the model resolver the runtime builds for you. If you construct a resolver yourself, the same two options are named `defaultModel` and `intents` on `createModelResolver`.
 
 `defaultModel` is required when `intents` is non-empty. It must be a `provider/model` or `gateway/provider/model` string, never another `intent/*`. Both rules are enforced at construction: missing `defaultModel` throws `createModelResolver: defaultModel is required when intents are configured`, and an `intent/*` default throws `createModelResolver: defaultModel must not be an intent/* string`. If a generator references an intent name that isn't configured, the resolver logs a dev warning (`[flow-state-dev] Unknown or empty intent "<name>"; falling back to defaultModel.`) and uses `defaultModel`.
 

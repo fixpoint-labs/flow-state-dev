@@ -18,6 +18,13 @@ Build a streaming chat in five minutes. By the end you have a typed flow, a Next
 pnpm add @flow-state-dev/core @flow-state-dev/engine @flow-state-dev/react zod
 ```
 
+Add the SDK package for whichever provider you have a key for. The framework loads it from your app, so at least one has to be installed:
+
+```bash
+pnpm add @ai-sdk/openai
+# or: pnpm add @ai-sdk/anthropic
+```
+
 ## 2. Configure your model provider
 
 Set one API key in your shell:
@@ -28,7 +35,11 @@ export OPENAI_API_KEY=sk-...
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-The framework auto-detects whichever providers it finds keys for. The example below uses `model: "openai/gpt-5.4-mini"`, a `provider/model` string naming one model directly. If you set an Anthropic key instead, use `anthropic/claude-haiku-4-5`. For fallback across several providers, gateways, and named routing groups, see [Setting Up Models](/docs/getting-started/setting-up-models).
+The framework auto-detects whichever providers it finds keys for.
+
+Generators in this guide ask for `intent/chat` instead of naming a model. An **intent** is a name you point at an ordered list of models; the framework picks the first candidate it has both a key and an installed SDK package for. You declare that list once, in step 4. That's why the same block code runs whether you set an OpenAI key or an Anthropic one, and why swapping models later is a config edit rather than a search across your blocks.
+
+For gateways and the full set of options, see [Setting Up Models](/docs/getting-started/setting-up-models).
 
 ## 3. Define a flow
 
@@ -44,7 +55,7 @@ const inputSchema = z.object({ message: z.string() });
 
 const chat = generator({
   name: "chat",
-  model: "openai/gpt-5.4-mini",
+  model: "intent/chat",
   prompt: "You are a helpful assistant.",
   inputSchema,
   history: true,
@@ -90,10 +101,17 @@ import chatFlow from "@/flows/hello-chat/flow";
 
 export const flowstate = createFlowState({
   flows: { chatFlow },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: {
+    default: "openai/gpt-5.4-mini",
+    intents: {
+      chat: ["anthropic/claude-sonnet-4-6", "openai/gpt-5.4-mini"],
+    },
+  },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```
+
+This is where `intent/chat` gets its meaning. The framework takes the first candidate you have a key and an SDK package for, so whichever key you set in step 2 is the one that runs. `default` covers the case where none of an intent's candidates are reachable; declaring any intent makes it required.
 
 ```ts title="app/api/flows/[...path]/route.ts"
 import { flowstate } from "@/lib/flowstate";
