@@ -1,0 +1,4 @@
+---
+---
+
+Internal (skills): add `epic-pm` (FIX-1140) — a product-manager posture over `epic-lifecycle` + `epic-em` for running an epic against a provable business outcome instead of building the set out. It moves no gate (epic objective, spec approval and merge stay the user's); what changes is that the objective must carry four lines before the gate is offered — outcome, proof, not-doing, kill line — a thin or unfiled epic gets a bounded shaping interview first (with "don't build it" as a valid outcome), each spec gets a `second-look` restraint pass before its approval gate, and product calls the four lines already answer are decided rather than relayed while every scope *addition* still goes up. It overrides `epic-em` in one place only: the four lines and the per-spec restraint record persist in `.orchestration/`. Registered in `CLAUDE.md` with a back-link from `epic-lifecycle`.
