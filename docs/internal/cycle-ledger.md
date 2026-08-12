@@ -510,18 +510,30 @@ behaviour. If B's sub-shapes do not fall, the conclusion is the altitude, not th
    is worth logging on its own.
 
 **Footnote on fix A's own first outing, logged as data about the fix rather than a joke at its
-expense.** The §10.6 rewrite was sharpened twice inside its own PR ([#1252](https://github.com/fixpoint-labs/flow-state-dev/pull/1252)).
-First when its opening live application under-caught: the agent on
-[#1246](https://github.com/fixpoint-labs/flow-state-dev/pull/1246) grepped the distinctive noun and
-honestly reported zero remaining hits, and review plus a concept sweep then found three more sites
-— the "shutdown never settles" claim occupied **8**, "lease expiry returns the task" **5**. Every
-miss was a document whose job is to be shorter than its source (a locked-contract bullet, a README
-summary, a state diagram), because compression is where an author reaches for different words or
-for none; `packages/orchestration/README.md` stated the false claim as a labelled arrow, which no
-string sweep in any vocabulary finds. Second when the correction for that dropped the grep
-enumeration it was extending — and **that list was the only thing pointing at `--help` output,
+expense.** The §10.6 rewrite was sharpened three times inside its own PR ([#1252](https://github.com/fixpoint-labs/flow-state-dev/pull/1252)),
+each round failing differently. **First** when its opening live application under-caught: the agent
+on [#1246](https://github.com/fixpoint-labs/flow-state-dev/pull/1246) grepped the distinctive noun
+and honestly reported zero remaining hits, and review plus a concept sweep then found three more
+sites — the "shutdown never settles" claim occupied **8**, "lease expiry returns the task" **5**.
+Every miss was a document whose job is to be shorter than its source (a locked-contract bullet, a
+README summary, a state diagram), because compression is where an author reaches for different
+words or for none; `packages/orchestration/README.md` stated the false claim as a labelled arrow,
+which no string sweep in any vocabulary finds. **Second** when the correction for that dropped the
+grep enumeration it was extending — and **that list was the only thing pointing at `--help` output,
 error strings and the changeset, which is where this epic put one of its four escapes**: the
 model-migration message that shipped a dead internal URL to users. A rule that loses a restatement
 of itself inside the edit correcting restatements is the class; a rule that loses the only route to
-the surface where an escape actually happened is the cost. **Neither round was caught by the
+the surface where an escape actually happened is the cost. **Third**, and the round that decided
+the final wording, when the enumeration replacing it **licensed a skip**: round six found the
+topology matrix in `detached-work.md` contradicting the acceptance contract thirty lines below it
+in the same file, one round after that contract was corrected — and the agent had swept the three
+named surfaces, concluded it was done, and *was* done by the rule as written. An incomplete rule
+gets extended; a rule satisfiable while the failure it names survives converts a miss into a
+defensible one, which is the worse property and the reason the landed text keys on compression
+rather than on a set that can be exhausted:
+
+> …sweep every surface that states the claim more briefly than the place you just corrected it …
+> including ones in the file you are already editing. Report which of the two sweeps you did.
+
+This footnote itself merged a round behind its subject. **None of the three was caught by the
 author.**
