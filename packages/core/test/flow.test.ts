@@ -26,17 +26,11 @@ describe("defineFlow", () => {
     );
   });
 
-  // FIX-1048. `webhooks`/`chat`/`schedules`/`mcp` were declared on
-  // `FlowInstanceOptions` and never read: the instance always carried the
-  // DEFINITION's values, so a per-instance override type-checked, looked
-  // configured, and did nothing. They are gone from the type, which makes the
-  // misuse a compile error — the `as any` below is what lets these tests reach the
-  // runtime guard that catches a caller reaching past the types.
+  // Definition-only instance options (FIX-1048); see `rejectDefinitionOnlyOptions`.
   //
-  // These assertions are runtime rather than type-level on purpose: this package's
-  // `typecheck` compiles `src/**/*` only, so a `@ts-expect-error` in a test file is
-  // never verified by anything. An unenforced assertion is the same class of defect
-  // as the bug itself.
+  // Runtime assertions rather than `@ts-expect-error` on purpose: this package's
+  // `typecheck` compiles `src/**/*` only, so a type-level assertion in a test file
+  // is never verified by anything. The `as any` below reaches the runtime guard.
   it.each(["webhooks", "chat", "schedules", "mcp"])(
     "fails closed when definition-only %s is passed to flow instance options",
     (option) => {

@@ -1,15 +1,12 @@
 ---
-"@flow-state-dev/core": patch
+"@flow-state-dev/core": minor
 ---
 
-Remove `webhooks`, `chat`, `schedules`, and `mcp` from `FlowInstanceOptions`.
-The four type-checked as per-instance overrides and were never read: the flow
-instance always carried the definition's values, so `flow({ webhooks })`
-compiled clean, looked configured, and did nothing. Every sibling option on the
-same object (`session`, `user`, `org`, `work`, `tools`, `voice`, `tokenCounter`,
-`costEstimator`, `isolateUserState`, `isolateOrgState`) does apply.
+**Breaking:** Removed `webhooks`, `chat`, `schedules`, and `mcp` from the options
+you can pass when creating a flow instance (FIX-1048). The four type-checked and
+were never read — `flow({ webhooks })` compiled clean, looked configured, and did
+nothing.
 
-Declaring these four on `defineFlow(...)` is unchanged and remains the supported
-way to configure them. Only the instance-level call site is affected, and only
-where it never worked — passing one is now a compile error, and a caller that
-reaches past the types gets a thrown error naming the option instead of silence.
+Declare all four on `defineFlow(...)` as before; that path is unchanged. Passing
+one to the instance no longer compiles, and a caller that reaches past the types
+gets a thrown error naming the option instead of silence.

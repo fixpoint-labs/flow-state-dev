@@ -530,12 +530,8 @@ export type FlowInstanceOptions<
   resources?: TResources;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
-  // `mcp`, `chat`, `webhooks` and `schedules` are deliberately ABSENT (FIX-1048).
-  // Those four are declared on `defineFlow(...)` only. They were once listed here
-  // and never read — an instance that passed them got the definition's values back
-  // with no error, so the type advertised a capability that did not exist.
-  // Their absence makes that misuse a compile error; `createFlowInstance` rejects
-  // it at runtime too, for callers that reach past the types.
+  // `mcp`, `chat`, `webhooks` and `schedules` are deliberately ABSENT — they are
+  // definition-only; see `rejectDefinitionOnlyOptions` in `flow/defineFlow.ts` (FIX-1048).
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
   isolateUserState?: boolean;
