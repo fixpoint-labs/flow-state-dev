@@ -482,10 +482,14 @@ behaviour. If B's sub-shapes do not fall, the conclusion is the altitude, not th
   closing the first time it is seen. Promotion here and acceptance there are separate gates, and
   the same split applies to the two sub-shapes above: unpromoted in this instrument, still
   proposed as grounding.
-- **Two harness caveats.** Reverting a neuter with `git checkout <file>` discards every
-  uncommitted change in the file; and the GitHub MCP PR tools strip `<details>`/`<summary>`
-  (observed on this entry's own PR), with `update_pull_request` additionally flipping a PR out of
-  draft. Mechanics for `pr-reviewer-guidance.md` and the skills, not rework classes.
+- **Two harness caveats**, both observed on this entry's own PR rather than reported. Reverting a
+  neuter with `git checkout <file>` discards every uncommitted change in the file — replace the
+  exact string instead. And the GitHub MCP PR tools strip `<details>`/`<summary>` while leaving
+  `<b>`, on **both** `create_pull_request` and `update_pull_request`, so a body written to
+  `pr-reviewer-guidance.md`'s fold arrives unfolded. The draft flip often reported alongside it is
+  **avoidable, not inherent**: `update_pull_request` takes an explicit `draft` parameter, and
+  passing `draft: true` preserves the state — the flip is what its default does, not what the tool
+  must do. Mechanics for `pr-reviewer-guidance.md` and the skills, not rework classes.
 
 ### Claim to test next cycle
 
