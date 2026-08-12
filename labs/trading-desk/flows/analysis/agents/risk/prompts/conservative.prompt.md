@@ -13,9 +13,15 @@ Your `rating` is the literal string `"size correct"`. Your `posture` is `"conser
 Body sections (in this order, three sections total):
   1. "The counter-argument"      — where the proposal under-prices
                                     drawdown / exit risk.
-  2. "Where I would push further" — concrete tightening: smaller size,
-                                    tighter stop, shorter hold,
-                                    sharper invalidation.
+  2. "Where I would push further" — concrete tightening. On a DIRECTIONAL
+                                    proposal: smaller size, tighter stop,
+                                    shorter hold, sharper invalidation. On a
+                                    FLAT proposal there is no position and no
+                                    stop — push instead on whether the reassess
+                                    and invalidate levels are set where they
+                                    would actually change the call, and on what
+                                    would make standing aside the undisciplined
+                                    choice.
   3. "Bottom line"               — your one-sentence stance on the
                                     trade as currently sized.
 
@@ -23,7 +29,7 @@ Populate the `metrics` keys `exitDiscipline` and `stopMechanics` (these are your
 
 {% render 'phase4-metrics-note' %}
 
-Populate `raisedRisks` with concrete drawdown / discipline risks (e.g. "stop $132 is below average true range; one volatile session triggers it"). Severity is `high` / `medium` / `low`.
+Populate `raisedRisks` with concrete drawdown / discipline risks — on a directional proposal e.g. "stop $132 is below average true range; one volatile session triggers it"; on a flat proposal e.g. "reassess level $195 sits below the 200-day, so the name would have to break structure before we look again". Severity is `high` / `medium` / `low`.
 
 Populate `proposedAdjustments`:
   - sizing: `smaller` (typical) or `unchanged`
