@@ -26,16 +26,44 @@ import {
   LEGACY_LEVELS_CAPTION,
   levelsForStance,
   PRE_FLAT_STANCE_LABELING_FIX_REASON,
+  tradeLevelChips,
   tradeLevelMetricEntries,
   tradeLineParts,
   withDerivedLevelMetrics,
+  withDisplayLevelMetrics,
   type StoredTradeLevels,
 } from "../flows/analysis/lib/trade-levels";
 import {
   formatMemoBlock,
   formatTradeProposalExtensions,
 } from "../flows/analysis/lib/format";
+import { memoStateSchema } from "../flows/analysis/resources";
 import type { TradeLevels } from "../components/summary/aggregate";
+
+/**
+ * Build a memo the way the system actually stores one — THROUGH the schema.
+ *
+ * The stance-less test below used to pass an object literal that simply omitted
+ * `direction`, and that shape is unreachable: `memoStateSchema` declares
+ * `direction` as `.nullable().default(null)`, so every parsed or persisted memo
+ * carries `direction: null`, never `undefined`. A fixture composed alongside the
+ * artifact instead of derived from it let a guard written against `undefined`
+ * pass a test while being false for every real memo.
+ *
+ * Deriving the fixture from the schema is what makes the pass condition trace to
+ * the stored shape rather than to the test author's memory of it (BP-030).
+ */
+function persistedMemo(fields: Record<string, unknown>) {
+  return memoStateSchema.parse({
+    status: "published",
+    agentName: "fundamentals",
+    agentTeam: "analyst",
+    ticker: "NVDA",
+    date: "2026-08-12",
+    phaseId: "p1",
+    ...fields,
+  });
+}
 
 /** The MRVL-shaped flat report from the issue: a post-fix record. */
 const FLAT_POST_FIX: StoredTradeLevels = {
@@ -336,6 +364,129 @@ describe("withDerivedLevelMetrics — the stored metrics map is not exempt", () 
   });
 });
 
+describe("tradeLevelChips — the PM hero's level chips on a REOPENED report", () => {
+  // The read path. `withDerivedLevelMetrics` corrects the PM's stored metrics at
+  // COMMIT, and opening a historical report never runs a commit — so the hero
+  // used to render whatever keys the persisted map carried. On a pre-FIX-780
+  // flat record those keys are `stop` and `target`, which is a fabricated
+  // stop-loss on a stand-aside call, shown on the decision surface a user reads.
+
+  it("captions a legacy flat record's numbers instead of naming either one", () => {
+    expect(tradeLevelChips(buildTradeLevelModel(FLAT_PRE_FIX))).toEqual([
+      { key: "__legacy_levels__", label: LEGACY_LEVELS_CAPTION, value: "$195, $320" },
+    ]);
+  });
+
+  it("never labels a legacy flat record's chip stop or target", () => {
+    // The whole point: the numbers survive, their false identities do not.
+    const labels = tradeLevelChips(buildTradeLevelModel(FLAT_PRE_FIX)).map(
+      (c) => c.label,
+    );
+    expect(labels).not.toContain("stop");
+    expect(labels).not.toContain("target");
+  });
+
+  it("gives a post-fix flat record the monitoring pair", () => {
+    expect(tradeLevelChips(buildTradeLevelModel(FLAT_POST_FIX))).toEqual([
+      { key: "reassess below", label: "reassess below", value: "$195" },
+      { key: "invalidate above", label: "invalidate above", value: "$320" },
+    ]);
+  });
+
+  it("keeps a directional record's real stop and target", () => {
+    // The case a naive shape test would have broken: a PM record carrying
+    // `stop` / `target` is NOT automatically legacy — a post-fix directional
+    // decision carries exactly those two keys, correctly. Only the trader's
+    // stance separates this record from the legacy flat one above.
+    expect(tradeLevelChips(buildTradeLevelModel(DIRECTIONAL))).toEqual([
+      { key: "stop", label: "stop", value: "$132" },
+      { key: "target", label: "target", value: "$185" },
+    ]);
+  });
+
+  it("shows no level chips when the trader memo is unreadable", () => {
+    // A run that never reached Phase 3, or a still-loading resource. Nothing is
+    // shown rather than a fabricated range (spec §6 decision 4).
+    expect(tradeLevelChips(null)).toEqual([]);
+  });
+});
+
+describe("withDisplayLevelMetrics — a memo doc opened from a HISTORICAL report", () => {
+  // The fifth surface. The trader memo renders through the generic
+  // ThesisHeader/ThesisMetrics chip grid, and the pre-FIX-780 trader schema
+  // required `{direction, size, stop, target, conviction}` on EVERY stance — so
+  // reopening a stand-aside report and clicking the trader memo showed
+  // `stop $320 / target $195`. There is no commit on that path to correct it.
+
+  it("captions a legacy flat trader row instead of showing stop and target", () => {
+    const out = withDisplayLevelMetrics(FLAT_PRE_FIX, {
+      direction: "flat",
+      size: "0%",
+      stop: "$320",
+      target: "$195",
+      conviction: "0.6",
+    });
+    expect(out).toEqual({
+      direction: "flat",
+      size: "0%",
+      [LEGACY_LEVELS_CAPTION]: "$195, $320",
+      conviction: "0.6",
+    });
+    // The numbers survive; their false identities do not.
+    expect(Object.keys(out)).not.toContain("stop");
+    expect(Object.keys(out)).not.toContain("target");
+  });
+
+  it("differs from the prompt path deliberately: the prompt drops, the doc captions", () => {
+    // `withDerivedLevelMetrics` drops a legacy pair because the prompt discloses
+    // it separately with its reason. A chip grid has no second line, so dropping
+    // would silently lose real measurements. Same record, two justified answers.
+    const stored = { rating: "Hold", stop: "$320", target: "$195" };
+    expect(withDerivedLevelMetrics(FLAT_PRE_FIX, stored)).toEqual({
+      rating: "Hold",
+    });
+    expect(withDisplayLevelMetrics(FLAT_PRE_FIX, stored)).toEqual({
+      rating: "Hold",
+      [LEGACY_LEVELS_CAPTION]: "$195, $320",
+    });
+  });
+
+  it("renames a post-fix flat trader row to the monitoring pair", () => {
+    expect(
+      withDisplayLevelMetrics(FLAT_POST_FIX, {
+        direction: "flat",
+        stop: "$320",
+        target: "$195",
+      }),
+    ).toEqual({
+      direction: "flat",
+      "reassess below": "$195",
+      "invalidate above": "$320",
+    });
+  });
+
+  it("leaves a directional row's real stop and target in place", () => {
+    expect(
+      withDisplayLevelMetrics(DIRECTIONAL, {
+        direction: "long",
+        stop: "$1",
+        target: "$2",
+      }),
+    ).toEqual({ direction: "long", stop: "$132", target: "$185" });
+  });
+
+  it("does not re-caption an already-captioned row on a second read", () => {
+    // The read path can run over its own output (a re-render). The caption key
+    // is a level key for this rule's purposes, so it is replaced, not appended.
+    const once = withDisplayLevelMetrics(FLAT_PRE_FIX, {
+      rating: "Hold",
+      stop: "$320",
+      target: "$195",
+    });
+    expect(withDisplayLevelMetrics(FLAT_PRE_FIX, once)).toEqual(once);
+  });
+});
+
 describe("formatMemoBlock — the composition seam every memo's metrics pass through", () => {
   it("does not hand a resumed pre-fix proposal a stop and a target", () => {
     // The `tradeProposal` capability composes this block ABOVE the corrected
@@ -369,13 +520,49 @@ describe("formatMemoBlock — the composition seam every memo's metrics pass thr
   it("leaves a stance-less memo's metrics completely alone", () => {
     // Phase 1 analysts and the lenses record no stance, so nothing in their
     // metrics is a level name — this rule must not touch them.
-    const out = formatMemoBlock("Fundamentals", {
-      headline: "Margins compressed.",
-      rating: "Underweight",
-      metrics: { conviction: "0.7", horizon: "6mo", target: "$185" },
-    });
+    //
+    // Built through `memoStateSchema` deliberately: a stance-less memo is
+    // `direction: null`, NOT a memo missing the key. The earlier literal omitted
+    // `direction` entirely, which no parse and no store ever produces, and that
+    // is precisely why this test passed while the guard was false for every real
+    // analyst, lens, and research memo.
+    const out = formatMemoBlock(
+      "Fundamentals",
+      persistedMemo({
+        headline: "Margins compressed.",
+        rating: "Underweight",
+        metrics: { conviction: "0.7", horizon: "6mo", target: "$185" },
+      }),
+    );
     expect(out).toContain("target=$185");
     expect(out).toContain("conviction=0.7");
+  });
+
+  it("keeps a bull thesis's quantitative price case intact", () => {
+    // `bullThesisOutputSchema` REQUIRES `metrics.target` and `metrics.stop`
+    // (agents/research/generators.ts), and `commitBullMemo` spreads the thesis
+    // straight onto the memo — so the bull memo is a stance-less memo whose
+    // metrics legitimately carry two level-named keys. Stripping them discards
+    // the bull case's entire quantitative argument before the risk officers and
+    // the PM ever read it.
+    const out = formatMemoBlock(
+      "Bull thesis",
+      persistedMemo({
+        agentName: "bull",
+        agentTeam: "research",
+        phaseId: "p2",
+        headline: "Accelerating datacenter demand.",
+        rating: "buy",
+        metrics: {
+          conviction: "0.8",
+          horizon: "6mo",
+          target: "$240",
+          stop: "$160",
+        },
+      }),
+    );
+    expect(out).toContain("target=$240");
+    expect(out).toContain("stop=$160");
   });
 });
 

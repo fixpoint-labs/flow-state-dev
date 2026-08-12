@@ -20,6 +20,7 @@ import type { RiskMandate } from "./risk-mandate";
 import {
   buildTradeLevelModel,
   formatLegacyLevels,
+  hasTradeStance,
   PRE_FLAT_STANCE_LABELING_FIX_REASON,
   withDerivedLevelMetrics,
 } from "./trade-levels";
@@ -49,23 +50,28 @@ export function formatMemoBlock(label: string, memo: any): string {
     // frozen into it. This is the one seam every memo's metrics are serialized
     // through, so the correction belongs here rather than at each consumer: a
     // memo that records a stance has its level entries re-derived from its typed
-    // fields, and one that records no stance (the analysts, the lenses) is
-    // untouched. Without this, a resumed pre-fix session hands the risk officers
-    // and the PM `stop=$320, target=$195` two lines above the note saying the
-    // desk cannot say which is which.
-    const metrics =
-      memo.direction === undefined
-        ? (memo.metrics as Record<string, string>)
-        : withDerivedLevelMetrics(
-            {
-              direction: memo.direction ?? null,
-              stopPrice: memo.stopPrice,
-              targetPrice: memo.targetPrice,
-              reassessBelowPrice: memo.reassessBelowPrice,
-              invalidateAbovePrice: memo.invalidateAbovePrice,
-            },
-            memo.metrics as Record<string, string>,
-          );
+    // fields, and one that records no stance (the analysts, the lenses, the
+    // researchers) is untouched. Without this, a resumed pre-fix session hands
+    // the risk officers and the PM `stop=$320, target=$195` two lines above the
+    // note saying the desk cannot say which is which.
+    //
+    // The stance test is `hasTradeStance`, NOT an absence test: `direction` is
+    // `.nullable().default(null)`, so a stance-less memo carries `null` and an
+    // `=== undefined` guard would send every analyst, lens, and research memo
+    // down the transform — stripping the `target` / `stop` the bull thesis
+    // deliberately publishes.
+    const metrics = hasTradeStance(memo.direction)
+      ? withDerivedLevelMetrics(
+          {
+            direction: memo.direction,
+            stopPrice: memo.stopPrice,
+            targetPrice: memo.targetPrice,
+            reassessBelowPrice: memo.reassessBelowPrice,
+            invalidateAbovePrice: memo.invalidateAbovePrice,
+          },
+          memo.metrics as Record<string, string>,
+        )
+      : (memo.metrics as Record<string, string>);
     const metricsLine = Object.entries(metrics)
       .map(([k, v]) => `${k}=${v}`)
       .join(", ");

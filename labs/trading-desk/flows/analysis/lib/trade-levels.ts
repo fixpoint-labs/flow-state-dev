@@ -38,6 +38,29 @@
 export type TradeStance = "long" | "short" | "flat" | null;
 
 /**
+ * Does this memo record a stance at all?
+ *
+ * The guard every caller needs before applying a level rule, and it must be
+ * written POSITIVELY — "is one of the three stances" — never as an absence test.
+ * `memoStateSchema` declares `direction` as `.nullable().default(null)`, so a
+ * parsed or persisted memo that records no stance carries `null`, never
+ * `undefined`. A guard spelled `direction === undefined` is therefore false for
+ * every real memo, and silently runs the level rule over the analyst, lens, and
+ * research memos, whose free-form `metrics` map legitimately contains keys named
+ * `target` and `stop` (the bull thesis REQUIRES both — see
+ * `agents/research/generators.ts`). Those entries are then dropped as stale
+ * level copies, discarding the memo's quantitative case.
+ *
+ * Named here because this file is the single owner of what a stance is, and
+ * because the absence-test form is the mistake this rule keeps inviting.
+ */
+export function hasTradeStance(
+  direction: unknown,
+): direction is Exclude<TradeStance, null> {
+  return direction === "long" || direction === "short" || direction === "flat";
+}
+
+/**
  * The four stored level fields plus the stance that says which pair is real.
  *
  * The level fields are optional AND nullable: a decision record written before
@@ -311,11 +334,22 @@ export function withDerivedLevelMetrics(
   stored: StoredTradeLevels,
   metrics: Record<string, string> | null | undefined,
 ): Record<string, string> {
-  const derived = tradeLevelMetricEntries(stored);
+  return replaceLevelKeys(metrics, tradeLevelMetricEntries(stored));
+}
+
+/**
+ * Drop every level-named key from a stored metrics map and put `derived` where
+ * the first one sat. Shared by the two derivations below so the placement rule
+ * (and the "the rest are stale copies" rule) is written once.
+ */
+function replaceLevelKeys(
+  metrics: Record<string, string> | null | undefined,
+  derived: Record<string, string>,
+): Record<string, string> {
   const out: Record<string, string> = {};
   let placed = false;
   for (const [key, value] of Object.entries(metrics ?? {})) {
-    if (!LEVEL_METRIC_KEYS.has(key)) {
+    if (!LEVEL_METRIC_KEYS.has(key) && key !== LEGACY_LEVELS_CAPTION) {
       out[key] = value;
       continue;
     }
@@ -328,6 +362,72 @@ export function withDerivedLevelMetrics(
   }
   if (!placed) Object.assign(out, derived);
   return out;
+}
+
+/**
+ * The metrics map a RENDERED memo doc shows — the read-path twin of
+ * {@link withDerivedLevelMetrics}.
+ *
+ * Same correction, one deliberate difference: a legacy record's two numbers are
+ * kept under the shared caption rather than dropped. The prompt path drops them
+ * because {@link formatTradeProposalExtensions} discloses the pair separately,
+ * with its reason, a line below; a chip grid has no such second line, so
+ * dropping them here would silently discard measurements the desk really took.
+ *
+ * Needed because a memo doc opened from a HISTORICAL report never runs a commit,
+ * so the stored map is whatever the run wrote — and a pre-FIX-780 trader record
+ * wrote `stop` / `target` on every stance, flat included.
+ */
+export function withDisplayLevelMetrics(
+  stored: StoredTradeLevels,
+  metrics: Record<string, string> | null | undefined,
+): Record<string, string> {
+  const derived: Record<string, string> = {};
+  for (const chip of tradeLevelChips(buildTradeLevelModel(stored))) {
+    derived[chip.label] = chip.value;
+  }
+  return replaceLevelKeys(metrics, derived);
+}
+
+/** One level chip on the PM hero's metrics grid: a `<dt>` name and a `<dd>`
+ *  value. `key` is a React list key only — never displayed. */
+export type TradeLevelChip = { key: string; label: string; value: string };
+
+/**
+ * The PM hero's level chips, named by the same rule as every other surface.
+ *
+ * The hero is the fourth surface to need these, and the first to need them on a
+ * READ. The PM's stored `metrics` map cannot supply them: a pre-FIX-780 PM
+ * record always carries `stop` / `target` (the old `portfolioDecisionOutputSchema`
+ * required both on every stance), and a post-fix DIRECTIONAL record carries the
+ * same two keys, correctly derived at commit. The shapes are identical and the
+ * meanings are opposite, so the chips are derived from the trader's stance and
+ * typed levels instead — the same inputs `withDerivedLevelMetrics` uses at commit.
+ *
+ * A legacy record's numbers are captioned, not suppressed and not renamed: the
+ * pair gets a name and neither number does, exactly as the decision one-liner
+ * does through {@link formatLegacyLevels}. Suppressing them would discard
+ * measurements the desk really took; renaming them would be a guess wearing a
+ * stored record's authority.
+ */
+export function tradeLevelChips(
+  levels: TradeLevelModel | null,
+): TradeLevelChip[] {
+  if (levels === null || levels.rows.length === 0) return [];
+  if (levels.predatesLabelingFix) {
+    return [
+      {
+        key: "__legacy_levels__",
+        label: LEGACY_LEVELS_CAPTION,
+        value: levels.rows.map((r) => `$${r.value}`).join(", "),
+      },
+    ];
+  }
+  return levels.rows.map((r) => ({
+    key: r.label,
+    label: r.label,
+    value: `$${r.value}`,
+  }));
 }
 
 /**

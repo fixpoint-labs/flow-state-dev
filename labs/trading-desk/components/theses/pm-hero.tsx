@@ -22,6 +22,10 @@ import type {
   MemoState,
   ThesisSection,
 } from "@/flows/analysis/resources";
+import {
+  tradeLevelChips,
+  type TradeLevelModel,
+} from "@/flows/analysis/lib/trade-levels";
 import { cn } from "@/lib/utils";
 
 const TIERS = ["Sell", "Underweight", "Hold", "Overweight", "Buy"] as const;
@@ -98,6 +102,11 @@ export type PmHeroProps = {
   // FIX-781 — always-on evidence-sufficiency gate. Null only on a legacy run
   // predating the gate (the panel is omitted, like the siblings above).
   evidenceDecision: EvidenceDecision | null;
+  // FIX-780 — the level chips, named from the trader's stance and typed levels.
+  // Null when the trader memo is not readable (a run that never reached Phase 3,
+  // or a still-loading resource): no level chips rather than the stored keys,
+  // which on a legacy record are the mislabeled pair this issue exists to remove.
+  levels: TradeLevelModel | null;
 };
 
 /**
@@ -110,15 +119,11 @@ export type PmHeroProps = {
  */
 const FIXED_METRIC_ORDER = ["rating", "ticker", "window", "size"] as const;
 
-/**
- * The level chips a stored decision actually carries, in stored order — a
- * directional call's stop and target, a flat call's reassess and invalidate
- * levels, or nothing at all for a record that names neither.
- */
-function levelMetricKeys(metrics: Record<string, string>): string[] {
-  const fixed = new Set<string>(FIXED_METRIC_ORDER);
-  return Object.keys(metrics).filter((k) => !fixed.has(k));
-}
+// The LEVEL chips are not listed above and are not read off the stored
+// `metrics` map either — they are derived from the trader's stance through
+// `tradeLevelChips` (FIX-780). Hardcoding "stop" and "target" here is what put
+// a stop-loss on a stand-aside Hold; reading the stored keys is what kept it
+// there on a reopened report.
 
 export function PmHero({
   agent,
@@ -141,6 +146,7 @@ export function PmHero({
   mandateDecision,
   policyDecision,
   evidenceDecision,
+  levels,
 }: PmHeroProps): ReactElement {
   const meta = AGENTS[agent];
   const idx = tierIndex(finalRating);
@@ -255,13 +261,20 @@ export function PmHero({
           )}
           aria-label="Decision metrics"
         >
-          {[...FIXED_METRIC_ORDER, ...levelMetricKeys(metrics)].map((key) => (
-            <div key={key} className="flex flex-col gap-0.5">
+          {[
+            ...FIXED_METRIC_ORDER.map((key) => ({
+              key,
+              label: key,
+              value: metrics[key] ?? "—",
+            })),
+            ...tradeLevelChips(levels),
+          ].map((chip) => (
+            <div key={chip.key} className="flex flex-col gap-0.5">
               <dt className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
-                {key}
+                {chip.label}
               </dt>
               <dd className="text-[12.5px] text-[color:var(--c-fg)]">
-                {metrics[key] ?? "—"}
+                {chip.value}
               </dd>
             </div>
           ))}
