@@ -9,5 +9,3 @@ declarations when something is composed onto it — a sequencer's `.step()`, or 
 child dispatches, rather than early at the parent's dispatch and even when the
 branch holding that child never runs. Blocks that declare no capability
 resources were never affected (FIX-1052, FIX-1051).
-</content>
-</invoke>
