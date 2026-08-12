@@ -1794,9 +1794,18 @@ which file emits it. Four classes, all covered:
    `lib/providers/yahoo.ts`) — the most common and most dangerous path. The
    fetch WORKED and the payload carries a live source tag, so nothing marks a
    field the provider simply left out. These use an **absence-aware**
-   conversion (`undefined`/non-numeric → `null`; a finite `0` → `0`). Do NOT
-   reuse the `!== 0` P/E helpers (`nullablePct` / `nullableNumberFrom`) on
-   margins or ROE — a zero P/E is non-physical, a zero margin is a measurement.
+   conversion (`undefined`/non-numeric → `null`; a finite `0` → `0`) — the one
+   shared `observedFinite` leaf in `lib/providers/observed.ts`, not a per-file
+   copy, because two copies drift on exactly the edge cases where a drifted one
+   fabricates. Do NOT reuse the `!== 0` P/E helpers (`nullablePct` /
+   `nullableNumberFrom`) on margins or ROE — a zero P/E is non-physical, a zero
+   margin is a measurement.
+   **OHLCV price bars are the one place this class DROPS rather than nulls.**
+   A bar is the unit of observation — every OHLC consumer (ATR, stochastic, OBV,
+   VWMA) needs the whole tuple — so a chart response carrying a bar with legs
+   missing yields no honest partial reading, and `isObservedBar` rejects it.
+   Zero-filling it published a zero low and a zero-volume day (and, on Finnhub's
+   parallel arrays, a zero CLOSE) under a live provider tag.
 
 **Status and provenance fields are bound by the same rule.** A verdict field
 must only ever describe work that actually happened. A discovery payload's

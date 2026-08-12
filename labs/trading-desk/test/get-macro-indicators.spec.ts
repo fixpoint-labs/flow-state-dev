@@ -170,28 +170,76 @@ describe("get_macro_indicators per-series resilience", () => {
     expect(result.output.unemployment).toBeNull();
   });
 
-  it("reports cpiYoy null when the year-ago print is missing (FIX-1063)", async () => {
-    // CPI answers with a single observation — enough for a level, not enough
-    // for a year-over-year change. The old `?? 0` fallback published that as
-    // 0% inflation, which is a macro reading, not a gap.
+  /**
+   * Runs the handler with CPI answering SUCCESSFULLY (HTTP 200) with exactly
+   * `cpiValues` observations, newest-first, and every other series on `fredOk`.
+   *
+   * The success path is the whole point. A CPI fetch that FAILS yields `[]`,
+   * where every index is undefined and `cpiYoy` nulls no matter what the
+   * year-ago rule is — so a test driven by an HTTP error cannot fail on the
+   * defect it names. The defect lives on a 200 that is simply short.
+   */
+  async function runWithCpiObservations(cpiValues: number[]) {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
-      const u = String(url);
-      if (u.includes("series_id=CPIAUCSL")) {
-        return new Response("upstream error", { status: 500 });
+      if (String(url).includes("series_id=CPIAUCSL")) {
+        return new Response(
+          JSON.stringify({
+            observations: cpiValues.map((v, i) => ({
+              // Newest-first: the handler requests `sort_order=desc`, so
+              // index 12 is the year-ago monthly print.
+              date: `2026-05-${String(28 - i).padStart(2, "0")}`,
+              value: String(v),
+            })),
+          }),
+          { status: 200 },
+        );
       }
       return fredOk();
     });
-
-    const result = await testBlock(get_macro_indicators, {
+    return testBlock(get_macro_indicators, {
       input: { date: "2026-05-06" },
       flow: fixtureFlow,
       session: sessionFor("live"),
     });
+  }
+
+  it("computes cpiYoy from the true year-ago print when 13 observations arrive (FIX-1063)", async () => {
+    // 13 observations: index 0 is the latest (110), index 12 the year-ago
+    // print (100). This is the positive control — without it, the two
+    // null-asserting tests below would still pass if `cpiYoy` were hardcoded
+    // to null.
+    const cpi = [110, 109, 108, 107, 106, 105, 104, 103, 102, 101, 100.8, 100.4, 100];
+    const result = await runWithCpiObservations(cpi);
+
+    expect(result.error).toBeNull();
+    expect(result.output.source).toBe("fred");
+    // (110 - 100) / 100 — measured against index 12, not the oldest value.
+    expect(result.output.cpiYoy).toBeCloseTo(0.1);
+  });
+
+  it("reports cpiYoy null on a SUCCESSFUL single-observation response (FIX-1063)", async () => {
+    // The 200-but-short path. One observation is enough for a level and not
+    // enough for a year-over-year change. The old fallback read the oldest
+    // available value as the year-ago print, so `yearAgoCpi === latestCpi`
+    // and the payload published a fabricated 0% inflation under a live
+    // `source: "fred"` tag — a macro reading, not a gap.
+    const result = await runWithCpiObservations([110]);
 
     expect(result.error).toBeNull();
     expect(result.output.source).toBe("fred");
     expect(result.output.cpiYoy).toBeNull();
     // The series that DID answer are unaffected.
     expect(result.output.tenYearYield).toBeCloseTo(0.041);
+  });
+
+  it("reports cpiYoy null rather than a short-window change mislabeled YoY (FIX-1063)", async () => {
+    // Six observations: a real six-month change exists, but it is NOT
+    // year-over-year. The old fallback published (110-100)/100 = 10% as an
+    // ANNUAL rate. A window we cannot measure over a year is no reading.
+    const result = await runWithCpiObservations([110, 108, 106, 104, 102, 100]);
+
+    expect(result.error).toBeNull();
+    expect(result.output.source).toBe("fred");
+    expect(result.output.cpiYoy).toBeNull();
   });
 });

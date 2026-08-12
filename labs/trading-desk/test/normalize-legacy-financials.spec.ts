@@ -175,3 +175,50 @@ describe("the normalized payload reaches the evidence gate", () => {
     expect(deriveCriticalDataThin(normalized as never)).toBe(true);
   });
 });
+
+describe("normalization cannot drift from the payload schemas", () => {
+  it("normalizes a numeric field nobody enumerated", () => {
+    // The normalizer used to hand-list every numeric field per payload, a
+    // second source of truth beside `tools/schemas.ts`. Adding a numeric field
+    // to a schema and forgetting this list left the new field's legacy zero in
+    // place SILENTLY — a fabricated figure surviving on a record the desk had
+    // already flagged as untrustworthy.
+    //
+    // `futureMetric` stands in for that not-yet-written field: it appears in no
+    // list anywhere. It must still normalize, because on an `unavailable`
+    // payload every figure is unobserved by construction.
+    const normalized = normalizeLegacyFinancials({
+      fundamentals: {
+        source: "unavailable",
+        ticker: "NVDA",
+        asOf: "2026-05-06",
+        marketCap: 0,
+        futureMetric: 0,
+      },
+    } as never) as never as { fundamentals: Record<string, unknown> };
+
+    expect(normalized.fundamentals.marketCap).toBeNull();
+    expect(normalized.fundamentals.futureMetric).toBeNull();
+    // String metadata is untouched — `=== 0` cannot match it, which is why no
+    // field list is required to protect it.
+    expect(normalized.fundamentals.source).toBe("unavailable");
+    expect(normalized.fundamentals.ticker).toBe("NVDA");
+    expect(normalized.fundamentals.asOf).toBe("2026-05-06");
+  });
+
+  it("still leaves a live-tagged payload completely alone", () => {
+    // The guard that makes the broader walk safe: it never runs on live data,
+    // so a genuinely measured zero on a live payload is never rewritten.
+    const live = {
+      source: "yahoo",
+      ticker: "NVDA",
+      operatingMargin: 0,
+      futureMetric: 0,
+    };
+    const normalized = normalizeLegacyFinancials({ fundamentals: live } as never);
+
+    expect((normalized as never as { fundamentals: unknown }).fundamentals).toBe(live);
+    expect(live.operatingMargin).toBe(0);
+    expect(live.futureMetric).toBe(0);
+  });
+});

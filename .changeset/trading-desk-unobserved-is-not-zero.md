@@ -22,6 +22,14 @@ provider left out of an otherwise-successful answer. That last one is the most
 common and the most dangerous — nothing marked the value as missing, because the
 fetch worked.
 
+Daily price bars are part of that last group. A price provider can answer with a
+day that has an opening and closing price but no high, low, or volume, and the
+desk used to fill those in as zero — a day the stock supposedly traded down to
+nothing, on no volume, feeding the price history and every technical indicator
+built on it. A day the desk cannot read completely is now left out of the series
+rather than invented, and a genuine zero-volume session (a halt, or a name
+nobody traded) is kept, because that one is a real reading.
+
 A figure the desk genuinely measured at zero is untouched. A company with a real
 0% operating margin, a genuine zero return on equity, or no debt keeps its zero;
 the rule is "not observed", not "falsy".
@@ -36,5 +44,7 @@ Reports generated before this change cannot be repaired, because nothing stored
 in them separates a missing zero from a measured one. They are marked instead:
 new runs carry a stamp recording that they were produced under the honest rule,
 and a report without that stamp now says on its face that it predates the fix.
+That warning sits above the report's tabs, so it is visible whether the reader
+is looking at the summary or at an individual analyst's memo.
 
 Internal-only — no publishable package surface changes.

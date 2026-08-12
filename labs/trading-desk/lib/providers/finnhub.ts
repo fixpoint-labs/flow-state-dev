@@ -14,6 +14,7 @@ import type {
   TickerDatedProviderInput,
 } from "./types";
 import { INSIDER_ROW_CAP, INSIDER_WINDOW_DAYS, isoDateDaysBefore } from "./dates";
+import { isObservedBar, observedFinite, observedIsoDay } from "./observed";
 
 const FINNHUB_BASE = "https://finnhub.io/api/v1";
 
@@ -101,14 +102,23 @@ export async function fetchFinnhubCandles(
   if (data.s !== "ok" || !data.t) {
     throw new Error(`Finnhub /stock/candle returned no data for ${input.ticker}`);
   }
-  const bars = data.t.map((ts, i) => ({
-    date: new Date(ts * 1000).toISOString().slice(0, 10),
-    open: data.o?.[i] ?? 0,
-    high: data.h?.[i] ?? 0,
-    low: data.l?.[i] ?? 0,
-    close: data.c?.[i] ?? 0,
-    volume: data.v?.[i] ?? 0,
-  }));
+  // Every OHLCV leg must be OBSERVED for the bar to be usable (FIX-1063).
+  // Finnhub returns OHLCV as five PARALLEL ARRAYS, so a short or misaligned
+  // array silently indexed past its end and the `?? 0` turned that into a bar
+  // — including a bar with a CLOSE of zero, which is not merely dishonest but
+  // wrong: it feeds persisted price history and divides through
+  // `trailingReturn`. An incomplete bar is dropped rather than zero-filled,
+  // matching the Yahoo adapter through the same shared guard.
+  const bars = data.t
+    .map((ts, i) => ({
+      date: observedIsoDay(ts * 1000),
+      open: observedFinite(data.o?.[i]),
+      high: observedFinite(data.h?.[i]),
+      low: observedFinite(data.l?.[i]),
+      close: observedFinite(data.c?.[i]),
+      volume: observedFinite(data.v?.[i]),
+    }))
+    .filter(isObservedBar);
   return {
     source: "finnhub" as const,
     ticker: input.ticker,
@@ -144,8 +154,10 @@ export async function fetchFinnhubFundamentals(
   // `0`: a company measured at a 0% operating margin or a genuine zero ROE is a
   // reading, not a gap. The `!== 0` helpers below are deliberately NOT used
   // here — they would erase exactly those measurements.
-  const observed = (v: number | undefined): number | null =>
-    typeof v === "number" && Number.isFinite(v) ? v : null;
+  // The shared leaf, not a local copy: Yahoo applies the identical rule, and
+  // two hand-written copies drift on exactly the edge cases where a drifted
+  // copy fabricates.
+  const observed = observedFinite;
   // Finnhub returns ratios as percentages for margins/ROE (e.g. 25.3 = 25.3%).
   // Normalize to fractions to match the Yahoo + fixture shape (0.253).
   const pct = (v: number | undefined): number | null => {

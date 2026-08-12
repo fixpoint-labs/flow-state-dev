@@ -36,7 +36,10 @@
  * asserting a check no reader performed, which is the same class of defect
  * this notice exists to disclose.
  */
-import type { ReactElement } from "react";
+import { useMemo, type ReactElement } from "react";
+import type { SessionView } from "@flow-state-dev/react";
+import { useClientData } from "@flow-state-dev/react";
+import { isPreDataHonestyFix } from "@/flows/analysis/data-honesty-contract";
 import { cn } from "@/lib/utils";
 
 /**
@@ -96,4 +99,47 @@ export function ReportProvenanceNotice({
  */
 export const PRE_DATA_HONESTY_FIX_REASON =
   "A figure the desk could not obtain may be recorded as zero rather than as " +
-  "unavailable, so a number shown below may never have been measured.";
+  "unavailable, so a number shown in this report may never have been measured.";
+
+/**
+ * The mounted banner — reads the stored stamp itself and renders the notice.
+ *
+ * MOUNT THIS ABOVE THE TAB SWITCH, never inside a tab. The disclosure is about
+ * the whole report, so its only correct gate is "is this report pre-fix", and
+ * anything else that decides whether it paints is a render gate belonging to a
+ * different participant (the FIX-1060 lesson). It first shipped inside the
+ * Summary branch, where the Theses/Summary choice — sticky once a memo is
+ * picked, and not reset when another stored report is opened — meant a reader
+ * could open a pre-fix report, read memos derived from fabricated zeros, and
+ * never meet the sole disclosure. It sat correctly as a sibling of the blocks
+ * WITHIN Summary; the gate was one level up, which is exactly the shape that
+ * lesson warns is easy to miss.
+ *
+ * It owns the read rather than taking `reasons` from a parent so the pre-fix
+ * predicate has ONE consumer-side home: a second mount point that re-derived it
+ * could drift on what counts as pre-fix, and the under-claiming default is only
+ * safe while every surface reads it the same way.
+ */
+export function ReportProvenanceBanner({
+  session,
+}: {
+  session: SessionView;
+}): ReactElement | null {
+  const { session: stamp } = useClientData(session, {
+    session: ["dataHonestyContractVersion"],
+  });
+
+  // Which data-honesty fixes this stored report predates. One list feeding one
+  // marker, so a later fix adds an entry rather than a second banner. A report
+  // whose stamp is absent — a legacy session, or one the client projection
+  // dropped — reads as pre-fix, the under-claiming direction.
+  const reasons = useMemo(
+    () =>
+      isPreDataHonestyFix(stamp?.dataHonestyContractVersion)
+        ? [PRE_DATA_HONESTY_FIX_REASON]
+        : [],
+    [stamp?.dataHonestyContractVersion],
+  );
+
+  return <ReportProvenanceNotice reasons={reasons} />;
+}

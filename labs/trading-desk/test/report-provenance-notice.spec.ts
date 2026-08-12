@@ -18,6 +18,8 @@
  * These assertions fail exactly when someone moves a cause back into the shared
  * copy, or writes a reason that leans on the body to finish its sentence.
  */
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   PROVENANCE_NOTICE_BODY,
@@ -84,4 +86,44 @@ describe("each reason is self-contained", () => {
       expect(reason.length).toBeGreaterThan(40);
     });
   }
+});
+
+/**
+ * WHERE the notice mounts — a structural guard, not a render test.
+ *
+ * The defect this pins is a RENDER GATE: the notice was mounted inside
+ * `ReportSummary`, so it painted only on the Summary tab. The Theses/Summary
+ * choice is sticky once a memo is picked and is not reset when another stored
+ * report is opened, so a reader could open a pre-fix report, read memos derived
+ * from fabricated zeros, and never meet the sole disclosure. The component was
+ * correct and the data reached it; the condition that hid it belonged to a
+ * different participant. That is the FIX-1060 lesson, and this is its second
+ * occurrence here — which is what earns a guard.
+ *
+ * It is structural (which module mounts the banner) rather than a render
+ * assertion because this package has no React render harness, and adding one
+ * would be a larger change than the fix. It is deliberately coarse: it asserts
+ * only WHICH module owns the mount, so it survives formatting and refactors and
+ * fails on the one move that matters — putting the disclosure back behind a tab.
+ */
+describe("the provenance notice is not gated behind a tab", () => {
+  const read = (p: string) =>
+    readFileSync(path.resolve(__dirname, "..", p), "utf8");
+
+  it("mounts in the pane, above the Theses/Summary switch", () => {
+    const pane = read("components/theses/theses-pane.tsx");
+    expect(pane).toContain("<ReportProvenanceBanner");
+    // The mount must precede the tab conditional, or it is inside a branch.
+    expect(pane.indexOf("<ReportProvenanceBanner")).toBeLessThan(
+      pane.indexOf('tab === "summary"'),
+    );
+  });
+
+  it("is NOT mounted inside the Summary branch", () => {
+    // `ReportSummary` renders only when the Summary tab is active, so a mount
+    // here is by construction invisible to a reader sitting on Theses.
+    const summary = read("components/summary/report-summary.tsx");
+    expect(summary).not.toContain("<ReportProvenanceNotice");
+    expect(summary).not.toContain("<ReportProvenanceBanner");
+  });
 });

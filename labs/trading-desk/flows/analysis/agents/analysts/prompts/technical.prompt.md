@@ -27,7 +27,10 @@ metrics keys: rsi, macd, atr, trend.
   - rsi:    RSI(14) value with regime tag (e.g. "56.4 / neutral").
   - macd:   MACD histogram value with direction (e.g. "+0.14 / rising").
   - atr:    ATR(14) absolute value (e.g. "$2.65").
-  - trend:  one-word label (`up | down | flat`).
+  - trend:  one-word label (`up | down | flat`). The computed `trend` is `null`
+            when a moving average it needs was not available — report that as
+            "unmeasured", never as `flat`. A `flat` trend is a finding (the
+            averages were read and the stack is level); an absent one is not.
 
 Weigh the wider indicator set in your body text: Bollinger placement (price near upper/lower band vs. mid), VWMA(20) vs. last close as a volume-weighted reference, Stochastic / KDJ for overbought / oversold and divergence reads, and OBV direction as a volume-confirmation cross-check.
 

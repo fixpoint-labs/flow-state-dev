@@ -79,8 +79,16 @@ export const get_macro_indicators = handler({
         };
         // YoY needs BOTH prints. A year-ago observation we don't have is not a
         // 0% change — it is no reading at all.
+        //
+        // Strictly `cpi[12]`, the 13th monthly observation: the series is
+        // requested with `limit: 13` precisely so this index IS the year-ago
+        // print. Falling back to the oldest available observation (FIX-1063)
+        // fabricated under a live `source: "fred"` tag on a SUCCESSFUL but
+        // short response — one usable observation made `yearAgoCpi === latestCpi`
+        // and published a 0% YoY, and 2–12 published a shorter-window change
+        // mislabeled as year-over-year. A short series is a gap, so it nulls.
         const latestCpi = latest(cpi);
-        const yearAgoCpi = cpi[12] ?? cpi[cpi.length - 1] ?? null;
+        const yearAgoCpi = cpi[12] ?? null;
         const cpiYoy =
           latestCpi != null && yearAgoCpi != null && yearAgoCpi > 0
             ? (latestCpi - yearAgoCpi) / yearAgoCpi

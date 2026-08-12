@@ -38,43 +38,31 @@
 import type { FinancialsDataState } from "../../financials-data-resource";
 
 /**
- * The numeric fields per payload, keyed by the resource field that holds it.
- * Deliberately explicit: a field added to one of these schemas later does not
- * get normalized until it is named here, which is the safe direction — a
- * missed field keeps a legacy zero (visible, and only on already-untrusted
- * records), whereas an over-broad walk would silently rewrite live data.
+ * The payloads on this resource that carry provider figures.
  *
- * The three statement payloads already emitted `null` before this issue, so
- * their entries cover only records old enough to predate THAT change; they are
- * listed because the same records are still readable and the cost is a lookup.
+ * This names the RESOURCE's own shape, not any payload's field list. An earlier
+ * version also hand-listed every numeric field per payload, which duplicated
+ * `tools/schemas.ts` and drifted SILENTLY: a numeric field added to one of those
+ * schemas kept its legacy zero forever, with nothing to say so.
+ *
+ * Naming the fields turned out to be unnecessary rather than merely risky. The
+ * walk below runs ONLY on a payload tagged `source: "unavailable"`, and on such
+ * a payload the empty-payload builder is provably the only producer — so every
+ * numeric on it is unobserved by construction and there is no live value an
+ * "over-broad" walk could damage. The four payloads are flat records of strings
+ * and nullable numbers, so testing `=== 0` selects exactly the numeric fields
+ * and never a `source` / `ticker` / `asOf` / `unit` string.
+ *
+ * The three statement payloads already emitted `null` before this issue, so they
+ * matter only for records old enough to predate THAT change; they are visited
+ * because the same records are still readable and the cost is a lookup.
  */
-const NUMERIC_FIELDS = {
-  fundamentals: [
-    "marketCap",
-    "forwardPE",
-    "trailingPE",
-    "priceToSales",
-    "returnOnEquity",
-    "operatingMargin",
-    "grossMargin",
-    "dividendYield",
-  ],
-  balanceSheet: [
-    "totalAssets",
-    "totalLiabilities",
-    "totalEquity",
-    "cashAndEquivalents",
-    "totalDebt",
-  ],
-  incomeStatement: [
-    "revenue",
-    "grossProfit",
-    "operatingIncome",
-    "netIncome",
-    "yoyRevenueGrowth",
-  ],
-  cashflow: ["operating", "investing", "financing", "freeCashFlow"],
-} as const satisfies Record<string, readonly string[]>;
+const PAYLOAD_KEYS = [
+  "fundamentals",
+  "balanceSheet",
+  "incomeStatement",
+  "cashflow",
+] as const;
 
 type NormalizablePayload = Record<string, unknown> & { source?: unknown };
 
@@ -84,17 +72,17 @@ type NormalizablePayload = Record<string, unknown> & { source?: unknown };
  * anything else, or when it carries no legacy zero — so a caller can hand the
  * result straight on without a defensive copy.
  */
-function normalizePayload(
-  payload: unknown,
-  fields: readonly string[],
-): unknown {
+function normalizePayload(payload: unknown): unknown {
   if (payload === null || typeof payload !== "object") return payload;
   const record = payload as NormalizablePayload;
-  // The early return that keeps this off every live record.
+  // The early return that keeps this off every live record. Everything below
+  // is therefore operating on a payload whose every figure is unobserved.
   if (record.source !== "unavailable") return payload;
 
   let patch: Record<string, unknown> | null = null;
-  for (const field of fields) {
+  for (const field of Object.keys(record)) {
+    // Strict `=== 0` selects the numeric fields and only those: the string
+    // metadata on these payloads can never match, so no key list is needed.
     if (record[field] === 0) {
       patch ??= {};
       patch[field] = null;
@@ -117,9 +105,9 @@ export function normalizeLegacyFinancials<T extends FinancialsDataState | null |
   if (state === null || state === undefined) return state;
 
   let patch: Record<string, unknown> | null = null;
-  for (const [key, fields] of Object.entries(NUMERIC_FIELDS)) {
+  for (const key of PAYLOAD_KEYS) {
     const original = (state as Record<string, unknown>)[key];
-    const normalized = normalizePayload(original, fields);
+    const normalized = normalizePayload(original);
     if (normalized !== original) {
       patch ??= {};
       patch[key] = normalized;

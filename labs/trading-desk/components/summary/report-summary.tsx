@@ -50,11 +50,6 @@ import { ScenarioStrip } from "./charts/scenario-strip";
 import { PriceOverlay, type PriceOverlayLevel } from "./charts/price-overlay";
 import { PortfolioFitBlock } from "./portfolio-fit-block";
 import { LensConvergenceBlock } from "./lens-convergence-block";
-import {
-  PRE_DATA_HONESTY_FIX_REASON,
-  ReportProvenanceNotice,
-} from "./report-provenance-notice";
-import { isPreDataHonestyFix } from "@/flows/analysis/data-honesty-contract";
 import { MandatePanel } from "../theses/mandate-panel";
 import { ReportThesisPanel } from "../theses/report-thesis-panel";
 import { cn } from "@/lib/utils";
@@ -86,24 +81,11 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
       "stoppedReason",
       "stoppedMessage",
       "runComplete",
-      "dataHonestyContractVersion",
     ],
   });
 
   const stoppedReason = (stop?.stoppedReason ?? null) as string | null;
   const stoppedMessage = (stop?.stoppedMessage ?? null) as string | null;
-
-  // Which data-honesty fixes this stored report predates. One list feeding one
-  // marker, so a later fix adds an entry rather than a second banner. A report
-  // whose stamp is absent — a legacy session, or one the client projection
-  // dropped — reads as pre-fix, which is the under-claiming direction.
-  const provenanceReasons = useMemo(
-    () =>
-      isPreDataHonestyFix(stop?.dataHonestyContractVersion)
-        ? [PRE_DATA_HONESTY_FIX_REASON]
-        : [],
-    [stop?.dataHonestyContractVersion],
-  );
 
   // Build the view model from stored state. Derived, not a side effect → useMemo
   // (BP-010), keyed on the raw inputs.
@@ -145,13 +127,10 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
 
   return (
     <div className="flex flex-col gap-5">
-      {/* First thing on the page, and a SIBLING of every block below it — never
-          nested inside the decision or the spine, whose own gates would hide
-          the disclosure on exactly the runs that need it most (the FIX-1060
-          render-gate lesson). It renders nothing when there is nothing to
-          disclose. */}
-      <ReportProvenanceNotice reasons={provenanceReasons} />
-
+      {/* The provenance notice is NOT here. It mounts in `theses-pane.tsx`
+          above the Theses/Summary switch, because it discloses something about
+          the whole report and this branch is a render gate that would hide it
+          from anyone reading the Theses tab. */}
       <DecisionHeader
         ticker={summary.ticker}
         date={summary.date}

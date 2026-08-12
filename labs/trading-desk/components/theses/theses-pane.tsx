@@ -60,6 +60,7 @@ import { LensCard } from "./lens-card";
 import { ScenarioPanel } from "./scenario-panel";
 import { WritingSkeleton } from "./writing-skeleton";
 import { ReportSummary } from "@/components/summary/report-summary";
+import { ReportProvenanceBanner } from "@/components/summary/report-provenance-notice";
 import { agentsWithTranscriptRows } from "@/components/transcript/transcript-rows";
 import {
   AGENTS,
@@ -301,6 +302,13 @@ export function ThesesPane({
             Phases
           </button>
           <TabSwitch tab={tab} onPick={handlePickTab} />
+        </div>
+        {/* ABOVE the Theses/Summary conditional, so the disclosure is gated
+            only on the report being pre-fix. Inside the Summary branch it was
+            invisible to a reader whose sticky tab choice kept them on Theses —
+            precisely the readers looking at memos built on fabricated zeros. */}
+        <div className="mb-4 empty:mb-0">
+          <ReportProvenanceBanner session={session} />
         </div>
         {tab === "summary" ? (
           <ReportSummary session={session} />
