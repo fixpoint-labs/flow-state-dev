@@ -466,7 +466,7 @@ Publish the **full spec (Part I + Part II)** in two places that must hold identi
    - Add a publishing comment, **problem first** per [`writing-for-humans.md`](../../../docs/contributing/writing-for-humans.md) — not a status label. One or two sentences on what's broken and the approach taken, then the ask (approve the direction, or raise a Decision), then any open questions. Keep that opening within the Linear-issue budget. **Linear renders neither `<details>` nor collapsed blocks**, so the detail — the **Decisions & rules** block from Part I §6 verbatim, and the link to the **spec PR** — goes below a `---` under a `## Detail` heading. The durable record lives on the issue so a reviewer can evaluate the direction without opening the full spec.
    - If open questions exist, flag the issue for discussion.
 
-5. **Mirror every change to Linear.** `spec/<ISSUE-ID>.md` is the review surface and goes read-only when the PR closes (the branch is kept, but nothing edits it again); the Linear document is what survives. Any later edit — most often from spec-PR review (Step 6.5) — is mirrored to Linear in the same change set, so the durable copy is never the stale one.
+5. **Mirror every change to Linear.** `spec/<ISSUE-ID>.md` is the review surface and goes read-only when the PR closes — the branch is kept, but nothing edits it again unless the PR is re-opened for a post-approval POC; the Linear document is what survives. Any later edit — most often from spec-PR review (Step 6.5) — is mirrored to Linear in the same change set, so the durable copy is never the stale one.
 
 6. **Move the issue to "In Spec Review"** with `save_issue`, *after* the repo doc, PR, Linear document, and publishing comment are all in place. If the team has no "In Spec Review" state, fall back to the closest equivalent and note it in the comment.
 
@@ -525,7 +525,8 @@ three outcomes. Read it. Four things are this step's:
    the spec doc is what tells everything downstream a settlement is live: `issue-implement`
    reads it to leave the spec PR open (and to not treat the claim as a blocking open question),
    and the next reviewer reads it to see an answer is coming. Skip it and the deferral silently
-   doesn't happen — the PR closes, and a `REFUTED` verdict lands on a deleted branch.
+   doesn't happen — the PR closes, and a `REFUTED` verdict lands with no live thread to fold
+   into (the branch survives, but a closed PR's review surface is where the reply belongs).
 3. **Dispatch or request, depending on whether you'll outlive the answer.** Standalone, you
    own your session: dispatch the **`poc-agent`** yourself and keep triaging while it runs —
    collect the verdict *if it returns before you close the round*, and otherwise disclose it

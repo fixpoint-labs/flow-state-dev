@@ -189,8 +189,8 @@ each section owes its reader, exactly as `spec-template.md` is for an issue spec
 - **Branch `epic/<name>`**; the doc lives at `spec/_epics/<name>.md` on that branch.
 - **Never-merged epic PR** — the reviewable + commentable surface. Stays open for the life
   of the *epic*; closes **unmerged** when the epic wraps.
-- **The epic branch is never deleted** (issue spec branches are; the epic branch is not) —
-  it stays referenceable.
+- **The epic branch is never deleted** — it stays referenceable. Issue spec branches follow
+  the same rule (see "Closing the spec PR"); the difference is only *when* the PR closes.
 - **Dual-synced to the Linear *Epic issue's* document** — same branch + Linear-document
   pattern as issue specs (BP-037), one altitude up: the epic-spec attaches to the epic
   issue exactly as a spec attaches to a work issue. **Discovery is native** — a work issue's
@@ -630,11 +630,15 @@ Approval sometimes lands on a direction nobody has run. When a
 **re-open the spec PR** rather than opening a second one: commit the POC to the retained
 branch, re-open, and reviewers and the human get the surface they already know with its review
 history attached. Close it again — unmerged — once §7 carries what the POC showed and Linear
-has the update.
+has the update. **A re-opened PR is live**, so §7 is written on the branch as well as mirrored;
+that is the one exception to a closed spec branch being a frozen record, and it ends when the
+PR closes again.
 
-Re-opening does not re-open the **gate**. The spec is approved; a POC informs, it never
-re-decides. If what it shows changes the direction, that is an ordinary fold and a fresh
-sign-off, not a property of the re-open.
+Re-opening does not, on its own, re-open the **gate**. The spec is approved; a POC informs, it
+never re-decides. But if what it shows *changes the direction*, that fold needs fresh sign-off
+— and then the PR **stays open through the re-approval** rather than closing first. Closing on
+a direction change would leave implementation running against a superseded approval with no
+open gate anywhere, which is precisely what the settlement deferral above exists to prevent.
 
 **Two things a re-open is not.** It is not a way to resume spec review — feedback arriving on a
 closed spec PR is carried as implementer notes, never a new round. And it is not a route to
@@ -728,7 +732,7 @@ or epic PR, built so the direction can be validated *before* implementation. The
 The spec PR is the natural home for it, and this is the property that makes the whole thing
 cheap: **it never merges.** Code there can't rot into the codebase, can't accrete public
 surface, and doesn't have to be good. So the cost of being wrong about a direction drops from
-a rewrite to a deleted branch.
+a rewrite to an abandoned branch nobody merges.
 
 **Two POC mechanisms, and they are not the same one.** They're neighbours in the lifecycle
 and get confused constantly:

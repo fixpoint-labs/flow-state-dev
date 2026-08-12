@@ -224,12 +224,22 @@ on the same surface:
 
 1. Check out the retained branch (`git fetch origin spec/<ISSUE-ID> && git checkout -B spec/<ISSUE-ID> origin/spec/<ISSUE-ID>` — never re-base it on `main`), commit the POC under `spec-poc/<ISSUE-ID>-<slug>/`, push.
 2. **Re-open the closed spec PR** (`gh pr reopen <spec-pr>`) with a comment saying what the POC answers and how to run it. Same PR, same review history, same reviewers.
-3. Record what it showed in §7 and mirror to Linear, then **close it again, unmerged.**
+3. Record what it showed in §7, on the branch **and** mirrored to Linear.
+4. **Then close it again, unmerged — unless the POC changed the direction.** If it did, the
+   fold needs a fresh sign-off, so the PR **stays open through that re-approval** and closes
+   only once the gate passes again. Closing first would leave implementation running on a
+   superseded approval with no open gate anywhere — the same failure the settlement deferral
+   exists to prevent, and it takes the same answer.
 
-Re-opening does **not** re-open the approval gate — the spec is approved and a POC informs
-rather than re-decides. If the run actually changes the direction, that is an ordinary fold and
-a fresh sign-off, not something the re-open bought. And it is still never merged: implementation
-is already cut from fresh `origin/main`, so nothing here reaches the codebase.
+**A re-opened spec PR is the one exception to the branch freeze.** A closed spec branch is
+otherwise a frozen record and post-approval edits go to Linear (BP-037); while the PR is
+re-opened it is live again, so §7 is written on the branch *and* mirrored, exactly as during
+the original review. It re-freezes when the PR closes.
+
+Re-opening does **not**, by itself, re-open the approval gate — a POC informs rather than
+re-decides, and the gate only comes back if the fold in step 4 actually moves the direction.
+And it is still never merged: implementation is already cut from fresh `origin/main`, so
+nothing here reaches the codebase.
 
 That the POC can't leak into the codebase rests on one mechanical fact worth stating: the
 implementation branch is cut from **fresh `origin/main`**, never from the spec branch (see
@@ -244,7 +254,7 @@ What crosses the line, and how:
 |---|---|
 | **A premise it settled** | Spec §12, as resolved-with-evidence. Costs a later reviewer zero rounds to reopen. |
 | **A characterization test worth keeping** | Named in §10 as a CI spec to write, or graduated into `goals/<describe>/<it>/` properly (`goal.md` with a real anti-game field). Re-written under `tdd` on the impl branch — not copied. |
-| **The shape** | §7 cites **the spec PR URL** plus the path inside it — *not* the branch. `issue-implement` deletes the spec branch when it closes the PR (BP-037), but GitHub keeps a closed PR's commits and diff view reachable, so the PR link stays readable and a branch link goes dead. The implementer starts *from* it; they don't inherit it. (An **epic** branch is never deleted, so an epic POC can cite either.) |
+| **The shape** | §7 cites **the spec PR URL** plus the path inside it. The PR renders the POC with no checkout, which is what a reader wants; the branch is retained too (BP-037), so reach for it when someone needs to *run* the code. The implementer starts *from* it; they don't inherit it. |
 | **A chosen variant** | A numbered §6 Decision. |
 | **A refuted premise** | Fold it into the spec **before** the gate. This is the cheapest possible version of that discovery. |
 | **A framework bug it uncovered** | File it via `issue-manager`, related to the source issue. Don't let it live only in a PR description. |

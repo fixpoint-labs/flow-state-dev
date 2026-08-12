@@ -37,7 +37,9 @@ one.
 - One spec per spec branch. Parallel issues run on their own branches and worktrees, so their
   `spec/` folders never collide.
 - Never edit a spec here after its PR closes — edit the Linear document. The retained branch
-  is a frozen record of what was reviewed, not a live copy.
+  is a frozen record of what was reviewed, not a live copy. **One exception:** a PR re-opened
+  to publish a post-approval POC is live again for as long as it is open
+  ([`spec-poc`](../.agents/skills/spec-poc/SKILL.md)).
 - Throwaway proofs-of-concept for a spec go in `spec-poc/<ISSUE-ID>-<slug>/`, also never merged.
 
 See [BP-037](../docs/contributing/best-practices/process.md) and
