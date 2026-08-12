@@ -508,3 +508,20 @@ behaviour. If B's sub-shapes do not fall, the conclusion is the altitude, not th
    prompt. Cycle 3's claim says counting reviewer-prompted rewrites scores who prompted them, so
    it is logged, not counted. The instrument applying the accretion it diagnoses one cycle earlier
    is worth logging on its own.
+
+**Footnote on fix A's own first outing, logged as data about the fix rather than a joke at its
+expense.** The §10.6 rewrite was sharpened twice inside its own PR ([#1252](https://github.com/fixpoint-labs/flow-state-dev/pull/1252)).
+First when its opening live application under-caught: the agent on
+[#1246](https://github.com/fixpoint-labs/flow-state-dev/pull/1246) grepped the distinctive noun and
+honestly reported zero remaining hits, and review plus a concept sweep then found three more sites
+— the "shutdown never settles" claim occupied **8**, "lease expiry returns the task" **5**. Every
+miss was a document whose job is to be shorter than its source (a locked-contract bullet, a README
+summary, a state diagram), because compression is where an author reaches for different words or
+for none; `packages/orchestration/README.md` stated the false claim as a labelled arrow, which no
+string sweep in any vocabulary finds. Second when the correction for that dropped the grep
+enumeration it was extending — and **that list was the only thing pointing at `--help` output,
+error strings and the changeset, which is where this epic put one of its four escapes**: the
+model-migration message that shipped a dead internal URL to users. A rule that loses a restatement
+of itself inside the edit correcting restatements is the class; a rule that loses the only route to
+the surface where an escape actually happened is the cost. **Neither round was caught by the
+author.**
