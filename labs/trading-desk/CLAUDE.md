@@ -1777,8 +1777,11 @@ The rule is **unobserved → null**, NOT *falsy → null*. A company measured at
 readings and they stay. Over-applying is a defect in its own right: it deletes
 evidence the desk actually gathered.
 
-Which producers this binds is decided by **where a number came from**, not by
-which file emits it. Four classes, all covered:
+The rule BINDS every producer. What has actually been **audited and corrected**
+so far is a named list, and the two are not the same thing — do not read the
+list as a clean bill of health for the adapters not on it. Which producers the
+rule binds is decided by **where a number came from**, not by which file emits
+it. Four classes, corrected:
 
 1. **Empty-payload builders** (`tools/empty-payloads.ts`) — the provider was
    unreachable, so every numeric field is unobserved by construction.
@@ -1806,6 +1809,18 @@ which file emits it. Four classes, all covered:
    missing yields no honest partial reading, and `isObservedBar` rejects it.
    Zero-filling it published a zero low and a zero-volume day (and, on Finnhub's
    parallel arrays, a zero CLOSE) under a live provider tag.
+   **Insider transactions are on this path too** (`fetchFinnhubInsiderTransactions`,
+   `fetchAlphaVantageInsiderTransactions`): an omitted `transactionPrice` /
+   `share_price` reads `null`, because a `0` here legitimately means a non-cash
+   transaction (grant, gift, tax withholding) and the two were the same value
+   until FIX-1063. A row with no share count at all is dropped rather than
+   published as zero shares.
+
+> **The audit is not finished.** These four classes are the producers that have
+> been swept. The other adapters under `lib/providers/` have NOT been checked
+> for absence-awareness — that sweep is tracked as its own work (FIX-1141). If
+> you are touching a producer not named above, assume it may still zero-fill,
+> and do not treat the contract stamp as evidence that it doesn't.
 
 **Status and provenance fields are bound by the same rule.** A verdict field
 must only ever describe work that actually happened. A discovery payload's
@@ -1833,7 +1848,11 @@ recomputing would be a guess. Two seams handle it:
   `seedSession`, read by the Summary's `ReportProvenanceNotice` and the
   artifacts bundle. **Absent always means pre-fix**, in every direction. One
   marker carries all such disclosures as a reason list; a later fix adds an
-  entry, not a second banner.
+  entry, not a second banner. It is a **version marker for legacy-report
+  detection — NOT a certificate that every figure was observed**; its scope is
+  the corrected surfaces enumerated in that file's header, and the header says
+  why widening it back into a blanket claim is the same defect this contract
+  exists to prevent.
 
 `flows/analysis/lib/composite-math.ts` is the stated exclusion: it zero-weights
 a missing term but returns `missingInputs` alongside the score, so it already

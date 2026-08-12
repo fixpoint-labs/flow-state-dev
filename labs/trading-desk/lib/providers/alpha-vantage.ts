@@ -322,7 +322,10 @@ export async function fetchAlphaVantageInsiderTransactions(
         insiderTitle: r.executive_title ?? "",
         transactionCode: "", // unknown — AV lacks the SEC code; never fabricate P/S
         shares: dir * magnitude,
-        pricePerShare: num(r.share_price) ?? 0,
+        // Absence-aware, not falsy-aware (FIX-1063). `num` already returns null
+        // for AV's absent markers ("None" / "-" / ""); the old `?? 0` threw that
+        // away, so a filing with no price read as a non-cash transfer at $0.
+        pricePerShare: num(r.share_price),
         isDerivative,
       };
     })

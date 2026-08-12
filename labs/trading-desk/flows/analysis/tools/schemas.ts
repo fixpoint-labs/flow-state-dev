@@ -450,8 +450,13 @@ const insiderTransactionItem = z.object({
   transactionCode: z.string(),
   /** Signed share count: positive for acquisitions, negative for dispositions. */
   shares: z.number(),
-  /** USD per share. 0 for non-cash transactions (gifts, awards, withholdings). */
-  pricePerShare: z.number(),
+  /** USD per share. A genuine `0` is a NON-CASH transaction (gift, award, tax
+   *  withholding) — a real reading. `null` means the filing carried no price at
+   *  all. These were the same value until FIX-1063: both providers mapped an
+   *  omitted price to `0`, so a sparse-but-successful response was
+   *  indistinguishable from an observed non-cash transfer, and the reader had
+   *  no way to tell "granted, no cash changed hands" from "we don't know". */
+  pricePerShare: z.number().nullable(),
   /** True for derivative-security transactions (options, RSUs). */
   isDerivative: z.boolean(),
 });

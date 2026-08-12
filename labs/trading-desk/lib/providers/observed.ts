@@ -40,18 +40,32 @@ export type ObservedBar = {
  * `null`; a finite `0` reads `0`. Unwraps Yahoo's `{ raw }` envelope, the one
  * shape difference between the two adapters.
  *
+ * ONLY A REAL NUMBER COUNTS AS AN OBSERVATION. Nothing is coerced — no
+ * `Number(raw)` fallback — because JS coercion maps several NON-answers onto a
+ * perfectly finite `0`: `Number("")`, `Number("   ")`, `Number(false)` and
+ * `Number([])` are all `0`. A provider field that came back blank is the exact
+ * gap this helper exists to catch, and coercing it produced the fabricated
+ * zero one layer further in — a `0` price or a zero-volume day that
+ * `isObservedBar` then accepted as a complete bar. So a string, a boolean, or
+ * any other non-numeric primitive reads `null`, blank or not.
+ *
+ * That costs nothing here: both adapters routed through this leaf hand it
+ * `number | undefined` or Yahoo's `{ raw }` envelope. The one provider that
+ * genuinely answers in strings is Alpha Vantage, which parses its own with
+ * `num()` and does not use this leaf. A string arriving here means a shape
+ * nobody modelled, and reading it as unobserved is the under-claiming
+ * direction the contract requires.
+ *
  * Do NOT use this for the P/E and dividend fields, where a zero is itself
  * non-physical for a going concern — those keep the `!== 0` helpers (FIX-692).
  */
 export function observedFinite(raw: unknown): number | null {
-  if (raw == null) return null;
   if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
-  if (typeof raw === "object" && "raw" in raw) {
+  if (typeof raw === "object" && raw !== null && "raw" in raw) {
     const v = (raw as { raw?: unknown }).raw;
     return typeof v === "number" && Number.isFinite(v) ? v : null;
   }
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : null;
+  return null;
 }
 
 /**

@@ -370,6 +370,25 @@ describe("fetchAlphaVantageInsiderTransactions", () => {
     });
   });
 
+  it("reports an ABSENT share_price as null, and keeps a measured 0", async () => {
+    // Both directions in one case, because they were the same value before
+    // FIX-1063. AV writes "None" for an absent field; the second row's "0" is a
+    // genuine non-cash transaction (this fixture's Derivative award) and must
+    // survive — the axis is observed vs unobserved, not falsy vs truthy.
+    mockFetchOnce({
+      data: [
+        { ...AV_ROWS.data[0], share_price: "None" },
+        AV_ROWS.data[1], // share_price: "0"
+      ],
+    });
+    const out = await fetchAlphaVantageInsiderTransactions({
+      ticker: "NVDA",
+      date: "2026-05-06",
+    });
+    expect(out.transactions[0]!.pricePerShare).toBeNull();
+    expect(out.transactions[1]!.pricePerShare).toBe(0);
+  });
+
   it("drops rows outside the 90-day window (client-side upper/lower bound)", async () => {
     mockFetchOnce({
       data: [

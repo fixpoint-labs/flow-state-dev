@@ -12,15 +12,21 @@ the company's net debt with the entire equity value silently dropped, and every
 enterprise-value multiple then read as radically cheap on a name nobody had data
 for.
 
-Four kinds of producer did this, and all four are fixed: the builders that fire
-when a provider is completely unreachable; the technical math, which returned
-zero for an indicator a stock was too young to support and then labelled the
-result a "flat" trend nobody measured; the macroeconomic read, which answered
-for some series and published zeros for the rest while still reporting a live
-source; and the two fundamentals adapters, which filled in zeros for anything a
-provider left out of an otherwise-successful answer. That last one is the most
-common and the most dangerous — nothing marked the value as missing, because the
-fetch worked.
+Several kinds of producer did this, and this release fixes them: the builders
+that fire when a provider is completely unreachable; the technical math, which
+returned zero for an indicator a stock was too young to support and then
+labelled the result a "flat" trend nobody measured; the macroeconomic read,
+which answered for some series and published zeros for the rest while still
+reporting a live source; the two fundamentals adapters, which filled in zeros
+for anything a provider left out of an otherwise-successful answer; and the
+insider-transaction feeds, where a filing that carried no price was recorded as
+a transaction at $0 — indistinguishable from a genuine grant or gift, where no
+cash really does change hands. The fundamentals case is the most common and the
+most dangerous — nothing marked the value as missing, because the fetch worked.
+
+This is a pass over the producers behind the report's headline numbers, not a
+proof that every figure the desk fetches is now measured. The remaining
+adapters are being swept separately.
 
 Daily price bars are part of that last group. A price provider can answer with a
 day that has an opening and closing price but no high, low, or volume, and the
@@ -42,9 +48,11 @@ add", which is the correct direction to be wrong in for real money.
 
 Reports generated before this change cannot be repaired, because nothing stored
 in them separates a missing zero from a measured one. They are marked instead:
-new runs carry a stamp recording that they were produced under the honest rule,
-and a report without that stamp now says on its face that it predates the fix.
-That warning sits above the report's tabs, so it is visible whether the reader
-is looking at the summary or at an individual analyst's memo.
+new runs record which round of corrections they were produced under, and a
+report without that marker now says on its face that it predates the fix. That
+warning sits above the report's tabs, so it is visible whether the reader is
+looking at the summary or at an individual analyst's memo. The marker is a
+version stamp for spotting old reports — it is not a claim that every number in
+a current report was measured.
 
 Internal-only — no publishable package surface changes.

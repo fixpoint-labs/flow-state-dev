@@ -411,18 +411,34 @@ export async function fetchFinnhubInsiderTransactions(
     from,
     to,
   });
-  const transactions = (data.data ?? []).slice(0, INSIDER_ROW_CAP).map((r) => ({
-    filingDate: r.filingDate ?? "",
-    transactionDate: r.transactionDate ?? r.filingDate ?? "",
-    insiderName: r.name ?? "",
-    insiderTitle: r.position ?? "",
-    transactionCode: r.transactionCode ?? "",
-    // Finnhub returns `change` as a signed delta (negative on sells); fall
-    // back to `share` if `change` is missing.
-    shares: typeof r.change === "number" ? r.change : (r.share ?? 0),
-    pricePerShare: r.transactionPrice ?? 0,
-    isDerivative: Boolean(r.isDerivative),
-  }));
+  const transactions = (data.data ?? [])
+    .slice(0, INSIDER_ROW_CAP)
+    .map((r) => {
+      // Finnhub returns `change` as a signed delta (negative on sells); fall
+      // back to `share` if `change` is missing. A row carrying NEITHER has no
+      // share count and no direction, so there is no honest partial reading to
+      // publish — it is dropped, matching what the Alpha Vantage fallback
+      // already does with an unparseable `shares` (FIX-1063). This used to
+      // default to `0`, which published a transaction of zero shares that
+      // never happened.
+      const shares = observedFinite(r.change) ?? observedFinite(r.share);
+      if (shares === null) return null;
+      return {
+        filingDate: r.filingDate ?? "",
+        transactionDate: r.transactionDate ?? r.filingDate ?? "",
+        insiderName: r.name ?? "",
+        insiderTitle: r.position ?? "",
+        transactionCode: r.transactionCode ?? "",
+        shares,
+        // Absence-aware, not falsy-aware. A `0` Finnhub actually returned is a
+        // non-cash transaction (grant, gift, tax withholding) and stays `0`; an
+        // OMITTED price reads null. Defaulting it to `0` made the two cases
+        // indistinguishable.
+        pricePerShare: observedFinite(r.transactionPrice),
+        isDerivative: Boolean(r.isDerivative),
+      };
+    })
+    .filter((t): t is NonNullable<typeof t> => t !== null);
   return {
     source: "finnhub" as const,
     ticker: input.ticker,

@@ -403,16 +403,17 @@ export const seedSession = handler({
       // input never sets this — the schema's `max(2)` enforces the ceiling.
       maxDebateRounds: input.costPreset === "full" ? 2 : 1,
       runComplete: false,
-      // The data-honesty contract this run is produced under (FIX-1063). Set at
-      // SEED, not at commit, so a run that stops before the valuation is
-      // computed still carries it — such a run has no fabricated valuation to
-      // mark, and a missing stamp would wrongly flag it as pre-fix.
+      // The data-honesty contract version this run is produced under
+      // (FIX-1063). Set at SEED, not at commit, so a run that stops before the
+      // valuation is computed still carries it — such a run has no fabricated
+      // valuation to mark, and a missing stamp would wrongly flag it as pre-fix.
       //
-      // This write is the ASSERTION that the producers above it are honest, so
-      // it is the last part of the contract to land. Stamping while any
-      // producer could still fabricate would permanently certify fabricated
-      // reports — the same lie this contract exists to stop, one level up, and
-      // unfixable afterwards because nothing distinguishes those runs later.
+      // This is a VERSION MARKER for legacy-report detection, not a per-run
+      // certificate that every figure was observed. It records which round of
+      // producer corrections the run was generated under, over the surfaces
+      // named in `data-honesty-contract.ts`; producers outside that list are
+      // unaudited, neither vouched for nor condemned. Read the file header
+      // before widening anything that consumes this.
       dataHonestyContractVersion: DATA_HONESTY_CONTRACT_VERSION,
       // Reset terminal stop state from any prior run on this session key
       // so the navigator doesn't render a stale "stopped" banner.
