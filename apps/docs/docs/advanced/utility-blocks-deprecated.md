@@ -29,7 +29,7 @@ const block = utility.summarizer({ name: "my-summarizer", granularity: "brief" }
 | [`decomposer`](#decomposer) | generator | Break broad requests into structured subtasks |
 | [`summarizer`](#summarizer) | generator | Summarize at brief, detailed, or executive granularity |
 | [`combiner`](#combiner) | handler | Deterministically merge artifacts (no LLM call) |
-| [`upsertResource`](#upsertresource) | handler | Get-or-create + patch a resource collection instance (no LLM call) |
+| [`upsertResource`](/docs/patterns/utility-blocks/core#upsertresource) | handler | Get-or-create + patch a resource collection instance (no LLM call) |
 | [`analyzer`](#analyzer) | generator | Evaluate artifacts against structured criteria |
 | [`intentClassifier`](#intentclassifier) | generator | Classify input into a bounded category set for routing |
 | [`intentRouter`](#intentrouter) | sequencer | Pre-wired classifier + router for classification-driven branching |

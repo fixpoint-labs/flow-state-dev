@@ -639,7 +639,7 @@ preset/thinking-*                       → intent/reason or intent/plan
 
 An intent is a name pointing at a list of models, so the swap isn't only in the generator. Declare the intent on the resolver, then point the generator at `intent/<name>`. [Configuring intents](#configuring-intents) above has the shape.
 
-Normalized reasoning levels are not part of the mapping. For callers migrating from `preset/thinking-*`, [Thinking and reasoning](#thinking-and-reasoning) covers the `providerOptions` escape hatch that ships today.
+There is no framework-level setting for reasoning depth. Migrating from `preset/thinking-*` means picking the intent and then setting the provider's own reasoning option — see [Thinking and reasoning](#thinking-and-reasoning) above for the `providerOptions` escape hatch.
 
 ## AI SDK 7
 

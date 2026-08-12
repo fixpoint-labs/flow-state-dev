@@ -147,8 +147,7 @@ const PRESET_MIGRATION_MESSAGE =
   "  preset/medium                           → intent/chat\n" +
   "  preset/large                            → intent/code or intent/reason\n" +
   "  preset/thinking-*                       → intent/reason or intent/plan\n" +
-  "                                            with reasoning enabled (FIX-517)\n" +
-  "See https://linear.app/.../fix-512 for context.";
+  "See https://flow-state.dev/docs/fundamentals/models for the intent model.";
 
 /** Allowed shape for intent names referenced via `intent/<name>`. */
 export const INTENT_NAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_-]*$/;

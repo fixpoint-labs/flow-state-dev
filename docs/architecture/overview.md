@@ -119,6 +119,10 @@ request → session → user → project
 
 Each scope provides `patchState`, `setState`, `incState`, `pushState`, `atomicState`, and more — all CAS-guarded for concurrency safety. Blocks declare only the state fields they need via partial schemas, so a counter block doesn't need to know about a preferences block's state. See [State and Scopes](./state-and-scopes.md).
 
+### Detached work — outliving the request
+
+Work dispatched through `ctx.requestHost.startDetached` runs in a **Workstream**, a child session that keeps going after the request that started it has returned. Where it runs, whether it survives the process, and what recovers it if the process stops all depend on the deployment topology. See [Detached Work](./detached-work.md).
+
 ### Streaming — resilient by default
 
 SSE-based item/content streaming with built-in resume:

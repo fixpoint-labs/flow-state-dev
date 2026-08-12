@@ -241,7 +241,7 @@ import { SuspensionResolverProvider } from "@flow-state-dev/react";
 
 ## Suspensions
 
-### `useSuspensions(session, options?)`
+### `useSuspensions(session, options?)` {#usesuspensions}
 
 Derives pending and resolved suspensions from `session.items`. Pairs each `suspension` item with its `suspension_resume` item by `suspensionId`. `approve`/`reject` stream the resumed continuation back into `session.items` (via `session.resumeSuspension`), so the resolution renders live.
 
@@ -277,7 +277,7 @@ interface SuspensionView {
 
 `resolve`, `approve`, and `reject` rethrow on failure so callers can branch on the error. The last failure is also captured in `error`.
 
-### `useSuspensionForm(item, options?)`
+### `useSuspensionForm(item, options?)` {#usesuspensionform}
 
 Headless controller for the non-binary input shapes — a clarifying question, a flat form, or a single/multi selection. Where `useApproval` drives the binary gate, this drives the `submit` / `skip` path. It derives form fields from the suspension's `resumeSchema` (bounded to a flat object of scalars and enums, or a single top-level scalar/enum), holds the in-progress value, validates it client-side, coerces numbers, and resolves through the same streaming transport.
 

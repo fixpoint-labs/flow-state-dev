@@ -129,7 +129,7 @@ The default is 10 seconds. Each tick costs one store read per running request, s
 ### What your deployment needs
 
 1. **A request store shared across processes** — SQLite or Postgres. The default in-memory store is per-process, so a second process cannot see the record at all. The filesystem store does not qualify either: it assumes a single writer per request and does no inter-process locking.
-2. **`heartbeatIntervalMs` greater than 0.** Setting it to `0` disables the timer, and with no tick there is no check and no delivery.
+2. **`heartbeatIntervalMs` greater than 0.** Setting it to `0` disables the timer, and with no tick there is no check and no delivery. The same timer also keeps a running request's registry entry warm, so `0` has a second consequence: a run that lasts longer than the stale-request threshold can be marked `interrupted` while it is still running. See [what a stopped process leaves behind](./background-work.md#what-a-stopped-process-leaves-behind).
 
 ### What the endpoint returns
 
