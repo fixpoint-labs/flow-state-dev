@@ -12,18 +12,13 @@ state, its resources, and the history of every request that ran in it. A
 background job's session hangs off the conversation that started it, as a child
 of it.
 
-Reading a conversation's jobs takes two calls. Ask the conversation for its
+This page is the HTTP surface for reading those jobs: ask a conversation for its
 jobs, then ask any one job for its history.
 
-Starting one is not something the HTTP API does. A job's session is created from
-inside a running request, through `ctx.requestHost.startDetached`. The shipped
-HTTP router supplies the start operation that call needs, so a job started this
-way runs on the same server that accepted the request — no extra wiring. Supply
-your own `requestHost.startOperation` and yours is used instead, which is how a
-deployment sends background work to a separate worker tier.
-
-In practice that means a task board with a worker declared detached. See [Work
-that outlives the turn](/guides/background-work#workstreams-a-job-with-its-own-session).
+Starting one is server-side only — there is no endpoint for it. A job begins
+inside a running request, usually as a task board with a worker declared
+detached. See [Work that outlives the
+turn](/guides/background-work#workstreams-a-job-with-its-own-session).
 
 ## Listing a conversation's jobs
 
@@ -64,16 +59,15 @@ the board and the worker together in one encoded string. Compare it whole. The
 worker's name is visible inside it, but matching on that substring collides
 across boards.
 
+Together the two identify a job, so two rows sharing a `topic` are separate jobs
+whenever their `coordinate`s differ. A row with a `topic` and no `coordinate` was
+addressed by topic alone, without a board. For which tasks land in the same job
+rather than starting a new one, see [Which tasks share a
+workstream](/guides/background-work#which-tasks-share-a-workstream).
+
 Both labels are optional, as is `status`, so read them with `== null` guards
 rather than assuming every row carries them. A row with neither label is a child
 session that isn't a background job.
-
-The pair is what identifies a job. A job is one board, one worker, one topic, so
-two rows sharing a `topic` are separate jobs whenever their `coordinate`s
-differ, whether that's a different board or a different worker, and tasks
-matching on all three continue one job instead of starting another. A row with a
-`topic` and no `coordinate` was addressed by topic alone, without a board. See
-[Which tasks share a workstream](/guides/background-work#which-tasks-share-a-workstream).
 
 ### What `status` tells you
 
@@ -120,50 +114,55 @@ A job that failed and was retried successfully reads `completed`; the failed
 attempt is still there in the job's own history.
 
 `active` describes what the system recorded, not what a worker is doing right
-now. If a worker's process dies mid-job the row keeps reading `active` until the
-framework notices and either continues the run or a retry supersedes it. A job
+now. If a worker's process dies mid-job the row keeps reading `active` until a
+client continues the run or a retry supersedes it — the framework marks the run
+recoverable, it does not restart it for you. A job
 whose approval request expired without an answer reads `active` indefinitely,
 because nothing discharges an approval except answering it.
 
 ### What a stopped process leaves behind
 
-A process can stop while background work is still running. A shutdown that ran
-out of its wait budget does it, and so does a process killed outright. Either
-way the work is cancelled without being settled. The task it was claimed for and
-the request record for the run both stay mid-flight, and each has its own way
-back.
+A process can stop while background work is still running, and the work is then
+cancelled without being settled. So a job can read `active` with nothing running
+it, and the request records under it can read in-progress, for a while after the
+process is gone. Neither is a stuck row.
 
-**The task** stays `in_progress`, holding a lease nobody is renewing. Once the
-lease deadline passes, the board is entitled to hand the task out again, and
-does: back to `pending`, with `abandonments` incremented. A task that keeps
-being handed out and abandoned is settled `errored` rather than recycled
-forever. A task whose lease has passed also stops counting as work in flight, so
-it doesn't hold a board back from being considered quiet. See [the
+The task clears itself: it is taken back once its lease has lapsed and some
+worker claims it again. The request record is made *recoverable* rather than
+cleared — a sweep marks it `interrupted`, the status a run can be resumed from,
+running at runtime start, on a timer while a server is up, and on demand when a
+client asks.
+
+Marking it is where the framework stops. Nothing continues or re-runs the work
+on your behalf, deliberately: restarting a request nobody asked to restart is
+how the same job runs twice. So the row keeps reading `active` — an
+`interrupted` run is unfinished and still continuable — until a client resumes
+or retries it, or a later run supersedes it. The sweep waits
+until a record's heartbeat has been quiet longer than the staleness threshold,
+so a job that has simply gone quiet for a second is never mistaken for an
+abandoned one.
+
+That protection is the heartbeat, so it doesn't cover a flow that turns the
+heartbeat off. With `request: { heartbeatIntervalMs: 0 }` nothing refreshes the
+run's active-request registry entry, so a run lasting longer than the staleness
+threshold will be marked `interrupted` while it is still going — which also
+offers it for resume, so the same work can be started a second time. Keep the
+heartbeat on for any flow whose requests outlive the threshold.
+
+The process that walked away mostly doesn't settle the record on its way out:
+[`dispose()`](../api/server.md#shutdown) cancels background work rather than
+marking it finished or failed. One case doesn't follow that yet — work still
+waiting behind a concurrency limit when shutdown reaches it is recorded
+`aborted` without ever having started — so read a terminal status after a
+shutdown as a record of what the process did, not as proof the work ran. And if
+nothing ever runs against that store again, nothing sweeps it, and the row stays
+as it is.
+
+For the thresholds, see [Connection
+resilience](./connection-resilience.md#configuration). For the lease and the
+abandonment allowance, see [the
 lease](../orchestration/task-substrate.md#the-lease) and [when a job keeps being
 abandoned](../orchestration/task-substrate.md#when-a-job-keeps-being-abandoned).
-
-**The request record for the run** stays `in_progress`. A runtime starting
-against the same store sweeps for requests whose executor heartbeat has gone
-stale and marks them `interrupted`, the status a run can be resumed from. That
-startup pass is `detectInterruptedOnStartup`, a `createFlowState` option that is
-on by default. Client-driven recovery reaches the same sweep.
-
-The sweep only picks up a record once its heartbeat has been quiet for longer
-than the staleness threshold, so a start that happens moments after the process
-stopped leaves the record alone and a later one recovers it. That delay is
-deliberate: a request that has simply gone quiet for a second is not the same as
-one nobody is running, and treating them alike would reclaim live work. For the
-thresholds, see [Connection
-resilience](./connection-resilience.md#configuration).
-
-So a row reading in-progress just after a process stopped is expected, and it
-clears itself. The board reclaims the task on its lease. A later runtime start
-marks the request interrupted. What doesn't happen is the record being settled
-by the process that walked away: [`dispose()`](../api/server.md#shutdown)
-cancels background work, it doesn't mark it finished, failed, or aborted.
-
-If nothing ever runs against that store again, nothing sweeps it, and the row
-stays as it is.
 
 ## Reading one job's history
 

@@ -635,10 +635,9 @@ preset/fast, preset/tiny, preset/small  → intent/utility
 preset/medium                           → intent/chat
 preset/large                            → intent/code or intent/reason
 preset/thinking-*                       → intent/reason or intent/plan
-                                          with reasoning enabled (FIX-517)
 ```
 
-The runtime error still references FIX-517 (normalized reasoning levels). That feature was deferred and never shipped; for callers migrating from `preset/thinking-*`, see [Thinking and reasoning](#thinking-and-reasoning) above for the `providerOptions` escape hatch that ships today.
+There is no framework-level setting for reasoning depth. Migrating from `preset/thinking-*` means picking the intent and then setting the provider's own reasoning option — see [Thinking and reasoning](#thinking-and-reasoning) above for the `providerOptions` escape hatch.
 
 ## AI SDK 7
 
