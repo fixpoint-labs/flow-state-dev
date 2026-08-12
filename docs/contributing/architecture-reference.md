@@ -72,7 +72,7 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 - A Workstream is a **child session**, not a new scope level
 - Locality is decided by the effective dispatcher (`isInProcessDispatcher`), **not** by `worker.mode`
 - `worker-only` constructs no dispatcher → detached work runs **in-process and is not durable**
-- `dispose()` drains in-process detached children only; queued work is never waited for
+- `dispose()`'s **drain** covers in-process detached children only, bounded by `detachedDrainTimeoutMs`; a queued job is not drained — but closing the worker afterwards waits, unbounded, for any job this process has claimed (`colocated` and `worker-only` both consume)
 - Shutdown cancels rather than settling, with one exception today: a child still queued behind the concurrency gate is written `aborted` before it ever runs (FIX-1121)
 - Recovery is by re-claim, not by lease expiry alone — the next claim takes a lapsed task back as a fresh attempt and the row stays `in_progress` (`errored` only past the abandonment allowance); a sweep marks the request `interrupted`
 

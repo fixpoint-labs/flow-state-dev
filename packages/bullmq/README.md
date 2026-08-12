@@ -35,7 +35,9 @@ process.on("SIGTERM", () => flowstate.dispose());
 
 A POST to an action returns a request id instead of running the action. A worker picks the job up, runs it against the same stores, and the client attaches to `GET /requests/:id/stream` exactly as it would for an in-process run. Same request, same session.
 
-`createFlowState` hands the dispatch side and the worker the same resolved `{ registry, stores, runtimeConfig }`, so there is no way to wire a mismatched store registry through this path.
+In one process, `createFlowState` hands the dispatch side and the worker the same resolved `{ registry, stores, runtimeConfig }`, so a `colocated` deployment cannot wire a mismatched store registry through this path.
+
+That guarantee is structural and it is also local. In the separated topology below, the web tier and the worker container are two `createFlowState` instances in two processes, and nothing compares their configuration — so **you** are responsible for pointing both at the same durable backend. Wire them at different stores and the system still runs: jobs enqueue, the worker consumes and writes, and the web tier's stream and refresh routes read a store those writes never reached. The symptom is a request that stays in-progress forever on the client while the work has already completed somewhere the client cannot see.
 
 ### Deployment modes
 
@@ -81,8 +83,9 @@ outlives the turn](https://flow-state.dev/guides/background-work).
 
 **`dispose()` does not wait for queued work.** Closing the worker drains the
 jobs this process is running, not jobs sitting in the queue or running in
-another container. In-process background work is waited for, bounded by
-`detachedDrainTimeoutMs`. See
+another container. That drain is a non-forced `Worker.close()` and is **not**
+bounded by `detachedDrainTimeoutMs` — it takes as long as the claimed job does.
+Only the separate in-process detached-work wait carries that budget. See
 [Shutdown](https://flow-state.dev/docs/api/server#shutdown).
 
 ### Lower-level composition

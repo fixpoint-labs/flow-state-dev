@@ -45,13 +45,23 @@ Everything below follows from that one test.
 | Topology | Effective dispatcher | Where the child runs | Acceptance means | Survives the process? | `dispose()` waits? |
 |---|---|---|---|---|---|
 | No worker adapter | none (`undefined`) | this process | the child is registered here, and may still be awaiting execution | no | **yes**, bounded |
-| `colocated` | queue dispatcher | a worker (may be this process) | the job is on the queue | yes | no |
+| `colocated` | queue dispatcher | a worker (may be this process) | the job is on the queue | yes | a job this process has **claimed**: yes, *unbounded*; one still queued: no |
 | `dispatch-only` | queue dispatcher | another container | the job is on the queue | yes | no |
-| `worker-only` | **none** | this process | the child is registered here, and may still be awaiting execution | **no** | **yes**, bounded |
+| `worker-only` | **none** | this process | the child is registered here, and may still be awaiting execution | **no** | detached children **yes**, bounded; a claimed job yes, *unbounded* |
 | No request host (CLI with no config) | — | nowhere | `NoRequestHostError` is thrown | — | — |
 
 There is no "started" milestone to report — the column is acceptance, and
 [What acceptance means](#what-acceptance-means) is the long form of these cells.
+
+**Two different waits hide in that last column, and only one of them is
+bounded.** The drain below waits for *in-process detached children* and races
+`detachedDrainTimeoutMs`. Separately, `dispose()` awaits the worker handle, and
+for the BullMQ adapter that is a non-forced `Worker.close()`, which waits for
+whatever jobs that process has already claimed. Any topology that consumes the
+queue — `colocated` and `worker-only` both, since `startWorker` runs for every
+mode except `dispatch-only` — therefore holds shutdown open for a claimed job
+for as long as that job takes, with no framework budget over it. Size the
+platform's kill timeout for the longest job, not for `detachedDrainTimeoutMs`.
 
 **`worker-only` is the trap.** It is the natural place to start durable jobs and
 the one place they silently are not durable. The mode consumes the queue and
@@ -190,8 +200,8 @@ invisible to the drain while the lease is live and visible again once it lapses,
 until some claim takes it back. The wake test reads the same lease, so a worker
 stirs into an exit check that no longer calls the board drained.
 
-**The request record** depends on how far the child got, and only the third
-ending leaves a row mid-flight:
+**The request record** depends on how far the child got. Four endings; only the
+third leaves a row mid-flight, and the fourth leaves no row at all:
 
 - **It unwound inside the shutdown window.** The drain fires the child's abort
   controller and nothing else, so `runAction` sees a signal with no persisted
@@ -204,6 +214,15 @@ ending leaves a row mid-flight:
 - **It could not unwind in time** — the budget expired mid-run, or the process
   was killed outright. This is the record that stays `in_progress` until a sweep
   marks it `interrupted`, the status a run can be resumed from.
+- **It died inside the persistence window, and left no record to mark.** On the
+  `allow`/`reject` arm, acceptance resolves at the `activeRequests` write and
+  the request record lands a few store round-trips later — the window
+  [acceptance](#what-acceptance-means) describes. A child killed in between
+  leaves a registry entry and no record, so the sweep's `get` returns
+  `undefined`: it deregisters the entry and has nothing to mark. Nothing reads
+  `in_progress`, and nothing records that the child existed at all. The gap is
+  narrow and it is not empty, so a caller reconciling by request id should treat
+  "no record" as a possible outcome of a start it was told was accepted.
 
 An operator reading a store after a shutdown should therefore expect a mix, not
 one status. Three things run the sweep that clears the third case:
