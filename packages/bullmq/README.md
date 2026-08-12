@@ -18,7 +18,7 @@ pnpm add @flow-state-dev/scheduled
 
 ## Quick start
 
-Hand `bullmqWorker` to `createFlowState` and actions stop running inline. They become queued jobs.
+Hand `bullmqWorker` to `createFlowState` and actions stop running inline. They become queued jobs — in the default `colocated` mode and in `dispatch-only`. A `worker-only` process is the exception: it consumes the queue rather than feeding it, so it installs no dispatcher, and an action a router in that process receives runs inline instead of being enqueued. See [Deployment modes](#deployment-modes).
 
 ```ts
 import { createFlowState } from "@flow-state-dev/engine";

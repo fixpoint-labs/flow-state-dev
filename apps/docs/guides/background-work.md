@@ -63,7 +63,7 @@ export const flowstate = createFlowState({
 
 A POST to an action now returns a request id instead of running the action. A worker picks the job up, runs it against the same stores, and the client attaches to `GET /requests/:id/stream` exactly as it would for an in-process run. Same request, same session. A worker that dies mid-action retries the job.
 
-The configuration above runs in `colocated` mode, the default: one process both accepts jobs and consumes them, so you get the queue's durability and its retries without deploying anything new. Separating the tiers is a mode flag rather than a rewrite — `dispatch-only` on the web process, `worker-only` on a dedicated worker that calls `flowstate.ready()` to start consuming.
+The configuration above runs in `colocated` mode, the default: one process both accepts jobs and consumes them, so you get the queue's durability and its retries without deploying anything new. Separating the tiers is a mode flag rather than a rewrite — `dispatch-only` on the web process, `worker-only` on a dedicated worker that calls `flowstate.ready()` to start consuming. A `worker-only` process only consumes: it installs no dispatcher, so an action that reaches a router in that process runs inline instead of becoming a job. Keep the router on the dispatching tier.
 
 Reach for it when the run is long or heavy enough that you don't want it on the web tier at all, or when you want to scale workers separately.
 
