@@ -232,8 +232,12 @@ configuration.
 Carrying just the selected model *id* across would not fix it. The worker is a
 different process with its own gateways and keys, so a forced id may not resolve
 there at all, replacing a silently wrong model with a failure surfacing where the
-caller cannot see it. The host logs a warning at each dispatch that drops a
-caller-derived config rather than pretending it applied.
+caller cannot see it. What the host does say out loud is the model: a dispatch
+that drops a caller-derived *model resolver* logs a warning naming the request
+that lost it. That check is on the resolver alone, so a derived config that
+differs somewhere else — a voice provider, a request-scoped logger — is dropped
+without one. Treat the warning as coverage for model overrides, not as a
+guarantee that every dropped field is reported.
 
 Writing a custom host or dispatcher, read this as: honour the inherited config
 when you run work in-process, and expect not to receive it when you don't.

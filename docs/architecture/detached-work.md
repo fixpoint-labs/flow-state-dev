@@ -133,15 +133,19 @@ to unwind, and reports the request and session ids it gave up on — on stderr,
 even when the runtime logger is silenced, since work may have been left
 unfinished.
 
-**Shutdown never writes a terminal status on the work's behalf.** It cancels;
-it does not mark records finished, failed, or aborted. That division only holds
-because something else recovers, which is the next section.
+**Shutdown cancels; settling is meant to be somebody else's job.** The drain
+fires each child's abort controller and writes nothing on its behalf. One path
+breaks that rule today: a child still queued behind the in-process concurrency
+gate is written `aborted` by `terminateUnenqueuedRequest` at the moment the
+drain cancels it, before it ever runs (FIX-1121). Everywhere else the division
+holds, and it holds only because something else recovers — the next section.
 
 ## What a stopped process leaves behind, and what recovers it
 
 A process can stop while detached work is still running — a shutdown that ran
-out of budget, or a kill. Either way the work is cancelled without being
-settled, and two records are left mid-flight. Each has its own way back.
+out of budget, or a kill. That exposes two records, and they do not behave
+alike: the task row reads the same however far the child got, while the request
+record has three different endings.
 
 **The task** stays `in_progress`, holding a lease nobody is renewing. Recovery
 happens on the next claim, and it does **not** route through `pending`:
@@ -172,8 +176,23 @@ invisible to the drain while the lease is live and visible again once it lapses,
 until some claim takes it back. The wake test reads the same lease, so a worker
 stirs into an exit check that no longer calls the board drained.
 
-**The request record** stays `in_progress` until a sweep marks it `interrupted`,
-the status a run can be resumed from. Three things run that sweep:
+**The request record** depends on how far the child got, and only the third
+ending leaves a row mid-flight:
+
+- **It unwound inside the shutdown window.** The drain fires the child's abort
+  controller and nothing else, so `runAction` sees a signal with no persisted
+  abort intent, takes its disconnect path, and writes `interrupted` itself — the
+  same resumable status a sweep would have written, arrived at without one.
+- **It never started.** A child still queued behind the in-process concurrency
+  gate is written `aborted` when the drain cancels it. It reads as a deliberate
+  cancellation rather than something to resume, and it is the contradiction
+  FIX-1121 tracks.
+- **It could not unwind in time** — the budget expired mid-run, or the process
+  was killed outright. This is the record that stays `in_progress` until a sweep
+  marks it `interrupted`, the status a run can be resumed from.
+
+An operator reading a store after a shutdown should therefore expect a mix, not
+one status. Three things run the sweep that clears the third case:
 
 1. **Runtime init** — `createFlowState`'s `#detectInterruptedOnStartup`, on every
    runtime init, router or not, honouring the `detectInterruptedOnStartup`
@@ -184,9 +203,28 @@ the status a run can be resumed from. Three things run that sweep:
 3. **A client poke** — `POST .../check-interrupted`, which the DevTool calls on
    mount and on every session-list refresh.
 
-All three are idempotent: detection re-checks `status === "in_progress"` before
-writing, so a record that reached a terminal status is never overwritten, and a
-router deployment sweeping twice at startup costs one empty scan.
+All three converge on the same write — re-read the record, check
+`status === "in_progress"`, write `interrupted` — so running them together is
+safe in outcome. Two things that re-check does *not* buy are worth naming,
+because the surrounding code reads as though it does.
+
+**It narrows the terminal-overwrite window; it does not close it.** The read and
+the write are separate store round-trips, and the write is a whole-record `set`
+with `expectedVersion: "any"`. A record that reaches a terminal status in
+between is overwritten by the stale snapshot the sweep read, stamped
+`interrupted` — along with anything else persisted in that window.
+`RequestStore.setFieldsIfStatus` is the verb that makes the predicate and the
+write one atomic step, and is what the abort route already uses; FIX-1128 tracks
+moving the sweep onto it. The staleness threshold below is what keeps the window
+narrow in practice, not the re-check.
+
+**The two startup sweeps are not ordered.** `createFlowState`'s runs from
+runtime init and `createFlowRouteHandlers`' starts when the router is built,
+neither awaiting the other, so on a router deployment the second can begin while
+the first is still scanning and see the same rows rather than finding the work
+done. Both write the same status, so an overlap costs a duplicate write rather
+than a wrong one — "the second pass is an empty scan" is the common case, not a
+guarantee.
 
 The sweep only picks up a record whose executor heartbeat has been quiet longer
 than the staleness threshold. That delay is load-bearing: a request that has

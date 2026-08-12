@@ -134,10 +134,14 @@ until a record's heartbeat has been quiet longer than the staleness threshold,
 so a job that has simply gone quiet for a second is never mistaken for an
 abandoned one.
 
-What does not happen is the record being settled by the process that walked
-away: [`dispose()`](../api/server.md#shutdown) cancels background work, it
-doesn't mark it finished, failed, or aborted. And if nothing ever runs against
-that store again, nothing sweeps it, and the row stays as it is.
+The process that walked away mostly doesn't settle the record on its way out:
+[`dispose()`](../api/server.md#shutdown) cancels background work rather than
+marking it finished or failed. One case doesn't follow that yet — work still
+waiting behind a concurrency limit when shutdown reaches it is recorded
+`aborted` without ever having started — so read a terminal status after a
+shutdown as a record of what the process did, not as proof the work ran. And if
+nothing ever runs against that store again, nothing sweeps it, and the row stays
+as it is.
 
 For the thresholds, see [Connection
 resilience](./connection-resilience.md#configuration). For the lease and the
