@@ -54,7 +54,7 @@ Construction is synchronous; stores initialize lazily and memoized on the first 
 4. Reports the request ids and session ids it gave up on, on stderr. That report prints even when the runtime's logger is silenced, since work may have been left unfinished.
 5. Closes the worker and releases pooled resources across every declared store adapter.
 
-Shutdown does not write a terminal status on background work's behalf. It cancels the work; it does not mark those records finished, failed, or aborted. The task goes back to the board when its lease lapses, and the request record is marked `interrupted` by a later runtime start, once its heartbeat has been quiet longer than the staleness threshold. See [what a stopped process leaves behind](https://flow-state.dev/docs/server/background-work#what-a-stopped-process-leaves-behind).
+Shutdown mostly does not write a terminal status on background work's behalf. It cancels the work rather than marking those records finished or failed. The exception today is a run still waiting behind a concurrency limit when the drain reaches it, which is recorded `aborted` before it ever starts (FIX-1121). Otherwise the task goes back to the board when its lease lapses, and the request record reads `interrupted`: written by the run itself if it unwinds inside the drain's budget, or by a later runtime start's sweep once its heartbeat has been quiet longer than the staleness threshold. See [what a stopped process leaves behind](https://flow-state.dev/docs/server/background-work#what-a-stopped-process-leaves-behind).
 
 ### Stores and capability profiles
 

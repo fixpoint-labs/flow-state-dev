@@ -76,7 +76,7 @@ interface FlowState<TSettings extends object = FlowStateSettings> {
 4. Reports the request ids and session ids it gave up on, on stderr. That report prints even when the runtime's logger is silenced, since work may have been left unfinished.
 5. Closes the worker and releases pooled resources across every declared store adapter.
 
-Shutdown does not write a terminal status on background work's behalf. It cancels the work; it does not mark those records finished, failed, or aborted. For what the cancelled work leaves in the task board and the request log, and how each recovers, see [What a stopped process leaves behind](../server/background-work.md#what-a-stopped-process-leaves-behind).
+Shutdown mostly does not write a terminal status on background work's behalf. It cancels the work rather than marking those records finished or failed. One case doesn't follow that yet: work still waiting behind a concurrency limit when shutdown reaches it is recorded `aborted` without ever having started. For what the cancelled work leaves in the task board and the request log, and how each recovers, see [What a stopped process leaves behind](../server/background-work.md#what-a-stopped-process-leaves-behind).
 
 `fsdev run` and `fsdev chat` shut down through the same path. See [Waiting for in-process work](../cli/overview.md#waiting-for-in-process-work).
 
