@@ -155,6 +155,39 @@ function rejectRemovedMiddleware(value: object | undefined, location: string): v
   }
 }
 
+/** The definition-only options {@link rejectDefinitionOnlyOptions} refuses. */
+const DEFINITION_ONLY_INSTANCE_OPTIONS = ["webhooks", "chat", "schedules", "mcp"] as const;
+
+/**
+ * Reject transport configs that are declared on the flow DEFINITION only.
+ *
+ * Passing one as an instance option used to type-check and then do nothing at
+ * all — the instance carried the definition's values either way, so
+ * `flow({ webhooks })` looked configured and was not (FIX-1048). They are gone
+ * from {@link FlowInstanceOptions}, so a TypeScript caller now fails to compile;
+ * this guard is the runtime half, for the caller who reaches past the types
+ * (plain JS, or an `as any` cast): fail loudly rather than accept-and-ignore.
+ *
+ * Being definition-only is also what makes the transport validation in
+ * `createFlowInstance` complete rather than partial: `validateChatConfig` /
+ * `validateWebhookConfig` / `validateSchedulesConfig` read `definition.*` rather
+ * than a merge, and with no instance-side source left there is no config that
+ * could slip past them.
+ */
+function rejectDefinitionOnlyOptions(value: object | undefined, flowKind: string): void {
+  if (value === undefined) return;
+
+  for (const key of DEFINITION_ONLY_INSTANCE_OPTIONS) {
+    if (Object.hasOwn(value, key)) {
+      throw new Error(
+        `Flow "${flowKind}" instance options set "${key}", which is not an instance option. ` +
+        `Per-instance ${DEFINITION_ONLY_INSTANCE_OPTIONS.join("/")} were never applied — the instance ` +
+        `always used the definition's. Declare "${key}" on defineFlow(...) instead.`
+      );
+    }
+  }
+}
+
 function mergeToolsConfig(base: ToolsConfig | undefined, override: ToolsConfig | undefined): ToolsConfig | undefined {
   if (base === undefined && override === undefined) {
     return undefined;
@@ -887,6 +920,7 @@ function createFlowInstance(
 ): FlowInstance<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg, AnyWork> {
   rejectRemovedMiddleware(definition, `Flow "${definition.kind}"`);
   rejectRemovedMiddleware(options, `Flow "${definition.kind}" instance options`);
+  rejectDefinitionOnlyOptions(options, definition.kind);
 
   const authentication = mergeAuthentication(
     definition.authentication,
@@ -932,6 +966,9 @@ function createFlowInstance(
   // event binding's handler block participates in resource/`requireOrg`
   // collection, so a malformed binding must be rejected here with a clear
   // message rather than crashing the aggregation (or the tools wrap below).
+  //
+  // Reading `definition.*` rather than a merge is complete, not a gap — see
+  // `rejectDefinitionOnlyOptions`.
   validateChatConfig(kind, definition.chat);
   validateWebhookConfig(kind, definition.webhooks);
   validateSchedulesConfig(kind, definition.schedules);

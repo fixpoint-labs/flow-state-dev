@@ -530,10 +530,8 @@ export type FlowInstanceOptions<
   resources?: TResources;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
-  mcp?: McpConfig;
-  chat?: ChatConfig;
-  webhooks?: WebhookConfig;
-  schedules?: SchedulesConfig;
+  // `mcp`, `chat`, `webhooks` and `schedules` are deliberately ABSENT — they are
+  // definition-only; see `rejectDefinitionOnlyOptions` in `flow/defineFlow.ts` (FIX-1048).
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
   isolateUserState?: boolean;
