@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error — root check script, plain .mjs with no type declarations.
 import {
+  isScannedPath,
   resolverWindow,
-  scanRoots,
   scanSources,
 } from "../../../scripts/validate-model-strings.mjs";
 
@@ -84,14 +84,54 @@ describe("the removed 'presets' resolver option", () => {
   });
 });
 
+/**
+ * The surface is defined by exclusion, and these cases are why.
+ *
+ * An inclusion list was wrong twice — it missed `.agents`, where a skill is a
+ * template an agent copies from, and then `apps/kitchen-sink`, a reference app
+ * whose flows execute real model configuration. Neither miss failed anything;
+ * the guard just quietly stopped covering them. Pinning representative paths
+ * means the next omission fails here instead of reaching a reviewer.
+ */
 describe("scan surface", () => {
-  /**
-   * A skill is a template an agent copies from, so a `preset/*` left in one
-   * keeps writing the removed syntax into new blocks. That makes `.agents` a
-   * source of the regression, not just a stale page — the reason it is scanned.
-   */
-  it("covers the published docs and the agent skills that generate code", () => {
-    expect(scanRoots).toEqual(expect.arrayContaining(["apps/docs", ".agents"]));
+  const scanned = (path: string): boolean =>
+    (isScannedPath as (p: string) => boolean)(path);
+
+  it.each([
+    // Executes real model configuration — a bad string here is a runtime throw.
+    ["apps/kitchen-sink/fsdev.config.ts"],
+    ["apps/pattern-benchmark/src/suite.ts"],
+    ["examples/hello-chat/src/flows/hello-chat/flow.ts"],
+    // Templates an agent copies from, which keep writing the removed syntax.
+    [".agents/skills/create-block/SKILL.md"],
+    // Prose a reader follows.
+    ["apps/docs/docs/getting-started/quick-start.md"],
+    ["docs/architecture/utility-blocks.md"],
+    ["packages/core/README.md"],
+    ["README.md"],
+    ["labs/demo/agent.ts"],
+  ])("scans %s", (path) => {
+    expect(scanned(path)).toBe(true);
+  });
+
+  it.each([
+    // The rejection's own implementation: these must name preset/* in quotes.
+    ["packages/core/src/models/providerDetection.ts"],
+    ["packages/core/test/model-strings-check.test.ts"],
+    ["scripts/validate-model-strings.mjs"],
+    // Not authored here.
+    ["node_modules/some-pkg/index.js"],
+    ["apps/docs/build/assets/js/chunk.js"],
+    ["apps/docs/.docusaurus/registry.js"],
+    // A working copy of the repo would otherwise be scanned twice.
+    [".claude/worktrees/agent-x/apps/docs/docs/intro.md"],
+  ])("excludes %s", (path) => {
+    expect(scanned(path)).toBe(false);
+  });
+
+  it("ignores files it has no rules for, whatever the tree", () => {
+    expect(scanned("apps/kitchen-sink/package.json")).toBe(false);
+    expect(scanned("apps/kitchen-sink/styles.css")).toBe(false);
   });
 
   it("attributes a hit to the file it came from", () => {

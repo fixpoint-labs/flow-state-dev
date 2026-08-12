@@ -58,6 +58,9 @@ The framework documents six intent names. Apps configure their own model lists p
 Apps declare intents on `createFlowState`, in the `models` block:
 
 ```ts title="lib/flowstate.ts"
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
+import chatFlow from "@/flows/hello-chat/flow";
+
 export const flowstate = createFlowState({
   flows: { chatFlow },
   models: {

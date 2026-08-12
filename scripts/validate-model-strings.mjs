@@ -14,11 +14,10 @@
  *
  * ## What this checks, and what it does not
  *
- * **It checks prose and examples, not the runtime that implements the
- * rejection.** Package `src` and `test` trees are deliberately outside the
- * scanned surface: the migration error message and the tests that pin it have
- * to name `preset/…` in quotes, and that is the code being correct, not a
- * regression.
+ * **It checks everything authored in this repo except the code that
+ * implements the rejection.** The scanned surface is defined by what is
+ * *excluded*, not by a list of roots that are included — see `isScannedPath`.
+ * Anything a person reads, an agent copies, or a runtime executes is in.
  *
  * **It does not compile doc examples.** A quoted model string is the shape
  * that broke, and it is the shape this catches. An example can still be wrong
@@ -44,31 +43,21 @@
  * runs it without an install.
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 
-/**
- * Documentation and example surfaces. Package `src`/`test` are excluded on
- * purpose — see the header. Package READMEs are in, because they are docs.
- *
- * `.agents` is in for the same reason `validate-spec-folder.mjs` scans it, only
- * more so: a skill is a template an agent copies from, so a `preset/*` left in
- * one doesn't just document the removed syntax, it keeps writing it into new
- * blocks. That is the regression vector, not a stale page.
- */
-const SCAN_ROOTS = ["apps/docs", "docs", "examples", "labs", ".agents"];
-
-/** Root-level docs and package READMEs, which no tree above reaches. */
-const SCAN_FILES = ["README.md"];
-
 const SCAN_EXTENSIONS = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs|md|mdx)$/;
+
 /**
- * Generated trees. `.docusaurus` matters as much as the rest: it caches page
- * content as JSON and TS, so a stale build of a page fixed since would report
- * a violation nobody can fix in source.
+ * Trees we did not author, plus working copies of the repo itself.
+ *
+ * `.docusaurus` matters as much as the rest: it caches page content as JSON
+ * and TS, so a stale build of a page fixed since would report a violation
+ * nobody can fix in source. `.claude` holds agent worktrees — full checkouts
+ * whose files would be scanned a second time under a different path.
  */
 const SKIP_DIRS = new Set([
   "node_modules",
@@ -77,8 +66,52 @@ const SKIP_DIRS = new Set([
   ".next",
   ".turbo",
   ".docusaurus",
+  ".git",
+  ".claude",
   "coverage",
 ]);
+
+/**
+ * The rejection's own implementation. These have to name `preset/…` in quotes
+ * — `parseModelString` and `createModelResolver` to reject it, their tests to
+ * pin the throw, and this script to match it. Scanning them would flag the
+ * rejection for existing.
+ */
+const REJECTION_IMPL = /^packages\/[^/]+\/(src|test)(\/|$)/;
+const REJECTION_IMPL_FILES = new Set([
+  "scripts/validate-model-strings.mjs",
+  "packages/core/test/model-strings-check.test.ts",
+]);
+
+/**
+ * Whether one repo-relative path is inside the scanned surface.
+ *
+ * **Defined by exclusion, deliberately.** The first version of this guard
+ * enumerated the roots that were *in*, and that enumeration was wrong twice:
+ * it missed `.agents` (a skill is a template an agent copies, so a stale
+ * `preset/*` there keeps writing the removed syntax into new blocks) and then
+ * `apps/kitchen-sink` (a reference app whose flows execute real model
+ * configuration, where a bad string is a runtime throw, not a stale page).
+ *
+ * Two misses in one list is a property of the list. An inclusion list has to
+ * be extended for every new app, package, and top-level folder, and nothing
+ * fails when it isn't — the guard just quietly stops covering the new thing.
+ * An exclusion list does not: anything added to this repo is scanned until
+ * someone argues it out, and the argument has to be written here.
+ *
+ * Only two things are out, and both are the same reason: we did not author
+ * it, or it is the code that implements the rejection.
+ *
+ * Pure and filesystem-free so the surface is testable directly.
+ */
+export function isScannedPath(relPath) {
+  const norm = relPath.split("\\").join("/");
+  if (norm === "" || norm.startsWith("..")) return false;
+  if (norm.split("/").some((segment) => SKIP_DIRS.has(segment))) return false;
+  if (REJECTION_IMPL.test(norm)) return false;
+  if (REJECTION_IMPL_FILES.has(norm)) return false;
+  return SCAN_EXTENSIONS.test(norm);
+}
 
 /**
  * A quoted `preset/<name>` model string. Backticked prose and bare text inside
@@ -97,7 +130,15 @@ const PRESETS_OPTION = /(^|[\s{,])presets\s*:/;
  */
 const RESOLVER_WINDOW = 15;
 
-/** Collect every scannable file under the configured roots. */
+/**
+ * Every scannable file in the repo, walking from the root.
+ *
+ * The walk carries no surface knowledge of its own — it prunes and selects
+ * through `isScannedPath`, so what CI scans and what the test pins cannot
+ * drift apart. Symlinks are neither followed nor collected (`isDirectory`
+ * and `isFile` are both false for them), which keeps `.claude/skills` from
+ * pulling `.agents` in a second time under another path.
+ */
 function collectFiles() {
   const files = [];
 
@@ -109,44 +150,19 @@ function collectFiles() {
       return;
     }
     for (const entry of entries) {
+      const abs = join(dir, entry.name);
+      const rel = relative(ROOT, abs);
       if (entry.isDirectory()) {
         if (SKIP_DIRS.has(entry.name)) continue;
-        walk(join(dir, entry.name));
-      } else if (SCAN_EXTENSIONS.test(entry.name)) {
-        files.push(join(dir, entry.name));
+        if (REJECTION_IMPL.test(rel.split("\\").join("/"))) continue;
+        walk(abs);
+      } else if (entry.isFile() && isScannedPath(rel)) {
+        files.push(abs);
       }
     }
   };
 
-  for (const root of SCAN_ROOTS) walk(join(ROOT, root));
-
-  for (const file of SCAN_FILES) {
-    const abs = join(ROOT, file);
-    try {
-      if (statSync(abs).isFile()) files.push(abs);
-    } catch {
-      /* absent is fine */
-    }
-  }
-
-  // Package READMEs are documentation; their src/test siblings are not scanned.
-  const packagesDir = join(ROOT, "packages");
-  let pkgs;
-  try {
-    pkgs = readdirSync(packagesDir, { withFileTypes: true });
-  } catch {
-    pkgs = [];
-  }
-  for (const pkg of pkgs) {
-    if (!pkg.isDirectory()) continue;
-    const readme = join(packagesDir, pkg.name, "README.md");
-    try {
-      if (statSync(readme).isFile()) files.push(readme);
-    } catch {
-      /* absent is fine */
-    }
-  }
-
+  walk(ROOT);
   return files;
 }
 
@@ -227,9 +243,6 @@ function main() {
   process.exit(1);
 }
 
-/** The scanned surface, exported so a test can assert it still reaches the docs. */
-export const scanRoots = SCAN_ROOTS;
-export const scanFiles = SCAN_FILES;
 export const resolverWindow = RESOLVER_WINDOW;
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {

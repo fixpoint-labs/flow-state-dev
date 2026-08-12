@@ -99,6 +99,8 @@ Intent names are yours to choose. [Models](/docs/fundamentals/models) lists six 
 You can also skip the indirection and name a model on the block:
 
 ```ts
+import { generator } from "@flow-state-dev/core";
+
 const chat = generator({
   name: "chat",
   model: "anthropic/claude-sonnet-4-6",
