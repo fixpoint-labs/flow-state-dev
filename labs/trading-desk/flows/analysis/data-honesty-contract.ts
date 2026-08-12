@@ -45,10 +45,17 @@
  *      epoch; and where a response leaving NO usable bar throws as provider
  *      no-data rather than resolving an empty series under a live tag;
  *   7. the Finnhub + Alpha Vantage insider transactions (`pricePerShare`,
- *      `shares`) — on the Alpha Vantage path this covers the SIGN as well as
- *      the magnitude, because that adapter carries no SEC transaction code, so
- *      a row with no readable `acquisition_or_disposal` is dropped rather than
- *      reported as a sale.
+ *      `shares`) — ABSENCE ONLY, and the qualifier is load-bearing. An omitted
+ *      price reads `null` rather than `0`, and a row with no share count is
+ *      dropped. On the Alpha Vantage path this extends to the SIGN, because
+ *      that adapter carries no SEC transaction code, so a row with no readable
+ *      `acquisition_or_disposal` is dropped rather than reported as a sale.
+ *      It does NOT say the insider figures are otherwise sound: Finnhub's
+ *      `shares` falls back to `share` (a post-transaction BALANCE) when the
+ *      signed `change` is missing, so the published quantity can be wrong by
+ *      the size of the position — an observed number in the wrong role, which
+ *      is a different defect than an absence published as an observation, and
+ *      outside what this line covers. Tracked as FIX-1143.
  *
  * Producers outside that list are simply not audited yet — not asserted honest,
  * and not asserted dishonest. The remaining sweep is tracked separately (see

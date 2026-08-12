@@ -1826,7 +1826,12 @@ it. Four classes, corrected:
    too: that adapter ships no SEC transaction code, so the sign of `shares` is
    the only thing carrying buy-vs-sell, and a row whose
    `acquisition_or_disposal` is absent or unrecognized is dropped rather than
-   defaulted to a disposal.
+   defaulted to a disposal. **What this does NOT cover:** Finnhub's `shares`
+   falls back to `share` — a post-transaction BALANCE, not the delta — when the
+   signed `change` is missing, so the quantity can be wrong by the size of the
+   position and reads unsigned. That is an observed number in the wrong role,
+   not an absence published as an observation, so it is a different defect
+   class and is tracked as FIX-1143.
 
 > **The audit is not finished.** These four classes are the producers that have
 > been swept. The other adapters under `lib/providers/` have NOT been checked
