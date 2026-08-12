@@ -127,3 +127,45 @@ describe("the provenance notice is not gated behind a tab", () => {
     expect(summary).not.toContain("<ReportProvenanceBanner");
   });
 });
+
+/**
+ * The banner needs a stored report to disclose anything about.
+ *
+ * `app/page.tsx` binds `useSession(flow.activeSessionId)`, which on a fresh
+ * install is `undefined`. `useClientData` then reads off a null snapshot and
+ * every exposed field comes back `undefined` — which the pre-fix predicate,
+ * correctly, treats as pre-fix. So a first-time user with no reports at all was
+ * told their report "was generated before a correction".
+ *
+ * The fix has one shape and one anti-shape, and both are asserted here because
+ * the anti-shape is the tempting one: gate on a report EXISTING, never on
+ * defaulting the absent stamp to present. Defaulting the stamp would silence
+ * the legacy case the notice exists for — a real stored report with no stamp
+ * must keep reading pre-fix. Under-claim on the empty state, not on the legacy
+ * one.
+ *
+ * Structural for the same reason as the block above: this package has no React
+ * render harness, and adding one is a larger change than the fix.
+ */
+describe("the provenance notice does not fire on an empty state", () => {
+  const source = readFileSync(
+    path.resolve(__dirname, "..", "components/summary/report-provenance-notice.tsx"),
+    "utf8",
+  );
+
+  it("gates the reasons on a stored report existing", () => {
+    expect(source).toContain("session.snapshot !== null");
+    // The gate has to reach the reasons — a computed-but-unread flag is the
+    // FIX-1060 drop point one more time.
+    expect(source).toMatch(/hasStoredReport && isPreDataHonestyFix\(/);
+  });
+
+  it("does NOT default the absent stamp to present", () => {
+    // The anti-shape. Any of these would make a legacy report read as current,
+    // which is the unfixable direction: nothing distinguishes those runs later.
+    expect(source).not.toMatch(/dataHonestyContractVersion\s*\?\?/);
+    expect(source).not.toMatch(
+      /isPreDataHonestyFix\([^)]*\?\?\s*DATA_HONESTY_CONTRACT_VERSION/,
+    );
+  });
+});

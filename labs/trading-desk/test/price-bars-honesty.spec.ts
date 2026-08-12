@@ -206,4 +206,93 @@ describe("fetchFinnhubCandles — misaligned parallel arrays", () => {
     expect(out.bars).toHaveLength(2);
     expect(out.bars.map((b) => b.close)).toEqual([103, 104]);
   });
+
+  it("does not date a bar to 1970 from a null timestamp", () => {
+    // Reachable on this adapter specifically, because the timestamps arrive as
+    // a parallel array and are converted with `ts * 1000` — and `null * 1000`
+    // is `0`, a finite number `new Date` reads as a valid epoch day. The bar
+    // then passed the completeness filter with a fabricated date.
+    mockCandles({
+      s: "ok",
+      t: [null, 1_746_403_200],
+      o: [100, 101],
+      h: [104, 105],
+      l: [99, 100],
+      c: [103, 104],
+      v: [1_000, 1_100],
+    });
+
+    // One bar survives, carrying the real date of the timestamp that WAS
+    // there. The dropped bar leaves no 1970 row behind.
+    return expect(fetchFinnhubCandles(INPUT)).resolves.toMatchObject({
+      bars: [{ date: "2025-05-05", close: 104 }],
+    });
+  });
+});
+
+/**
+ * Dropping bars was the right fix; this is its consequence.
+ *
+ * `get_price_history` (and `compute_indicators`, which repeats the chain) only
+ * reaches its Yahoo fallback when Finnhub THROWS. A filter that empties the
+ * array while the promise still RESOLVES therefore skipped a provider that
+ * could have answered, and published an empty payload tagged `finnhub` — a
+ * live provenance tag on a series the provider never usably delivered, which
+ * is the same "nothing marks the gap" failure the filter exists to close, one
+ * level up. Yahoo, being last in the chain, would instead resolve a
+ * `yahoo`-tagged empty series where the honest answer is the `unavailable`
+ * empty payload.
+ *
+ * So: zero surviving bars is provider no-data, and provider no-data throws.
+ */
+describe("zero surviving bars is a provider miss, not an empty answer", () => {
+  beforeAll(() => {
+    process.env.FINNHUB_API_KEY = "test-key";
+  });
+
+  it("Finnhub throws when every tuple is incomplete, so the fallback runs", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            s: "ok",
+            t: [1_746_316_800, 1_746_403_200],
+            o: [100, 101],
+            h: [104, 105],
+            l: [99, 100],
+            c: [103, 104],
+            v: [], // every bar loses its volume leg
+          }),
+          { status: 200 },
+        ),
+    );
+
+    await expect(fetchFinnhubCandles(INPUT)).rejects.toThrow(/no usable bars/);
+  });
+
+  it("Yahoo throws when every quote is incomplete, so the payload reads unavailable", async () => {
+    chartMock.mockResolvedValue({
+      quotes: [
+        { date: new Date("2026-05-05T00:00:00Z"), open: 100, close: 101 },
+        { date: new Date("2026-05-06T00:00:00Z"), open: 101, close: 103 },
+      ],
+    });
+
+    await expect(fetchYahooChart(INPUT)).rejects.toThrow(/no usable bars/);
+  });
+
+  it("a single surviving bar is still an answer", async () => {
+    // The boundary. The rule is "nothing usable came back", not "the series is
+    // shorter than we hoped" — a thin series is a reading.
+    chartMock.mockResolvedValue({
+      quotes: [
+        completeQuote("2026-05-05", 100),
+        { date: new Date("2026-05-06T00:00:00Z"), open: 101, close: 103 },
+      ],
+    });
+
+    const out = await fetchYahooChart(INPUT);
+
+    expect(out.bars).toHaveLength(1);
+  });
 });

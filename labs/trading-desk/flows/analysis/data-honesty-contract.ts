@@ -18,6 +18,16 @@
  * the tell that the promise, not the code, was wrong: a guarantee that needs a
  * new fix every round is a guarantee nobody can hold. Do not re-widen it.
  *
+ * A LIST IS A PROMISE, ENTRY BY ENTRY. The narrowing below was written from
+ * what had been corrected rather than verified line by line, and review then
+ * found one of the seven false — the Alpha Vantage insider `shares` entry,
+ * whose direction flag was still defaulted rather than measured. That is worse
+ * than the blanket claim it replaced: the list is what makes the promise
+ * checkable, so a reader has explicit permission to trust every line of it.
+ * Before adding an entry here, go to the surface and confirm no absence can
+ * still be published as an observation on that path. An entry that cannot be
+ * verified cheaply is DELISTED, not asserted.
+ *
  * THE SURFACES IT DOES COVER, named so the claim is checkable:
  *   1. the empty-payload builders for an unreachable provider
  *      (`tools/empty-payloads.ts`);
@@ -30,9 +40,15 @@
  *   5. the Yahoo + Finnhub fundamentals fields routed through `observedFinite`
  *      — market cap, price-to-sales, ROE, the margins;
  *   6. the Yahoo + Finnhub daily OHLCV bars, where an incomplete bar is
- *      DROPPED rather than zero-filled;
+ *      DROPPED rather than zero-filled — including its DATE leg, since
+ *      `new Date(null)` is a valid 1970-01-01 and once dated a bar to the
+ *      epoch; and where a response leaving NO usable bar throws as provider
+ *      no-data rather than resolving an empty series under a live tag;
  *   7. the Finnhub + Alpha Vantage insider transactions (`pricePerShare`,
- *      `shares`).
+ *      `shares`) — on the Alpha Vantage path this covers the SIGN as well as
+ *      the magnitude, because that adapter carries no SEC transaction code, so
+ *      a row with no readable `acquisition_or_disposal` is dropped rather than
+ *      reported as a sale.
  *
  * Producers outside that list are simply not audited yet — not asserted honest,
  * and not asserted dishonest. The remaining sweep is tracked separately (see

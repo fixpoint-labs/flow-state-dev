@@ -114,4 +114,48 @@ describe("observedIsoDay", () => {
     expect(observedIsoDay(new Date("2026-05-06T00:00:00Z"))).toBe("2026-05-06");
     expect(observedIsoDay(Date.UTC(2026, 4, 6))).toBe("2026-05-06");
   });
+
+  // The DATE-axis twin of the `Number("") === 0` defect above, and the reason
+  // it survived: this leaf was hardened against coercion on the numeric axis
+  // one function away, which drew the eye off its neighbour. `new Date` coerces
+  // too — `new Date(null)` and `new Date(false)` are a perfectly valid
+  // 1970-01-01 — so a quote with an absent timestamp yielded an epoch-dated
+  // bar, `isObservedBar` kept it, and a fabricated historical bar entered
+  // persisted price history and the indicator windows.
+  it.each([
+    ["null", null],
+    ["boolean false", false],
+    ["boolean true", true],
+    ["an empty string", ""],
+    ["a whitespace-only string", "   "],
+    ["an empty array", []],
+    ["an empty object", {}],
+    ["NaN", NaN],
+  ])("reads %s as unobserved, never as the epoch", (_label, value) => {
+    expect(observedIsoDay(value)).toBeNull();
+  });
+
+  it("does not date a bar to 1970 from an absent timestamp", () => {
+    // Stated as the outcome rather than the input, because the outcome is what
+    // made this dangerous: the bar passed `isObservedBar` and shipped.
+    for (const absent of [null, false, undefined]) {
+      const bar = {
+        date: observedIsoDay(absent),
+        open: 100,
+        high: 102,
+        low: 98,
+        close: 101,
+        volume: 1_000_000,
+      };
+      expect(bar.date).not.toBe("1970-01-01");
+      expect(isObservedBar(bar)).toBe(false);
+    }
+  });
+
+  it("KEEPS epoch 0 handed over as a real numeric timestamp", () => {
+    // The over-application guard, matching `observedFinite`'s finite-zero rule:
+    // the axis under test is observed vs unobserved, not zero vs non-zero. A
+    // provider that genuinely answered `0` answered.
+    expect(observedIsoDay(0)).toBe("1970-01-01");
+  });
 });

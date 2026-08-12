@@ -282,7 +282,10 @@ const TRANSCRIPT_CONTENT_CAP = 12_000;
  *
  * The AV fallback is deliberately COARSER than Finnhub: `transactionCode` is
  * left `""` (AV gives only an A/D direction flag, not the SEC code), with
- * direction carried by the sign of `shares`. Throws on any failure.
+ * direction carried by the sign of `shares`. That makes the direction flag
+ * load-bearing, so a row whose `acquisition_or_disposal` is absent or
+ * unrecognized is DROPPED rather than signed by default. Throws on any
+ * failure.
  */
 export async function fetchAlphaVantageInsiderTransactions(
   input: TickerDatedProviderInput,
@@ -312,7 +315,18 @@ export async function fetchAlphaVantageInsiderTransactions(
     .map((r) => {
       const magnitude = num(r.shares);
       if (magnitude === null) return null; // a fully unparseable row is dropped
-      const dir = r.acquisition_or_disposal === "A" ? 1 : -1;
+      // The DIRECTION is measured, never assumed (FIX-1063). This adapter
+      // leaves `transactionCode` empty by design (AV ships no SEC code), so
+      // the SIGN of `shares` is the only thing in the row that says whether an
+      // insider bought or sold. Mapping "anything that isn't `A`" to `-1`
+      // therefore published an absent or unrecognized direction flag as a
+      // reported SALE — a fabricated observation of the single most
+      // consequential field here, under a live `alphavantage` tag.
+      // A row with no readable direction offers no honest partial reading, so
+      // it is dropped, exactly as a row with no share count already is.
+      const flag = r.acquisition_or_disposal?.trim().toUpperCase();
+      if (flag !== "A" && flag !== "D") return null;
+      const dir = flag === "A" ? 1 : -1;
       const secType = (r.security_type ?? "").toLowerCase();
       const isDerivative = secType.includes("deriv") && !secType.includes("non-deriv");
       return {

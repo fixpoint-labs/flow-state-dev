@@ -34,7 +34,17 @@ desk used to fill those in as zero — a day the stock supposedly traded down to
 nothing, on no volume, feeding the price history and every technical indicator
 built on it. A day the desk cannot read completely is now left out of the series
 rather than invented, and a genuine zero-volume session (a halt, or a name
-nobody traded) is kept, because that one is a real reading.
+nobody traded) is kept, because that one is a real reading. A day whose date
+itself is missing is left out too — it used to be filed under 1 January 1970 and
+kept. And when a provider's answer leaves no readable day at all, the desk now
+treats that as the provider having no data and asks the next one, instead of
+publishing an empty chart labelled with that provider's name.
+
+Insider filings get the same treatment on direction, not just on price. These
+filings say whether an insider acquired or disposed of shares, and a filing that
+didn't say was recorded as a disposal — a sale nobody reported. Where the
+direction can't be read, the filing is now left out rather than counted against
+the name.
 
 A figure the desk genuinely measured at zero is untouched. A company with a real
 0% operating margin, a genuine zero return on equity, or no debt keeps its zero;
@@ -51,8 +61,10 @@ in them separates a missing zero from a measured one. They are marked instead:
 new runs record which round of corrections they were produced under, and a
 report without that marker now says on its face that it predates the fix. That
 warning sits above the report's tabs, so it is visible whether the reader is
-looking at the summary or at an individual analyst's memo. The marker is a
-version stamp for spotting old reports — it is not a claim that every number in
-a current report was measured.
+looking at the summary or at an individual analyst's memo, and it appears only
+once there is a stored report to say it about — a first-time user with no
+reports yet is not warned about one. The marker is a version stamp for spotting
+old reports — it is not a claim that every number in a current report was
+measured.
 
 Internal-only — no publishable package surface changes.

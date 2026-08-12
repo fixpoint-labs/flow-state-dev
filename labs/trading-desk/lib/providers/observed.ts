@@ -98,8 +98,28 @@ export function isObservedBar(bar: ObservedBarCandidate): bar is ObservedBar {
  * than throwing: `toISOString()` on an Invalid Date throws a `RangeError`, and
  * one malformed timestamp taking down the whole price fetch would turn a
  * partial answer into a total provider outage.
+ *
+ * ONLY A REAL DATE COUNTS AS AN OBSERVATION — the same rule `observedFinite`
+ * applies one axis over, and for the same reason. `new Date` is a coercing
+ * constructor: `new Date(null)` and `new Date(false)` are both a perfectly
+ * VALID 1970-01-01, so an absent timestamp handed straight to it produced a
+ * bar dated to the epoch that `isObservedBar` then accepted as complete — a
+ * fabricated observation reaching persisted price history and the indicator
+ * windows under a live provider tag. So the input must be an actual `Date`, a
+ * finite numeric timestamp, or a non-blank string; everything else reads
+ * unobserved. (`""` and `[]` already parsed to an Invalid Date and were
+ * rejected; `null` and `false` were the two that got through.)
  */
 export function observedIsoDay(raw: unknown): string | null {
-  const d = raw instanceof Date ? raw : new Date(raw as string | number);
-  return Number.isFinite(d.getTime()) ? d.toISOString().slice(0, 10) : null;
+  const d =
+    raw instanceof Date
+      ? raw
+      : typeof raw === "number" && Number.isFinite(raw)
+        ? new Date(raw)
+        : typeof raw === "string" && raw.trim() !== ""
+          ? new Date(raw)
+          : null;
+  return d !== null && Number.isFinite(d.getTime())
+    ? d.toISOString().slice(0, 10)
+    : null;
 }

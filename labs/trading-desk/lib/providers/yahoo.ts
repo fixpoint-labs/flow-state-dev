@@ -125,6 +125,15 @@ export async function fetchYahooChart(
       volume: observedFinite(q.volume),
     }))
     .filter(isObservedBar);
+  // Same rule as the Finnhub adapter: the drop filter can empty the series, and
+  // an empty series must not RESOLVE. Yahoo is the last provider in the price
+  // chain, so a resolved `bars: []` would publish an empty payload tagged
+  // `yahoo` instead of falling through to the `unavailable` empty payload —
+  // asserting a live provider answered with a real, empty series. No usable bar
+  // is provider no-data, so it throws and the caller's `catch` handles it.
+  if (bars.length === 0) {
+    throw new Error(`Yahoo chart returned no usable bars for ${input.ticker}`);
+  }
   return {
     source: "yahoo" as const,
     ticker: input.ticker,

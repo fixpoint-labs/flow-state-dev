@@ -1808,13 +1808,25 @@ it. Four classes, corrected:
    VWMA) needs the whole tuple — so a chart response carrying a bar with legs
    missing yields no honest partial reading, and `isObservedBar` rejects it.
    Zero-filling it published a zero low and a zero-volume day (and, on Finnhub's
-   parallel arrays, a zero CLOSE) under a live provider tag.
+   parallel arrays, a zero CLOSE) under a live provider tag. The DATE leg is
+   coerced by the same class of trap one axis over: `new Date(null)` and
+   `new Date(false)` are a valid 1970-01-01, so `observedIsoDay` takes only a
+   real `Date`, a finite number, or a non-blank string.
+   **Zero surviving bars is a provider MISS, not an empty answer.** The drop
+   filter can empty the series, and the price chain only advances on a THROW —
+   so a resolved `bars: []` skipped a fallback that could have answered and
+   published an empty payload under a live `finnhub` / `yahoo` tag. Both
+   adapters throw instead.
    **Insider transactions are on this path too** (`fetchFinnhubInsiderTransactions`,
    `fetchAlphaVantageInsiderTransactions`): an omitted `transactionPrice` /
    `share_price` reads `null`, because a `0` here legitimately means a non-cash
    transaction (grant, gift, tax withholding) and the two were the same value
    until FIX-1063. A row with no share count at all is dropped rather than
-   published as zero shares.
+   published as zero shares. On the Alpha Vantage path the DIRECTION is covered
+   too: that adapter ships no SEC transaction code, so the sign of `shares` is
+   the only thing carrying buy-vs-sell, and a row whose
+   `acquisition_or_disposal` is absent or unrecognized is dropped rather than
+   defaulted to a disposal.
 
 > **The audit is not finished.** These four classes are the producers that have
 > been swept. The other adapters under `lib/providers/` have NOT been checked

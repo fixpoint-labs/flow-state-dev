@@ -389,6 +389,56 @@ describe("fetchAlphaVantageInsiderTransactions", () => {
     expect(out.transactions[1]!.pricePerShare).toBe(0);
   });
 
+  it("DROPS a row whose direction flag is absent, rather than reporting a sale", async () => {
+    // The direction is the whole reading here. This adapter leaves
+    // `transactionCode` empty by design (AV ships no SEC code), so the SIGN of
+    // `shares` is the only thing that says buy or sell — and `=== "A" ? 1 : -1`
+    // turned "we don't know" into a reported DISPOSAL of 120,000 shares under a
+    // live `alphavantage` tag. An unknown direction has no honest partial
+    // reading to publish, exactly as a row with no share count doesn't.
+    mockFetchOnce({
+      data: [
+        { ...AV_ROWS.data[0], acquisition_or_disposal: undefined },
+        AV_ROWS.data[1], // a real "A" row survives alongside it
+      ],
+    });
+    const out = await fetchAlphaVantageInsiderTransactions({
+      ticker: "NVDA",
+      date: "2026-05-06",
+    });
+    expect(out.transactions).toHaveLength(1);
+    expect(out.transactions[0]!.shares).toBe(5000);
+  });
+
+  it.each([["an empty string", ""], ["AV's None marker", "None"], ["a junk code", "X"]])(
+    "drops a row whose direction flag is %s",
+    async (_label, flag) => {
+      mockFetchOnce({ data: [{ ...AV_ROWS.data[0], acquisition_or_disposal: flag }] });
+      const out = await fetchAlphaVantageInsiderTransactions({
+        ticker: "NVDA",
+        date: "2026-05-06",
+      });
+      expect(out.transactions).toHaveLength(0);
+    },
+  );
+
+  it("still reads a MEASURED direction, including in lower case", async () => {
+    // The over-application guard. Dropping unknowns must not start dropping
+    // rows the provider actually answered — that would delete evidence the desk
+    // gathered, the mirror defect.
+    mockFetchOnce({
+      data: [
+        { ...AV_ROWS.data[0], acquisition_or_disposal: "d" },
+        { ...AV_ROWS.data[1], acquisition_or_disposal: " A " },
+      ],
+    });
+    const out = await fetchAlphaVantageInsiderTransactions({
+      ticker: "NVDA",
+      date: "2026-05-06",
+    });
+    expect(out.transactions.map((t) => t.shares)).toEqual([-120000, 5000]);
+  });
+
   it("drops rows outside the 90-day window (client-side upper/lower bound)", async () => {
     mockFetchOnce({
       data: [

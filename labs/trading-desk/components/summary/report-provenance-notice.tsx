@@ -129,16 +129,29 @@ export function ReportProvenanceBanner({
     session: ["dataHonestyContractVersion"],
   });
 
+  // A disclosure about a stored report needs a stored report to exist. On a
+  // fresh install nothing is bound (`page.tsx` calls `useSession(undefined)`),
+  // so the snapshot is null and every exposed field reads `undefined` —
+  // indistinguishable, at the stamp alone, from a legacy report whose stamp is
+  // absent. That told a first-time user their report was generated before a
+  // correction before they had generated anything.
+  //
+  // The gate is the SNAPSHOT, never the stamp. Treating an absent stamp as
+  // present would silence the legacy case this notice exists for, so the
+  // under-claiming default is untouched: on a real stored report an absent
+  // stamp still reads pre-fix. Only the empty state renders nothing, which is
+  // the direction to be wrong in — under-claim on the empty state, never on
+  // the legacy one.
+  const hasStoredReport = session.snapshot !== null;
+
   // Which data-honesty fixes this stored report predates. One list feeding one
-  // marker, so a later fix adds an entry rather than a second banner. A report
-  // whose stamp is absent — a legacy session, or one the client projection
-  // dropped — reads as pre-fix, the under-claiming direction.
+  // marker, so a later fix adds an entry rather than a second banner.
   const reasons = useMemo(
     () =>
-      isPreDataHonestyFix(stamp?.dataHonestyContractVersion)
+      hasStoredReport && isPreDataHonestyFix(stamp?.dataHonestyContractVersion)
         ? [PRE_DATA_HONESTY_FIX_REASON]
         : [],
-    [stamp?.dataHonestyContractVersion],
+    [hasStoredReport, stamp?.dataHonestyContractVersion],
   );
 
   return <ReportProvenanceNotice reasons={reasons} />;

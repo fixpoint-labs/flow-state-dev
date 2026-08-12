@@ -110,15 +110,34 @@ export async function fetchFinnhubCandles(
   // `trailingReturn`. An incomplete bar is dropped rather than zero-filled,
   // matching the Yahoo adapter through the same shared guard.
   const bars = data.t
-    .map((ts, i) => ({
-      date: observedIsoDay(ts * 1000),
-      open: observedFinite(data.o?.[i]),
-      high: observedFinite(data.h?.[i]),
-      low: observedFinite(data.l?.[i]),
-      close: observedFinite(data.c?.[i]),
-      volume: observedFinite(data.v?.[i]),
-    }))
+    .map((ts, i) => {
+      // Guard the timestamp BEFORE the ms conversion: `null * 1000` is `0`, a
+      // perfectly finite number that `new Date` reads as a valid 1970-01-01.
+      // A null element in Finnhub's `t` array would otherwise date a bar to
+      // the epoch and pass `isObservedBar` — the date-axis twin of the
+      // fabricated zero this whole filter exists to stop.
+      const tsSeconds = observedFinite(ts);
+      return {
+        date: tsSeconds === null ? null : observedIsoDay(tsSeconds * 1000),
+        open: observedFinite(data.o?.[i]),
+        high: observedFinite(data.h?.[i]),
+        low: observedFinite(data.l?.[i]),
+        close: observedFinite(data.c?.[i]),
+        volume: observedFinite(data.v?.[i]),
+      };
+    })
     .filter(isObservedBar);
+  // Dropping incomplete bars can empty the series, and an empty series must not
+  // RESOLVE: `get_price_history` only reaches its Yahoo fallback when this
+  // throws, so returning `bars: []` skipped a provider that could have answered
+  // and published an empty payload tagged `finnhub` — a live provenance tag on
+  // a series the provider never usably delivered. No usable bar is provider
+  // no-data, so it throws like every other Finnhub miss.
+  if (bars.length === 0) {
+    throw new Error(
+      `Finnhub /stock/candle returned no usable bars for ${input.ticker}`,
+    );
+  }
   return {
     source: "finnhub" as const,
     ticker: input.ticker,
