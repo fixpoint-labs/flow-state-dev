@@ -34,7 +34,8 @@ A `Task` is the unified work-unit record: `id`, `goal`, `status`, `deps`, `lease
 ```
 pending ─┬─→ in_progress ─┬─→ completed
          │                ├─→ errored
-         │                ├─→ pending           (claim, after a lease runs out)
+         │                ├─→ in_progress       (claim, after a lease runs out)
+         │                ├─→ pending           (reclaim)
          │                ├─→ cancelled
          │                └─→ awaiting_review ─┬─→ completed
          │                                     ├─→ errored

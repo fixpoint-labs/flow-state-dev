@@ -73,7 +73,8 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 - Locality is decided by the effective dispatcher (`isInProcessDispatcher`), **not** by `worker.mode`
 - `worker-only` constructs no dispatcher → detached work runs **in-process and is not durable**
 - `dispose()` drains in-process detached children only; queued work is never waited for
-- Shutdown cancels, it never settles — the lease recycles the task, a sweep marks the request `interrupted`
+- Shutdown cancels rather than settling, with one exception today: a child still queued behind the concurrency gate is written `aborted` before it ever runs (FIX-1121)
+- Recovery is by re-claim, not by lease expiry alone — the next claim takes a lapsed task back as a fresh attempt and the row stays `in_progress` (`errored` only past the abandonment allowance); a sweep marks the request `interrupted`
 
 → [Detached Work](../architecture/detached-work.md)
 
