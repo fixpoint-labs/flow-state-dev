@@ -635,10 +635,21 @@ that is the one exception to a closed spec branch being a frozen record, and it 
 PR closes again.
 
 Re-opening does not, on its own, re-open the **gate**. The spec is approved; a POC informs, it
-never re-decides. But if what it shows *changes the direction*, that fold needs fresh sign-off
-— and then the PR **stays open through the re-approval** rather than closing first. Closing on
-a direction change would leave implementation running against a superseded approval with no
-open gate anywhere, which is precisely what the settlement deferral above exists to prevent.
+never re-decides. But if what it shows *changes the direction*, that fold needs fresh sign-off,
+and **which gate it goes to depends on where the issue already is** — keep the PR open for the
+round either way, so the fold has a live thread:
+
+- **Before implementation starts**, the spec-approval gate is still live and the fold is
+  re-approved through it as normal.
+- **After implementation starts**, it goes up as a **blocker**, exactly like a late `REFUTED`
+  settlement or a challenger-surfaced spec blind spot. This is not a preference: a row that
+  already has an impl PR **cannot** regress to `AWAITING_SPEC_APPROVAL` (`epic-wake.js`
+  refuses it, and only pre-approval rows are offered a spec gate), so a spec gate re-raised
+  there is one nothing will ever surface. The blocker parks the row and puts the fork to the
+  human, which is the gate that exists at that point.
+
+Closing the PR and assuming a re-approval will find its own way back is the failure mode both
+branches exist to prevent — the same one the settlement deferral above guards.
 
 **Two things a re-open is not.** It is not a way to resume spec review — feedback arriving on a
 closed spec PR is carried as implementer notes, never a new round. And it is not a route to

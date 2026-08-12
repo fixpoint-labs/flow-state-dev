@@ -225,11 +225,21 @@ on the same surface:
 1. Check out the retained branch (`git fetch origin spec/<ISSUE-ID> && git checkout -B spec/<ISSUE-ID> origin/spec/<ISSUE-ID>` — never re-base it on `main`), commit the POC under `spec-poc/<ISSUE-ID>-<slug>/`, push.
 2. **Re-open the closed spec PR** (`gh pr reopen <spec-pr>`) with a comment saying what the POC answers and how to run it. Same PR, same review history, same reviewers.
 3. Record what it showed in §7, on the branch **and** mirrored to Linear.
-4. **Then close it again, unmerged — unless the POC changed the direction.** If it did, the
-   fold needs a fresh sign-off, so the PR **stays open through that re-approval** and closes
-   only once the gate passes again. Closing first would leave implementation running on a
-   superseded approval with no open gate anywhere — the same failure the settlement deferral
-   exists to prevent, and it takes the same answer.
+4. **Then close it again, unmerged — unless the POC changed the direction.** If it did, keep
+   the PR open for that round so the fold has a live thread, and route the re-approval by
+   **where the issue actually is**:
+
+   - **Implementation hasn't started** (the row is still awaiting spec approval): the ordinary
+     spec gate is still live. Fold, and it is re-approved through that gate as normal.
+   - **Implementation has started** (there is an impl PR): **escalate it as a blocker** — the
+     same path a late `REFUTED` settlement and a challenger-surfaced spec blind spot take. Do
+     **not** expect the spec-approval gate to come back: the lifecycle deliberately refuses to
+     regress a row that already has an impl PR, so a spec gate re-raised there is one nothing
+     will surface. A blocker parks the row and puts the fork to the human, which is the gate
+     that actually exists at this point.
+
+   Either way the fold reaches a human before the superseded direction is built on. What must
+   not happen is closing the PR and assuming the re-approval will find its own way back.
 
 **A re-opened spec PR is the one exception to the branch freeze.** A closed spec branch is
 otherwise a frozen record and post-approval edits go to Linear (BP-037); while the PR is
