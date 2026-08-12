@@ -74,7 +74,7 @@ export interface <Name>Config<
 > {
   /** Block instance name. */
   name: string;
-  /** Model to use. Defaults to "preset/fast". */
+  /** Model to use. Defaults to "openai/gpt-5.4-mini". */
   model?: GeneratorConfig["model"];
   /** Override the output schema. */
   outputSchema?: TOutputSchema;
@@ -91,7 +91,7 @@ export function <name><
 
   return generator({
     name: config.name,
-    model: config.model ?? "preset/fast",
+    model: config.model ?? "openai/gpt-5.4-mini",
     outputSchema,
     prompt: [
       "You are a <role> assistant.",
@@ -227,7 +227,7 @@ const agentNoTools = generator({
 - **BP-012**: If the block only mutates state, use `.tap()`. No `outputSchema`, no `return input`.
 - **BP-014**: Never `return input` from a handler. Return a transformation or use `.tap()`.
 - **BP-007**: File header comment required. Document all exports.
-- All generators default to `"preset/fast"` model unless the task requires stronger reasoning.
+- All generators default to a direct `"provider/model"` string such as `"openai/gpt-5.4-mini"` unless the task requires stronger reasoning.
 - Schemas belong with their blocks — define `inputSchema` and `outputSchema` in the same file.
 - Trust the type system. Don't re-validate typed inputs.
 

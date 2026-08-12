@@ -28,7 +28,7 @@ export OPENAI_API_KEY=sk-...
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-The framework auto-detects whichever providers it finds keys for. The example below uses `model: "openai/gpt-5.4-mini"`, a `provider/model` string naming one model directly. If you set an Anthropic key instead, use `anthropic/claude-haiku-4.5`. For fallback across several providers, gateways, and named routing groups, see [Setting Up Models](/docs/getting-started/setting-up-models).
+The framework auto-detects whichever providers it finds keys for. The example below uses `model: "openai/gpt-5.4-mini"`, a `provider/model` string naming one model directly. If you set an Anthropic key instead, use `anthropic/claude-haiku-4-5`. For fallback across several providers, gateways, and named routing groups, see [Setting Up Models](/docs/getting-started/setting-up-models).
 
 ## 3. Define a flow
 

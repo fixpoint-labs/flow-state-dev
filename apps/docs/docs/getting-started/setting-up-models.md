@@ -45,7 +45,7 @@ The quick-start uses `model: "openai/gpt-5.4-mini"`. That's the whole configurat
 ```ts
 const chat = generator({
   name: "chat",
-  model: "anthropic/claude-sonnet-4.6",
+  model: "anthropic/claude-sonnet-4-6",
   prompt: "...",
 });
 ```
@@ -69,8 +69,8 @@ const router = createFlowApiRouter({
   modelResolver: createModelResolver({
     defaultModel: "openai/gpt-5.4-mini",
     intents: {
-      utility: ["anthropic/claude-haiku-4.5", "openai/gpt-5.4-mini"],
-      chat: ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
+      utility: ["anthropic/claude-haiku-4-5", "openai/gpt-5.4-mini"],
+      chat: ["anthropic/claude-sonnet-4-6", "openai/gpt-5.5"],
     },
   }),
 });

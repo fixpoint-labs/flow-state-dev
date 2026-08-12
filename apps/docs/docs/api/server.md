@@ -187,7 +187,7 @@ const resolver = createModelResolver();
 const resolver = createModelResolver({
   keys: { openai: "sk-..." },
   defaultModel: "openai/gpt-5.4-mini",
-  intents: { utility: ["openai/gpt-5.4-mini", "anthropic/claude-haiku-4.5"] },
+  intents: { utility: ["openai/gpt-5.4-mini", "anthropic/claude-haiku-4-5"] },
   retryPolicy: { maxAttemptsPerModel: 3 },
 });
 ```

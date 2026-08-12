@@ -53,8 +53,13 @@ const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 /**
  * Documentation and example surfaces. Package `src`/`test` are excluded on
  * purpose — see the header. Package READMEs are in, because they are docs.
+ *
+ * `.agents` is in for the same reason `validate-spec-folder.mjs` scans it, only
+ * more so: a skill is a template an agent copies from, so a `preset/*` left in
+ * one doesn't just document the removed syntax, it keeps writing it into new
+ * blocks. That is the regression vector, not a stale page.
  */
-const SCAN_ROOTS = ["apps/docs", "docs", "examples", "labs"];
+const SCAN_ROOTS = ["apps/docs", "docs", "examples", "labs", ".agents"];
 
 /** Root-level docs and package READMEs, which no tree above reaches. */
 const SCAN_FILES = ["README.md"];
@@ -145,30 +150,62 @@ function collectFiles() {
   return files;
 }
 
-/** Scan one file, returning `{ file, line, text, rule }` for each violation. */
-function scanFile(abs) {
-  const rel = relative(ROOT, abs);
-  const lines = readFileSync(abs, "utf8").split("\n");
+/**
+ * Scan in-memory sources, returning `{ file, line, text, rule }` per violation.
+ *
+ * Pure and filesystem-free so the rules — especially the stateful
+ * `RESOLVER_WINDOW`, which no regex export can pin — are testable from fixture
+ * text rather than by waiting for a red CI run on someone's PR.
+ */
+export function scanSources(sources) {
   const hits = [];
 
-  let resolverWindow = 0;
+  for (const { path, text: body } of sources) {
+    let resolverWindow = 0;
 
-  lines.forEach((text, index) => {
-    if (QUOTED_PRESET.test(text)) {
-      hits.push({ file: rel, line: index + 1, text: text.trim(), rule: "preset-string" });
-    }
+    body.split("\n").forEach((text, index) => {
+      if (QUOTED_PRESET.test(text)) {
+        hits.push({ file: path, line: index + 1, text: text.trim(), rule: "preset-string" });
+      }
 
-    if (RESOLVER_CALL.test(text)) resolverWindow = RESOLVER_WINDOW;
+      if (RESOLVER_CALL.test(text)) resolverWindow = RESOLVER_WINDOW;
 
-    if (resolverWindow > 0 && PRESETS_OPTION.test(text)) {
-      hits.push({ file: rel, line: index + 1, text: text.trim(), rule: "presets-option" });
-    }
+      if (resolverWindow > 0 && PRESETS_OPTION.test(text)) {
+        hits.push({ file: path, line: index + 1, text: text.trim(), rule: "presets-option" });
+      }
 
-    if (resolverWindow > 0) resolverWindow -= 1;
-  });
+      if (resolverWindow > 0) resolverWindow -= 1;
+    });
+  }
 
   return hits;
 }
+
+/** Read one file off disk and scan it. */
+function scanFile(abs) {
+  return scanSources([{ path: relative(ROOT, abs), text: readFileSync(abs, "utf8") }]);
+}
+
+/** Per-rule report copy: what was found, and what to do about it. */
+const RULES = [
+  {
+    rule: "preset-string",
+    heading: (n) => `${n} quoted preset/* model string(s)`,
+    fix:
+      `  preset/* strings throw at runtime. Use a direct "provider/model"` +
+      `\n  string, or "intent/<name>" on a resolver that declares that intent` +
+      `\n  (an intent/* string with no matching intent and no defaultModel` +
+      `\n  throws too). Naming preset/* as a rejected value stays fine —` +
+      `\n  write it in backticks rather than quotes.`,
+  },
+  {
+    rule: "presets-option",
+    heading: (n) => `${n} use(s) of the removed 'presets' resolver option`,
+    fix:
+      `  createModelResolver rejects 'presets' by name. Declare 'intents'` +
+      `\n  plus the required 'defaultModel' instead.`,
+  },
+];
 
 function main() {
   const hits = collectFiles().flatMap(scanFile);
@@ -178,28 +215,13 @@ function main() {
     return;
   }
 
-  const presetStrings = hits.filter((h) => h.rule === "preset-string");
-  const presetsOptions = hits.filter((h) => h.rule === "presets-option");
+  for (const { rule, heading, fix } of RULES) {
+    const matched = hits.filter((h) => h.rule === rule);
+    if (matched.length === 0) continue;
 
-  if (presetStrings.length > 0) {
-    console.error(`\n✗ ${presetStrings.length} quoted preset/* model string(s):\n`);
-    for (const hit of presetStrings) console.error(`    ${hit.file}:${hit.line}  →  ${hit.text}`);
-    console.error(
-      `\n  preset/* strings throw at runtime. Use a direct "provider/model"` +
-        `\n  string, or "intent/<name>" on a resolver that declares that intent` +
-        `\n  (an intent/* string with no matching intent and no defaultModel` +
-        `\n  throws too). Naming preset/* as a rejected value stays fine —` +
-        `\n  write it in backticks rather than quotes.\n`,
-    );
-  }
-
-  if (presetsOptions.length > 0) {
-    console.error(`\n✗ ${presetsOptions.length} use(s) of the removed 'presets' resolver option:\n`);
-    for (const hit of presetsOptions) console.error(`    ${hit.file}:${hit.line}  →  ${hit.text}`);
-    console.error(
-      `\n  createModelResolver rejects 'presets' by name. Declare 'intents'` +
-        `\n  plus the required 'defaultModel' instead.\n`,
-    );
+    console.error(`\n✗ ${heading(matched.length)}:\n`);
+    for (const hit of matched) console.error(`    ${hit.file}:${hit.line}  →  ${hit.text}`);
+    console.error(`\n${fix}\n`);
   }
 
   process.exit(1);
@@ -208,10 +230,7 @@ function main() {
 /** The scanned surface, exported so a test can assert it still reaches the docs. */
 export const scanRoots = SCAN_ROOTS;
 export const scanFiles = SCAN_FILES;
-
-/** The rules, exported so a test can assert each still matches its shape. */
-export const quotedPresetPattern = QUOTED_PRESET;
-export const presetsOptionPattern = PRESETS_OPTION;
+export const resolverWindow = RESOLVER_WINDOW;
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();

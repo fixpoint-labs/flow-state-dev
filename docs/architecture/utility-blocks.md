@@ -782,7 +782,7 @@ Represents the classification result produced by the intentClassifier.
 
 ## Key properties
 
-- Generator-based utilities accept a `model` override. Most default to `"intent/utility"`; `decomposer` defaults to `"openai/gpt-5.4-mini"`.
+- Generator-based utilities accept a `model` override. Most default to `"intent/utility"`; `decomposer` defaults to `"openai/gpt-5.4-mini"` and `sessionTitleGenerator` to `"openai/gpt-5-nano"`.
 - All utilities export their default output schema as a named Zod object (e.g., `summarizerOutputSchema`) for reference or reuse.
 - The `outputSchema` parameter on every utility accepts a generic type, providing full type inference on the block's output.
 - Combiner is handler-based — it runs deterministic logic with no LLM call.

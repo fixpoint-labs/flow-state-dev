@@ -1,0 +1,100 @@
+import { describe, expect, it } from "vitest";
+// @ts-expect-error — root check script, plain .mjs with no type declarations.
+import {
+  resolverWindow,
+  scanRoots,
+  scanSources,
+} from "../../../scripts/validate-model-strings.mjs";
+
+type Hit = { file: string; line: number; text: string; rule: string };
+
+const scan = (text: string, path = "apps/docs/docs/fixture.md"): Hit[] =>
+  (scanSources as (s: Array<{ path: string; text: string }>) => Hit[])([{ path, text }]);
+
+const rules = (text: string): string[] => scan(text).map((h) => h.rule);
+
+/**
+ * The guard's value is entirely in where it draws the line: a quoted `preset/*`
+ * is a reader being told to call removed syntax, while the same string in
+ * backticks is the migration guidance correctly naming what was removed. Fire
+ * on the first and stay silent on the second, or the guard either misses the
+ * regression or deletes the docs that explain it.
+ */
+describe("preset/* model strings — quoted is a call, backticked is prose", () => {
+  it("flags a quoted preset string, the shape that throws at runtime", () => {
+    expect(rules(`model: "preset/small",`)).toEqual(["preset-string"]);
+  });
+
+  it("flags single quotes too — the same call in a different dialect", () => {
+    expect(rules(`model: 'preset/fast',`)).toEqual(["preset-string"]);
+  });
+
+  it("ignores a backticked preset string, how the migration table names it", () => {
+    expect(rules("`preset/fast` and `preset/small` now map to `intent/utility`.")).toEqual([]);
+  });
+
+  it("ignores a bare preset string in migration prose", () => {
+    expect(rules("Any preset/* string throws at construction time.")).toEqual([]);
+  });
+
+  it("reports the line, so the failure names where to look", () => {
+    expect(scan(`intro\nmore\nmodel: "preset/large",`)[0]?.line).toBe(3);
+  });
+});
+
+/**
+ * The second rule exists because a scan for `preset/` alone provably missed
+ * `api/server.md`, which taught the removed `presets:` option and contains no
+ * such substring. It is windowed to a resolver construction so an unrelated
+ * `presets:` key in some other object is not swept up.
+ */
+describe("the removed 'presets' resolver option", () => {
+  it("flags presets: inside a createModelResolver call", () => {
+    expect(
+      rules(`const r = createModelResolver({\n  presets: { fast: { models: [] } },\n});`),
+    ).toEqual(["presets-option"]);
+  });
+
+  it("ignores a presets: key with no resolver construction near it", () => {
+    expect(rules(`const uiConfig = {\n  presets: { compact: true },\n};`)).toEqual([]);
+  });
+
+  it("ignores intents:, the option that replaced it", () => {
+    expect(
+      rules(`const r = createModelResolver({\n  intents: { utility: ["openai/gpt-5.4-mini"] },\n});`),
+    ).toEqual([]);
+  });
+
+  it("stops looking once the window closes, so a later block is not swept up", () => {
+    const farAway = [
+      "const r = createModelResolver({ defaultModel: 'openai/gpt-5.4-mini' });",
+      ...Array.from({ length: resolverWindow as number }, () => "// filler"),
+      "const theme = { presets: { compact: true } };",
+    ].join("\n");
+
+    expect(rules(farAway)).toEqual([]);
+  });
+
+  it("still catches presets: a few lines below the call, where it really sits", () => {
+    expect(
+      rules(
+        `const r = createModelResolver({\n  keys: { openai: KEY },\n  retryPolicy: {},\n  presets: { fast: {} },\n});`,
+      ),
+    ).toEqual(["presets-option"]);
+  });
+});
+
+describe("scan surface", () => {
+  /**
+   * A skill is a template an agent copies from, so a `preset/*` left in one
+   * keeps writing the removed syntax into new blocks. That makes `.agents` a
+   * source of the regression, not just a stale page — the reason it is scanned.
+   */
+  it("covers the published docs and the agent skills that generate code", () => {
+    expect(scanRoots).toEqual(expect.arrayContaining(["apps/docs", ".agents"]));
+  });
+
+  it("attributes a hit to the file it came from", () => {
+    expect(scan(`model: "preset/fast"`, "labs/demo/agent.ts")[0]?.file).toBe("labs/demo/agent.ts");
+  });
+});

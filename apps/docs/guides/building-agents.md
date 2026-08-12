@@ -146,7 +146,7 @@ const createNote = handler({
 
 const agent = generator({
   name: "research-agent",
-  model: "anthropic/claude-sonnet-4.6",
+  model: "anthropic/claude-sonnet-4-6",
   prompt: "You are a research assistant. Search documentation and save notes as needed.",
   inputSchema: z.object({ message: z.string() }),
   history: true,
@@ -175,7 +175,7 @@ const planSchema = z.object({
 // A planner that decides what to do
 const planner = generator({
   name: "planner",
-  model: "anthropic/claude-sonnet-4.6",
+  model: "anthropic/claude-sonnet-4-6",
   prompt: "Break the user's request into concrete steps. Return a JSON plan.",
   inputSchema: z.object({ message: z.string() }),
   outputSchema: planSchema,
@@ -195,7 +195,7 @@ const worker = generator({
 // A synthesizer that combines results
 const synthesizer = generator({
   name: "synthesizer",
-  model: "anthropic/claude-sonnet-4.6",
+  model: "anthropic/claude-sonnet-4-6",
   prompt: "Combine the results from all completed tasks into a coherent response.",
   inputSchema: z.object({ results: z.array(z.unknown()) }),
   user: (input) => JSON.stringify(input.results),
@@ -278,7 +278,7 @@ const deepResearch = sequencer({ name: "deep-research" })
 // The framework runs the full pipeline and returns the result.
 const agent = generator({
   name: "agent",
-  model: "anthropic/claude-sonnet-4.6",
+  model: "anthropic/claude-sonnet-4-6",
   prompt: "You are a research assistant.",
   tools: [deepResearch, bookmark, analyzeData],
   // ...
@@ -292,7 +292,7 @@ The model doesn't know `deep-research` is a pipeline. It sees a tool with an inp
 ```ts
 const codeReviewer = generator({
   name: "code-reviewer",
-  model: "anthropic/claude-sonnet-4.6",
+  model: "anthropic/claude-sonnet-4-6",
   prompt: "You are a code review specialist. Analyze the code for bugs and style issues.",
   inputSchema: z.object({ code: z.string(), language: z.string() }),
   outputSchema: z.object({ issues: z.array(z.string()), score: z.number() }),
@@ -300,7 +300,7 @@ const codeReviewer = generator({
 
 const securityAuditor = generator({
   name: "security-auditor",
-  model: "anthropic/claude-sonnet-4.6",
+  model: "anthropic/claude-sonnet-4-6",
   prompt: "You are a security specialist. Check for vulnerabilities.",
   inputSchema: z.object({ code: z.string(), language: z.string() }),
   outputSchema: z.object({ vulnerabilities: z.array(z.string()), severity: z.string() }),
@@ -309,7 +309,7 @@ const securityAuditor = generator({
 // The coordinator uses specialist generators as tools
 const coordinator = generator({
   name: "coordinator",
-  model: "anthropic/claude-sonnet-4.6",
+  model: "anthropic/claude-sonnet-4-6",
   prompt: "You coordinate code analysis. Delegate to specialists as needed.",
   tools: [codeReviewer, securityAuditor],
   // ...
