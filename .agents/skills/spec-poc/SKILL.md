@@ -241,9 +241,13 @@ on the same surface:
      act. (A comment- or review-based approval goes stale on the push and does re-gate, but
      you must not depend on which channel was used.)
 
-   So the ask goes up either way, naming that the standing approval predates the change. The
-   owner clears it by removing and re-applying the label, or by approving the new head. **You
-   never touch the label yourself** — writing it would manufacture the sign-off it reports.
+   So the ask goes up either way, naming that the standing approval predates the change — and
+   it is cleared **the way blockers are cleared: the coordinator surfaces it and records the
+   answer.** Don't tell the owner to approve the new head or re-apply the label and wait: a row
+   parked on a blocker is carried forward *without a PR scan* (`epic-wake.js` → `noScanNeeded`),
+   so nothing would ever observe that approval and the issue would sit parked. A label the owner
+   chooses to re-apply is a fine record; it is not what unparks the row. **You never write that
+   label yourself** — it would manufacture the sign-off it reports.
 
 **A re-opened spec PR is the one exception to the branch freeze.** A closed spec branch is
 otherwise a frozen record and post-approval edits go to Linear (BP-037); while the PR is

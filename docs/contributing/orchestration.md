@@ -662,8 +662,10 @@ Neither phase can be trusted to re-gate on its own, for two different reasons:
   approval does go stale on the push, but the fold must not depend on which channel was used.
 
 The blocker parks the issue and puts the fork to the human either way, which is what "fresh
-sign-off" has to mean here. The owner clears it by removing and re-applying the label or by
-approving the new head; **no agent writes that label.** Closing the PR and assuming a
+sign-off" has to mean here, and it clears the way any blocker does — the coordinator surfaces
+it and records the answer. Not by an approval left on the PR: a row parked on a blocker is
+carried forward without a PR scan, so nothing would observe one. **No agent writes that
+label.** Closing the PR and assuming a
 re-approval finds its own way back is the failure mode this prevents — the same one the
 settlement deferral above guards.
 
