@@ -365,6 +365,32 @@ function replaceLevelKeys(
 }
 
 /**
+ * Strip every level-named key and put nothing back — for a participant whose
+ * memo has no business carrying price levels at all.
+ *
+ * The portfolio manager is that participant. Its levels were only ever the
+ * TRADER's, copied in for display, and the desk supports the two disagreeing —
+ * so a PM Hold's metrics could carry a stop and a target, and a PM Buy's could
+ * carry monitoring levels. Attributing that at each consumer (the hero renders
+ * them under a "trader proposal" label) works only where there is a surface to
+ * label; a formatter that serializes the whole memo — `formatMemoBlock`, which
+ * feeds the Phase 6 thesis auditor a block headed "Portfolio decision" — has
+ * nowhere to put the attribution, and neither will the next consumer.
+ *
+ * So the levels leave the data instead. The PM memo carries the PM's decision;
+ * anything that wants the trader's levels reads the trader memo, which is what
+ * every corrected surface now does.
+ *
+ * Also removes the stale pair from a pre-FIX-780 PM record, whose old schema
+ * REQUIRED `metrics.stop` / `metrics.target` on every stance.
+ */
+export function withoutLevelMetrics(
+  metrics: Record<string, string> | null | undefined,
+): Record<string, string> {
+  return replaceLevelKeys(metrics, {});
+}
+
+/**
  * The metrics map a RENDERED memo doc shows — the read-path twin of
  * {@link withDerivedLevelMetrics}.
  *

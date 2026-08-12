@@ -31,6 +31,7 @@ import {
   tradeLineParts,
   withDerivedLevelMetrics,
   withDisplayLevelMetrics,
+  withoutLevelMetrics,
   type StoredTradeLevels,
 } from "../flows/analysis/lib/trade-levels";
 import {
@@ -484,6 +485,76 @@ describe("withDisplayLevelMetrics — a memo doc opened from a HISTORICAL report
       target: "$195",
     });
     expect(withDisplayLevelMetrics(FLAT_PRE_FIX, once)).toEqual(once);
+  });
+});
+
+describe("withoutLevelMetrics — the PM memo carries no price levels at all", () => {
+  // The trader's levels were only ever COPIED into the PM's metrics for display,
+  // and the desk supports the PM departing from the trader. Attributing them at
+  // each consumer works where there is a surface to label — the hero renders
+  // them under "trader proposal" — but `formatMemoBlock` serializes this whole
+  // memo into the Phase 6 auditor's prompt under the heading "Portfolio
+  // decision" and has nowhere to put a label. So the levels leave the data.
+
+  it("strips a derived pair from the PM's own metrics row", () => {
+    expect(
+      withoutLevelMetrics({
+        rating: "Hold",
+        ticker: "NVDA",
+        window: "6 months",
+        size: "0%",
+        "reassess below": "$195",
+        "invalidate above": "$320",
+      }),
+    ).toEqual({
+      rating: "Hold",
+      ticker: "NVDA",
+      window: "6 months",
+      size: "0%",
+    });
+  });
+
+  it("strips the stale pair a pre-FIX-780 PM record required", () => {
+    // The old `portfolioDecisionOutputSchema.metrics` required `stop`/`target`
+    // on EVERY stance, so a legacy PM record carries them whatever was decided.
+    expect(
+      withoutLevelMetrics({
+        rating: "Hold",
+        size: "0%",
+        stop: "$320",
+        target: "$195",
+      }),
+    ).toEqual({ rating: "Hold", size: "0%" });
+  });
+
+  it("leaves a PM row that never had a level key untouched", () => {
+    const row = { rating: "Buy", ticker: "NVDA", window: "6 months", size: "1.4%" };
+    expect(withoutLevelMetrics(row)).toEqual(row);
+  });
+
+  it("gives the Phase 6 auditor a portfolio decision with no stop and no target", () => {
+    // The defect: Phase 6 was told the PORTFOLIO DECISION had a stop and a
+    // target on a PM Hold — the trader's levels wearing the PM's heading.
+    const out = formatMemoBlock(
+      "Portfolio decision",
+      persistedMemo({
+        agentName: "portfolioManager",
+        agentTeam: "pm",
+        phaseId: "p5",
+        headline: "Stand aside on NVDA.",
+        rating: "Hold",
+        metrics: withoutLevelMetrics({
+          rating: "Hold",
+          size: "0%",
+          stop: "$320",
+          target: "$195",
+        }),
+      }),
+    );
+    expect(out).toContain("rating=Hold");
+    expect(out).not.toContain("stop=");
+    expect(out).not.toContain("target=");
+    expect(out).not.toContain("reassess below=");
   });
 });
 

@@ -43,7 +43,7 @@ import {
 import { clampRatingToBand } from "../../lib/rating-engine";
 import {
   levelsForStance,
-  withDerivedLevelMetrics,
+  withoutLevelMetrics,
   type TradeStance,
 } from "../../lib/trade-levels";
 import { clampTargetWeight, computeMandateGates } from "../../lib/mandate-gates";
@@ -381,24 +381,23 @@ export const commitPortfolioManagerMemo = handler({
         }
       : decision.metrics;
 
-    // The level chips are DERIVED from the trader's typed levels, never emitted
-    // by the PM (the `agreesWithTrader` precedent — the desk does not ask the
-    // model for what it can compute). The hero renders each metric key as its
-    // own label, so these keys ARE level names and fall under the one rule in
-    // `lib/trade-levels.ts` exactly as the trader's row does. A flat call
-    // contributes `reassess below` / `invalidate above`, a directional one
-    // `stop` / `target`, and a legacy record contributes neither rather than a
-    // pair it cannot name.
-    const displayMetrics = withDerivedLevelMetrics(
-      {
-        direction: (traderDirection ?? null) as TradeStance,
-        stopPrice: traderState?.stopPrice,
-        targetPrice: traderState?.targetPrice,
-        reassessBelowPrice: traderState?.reassessBelowPrice,
-        invalidateAbovePrice: traderState?.invalidateAbovePrice,
-      },
-      sizedMetrics,
-    );
+    // The PM's memo carries NO price levels. They were only ever the trader's,
+    // copied in for display — and the desk supports the PM departing from the
+    // trader (it derives `agreesWithTrader` to record exactly that), so a PM
+    // Hold could carry a stop and a target, and a PM Buy could carry monitoring
+    // levels. Deriving them from the trader made the numbers right and left them
+    // filed under the wrong participant's decision.
+    //
+    // Attributing that at each consumer does not generalise: the hero can label
+    // them "trader proposal", but `formatMemoBlock` serializes this whole memo
+    // into the Phase 6 auditor's prompt under the heading "Portfolio decision"
+    // and has nowhere to put a label. So the levels leave the DATA. Anything
+    // that wants them reads the trader memo, which is what every corrected
+    // surface now does.
+    //
+    // This also strips the stale pair off a pre-FIX-780 PM record, whose old
+    // schema required `metrics.stop` / `metrics.target` on every stance.
+    const displayMetrics = withoutLevelMetrics(sizedMetrics);
 
     // Validate the LLM's suggested account LABEL against the real account list.
     // A hallucinated / absent label (or no portfolio) resolves to "" — never
