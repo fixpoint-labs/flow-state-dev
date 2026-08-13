@@ -80,10 +80,12 @@ generator.
    `design`, or `fsd`, plus 1 tagged `wild`. Vary the picks between runs so re-running the
    same problem maps different ground.
 
-2. **Spawn 5 parallel sub-agents**, one per frame, **on the judgment tier** (Opus — the
-   default; pass no model override, and don't tier them down). AGENTS.md records why: idea
-   quality is the entire product of this phase, so the JSON-only output shape is not a
-   reason to treat it as decided execution. Each gets *only* the problem, the context the
+2. **Spawn 5 parallel sub-agents**, one per frame, dispatched as
+   `Agent tool (general-purpose, model: opus)` — **pin the model explicitly; do not let it
+   inherit.** A `/adhd` run started from a Sonnet or Haiku session would otherwise fan out
+   at that tier, which is the one thing AGENTS.md says this skill must not do: idea quality
+   is the entire product of this phase, and the JSON-only output shape is not a reason to
+   treat generation as decided execution. Each gets *only* the problem, the context the
    caller supplied, its frame's vantage prompt, and this instruction:
 
    > You are in DIVERGENT mode. You are a generator, not a critic.
@@ -114,7 +116,8 @@ can't. Only step 3 fans out.
    each by its angle: "make it a capability", "push it to user space", "remove the
    framework's role", "do it at trace time".
 
-3. **Deepen 3 — one per cluster first, score second.** Same judgment tier as Phase 1. Rank by
+3. **Deepen 3 — one per cluster first, score second.** Same explicit
+   `model: opus` pin as Phase 1, for the same reason. Rank by
    `novelty×0.35 + viability×0.40 + fit×0.25` and drop traps. Then take the **best
    surviving candidate from each of the three top-ranked clusters** — not the top three
    overall. Only if fewer than three clusters survive do you fill the remaining slots by
