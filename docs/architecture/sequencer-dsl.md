@@ -285,7 +285,7 @@ pipeline.work(
 
 **Key:** Work failures do NOT abort the main chain. They are logged and surface on the DevTool's trace channel.
 
-**Lifetime — request-scoped pool (FIX-554):** Background work is queued on a single per-request pool, not the sequencer that dispatched it. Inner sequencers do not block their parent on their own background work. The request executor drains the pool exactly once before terminal status; the SSE stream stays open until the drain completes. As tasks settle, the executor emits a `StatusItem` with `blocked: false` and `backgroundTasks: N` — clients use `blocked` to know it's safe to accept new user input (see `isFinishing` on `SessionView` / `UseRequestStreamResult`). When you need a downstream step to read state mutated by a queued task, use `.waitForWork()` as an explicit barrier in the dispatching sequencer.
+**Lifetime — request-scoped pool (FIX-554):** Background work is queued on a single per-request pool, not the sequencer that dispatched it. Inner sequencers do not block their parent on their own background work. The request executor drains the pool to quiescence before terminal status, on every terminal path including `failed` / `aborted` / `interrupted` (FIX-1001); the SSE stream stays open until the drain completes. As tasks settle, the executor emits a `StatusItem` with `blocked: false` and `backgroundTasks: N` — clients use `blocked` to know it's safe to accept new user input (see `isFinishing` on `SessionView` / `UseRequestStreamResult`). When you need a downstream step to read state mutated by a queued task, use `.waitForWork()` as an explicit barrier in the dispatching sequencer.
 
 ### `workIf(condition, block)` — Conditional Background Work
 

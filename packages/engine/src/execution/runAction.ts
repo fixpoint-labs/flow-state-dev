@@ -1941,67 +1941,69 @@ export async function runActionInternal<
       stopHeartbeatTimer();
     }
 
-    if (wasIntentionalAbort) {
-      // --- Abort path: user explicitly stopped the request ---
-      await options.stores.request.flushItems(requestId);
-      await options.stores.request.flushEvents(requestId);
-      await flushCheckpoints();
-      await flushTraces();
+    if (signalAborted || wasIntentionalAbort) {
+      if (wasIntentionalAbort) {
+        // --- Abort path: user explicitly stopped the request ---
+        await options.stores.request.flushItems(requestId);
+        await options.stores.request.flushEvents(requestId);
+        await flushCheckpoints();
+        await flushTraces();
 
-      const abortedAt = Date.now();
-      await patchRequestRecord(options.stores, requestId, {
-        status: "aborted",
-        abortedAt,
-        items: itemsToPersist()
-      });
+        const abortedAt = Date.now();
+        await patchRequestRecord(options.stores, requestId, {
+          status: "aborted",
+          abortedAt,
+          items: itemsToPersist()
+        });
 
-      ctx.requestRuntime.status = "aborted";
+        ctx.requestRuntime.status = "aborted";
 
-      // The record is terminal before any subscriber is told it is. A client
-      // closes its stream on this event and immediately re-reads the record;
-      // publishing first would let it cache `in_progress` off a stream that
-      // is already gone, with nothing left to re-fetch.
-      await response.emitRequestStatus("aborted");
+        // The record is terminal before any subscriber is told it is. A client
+        // closes its stream on this event and immediately re-reads the record;
+        // publishing first would let it cache `in_progress` off a stream that
+        // is already gone, with nothing left to re-fetch.
+        await response.emitRequestStatus("aborted");
 
-      await runObserverSafely(options.flow.request?.onFinished, {
-        requestId,
-        actionName: options.actionName,
-        status: "aborted"
-      }, ctx, { internalSeams, logger });
-      await emitActionLifecycleSeam(internalSeams, "finished", metadata);
+        await runObserverSafely(options.flow.request?.onFinished, {
+          requestId,
+          actionName: options.actionName,
+          status: "aborted"
+        }, ctx, { internalSeams, logger });
+        await emitActionLifecycleSeam(internalSeams, "finished", metadata);
 
-      logRuntimeEvent(logger, "info", "[flow-state] action execution aborted", {
-        ...createExecutionLogContext(metadata),
-        durationMs: Date.now() - startedAt
-      });
-    } else if (signalAborted) {
-      // --- Disconnect path: client went away without explicit abort ---
-      await options.stores.request.flushItems(requestId);
-      await options.stores.request.flushEvents(requestId);
-      await flushCheckpoints();
-      await flushTraces();
+        logRuntimeEvent(logger, "info", "[flow-state] action execution aborted", {
+          ...createExecutionLogContext(metadata),
+          durationMs: Date.now() - startedAt
+        });
+      } else {
+        // --- Disconnect path: client went away without explicit abort ---
+        await options.stores.request.flushItems(requestId);
+        await options.stores.request.flushEvents(requestId);
+        await flushCheckpoints();
+        await flushTraces();
 
-      await patchRequestRecord(options.stores, requestId, {
-        status: "interrupted",
-        interruptedAt: Date.now(),
-        items: itemsToPersist()
-      });
+        await patchRequestRecord(options.stores, requestId, {
+          status: "interrupted",
+          interruptedAt: Date.now(),
+          items: itemsToPersist()
+        });
 
-      ctx.requestRuntime.status = "interrupted" as typeof ctx.requestRuntime.status;
+        ctx.requestRuntime.status = "interrupted" as typeof ctx.requestRuntime.status;
 
-      await response.emitRequestStatus("interrupted");
+        await response.emitRequestStatus("interrupted");
 
-      await runObserverSafely(options.flow.request?.onFinished, {
-        requestId,
-        actionName: options.actionName,
-        status: "interrupted"
-      }, ctx, { internalSeams, logger });
-      await emitActionLifecycleSeam(internalSeams, "finished", metadata);
+        await runObserverSafely(options.flow.request?.onFinished, {
+          requestId,
+          actionName: options.actionName,
+          status: "interrupted"
+        }, ctx, { internalSeams, logger });
+        await emitActionLifecycleSeam(internalSeams, "finished", metadata);
 
-      logRuntimeEvent(logger, "info", "[flow-state] action execution interrupted (client disconnect)", {
-        ...createExecutionLogContext(metadata),
-        durationMs: Date.now() - startedAt
-      });
+        logRuntimeEvent(logger, "info", "[flow-state] action execution interrupted (client disconnect)", {
+          ...createExecutionLogContext(metadata),
+          durationMs: Date.now() - startedAt
+        });
+      }
     } else {
       // --- Failure path: execution error ---
       // `normalizedError` was computed above so the error item could be

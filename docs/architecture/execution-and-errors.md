@@ -214,7 +214,11 @@ Wiring details:
 - `backgroundController` listens on `abortController.signal` with `{ once: true }`, plus a defensive `if (signal.aborted)` guard for the registration/abort race. A transport signal composed into `composedSignal` via `AbortSignal.any` does **not** propagate to `backgroundController` because the listener is on `abortController.signal` directly.
 - `_requestBackgroundSignal` is an internal `BlockContext` field, propagated through every scope alongside `_requestWorkPool`.
 - The sequencer DSL substitutes `ctx.signal` with `_requestBackgroundSignal` at `.work()` / `.workIf()` / `.forEachBackground()` dispatch, and threads a `signalOverride` through `_withExecutionScope` so descendant scopes inherit it rather than the closure-captured root signal.
-- `drainRequestWorkPool` no longer takes a signal on the success path: it waits unconditionally. The abort/disconnect path skips drain entirely (unchanged). If an explicit `/abort` arrives mid-drain, in-flight tasks self-cancel via their own `ctx.signal` and settle as rejections, so the drain still resolves.
+- `drainRequestWorkPool` is never passed a signal: it waits unconditionally, on every terminal path — success, `failed`, `aborted`, and `interrupted` alike (FIX-1001). If an explicit `/abort` arrives mid-drain, in-flight tasks self-cancel via their own `ctx.signal` and settle as rejections, so the drain still resolves.
+- The drain loops until a pass consumes nothing, because `drainAll` splices one snapshot of the pool: a task that queues further work while being drained lands after that splice and a single pass would never await it.
+- On the catch paths the heartbeat deliberately outlives the drain and is cleared immediately after it, before the terminal patch. Clearing it first (as the catch prologue used to) would let the request go stale during its own unbounded drain, and `detectInterruptedRequests` would write `interrupted` over a live request with no version guard.
+- The catch paths patch the record *before* publishing the terminal status event, matching the success path. A client closes its stream on that event and re-reads the record, so publishing first can permanently cache `in_progress`.
+- An abort accepted during the drain overrides a `failed`/`interrupted` branch already chosen: the terminal branch is selected before a wait that now lasts as long as the background work, and `/abort` keeps being accepted for all of it because the record is still `in_progress`.
 
 ## Generator Repair
 
