@@ -22,9 +22,11 @@ Supported formats:
 
 | Format | Example | What it does |
 |--------|---------|-------------|
-| `provider/model` | `"anthropic/claude-sonnet-4.6"` | Direct provider call |
+| `provider/model` | `"anthropic/claude-sonnet-4-6"` | Direct provider call |
 | `intent/<name>` | `"intent/chat"` | Resolves to the first available model in the named intent |
 | `gateway/provider/model` | `"vercel/openai/gpt-5.5"` | Routes through a gateway |
+
+The model id reaches whoever serves the call exactly as you typed it, so spell it the way that service spells it. Anthropic writes its ids with hyphens — `anthropic/claude-sonnet-4-6`. The Vercel AI Gateway writes the same models with dots — `vercel/anthropic/claude-sonnet-4.6`. Copying one form into the other position gets you an unknown-model error from the far end.
 
 ## Intents
 
@@ -108,10 +110,10 @@ One case is deliberately **not** fatal: an `FSDEV_INTENT_<NAME>` that names an i
 ```ts
 // server.ts — unchanged across environments
 const resolver = createModelResolver({
-  defaultModel: "anthropic/claude-sonnet-4.6",
+  defaultModel: "anthropic/claude-sonnet-4-6",
   intents: {
-    chat: ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
-    utility: ["anthropic/claude-haiku-4.5"],
+    chat: ["anthropic/claude-sonnet-4-6", "openai/gpt-5.5"],
+    utility: ["anthropic/claude-haiku-4-5"],
   },
 });
 ```
@@ -298,7 +300,7 @@ Here's the flow-level setup:
 
 ```ts
 const userStateSchema = z.object({
-  selectedModel: z.string().default("anthropic/claude-sonnet-4.6"),
+  selectedModel: z.string().default("anthropic/claude-sonnet-4-6"),
 });
 
 const setSelectedModel = handler({
@@ -323,7 +325,7 @@ const kitchenSink = defineFlow({
 On the client side, call the action when the user picks a new model. The change takes effect on the next generation — no restart needed.
 
 ```ts
-await session.sendAction("setSelectedModel", { selectedModel: "anthropic/claude-opus-4.7" });
+await session.sendAction("setSelectedModel", { selectedModel: "anthropic/claude-opus-4-7" });
 ```
 
 Surface the current selection through the user scope's `client` block so the UI stays in sync:
@@ -407,10 +409,10 @@ import { createModelResolver } from "@flow-state-dev/core/models";
 // App config
 const resolver = createModelResolver({
   gateways: { vercel: createGateway({ apiKey: process.env.AI_GATEWAY_API_KEY }) },
-  defaultModel: "anthropic/claude-sonnet-4.6",
+  defaultModel: "anthropic/claude-sonnet-4-6",
   intents: {
-    utility: ["openai/gpt-5.4-nano", "anthropic/claude-haiku-4.5"],
-    chat: ["openai/gpt-5.5", "anthropic/claude-sonnet-4.6"],
+    utility: ["openai/gpt-5.4-nano", "anthropic/claude-haiku-4-5"],
+    chat: ["openai/gpt-5.5", "anthropic/claude-sonnet-4-6"],
   },
 });
 
@@ -418,7 +420,7 @@ const resolver = createModelResolver({
 generator({ name: "chat", model: "intent/chat", prompt: "..." });
 
 // Resolution trace:
-// 1. "intent/chat" → candidates: ["openai/gpt-5.5", "anthropic/claude-sonnet-4.6"]
+// 1. "intent/chat" → candidates: ["openai/gpt-5.5", "anthropic/claude-sonnet-4-6"]
 // 2. Try "openai/gpt-5.5":
 //      - Direct openai package: load fails (not in bundle)
 //      - Gateway fallback: vercel gateway covers openai → use it
@@ -524,7 +526,7 @@ To turn thinking on for Anthropic, set a budget on `providerOptions.anthropic.th
 ```ts
 const reasoner = generator({
   name: "reasoner",
-  model: "anthropic/claude-opus-4.7",
+  model: "anthropic/claude-opus-4-7",
   providerOptions: { anthropic: { thinking: { budgetTokens: 10000 } } },
   prompt: "Work through the problem step by step.",
 });
@@ -562,7 +564,7 @@ When you want every generator that resolves through `intent/plan` (or any thinki
 const resolver = createModelResolver({
   defaultModel: "openai/gpt-5.4",
   intents: {
-    plan: ["anthropic/claude-opus-4.7", "openai/gpt-5.5"],
+    plan: ["anthropic/claude-opus-4-7", "openai/gpt-5.5"],
   },
   intentDefaults: {
     plan: {
