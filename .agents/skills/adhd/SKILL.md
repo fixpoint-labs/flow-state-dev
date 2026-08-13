@@ -2,6 +2,7 @@
 name: adhd
 context: fork
 agent: general-purpose
+model: opus
 description: Parallel divergent ideation — spawns N isolated sub-agents under different cognitive frames (regulator, biology, speedrunner, subtract-then-add, user-space only), scores, clusters, prunes traps, and deepens the survivors into concrete alternative approaches. Use on /adhd or "ADHD mode"; as `review`'s ALTERNATIVES lens when a change's shape is worth re-opening; and from `issue-spec` when Step 3.5 is stuck between build-and-don't-build, or Step 4 hits a design question the existing code can't answer. Skip for syntax, lookups, bugs with a known root cause, and closed phrasing ("quick", "standard", "canonical"). Keywords - alternative approaches, other shapes, third move, brainstorm, ideate, what else could this be, are we sure this is the right shape.
 argument-hint: "<the problem or the change — plus any context that constrains the answer>"
 ---
@@ -105,7 +106,9 @@ generator.
 
 **Steps 1 and 2 run in your own context — do not spawn sub-agents for them.** Scoring and
 clustering need to see the whole pool at once, which is exactly what a fresh sub-agent
-can't. Only step 3 fans out.
+can't. Only step 3 fans out. That context is Opus regardless of the calling session, because
+`model: opus` in this skill's frontmatter sets the forked subagent's model — candidate
+selection decides which ideas survive, so it belongs on the same tier as the generation.
 
 1. **Score.** Each idea on three axes, 0–10: **novelty** (distance from the obvious
    default), **viability** (could it actually ship here), **fit** (does it address the
