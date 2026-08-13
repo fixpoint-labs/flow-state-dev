@@ -6,10 +6,12 @@ the correction narrative live here so the instrument stays scannable.
 
 Merged 2026-08-12: [#1262](https://github.com/fixpoint-labs/flow-state-dev/pull/1262),
 [#1263](https://github.com/fixpoint-labs/flow-state-dev/pull/1263),
-[#1275](https://github.com/fixpoint-labs/flow-state-dev/pull/1275),
-[#1273](https://github.com/fixpoint-labs/flow-state-dev/pull/1273), under epic
-[#1249](https://github.com/fixpoint-labs/flow-state-dev/pull/1249) — **still open; the epic is in
-flight and cycle 5's row for it is a partial.**
+[#1275](https://github.com/fixpoint-labs/flow-state-dev/pull/1275).
+
+**Still open:** [#1273](https://github.com/fixpoint-labs/flow-state-dev/pull/1273) (the follow-up
+guard fix — its round count is a partial, `1 (in flight)`, and must not be frozen as an endpoint),
+and the epic PR [#1249](https://github.com/fixpoint-labs/flow-state-dev/pull/1249) itself, so the
+epic's own row is a partial too.
 
 ## `missed-edge-case (unrun-claim)` — the enumeration
 
@@ -19,20 +21,54 @@ Not a knowledge gap and not carelessness — every instance reads as competent r
 Two figures, with different denominators, because they answer different questions. See the ledger's
 sample definition before comparing either against another cycle.
 
-### Failures (n=7)
+### Failures (n=8)
 
-| # | Claim | How it was settled | Result | In the review sample? |
+The **Outcome** column is the escape count: read it off the table rather than asserting a total in
+prose. **One instance shipped** — row 5.
+
+| # | Claim | How it was settled | Result | Outcome | In the review sample? |
+|---|---|---|---|---|---|
+| 1 | FIX-754: "four sites violate BP-012/BP-014" | read `main` carefully, three times (4 → 2 → 4) | wrong each time; a reviewer then found a 5th | caught in review | yes — #1249 |
+| 2 | "`preset/small` → `intent/utility` is a drop-in swap" | read the runtime's own migration message | wrong — `intent/*` also throws with no map *and* no `default` | caught in review | yes — #1263 |
+| 3 | "these Anthropic IDs should be dotted" (a sweep normalised them) | read for consistency | wrong — direct strings pass through unnormalised | caught in review, tracing `resolveId` | yes — #1263 |
+| 4 | "the ladders cover the providers these pages advertise" | reasoned about the ladder | wrong — a Google-only reader matched nothing | caught in review, by running a 5×3 matrix | yes — #1263 |
+| 5 | #1262: "a child's lazy resource loads at the parent's dispatch" | traced by reading; **self-flagged on the PR** as "the claim I'd bet least on" | unverified at merge | **SHIPPED** — the only escape | **no** — author self-report, never a review finding |
+| 6 | codex: "the repo already contains unquoted YAML model fields" | asserted, unrun | **false** — zero `model:` keys across 144 `.yml`/`.yaml` files | declined; author ran it first | **no** — a *reviewer's* claim; the classes score the author |
+| 7 | **the ledger entry itself:** "all four PR bases carried cycle 4's fixes" | `git merge-base --is-ancestor` — **executed**, against the wrong commit | **false for #1262** — the command cannot return "no" for a merged PR | caught in review, on this PR | **no** — an artifact of the wrap PR, which has no row |
+| 8 | **the fix for row 7:** the sampling rule promoted into `distill-lessons` | prescribed comparing **authoring timestamps** to decide which commits carried a fix | **wrong on this epic's own data** — calls two known pre-fix instances post-fix | caught in review, on this PR | **no** — an artifact of the wrap PR |
+
+Rows 1–4 are the four `unrun-claim` findings classified in the ledger's PR table. Rows 5–8 are real
+and instructive and sit **outside** that sample; they are enumerated, not rated.
+
+**Only row 5 shipped.** Review caught rows 1–4, 7 and 8; row 6 was a reviewer's own unrun claim,
+declined after the author ran it. Any argument selecting this class on *escape* rests on that single
+instance, and the ledger says so.
+
+### Instance 8 — the remedy reproduced the defect
+
+Row 7 was *"the claim was checked, and the command answered a neighbouring question."* The rule
+promoted into `distill-lessons` to stop that recurring then prescribed **comparing authoring
+timestamps** to decide which commits carried a fix. Timing is a neighbour of ancestry. It answers
+"when was this written," not "what tree was it written against," and the two diverge exactly when a
+branch integrates the fix late — which is the case the rule exists for.
+
+It fails on this epic's own data, which is the data it was written from:
+
+| Instance commit | Authored | Timestamp rule says | Ancestry says | Ledger's (correct) classification |
 |---|---|---|---|---|
-| 1 | FIX-754: "four sites violate BP-012/BP-014" | read `main` carefully, three times (4 → 2 → 4) | wrong each time; a reviewer then found a 5th | yes — #1249 |
-| 2 | "`preset/small` → `intent/utility` is a drop-in swap" | read the runtime's own migration message | wrong — `intent/*` also throws with no map *and* no `default` | yes — #1263 |
-| 3 | "these Anthropic IDs should be dotted" (a sweep normalised them) | read for consistency | wrong — direct strings pass through unnormalised; caught by a reviewer tracing `resolveId` | yes — #1263 |
-| 4 | "the ladders cover the providers these pages advertise" | reasoned about the ladder | wrong — a Google-only reader matched nothing; caught by running a 5×3 matrix | yes — #1263 |
-| 5 | #1262: "a child's lazy resource loads at the parent's dispatch" | traced by reading; **self-flagged on the PR** as "the claim I'd bet least on" | shipped unverified | **no** — author self-report, never a review finding |
-| 6 | codex: "the repo already contains unquoted YAML model fields" | asserted, unrun | **false** — zero `model:` keys across 144 `.yml`/`.yaml` files | **no** — a *reviewer's* claim; the classes score the author |
-| 7 | **the ledger entry itself:** "all four PR bases carried cycle 4's fixes" | `git merge-base --is-ancestor` — **executed**, against the wrong commit | **false for #1262** — the command cannot return "no" for a merged PR | **no** — an artifact of the wrap PR, which has no row |
+| `2429c30` | 19:25, after the 17:47 fix | post-fix | `b0fc019` is **not** an ancestor → pre-fix | **pre-fix** |
+| `660e65e` | 19:55, after the 17:47 fix | post-fix | `b0fc019` is **not** an ancestor → pre-fix | **pre-fix** |
 
-Rows 1–4 are the four `unrun-claim` findings classified in the ledger's PR table. Rows 5–7 are
-real and instructive and sit **outside** that sample; they are enumerated, not rated.
+`fix/FIX-1126` did not integrate `b0fc019` until the merge `b302284` at 20:57. Both instances were
+authored in the ninety-minute window after the fix existed on `main` and before that branch had it.
+The rule as written would have reversed the very withdrawal it was extracted from.
+
+Corrected to ancestry: `git merge-base --is-ancestor <fix-commit> <instance-commit>`.
+
+**This is the strongest evidence in this entry, and it argues against the entry's own fix.** The
+defect appeared *inside the remedy for the defect*, written by the author who had just diagnosed it,
+in the same PR, and was caught by a reviewer rather than by the author. Whatever else the cycle
+concludes, it cannot conclude that writing the rule down is what stops the class.
 
 ### The successful settlement (n=1)
 

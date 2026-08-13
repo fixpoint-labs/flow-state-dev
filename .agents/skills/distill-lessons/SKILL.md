@@ -135,11 +135,16 @@ scoring in full, and remove a whole PR from the set.
   `git merge-base --is-ancestor <fix> <merge-commit>` is **trivially YES for every merged PR**,
   because a merge commit's first parent is `main` — a check that cannot come back "no" (tenet 7).
   Use the branch head: `<merge-commit>^2`, or the head SHA recorded on the PR.
-- **Sample per commit when a branch merged `main` mid-flight.** A branch head that carries the fix
-  does not mean the whole branch did. Compare the fix's timestamp against the **authoring commit of
-  each instance** you are counting, and count only instances authored after the fix reached that
-  branch. One of cycle 5's PRs split down the middle: its first five commits, including the instance
-  being scored, were pre-fix.
+- **Sample per commit when a branch merged `main` mid-flight, and ask ancestry — never timestamps.**
+  A branch head that carries the fix does not mean the whole branch did. For each instance you are
+  counting, ask whether the fix is an **ancestor of that instance's commit**:
+  `git merge-base --is-ancestor <fix-commit> <instance-commit>` — or equivalently, compare against
+  the commit where the branch actually integrated the fix. **Authoring time is the wrong question**
+  and gets the interesting cases backwards: on cycle 5's split branch, the instances at `2429c30`
+  (19:25) and `660e65e` (19:55) were both authored *after* the fix landed at 17:47, but the branch
+  did not integrate it until `b302284` at 20:57 — so a timestamp comparison calls two **known
+  pre-fix** instances post-fix. A commit's clock says when someone typed it, not what tree they
+  typed it against.
 - **A branch that forked before the fix and never merged `main` is out of the sample entirely** —
   not a zero, not a pass. Say so in the entry rather than averaging it in.
 - **State the carried/not-carried split** in the entry, with the commits. A fix scored against work
