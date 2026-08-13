@@ -218,52 +218,15 @@ reach for the branch when someone wants to run it.
 
 ### Building one *after* approval — re-open, don't start a second PR
 
-A direction can be signed off and still rest on something nobody has run: the human approves,
-and then wants to see it. Then the POC is built on the **already-approved spec**, and it goes
-on the same surface:
+A direction can be signed off and still rest on something nobody has run. Then the POC is built
+on the **already-approved spec**, on the surface it already has:
 
 1. Check out the retained branch (`git fetch origin spec/<ISSUE-ID> && git checkout -B spec/<ISSUE-ID> origin/spec/<ISSUE-ID>` — never re-base it on `main`), commit the POC under `spec-poc/<ISSUE-ID>-<slug>/`, push.
-2. **Re-open the closed spec PR** (`gh pr reopen <spec-pr>`) with a comment saying what the POC answers and how to run it. Same PR, same review history, same reviewers.
-3. Record what it showed in §7, **commit and push that to the branch**, and mirror it to
-   Linear. The canonical rule is that the PR closes only once §7 carries the result — an
-   unpushed §7 freezes the branch without it.
-4. **Then close it again, unmerged — unless the POC changed the direction.** If it did, keep
-   the PR open for that round so the fold has a live thread, and **escalate the fold to the
-   human as an explicit blocker**. Never assume a gate will re-raise itself:
+2. **Re-open the closed spec PR** (`gh pr reopen <spec-pr>`) with a comment saying what it answers and how to run it. Same PR, same review history, same reviewers.
+3. Record what it showed in §7 — **pushed to the branch** *and* mirrored to Linear. A re-opened PR is live, which is the one exception to a closed spec branch being a frozen record (BP-037); it re-freezes on close.
+4. **Close it again, unmerged.** If the POC *changed the direction*, that fold needs fresh sign-off first: keep the PR open and escalate it as a **blocker** for the coordinator to surface. Neither phase re-gates by itself — a standing `spec approved` label survives pushes, and a row already implementing cannot return to the spec gate — so don't wait on an approval nobody will read. Whoever applies the answer folds it and closes the PR.
 
-   - **After implementation starts**, no spec gate can come back at all — the lifecycle
-     refuses to regress a row that already has an impl PR, and only pre-approval rows are
-     offered a spec gate. The blocker is the only gate that exists there.
-   - **Before implementation starts**, the spec gate still exists but **may already read as
-     satisfied**. If the original sign-off came via the `spec approved` **label**, that label
-     is standing state — it does not expire on a push, and only the owner removing it revokes
-     it — so a fold pushed under it would release the *changed* direction with no new human
-     act. (A comment- or review-based approval goes stale on the push and does re-gate, but
-     you must not depend on which channel was used.)
-
-   So the ask goes up either way, naming that the standing approval predates the change — and
-   it is cleared **the way blockers are cleared: the coordinator surfaces it and records the
-   answer.** Don't tell the owner to approve the new head or re-apply the label and wait: a row
-   parked on a blocker is carried forward *without a PR scan* (`epic-wake.js` → `noScanNeeded`),
-   so nothing would ever observe that approval and the issue would sit parked. A label the owner
-   chooses to re-apply is a fine record; it is not what unparks the row. **You never write that
-   label yourself** — it would manufacture the sign-off it reports.
-
-   **Whoever applies the answer closes the PR.** The re-open lasts exactly as long as the
-   decision that kept it open: once the fold is applied and mirrored, the PR closes unmerged
-   on the normal rule. Nothing downstream picks this up for you — the decision-application
-   pass is the last one that knows the PR is open, so an unclosed one just keeps being
-   scanned.
-
-**A re-opened spec PR is the one exception to the branch freeze.** A closed spec branch is
-otherwise a frozen record and post-approval edits go to Linear (BP-037); while the PR is
-re-opened it is live again, so §7 is written on the branch *and* mirrored, exactly as during
-the original review. It re-freezes when the PR closes.
-
-Re-opening does **not**, by itself, re-open the approval gate — a POC informs rather than
-re-decides, and the gate only comes back if the fold in step 4 actually moves the direction.
-And it is still never merged: implementation is already cut from fresh `origin/main`, so
-nothing here reaches the codebase.
+Re-opening never re-opens the approval gate, never resumes spec review, and never merges.
 
 That the POC can't leak into the codebase rests on one mechanical fact worth stating: the
 implementation branch is cut from **fresh `origin/main`**, never from the spec branch (see

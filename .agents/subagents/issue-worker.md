@@ -63,10 +63,10 @@ something external** (a human gate not yet given, CI, a review, a dependency PR)
   `(POC in flight)` and push it before you exit** — your status line dies with this dispatch,
   so the spec doc is the only thing that carries the settlement downstream.
 - **spec approved** (the approval is already present when you're dispatched, or you detect it
-  this run) → **this is a release, not a stop.** Close the spec PR: mirror the Linear document
-  from the spec branch head first, then close unmerged, pointing at the Linear document as
-  canonical, and **never delete the branch** ([`orchestration.md`](../../docs/contributing/orchestration.md)
-  → "Closing the spec PR"). **Unless the spec's §12
+  this run) → **this is a release, not a stop.** Close the spec PR per
+  [`orchestration.md`](../../docs/contributing/orchestration.md) → "Closing the spec PR"
+  (mirror Linear from the branch head, close unmerged, **never delete the branch**).
+  **Unless the spec's §12
   carries a claim marked `(POC in flight)`, or the coordinator passed you a live `settling`, in
   which case leave it open** for the verdict to be folded into; the coordinator closes it later.
   Then implement on the issue's branch and open the impl PR — **all in this one dispatch.** Do not return at

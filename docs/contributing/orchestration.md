@@ -589,90 +589,38 @@ So the discipline is ours, not theirs:
 
 ## Closing the spec PR (at approval — branch kept, never merged)
 
-A spec PR is a review surface with a defined end: **approval closes it.** Not the merge (it
-never merges), and not the start of implementation — the moment the gate passes the document
-has done its job, and an open PR past that point is an artifact every wake re-scans and
-re-surfaces for a decision that has already been made.
+**Approval closes it.** Not the merge — it never merges — and not the start of implementation:
+once the gate passes the document has done its job, and an open PR past that point is an
+artifact every wake re-scans for a decision already made. Whoever sees the gate pass does the
+close: the lifecycle at its approval gate, the `issue-worker` under an epic, `issue-implement`
+Step 3 as the backstop when nothing was watching.
 
-**The trigger is the gate, so whoever sees the gate pass does the close.** Under
-`issue-lifecycle` that is the lifecycle at the approval gate; under `epic-lifecycle` it is
-normally the `issue-worker`, in the same dispatch that chains into implementation. Standalone
-`issue-implement` closes it at Step 3 as a **backstop**, for a spec approved with no lifecycle
-watching. The close rides the same release that starts implementation — it is never a separate
-wait, and it never gates the code.
+1. **Mirror, then close.** The branch copy is authoritative while the PR is open, so reconcile
+   Linear against the branch head *first* — a close over a stale mirror silently drops the last
+   folded round, and Linear is the only live copy afterwards.
+2. **Close unmerged, with a pointer**: the Linear document, the retained branch, and that
+   implementation is starting. No pointer reads as an abandoned spec.
+3. **Keep the branch.** `spec/<ISSUE-ID>` is never deleted — the rule the epic branch already
+   has. And **never merge it**: merging lands a point-in-time plan on `main`, where it reads as
+   current truth and decays (BP-037). CI enforces the file half; the don't-merge half is ours.
 
-**Two things legitimately hold a spec PR open past its approval**, and both are cases where the
-document is signed off but not yet *finished*:
+**It stays open where the spec is signed off but not finished** — a POC settlement in flight on
+a load-bearing claim (see "Settling a disputed claim"), or an uncleared cross-spec set, where
+the coherence pass may still hand this spec an alignment edit that earns a review round. Both
+defer cleanup only, never implementation.
 
-- **A POC settlement in flight** on a load-bearing claim — see the deferral below.
-- **The cross-spec coherence pass**, under a multi-spec epic. An individually-approved spec can
-  still be handed an alignment edit, which is spec-level by construction and earns a fresh
-  review round on that PR. Closing at the individual approval would remove the surface the
-  alignment needs. The close waits for the set to clear (`crossSpecCleared`).
+### Re-opening for a POC
 
-In both cases the PR staying open is the point, not an oversight — it is still the review
-surface for a change that hasn't landed. Everything else closes on approval.
+A POC worth building *after* sign-off goes on the same PR: commit it to the retained branch,
+`gh pr reopen`, then close again unmerged once §7 carries the result on the branch and in
+Linear. A re-opened PR is live — the one exception to a closed spec branch being frozen.
 
-Three things happen, in this order:
-
-1. **Mirror, then close.** The repo copy on the spec branch is authoritative while the PR is
-   open, so the Linear document can be behind it — the last folded round usually is.
-   Reconcile Linear against the branch head **before** closing. A close over a stale mirror is
-   how a spec silently loses its final round, and after the close Linear is the only live copy.
-2. **Close unmerged, with a comment saying where the spec went**: the Linear document
-   (canonical from here on), the retained branch name, and that implementation is starting. A
-   close with no pointer reads to a human as an abandoned spec.
-3. **Keep the branch.** `spec/<ISSUE-ID>` is **never deleted** — the same rule the epic branch
-   has always had. It costs nothing and it keeps the reviewed artifact fetchable as a git ref
-   instead of only as a rendered diff, which is what anyone reading the spec after the close
-   actually needs.
-
-**Never merge it.** Merging lands a point-in-time plan on `main`, where it reads as current
-truth and decays without anyone noticing (BP-037). CI enforces the file half of that; the
-don't-merge half is ours to hold.
-
-**One deferral.** A POC settlement in flight on a load-bearing claim keeps the PR open until
-the verdict lands — a `REFUTED` verdict needs a live artifact and a live thread to be folded
-into. That defers *cleanup* only, never implementation. See "Settling a disputed claim".
-
-### Re-opening for a POC (the one legitimate re-open)
-
-Approval sometimes lands on a direction nobody has run. When a
-[spec POC](#spec-branch-pocs-learn-before-implementing) is worth building *after* sign-off,
-**re-open the spec PR** rather than opening a second one: commit the POC to the retained
-branch, re-open, and reviewers and the human get the surface they already know with its review
-history attached. Close it again — unmerged — once §7 carries what the POC showed and Linear
-has the update. **A re-opened PR is live**, so §7 is written on the branch as well as mirrored;
-that is the one exception to a closed spec branch being a frozen record, and it ends when the
-PR closes again.
-
-Re-opening does not, on its own, re-open the **gate**. The spec is approved; a POC informs, it
-never re-decides. But if what it shows *changes the direction*, that fold needs fresh sign-off,
-and **it is escalated as an explicit blocker rather than left to a gate.** Keep the PR open for
-that round so the fold has a live thread, and put the ask up.
-
-Neither phase can be trusted to re-gate on its own, for two different reasons:
-
-- **After implementation starts, no spec gate can return.** A row that already has an impl PR
-  cannot regress to `AWAITING_SPEC_APPROVAL` (`epic-wake.js` refuses it, and only pre-approval
-  rows are offered a spec gate). A spec gate re-raised there is one nothing will ever surface.
-- **Before implementation starts, the gate may already read satisfied.** If the sign-off came
-  by `spec approved` **label**, that label is standing state that survives any push — so a fold
-  pushed under it releases the *changed* direction with no new human act. A comment or review
-  approval does go stale on the push, but the fold must not depend on which channel was used.
-
-The blocker parks the issue and puts the fork to the human either way, which is what "fresh
-sign-off" has to mean here, and it clears the way any blocker does — the coordinator surfaces
-it and records the answer. Not by an approval left on the PR: a row parked on a blocker is
-carried forward without a PR scan, so nothing would observe one. **No agent writes that
-label.** And the re-open ends with that decision: whoever applies the answer folds it and then
-closes the PR unmerged, since no later pass knows it is still open. Closing the PR and assuming a
-re-approval finds its own way back is the failure mode this prevents — the same one the
-settlement deferral above guards.
-
-**Two things a re-open is not.** It is not a way to resume spec review — feedback arriving on a
-closed spec PR is carried as implementer notes, never a new round. And it is not a route to
-merging: a re-opened spec PR closes again unmerged, every time.
+It does not re-open the gate, does not resume spec review (late feedback is implementer notes),
+and never merges. If the POC *changes the direction*, that fold needs fresh sign-off: keep the
+PR open and escalate it as a **blocker** for the coordinator to surface, because neither phase
+re-gates on its own — a standing `spec approved` label survives pushes, and a row that is
+already implementing cannot return to the spec gate. Whoever applies the answer folds it and
+closes the PR.
 
 ## PR feedback: the round cap
 

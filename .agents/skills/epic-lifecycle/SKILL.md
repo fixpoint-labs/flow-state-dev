@@ -634,15 +634,10 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   that check at edit time, so don't re-derive it here.
   Nothing here pulls epic-comment *content* into the coordinator's context.
 - **An approved spec PR held by the cross-spec pass stays open, and that is correct** — don't
-  "fix" it. Approval closes a spec PR because the document is finished
-  ([`orchestration.md`](../../../docs/contributing/orchestration.md) → "Closing the spec PR"),
-  and under a multi-spec epic an individually-approved spec is *not* finished until the
-  coherence pass clears it: step 5 below may dispatch an alignment edit to that very spec and
-  demands a fresh review round and re-confirmation on it. Closing at the individual approval
-  would take away the surface that alignment needs, and the only re-open we define is for a
-  post-approval POC. So the close waits for `crossSpecCleared`, and the `issue-worker` does it
-  on the dispatch that follows — the same path as every other issue. The PR being open through
-  the hold is the set's review surface, not a leftover.
+  "fix" it. Step 5 below may hand that spec an alignment edit needing a fresh review round, so
+  the close waits for `crossSpecCleared` and the `issue-worker` does it on the dispatch that
+  follows ([`orchestration.md`](../../../docs/contributing/orchestration.md) → "Closing the
+  spec PR").
 - **Wrap.** When the epic finishes, the epic PR closes **unmerged**; the **branch is never
   deleted** and stays discoverable via the Epic issue (its attached document + `Epic` label).
   Closing needs no sign-off.
