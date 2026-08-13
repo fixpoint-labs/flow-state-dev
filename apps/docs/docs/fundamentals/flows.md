@@ -64,7 +64,9 @@ const chatFlow = defineFlow({ kind: "my-chat", ... });
 export default chatFlow({ id: "default" });
 ```
 
-This separation lets you run several instances of one flow type — each with its own `id`, and its own session, resource, or tool configuration.
+This separation lets you run several instances of one flow type, each with its own session, resource, or tool configuration.
+
+**Instances that clients address need distinct `kind`s, not just distinct `id`s.** Every external entry point — HTTP action routes, chat, webhooks, schedules, MCP — resolves a flow by `kind` alone, and none of them carry an instance id. When two instances share a `kind`, those paths reach the one whose `id` matches the `kind`, or else the first registered, and the other instance's configuration is never used. `id` distinguishes instances for in-process code holding the registry, which can look up a specific one; it is not an addressing surface over the wire.
 
 ### What the definition owns
 
