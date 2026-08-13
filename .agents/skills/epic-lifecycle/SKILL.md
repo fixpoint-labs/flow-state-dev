@@ -633,6 +633,11 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   every surface of the epic-spec restating that decision moves with it — and `epic-agent` owns
   that check at edit time, so don't re-derive it here.
   Nothing here pulls epic-comment *content* into the coordinator's context.
+- **An approved spec PR held by the cross-spec pass stays open, and that is correct** — don't
+  "fix" it. Step 5 below may hand that spec an alignment edit needing a fresh review round, so
+  the close waits for `crossSpecCleared` and the `issue-worker` does it on the dispatch that
+  follows ([`orchestration.md`](../../../docs/contributing/orchestration.md) → "Closing the
+  spec PR").
 - **Wrap.** When the epic finishes, the epic PR closes **unmerged**; the **branch is never
   deleted** and stays discoverable via the Epic issue (its attached document + `Epic` label).
   Closing needs no sign-off.

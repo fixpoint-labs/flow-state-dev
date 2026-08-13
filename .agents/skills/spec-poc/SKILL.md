@@ -25,7 +25,7 @@ the whole effort:
 | **Audience** | you | the review thread | spec/epic PR reviewers + the human at the gate |
 | **Lives** | `_prototypes/` in a host app | a throwaway worktree | the never-merged `spec/` or `epic/` branch |
 | **Output** | an answer, in `NOTES.md` | `CONFIRMED` / `REFUTED` / `INCONCLUSIVE` | a summary in the spec + code a reviewer can run |
-| **Survives?** | deleted or absorbed | deleted | closes with the PR, unmerged |
+| **Survives?** | deleted or absorbed | deleted | the PR closes unmerged; the branch is kept |
 
 If nobody but you will read it, it's a `prototype`. If two reviewers keep reversing each
 other on a factual claim, it's `settle-claim`. If the point is to show someone the shape so
@@ -209,11 +209,24 @@ that a quiet POC was a failure.
 
 ## Exit — it never merges
 
-The spec PR closes **unmerged** when implementation starts and its branch is **deleted**
-(BP-037), so the POC's working life ends there. **Its value is meant to be consumed before
-that point** — a POC exists to inform the gate, and by the time implementation starts the gate
-has passed. What survives is the record: the spec's §7/§12 summary, and the closed PR, whose
-diff GitHub keeps viewable after the branch is gone. **Cite the PR, never the branch.**
+The spec PR closes **unmerged** the moment the spec is approved, and **its branch is kept**
+(BP-037), so the POC's working life ends at the gate but its code stays reachable. **Its value
+is meant to be consumed before that point** — a POC exists to inform the gate. What survives is
+the record: the spec's §7/§12 summary, the closed PR whose diff GitHub keeps viewable, and the
+retained `spec/<ISSUE-ID>` branch. **Cite the PR** — it renders the POC with no checkout — and
+reach for the branch when someone wants to run it.
+
+### Building one *after* approval — re-open, don't start a second PR
+
+A direction can be signed off and still rest on something nobody has run. Then the POC is built
+on the **already-approved spec**, on the surface it already has:
+
+1. Check out the retained branch (`git fetch origin spec/<ISSUE-ID> && git checkout -B spec/<ISSUE-ID> origin/spec/<ISSUE-ID>` — never re-base it on `main`), commit the POC under `spec-poc/<ISSUE-ID>-<slug>/`, push.
+2. **Re-open the closed spec PR** (`gh pr reopen <spec-pr>`) with a comment saying what it answers and how to run it. Same PR, same review history, same reviewers.
+3. Record what it showed in §7 — **pushed to the branch** *and* mirrored to Linear. A re-opened PR is live, which is the one exception to a closed spec branch being a frozen record (BP-037); it re-freezes on close.
+4. **Close it again, unmerged.** If the POC *changed the direction*, that fold needs fresh sign-off first: keep the PR open and escalate it as a **blocker** for the coordinator to surface. Neither phase re-gates by itself — a standing `spec approved` label survives pushes, and a row already implementing cannot return to the spec gate — so don't wait on an approval nobody will read. Whoever applies the answer folds it and closes the PR.
+
+Re-opening never re-opens the approval gate, never resumes spec review, and never merges.
 
 That the POC can't leak into the codebase rests on one mechanical fact worth stating: the
 implementation branch is cut from **fresh `origin/main`**, never from the spec branch (see
@@ -228,7 +241,7 @@ What crosses the line, and how:
 |---|---|
 | **A premise it settled** | Spec §12, as resolved-with-evidence. Costs a later reviewer zero rounds to reopen. |
 | **A characterization test worth keeping** | Named in §10 as a CI spec to write, or graduated into `goals/<describe>/<it>/` properly (`goal.md` with a real anti-game field). Re-written under `tdd` on the impl branch — not copied. |
-| **The shape** | §7 cites **the spec PR URL** plus the path inside it — *not* the branch. `issue-implement` deletes the spec branch when it closes the PR (BP-037), but GitHub keeps a closed PR's commits and diff view reachable, so the PR link stays readable and a branch link goes dead. The implementer starts *from* it; they don't inherit it. (An **epic** branch is never deleted, so an epic POC can cite either.) |
+| **The shape** | §7 cites **the spec PR URL** plus the path inside it. The PR renders the POC with no checkout, which is what a reader wants; the branch is retained too (BP-037), so reach for it when someone needs to *run* the code. The implementer starts *from* it; they don't inherit it. |
 | **A chosen variant** | A numbered §6 Decision. |
 | **A refuted premise** | Fold it into the spec **before** the gate. This is the cheapest possible version of that discovery. |
 | **A framework bug it uncovered** | File it via `issue-manager`, related to the source issue. Don't let it live only in a PR description. |

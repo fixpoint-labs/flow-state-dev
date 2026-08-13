@@ -4545,7 +4545,7 @@ check('an implement dispatch keeps the spec PR open while a settlement is live',
   })
   const prompt = calls.find((c) => c.label === 'implement:FIX-2').prompt
   assert.match(prompt, /settlement is IN FLIGHT on a load-bearing claim/)
-  assert.match(prompt, /do NOT close or delete the spec PR/)
+  assert.match(prompt, /do NOT close the spec PR yet/)
   assert.match(prompt, /does the router re-enter\?/)
 })
 
