@@ -6,7 +6,7 @@ sidebar_position: 2
 
 Core utility blocks are pre-built factories that wrap the core block primitives into specialized, high-level capabilities. Instead of configuring a generator from scratch every time you need summarization or task decomposition, you call a utility that returns a fully configured block — composable in sequencers, routers, and flows like any other block.
 
-This guide covers all core utilities with realistic examples showing how they solve real problems in AI workflows. For adapter-driven extension utilities (searcher, retriever, networker, claimChecker), see [Extension Utilities](./extensions).
+This guide covers the core utilities with realistic examples showing how they solve real problems in AI workflows. The table below lists all of them; a couple are thin enough to be documented with the block primitives, and link out. For adapter-driven extension utilities (searcher, retriever, networker, claimChecker), see [Extension Utilities](./extensions).
 
 ## Quick overview
 
@@ -38,11 +38,11 @@ Every utility that calls a model accepts a `model` override. Left alone, most as
 
 | Utility | Default model |
 |---------|---------------|
-| `contextReducer`, `memoryExtractor`, `summarizer`, `analyzer`, `intentClassifier` | `"intent/utility"` |
+| `contextReducer`, `memoryExtractor`, `summarizer`, `analyzer`, `intentClassifier`, `intentRouter` | `"intent/utility"` |
 | `decomposer` | `"openai/gpt-5.4-mini"` |
 | `sessionTitleGenerator` | `"openai/gpt-5-nano"` |
 
-`combiner`, `upsertResource`, and `keyedRouter` take no `model` — they run deterministic logic.
+`combiner`, `upsertResource`, and `keyedRouter` take no `model` — they run deterministic logic. `intentRouter` has no model of its own either; it passes `model` straight through to the classifier it wraps, which is where that default comes from.
 
 If you haven't declared a `utility` intent, the resolver falls back to your `defaultModel`, so set one. See [Models](/docs/fundamentals/models) for how intents map to providers.
 
@@ -301,7 +301,7 @@ Each `SubTask` has:
 | `deps` | `string[]` | IDs of tasks this depends on |
 | `priority` | `"high" \| "medium" \| "low"` | Execution priority hint |
 
-`title` and `context` are `nullable`, not optional (BP-016: generator outputs must be OpenAI strict-mode compatible). Consumers treat `null` as "absent". Plan-shaped patterns read `context` to give each worker the data its task needs — see [Plan & Execute per-task context](../plan-and-execute).
+`title` and `context` are `nullable`, not optional (OpenAI strict structured-output compatibility). Consumers treat `null` as "absent". Plan-shaped patterns read `context` to give each worker the data its task needs — see [Plan & Execute per-task context](../plan-and-execute).
 
 **Example output:**
 

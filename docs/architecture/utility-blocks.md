@@ -789,7 +789,7 @@ Represents the classification result produced by the intentClassifier.
 
 ## Key properties
 
-- Generator-based utilities accept a `model` override; see the defaults above.
+- Generator-based utilities accept a `model` override; see [Default models](../../apps/docs/docs/patterns/utility-blocks/core.md#default-models).
 - All utilities export their default output schema as a named Zod object (e.g., `summarizerOutputSchema`) for reference or reuse.
 - The `outputSchema` parameter on every utility accepts a generic type, providing full type inference on the block's output.
 - Combiner is handler-based — it runs deterministic logic with no LLM call.

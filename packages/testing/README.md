@@ -109,7 +109,7 @@ const report = await evalBlock(classifier, {
     exactMatch("sentiment"),
     analyzerScorer({
       criteria: ["Output is relevant to the input"],
-      model: "anthropic/claude-haiku",
+      model: "anthropic/claude-haiku-4-5",
     }),
   ],
   concurrency: 3,

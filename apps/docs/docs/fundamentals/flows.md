@@ -85,6 +85,8 @@ Every instance of a type serves the same transports. Pass one of the four to the
 
 Everything else is settable per instance: `id`, `kind`, `actions`, `session`, `request`, `user`, `org`, `work`, `resources`, `tools`, `voice`, `authentication`, `requireUser`, `tokenCounter`, `costEstimator`, `isolateUserState`, and `isolateOrgState`.
 
+`voice` sits on both sides. Unlike the four transports above, you can set it on `defineFlow()` as the default for every instance of the type, then override it on any single instance.
+
 ## Actions — the flow's public API
 
 Each action is an entry point that maps a name to an input schema and a root block. Clients call actions by name — that's the only way to trigger execution.

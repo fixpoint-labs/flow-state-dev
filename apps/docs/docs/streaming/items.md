@@ -423,7 +423,7 @@ Generator-emitted items carry `model`: `message`, `reasoning`, `source`, `tool_o
   "blockKind": "generator",
   "generator": { "model": "intent/chat", "tools": [], "prompt": "…" },
   "modelUsage": { "model": "intent/chat", "promptTokens": 100, "completionTokens": 80, "totalTokens": 180 },
-  "model": { "actual": "anthropic/sonnet", "requested": "intent/chat" }
+  "model": { "actual": "anthropic/claude-sonnet-4-6", "requested": "intent/chat" }
 }
 ```
 
