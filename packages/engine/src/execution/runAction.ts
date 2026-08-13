@@ -98,19 +98,11 @@ function serializeAbortReason(reason: unknown): string {
  * — success and the abort/disconnect/error paths alike — see callers in
  * runActionInternal.
  */
-async function drainRequestWorkPool(
-  ctx: ExecutionContext,
-  signal?: AbortSignal
-): Promise<void> {
+async function drainRequestWorkPool(ctx: ExecutionContext): Promise<void> {
   const pool = getRequestWorkPool(ctx);
   if (pool === undefined) {
     return;
   }
-  // No early-return on pendingCount === 0: tasks may have already settled
-  // by the time we reach this point, but their entries remain in the pool
-  // until drainAll removes them. Settled-but-undrained tasks still need
-  // their failures logged. drainAll is a cheap no-op when there are no
-  // entries left.
 
   const safeEmit = (count: number): void => {
     try {
@@ -120,37 +112,30 @@ async function drainRequestWorkPool(
     }
   };
 
-  // Loop to quiescence rather than draining once. `drainAll` splices ONE
-  // snapshot of the pool's entries, so a task that itself calls `.work()`
-  // while it is being drained lands in the pool after that splice and would
-  // never be awaited — the request would report itself finished with a
-  // grandchild task still writing. Repeat until a pass consumes nothing.
+  // Quiescence — repeating until a pass consumes nothing, and the
+  // unconditional first pass that catches already-settled entries — is the
+  // pool's own contract, since the need to repeat comes from `drainAll`
+  // awaiting a single spliced snapshot. This helper is only the
+  // request-level decoration around it: failure logging and the
+  // `backgroundTasks` status.
   //
-  // The first pass is unconditional and deliberately NOT guarded on
-  // `pendingCount() > 0`: a task that settled before we got here is no longer
-  // pending but its entry is still in the pool, and that entry carries the
-  // failure we owe a log line. A pending-count guard would skip the drain
-  // entirely in exactly that case — which is what the comment above forbids.
-  let drainedAny = false;
-  for (;;) {
-    const result = await pool.drainAll({ signal, onPendingChange: safeEmit });
-    for (const f of result.failed) {
-      // eslint-disable-next-line no-console
-      console.error(
-        `[runAction] Background work "${f.meta.name}" failed:`,
-        (f.reason as { message?: string } | undefined)?.message ?? f.reason
-      );
-    }
-    if (result.completed.length + result.failed.length === 0) {
-      break;
-    }
-    drainedAny = true;
+  // Takes no signal, deliberately (FIX-663 / Decision 3): background work is
+  // decoupled from the request signal and this wait is not cancellable, so a
+  // parameter offering to short-circuit it would advertise a capability the
+  // design rejects.
+  const result = await pool.drainToQuiescence({ onPendingChange: safeEmit });
+  for (const f of result.failed) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[runAction] Background work "${f.meta.name}" failed:`,
+      (f.reason as { message?: string } | undefined)?.message ?? f.reason
+    );
   }
 
   // Emit terminal `backgroundTasks: 0` only when we actually drained
   // something, so requests that never queued work don't emit a spurious
   // status item.
-  if (drainedAny) {
+  if (result.completed.length + result.failed.length > 0) {
     safeEmit(0);
   }
 }
@@ -1905,7 +1890,23 @@ export async function runActionInternal<
       // through it starts provider `speak()` calls for audio nobody will ever
       // receive. Today's catch paths abandon synthesis promptly; adding the
       // drain without this would turn that into a cost regression.
-      if (ttsHook !== undefined) await ttsHook.cancel();
+      //
+      // Best-effort, and that is load-bearing rather than defensive. Moving
+      // this above the drain also moved it above the terminal write, so a
+      // rejection here — a custom streaming provider whose iterator `return()`
+      // throws synchronously, escaping the pipeline's `.catch()` — would skip
+      // the drain AND the record patch and leave the request `in_progress`
+      // with its background work still running: this issue's own defect,
+      // re-entering through the teardown path. Tearing down synthesis nobody
+      // will receive must never decide whether the request terminalizes.
+      if (ttsHook !== undefined) {
+        await ttsHook.cancel().catch((err: unknown) => {
+          logRuntimeEvent(logger, "warn", "[flow-state] TTS cancel failed during teardown", {
+            requestId,
+            error: String(err)
+          });
+        });
+      }
 
       // --- The fix: wait for this request's own background work ---
       // Deliberately passed no signal (FIX-663). Background work is decoupled
@@ -1928,11 +1929,18 @@ export async function runActionInternal<
       //     controller, while a stop accepted on another instance only sets the
       //     durable flag and reaches us through the heartbeat's abort poll —
       //     which is running precisely because the heartbeat outlives the drain.
+      //     `isAbortRequested`, not `get()`: this asks one boolean, and the
+      //     interface requires it be O(1) in item count, where `get()`
+      //     materializes the whole item history to answer it on the persistent
+      //     adapters. A store failure resolves to `false`, which keeps the
+      //     branch already chosen — the same direction the classification read
+      //     above fails in. (That read stays on `get()` deliberately: it is the
+      //     call that absorbs a transient failure before `patchRequestRecord`,
+      //     which does not catch.)
       if (!wasIntentionalAbort) {
         wasIntentionalAbort =
           deliveredAbort ||
-          (await options.stores.request.get(requestId).catch(() => undefined))
-            ?.abortRequested === true;
+          (await options.stores.request.isAbortRequested(requestId).catch(() => false));
       }
     } finally {
       // Clear the heartbeat — the drain is done and the terminal write is

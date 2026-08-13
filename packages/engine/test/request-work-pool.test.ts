@@ -186,3 +186,82 @@ describe("RequestWorkPool", () => {
     expect(result.completed).toHaveLength(0);
   });
 });
+
+describe("RequestWorkPool.drainToQuiescence", () => {
+  it("awaits work queued by a task that is itself being drained", async () => {
+    // The property `drainAll` alone does not have. A task that calls `.work()`
+    // while it is being drained lands in the pool AFTER `drainAll` spliced its
+    // snapshot, so one pass returns with that entry unawaited. Reproduced here
+    // by having the first task enqueue the second from inside its own promise.
+    const pool = createRequestWorkPool();
+    let nestedRan = false;
+    let nestedSettled = false;
+
+    const nested = async (): Promise<string> => {
+      nestedRan = true;
+      await new Promise((r) => setTimeout(r, 10));
+      nestedSettled = true;
+      return "nested";
+    };
+
+    const outer = (async () => {
+      await new Promise((r) => setTimeout(r, 0));
+      // Queued mid-drain: the snapshot that is awaiting `outer` has already
+      // been taken, so only a further pass can observe this.
+      pool.addTask({ promise: nested(), meta: meta("scope-n", "nested") });
+      return "outer";
+    })();
+
+    pool.addTask({ promise: outer, meta: meta("scope-n", "outer") });
+
+    const result = await pool.drainToQuiescence();
+
+    expect(nestedRan).toBe(true);
+    // The teeth: quiescence means the nested task has SETTLED, not merely
+    // started, by the time this resolves.
+    expect(nestedSettled).toBe(true);
+    expect(result.completed.map((c) => c.value).sort()).toEqual(["nested", "outer"]);
+    expect(pool.pendingCount()).toBe(0);
+  });
+
+  it("drains an entry whose task settled before the first pass", async () => {
+    // The case a `pendingCount() > 0` guard would skip: nothing is pending,
+    // but the entry is still here carrying a failure the caller has not seen.
+    const pool = createRequestWorkPool();
+    pool.addTask({
+      promise: Promise.reject(new Error("settled-early")),
+      meta: meta("scope-s", "early")
+    });
+    await new Promise<void>((r) => queueMicrotask(r));
+    expect(pool.pendingCount()).toBe(0);
+
+    const result = await pool.drainToQuiescence();
+    expect(result.failed).toHaveLength(1);
+    expect((result.failed[0]!.reason as Error).message).toBe("settled-early");
+  });
+
+  it("is a cheap no-op on an empty pool", async () => {
+    const pool = createRequestWorkPool();
+    const result = await pool.drainToQuiescence();
+    expect(result.completed).toHaveLength(0);
+    expect(result.failed).toHaveLength(0);
+  });
+
+  it("reports pending-count changes across every pass", async () => {
+    const pool = createRequestWorkPool();
+    const counts: number[] = [];
+
+    const outer = (async () => {
+      await new Promise((r) => setTimeout(r, 0));
+      pool.addTask({ promise: Promise.resolve("n"), meta: meta("scope-p", "nested") });
+      return "o";
+    })();
+    pool.addTask({ promise: outer, meta: meta("scope-p", "outer") });
+
+    await pool.drainToQuiescence({ onPendingChange: (c) => counts.push(c) });
+
+    // The nested task's arrival is observed, which only happens if the
+    // listener is installed on the later pass too.
+    expect(counts.length).toBeGreaterThan(1);
+  });
+});

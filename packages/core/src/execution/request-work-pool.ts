@@ -50,6 +50,23 @@ export interface RequestWorkPoolDrainAllOptions {
 }
 
 /**
+ * Options for {@link RequestWorkPool.drainToQuiescence}.
+ *
+ * Deliberately has no `signal`. A quiescence drain is the wait a request makes
+ * before reporting itself finished, and background work is decoupled from the
+ * request signal — a task that opted into cancellation self-cancels through
+ * its own `ctx.signal`, and one that did not is exactly the fire-and-forget
+ * write the wait exists for. Offering a signal here would advertise a
+ * cancellation the design rejects.
+ */
+export interface RequestWorkPoolDrainToQuiescenceOptions {
+  /** Notified each time the pool's pending-task count changes, across every
+   *  pass — used by the request executor to emit `backgroundTasks: N`
+   *  status updates. */
+  onPendingChange?: (count: number) => void;
+}
+
+/**
  * Per-request background work pool. Tasks are already running when registered;
  * the pool tracks settlement and exposes scope-bounded and full drains.
  */
@@ -71,14 +88,35 @@ export interface RequestWorkPool {
   ): Promise<RequestWorkPoolResult>;
 
   /**
-   * Await every task in the pool, and remove the entries it awaited. Called by
-   * the request executor before terminal status, on every terminal path.
+   * Await one snapshot of the pool, and remove the entries it awaited.
    *
-   * Awaits one snapshot of the pool: a task that queues further work while it
-   * is being drained lands in the pool after that snapshot is taken, so the
-   * executor calls this repeatedly until a pass consumes nothing.
+   * A task that queues further work while it is being drained lands in the
+   * pool *after* this snapshot is taken, so a single call does not leave the
+   * pool empty. Callers that need "everything, including what draining
+   * produced" want {@link RequestWorkPool.drainToQuiescence}.
    */
   drainAll(options?: RequestWorkPoolDrainAllOptions): Promise<RequestWorkPoolResult>;
+
+  /**
+   * Await tasks until a pass finds nothing left, and return every task settled
+   * across all passes. Called by the request executor before terminal status,
+   * on every terminal path.
+   *
+   * This is the drain with the guarantee attached: when it resolves, no task
+   * queued by this request can still be running — including work queued by a
+   * task that was itself being drained, however deep it nests. Repeating is
+   * the pool's own business because the need to repeat comes from `drainAll`
+   * awaiting a snapshot; a caller that looped for itself would be compensating
+   * for a detail of this interface.
+   *
+   * The first pass is unconditional. A task that settled before the drain
+   * began is no longer pending but its entry is still here, carrying an
+   * outcome the caller has not seen — so gating the first pass on a pending
+   * count would skip the drain in exactly that case.
+   */
+  drainToQuiescence(
+    options?: RequestWorkPoolDrainToQuiescenceOptions
+  ): Promise<RequestWorkPoolResult>;
 
   /** Snapshot of currently pending tasks, regardless of scope. */
   pendingCount(): number;
