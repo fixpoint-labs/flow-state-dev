@@ -445,7 +445,6 @@ describe("createFlowApiRouter", () => {
             outputSchema: z.object({ ok: z.boolean() }),
             execute: async (input, ctx) => {
               await ctx.user.patchState({ nickname: input.value });
-              await ctx.org?.patchState({ title: `Project ${input.value}` });
               return { ok: true };
             }
           })

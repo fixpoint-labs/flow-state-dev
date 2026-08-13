@@ -9,7 +9,6 @@ import type { StoreRegistry } from "../stores/types";
 import { toBareStates } from "../stores/resource-state-views";
 import {
   mergeScopeReads,
-  resolveOrgStorageKey,
   resolveUserStorageKey,
   resourceScopeIds
 } from "../stores/scope-keys";
@@ -63,12 +62,6 @@ export async function handleGetSessionState(
 
   const url = new URL(request.url);
   const user = await ctx.stores.user.get(resolveUserStorageKey(session.userId, flow));
-  const org =
-    session.orgId === undefined
-      ? undefined
-      : await ctx.stores.org.get(
-          resolveOrgStorageKey(session.orgId, flow)
-        );
   const clientDataFilter = parseClientDataFilter(
     url.searchParams.get("clientData")
   );

@@ -71,7 +71,6 @@ export type PresetDef<TSessionState = any> = {
   sessionStateSchema?: ZodTypeAny;
   requestStateSchema?: ZodTypeAny;
   userStateSchema?: ZodTypeAny;
-  orgStateSchema?: ZodTypeAny;
 
   // Sequencer-only
   sequencerStateSchema?: ZodTypeAny;
@@ -206,7 +205,6 @@ export interface CapabilityConfig<
   sessionStateSchema?: TSessionStateSchema;
   requestStateSchema?: ZodTypeAny;
   userStateSchema?: ZodTypeAny;
-  orgStateSchema?: ZodTypeAny;
   sequencerStateSchema?: TSequencerStateSchema extends ZodTypeAny
     ? TSequencerStateSchema
     : ZodTypeAny;
@@ -337,7 +335,6 @@ export interface DefinedCapability<
     : ZodTypeAny;
   requestStateSchema?: ZodTypeAny;
   userStateSchema?: ZodTypeAny;
-  orgStateSchema?: ZodTypeAny;
   sequencerStateSchema?: TSequencerStateSchema extends ZodTypeAny
     ? TSequencerStateSchema
     : ZodTypeAny;

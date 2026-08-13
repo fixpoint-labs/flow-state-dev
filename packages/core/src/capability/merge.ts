@@ -265,7 +265,6 @@ export type MergedCapabilitySurface = {
   sessionStateSchema: ZodTypeAny | undefined;
   requestStateSchema: ZodTypeAny | undefined;
   userStateSchema: ZodTypeAny | undefined;
-  orgStateSchema: ZodTypeAny | undefined;
   sequencerStateSchema: ZodTypeAny | undefined;
   /** Own-state contribution, merged across capabilities (FIX-914 PR2). */
   stateSchema: ZodTypeAny | undefined;
@@ -288,7 +287,6 @@ export function createEmptyMergedSurface(): MergedCapabilitySurface {
     sessionStateSchema: undefined,
     requestStateSchema: undefined,
     userStateSchema: undefined,
-    orgStateSchema: undefined,
     sequencerStateSchema: undefined,
     stateSchema: undefined,
     targetStateSchemas: undefined,
@@ -503,9 +501,6 @@ export function mergeSurfaceInto(
   }
   if (surface.userStateSchema) {
     acc.userStateSchema = extendSchema(acc.userStateSchema, surface.userStateSchema);
-  }
-  if (surface.orgStateSchema) {
-    acc.orgStateSchema = extendSchema(acc.orgStateSchema, surface.orgStateSchema);
   }
 
   // Sequencer state — sequencer only

@@ -128,7 +128,6 @@ export function defineCapability<
     sessionStateSchema: config.sessionStateSchema,
     requestStateSchema: config.requestStateSchema,
     userStateSchema: config.userStateSchema,
-    orgStateSchema: config.orgStateSchema,
     sequencerStateSchema: config.sequencerStateSchema,
     stateSchema: config.stateSchema,
     targetStateSchemas: config.targetStateSchemas,
