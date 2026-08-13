@@ -652,8 +652,9 @@ export interface BlockContext<
    * @internal Per-request background work pool. Set by the server's request
    * executor; absent in unit-test contexts. Sequencer DSL pushes here from
    * `.work()` / `.workIf()` / `.forEachBackground()`. The request executor
-   * drains the pool exactly once before terminal status. When absent (unit
-   * tests), sequencer DSL falls back to per-sequencer auto-await.
+   * drains the pool to quiescence before terminal status, on every terminal
+   * path. When absent (unit tests), sequencer DSL falls back to
+   * per-sequencer auto-await.
    */
   _requestWorkPool?: import("../execution/request-work-pool").RequestWorkPool;
 
