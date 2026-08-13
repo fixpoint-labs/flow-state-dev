@@ -432,7 +432,7 @@ const researcher = generator({
   itemVisibility: { client: true, history: false },  // visible to the user for observability,
   agentName: "researcher",                            // not inherited by the orchestrator's history.
   prompt: "Analyze and summarize.",
-  model: "anthropic:claude-sonnet-4-6",
+  model: "anthropic/claude-sonnet-4-6",
 });
 ```
 

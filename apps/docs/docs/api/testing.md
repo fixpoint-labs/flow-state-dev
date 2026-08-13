@@ -425,7 +425,7 @@ analyzerScorer.safety()        // Output contains no harmful content
 Each accepts optional config overrides:
 
 ```ts
-analyzerScorer.relevance({ model: "claude-haiku", threshold: 0.8 })
+analyzerScorer.relevance({ model: "anthropic/claude-haiku-4-5", threshold: 0.8 })
 ```
 
 ## Dataset Utilities

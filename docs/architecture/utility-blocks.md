@@ -41,6 +41,13 @@ Every utility factory accepts a `name` (required) and returns a block that can b
 | `analyzer` | generator | Evaluation | Evaluate artifacts against structured criteria |
 | `intentClassifier` | generator | Routing | Classify input into a bounded category set for downstream routing |
 | `intentRouter` | sequencer | Routing | Pre-wired classifier + router for classification-driven branching |
+| `keyedRouter` | router | Routing | Pick a block from a `Record` by string key (no LLM) |
+| `upsertResource` | handler | Resources | Get-or-create + patch a resource collection instance (no LLM) |
+| `sessionTitleGenerator` | sequencer | Session | Generate a session title from recent conversation messages |
+
+The table tracks `packages/core/src/utility/index.ts` — eleven factories. The
+user-facing catalog with worked examples is
+[Core Utilities](../../apps/docs/docs/patterns/utility-blocks/core.md).
 
 ---
 
@@ -782,7 +789,7 @@ Represents the classification result produced by the intentClassifier.
 
 ## Key properties
 
-- Generator-based utilities accept a `model` override. Most default to `"intent/utility"`; `decomposer` defaults to `"openai/gpt-5.4-mini"` and `sessionTitleGenerator` to `"openai/gpt-5-nano"`.
+- Generator-based utilities accept a `model` override; see the defaults above.
 - All utilities export their default output schema as a named Zod object (e.g., `summarizerOutputSchema`) for reference or reuse.
 - The `outputSchema` parameter on every utility accepts a generic type, providing full type inference on the block's output.
 - Combiner is handler-based — it runs deterministic logic with no LLM call.

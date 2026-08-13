@@ -155,7 +155,7 @@ const pipeline = sequencer({ name: "review" })
   .step(analyze);
 ```
 
-Ten utilities ship in Phase 1, grouped into five categories: Context & Memory, Planning & Decomposition, Synthesis & Output, Evaluation, and Routing. See [Utility Blocks](./utility-blocks.md).
+The full catalog — which utilities exist, their kinds, and their default models — is in [Utility Blocks](./utility-blocks.md).
 
 ## Data flow
 

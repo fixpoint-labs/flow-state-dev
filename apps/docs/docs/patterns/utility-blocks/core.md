@@ -29,9 +29,24 @@ const block = utility.summarizer({ name: "my-summarizer", granularity: "brief" }
 | [`upsertResource`](#upsertresource) | handler | Get-or-create + patch a resource collection instance (no LLM call) |
 | [`intentClassifier`](#intentclassifier) | generator | Classify input into a bounded category set for routing |
 | [`intentRouter`](#intentrouter) | sequencer | Pre-wired classifier + router for classification-driven branching |
+| [`keyedRouter`](/docs/fundamentals/blocks#keyedrouter) | router | Pick a block from a `Record` by string key (no LLM call) |
 | [`sessionTitleGenerator`](#sessiontitlegenerator) | sequencer | Auto-generate a session title from conversation messages |
 
-Every generator-based utility defaults to `"gpt-5-mini"` and accepts a `model` override. All utilities accept an optional `outputSchema` to replace the default output shape with full type inference.
+### Default models
+
+Every utility that calls a model accepts a `model` override. Left alone, most ask for the `utility` intent, a name you map to real models once in your resolver instead of naming a model in each block. The rest name a model directly:
+
+| Utility | Default model |
+|---------|---------------|
+| `contextReducer`, `memoryExtractor`, `summarizer`, `analyzer`, `intentClassifier` | `"intent/utility"` |
+| `decomposer` | `"openai/gpt-5.4-mini"` |
+| `sessionTitleGenerator` | `"openai/gpt-5-nano"` |
+
+`combiner`, `upsertResource`, and `keyedRouter` take no `model` — they run deterministic logic.
+
+If you haven't declared a `utility` intent, the resolver falls back to your `defaultModel`, so set one. See [Models](/docs/fundamentals/models) for how intents map to providers.
+
+All utilities accept an optional `outputSchema` to replace the default output shape with full type inference.
 
 ### `itemVisibility` — control output visibility
 
@@ -1145,7 +1160,7 @@ The whole block is `transient: true`, so it produces no visible items in the str
 ```ts
 utility.sessionTitleGenerator({
   name: string,           // required — used as block name and for sub-block names
-  model?: string,         // model ID (default: "gpt-5-mini")
+  model?: string,         // model ID (default: "openai/gpt-5-nano")
   messageLimit?: number,  // recent LLM messages to include (default: 4)
 });
 ```

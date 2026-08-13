@@ -77,7 +77,7 @@ One row per block execution. The same row is emitted at `item.added`, patched in
   "id": "item_block_trace_4_a1b2",
   "patch": {
     "generator": {
-      "model": "openai/gpt-4o-mini",
+      "model": "openai/gpt-5.4-mini",
       "messages": [/* ... */],
       "temperature": 0.2
     }
@@ -99,7 +99,7 @@ One row per block execution. The same row is emitted at `item.added`, patched in
   "completedAt": 1717000004210,
   "duration": 4210,
   "modelUsage": {
-    "model": "openai/gpt-4o-mini",
+    "model": "openai/gpt-5.4-mini",
     "promptTokens": 412,
     "completionTokens": 94,
     "totalTokens": 506
