@@ -50,15 +50,21 @@ spec.
 
 **Alternatives is triggered, never standing.** It costs 8 sub-agent calls, and once the
 code exists most alternatives are expensive regret — the spec is where they pay for
-themselves. Add it only when the caller asks for it, or when the change is genuinely
-shape-open: **new public API surface**, a **new pattern / capability / block kind**, a
-**schema or scope decision**, or a **spec whose §3 weighed no real alternative**.
+themselves. There are two ways in, and they are not the same:
 
-**An approved spec that weighed a real alternative in §3 overrides every trigger above** —
-including new public API surface. The divergence already happened, at the altitude where it
-was cheap, and a human signed the result off; re-running it against shipped code is paying
-twice to relitigate a settled decision. Bug fixes and mechanical refactors don't get this
-lens either.
+- **An explicit request always runs it.** If the caller asked for the alternatives lens,
+  run it. No exclusion below applies — the caller opted in, which is the same rule as
+  `adhd`'s own pre-flight Step 1.
+- **Automatic triggering** happens only when the change is genuinely shape-open: **new
+  public API surface**, a **new pattern / capability / block kind**, a **schema or scope
+  decision**, or a **spec whose §3 weighed no real alternative**.
+
+**The exclusions below govern automatic triggering only.** Don't auto-add the lens to a bug
+fix or a mechanical refactor. And an **approved spec that weighed a real alternative in §3**
+suppresses every automatic trigger, including new public API surface: the divergence already
+happened at the altitude where it was cheap and a human signed the result off, so re-running
+it against shipped code pays twice to relitigate a settled decision. If someone asks for it
+anyway, they get it.
 
 ## Run
 
@@ -77,7 +83,11 @@ lens either.
    - **Alternatives** (if triggered) → run `adhd` in its **review context**, scoped to
      *other shapes this change could have taken*. Its switch test (materially different ·
      concretely describable · wins on a named axis · switch cost stated) does the pruning —
-     don't re-derive it here. Everything it returns is a **note**; it never blocks.
+     don't re-derive it here. Its **alternatives rows** are always **notes** and never
+     block. Its **routed findings** are not — those are correctness / restraint / coherence
+     defects that divergence happened to walk into, returned tagged for you to classify;
+     severity them as that lens would, up to and including must-fix. Note-only applies to
+     the shapes, not to everything the lens hands back.
    - **Model tiering** (AGENTS.md): dispatch **Correctness** and **Completeness** on
      **Sonnet** — they check *decided* work against the spec/checklist, not open design.
      **Coherence** and **Restraint** keep the judgment tier (Opus, the default); **Depth**

@@ -25,6 +25,10 @@ folded together, the critic strangles the generator and you get neither.
 > added, and two entry contexts (spec and review) with their own convergence gates. The
 > upstream package is deliberately **not** a dependency — the Agent tool runs the same
 > loop with nothing to install.
+>
+> The upstream copyright and permission notice is retained in
+> [`LICENSE.upstream`](./LICENSE.upstream) beside this file, as MIT requires for a copy of
+> a substantial portion. Keep the two together if either ever moves.
 
 ## Not this skill
 
@@ -103,8 +107,18 @@ can't. Only step 3 fans out.
    each by its angle: "make it a capability", "push it to user space", "remove the
    framework's role", "do it at trace time".
 
-3. **Deepen the top 3.** Rank by `novelty×0.35 + viability×0.40 + fit×0.25`, drop traps,
-   take three. One sub-agent each:
+3. **Deepen 3 — one per cluster first, score second.** Rank by
+   `novelty×0.35 + viability×0.40 + fit×0.25` and drop traps. Then take the **best
+   surviving candidate from each of the three top-ranked clusters** — not the top three
+   overall. Only if fewer than three clusters survive do you fill the remaining slots by
+   raw score.
+
+   **This is what the clustering is for.** Top-three-by-score can be three variations of
+   one underlying shape, which is the *convergence disguised as divergence* anti-pattern
+   below — the skill producing exactly the narrow set it exists to prevent, while the
+   breadth Phase 1 paid for gets discarded at the last step.
+
+   One sub-agent each:
 
    > You are in FOCUS mode. Take one promising idea and connect dots.
    > Sketch how it would actually work in 4 to 8 sentences. Name the load-bearing risk.
