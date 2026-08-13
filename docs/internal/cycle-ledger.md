@@ -525,3 +525,135 @@ model-migration message that shipped a dead internal URL to users. A rule that l
 of itself inside the edit correcting restatements is the class; a rule that loses the only route to
 the surface where an escape actually happened is the cost. **Neither round was caught by the
 author.**
+
+---
+
+## Cycle 5 — declared-surface epic wrap (FIX-1127) (2026-08-12)
+
+Full epic sweep at wrap: three merged implementation PRs plus one follow-up still open, under
+epic [#1249](https://github.com/fixpoint-labs/flow-state-dev/pull/1249). **18 automated review
+passes** — small next to cycle 4's 80, because three of the four rows are one-file fixes. Read
+the classes, not the totals.
+
+**Method:** cycle 4's, unchanged. `Rounds` = automated review passes (`get_reviews`;
+`cursor[bot]` + `chatgpt-codex-connector[bot]`); implementation PRs take ordinary scoring, the
+epic PR takes the direction-artifact rules. **Classes stay inside the header's closed taxonomy** —
+the shape named below is a parenthetical qualifier on `missed-edge-case`, not a new label.
+
+| PR | Kind | Rounds | Feedback classes | Claims (looped / settled / verdicts) | Design felt off? | Upstream fix that would have prevented it |
+|---|---|---|---|---|---|---|
+| [#1249](https://github.com/fixpoint-labs/flow-state-dev/pull/1249) FIX-1127 epic-spec | epic | **3 spent** (6 raw) | design-off ×1 (FIX-754 left the set at round 3) · over-engineered ×1 (§2 cut from seven themes to three) · missed-edge-case ×1 (unrun-claim — independence asserted, then falsified) | 2 / 1 / **REFUTED** | **yes** — the set was resized twice and shed a row | Settle a scope count by parse before the gate, not at round 3 |
+| [#1262](https://github.com/fixpoint-labs/flow-state-dev/pull/1262) FIX-1052 + FIX-1051 | impl | 3 | over-engineered ×2 (one rationale across JSDoc + changeset + test comment) · docs-miss ×2 (changeset altitude; **protocol tags in the published fragment**) | 0 / 0 / — | no | A guard on the fragment body (FIX-1139) |
+| [#1263](https://github.com/fixpoint-labs/flow-state-dev/pull/1263) FIX-1126 + FIX-502 | impl | **6** | missed-edge-case ×3 (unrun-claim — dotted Anthropic IDs · Google-less intent ladder · `create-block` template) · stale-restatement ×1 (utility default in four places) · docs-miss ×1 (no provider package in step 1) | 1 / 1 / **REFUTED** | no | Run the documented config once per single-provider key |
+| [#1275](https://github.com/fixpoint-labs/flow-state-dev/pull/1275) FIX-1048 | impl | 2 | missed-edge-case ×1 (`patch` where pre-1.0 breaking is `minor`) · over-engineered ×1 (one rationale in five places) | 0 / 0 / — | no | — `AGENTS.md:32` already states the rule plainly |
+| [#1273](https://github.com/fixpoint-labs/flow-state-dev/pull/1273) FIX-1142 | impl | 1 (in flight) | over-engineered ×1 (policy prose in four places) · stale-restatement ×1 (stale success string) | 0 / 0 / — | no | — |
+
+**#1249 is still open on GitHub.** An epic PR closes unmerged at wrap; this one hasn't. Its
+endpoint is this wrap, so the row is scored rather than partial, but the close is outstanding.
+
+### The dominant class: `missed-edge-case (unrun-claim)` — 7 instances
+
+**A claim about what the system does was settled by argument, and the argument was locally
+sound.** Not a knowledge gap and not carelessness — every instance reads as competent reasoning.
+
+| Claim | How it was settled | Result |
+|---|---|---|
+| FIX-754: "four sites violate BP-012/BP-014" | read `main` carefully, three times (4 → 2 → 4) | wrong each time; a reviewer then found a 5th |
+| the same count, fourth attempt | brace-matched parse of 157 `handler({…})` definitions across 907 files | **8**, first try, 8/8 with no false positives |
+| "`preset/small` → `intent/utility` is a drop-in swap" | read the runtime's own migration message | wrong — `intent/*` also throws with no map *and* no `default` |
+| "these Anthropic IDs should be dotted" (a sweep normalised them) | read for consistency | wrong — direct strings pass through unnormalised; caught by a reviewer tracing `resolveId` |
+| "the ladders cover the providers these pages advertise" | reasoned about the ladder | wrong — a Google-only reader matched nothing; caught by running a 5×3 matrix |
+| #1262: "a child's lazy resource loads at the parent's dispatch" | traced by reading; **self-flagged on the PR** as "the claim I'd bet least on" | shipped unverified |
+| codex: "the repo already contains unquoted YAML model fields" | asserted, unrun | **false** — zero `model:` keys across 144 `.yml`/`.yaml` files |
+
+**The asymmetry is the finding.** Every settlement by execution or parse was right on the first
+attempt. Every settlement by reading that was later checked was wrong. Careful reading did not
+produce hedged answers, it produced confident wrong ones — FIX-754 was read carefully three times.
+
+The last row is why the lesson is **not** "trust the reviewers": a premise nobody ran is a guess
+regardless of who asserts it, and the author was right to run it before declining.
+
+### This epic is a controlled test of cycle 4's fixes, and both classes recurred
+
+Cycle 4's grounding sharpenings landed in `b0fc019` at **17:47 on 2026-08-12**. Every PR in this
+epic branched from a base that already contained them — #1262 opened at 19:25, 98 minutes later.
+This is not a cycle where the fix hadn't arrived.
+
+- **Fix A** (`issue-implement` 10.6: grep the superseded claim's distinctive noun, counting
+  READMEs, error strings and the changeset as sites). Three `stale-restatement` instances followed
+  within six hours: #1263's utility default in four places (round 1 corrected a different one),
+  #1273's stale success string, and **#1275's own PR description, which still records the
+  changeset as `patch` while the merged fragment says `minor`** — that one escaped review and is
+  frozen in a merged body. **0 caught at edit time · 2 by review · 1 escaped.**
+- **Fix B** (tenet 7: *a check that cannot fire is not a check*). #1263 shipped a CI guard whose
+  exclusion hid **1,624 files** — a check that could not fire over most of the tree — about two
+  hours after the clause landed. Caught after merge, filed as FIX-1142, fixed by #1273.
+
+**Cycle 4 pre-registered the decision rule for exactly this outcome:** *"If fix A lands and
+instances still escape, reading 2 is confirmed twice and the next move is CI, not prose."* Fix A
+landed. An instance escaped. **The rule fires.**
+
+#1275 is the sharpest single data point, because the discipline was demonstrably active. The
+author swept **every other changeset fragment in the repo** for the same `patch`/`minor` error and
+reported the sweep — a textbook fix-A convergence pass — and did not converge the PR description
+sitting above it. Cycle 2's round 9 had already named the PR description as a restatement surface.
+Knowing the rule, and applying it well on the adjacent surface, did not reach the next one.
+
+### Upstream fix landed
+
+| # | Fix | Altitude | Targets |
+|---|---|---|---|
+| A | **BP-003 extended from the deliverable to the claims that scope it** — a scope count, an equivalence, or what a path does at runtime carries the same evidence burden; settle it by executing or parsing, and a reviewer's assertion is a guess too (`best-practices.md` + the `CLAUDE.md` mirror) | BP | the 7 `unrun-claim` instances |
+
+**Stated plainly: fix A is not expected to close the class on its own.** The class was named, with
+this exact evidence, in the epic-spec itself at the objective gate — *"It was read carefully three
+times and undercounted every time; only a mechanical parse got it right"* — four hours before
+#1262 opened. It then recurred four more times downstream, same session, same loop. Prose naming
+the class did not prevent the class.
+
+BP-003 was extended because its **gap is real**: it governed deliverables and said nothing about
+the claims that scope them, so review had no clause to cite. That is worth one sentence. It is not
+worth pretending a sentence changes behaviour that five cycles now say prose does not change.
+**The weight is on mechanism**, per cycle 4's fired rule — filed rather than written: FIX-1146
+(resolve the documented config per single-provider key), FIX-1147 (post-merge revalidation of an
+epic's other open PRs), FIX-1148 (read Linear label writes back).
+
+### Dropped
+
+- **Protocol tags leaking into a changeset** (`</content>`, `</invoke>` in
+  `own-declared-resources-stay-own.md`, headed for published `@flow-state-dev/core` release notes).
+  Real, and caught by codex — who verified it with `@changesets/parse` rather than asserting it.
+  **Already filed as FIX-1139** with its design constraint recorded. One instance, already a gate;
+  a lesson would be a second copy of a ticket. Same disposition as cycle 1's NUL-byte drop.
+- **"A correct premise applied to the wrong question"** (#1275's `patch`). The argument — `core` is
+  `0.0.0` with no consumers — is *true*, and is the right reason the deletion needs no deprecation
+  window. It was simply answering a different question than the bump level. But `AGENTS.md:32`
+  states the rule without ambiguity, so this is a rule that was clear and wasn't applied, not a
+  guidance gap. One instance. **Watch it**; do not write it down.
+- **"Don't surface a PR as merge-ready before the last reviewer has finished the current head."**
+  #1263 was surfaced, then two P2s landed on that same head minutes later and it was retracted.
+  One instance, coordinator-level, no cost beyond the retraction. Revisit on recurrence.
+- **Widening `settle-claim`'s trigger** from "argued twice" to "cheap to execute and load-bearing".
+  Tempting: FIX-754's count was argued **four** times before a parse settled it, and cycle 4
+  independently flagged the same trigger as possibly too narrow. Two cycles pointing at one
+  trigger is not yet three, and this cycle's answer is mechanism, not another skill edit. **This is
+  the first candidate to pull back if the class survives FIX-1146.**
+
+### Claim to test next cycle
+
+1. **`unrun-claim` falls, and specifically: no scope count or equivalence claim reaches a PR
+   description without an execution or parse behind it.** Score the *method*, not the outcome — a
+   claim that happened to be right after being read is still an unrun claim, and counting it as a
+   pass makes the metric unfalsifiable.
+2. **`stale-restatement`'s escape count.** This cycle: 3 instances, 0 edit-time, 2 review, 1
+   escaped — the second consecutive cycle where fix A's class escaped after fix A landed. If it
+   escapes a third time, stop editing skills for this class and cost the CI check.
+3. **A zero on either is suspect until confirmed the reviewer was looking.** No lens asks about
+   `unrun-claim` today, and an unmeasured shape reads as a solved one.
+
+**Note for the next collector: cycle 4's own fix table says "proposed, none landed" and both fixes
+had in fact landed** in `b0fc019` before this epic began — visible only because this entry checked
+the tree instead of reading the table. A ledger that records its fixes as unshipped will score the
+next cycle against the wrong baseline. The instrument caught this one by running the check it
+spent the cycle arguing for; that is the only reason it is a footnote rather than a fourth
+invalidated baseline.
