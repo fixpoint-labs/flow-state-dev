@@ -1316,7 +1316,7 @@ describe("execution runtime", () => {
     expect(items[6]?.delta).toBeUndefined();
   });
 
-  it("emits state_change items for user, org, and request scopes (FIX-576)", async () => {
+  it("emits state_change items for user and request scopes (FIX-576)", async () => {
     const stores = createInMemoryStores();
     await stores.org.set(
       "org_scope",
@@ -1336,7 +1336,6 @@ describe("execution runtime", () => {
       requestStateSchema: z.object({ phase: z.string().default("idle") }),
       sessionStateSchema: z.object({}).passthrough(),
       userStateSchema: z.object({ role: z.string().default("guest") }),
-      orgStateSchema: z.object({ tier: z.string().default("free") }),
       actions: {
         run: {
           inputSchema: z.number(),
@@ -1370,9 +1369,6 @@ describe("execution runtime", () => {
 
     await ctx.user.patchState({ role: "admin" });
     await ctx.request.patchState({ phase: "running" });
-    if (ctx.org !== undefined) {
-      await ctx.org.patchState({ tier: "pro" });
-    }
 
     const byScope = (scope: string) =>
       response
@@ -1381,7 +1377,6 @@ describe("execution runtime", () => {
 
     const userItems = byScope("user");
     const requestItems = byScope("request");
-    const orgItems = byScope("org");
 
     expect(userItems).toHaveLength(1);
     expect(userItems[0]?.delta).toEqual({ role: "admin" });
@@ -1391,9 +1386,6 @@ describe("execution runtime", () => {
 
     expect(requestItems).toHaveLength(1);
     expect(requestItems[0]?.delta).toEqual({ phase: "running" });
-
-    expect(orgItems).toHaveLength(1);
-    expect(orgItems[0]?.delta).toEqual({ tier: "pro" });
   });
 
   it("suppresses scope-level state_change emit when patch is a no-op (FIX-576)", async () => {

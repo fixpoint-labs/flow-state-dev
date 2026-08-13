@@ -54,11 +54,6 @@ function makeClientDataFlow(kind: string, id = kind): FlowInstance {
       clientData: {
         userInfo: () => ({ active: true })
       }
-    },
-    org: {
-      clientData: {
-        orgInfo: () => ({ configured: true })
-      }
     }
   })({
     id
@@ -403,11 +398,6 @@ describe("createFlowApiRouter", () => {
           userInfo: {
             active: true
           }
-        },
-        org: {
-          orgInfo: {
-            configured: true
-          }
         }
       }
     });
@@ -466,12 +456,6 @@ describe("createFlowApiRouter", () => {
         clientData: {
           userLabel: (ctx) => ({ nickname: ctx.state.nickname })
         }
-      },
-      org: {
-        stateSchema: z.object({ title: z.string().optional() }),
-        clientData: {
-          orgLabel: (ctx) => ({ title: ctx.state.title })
-        }
       }
     })({ id: "isolated-state-route" });
 
@@ -512,8 +496,7 @@ describe("createFlowApiRouter", () => {
     expect(body.state).toBeUndefined();
     expect(body.internalState).toBeUndefined();
     expect(body.clientData).toMatchObject({
-      user: { userLabel: { nickname: "Ada" } },
-      org: { orgLabel: { title: "Project Ada" } }
+      user: { userLabel: { nickname: "Ada" } }
     });
     expect(await stores.user.get("user_iso_state")).toBeUndefined();
     expect(await stores.org.get("proj_iso_state")).toBeUndefined();

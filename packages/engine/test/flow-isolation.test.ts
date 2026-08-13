@@ -146,16 +146,6 @@ describe("FlowRegistry cross-flow schema validation", () => {
     ).not.toThrow();
   });
 
-  it("reports org-scope conflicts with the correct scope label", () => {
-    const registry = createFlowRegistry();
-    registry.register(makeFlow({ kind: "flow-a", orgSchema: z.object({ title: z.string() }) }));
-
-    const error = captureConflict(() =>
-      registry.register(makeFlow({ kind: "flow-b", orgSchema: z.object({ title: z.number() }) }))
-    );
-    expect(error.scope).toBe("org");
-    expect(error.message).toContain("isolateOrgState");
-  });
 
   it("leaves registry state unchanged when registration fails", () => {
     const registry = createFlowRegistry();
@@ -166,34 +156,6 @@ describe("FlowRegistry cross-flow schema validation", () => {
     expect(registry.list().map((f) => f.kind)).toEqual(["flow-a"]);
   });
 
-  it("rolls back user-scope indexing when the org-scope check fails", () => {
-    // Regression: if user validates but org throws, the user participant
-    // must not linger — otherwise describeSharedSchemas misreports, and a
-    // retry of the same kind would self-match and skip validation.
-    const registry = createFlowRegistry();
-    registry.register(
-      makeFlow({
-        kind: "flow-a",
-        userSchema: z.object({ theme: z.string() }),
-        orgSchema: z.object({ title: z.string() }),
-      })
-    );
-    expect(() =>
-      registry.register(
-        makeFlow({
-          kind: "flow-b",
-          // Compatible user, incompatible org.
-          userSchema: z.object({ theme: z.string() }),
-          orgSchema: z.object({ title: z.number() }),
-        })
-      )
-    ).toThrow();
-
-    const desc = registry.describeSharedSchemas();
-    expect(desc.participants.user).toEqual(["flow-a"]);
-    expect(desc.participants.org).toEqual(["flow-a"]);
-    expect(registry.list().map((f) => f.kind)).toEqual(["flow-a"]);
-  });
 
   it("describeSharedSchemas reports participating flow kinds", () => {
     const registry = createFlowRegistry();
@@ -255,20 +217,16 @@ describe("end-to-end: shared vs isolated state", () => {
   });
 
   it("uses namespaced key for org scope when isolated", async () => {
-    const flow = makeFlow({
-      kind: "flow-iso-proj",
-      isolateOrgState: true,
-      orgSchema: z.object({ title: z.string().optional() }),
-    });
+    // Org scope carries no state (FIX-1153), so this pins the record's
+    // storage key alone — which is what `isolateOrgState` still governs.
+    const flow = makeFlow({ kind: "flow-iso-proj", isolateOrgState: true });
     const stores = createInMemoryStores();
 
-    const ctx = await createExecutionContext({
+    await createExecutionContext({
       flow, actionName: "run", requestId: "req_1", sessionId: "sess_1", userId: "user_1", orgId: "proj_1", stores,
     });
-    await ctx.org?.patchState({ title: "My Project" });
 
     const namespaced = await stores.org.get("proj_1:flow-iso-proj");
-    expect(namespaced?.state).toMatchObject({ title: "My Project" });
     expect(namespaced?.orgId).toBe("proj_1");
     expect(await stores.org.get("proj_1")).toBeUndefined();
   });
