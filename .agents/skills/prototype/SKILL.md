@@ -21,8 +21,11 @@ Identify which question is being answered — from the user's prompt, the surrou
 | *What should we do?* — yours, private, answer captured in `NOTES.md` | **this one** |
 | *Is this direction right?* — published on a never-merged spec/epic PR so reviewers and the human at the gate can run it | [`spec-poc`](../spec-poc/SKILL.md) |
 | *Who is right?* — a factual claim a review has argued twice ("a router can't do that"), adjudicated by a check where PASS and FAIL both mean something | [`settle-claim`](../settle-claim/SKILL.md) |
+| *What else could we do?* — the candidates you hold all feel like variations of one idea, so the set is too narrow to build from yet | [`adhd`](../adhd/SKILL.md) |
 
 The practical tell: a spec POC has to be runnable by someone who isn't you, and a prototype doesn't.
+
+**The fourth row is on a different axis.** The first three all answer a question by *building* something; `adhd` builds nothing and generates the candidate set instead. If you can name what you'd build, you're in the first three. If you can't — or everything you can name feels like the same idea — diverge first, then build the survivor.
 
 The two branches produce very different artifacts — getting this wrong wastes the whole prototype. If the question is genuinely ambiguous and the user isn't reachable, default to whichever branch better matches the surrounding code: a new block / pattern / capability / scope-shape question → logic; a renderer / devtool / kitchen-sink page question → UI. State the assumption at the top of the prototype.
 

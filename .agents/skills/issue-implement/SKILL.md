@@ -326,7 +326,7 @@ Present the completed work:
 4. **Goal verdict**: when the spec named a goal check, the check that was run (command/path), that it used a real model, and its PASS verdict with the evidence it checked — the proof the goal was met, distinct from the mocked test suite. When the spec documented that no goal check applies, state that and the one-line justification. For bugs, give diagnose's real-path confirmation instead.
 5. **Deviations**: anything that differed from the spec and why
 6. **Test results**: full typecheck and test output, plus the red/green evidence (failing output captured before the fix/implementation, passing output after) for each new behavioural or regression test — per the confirm-red gate. "Tests pass" alone is not evidence.
-7. **Review findings**: notable findings from `review` across its lenses (coherence, restraint, correctness, completeness) and how the must-fix / should-fix items were resolved
+7. **Review findings**: notable findings from `review` across its lenses (coherence, restraint, correctness, completeness — plus alternatives if the change tripped its trigger) and how the must-fix / should-fix items were resolved. Alternatives rows are always notes: carry them into the summary as *"a shape worth weighing next time"*, never as unfinished work on this PR
 8. **Restraint & subtraction**: what the restraint lens (`second-look`) flagged as overbuild/YAGNI and what was subtracted (BP-038)
 9. **Follow-ups**: any items for future work (not in scope but worth noting)
 
