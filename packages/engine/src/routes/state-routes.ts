@@ -217,13 +217,6 @@ export async function handleGetSessionState(
     state: (user?.state ?? {}) as JsonObject,
     resources: userResources
   });
-  const orgClientData = await computeClientData({
-    config: flow.org?.client,
-    scope: "org",
-    filter: clientDataFilter,
-    state: (org?.state ?? {}) as JsonObject,
-    resources: orgResources
-  });
 
   // Resource snapshot — strictly client-shaped. Resources with no `client`
   // config no longer surface here; use /debug/resources* (gated) for full
@@ -265,10 +258,6 @@ export async function handleGetSessionState(
       user:
         Object.keys(userClientData).length > 0
           ? userClientData
-          : undefined,
-      org:
-        Object.keys(orgClientData).length > 0
-          ? orgClientData
           : undefined
     },
     resources: hasResources

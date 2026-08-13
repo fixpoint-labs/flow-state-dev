@@ -76,18 +76,17 @@ export class InMemoryFlowRegistry implements FlowRegistry {
       );
     }
 
-    // Validate both scopes before mutating any state. If the org-scope
-    // check throws after the user-scope check passes, no participant entry
-    // should linger for the user scope.
+    // Only the user scope participates now that org scope state is gone
+    // (FIX-1153). The org half of `ConflictScope` is retained because
+    // org-scoped *resources* can still collide across flows — that check
+    // reads the legacy `flow.org.resources` map rather than the flat
+    // `flow.resources` FIX-435 introduced, so it has been inert for a while
+    // and is not wired up here.
     const userDecl = flow.isolateUserState
       ? undefined
-      : collectScopeDeclaration(flow, "user");
-    const orgDecl = flow.isolateOrgState
-      ? undefined
-      : collectScopeDeclaration(flow, "org");
+      : collectScopeDeclaration(flow);
 
     if (userDecl) this.validateScope("user", flow.kind, userDecl);
-    if (orgDecl) this.validateScope("org", flow.kind, orgDecl);
 
     // All validation passed — commit.
     const byId = existingByKind ?? new Map<string, FlowInstance>();
@@ -96,7 +95,6 @@ export class InMemoryFlowRegistry implements FlowRegistry {
     }
     byId.set(flow.id, flow);
     this.indexParticipant("user", flow.kind, userDecl);
-    this.indexParticipant("org", flow.kind, orgDecl);
   }
 
   /**
@@ -210,10 +208,9 @@ type ScopeDeclaration = {
 };
 
 function collectScopeDeclaration(
-  flow: FlowInstance,
-  scope: ConflictScope
+  flow: FlowInstance
 ): ScopeDeclaration | undefined {
-  const scopeConfig = scope === "user" ? flow.user : flow.org;
+  const scopeConfig = flow.user;
   if (scopeConfig === undefined) {
     return undefined;
   }

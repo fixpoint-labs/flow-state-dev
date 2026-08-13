@@ -431,17 +431,15 @@ function buildTraceEmitters(
 export async function createExecutionContext<
   TRequestState extends JsonObject = JsonObject,
   TSessionState extends JsonObject = JsonObject,
-  TUserState extends JsonObject = JsonObject,
-  TOrgState extends JsonObject = JsonObject
+  TUserState extends JsonObject = JsonObject
 >(
   options: CreateExecutionContextOptions<
     TRequestState,
     TSessionState,
-    TUserState,
-    TOrgState
+    TUserState
   >
 ): Promise<
-  ExecutionContext<TRequestState, TSessionState, TUserState, TOrgState>
+  ExecutionContext<TRequestState, TSessionState, TUserState>
 > {
   const now = Date.now();
   const {
@@ -695,7 +693,7 @@ export async function createExecutionContext<
       id: resolvedOrgKey,
       orgId: resolvedOrgId,
       userId,
-      state: (options.orgState ?? {}) as TOrgState,
+      state: {},
       resources: normalizeScopeResources(orgResourceConfigs, undefined),
       version: 0,
       createdAt: now,
@@ -1930,13 +1928,6 @@ export async function createExecutionContext<
     sessionRef.current.state as TSessionState,
     sessionRef.current.version
   );
-  const orgContainer =
-    orgRef.current === undefined
-      ? undefined
-      : createStateContainer<TOrgState>(
-          orgRef.current.state as TOrgState,
-          orgRef.current.version
-        );
 
   // Hoisted so scope-handle ops can close over these refs and emit
   // `state_change` items on mutation (FIX-576). `responseRef.current` is
@@ -1996,36 +1987,6 @@ export async function createExecutionContext<
     )
   });
 
-  const orgOps = (():
-    | ReturnType<typeof createScopeStateOps<TOrgState>>
-    | undefined => {
-    if (orgRef.current === undefined || orgContainer === undefined) {
-      return undefined;
-    }
-    // Build the standard persist callback once, then wrap it with an
-    // "Org removed mid-execution" guard. The guard short-circuits before the
-    // inner callback touches `orgRef.current.id`, which would throw if the
-    // org went away mid-request.
-    const inner = createScopePersist<TOrgState, OrgRecord>(
-      orgRef as { current: OrgRecord },
-      stores.org,
-      (ev, st) => ({
-        ...(orgRef.current as OrgRecord),
-        state: st as TOrgState,
-        version: ev + 1,
-        updatedAt: Date.now()
-      })
-    );
-    return createScopeStateOps(orgContainer, {
-      cas: flow.org?.cas,
-      persist: async (state, expectedVersion, hint) => {
-        if (orgRef.current === undefined) {
-          return { ok: true, version: expectedVersion + 1 };
-        }
-        return inner(state, expectedVersion, hint);
-      }
-    });
-  })();
 
   // Resource change emitter — pushes transient resource_change items via SSE
   // so clients can refresh clientData without waiting for request completion.
@@ -2422,26 +2383,18 @@ export async function createExecutionContext<
     () => sessionContainer.read()
   ) as SessionScopeHandle<TSessionState>;
 
-  const orgOpsEmitting =
-    orgOps === undefined || orgContainer === undefined
-      ? undefined
-      : emitWrap("org", orgOps, orgContainer);
   const orgHandle =
-    orgRef.current === undefined || orgOpsEmitting === undefined || orgContainer === undefined
+    orgRef.current === undefined
       ? undefined
-      : (defineStateProperty(
-          {
-            identity: {
-              type: "org" as const,
-              id: orgRef.current.id,
-              userId: orgRef.current.userId,
-              orgId: orgRef.current.orgId,
-              tenantId: options.tenantId
-            },
-            ...orgOpsEmitting
-          },
-          () => orgContainer.read()
-        ) as OrgScopeHandle<TOrgState>);
+      : ({
+          identity: {
+            type: "org" as const,
+            id: orgRef.current.id,
+            userId: orgRef.current.userId,
+            orgId: orgRef.current.orgId,
+            tenantId: options.tenantId
+          }
+        } satisfies OrgScopeHandle);
 
   // FIX-435: build the flat ctx.resources registry by merging the per-scope
   // registries. A resource's accessor key routes to the registry that owns
@@ -2896,7 +2849,7 @@ export async function createExecutionContext<
     // signal (which may be the background signal inside a `.work()` tree)
     // rather than the root request signal via closure capture.
     signalOverride?: AbortSignal
-  ): ExecutionContext<TRequestState, TSessionState, TUserState, TOrgState> => {
+  ): ExecutionContext<TRequestState, TSessionState, TUserState> => {
     const activeEmCtx = scopeEmCtx ?? emCtx;
     const childSiblingRegistry: SiblingRegistryEntry[] = [];
 
@@ -2954,7 +2907,7 @@ export async function createExecutionContext<
       ) as unknown as StateRef<TState>;
     };
 
-    const context: ExecutionContext<TRequestState, TSessionState, TUserState, TOrgState> = {
+    const context: ExecutionContext<TRequestState, TSessionState, TUserState> = {
       flow,
       actionName: options.actionName,
       requestRuntime: {
