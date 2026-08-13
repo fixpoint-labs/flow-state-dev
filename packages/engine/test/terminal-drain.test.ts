@@ -679,9 +679,18 @@ describe("FIX-1001 — orderings the drain forces", () => {
     expect([202, 204]).toContain(response.status);
 
     gate.resolve();
-    await runPromise;
+    const result = await runPromise;
 
     // Accepted stop wins over the in-flight `failed` classification.
     expect((await stores.request.get("req_drain_late_abort"))?.status).toBe("aborted");
+
+    // ...and the returned result agrees with the record. The post-drain
+    // re-read is what makes the outcome `aborted`, so anything downstream of
+    // it that still reads the pre-drain snapshot reports a different outcome
+    // than the durable record — two authoritative-looking surfaces disagreeing
+    // about the same request. `packages/cli/src/commands/run.ts` keys straight
+    // off `result.error`, so a stale read there prints a failure for a request
+    // the user successfully stopped.
+    expect(result.error).toBeUndefined();
   });
 });

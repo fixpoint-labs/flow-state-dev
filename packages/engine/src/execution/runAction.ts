@@ -2079,7 +2079,19 @@ export async function runActionInternal<
       items: itemsToPersist(),
       durationMs: Date.now() - startedAt,
       requestId,
-      error: signalAborted ? undefined : applyNormalizedErrorSeam(
+      // Keyed on the SAME condition as the terminal-branch dispatch above, so
+      // the returned result and the durable record cannot disagree about the
+      // outcome. Reading the pre-drain `signalAborted` alone would report a
+      // request as failed whose record says `aborted`, because the post-drain
+      // re-read can reclassify a `failed`/`interrupted` branch after that
+      // snapshot was taken — and callers key straight off this field
+      // (`packages/cli/src/commands/run.ts` prints a failure when it is set).
+      //
+      // The client-visible error *item* is deliberately not suppressed to
+      // match: it was already delivered before the drain, the failure really
+      // happened, and withdrawing information a caller has already seen is
+      // worse than reporting both. What has to agree is the classification.
+      error: signalAborted || wasIntentionalAbort ? undefined : applyNormalizedErrorSeam(
         internalSeams,
         normalizeError(error, {
           scope: "request",
