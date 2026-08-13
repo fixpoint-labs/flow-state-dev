@@ -617,10 +617,9 @@ Linear. A re-opened PR is live — the one exception to a closed spec branch bei
 
 It does not re-open the gate, does not resume spec review (late feedback is implementer notes),
 and never merges. If the POC *changes the direction*, that fold needs fresh sign-off: keep the
-PR open and escalate it as a **blocker** for the coordinator to surface, because neither phase
-re-gates on its own — a standing `spec approved` label survives pushes, and a row that is
-already implementing cannot return to the spec gate. Whoever applies the answer folds it and
-closes the PR.
+PR open and escalate it as a **blocker** — no existing approval re-gates itself (a `spec
+approved` label survives pushes; an implementing row can't return to the spec gate). Whoever
+applies the answer folds it and closes the PR.
 
 ## PR feedback: the round cap
 
