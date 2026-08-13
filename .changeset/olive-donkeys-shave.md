@@ -2,10 +2,10 @@
 "@flow-state-dev/core": minor
 ---
 
-Remove org scope state. `orgStateSchema` (on `handler`, `generator`, `router`
-and capabilities), the `org` scope config on `defineFlow`, `ctx.org.state` and
-its mutation ops, and `contextFn`'s three-scope `{ session, user, org }`
-overload are gone.
+Remove org scope state (FIX-1153). `orgStateSchema` (on `handler`, `generator`,
+`router` and capabilities), the `org` scope config on `defineFlow`,
+`ctx.org.state` and its mutation ops, and `contextFn`'s three-scope
+`{ session, user, org }` overload are gone.
 
 Org scope itself is unchanged: `ctx.org.identity`, `requiresOrg`, and
 org-scoped resources (`defineResource({ scope: "org" })`) all work as before.
