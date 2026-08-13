@@ -21,10 +21,13 @@ This repo accumulates bloat because AI-generated code gets reviewed hard for cor
 | Line-level cleanup, dedup, dead lines | `/simplify` |
 | Whole-codebase depth refactors | `improve-codebase-architecture` |
 | Pattern conflicts / redundancy / philosophy drift | `audit-coherence` |
+| **Other shapes this could have taken** — generating alternative approaches | `adhd` |
 
 Second-look operates **above** line level: the approach, the requirements that drove it, and the API/abstraction surface. It does not chase individual lines.
 
 **Its lane vs. coherence.** Second-look asks whether *this change's* surface earns its keep against *its own* requirement — overbuilt? YAGNI? what's the 80/20? Whether the change *duplicates or conflicts with a pattern elsewhere* is a coherence question, not this skill's — route that to `audit-coherence`. (Second-look is `review`'s **restraint** lens; audit-coherence is its **coherence** lens. They compose; they don't overlap.)
+
+**Its lane vs. alternatives.** This skill only ever argues *down* — its calibration gate drops any candidate that adds surface, and its red-flag list kills "could be more flexible / generic" on sight. Proposing a *different* shape, including one that trades surface here for less of it elsewhere, is `review`'s **alternatives** lens ([`adhd`](../adhd/SKILL.md)). Do not soften this skill's bias to make room for that — the two postures are separate lenses precisely so neither has to hedge.
 
 ## Resolve the target
 
