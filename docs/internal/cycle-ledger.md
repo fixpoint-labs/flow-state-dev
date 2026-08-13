@@ -458,6 +458,11 @@ never shipped.
 | A | `issue-implement` 10.6's reconciliation rewritten from *re-read the diff* to **grep the superseded claim's distinctive noun** across headers, comments, `--help`/error strings, READMEs and docs | skill, PR-feedback | `stale-restatement` — all 9, and the 4 escapes in particular | proposed |
 | B | Tenets 7 and 5 ¶2 extended together: **a check that cannot fire is not a check** (break it on purpose, confirm the signal changes), and a decision is **computed or stored once and carried**, not re-derived | philosophy | the two named sub-shapes — 12 of the 42 | proposed |
 
+> **Corrected in cycle 5:** both fixes **landed** in `b0fc019` at 17:47 on 2026-08-12, before the
+> declared-surface epic wrapped. The heading and the `Status` column above are wrong; they are left
+> in place as the record of what this entry claimed. Cycle 5 scores them — partially, since only
+> some branch heads carried them — under "Scoring cycle 4's fixes."
+
 **A is first on tractability, not on size** — one line in a skill, mechanically checkable, aimed
 at the only class that escapes review, and generalising cycle 2 round 5's method (grep every place
 the thing is written down, converge in one pass, which *"found what the review queue hadn't"*)
@@ -532,86 +537,87 @@ author.**
 
 Full epic sweep at wrap: three merged implementation PRs plus one follow-up still open, under
 epic [#1249](https://github.com/fixpoint-labs/flow-state-dev/pull/1249). **18 automated review
-passes** — small next to cycle 4's 80, because three of the four rows are one-file fixes. Read
-the classes, not the totals.
+passes so far** — small next to cycle 4's 80, because three of the four rows are one-file fixes.
+Read the classes, not the totals. Per-instance evidence for every count below — the enumeration,
+the branch-head rescoring, and the correction narrative — lives in
+[`epic-wraps/declared-surface-1127.md`](epic-wraps/declared-surface-1127.md).
 
 **Method:** cycle 4's, unchanged. `Rounds` = automated review passes (`get_reviews`;
 `cursor[bot]` + `chatgpt-codex-connector[bot]`); implementation PRs take ordinary scoring, the
 epic PR takes the direction-artifact rules. **Classes stay inside the header's closed taxonomy** —
 the shape named below is a parenthetical qualifier on `missed-edge-case`, not a new label.
 
+**Sample definition, stated so the next cycle can reproduce a rate instead of inferring one.** The
+**review sample** is the five rows below — every classified review finding on this epic's PRs,
+**16 findings**. That is the denominator for every rate in this entry. The entry also enumerates
+three further instances of one shape that lie **outside** that sample: an author's self-report, a
+reviewer's own unrun assertion, and this wrap PR's own correction. They are counted in the
+enumeration and **excluded from every rate**, because the set they come from has no denominator —
+nobody can count the claims that were made and never checked. Where the two figures diverge, this
+entry says which one it is using.
+
 | PR | Kind | Rounds | Feedback classes | Claims (looped / settled / verdicts) | Design felt off? | Upstream fix that would have prevented it |
 |---|---|---|---|---|---|---|
-| [#1249](https://github.com/fixpoint-labs/flow-state-dev/pull/1249) FIX-1127 epic-spec | epic | **3 spent** (6 raw) | design-off ×1 (FIX-754 left the set at round 3) · over-engineered ×1 (§2 cut from seven themes to three) · missed-edge-case ×1 (unrun-claim — independence asserted, then falsified) | 2 / 1 / **REFUTED** | **yes** — the set was resized twice and shed a row | Settle a scope count by parse before the gate, not at round 3 |
+| [#1249](https://github.com/fixpoint-labs/flow-state-dev/pull/1249) FIX-1127 epic-spec | epic | **3 spent (in flight)** (6 raw) | design-off ×1 (FIX-754 left the set at round 3) · over-engineered ×1 (§2 cut from seven themes to three) · missed-edge-case ×1 (unrun-claim — independence asserted, then falsified) | 2 / 1 / **REFUTED** | **yes** — the set was resized twice and shed a row | Settle a scope count by parse before the gate, not at round 3 |
 | [#1262](https://github.com/fixpoint-labs/flow-state-dev/pull/1262) FIX-1052 + FIX-1051 | impl | 3 | over-engineered ×2 (one rationale across JSDoc + changeset + test comment) · docs-miss ×2 (changeset altitude; **protocol tags in the published fragment**) | 0 / 0 / — | no | A guard on the fragment body (FIX-1139) |
 | [#1263](https://github.com/fixpoint-labs/flow-state-dev/pull/1263) FIX-1126 + FIX-502 | impl | **6** | missed-edge-case ×3 (unrun-claim — dotted Anthropic IDs · Google-less intent ladder · `create-block` template) · stale-restatement ×1 (utility default in four places) · docs-miss ×1 (no provider package in step 1) | 1 / 1 / **REFUTED** | no | Run the documented config once per single-provider key |
 | [#1275](https://github.com/fixpoint-labs/flow-state-dev/pull/1275) FIX-1048 | impl | 2 | missed-edge-case ×1 (`patch` where pre-1.0 breaking is `minor`) · over-engineered ×1 (one rationale in five places) | 0 / 0 / — | no | — `AGENTS.md:32` already states the rule plainly |
 | [#1273](https://github.com/fixpoint-labs/flow-state-dev/pull/1273) FIX-1142 | impl | 1 (in flight) | over-engineered ×1 (policy prose in four places) · stale-restatement ×1 (stale success string) | 0 / 0 / — | no | — |
 
-**#1249 is still open on GitHub.** An epic PR closes unmerged at wrap; this one hasn't. Its
-endpoint is this wrap, so the row is scored rather than partial, but the close is outstanding.
+**#1249 is still open, and this epic is deliberately unfinished.** An epic PR closes unmerged at
+wrap; this one hasn't, because the wrap itself is still in flight. **The row is a partial, per
+this instrument's own rule that an in-flight epic is never compared against a completed total** —
+and the partial is live, not nominal: the two wrap PRs (this entry's, and the docs-polish pass)
+are epic work accruing review rounds right now, and none of those rounds are in the 18 above.
+What finalises the row: both wrap PRs land, #1249 closes unmerged, and the epic's rounds are
+re-totalled. Until then a later cycle reading `3 spent` as final will score this epic as cheaper
+than it was.
 
-### The dominant class: `missed-edge-case (unrun-claim)` — 7 instances
+### The selected class: `missed-edge-case (unrun-claim)` — 4 of 16 findings, plus 3 outside the sample
 
 **A claim about what the system does was settled by argument, and the argument was locally
 sound.** Not a knowledge gap and not carelessness — every instance reads as competent reasoning.
+The enumeration is in
+[`declared-surface-1127.md`](epic-wraps/declared-surface-1127.md#missed-edge-case-unrun-claim--the-enumeration);
+the counts and the selection axis are here.
 
-| Claim | How it was settled | Result |
-|---|---|---|
-| FIX-754: "four sites violate BP-012/BP-014" | read `main` carefully, three times (4 → 2 → 4) | wrong each time; a reviewer then found a 5th |
-| the same count, fourth attempt | brace-matched parse of 157 `handler({…})` definitions across 907 files | **8**, first try, 8/8 with no false positives |
-| "`preset/small` → `intent/utility` is a drop-in swap" | read the runtime's own migration message | wrong — `intent/*` also throws with no map *and* no `default` |
-| "these Anthropic IDs should be dotted" (a sweep normalised them) | read for consistency | wrong — direct strings pass through unnormalised; caught by a reviewer tracing `resolveId` |
-| "the ladders cover the providers these pages advertise" | reasoned about the ladder | wrong — a Google-only reader matched nothing; caught by running a 5×3 matrix |
-| #1262: "a child's lazy resource loads at the parent's dispatch" | traced by reading; **self-flagged on the PR** as "the claim I'd bet least on" | shipped unverified |
-| codex: "the repo already contains unquoted YAML model fields" | asserted, unrun | **false** — zero `model:` keys across 144 `.yml`/`.yaml` files |
-| **this entry:** "all four PR bases carried cycle 4's fixes" | `git merge-base --is-ancestor` — **executed**, against the wrong commit | **false for #1262** — the command cannot return "no" for a merged PR (see below) |
+**It is not the dominant class, and the first draft of this entry said it was.** On the review
+sample, `unrun-claim` is **4 of 16** findings — four of the five `missed-edge-case` findings —
+while `missed-edge-case` (5) and `over-engineered` (5) tie as the largest classes. The "7
+instances" the first draft led with silently mixed the four sampled findings with three
+instances drawn from a wider set. Corrected by parsing the table's own class column rather than
+tallying it by eye, which is the method this section is about.
 
-Six of the seven were settled by reading or by bare assertion. The seventh was executed, and is
-the hardest of the set.
+**The axis is escape and cost, not dominance** — cycle 4 selected `stale-restatement` the same
+way and said so. Two of the seven shipped: one reached a merged PR body, one shipped
+self-flagged as unverified. The `over-engineered` findings were all caught in review, and a
+"one rationale in four places" finding costs a paragraph; a wrong scope count costs the shape of
+the change. Stated explicitly so a later cycle can challenge the axis rather than the arithmetic.
 
-**The asymmetry is the finding.** Every settlement by a parse or an execution *of the claim itself*
-was right on the first attempt. Every settlement by reading that was later checked was wrong.
-Careful reading did not produce hedged answers, it produced confident wrong ones — FIX-754 was read
-carefully three times.
+**The asymmetry is the finding.** Every settlement by a parse or an execution *of the claim
+itself* was right on the first attempt — FIX-754's count was read carefully three times and was
+wrong all three, then parsed once and was right (**8**, 8/8, no false positives). Every
+settlement by reading that was later checked was wrong. Careful reading did not produce hedged
+answers, it produced confident wrong ones.
 
-The codex row is why the lesson is **not** "trust the reviewers": a premise nobody ran is a guess
-regardless of who asserts it, and the author was right to run it before declining. The last row is
-why it is also not "run something": a command aimed a little to the side of the claim buys
-confidence without buying evidence.
+The lesson is neither "trust the reviewers" nor "run something" — a reviewer's unrun assertion is
+still a guess, and a command aimed at a neighbour of the claim buys confidence without buying
+evidence. The two instances that establish each are in the companion.
 
 ### Scoring cycle 4's fixes — a partial test, corrected once under review
 
-**This section was wrong on first write and is the entry's own dominant-class instance. The
-correction is kept in full rather than smoothed over, because the failure is more instructive than
-the result.**
+Cycle 4's fixes landed in `b0fc019` at **17:47 on 2026-08-12**, mid-epic, so the question is which
+**branch heads** carried them — not when they reached `main`. Two of the four did throughout, one
+not at all, one from 20:57 onward. Derivation and per-instance commits in
+[`declared-surface-1127.md`](epic-wraps/declared-surface-1127.md#scoring-cycle-4s-fixes--which-branch-heads-carried-them).
 
-Cycle 4's grounding sharpenings landed in `b0fc019` at **17:47 on 2026-08-12**. The question is
-not when they landed on `main` but **which worker trees carried them**, and that has to be asked of
-each branch head, not of the merge commit:
-
-| PR | Branch head | Carries `b0fc019`? |
-|---|---|---|
-| #1262 | `d011d5f` | **NO** — forked at `151fb9a` (2026-08-11), ~19h older than the fixes, and never merged `main` |
-| #1263 | `0fd6077` | **YES**, from `b302284` (20:57) onward — its first five commits, including the guard, are **pre-fix** |
-| #1275 | `b065970` | YES |
-| #1273 | `af26b707` | YES |
-
-So this is **not** the four-PR controlled test the first draft claimed. #1262 is out entirely, and
-#1263 splits down the middle at 20:57.
-
-- **Fix A** (`issue-implement` 10.6: grep the superseded claim's distinctive noun, counting
-  READMEs, error strings and the changeset as sites). **2 post-fix instances**, not three:
-  #1273's stale success string — the author widened the scan scope and renamed the CI step at
-  `4fc55e1` (22:31, post-fix) and left `main()` still printing "in docs or examples", caught by
-  Cursor — and **#1275's PR description, which still records the changeset as `patch` while the
-  merged fragment says `minor`**, which escaped review and is frozen in a merged body.
-  **0 edit-time · 1 review · 1 escaped.** #1263's utility-default-in-four-places instance is
-  **withdrawn**: it was authored at `660e65e` (19:55), pre-fix.
-- **Fix B** (tenet 7: *a check that cannot fire is not a check*). **0 post-fix instances — this
-  scoring is withdrawn in full.** #1263's guard, whose exclusion hid 1,624 files, was authored at
-  `2429c30` (19:25), ninety minutes *before* the clause reached that branch. It is a fine instance
-  of the shape and says nothing about whether the clause works.
+- **Fix A** (`issue-implement` 10.6, grep the superseded claim's distinctive noun): **2 post-fix
+  instances** — #1273's stale success string, and #1275's PR description recording the changeset
+  as `patch` while the merged fragment says `minor`. **0 edit-time · 1 review · 1 escaped**, the
+  escape frozen in a merged body. #1263's instance is **withdrawn** as pre-fix.
+- **Fix B** (tenet 7, *a check that cannot fire is not a check*): **0 post-fix instances — this
+  scoring is withdrawn in full.** #1263's 1,624-file exclusion was authored ninety minutes before
+  the clause reached that branch, so it says nothing about whether the clause works.
 
 **Cycle 4's rule still fires, on a thinner basis than first claimed:** *"If fix A lands and
 instances still escape, reading 2 is confirmed twice and the next move is CI, not prose."* Fix A
@@ -619,61 +625,40 @@ landed, and one instance escaped into a merged PR body. That is one escape, not 
 trigger is met as written, and the next cycle should treat the strength of the evidence as one
 data point rather than four.
 
-#1275 remains the sharpest data point, and is unaffected by the correction. The discipline was
-demonstrably active: the author swept **every other changeset fragment in the repo** for the same
-`patch`/`minor` error and reported the sweep — a textbook fix-A convergence pass — and did not
-converge the PR description sitting above it. Cycle 2's round 9 had already named the PR
-description as a restatement surface. Applying the rule well on the adjacent surface did not carry
-it to the next one.
+**This section was wrong on first write, and the failure is the entry's own instance of the class
+it names** — a real command, executed, that could not have returned "no." It is out-of-sample
+instance 3 above, and the reason the fix below cross-references tenet 7 rather than restating it.
+Kept in full in the companion rather than smoothed over, because the failure is more instructive
+than the result.
 
-#### The correction itself: a check that could not fire
+### Upstream fixes — one prose row, three filed mechanisms
 
-The first draft asserted "all four PR bases already contained the fixes," from a real command:
-`git merge-base --is-ancestor b0fc019 <base.sha>`, where `base.sha` came from the GitHub API. Both
-inputs were wrong in the same direction. A merged PR's `base.sha` is the **base branch tip**, not
-the branch's fork point, and `--is-ancestor <fix> <merge-commit>` is **trivially YES for every
-merged PR**, because a merge commit's first parent is `main`. Reproduced:
+Split into two rows because they do different things, and a future collector scoring this cycle
+should not read the first as a behaviour change that failed.
 
-```
-git merge-base --is-ancestor b0fc019 5b66a28     -> YES   (merge commit for #1262)
-git merge-base --is-ancestor b0fc019 5b66a28^2   -> NO    (the branch head — the real answer)
-```
+| # | Fix | Altitude | Targets | What it can do |
+|---|---|---|---|---|
+| A | **BP-003 extended from the deliverable to the claims that scope it** — a scope count, an equivalence, or what a path does at runtime carries the same evidence burden; settle it by executing or parsing, a reviewer's assertion is a guess too. Plus a cross-reference to tenet 7 for the green-result-that-cannot-fail shape (`best-practices.md` + the `CLAUDE.md` mirror) | BP | the citation gap, narrowly — the 4 sampled `unrun-claim` findings and the 3 outside it | **citeable in review, not behaviour-changing.** Score it as a closed citation gap; do not score it as a fix that was supposed to drive the count down |
+| B | **Three mechanisms, filed rather than written** — FIX-1146 (resolve the documented config per single-provider key), FIX-1147 (post-merge revalidation of an epic's other open PRs, scoped to PRs the merge can actually invalidate), FIX-1148 (read Linear label writes back) | mechanism | the same shape, at the point where it can be executed instead of remembered | **the actual bet.** Score these on whether they land and whether the class falls after they do |
 
-**This is the seventh instance of the dominant class and its hardest sub-shape: executed, but the
-command answered a neighbouring question.** It is worse than not checking, because a green result
-from a real command retires the doubt that would otherwise have prompted a second look — and the
-entry then reported it as its most confident finding, explicitly inviting challenge on it.
+**Row A is the narrow half deliberately.** BP-003 governed deliverables and said nothing about the
+claims that scope them, so when a reviewer wanted to say "you didn't run that," there was no clause
+to point at. Closing that is worth one sentence. It is not worth pretending a sentence changes
+behaviour that five cycles now say prose does not change: the class was named, with this exact
+evidence, in the epic-spec at the objective gate — *"It was read carefully three times and
+undercounted every time; only a mechanical parse got it right"* — four hours before #1262 opened,
+and then recurred repeatedly downstream in the same session, same loop, and once more in this
+entry. **Prose naming the class did not prevent the class.**
 
-It also locates a gap in this cycle's own fix. BP-003 as first written says *execute or parse it,
-don't read it*; the author did execute. What the clause was missing is that **the thing executed
-has to be able to come back "no."** That is tenet 7's *a check that cannot fire is not a check*
-reaching verification commands rather than shipped code, and it is why fix A gained a second
-sentence rather than being left as it was.
-
-### Upstream fix landed
-
-| # | Fix | Altitude | Targets |
-|---|---|---|---|
-| A | **BP-003 extended from the deliverable to the claims that scope it** — a scope count, an equivalence, or what a path does at runtime carries the same evidence burden; settle it by executing or parsing, a reviewer's assertion is a guess too, **and the check has to be able to come back "no"** (`best-practices.md` + the `CLAUDE.md` mirror) | BP | the 7 `unrun-claim` instances |
-
-**The second sentence was added under review, after this entry produced instance 7 in its own
-scoring section.** The first wording — *execute or parse it, don't read it* — would not have
-caught it, because the check was executed. A clause aimed at a class should be tested against the
-newest instance of that class before it lands; this one wasn't, and the instance arrived from the
-clause's own author within the hour.
-
-**Stated plainly: fix A is not expected to close the class on its own.** The class was named, with
-this exact evidence, in the epic-spec itself at the objective gate — *"It was read carefully three
-times and undercounted every time; only a mechanical parse got it right"* — four hours before
-#1262 opened. It then recurred repeatedly downstream, same session, same loop, and once more in
-this entry. Prose naming the class did not prevent the class.
-
-BP-003 was extended because its **gap is real**: it governed deliverables and said nothing about
-the claims that scope them, so review had no clause to cite. That is worth one sentence. It is not
-worth pretending a sentence changes behaviour that five cycles now say prose does not change.
-**The weight is on mechanism**, per cycle 4's fired rule — filed rather than written: FIX-1146
-(resolve the documented config per single-provider key), FIX-1147 (post-merge revalidation of an
-epic's other open PRs), FIX-1148 (read Linear label writes back).
+**The evidence for row A has now been cut twice under review, and the entry says so rather than
+leaving the stronger first framing standing.** First the branch-head rescoring took cycle 4's
+result from a four-PR pattern to a single escape. Then the denominator took this shape from "7
+instances, dominant" to "4 of 16 findings, four-fifths of a class that ties for largest." What
+survives is an argument from
+coherence, not from rate: the gap in BP-003 is real and narrow, and the instances that motivated it
+are real whether or not they form a comparable rate. Whether that is worth a grounding sentence is
+a judgement call, and it is the live fork on the wrap PR — put to the owner on the corrected
+figures, not the original ones.
 
 ### Dropped
 
@@ -703,7 +688,9 @@ epic's other open PRs), FIX-1148 (read Linear label writes back).
    claim that happened to be right after being read is still an unrun claim, and counting it as a
    pass makes the metric unfalsifiable. **Score the neighbouring-question sub-shape separately**;
    it is the one BP-003's first wording missed, and a collector that only asks "was something run"
-   will score instance 7 as a pass.
+   will score this entry's own correction as a pass. **Baseline to beat, on the review sample:
+   4 of 16 findings** — quote the denominator, not the raw count, or the comparison is with a
+   number this cycle also had to correct.
 2. **`stale-restatement`'s escape count.** This cycle, scored only on the branches that carried
    fix A: **2 instances, 0 edit-time, 1 review, 1 escaped.** That is the second consecutive cycle
    with a post-fix escape, on one data point rather than a pattern. If it escapes a third time,
@@ -711,14 +698,8 @@ epic's other open PRs), FIX-1148 (read Linear label writes back).
 3. **A zero on either is suspect until confirmed the reviewer was looking.** No lens asks about
    `unrun-claim` today, and an unmeasured shape reads as a solved one.
 
-**Two notes for the next collector.**
-
-*Sampling.* Ask which **branch head** carried a fix, never the merge commit and never the API's
-`base.sha`. Half this entry's first-draft scoring was invalid because it asked the wrong commit,
-and a whole PR (#1262) had to be removed from the set. An epic's PRs do not all carry a mid-epic
-grounding change — #1262 forked ~19h before it and never merged `main`, and #1263 split down the
-middle at `b302284`. Sub-PR granularity is required, not optional.
-
-*Baseline.* Cycle 4's own fix table says "proposed, none landed" and both fixes **had** landed in
-`b0fc019` before this epic began. A ledger that records its fixes as unshipped will score the next
-cycle against the wrong baseline. Left as a footnote rather than an edit to cycle 4's record.
+**For the next collector:** the sampling rules this entry got wrong — ask the **branch head**, never
+the merge commit or the API's `base.sha`, and sample per commit when a branch merged `main`
+mid-flight — are now operational spec in
+[`distill-lessons`](../../.agents/skills/distill-lessons/SKILL.md) → "Scoring a previous cycle's
+fix", not a footnote here. Cycle 4's fix table has been corrected in place for the same reason.

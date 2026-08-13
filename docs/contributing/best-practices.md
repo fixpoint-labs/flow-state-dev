@@ -64,7 +64,7 @@ Update policy:
 - Rule:
   - Every claimed deliverable must have an evidence path and pass criteria, recorded on the change's spec / Linear issue.
   - A claim the change *rests* on carries the same burden — how many sites are in scope, whether one form is equivalent to another, what a path does at runtime. Settle it by executing or parsing; a careful reading and a reviewer's assertion are both guesses.
-  - **Check that the command answers the claim, not a neighbour of it.** Before trusting a green result, say what a refutation would look like and confirm the check could produce one — a check that cannot come back "no" has measured something else, and reports it with more confidence than a reading would.
+  - The command itself is subject to **tenet 7** (`docs/philosophy.md` — *a check that cannot fire is not a check*). The shape to watch for: a green result from a command aimed at a **neighbour** of the claim, which passes for a reason unrelated to it.
 - Why: Eliminates ambiguous "done" — and stops a change being scoped by an argument nobody ran.
 
 ### BP-007: Concise API and file-level documentation

@@ -124,6 +124,28 @@ produce, don't add ceremony.
   Repeated `INCONCLUSIVE` is a third signal: the claims being handed to POCs aren't empirical,
   which is a triage problem in `issue-spec` 6.5.1, not a POC problem.
 
+#### Scoring a previous cycle's fix — ask the branch head, and sample per commit
+
+A fix that landed **mid-epic** did not reach every PR in that epic. Before scoring it, establish
+which work actually carried it — cycle 5 got this wrong on first write, had to withdraw one fix's
+scoring in full, and remove a whole PR from the set.
+
+- **Ask the branch head, never the merge commit and never the API's `base.sha`.** A merged PR's
+  `base.sha` is the **base-branch tip**, not the branch's fork point. And
+  `git merge-base --is-ancestor <fix> <merge-commit>` is **trivially YES for every merged PR**,
+  because a merge commit's first parent is `main` — a check that cannot come back "no" (tenet 7).
+  Use the branch head: `<merge-commit>^2`, or the head SHA recorded on the PR.
+- **Sample per commit when a branch merged `main` mid-flight.** A branch head that carries the fix
+  does not mean the whole branch did. Compare the fix's timestamp against the **authoring commit of
+  each instance** you are counting, and count only instances authored after the fix reached that
+  branch. One of cycle 5's PRs split down the middle: its first five commits, including the instance
+  being scored, were pre-fix.
+- **A branch that forked before the fix and never merged `main` is out of the sample entirely** —
+  not a zero, not a pass. Say so in the entry rather than averaging it in.
+- **State the carried/not-carried split** in the entry, with the commits. A fix scored against work
+  that never saw it reads as a failed fix, which is the most expensive kind of wrong an instrument
+  whose whole job is deciding what to fix next can be.
+
 ### The unit of improvement — the recurring class, not the incident
 
 Do **not** mint a BP per incident — that is exactly how the BP list bloated. Cluster
