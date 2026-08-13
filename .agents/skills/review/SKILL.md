@@ -48,13 +48,17 @@ which is most of what divergence produces. They compose; they don't merge.
 Give every lens the same target framing, `docs/philosophy.md`, and — for a change — the
 spec.
 
-**Alternatives is triggered, never standing.** It costs ~10 sub-agent calls, and once the
+**Alternatives is triggered, never standing.** It costs 8 sub-agent calls, and once the
 code exists most alternatives are expensive regret — the spec is where they pay for
 themselves. Add it only when the caller asks for it, or when the change is genuinely
 shape-open: **new public API surface**, a **new pattern / capability / block kind**, a
-**schema or scope decision**, or a **spec whose §3 weighed no real alternative**. A bug fix,
-a mechanical refactor, or a change implementing an approved spec's settled design does not
-get this lens.
+**schema or scope decision**, or a **spec whose §3 weighed no real alternative**.
+
+**An approved spec that weighed a real alternative in §3 overrides every trigger above** —
+including new public API surface. The divergence already happened, at the altitude where it
+was cheap, and a human signed the result off; re-running it against shipped code is paying
+twice to relitigate a settled decision. Bug fixes and mechanical refactors don't get this
+lens either.
 
 ## Run
 

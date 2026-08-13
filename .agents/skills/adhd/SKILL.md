@@ -42,7 +42,7 @@ one. When it's "I don't think this one is right," it's one of those.
 
 ## Pre-flight (run before Phase 1)
 
-This skill is expensive — about 10 sub-agent calls, 5 to 10x a single answer. Do not pay
+This skill is expensive — 8 sub-agent calls, 5 to 10x a single answer. Do not pay
 that when a direct answer is better.
 
 **Step 1. Explicit invocation.** If the user typed `/adhd`, asked for ADHD mode, or a
@@ -89,6 +89,10 @@ generator.
    sequentially in your own context is **not** running this skill.
 
 ### Phase 2 — Focus (critic on)
+
+**Steps 1 and 2 run in your own context — do not spawn sub-agents for them.** Scoring and
+clustering need to see the whole pool at once, which is exactly what a fresh sub-agent
+can't. Only step 3 fans out.
 
 1. **Score.** Each idea on three axes, 0–10: **novelty** (distance from the obvious
    default), **viability** (could it actually ship here), **fit** (does it address the
@@ -180,9 +184,16 @@ alternative.
 
 **Scope: alternatives only.** In this context the skill reports *other shapes the change
 could have taken*. It does not report bugs (correctness lens), bloat (restraint lens), or
-pattern conflicts (coherence lens). If divergence turns one of those up, hand it to that
-lens rather than reporting it here — `review` dedupes, and a finding attributed to the
-wrong lens gets counted twice.
+pattern conflicts (coherence lens).
+
+**When divergence turns one of those up, return it — routed, not dropped.** Do not write it
+as an alternatives row, and **do not try to hand it to the sibling lens**: the lenses run in
+parallel as independent sub-agents, so the one you'd hand it to has no channel to receive it
+and may already have returned. Put it in a separate **Routed findings** list, tagged with the
+lens it belongs to, and return that alongside your rows. The coordinator's dedupe step is
+where it gets merged with that lens's own findings or attributed on its own — which keeps it
+from being double-counted without letting it vanish. Divergence is sometimes the only pass
+that walks into a given defect; a finding this lens can't file itself still has to survive.
 
 **The switch test.** An alternative earns a row only if **all four** hold:
 
@@ -199,7 +210,9 @@ wrong lens gets counted twice.
 **Severity is `note` by default, and never `must-fix`.** The approach shipped; this lens
 informs the next one. The one exception: if an alternative exists *because* the current
 shape is actually broken or incoherent, that is the correctness or coherence lens's
-finding — route it there and drop the row here.
+finding — return it as a **routed finding** tagged with that lens instead of an alternatives
+row. The coordinator sets its severity, which is how a real break can still come out as
+must-fix even though this lens can't raise one.
 
 **"The current approach is the right shape" is a valid and common verdict.** Say it in one
 line and stop. Padding a review with three shapes nobody will build is exactly the noise
@@ -217,6 +230,13 @@ line and stop. Padding a review with three shapes nobody will build is exactly t
 | 1 | <2-sentence shape> | <named axis> | <honest> | note |
 
 **Traps flagged:** <attractive-but-wrong branches, one line of reason each>. (Omit if none.)
+
+**Routed findings** — not alternatives; for the coordinator to classify and dedupe against
+the named lens. (Omit if none.)
+
+| Finding | Belongs to | Why it's not an alternative |
+|---------|-----------|-----------------------------|
+| <short> | correctness / restraint / coherence | <one line> |
 ```
 
 ## Output shape (direct invocation)
@@ -254,7 +274,10 @@ Render in this order. Do not collapse it into a wall of prose — the structure 
 
 ## Cost
 
-5 diverge + 1 score + 1 cluster + 3 deepen ≈ **10 sub-agent calls**, 5–10x a single
-answer. Scale to stakes: naming one function is 3 frames × 4 ideas; an API surface or a
-new pattern is the full 5 × 6. Stop diverging when new candidates repeat the shape of
-existing ones — the space is mapped. Do not pad to hit a number.
+**5 diverge + 3 deepen = 8 sub-agent calls.** Score and cluster are coordinator work and
+cost no extra agents — a run that spawns 10 has spawned two it didn't need. Call it 5–10x
+a single answer once the coordinator's own tokens are counted.
+
+Scale to stakes: naming one function is 3 frames × 4 ideas (6 calls); an API surface or a
+new pattern is the full 5 × 6 (8 calls). Stop diverging when new candidates repeat the
+shape of existing ones — the space is mapped. Do not pad to hit a number.
