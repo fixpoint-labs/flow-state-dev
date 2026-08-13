@@ -141,7 +141,6 @@ type DemoFlowDefinition = {
   request: { stateSchema: SchemaOf<{ attempt: number }> };
   session: { stateSchema: SchemaOf<{ mode: string }> };
   user: { stateSchema: SchemaOf<{ role: "admin" | "member" }> };
-  org: { stateSchema: SchemaOf<{ orgId: string }> };
 } & { actions: Record<string, ActionConfig>; kind: string };
 
 type DemoStateMap = InferFlowStateMap<DemoFlowDefinition>;

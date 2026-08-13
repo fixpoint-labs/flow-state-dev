@@ -30,7 +30,6 @@ export type SequencerCtx<TStateSchema extends ZodTypeAny | undefined> =
     Record<string, unknown>,
     Record<string, unknown>,
     Record<string, unknown>,
-    Record<string, unknown>,
     Record<string, import("../types/resource").AnyResourceRef>,
     InferStateFromSchema<TStateSchema>,
     unknown,

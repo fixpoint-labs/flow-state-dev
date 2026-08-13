@@ -196,7 +196,6 @@ export type HandlerDefaults<
 handler.withDefaults = function withDefaults<
   TDSessionStateSchema extends ZodTypeAny | undefined = undefined,
   TDUserStateSchema extends ZodTypeAny | undefined = undefined,
-  TDOrgStateSchema extends ZodTypeAny | undefined = undefined,
   TDRequestStateSchema extends ZodTypeAny | undefined = undefined,
   TDSequencerStateSchema extends ZodTypeAny | undefined = undefined,
   TDResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
@@ -206,7 +205,6 @@ handler.withDefaults = function withDefaults<
   defaults: HandlerDefaults<
     TDSessionStateSchema,
     TDUserStateSchema,
-    TDOrgStateSchema,
     TDRequestStateSchema,
     TDSequencerStateSchema,
     TDResourceDefs,
@@ -224,7 +222,6 @@ handler.withDefaults = function withDefaults<
     TRequestStateSchema extends ZodTypeAny | undefined = TDRequestStateSchema,
     TSessionStateSchema extends ZodTypeAny | undefined = TDSessionStateSchema,
     TUserStateSchema extends ZodTypeAny | undefined = TDUserStateSchema,
-    TOrgStateSchema extends ZodTypeAny | undefined = TDOrgStateSchema,
     TSequencerStateSchema extends ZodTypeAny | undefined = TDSequencerStateSchema,
     TParentInputSchema extends ZodTypeAny | undefined = undefined,
     TResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = TDResourceDefs,

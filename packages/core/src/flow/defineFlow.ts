@@ -26,7 +26,6 @@ import type {
   FlowInstanceOptions,
   FlowType,
   McpConfig,
-  OrgConfig,
   RequestConfig,
   ScopeClientConfig,
   SessionConfig,
@@ -138,13 +137,12 @@ type AnyActions = Record<string, ActionConfig>;
 type AnySession = SessionConfig | undefined;
 type AnyRequest = RequestConfig | undefined;
 type AnyUser = UserConfig | undefined;
-type AnyOrg = OrgConfig | undefined;
 type AnyWork = WorkConfig | undefined;
 
 type AnyResources = Record<string, DeclaredResourceEntry> | undefined;
 
-type AnyFlowDefinition = FlowDefinition<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg, AnyWork>;
-type AnyFlowInstanceOptions = FlowInstanceOptions<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg, AnyWork>;
+type AnyFlowDefinition = FlowDefinition<AnyActions, AnySession, AnyRequest, AnyUser, AnyWork>;
+type AnyFlowInstanceOptions = FlowInstanceOptions<AnyActions, AnySession, AnyRequest, AnyUser, AnyWork>;
 
 function rejectRemovedMiddleware(value: object | undefined, location: string): void {
   if (value !== undefined && Object.hasOwn(value, "middleware")) {
@@ -884,7 +882,7 @@ function validateMcpConfig(
 function createFlowInstance(
   definition: AnyFlowDefinition,
   options: AnyFlowInstanceOptions | undefined
-): FlowInstance<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg, AnyWork> {
+): FlowInstance<AnyActions, AnySession, AnyRequest, AnyUser, AnyWork> {
   rejectRemovedMiddleware(definition, `Flow "${definition.kind}"`);
   rejectRemovedMiddleware(options, `Flow "${definition.kind}" instance options`);
 
@@ -910,7 +908,6 @@ function createFlowInstance(
 
   const sessionMerged = mergeConfig(definition.session, options?.session);
   const userMerged = mergeConfig(definition.user, options?.user);
-  const orgMerged = mergeConfig(definition.org, options?.org);
 
   const session = applyNormalizedClient(
     sessionMerged,
@@ -919,10 +916,6 @@ function createFlowInstance(
   const user = applyNormalizedClient(
     userMerged,
     normalizeScopeClientConfig(kind, "user", userMerged as ScopeWithClient | undefined)
-  );
-  const org = applyNormalizedClient(
-    orgMerged,
-    normalizeScopeClientConfig(kind, "org", orgMerged as ScopeWithClient | undefined)
   );
 
   const isolateUserState = options?.isolateUserState ?? definition.isolateUserState ?? false;
@@ -1062,7 +1055,6 @@ function createFlowInstance(
     session,
     request: requestMerged,
     user,
-    org,
     work: workMerged,
     resources: mergedResources,
     flowLevelResourceKeys,
@@ -1084,12 +1076,11 @@ export function defineFlow<
   const TSession extends SessionConfig | undefined = SessionConfig | undefined,
   const TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   const TUser extends UserConfig | undefined = UserConfig | undefined,
-  const TOrg extends OrgConfig | undefined = OrgConfig | undefined,
   const TWork extends WorkConfig | undefined = WorkConfig | undefined,
   const TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 >(
-  definition: FlowDefinition<TActions, TSession, TRequest, TUser, TOrg, TWork, TResources>
-): FlowType<TActions, TSession, TRequest, TUser, TOrg, TWork, TResources> {
+  definition: FlowDefinition<TActions, TSession, TRequest, TUser, TWork, TResources>
+): FlowType<TActions, TSession, TRequest, TUser, TWork, TResources> {
   const normalizedDefinition: AnyFlowDefinition = {
     ...definition
   };
@@ -1100,7 +1091,6 @@ export function defineFlow<
     TSession,
     TRequest,
     TUser,
-    TOrg,
     TWork,
     TResources
   >;
@@ -1125,7 +1115,6 @@ export function defineFlow<
     session: baseInstance.session as TSession,
     request: baseInstance.request as TRequest,
     user: baseInstance.user as TUser,
-    org: baseInstance.org as TOrg,
     work: baseInstance.work as TWork,
     resources: baseInstance.resources as TResources | undefined,
     tools: baseInstance.tools,
