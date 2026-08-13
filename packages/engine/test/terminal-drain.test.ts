@@ -360,13 +360,29 @@ describe("FIX-1001 — terminal paths drain background work before writing the r
 describe("FIX-1001 — the drain runs to quiescence, not one pass", () => {
   it("awaits work queued by a task that is itself being drained", async () => {
     // The only test that separates a quiescence loop from a single
-    // `drainAll()`. `drainAll` splices ONE snapshot of the pool, so a task
-    // queued while the drain is in flight lands after that splice. With a
-    // single pass the request reports itself finished with the grandchild
-    // still parked; with the loop, a second pass picks it up.
+    // `drainAll()` — and it only separates them if the nested task is queued
+    // AFTER the drain's first splice. A nested `.work()` dispatched before the
+    // terminal drain begins is already in `entries` and a single pass catches
+    // it, which makes the obvious version of this test pass either way.
+    //
+    // So the outer task parks first: the drain splices [outer] and blocks on
+    // it, and only then is the outer released to queue the grandchild. That
+    // lands in the pool after the splice. One pass returns with the grandchild
+    // still parked; the loop takes a second pass and finds it.
+    const outerGate = deferred();
     const grandchildGate = deferred();
     let grandchildDone = false;
     const stores = createInMemoryStores();
+
+    const waitForOuterGate = handler({
+      name: "wait-outer",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: async () => {
+        await outerGate.promise;
+        return { ok: true };
+      }
+    });
 
     const grandchild = handler({
       name: "grandchild",
@@ -379,9 +395,10 @@ describe("FIX-1001 — the drain runs to quiescence, not one pass", () => {
       }
     });
 
-    // The background task is itself a sequencer, so its `.work()` dispatches
-    // into the same request-scoped pool while the outer drain is running.
-    const nesting = sequencer({ name: "nesting" }).work(grandchild);
+    // The background task is itself a sequencer: it parks on its first step,
+    // and dispatches `.work(grandchild)` into the same request-scoped pool
+    // only once released — i.e. while the terminal drain is already running.
+    const nesting = sequencer({ name: "nesting" }).step(waitForOuterGate).work(grandchild);
 
     const boom = handler({
       name: "boom",
@@ -414,11 +431,20 @@ describe("FIX-1001 — the drain runs to quiescence, not one pass", () => {
     });
     const hasSettled = trackSettlement(runPromise);
 
-    // The outer task has settled; the grandchild it queued is parked.
+    // `boom` has thrown and the drain is now parked on the outer task, which
+    // has not yet queued anything.
+    await flush();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(hasSettled()).toBe(false);
+
+    // Release the outer task: it now queues the grandchild, after the first
+    // pass already took its snapshot.
+    outerGate.resolve();
     await flush();
     await new Promise((r) => setTimeout(r, 10));
 
     expect(grandchildDone).toBe(false);
+    // A single-pass drain has returned by now and the request is terminal.
     expect(hasSettled()).toBe(false);
 
     grandchildGate.resolve();
@@ -533,13 +559,33 @@ describe("FIX-1001 — orderings the drain forces", () => {
   });
 
   it("writes the record before publishing the terminal event", async () => {
-    // Asserted from the subscriber's side, because that is where the defect
-    // shows: a client closes its stream on the terminal event and immediately
-    // re-reads the record. Publishing first lets it cache `in_progress`
-    // permanently, with nothing left to re-fetch. An internal call-order
-    // assertion cannot see that.
+    // The defect is a client caching `in_progress`: it closes its stream on
+    // the terminal event and immediately re-reads the record, and if the
+    // record has not been patched yet there is nothing left to re-fetch.
+    //
+    // Asserting that from a live subscriber alone has no teeth — the in-memory
+    // bus delivers on a later microtask, by which time the patch has landed
+    // even when it was issued second, so the test passes with the ordering
+    // inverted. (Verified: inverting the order leaves a subscriber-only
+    // assertion green.) So the ordering is pinned at the two store seams the
+    // client's two reads actually hit: `persistEvents`, which is what makes
+    // the terminal event visible to a subscriber, and `set`, which is what
+    // `patchRequestRecord` writes through.
     const gate = deferred();
     const stores = createInMemoryStores();
+    const order: string[] = [];
+
+    const realPersistEvents = stores.request.persistEvents.bind(stores.request);
+    stores.request.persistEvents = (requestId, events) => {
+      if (events.some((e) => e.type === "request.failed")) order.push("event");
+      return realPersistEvents(requestId, events);
+    };
+
+    const realSet = stores.request.set.bind(stores.request);
+    stores.request.set = async (id, record, expectedVersion) => {
+      if ((record as { status?: string }).status === "failed") order.push("patch");
+      return realSet(id, record as never, expectedVersion as never);
+    };
 
     const flow = buildFlow({
       kind: "drain-record-first",
@@ -559,7 +605,9 @@ describe("FIX-1001 — orderings the drain forces", () => {
       runtimeConfig: {}
     });
 
-    // Follow the stream the way a client does.
+    // A live subscriber too, to pin the user-visible consequence: at the
+    // moment the terminal event arrives, a re-read already sees the record
+    // terminal.
     let statusAtTerminalEvent: string | undefined;
     const watcher = (async () => {
       for await (const event of stores.request.subscribeToEvents("req_drain_order", {
@@ -577,8 +625,8 @@ describe("FIX-1001 — orderings the drain forces", () => {
     await runPromise;
     await watcher;
 
-    // At the instant the subscriber saw the terminal event, the record was
-    // already terminal.
+    // The teeth: the record was written before the news went out.
+    expect(order).toEqual(["patch", "event"]);
     expect(statusAtTerminalEvent).toBe("failed");
   });
 
