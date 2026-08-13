@@ -1,7 +1,13 @@
 // CONTROL A — synthetic violations. Every rule must fire at least once here.
-// If any rule reports 0 on this file, that rule is dead and its repo count is meaningless.
+// If any rule reports 0 on this file, that rule is dead and its repo count is
+// meaningless. The concept is encoded THREE ways and each gets coverage:
+//   E1 identifiers carrying the `work` token
+//   E2 string-literal union members spelling "work"
+//   E3 the word `background` used for the tier-2 concept
 
 declare const seq: any;
+
+// --- E1: identifiers ---------------------------------------------------------
 
 // R1: all four DSL methods, as call sites
 seq.work(someBlock);
@@ -15,6 +21,22 @@ interface FakeSequencer {
   waitForWork(o?: unknown): FakeSequencer;
 }
 
+// R3: work-token identifiers, including the ones a six-name list missed
+import type {
+  RequestWorkPool,
+  RequestWorkPoolResult,
+  RequestWorkPoolDrainOptions,
+  RequestWorkPoolDrainAllOptions,
+  RequestWorkTaskMeta,
+  WorkConfig,
+  WorkTrace,
+} from "@flow-state-dev/core";
+declare function getRequestWorkPool(): RequestWorkPool;
+declare function createRequestWorkPool(): RequestWorkPool;
+type FakeSequencerResult = { workResults: WorkTrace[] };
+
+// --- E2: string-literal union members ---------------------------------------
+
 // R2: provenance phase literal, in all three shapes
 type FakeProvenance = {
   phase: "main" | "work"; // union member
@@ -24,18 +46,18 @@ const prov = { phase: "work" as const }; // property assignment
 const isWork = prov.phase === "work"; // comparison
 const ternary = { phase: cond ? "work" : "main" }; // conditional feeding phase
 
-// R3: the six public exports
-import type {
-  RequestWorkPool,
-  RequestWorkPoolResult,
-  RequestWorkPoolDrainOptions,
-  RequestWorkPoolDrainAllOptions,
-  RequestWorkTaskMeta,
-} from "@flow-state-dev/core";
-declare function getRequestWorkPool(): RequestWorkPool;
+// R7: a "work" union member NOT attached to `phase`. This is the encoding that
+// slipped past the original sweep — FlowErrorScope is publicly exported and a
+// phase-only rule cannot see it.
+type FakeErrorScope = "request" | "work" | "resource" | "block";
+declare const execMeta: { scope?: FakeErrorScope };
 
-// R5: status item field
-const status = { message: "hi", backgroundTasks: 3 };
+// --- E3: `background` naming the tier-2 concept ------------------------------
+
+// R8: a work-token rule cannot match these by construction.
+declare function composeBackgroundSignal(s: AbortSignal): AbortSignal;
+declare const ctxLike: { _requestBackgroundSignal?: AbortSignal };
+const status = { message: "hi", backgroundTasks: 3 }; // R5
 
 declare const someBlock: unknown;
 declare const cond: boolean;
