@@ -76,6 +76,13 @@ const ALLOWLIST = new Set(["priorWork", "TaskPriorWork", "formatPriorWork", "onB
  */
 const BACKGROUND_ALLOWLIST = new Set(["onBackgroundWork"]);
 
+/**
+ * Op literals that become path segments / default block names. Renaming these
+ * changes blockInstanceId, and therefore the CHECKPOINT KEY — the only part of
+ * this rename that touches a persisted identifier rather than a persisted value.
+ */
+const PATH_OP_LITERALS = new Set(["work", "workIf", "forEachBackground"]);
+
 const carriesWorkToken = (id) => !ALLOWLIST.has(id) && identTokens(id).includes("work");
 
 function listFiles() {
@@ -102,7 +109,7 @@ for (const f of files) {
 }
 
 /** rule id -> array of {file, line, text} */
-const hits = { R1_methods: [], R2_phase_work: [], R3_work_token: [], R4_workGroupId: [], R5_backgroundTasks: [], R7_work_union: [], R8_background_tier2: [] };
+const hits = { R1_methods: [], R2_phase_work: [], R3_work_token: [], R4_workGroupId: [], R5_backgroundTasks: [], R7_work_union: [], R8_background_tier2: [], R9_path_literal: [] };
 
 const rel = (sf) => path.relative(ROOT, sf.getFilePath());
 const record = (bucket, node, note) => {
@@ -110,6 +117,11 @@ const record = (bucket, node, note) => {
   hits[bucket].push({
     file: rel(sf),
     line: sf.getLineAndColumnAtPos(node.getStart()).line,
+    // Dedup keys on POSITION, not line. `a.work(x).work(y)` puts two distinct
+    // calls on one line; a file+line+note key cannot tell them apart and
+    // silently drops one. That is how the tool built to end the under-counting
+    // under-counted (104 vs the true 105).
+    pos: node.getStart(),
     text: node.getText().slice(0, 90).replace(/\s+/g, " "),
     note,
   });
@@ -210,6 +222,32 @@ for (const sf of project.getSourceFiles()) {
       }
     }
 
+    // R9 (encoding 4): runtime string literals that become PATH SEGMENTS or
+    // default block names. `childBlockPath(ctx, runtime, "work", stepIndex)`
+    // feeds `blockPathSegment(op, i)` -> `work[3]` -> the blockInstanceId
+    // (`${requestId}:${path}:${attempt}`) -> the checkpoint key. These are not
+    // identifiers, not union members, and not `background` names, so R3/R7/R8
+    // are all blind to them — and unlike the others, renaming these changes a
+    // PERSISTED KEY.
+    if (Node.isStringLiteral(node) && PATH_OP_LITERALS.has(node.getLiteralValue())) {
+      const p = node.getParent();
+      // as a call argument: childBlockPath(…, "work", …)
+      if (Node.isCallExpression(p) && p.getArguments().includes(node)) {
+        record("R9_path_literal", node, `arg:${node.getLiteralValue()}`);
+      }
+      // as a default block name: { name: "forEachBackground" }
+      else if (Node.isPropertyAssignment(p) && p.getName() === "name") {
+        record("R9_path_literal", node, `name:${node.getLiteralValue()}`);
+      }
+    }
+    // template-literal default names: `work:${block.name}`
+    if (Node.isTemplateExpression(node)) {
+      const head = node.getHead().getLiteralText();
+      if (/^(work|workIf|forEachBackground):/.test(head)) {
+        record("R9_path_literal", node, `template:${head}`);
+      }
+    }
+
     // R4 / R5: contract field names
     if (Node.isIdentifier(node) || Node.isPropertySignature(node) || Node.isPropertyAssignment(node)) {
       const n = typeof node.getName === "function" ? node.getName() : node.getText();
@@ -223,7 +261,7 @@ for (const sf of project.getSourceFiles()) {
 for (const k of Object.keys(hits)) {
   const seen = new Set();
   hits[k] = hits[k].filter((h) => {
-    const key = `${h.file}:${h.line}:${h.note}`;
+    const key = `${h.file}:${h.pos}:${h.note}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

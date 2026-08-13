@@ -59,5 +59,16 @@ declare function composeBackgroundSignal(s: AbortSignal): AbortSignal;
 declare const ctxLike: { _requestBackgroundSignal?: AbortSignal };
 const status = { message: "hi", backgroundTasks: 3 }; // R5
 
+// --- E4: runtime path/name literals (become checkpoint keys) -----------------
+
+// R9: these are not identifiers, not union members, not `background` names.
+// Renaming them changes blockInstanceId -> the checkpoint key.
+declare function childBlockPath(ctx: any, rt: any, op: string, i: number, j?: number): string;
+const p1 = childBlockPath(null, null, "work", 0);
+const p2 = childBlockPath(null, null, "workIf", 1);
+const p3 = childBlockPath(null, null, "forEachBackground", 2, 0);
+const cfgA = { name: "forEachBackground" };
+const cfgB = { name: `work:${(someBlock as any).name}` };
+
 declare const someBlock: unknown;
 declare const cond: boolean;

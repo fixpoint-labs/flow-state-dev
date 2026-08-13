@@ -66,5 +66,13 @@ const label = "work"; // a bare string, not a union member and not bound to phas
 // list. Its repo number is a review queue, not a count of sites to change.
 // Putting them in this file would have asserted a precision R3 does not have.
 
+// Post-rename runtime path literals — must NOT fire
+declare function childBlockPath(ctx: any, rt: any, op: string, i: number, j?: number): string;
+const p1 = childBlockPath(null, null, "sideChain", 0);
+const p2 = childBlockPath(null, null, "sideChainIf", 1);
+const p3 = childBlockPath(null, null, "forEachSideChain", 2, 0);
+const cfgA = { name: "forEachSideChain" };
+const cfgB = { name: `sideChain:${(someBlock as any).name}` };
+
 declare const someBlock: unknown;
 declare const cond: boolean;
