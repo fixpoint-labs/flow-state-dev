@@ -49,8 +49,12 @@ one. When it's "I don't think this one is right," it's one of those.
 This skill is expensive — 8 sub-agent calls, 5 to 10x a single answer. Do not pay
 that when a direct answer is better.
 
-**Step 1. Explicit invocation.** If the user typed `/adhd`, asked for ADHD mode, or a
-skill dispatched this as a lens — **skip the rest and go to Phase 1.** The caller opted in.
+**Step 1. Explicit invocation.** If the user typed `/adhd`, asked for ADHD mode, or **any
+skill dispatched this deliberately** — `review` as its alternatives lens, `issue-spec` from
+a Step 3.5 stall or a Step 4 design question — **skip the rest and go to Phase 1.** The
+caller already chose this instrument; re-gating it here would let the self-judge below abort
+a run the caller committed to (a third-move question can read as low-stakes, and an issue
+whose text happens to contain "just" fails the phrasing test).
 
 **Step 2. Self-judge** (only if Step 1 didn't match). All three must hold, or ABORT:
 
@@ -76,8 +80,11 @@ generator.
    `design`, or `fsd`, plus 1 tagged `wild`. Vary the picks between runs so re-running the
    same problem maps different ground.
 
-2. **Spawn 5 parallel sub-agents**, one per frame. Each gets *only* the problem, the
-   context the caller supplied, its frame's vantage prompt, and this instruction:
+2. **Spawn 5 parallel sub-agents**, one per frame, **on the judgment tier** (Opus — the
+   default; pass no model override, and don't tier them down). AGENTS.md records why: idea
+   quality is the entire product of this phase, so the JSON-only output shape is not a
+   reason to treat it as decided execution. Each gets *only* the problem, the context the
+   caller supplied, its frame's vantage prompt, and this instruction:
 
    > You are in DIVERGENT mode. You are a generator, not a critic.
    > Generate 6 short distinct ideas under this frame. Each idea is one phrase or one
@@ -107,7 +114,7 @@ can't. Only step 3 fans out.
    each by its angle: "make it a capability", "push it to user space", "remove the
    framework's role", "do it at trace time".
 
-3. **Deepen 3 — one per cluster first, score second.** Rank by
+3. **Deepen 3 — one per cluster first, score second.** Same judgment tier as Phase 1. Rank by
    `novelty×0.35 + viability×0.40 + fit×0.25` and drop traps. Then take the **best
    surviving candidate from each of the three top-ranked clusters** — not the top three
    overall. Only if fewer than three clusters survive do you fill the remaining slots by

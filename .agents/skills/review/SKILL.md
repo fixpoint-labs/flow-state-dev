@@ -90,8 +90,9 @@ anyway, they get it.
      the shapes, not to everything the lens hands back.
    - **Model tiering** (AGENTS.md): dispatch **Correctness** and **Completeness** on
      **Sonnet** — they check *decided* work against the spec/checklist, not open design.
-     **Coherence** and **Restraint** keep the judgment tier (Opus, the default); **Depth**
-     and **Alternatives** inherit their skills' tier.
+     **Coherence**, **Restraint** and **Alternatives** keep the judgment tier (Opus, the
+     default) — for Alternatives that covers its own fan-out too, which its skill states;
+     **Depth** inherits its skill's tier.
 2. **Dedupe across lenses.** They overlap at the edges (a redundant capability is both a
    coherence conflict and bloat). Merge duplicate findings into one, attributed to the
    sharpest framing. Never double-count.
