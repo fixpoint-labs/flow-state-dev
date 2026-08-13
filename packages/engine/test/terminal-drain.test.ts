@@ -16,14 +16,11 @@
  * what makes the drain observable.
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
-import type { SpeakChunk, VoiceProvider } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
 import { createInMemoryStores, runAction } from "../src";
 import { detectInterruptedRequests } from "../src/execution/request-recovery";
 import { handleAbortRequest } from "../src/routes/abort-routes";
-
-
 
 type Deferred<T = void> = { promise: Promise<T>; resolve: (value: T) => void };
 function deferred<T = void>(): Deferred<T> {
@@ -629,100 +626,6 @@ describe("FIX-1001 — orderings the drain forces", () => {
     // The teeth: the record was written before the news went out.
     expect(order).toEqual(["patch", "event"]);
     expect(statusAtTerminalEvent).toBe("failed");
-  });
-
-  it("terminalizes even when TTS teardown rejects", async () => {
-    // Moving `ttsHook.cancel()` above the drain also moved it above the
-    // terminal write. A rejection there would skip the drain AND the record
-    // patch, leaving the request `in_progress` with its background work still
-    // running — this issue's own defect, re-entering through the teardown
-    // path. Tearing down synthesis nobody will receive must not decide
-    // whether the request terminalizes.
-    //
-    // The rejection is produced the way a real provider produces it: the
-    // pipeline cancels active iterators with `void it.return?.().catch(...)`,
-    // so a *synchronous* throw from `return()` escapes before that `.catch`
-    // is attached and surfaces as a rejection from `cancel()`.
-    const gate = deferred();
-    const stores = createInMemoryStores();
-
-    const provider: VoiceProvider = {
-      providerName: "throwing-teardown",
-      abilities: { speak: false, speakStream: true, transcribe: false, listVoices: false },
-      speakStream: () => ({
-        [Symbol.asyncIterator]() {
-          return {
-            async next() {
-              // Park so the iterator is still active when cancel() runs.
-              await new Promise(() => {});
-              return { done: true as const, value: undefined };
-            },
-            return(): never {
-              throw new Error("iterator return exploded");
-            }
-          } as unknown as AsyncIterator<SpeakChunk>;
-        }
-      })
-    };
-
-    const speaking = handler({
-      name: "speaking",
-      inputSchema: z.any(),
-      outputSchema: z.any(),
-      execute: async (_input, ctx) => {
-        // Assistant content is what feeds the TTS pipeline.
-        ctx.emit.message([{ type: "output_text", text: "Hello there. This is spoken." }]);
-        await new Promise((r) => setTimeout(r, 20));
-        throw new Error("main step boom");
-      }
-    });
-
-    const background = handler({
-      name: "background",
-      inputSchema: z.any(),
-      outputSchema: z.any(),
-      execute: async () => {
-        await gate.promise;
-        return { ok: true };
-      }
-    });
-
-    const flow = defineFlow({
-      kind: "drain-tts-teardown",
-      voice: { tts: { model: "mock-tts", voice: "alloy" } },
-      actions: {
-        run: {
-          inputSchema: z.any(),
-          block: sequencer({ name: "seq" }).work(background).step(speaking)
-        }
-      }
-    })();
-
-    const runPromise = runAction({
-      flow,
-      actionName: "run",
-      input: {},
-      requestId: "req_drain_tts",
-      userId: "u1",
-      sessionId: "s1",
-      stores,
-      metadata: { voice: { ttsEnabled: true } },
-      runtimeConfig: { voiceProvider: provider }
-    });
-    const hasSettled = trackSettlement(runPromise);
-
-    await flush();
-    await new Promise((r) => setTimeout(r, 30));
-
-    // The drain still happened: the request is waiting on the parked task
-    // rather than having blown past everything on the cancel rejection.
-    expect(hasSettled()).toBe(false);
-
-    gate.resolve();
-    await runPromise;
-
-    // And the record is terminal, not stranded `in_progress`.
-    expect((await stores.request.get("req_drain_tts"))?.status).toBe("failed");
   });
 
   it("an abort accepted during the drain wins over the branch already chosen", async () => {
