@@ -198,7 +198,6 @@ export interface BlockContext<
   TRequestState extends object = Record<string, unknown>,
   TSessionState extends object = Record<string, unknown>,
   TUserState extends object = Record<string, unknown>,
-  TOrgState extends object = Record<string, unknown>,
   TResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>,
   TSequencerState extends object = Record<string, unknown>,
   TParentInput = unknown,
@@ -215,7 +214,7 @@ export interface BlockContext<
   request: RequestScopeHandle<TRequestState>;
   session: SessionScopeHandle<TSessionState>;
   user: UserScopeHandle<TUserState>;
-  org?: OrgScopeHandle<TOrgState>;
+  org?: OrgScopeHandle;
   sequencer?: StateRef<TSequencerState>;
 
   /**
@@ -735,7 +734,7 @@ export type LooseBlockContext<
 > = {
   session: import("./scope").SessionScopeHandle<TSessionState>;
   user: import("./scope").UserScopeHandle<Record<string, unknown>>;
-  org?: import("./scope").OrgScopeHandle<Record<string, unknown>>;
+  org?: import("./scope").OrgScopeHandle;
   request: import("./scope").RequestScopeHandle<Record<string, unknown>>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resources: any;

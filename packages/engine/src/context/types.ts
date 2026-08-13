@@ -28,8 +28,7 @@ export type ExecutionContext<
   TRequestState extends JsonObject = JsonObject,
   TSessionState extends JsonObject = JsonObject,
   TUserState extends JsonObject = JsonObject,
-  TOrgState extends JsonObject = JsonObject
-> = BlockContext<TRequestState, TSessionState, TUserState, TOrgState> & {
+> = BlockContext<TRequestState, TSessionState, TUserState> & {
   flow: FlowInstance;
   actionName: string;
   requestRuntime: RequestRuntime;
@@ -48,7 +47,6 @@ export type CreateExecutionContextOptions<
   TRequestState extends JsonObject = JsonObject,
   TSessionState extends JsonObject = JsonObject,
   TUserState extends JsonObject = JsonObject,
-  TOrgState extends JsonObject = JsonObject
 > = {
   flow: FlowInstance;
   actionName: string;
@@ -66,7 +64,6 @@ export type CreateExecutionContextOptions<
   requestState?: TRequestState;
   sessionState?: TSessionState;
   userState?: TUserState;
-  orgState?: TOrgState;
   metadata?: Record<string, unknown>;
   input?: unknown;
   signal?: AbortSignal;

@@ -8,12 +8,10 @@ import type { JsonObject } from "./schema/common";
  */
 export type ContextFnScopes<
   TSession extends JsonObject = JsonObject,
-  TUser extends JsonObject = JsonObject,
-  TOrg extends JsonObject = JsonObject
+  TUser extends JsonObject = JsonObject
 > = {
   session: TSession;
   user?: TUser;
-  org?: TOrg;
 };
 
 /**
@@ -77,23 +75,6 @@ export function contextFn<TSession extends ZodTypeAny, TUser extends ZodTypeAny>
   ) => string
 ): ContextFunction;
 
-// Overload: session + user + org
-export function contextFn<
-  TSession extends ZodTypeAny,
-  TUser extends ZodTypeAny,
-  TOrg extends ZodTypeAny
->(
-  schemas: { session: TSession; user: TUser; org: TOrg },
-  fn: (
-    scopes: {
-      session: z.output<TSession>;
-      user: z.output<TUser>;
-      org: z.output<TOrg>;
-    },
-    ctx: BlockContext
-  ) => string
-): ContextFunction;
-
 // Implementation — uses `any` for overload compatibility (standard TS overload pattern)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function contextFn(
@@ -108,9 +89,6 @@ export function contextFn(
     }
     if (ctx.user) {
       scopes.user = ctx.user.state;
-    }
-    if (ctx.org) {
-      scopes.org = ctx.org.state;
     }
 
     return fn(scopes, ctx);

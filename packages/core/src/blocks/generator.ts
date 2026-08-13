@@ -403,7 +403,6 @@ export interface GeneratorConfig<
   TRequestStateSchema extends ZodTypeAny | undefined = undefined,
   TSessionStateSchema extends ZodTypeAny | undefined = undefined,
   TUserStateSchema extends ZodTypeAny | undefined = undefined,
-  TOrgStateSchema extends ZodTypeAny | undefined = undefined,
   TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
   TResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
@@ -416,7 +415,6 @@ export interface GeneratorConfig<
   TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
   TSessionState extends object = Prettify<InferStateFromSchema<TSessionStateSchema> & InferCapabilitySessionState<TUses>>,
   TUserState extends object = InferStateFromSchema<TUserStateSchema>,
-  TOrgState extends object = InferStateFromSchema<TOrgStateSchema>,
   TSequencerState extends object = Prettify<InferStateFromSchema<TSequencerStateSchema> & InferCapabilitySequencerState<TUses>>,
   TResources extends Record<string, AnyResourceRef> = Prettify<InferBlockResources<undefined, TResourceDefs> & InferCapabilityResources<TUses>>,
   TMergedTargetSchemas extends Record<string, ZodTypeAny> | undefined = MergeTargetSchemas<TTargetSchemas, TUses>,
@@ -429,7 +427,7 @@ export interface GeneratorConfig<
   TParentState extends object = InferStateFromSchema<TParentStateSchema>,
   // Single typed context threaded into all callbacks
   TCtx = BlockContext<
-    TRequestState, TSessionState, TUserState, TOrgState,
+    TRequestState, TSessionState, TUserState,
     TResources, TSequencerState, unknown, TMergedTargetSchemas,
     TCapabilities, TSelfState, TParentState
   >,
@@ -442,7 +440,6 @@ export interface GeneratorConfig<
   requestStateSchema?: TRequestStateSchema;
   sessionStateSchema?: TSessionStateSchema;
   userStateSchema?: TUserStateSchema;
-  orgStateSchema?: TOrgStateSchema;
   sequencerStateSchema?: TSequencerStateSchema;
   /** This generator's own request-scoped state (FIX-914). Exposed via
    *  `ctx.self` in `context`/`prompt`/tool-loop callbacks — a generator can
@@ -2539,7 +2536,6 @@ export function generator<
   TRequestStateSchema extends ZodTypeAny | undefined = undefined,
   TSessionStateSchema extends ZodTypeAny | undefined = undefined,
   TUserStateSchema extends ZodTypeAny | undefined = undefined,
-  TOrgStateSchema extends ZodTypeAny | undefined = undefined,
   TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
   TResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
@@ -2547,7 +2543,6 @@ export function generator<
   TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
   TSessionState extends object = Prettify<InferStateFromSchema<TSessionStateSchema> & InferCapabilitySessionState<TUses>>,
   TUserState extends object = InferStateFromSchema<TUserStateSchema>,
-  TOrgState extends object = InferStateFromSchema<TOrgStateSchema>,
   TSequencerState extends object = Prettify<InferStateFromSchema<TSequencerStateSchema> & InferCapabilitySequencerState<TUses>>,
   TResources extends Record<string, AnyResourceRef> = Prettify<InferBlockResources<undefined, TResourceDefs> & InferCapabilityResources<TUses>>,
   TMergedTargetSchemas extends Record<string, ZodTypeAny> | undefined = MergeTargetSchemas<TTargetSchemas, TUses>,
@@ -2557,16 +2552,16 @@ export function generator<
   TSelfState extends object = Prettify<InferStateFromSchema<TStateSchema> & InferCapabilityOwnState<TUses>>,
   TParentState extends object = InferStateFromSchema<TParentStateSchema>,
   TCtx = BlockContext<
-    TRequestState, TSessionState, TUserState, TOrgState,
+    TRequestState, TSessionState, TUserState,
     TResources, TSequencerState, unknown, TMergedTargetSchemas,
     TCapabilities, TSelfState, TParentState
   >,
 >(
   config: GeneratorConfig<
     TInputSchema, TOutputSchema, TInput, TOutput,
-    TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema,
+    TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TSequencerStateSchema,
     TResourceDefs, TTargetSchemas, TUses,
-    TRequestState, TSessionState, TUserState, TOrgState, TSequencerState,
+    TRequestState, TSessionState, TUserState, TSequencerState,
     TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState, TCtx
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {

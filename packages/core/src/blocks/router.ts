@@ -66,7 +66,6 @@ export interface RouterConfig<
   TRequestStateSchema extends ZodTypeAny | undefined = undefined,
   TSessionStateSchema extends ZodTypeAny | undefined = undefined,
   TUserStateSchema extends ZodTypeAny | undefined = undefined,
-  TOrgStateSchema extends ZodTypeAny | undefined = undefined,
   TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
   TResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
@@ -79,7 +78,6 @@ export interface RouterConfig<
   TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
   TSessionState extends object = Prettify<InferStateFromSchema<TSessionStateSchema> & InferCapabilitySessionState<TUses>>,
   TUserState extends object = InferStateFromSchema<TUserStateSchema>,
-  TOrgState extends object = InferStateFromSchema<TOrgStateSchema>,
   TSequencerState extends object = Prettify<InferStateFromSchema<TSequencerStateSchema> & InferCapabilitySequencerState<TUses>>,
   TResources extends Record<string, AnyResourceRef> = Prettify<InferBlockResources<undefined, TResourceDefs> & InferCapabilityResources<TUses>>,
   TMergedTargetSchemas extends Record<string, ZodTypeAny> | undefined = MergeTargetSchemas<TTargetSchemas, TUses>,
@@ -96,7 +94,6 @@ export interface RouterConfig<
   requestStateSchema?: TRequestStateSchema;
   sessionStateSchema?: TSessionStateSchema;
   userStateSchema?: TUserStateSchema;
-  orgStateSchema?: TOrgStateSchema;
   sequencerStateSchema?: TSequencerStateSchema;
   /** This router's own request-scoped state (FIX-914). Read-only in
    *  `execute` — see `ctx.self` purity note above. */
@@ -114,7 +111,7 @@ export interface RouterConfig<
   execute: (
     input: TInput,
     ctx: BlockContext<
-      TRequestState, TSessionState, TUserState, TOrgState,
+      TRequestState, TSessionState, TUserState,
       TResources, TSequencerState, unknown, TMergedTargetSchemas,
       TCapabilities, TSelfState, TParentState
     >
@@ -124,7 +121,7 @@ export interface RouterConfig<
     routes: BlockDefinition<TInputSchema, TOutputSchema>[],
     input: TInput,
     ctx: BlockContext<
-      TRequestState, TSessionState, TUserState, TOrgState,
+      TRequestState, TSessionState, TUserState,
       TResources, TSequencerState, unknown, TMergedTargetSchemas,
       TCapabilities, TSelfState, TParentState
     >
@@ -144,7 +141,6 @@ export function router<
   TRequestStateSchema extends ZodTypeAny | undefined = undefined,
   TSessionStateSchema extends ZodTypeAny | undefined = undefined,
   TUserStateSchema extends ZodTypeAny | undefined = undefined,
-  TOrgStateSchema extends ZodTypeAny | undefined = undefined,
   TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
   TResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
@@ -152,7 +148,6 @@ export function router<
   TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
   TSessionState extends object = Prettify<InferStateFromSchema<TSessionStateSchema> & InferCapabilitySessionState<TUses>>,
   TUserState extends object = InferStateFromSchema<TUserStateSchema>,
-  TOrgState extends object = InferStateFromSchema<TOrgStateSchema>,
   TSequencerState extends object = Prettify<InferStateFromSchema<TSequencerStateSchema> & InferCapabilitySequencerState<TUses>>,
   TResources extends Record<string, AnyResourceRef> = Prettify<InferBlockResources<undefined, TResourceDefs> & InferCapabilityResources<TUses>>,
   TMergedTargetSchemas extends Record<string, ZodTypeAny> | undefined = MergeTargetSchemas<TTargetSchemas, TUses>,
@@ -164,9 +159,9 @@ export function router<
 >(
   config: RouterConfig<
     TInputSchema, TOutputSchema, TInput, TOutput,
-    TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema,
+    TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TSequencerStateSchema,
     TResourceDefs, TTargetSchemas, TUses,
-    TRequestState, TSessionState, TUserState, TOrgState, TSequencerState,
+    TRequestState, TSessionState, TUserState, TSequencerState,
     TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {

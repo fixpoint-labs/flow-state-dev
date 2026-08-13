@@ -27,7 +27,7 @@ import type { ProviderPreference } from "./types";
  * Used as the default TCtx for rule callbacks since selectModel is called
  * outside the generator where specific state types aren't available.
  */
-type LooseBlockContext = BlockContext<any, any, any, any>;
+type LooseBlockContext = BlockContext<any, any, any>;
 
 /**
  * Returns a provider-preference value (provider name or ordered list of

@@ -174,9 +174,12 @@ export type UserScopeHandle<
   state: Readonly<TState>;
 } & ScopeStateOps<TState>;
 
-export type OrgScopeHandle<
-  TState extends object = Record<string, unknown>
-> = {
+/**
+ * Org scope carries identity only. Org-scope *state* was removed in
+ * FIX-1153 — durable org-scoped data belongs in a
+ * `defineResource({ scope: "org" })` resource, reached through
+ * `ctx.resources.<name>`.
+ */
+export type OrgScopeHandle = {
   identity: ScopeIdentity;
-  state: Readonly<TState>;
-} & ScopeStateOps<TState>;
+};

@@ -390,14 +390,13 @@ export type UserConfig = {
   clientData?: Record<string, ClientDataComputeFn<JsonObject>>;
 };
 
-export type OrgConfig = {
-  stateSchema?: ZodTypeAny;
-  cas?: CASOptions;
-  /** See `SessionConfig.client`. */
-  client?: ScopeClientConfig<JsonObject>;
-  /** @deprecated Use `client.derived` instead. See `SessionConfig.clientData`. */
-  clientData?: Record<string, ClientDataComputeFn<JsonObject>>;
-};
+/**
+ * Org-scope state was removed in FIX-1153: it had no consumers, and durable
+ * org-scoped data belongs in a `defineResource({ scope: "org" })` resource,
+ * which carries identity, per-key versions, and build-time collision
+ * detection the shared state bag never had. Org scope itself survives —
+ * `ctx.org.identity` and org-scoped resources are unchanged.
+ */
 
 export type WorkConfig = {
   onStarted?: BlockDefinition<any, any>;
@@ -411,7 +410,6 @@ export type FlowDefinition<
   TSession extends SessionConfig | undefined = SessionConfig | undefined,
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
-  TOrg extends OrgConfig | undefined = OrgConfig | undefined,
   TWork extends WorkConfig | undefined = WorkConfig | undefined,
   TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 > = {
@@ -434,7 +432,6 @@ export type FlowDefinition<
   session?: TSession;
   request?: TRequest;
   user?: TUser;
-  org?: TOrg;
   work?: TWork;
   /**
    * Flow-level resource declarations. Single flat map, accessor key →
@@ -507,7 +504,6 @@ export type FlowInstanceOptions<
   TSession extends SessionConfig | undefined = SessionConfig | undefined,
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
-  TOrg extends OrgConfig | undefined = OrgConfig | undefined,
   TWork extends WorkConfig | undefined = WorkConfig | undefined,
   TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 > = {
@@ -519,7 +515,6 @@ export type FlowInstanceOptions<
   session?: TSession;
   request?: TRequest;
   user?: TUser;
-  org?: TOrg;
   work?: TWork;
   resources?: TResources;
   tools?: ToolsConfig;
@@ -539,7 +534,6 @@ export type FlowInstance<
   TSession extends SessionConfig | undefined = SessionConfig | undefined,
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
-  TOrg extends OrgConfig | undefined = OrgConfig | undefined,
   TWork extends WorkConfig | undefined = WorkConfig | undefined,
   TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 > = {
@@ -592,7 +586,6 @@ export type FlowInstance<
   session?: TSession;
   request?: TRequest;
   user?: TUser;
-  org?: TOrg;
   work?: TWork;
   resources?: TResources;
   tools?: ToolsConfig;
@@ -620,7 +613,6 @@ export type FlowType<
   TSession extends SessionConfig | undefined = SessionConfig | undefined,
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
-  TOrg extends OrgConfig | undefined = OrgConfig | undefined,
   TWork extends WorkConfig | undefined = WorkConfig | undefined,
   TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 > = {
@@ -649,7 +641,6 @@ export type FlowType<
   session?: TSession;
   request?: TRequest;
   user?: TUser;
-  org?: TOrg;
   work?: TWork;
   resources?: TResources;
   tools?: ToolsConfig;
@@ -663,12 +654,11 @@ export type FlowType<
   /** Mirror of `FlowInstance.flowLevelResourceKeys` (FIX-688). */
   flowLevelResourceKeys: ReadonlySet<string>;
 
-  (options?: FlowInstanceOptions<TActions, TSession, TRequest, TUser, TOrg, TWork, TResources>): FlowInstance<
+  (options?: FlowInstanceOptions<TActions, TSession, TRequest, TUser, TWork, TResources>): FlowInstance<
     TActions,
     TSession,
     TRequest,
     TUser,
-    TOrg,
     TWork,
     TResources
   >;
@@ -686,14 +676,12 @@ export type InferFlowStateMap<TDefinition extends FlowDefinition> = {
   request: InferScopeStateFromConfig<TDefinition["request"]>;
   session: InferScopeStateFromConfig<TDefinition["session"]>;
   user: InferScopeStateFromConfig<TDefinition["user"]>;
-  org: InferScopeStateFromConfig<TDefinition["org"]>;
 };
 
 export type InferFlowBlockContext<TDefinition extends FlowDefinition> = BlockContext<
   InferFlowStateMap<TDefinition>["request"],
   InferFlowStateMap<TDefinition>["session"],
-  InferFlowStateMap<TDefinition>["user"],
-  InferFlowStateMap<TDefinition>["org"]
+  InferFlowStateMap<TDefinition>["user"]
 >;
 
 export type FlowActionInput<TAction extends ActionConfig> = TAction["block"]["inputSchema"]["_output"];

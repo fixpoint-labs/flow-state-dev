@@ -412,7 +412,7 @@ export type ContextOf<
       ? RequestScopeHandle<AsStateObject<StateOf<T>>>
       : TKind extends "user"
         ? UserScopeHandle<AsStateObject<StateOf<T>>>
-        : OrgScopeHandle<AsStateObject<StateOf<T>>>;
+        : OrgScopeHandle;
 
 export type ResourceRefOptions = {
   optional?: boolean;

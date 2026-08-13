@@ -32,7 +32,6 @@ export interface HandlerConfig<
   TRequestStateSchema extends ZodTypeAny | undefined = undefined,
   TSessionStateSchema extends ZodTypeAny | undefined = undefined,
   TUserStateSchema extends ZodTypeAny | undefined = undefined,
-  TOrgStateSchema extends ZodTypeAny | undefined = undefined,
   TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
   TParentInputSchema extends ZodTypeAny | undefined = undefined,
   // Resource definitions — single flat map (FIX-435). Scope is intrinsic to
@@ -48,7 +47,6 @@ export interface HandlerConfig<
   TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
   TSessionState extends object = Prettify<InferStateFromSchema<TSessionStateSchema> & InferCapabilitySessionState<TUses>>,
   TUserState extends object = InferStateFromSchema<TUserStateSchema>,
-  TOrgState extends object = InferStateFromSchema<TOrgStateSchema>,
   TSequencerState extends object = Prettify<InferStateFromSchema<TSequencerStateSchema> & InferCapabilitySequencerState<TUses>>,
   TParentInput = TParentInputSchema extends ZodTypeAny ? z.infer<TParentInputSchema> : unknown,
   TResources extends Record<string, AnyResourceRef> = Prettify<InferBlockResources<undefined, TResourceDefs> & InferCapabilityResources<TUses>>,
@@ -67,7 +65,6 @@ export interface HandlerConfig<
   requestStateSchema?: TRequestStateSchema;
   sessionStateSchema?: TSessionStateSchema;
   userStateSchema?: TUserStateSchema;
-  orgStateSchema?: TOrgStateSchema;
   sequencerStateSchema?: TSequencerStateSchema;
   parentInputSchema?: TParentInputSchema;
   /** This block's own request-scoped state (FIX-914). Exposed via `ctx.self`. */
@@ -90,7 +87,7 @@ export interface HandlerConfig<
   execute: (
     input: TInput,
     ctx: BlockContext<
-      TRequestState, TSessionState, TUserState, TOrgState,
+      TRequestState, TSessionState, TUserState,
       TResources, TSequencerState, TParentInput, TMergedTargetSchemas,
       TCapabilities, TSelfState, TParentState
     >
@@ -105,7 +102,6 @@ export function handler<
   TRequestStateSchema extends ZodTypeAny | undefined = undefined,
   TSessionStateSchema extends ZodTypeAny | undefined = undefined,
   TUserStateSchema extends ZodTypeAny | undefined = undefined,
-  TOrgStateSchema extends ZodTypeAny | undefined = undefined,
   TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
   TParentInputSchema extends ZodTypeAny | undefined = undefined,
   TResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
@@ -114,7 +110,6 @@ export function handler<
   TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
   TSessionState extends object = Prettify<InferStateFromSchema<TSessionStateSchema> & InferCapabilitySessionState<TUses>>,
   TUserState extends object = InferStateFromSchema<TUserStateSchema>,
-  TOrgState extends object = InferStateFromSchema<TOrgStateSchema>,
   TSequencerState extends object = Prettify<InferStateFromSchema<TSequencerStateSchema> & InferCapabilitySequencerState<TUses>>,
   TParentInput = TParentInputSchema extends ZodTypeAny ? z.infer<TParentInputSchema> : unknown,
   TResources extends Record<string, AnyResourceRef> = Prettify<InferBlockResources<undefined, TResourceDefs> & InferCapabilityResources<TUses>>,
@@ -127,9 +122,9 @@ export function handler<
 >(
   config: HandlerConfig<
     TInputSchema, TOutputSchema, TInput, TOutput,
-    TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema, TParentInputSchema,
+    TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TSequencerStateSchema, TParentInputSchema,
     TResourceDefs, TTargetSchemas, TUses,
-    TRequestState, TSessionState, TUserState, TOrgState, TSequencerState, TParentInput,
+    TRequestState, TSessionState, TUserState, TSequencerState, TParentInput,
     TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
@@ -156,7 +151,6 @@ export function handler<
 export type HandlerDefaults<
   TSessionStateSchema extends ZodTypeAny | undefined = undefined,
   TUserStateSchema extends ZodTypeAny | undefined = undefined,
-  TOrgStateSchema extends ZodTypeAny | undefined = undefined,
   TRequestStateSchema extends ZodTypeAny | undefined = undefined,
   TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
   TResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
@@ -165,7 +159,6 @@ export type HandlerDefaults<
 > = {
   sessionStateSchema?: TSessionStateSchema;
   userStateSchema?: TUserStateSchema;
-  orgStateSchema?: TOrgStateSchema;
   requestStateSchema?: TRequestStateSchema;
   sequencerStateSchema?: TSequencerStateSchema;
   resources?: TResourceDefs;
@@ -240,8 +233,7 @@ handler.withDefaults = function withDefaults<
     TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
     TSessionState extends object = Prettify<InferStateFromSchema<TSessionStateSchema> & InferCapabilitySessionState<TUses>>,
     TUserState extends object = InferStateFromSchema<TUserStateSchema>,
-    TOrgState extends object = InferStateFromSchema<TOrgStateSchema>,
-    TSequencerState extends object = Prettify<InferStateFromSchema<TSequencerStateSchema> & InferCapabilitySequencerState<TUses>>,
+      TSequencerState extends object = Prettify<InferStateFromSchema<TSequencerStateSchema> & InferCapabilitySequencerState<TUses>>,
     TParentInput = TParentInputSchema extends ZodTypeAny ? z.infer<TParentInputSchema> : unknown,
     TResources extends Record<string, AnyResourceRef> = Prettify<InferBlockResources<undefined, TResourceDefs> & InferCapabilityResources<TUses>>,
     TMergedTargetSchemas extends Record<string, ZodTypeAny> | undefined = MergeTargetSchemas<TTargetSchemas, TUses>,
@@ -254,18 +246,18 @@ handler.withDefaults = function withDefaults<
     config: Omit<
       HandlerConfig<
         TInputSchema, TOutputSchema, TInput, TOutput,
-        TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema, TParentInputSchema,
+        TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TSequencerStateSchema, TParentInputSchema,
         TResourceDefs, TTargetSchemas, TUses,
-        TRequestState, TSessionState, TUserState, TOrgState, TSequencerState, TParentInput,
+        TRequestState, TSessionState, TUserState, TSequencerState, TParentInput,
         TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState
       >,
       keyof typeof defaults
     > & Partial<Pick<
       HandlerConfig<
         TInputSchema, TOutputSchema, TInput, TOutput,
-        TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema, TParentInputSchema,
+        TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TSequencerStateSchema, TParentInputSchema,
         TResourceDefs, TTargetSchemas, TUses,
-        TRequestState, TSessionState, TUserState, TOrgState, TSequencerState, TParentInput,
+        TRequestState, TSessionState, TUserState, TSequencerState, TParentInput,
         TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState
       >,
       keyof typeof defaults & keyof HandlerConfig
@@ -276,9 +268,9 @@ handler.withDefaults = function withDefaults<
     // re-deriving every generic — runtime semantics are a simple object spread.
     const merged = { ...defaults, ...config } as unknown as HandlerConfig<
       TInputSchema, TOutputSchema, TInput, TOutput,
-      TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema, TParentInputSchema,
+      TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TSequencerStateSchema, TParentInputSchema,
       TResourceDefs, TTargetSchemas, TUses,
-      TRequestState, TSessionState, TUserState, TOrgState, TSequencerState, TParentInput,
+      TRequestState, TSessionState, TUserState, TSequencerState, TParentInput,
       TResources, TMergedTargetSchemas, TCapabilities, TStateSchema, TParentStateSchema, TSelfState, TParentState
     >;
     return handler(merged);

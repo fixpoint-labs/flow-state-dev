@@ -68,7 +68,6 @@ export type {
   InferFlowStateMap,
   InferScopeStateFromConfig,
   McpConfig,
-  OrgConfig,
   RequestConfig,
   RetentionPolicy,
   ScopeResourceConfig,
