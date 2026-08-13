@@ -83,11 +83,24 @@ const BACKGROUND_ALLOWLIST = new Set(["onBackgroundWork"]);
  */
 const PATH_OP_LITERALS = new Set(["work", "workIf", "forEachBackground"]);
 
+/** Functions whose operation argument becomes a path segment. */
+const PATH_BUILDERS = new Set(["childBlockPath", "blockPathSegment"]);
+/** Zero-based position of the `op` argument in those builders. */
+const PATH_OP_ARG_INDEX = 2;
+/** Only this file DEFINES sequencer ops, so only here is a `name:` a path name. */
+const SEQ_SRC = /packages\/core\/src\/blocks\/sequencer\.ts$/;
+
 const carriesWorkToken = (id) => !ALLOWLIST.has(id) && identTokens(id).includes("work");
 
 function listFiles() {
   if (explicitFiles) return explicitFiles.map((f) => path.resolve(f));
-  const out = execSync("git ls-files '*.ts' '*.tsx'", { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  // `.mts` / `.cts` are executed TypeScript too — the runnable goals under
+  // goals/ are `.mts`, and one calls `.work(bgWork).waitForWork()`. A
+  // `*.ts`/`*.tsx` glob does NOT match `run.mts`, so those files were invisible
+  // and the guard would have gone green on a broken goal.
+  // NOTE: `git ls-files`, not a filesystem glob — which also keeps untracked
+  // worktree copies under `.claude/worktrees/**` out of the count.
+  const out = execSync("git ls-files '*.ts' '*.tsx' '*.mts' '*.cts'", { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
   return out
     .split("\n")
     .filter(Boolean)
@@ -231,19 +244,29 @@ for (const sf of project.getSourceFiles()) {
     // PERSISTED KEY.
     if (Node.isStringLiteral(node) && PATH_OP_LITERALS.has(node.getLiteralValue())) {
       const p = node.getParent();
-      // as a call argument: childBlockPath(…, "work", …)
-      if (Node.isCallExpression(p) && p.getArguments().includes(node)) {
-        record("R9_path_literal", node, `arg:${node.getLiteralValue()}`);
-      }
-      // as a default block name: { name: "forEachBackground" }
-      else if (Node.isPropertyAssignment(p) && p.getName() === "name") {
+      // Only the OPERATION ARGUMENT of a path builder becomes a path segment.
+      // An earlier version accepted the literal in ANY argument of ANY call,
+      // which swept up `expect(error.scope).toBe("work")` and DevTool
+      // provenance fixtures as persisted path literals — a false POSITIVE, and
+      // in a CI gate that is the dangerous direction: it tells people to
+      // rename correct code to get green.
+      if (Node.isCallExpression(p)) {
+        const callee = p.getExpression().getText();
+        if (PATH_BUILDERS.has(callee) && p.getArguments().indexOf(node) === PATH_OP_ARG_INDEX) {
+          record("R9_path_literal", node, `arg:${node.getLiteralValue()}`);
+        }
+      } else if (
+        Node.isPropertyAssignment(p) &&
+        p.getName() === "name" &&
+        SEQ_SRC.test(node.getSourceFile().getFilePath())
+      ) {
         record("R9_path_literal", node, `name:${node.getLiteralValue()}`);
       }
     }
     // template-literal default names: `work:${block.name}`
     if (Node.isTemplateExpression(node)) {
       const head = node.getHead().getLiteralText();
-      if (/^(work|workIf|forEachBackground):/.test(head)) {
+      if (/^(work|workIf|forEachBackground):/.test(head) && SEQ_SRC.test(node.getSourceFile().getFilePath())) {
         record("R9_path_literal", node, `template:${head}`);
       }
     }
@@ -276,16 +299,27 @@ for (const [k, v] of Object.entries(hits)) {
 // R6: markdown references to the four verbs. Previously the one row in the
 // spec's scope table with no script behind it — a claim one row broader than
 // its evidence, which is the same shape as the R3 defect above.
-const MD_RE = /\.(work|workIf|waitForWork|forEachBackground)\(/g;
-const mdCounts = { total: 0, files: 0, published: 0, internal: 0, readmes: 0 };
+const MD_CALL_RE = /\.(work|workIf|waitForWork|forEachBackground)\(/g;
+// Bare API names in prose: a docs HEADING or a code-formatted span whose whole
+// content is one of the verbs. Call syntax alone misses `## workIf` headings
+// and bare `work` table cells, which survive a rename and then point readers at
+// methods that no longer exist. Requiring backticks or heading position is what
+// keeps ordinary English "work" out.
+const MD_BARE_RE =
+  /(^#{1,6}\s+\.?(work|workIf|waitForWork|forEachBackground)\s*(\(\))?\s*$)|(`\.?(work|workIf|waitForWork|forEachBackground)(\(\))?`)/gm;
+const mdCounts = { total: 0, calls: 0, bare: 0, files: 0, published: 0, internal: 0, readmes: 0 };
 if (!explicitFiles) {
   const mdList = execSync("git ls-files '*.md' '*.mdx'", { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 })
     .split("\n").filter(Boolean).filter((f) => !f.startsWith("spec-poc/") && !f.startsWith("spec/"));
   for (const rel of mdList) {
     let text = "";
     try { text = fsSync.readFileSync(path.join(ROOT, rel), "utf8"); } catch { continue; }
-    const n = (text.match(MD_RE) || []).length;
+    const nCall = (text.match(MD_CALL_RE) || []).length;
+    const nBare = (text.match(MD_BARE_RE) || []).length;
+    const n = nCall + nBare;
     if (!n) continue;
+    mdCounts.calls += nCall;
+    mdCounts.bare += nBare;
     mdCounts.total += n;
     mdCounts.files += 1;
     if (rel.startsWith("apps/docs/")) mdCounts.published += n;
@@ -304,7 +338,7 @@ if (asJson) {
   if (!explicitFiles) {
     console.log(
       `R6_markdown          ${String(mdCounts.total).padStart(4)} sites  ${String(mdCounts.files).padStart(3)} files` +
-        `   (published ${mdCounts.published} / internal ${mdCounts.internal} / READMEs ${mdCounts.readmes})`
+        `   (call ${mdCounts.calls} / bare-name ${mdCounts.bare}; published ${mdCounts.published} / internal ${mdCounts.internal})`
     );
   }
   console.log("\n-- R1 by method --");

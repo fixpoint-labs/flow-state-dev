@@ -67,6 +67,11 @@ declare function childBlockPath(ctx: any, rt: any, op: string, i: number, j?: nu
 const p1 = childBlockPath(null, null, "work", 0);
 const p2 = childBlockPath(null, null, "workIf", 1);
 const p3 = childBlockPath(null, null, "forEachBackground", 2, 0);
+// NOTE: the `name:`/template branches of R9 are scoped to
+// packages/core/src/blocks/sequencer.ts (the only file that DEFINES sequencer
+// ops), so they cannot fire from this fixture and are covered by the repo run
+// instead. This is exactly why the graduated guard must expose
+// `analyzeSources(sources)` — so a path-scoped rule stays fixture-testable.
 const cfgA = { name: "forEachBackground" };
 const cfgB = { name: `work:${(someBlock as any).name}` };
 
