@@ -14,10 +14,21 @@
  *
  * ## What this checks, and what it does not
  *
- * **It checks everything authored in this repo except the code that
- * implements the rejection.** The scanned surface is defined by what is
+ * **It checks everything authored in this repo except the individual files
+ * that implement the rejection.** The scanned surface is defined by what is
  * *excluded*, not by a list of roots that are included — see `isScannedPath`.
  * Anything a person reads, an agent copies, or a runtime executes is in.
+ *
+ * **That exclusion is a set of files, never a tree.** A file is out only when
+ * naming the rejected syntax in quotes *is its job* — the parser that throws on
+ * it, the tests that pin the throw, this script that matches it. Everything
+ * else is in, ordinary package source included, because a `model: "preset/…"`
+ * there is executable configuration that throws on someone's first run. That
+ * is the whole rule; extend the list by it, and write the argument beside the
+ * entry rather than leaving it for a reviewer to reconstruct.
+ *
+ * `scripts/` is in scope under that rule, so a future sibling guard that needs
+ * to quote the removed syntax has to be added deliberately.
  *
  * **It does not compile doc examples.** A quoted model string is the shape
  * that broke, and it is the shape this catches. An example can still be wrong
@@ -72,15 +83,32 @@ const SKIP_DIRS = new Set([
 ]);
 
 /**
- * The rejection's own implementation. These have to name `preset/…` in quotes
- * — `parseModelString` and `createModelResolver` to reject it, their tests to
- * pin the throw, and this script to match it. Scanning them would flag the
- * rejection for existing.
+ * The rejection's own implementation — the files the header's rule excludes.
+ * Add one only by that rule, and say why beside the entry.
  */
-const REJECTION_IMPL = /^packages\/[^/]+\/(src|test)(\/|$)/;
 const REJECTION_IMPL_FILES = new Set([
+  // The guard, and the test pinning its rules. That test has to stay listed
+  // for a second reason: the `presets-option` rule fires on its own test
+  // titles (`it("ignores a presets: key…")`) and on its negative-case
+  // fixtures, so dropping it makes the guard fail on the test that proves the
+  // guard works.
   "scripts/validate-model-strings.mjs",
   "packages/core/test/model-strings-check.test.ts",
+
+  // The parser that implements the rejection — listed by the rule, not because
+  // it fails today. It escapes `QUOTED_PRESET` only by an accident of
+  // formatting: its migration message opens `"preset/* model strings…"` (the
+  // `*` is outside the name character class) and `"  preset/fast, …"` (the
+  // leading spaces put the quote nowhere near the string). Reflow either line
+  // and the one file whose literal job is naming the removed syntax starts
+  // failing. Not dead weight; do not prune it for passing.
+  "packages/core/src/models/providerDetection.ts",
+
+  // The tests that pin the throw, one per entry point: the resolver's
+  // `defaultModel` and `intents`, its env overrides, and the parser directly.
+  "packages/core/test/models/create-model-resolver-intents.test.ts",
+  "packages/core/test/models/create-model-resolver-env-overrides.test.ts",
+  "packages/core/test/models/provider-detection.test.ts",
 ]);
 
 /**
@@ -108,7 +136,6 @@ export function isScannedPath(relPath) {
   const norm = relPath.split("\\").join("/");
   if (norm === "" || norm.startsWith("..")) return false;
   if (norm.split("/").some((segment) => SKIP_DIRS.has(segment))) return false;
-  if (REJECTION_IMPL.test(norm)) return false;
   if (REJECTION_IMPL_FILES.has(norm)) return false;
   return SCAN_EXTENSIONS.test(norm);
 }
@@ -154,7 +181,6 @@ function collectFiles() {
       const rel = relative(ROOT, abs);
       if (entry.isDirectory()) {
         if (SKIP_DIRS.has(entry.name)) continue;
-        if (REJECTION_IMPL.test(rel.split("\\").join("/"))) continue;
         walk(abs);
       } else if (entry.isFile() && isScannedPath(rel)) {
         files.push(abs);
@@ -227,7 +253,7 @@ function main() {
   const hits = collectFiles().flatMap(scanFile);
 
   if (hits.length === 0) {
-    console.log("✓ No removed model-string syntax in docs or examples.");
+    console.log("✓ No removed model-string syntax.");
     return;
   }
 
@@ -244,6 +270,12 @@ function main() {
 }
 
 export const resolverWindow = RESOLVER_WINDOW;
+
+/**
+ * The exclusion, exported so its test drives cases from the real set instead
+ * of holding a second copy of the list.
+ */
+export const rejectionImplFiles = [...REJECTION_IMPL_FILES];
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
