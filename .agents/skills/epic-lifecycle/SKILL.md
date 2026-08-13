@@ -875,3 +875,6 @@ step. So:
   not reimplement the lifecycle.
 - **A standing engineering-manager posture over this skill — engineering forks decided
   rather than surfaced — is [`epic-em`](../epic-em/SKILL.md).** Opt-in, and it moves no gate.
+- **A product-manager posture on top of that one — the epic shaped to a provable outcome and
+  its scope cut before each gate — is [`epic-pm`](../epic-pm/SKILL.md).** Opt-in, and it moves
+  no gate either.
