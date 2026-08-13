@@ -4,7 +4,8 @@
  * core so sequencer code can push tasks; the implementation lives in
  * `@flow-state-dev/engine`. The server's request executor constructs one pool
  * per request, attaches it to `BlockContext._requestWorkPool`, and drains it
- * exactly once before the SSE stream closes.
+ * to quiescence before the SSE stream closes — on every outcome, whether the
+ * request succeeds, fails, is aborted, or the client disconnects.
  *
  * This replaces the old per-sequencer auto-await — inner sequencers no longer
  * block their parent on their own background work. See
@@ -70,8 +71,12 @@ export interface RequestWorkPool {
   ): Promise<RequestWorkPoolResult>;
 
   /**
-   * Await every pending task in the pool. Called once by the request executor
-   * before terminal status. Skipped on abort/disconnect/error paths.
+   * Await every task in the pool, and remove the entries it awaited. Called by
+   * the request executor before terminal status, on every terminal path.
+   *
+   * Awaits one snapshot of the pool: a task that queues further work while it
+   * is being drained lands in the pool after that snapshot is taken, so the
+   * executor calls this repeatedly until a pass consumes nothing.
    */
   drainAll(options?: RequestWorkPoolDrainAllOptions): Promise<RequestWorkPoolResult>;
 

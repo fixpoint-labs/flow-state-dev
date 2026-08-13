@@ -87,14 +87,16 @@ function serializeAbortReason(reason: unknown): string {
 }
 
 /**
- * Drains the request-scoped background work pool. Emits `backgroundTasks: N`
- * status updates as tasks settle (parity with the legacy per-sequencer
- * auto-await), logs failures via console.error, and emits a final
- * `backgroundTasks: 0` status before the caller proceeds to terminal status.
+ * Drains the request-scoped background work pool to quiescence. Emits
+ * `backgroundTasks: N` status updates as tasks settle (parity with the legacy
+ * per-sequencer auto-await), logs failures via console.error, and emits a
+ * final `backgroundTasks: 0` status before the caller proceeds to terminal
+ * status.
  *
  * Best-effort: emit failures must never throw out of this helper, since the
- * response emitter may have torn down on abort. Skipped entirely on the
- * abort/disconnect/error paths — see callers in runActionInternal.
+ * response emitter may have torn down on abort. Called on every terminal path
+ * — success and the abort/disconnect/error paths alike — see callers in
+ * runActionInternal.
  */
 async function drainRequestWorkPool(
   ctx: ExecutionContext,
@@ -118,19 +120,37 @@ async function drainRequestWorkPool(
     }
   };
 
-  const result = await pool.drainAll({ signal, onPendingChange: safeEmit });
-  for (const f of result.failed) {
-    // eslint-disable-next-line no-console
-    console.error(
-      `[runAction] Background work "${f.meta.name}" failed:`,
-      (f.reason as { message?: string } | undefined)?.message ?? f.reason
-    );
+  // Loop to quiescence rather than draining once. `drainAll` splices ONE
+  // snapshot of the pool's entries, so a task that itself calls `.work()`
+  // while it is being drained lands in the pool after that splice and would
+  // never be awaited — the request would report itself finished with a
+  // grandchild task still writing. Repeat until a pass consumes nothing.
+  //
+  // The first pass is unconditional and deliberately NOT guarded on
+  // `pendingCount() > 0`: a task that settled before we got here is no longer
+  // pending but its entry is still in the pool, and that entry carries the
+  // failure we owe a log line. A pending-count guard would skip the drain
+  // entirely in exactly that case — which is what the comment above forbids.
+  let drainedAny = false;
+  for (;;) {
+    const result = await pool.drainAll({ signal, onPendingChange: safeEmit });
+    for (const f of result.failed) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[runAction] Background work "${f.meta.name}" failed:`,
+        (f.reason as { message?: string } | undefined)?.message ?? f.reason
+      );
+    }
+    if (result.completed.length + result.failed.length === 0) {
+      break;
+    }
+    drainedAny = true;
   }
 
   // Emit terminal `backgroundTasks: 0` only when we actually drained
   // something, so requests that never queued work don't emit a spurious
   // status item.
-  if (result.completed.length + result.failed.length > 0) {
+  if (drainedAny) {
     safeEmit(0);
   }
 }
@@ -1587,10 +1607,9 @@ export async function runActionInternal<
 
     // Drain the request-scoped background work pool before terminal status.
     // Inner sequencers no longer auto-await their `.work()` tasks (FIX-554) —
-    // the pool consolidates them and we wait once here. Skipped on the
-    // abort/disconnect/error paths below: in-flight tasks see ctx.signal and
-    // either short-circuit or run to completion in the void; either way the
-    // request must not block on them.
+    // the pool consolidates them and we wait here. The catch paths below run
+    // the same drain before their own terminal write, so a request never
+    // reports itself finished while its background work is still writing.
     // FIX-663: drain unconditionally on the success path. Background work is
     // decoupled from the request signal now, so the drain must not early-abort
     // on a transport-level `composedSignal` fire. If an explicit `/abort`
@@ -1817,8 +1836,15 @@ export async function runActionInternal<
       requestId
     };
   } catch (error) {
-    // Clear heartbeat
-    if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
+    // The heartbeat is deliberately NOT cleared here. It has to outlive the
+    // drain below: while the pool settles, this request is still alive, and a
+    // request with no heartbeat goes stale. `detectInterruptedRequests` sweeps
+    // `activeRequests.listStale()` and writes `interrupted` over any record
+    // still `in_progress`, with no version guard — so clearing the heartbeat
+    // first would hand a live request to another process's recovery sweep and
+    // recreate the exact false terminal this path is being fixed to avoid,
+    // just written by someone else. It is cleared after the drain, which is
+    // where the success path already clears it.
 
     // The composed signal fires when the abort endpoint calls
     // abortController.abort() or when the client disconnects (browser
@@ -1827,94 +1853,160 @@ export async function runActionInternal<
     // accidental disconnect.
     const signalAborted = composedSignal.aborted;
 
-    if (signalAborted) {
-      const record = await options.stores.request.get(requestId).catch(() => undefined);
-      // `deliveredAbort` is first-hand proof: this process read the durable
-      // intent and fired the controller itself (FIX-1026). Falling back to it
-      // matters because the read above is allowed to fail — without it, a
-      // transient store error at exactly this moment would file a request we
-      // demonstrably cancelled as an accidental disconnect (`interrupted`),
-      // which is a resumable state.
-      const wasIntentionalAbort = deliveredAbort || record?.abortRequested === true;
+    // `deliveredAbort` is first-hand proof: this process read the durable
+    // intent and fired the controller itself (FIX-1026). Falling back to it
+    // matters because the read is allowed to fail — without it, a transient
+    // store error at exactly this moment would file a request we demonstrably
+    // cancelled as an accidental disconnect (`interrupted`), which is a
+    // resumable state.
+    //
+    // The read is issued unconditionally rather than short-circuited behind
+    // `deliveredAbort`: it is the call that absorbs a transient store failure
+    // at this moment, and skipping it merely moves that failure onto the next
+    // reader — `patchRequestRecord`, which does not catch.
+    const classificationRecord = signalAborted
+      ? await options.stores.request.get(requestId).catch(() => undefined)
+      : undefined;
+    let wasIntentionalAbort =
+      signalAborted && (deliveredAbort || classificationRecord?.abortRequested === true);
 
+    // The failure path's normalized error is needed for the client-visible
+    // error item, which is emitted before the drain so a caller hears the
+    // failure immediately rather than after the background work settles.
+    const normalizedError = signalAborted
+      ? undefined
+      : applyNormalizedErrorSeam(
+          internalSeams,
+          normalizeError(error, {
+            scope: "request",
+            blockName: action.block.name
+          }),
+          metadata
+        );
+
+    // Everything from here to the heartbeat clear runs with the heartbeat
+    // still live. The `finally` is what makes that safe: before this change
+    // the timer was cleared on the first line of the catch, so a throwing
+    // emit or TTS cancel could not leak it. Now that it has to outlive the
+    // drain, an unguarded throw in this section would leave a timer polling
+    // the request store for the life of the process.
+    try {
+      // --- Client-visible outcome item, before the drain ---
+      // The item, not the status event: the status event ends the stream for
+      // every subscriber, so it has to wait until the record is written.
       if (wasIntentionalAbort) {
-        // --- Abort path: user explicitly stopped the request ---
         await emitAbortedMessage(ctx);
-        await response.emitRequestStatus("aborted");
-
-        await options.stores.request.flushItems(requestId);
-        await options.stores.request.flushEvents(requestId);
-        await flushCheckpoints();
-        await flushTraces();
-
-        const abortedAt = Date.now();
-        await patchRequestRecord(options.stores, requestId, {
-          status: "aborted",
-          abortedAt,
-          items: itemsToPersist()
-        });
-
-        ctx.requestRuntime.status = "aborted";
-
-        // Abandon in-flight TTS synthesis: the client is gone, so don't run
-        // provider calls to completion against a closed connection.
-        if (ttsHook !== undefined) await ttsHook.cancel();
-
-        await runObserverSafely(options.flow.request?.onFinished, {
-          requestId,
-          actionName: options.actionName,
-          status: "aborted"
-        }, ctx, { internalSeams, logger });
-        await emitActionLifecycleSeam(internalSeams, "finished", metadata);
-
-        logRuntimeEvent(logger, "info", "[flow-state] action execution aborted", {
-          ...createExecutionLogContext(metadata),
-          durationMs: Date.now() - startedAt
-        });
-      } else {
-        // --- Disconnect path: client went away without explicit abort ---
-        await response.emitRequestStatus("interrupted");
-
-        await options.stores.request.flushItems(requestId);
-        await options.stores.request.flushEvents(requestId);
-        await flushCheckpoints();
-        await flushTraces();
-
-        await patchRequestRecord(options.stores, requestId, {
-          status: "interrupted",
-          interruptedAt: Date.now(),
-          items: itemsToPersist()
-        });
-
-        ctx.requestRuntime.status = "interrupted" as typeof ctx.requestRuntime.status;
-
-        if (ttsHook !== undefined) await ttsHook.cancel();
-
-        await runObserverSafely(options.flow.request?.onFinished, {
-          requestId,
-          actionName: options.actionName,
-          status: "interrupted"
-        }, ctx, { internalSeams, logger });
-        await emitActionLifecycleSeam(internalSeams, "finished", metadata);
-
-        logRuntimeEvent(logger, "info", "[flow-state] action execution interrupted (client disconnect)", {
-          ...createExecutionLogContext(metadata),
-          durationMs: Date.now() - startedAt
-        });
+      } else if (!signalAborted) {
+        await emitTerminalError(ctx, normalizedError!);
       }
+
+      // Stop synthesis before the drain, not after the record write. The drain
+      // is unbounded, and a failing request that keeps its TTS hook live
+      // through it starts provider `speak()` calls for audio nobody will ever
+      // receive. Today's catch paths abandon synthesis promptly; adding the
+      // drain without this would turn that into a cost regression.
+      if (ttsHook !== undefined) await ttsHook.cancel();
+
+      // --- The fix: wait for this request's own background work ---
+      // Deliberately passed no signal (FIX-663). Background work is decoupled
+      // from the request signal: tasks that opted into cancellation self-cancel
+      // via their own `ctx.signal` and settle as rejections, and tasks that did
+      // not are precisely the fire-and-forget writes this drain exists to wait
+      // for. Handing `drainAll` a signal would abandon them again.
+      await drainRequestWorkPool(ctx);
+
+      // --- An abort accepted during the drain wins over the branch already
+      //     chosen. The branch was selected before a wait that can now last as
+      //     long as the background work does, and `/abort` keeps being accepted
+      //     for the whole of it: the record is still `in_progress`, so the
+      //     endpoint's status-checked write applies and the user is told 204.
+      //     Reporting `failed`/`interrupted` for a stop we accepted and acted
+      //     on would be the same lie this issue exists to remove.
+      //
+      //     Re-read, rather than trusting `signalAborted`, because the abort
+      //     may have arrived on either channel: the local endpoint fires the
+      //     controller, while a stop accepted on another instance only sets the
+      //     durable flag and reaches us through the heartbeat's abort poll —
+      //     which is running precisely because the heartbeat outlives the drain.
+      if (!wasIntentionalAbort) {
+        wasIntentionalAbort =
+          deliveredAbort ||
+          (await options.stores.request.get(requestId).catch(() => undefined))
+            ?.abortRequested === true;
+      }
+    } finally {
+      // Clear the heartbeat — the drain is done and the terminal write is
+      // next. Same position, relative to the record patch, as the success
+      // path's.
+      stopHeartbeatTimer();
+    }
+
+    if (wasIntentionalAbort) {
+      // --- Abort path: user explicitly stopped the request ---
+      await options.stores.request.flushItems(requestId);
+      await options.stores.request.flushEvents(requestId);
+      await flushCheckpoints();
+      await flushTraces();
+
+      const abortedAt = Date.now();
+      await patchRequestRecord(options.stores, requestId, {
+        status: "aborted",
+        abortedAt,
+        items: itemsToPersist()
+      });
+
+      ctx.requestRuntime.status = "aborted";
+
+      // The record is terminal before any subscriber is told it is. A client
+      // closes its stream on this event and immediately re-reads the record;
+      // publishing first would let it cache `in_progress` off a stream that
+      // is already gone, with nothing left to re-fetch.
+      await response.emitRequestStatus("aborted");
+
+      await runObserverSafely(options.flow.request?.onFinished, {
+        requestId,
+        actionName: options.actionName,
+        status: "aborted"
+      }, ctx, { internalSeams, logger });
+      await emitActionLifecycleSeam(internalSeams, "finished", metadata);
+
+      logRuntimeEvent(logger, "info", "[flow-state] action execution aborted", {
+        ...createExecutionLogContext(metadata),
+        durationMs: Date.now() - startedAt
+      });
+    } else if (signalAborted) {
+      // --- Disconnect path: client went away without explicit abort ---
+      await options.stores.request.flushItems(requestId);
+      await options.stores.request.flushEvents(requestId);
+      await flushCheckpoints();
+      await flushTraces();
+
+      await patchRequestRecord(options.stores, requestId, {
+        status: "interrupted",
+        interruptedAt: Date.now(),
+        items: itemsToPersist()
+      });
+
+      ctx.requestRuntime.status = "interrupted" as typeof ctx.requestRuntime.status;
+
+      await response.emitRequestStatus("interrupted");
+
+      await runObserverSafely(options.flow.request?.onFinished, {
+        requestId,
+        actionName: options.actionName,
+        status: "interrupted"
+      }, ctx, { internalSeams, logger });
+      await emitActionLifecycleSeam(internalSeams, "finished", metadata);
+
+      logRuntimeEvent(logger, "info", "[flow-state] action execution interrupted (client disconnect)", {
+        ...createExecutionLogContext(metadata),
+        durationMs: Date.now() - startedAt
+      });
     } else {
       // --- Failure path: execution error ---
-      const normalized = applyNormalizedErrorSeam(
-        internalSeams,
-        normalizeError(error, {
-          scope: "request",
-          blockName: action.block.name
-        }),
-        metadata
-      );
-
-      await emitTerminalError(ctx, normalized);
-      await response.emitRequestStatus("failed");
+      // `normalizedError` was computed above so the error item could be
+      // emitted before the drain; it is non-undefined on exactly this branch.
+      const normalized = normalizedError!;
 
       await options.stores.request.flushItems(requestId);
       await options.stores.request.flushEvents(requestId);
@@ -1931,7 +2023,7 @@ export async function runActionInternal<
       ctx.requestRuntime.status = "failed";
       ctx.requestRuntime.failedAtMs = failedAt;
 
-      if (ttsHook !== undefined) await ttsHook.cancel();
+      await response.emitRequestStatus("failed");
 
       await runObserverSafely(action.onErrored, {
         requestId,
