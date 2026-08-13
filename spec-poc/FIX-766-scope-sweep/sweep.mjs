@@ -42,7 +42,14 @@ const EXPORTS = new Set([
 function listFiles() {
   if (explicitFiles) return explicitFiles.map((f) => path.resolve(f));
   const out = execSync("git ls-files '*.ts' '*.tsx'", { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-  return out.split("\n").filter(Boolean).map((f) => path.join(ROOT, f));
+  return out
+    .split("\n")
+    .filter(Boolean)
+    // Exclude this sweep's own control fixtures. They are tracked files full of
+    // deliberate violations, so counting them inflates every rule by exactly the
+    // Control A counts and the repo numbers stop matching the spec.
+    .filter((f) => !f.startsWith("spec-poc/"))
+    .map((f) => path.join(ROOT, f));
 }
 
 const project = new Project({

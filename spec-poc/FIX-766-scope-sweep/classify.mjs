@@ -18,7 +18,8 @@ const ROOT = "/home/user/flow-state-dev";
 const RE = /\.(work|workIf|waitForWork|forEachBackground)\(/g;
 
 const files = execSync("git ls-files '*.ts' '*.tsx'", { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 })
-  .split("\n").filter(Boolean);
+  .split("\n").filter(Boolean)
+  .filter((f) => !f.startsWith("spec-poc/")); // exclude this sweep's own control fixtures
 
 const tally = { code: 0, comment: 0, string: 0 };
 const byMethod = {};
