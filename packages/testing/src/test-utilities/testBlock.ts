@@ -117,7 +117,6 @@ export async function testBlock<TBlock extends BlockDefinition<any, any>>(
       request: asRecord(runtime.ctx.request.state),
       session: asRecord(runtime.ctx.session.state),
       user: asRecord(runtime.ctx.user.state),
-      org: asRecord(runtime.ctx.org?.state),
       sequencer:
         options.sequencer === undefined
           ? asRecord(runtime.ctx.sequencer?.state)

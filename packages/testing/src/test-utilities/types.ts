@@ -16,11 +16,18 @@ export type TestScopeSeed = {
   resources?: Record<string, unknown>;
 };
 
+/**
+ * Org scope carries no state (FIX-1153) — only resources are seedable.
+ */
+export type TestOrgSeed = {
+  resources?: Record<string, unknown>;
+};
+
 export type TestStateSeed = {
   request?: TestRequestSeed;
   session?: TestScopeSeed;
   user?: TestScopeSeed;
-  org?: TestScopeSeed;
+  org?: TestOrgSeed;
 };
 
 export type TestTargetSeed = {
@@ -39,7 +46,7 @@ export type TestBlockOptions<TInput> = {
   request?: TestRequestSeed;
   session?: TestScopeSeed;
   user?: TestScopeSeed;
-  org?: TestScopeSeed;
+  org?: TestOrgSeed;
   sequencer?: TestSequencerSeed;
   targets?: Record<string, TestTargetSeed>;
   tools?: Record<string, (...args: any[]) => Promise<any> | any>;
@@ -76,7 +83,6 @@ export type TestBlockResult<TOutput> = {
     request: Record<string, unknown>;
     session: Record<string, unknown>;
     user: Record<string, unknown>;
-    org: Record<string, unknown>;
     sequencer: Record<string, unknown>;
   };
   stateChanges: StateChange[];

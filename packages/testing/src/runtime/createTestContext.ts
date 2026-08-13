@@ -224,7 +224,7 @@ async function seedStores(options: {
       id: options.orgId,
       orgId: options.orgId,
       userId: options.userId,
-      state: toJsonObject(cloneValue(options.seed.org?.state ?? {})),
+      state: {},
       version: 0,
       createdAt: now,
       updatedAt: now
@@ -494,10 +494,7 @@ export async function createTestContext<TInput = unknown>(
       org:
         options.org === undefined
           ? undefined
-          : {
-              state: options.org.state,
-              resources: options.org.resources
-            }
+          : { resources: options.org.resources }
     }
   });
 
@@ -538,7 +535,6 @@ export async function createTestContext<TInput = unknown>(
   wrapScopeStateOps("request", ctx.request as unknown as Record<string, unknown>, stateChanges);
   wrapScopeStateOps("session", ctx.session as unknown as Record<string, unknown>, stateChanges);
   wrapScopeStateOps("user", ctx.user as unknown as Record<string, unknown>, stateChanges);
-  wrapScopeStateOps("org", ctx.org as unknown as Record<string, unknown>, stateChanges);
 
   const targetStateByName = new Map<string, MutableTargetState>();
 
