@@ -12,4 +12,5 @@ The request now waits on every terminal path, and keeps draining until no queued
 Two consequences worth knowing:
 
 - A non-streaming caller that `await`s a failing request now waits for that request's background work, the same bill the success path already paid. Streaming clients are unaffected — the error item is emitted before the wait.
+- Stopping a request while it is waiting on background work is honoured: it settles as `aborted` rather than `failed` or `interrupted`, and the returned result carries no `error`, matching the record. The error item already delivered to the stream is kept, so a client that saw the failure still sees it.
 - Work queued from `onFinished` or `onErrored` is not covered, because those hooks run after the terminal record is written. Do durable work inline in those hooks rather than dispatching it with `.work()`. `onCompleted` runs before finalization and is covered.
