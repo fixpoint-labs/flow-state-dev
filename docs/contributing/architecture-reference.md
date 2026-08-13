@@ -130,27 +130,22 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 
 ## Utility Blocks
 
-Ten pre-built utility factories wrapping generator/handler blocks:
+Eleven pre-built factories, exported from `packages/core/src/utility/index.ts`:
 
-| Utility | Kind | Purpose |
-|---------|------|---------|
-| `contextReducer` | generator | Context reduction (distill, denoise, compress) |
-| `memoryExtractor` | generator | Extract durable memory candidates |
-| `decomposer` | generator | Break requests into subtasks with dependency graph |
-| `composer` | generator | Assemble coherent output from parts |
-| `summarizer` | generator | Summarize at brief/detailed/executive granularity |
-| `combiner` | handler | Deterministic artifact merge (no LLM) |
-| `synthesizer` | generator | Reconcile overlapping/conflicting inputs |
-| `analyzer` | generator | Evaluate artifacts against criteria |
-| `intentClassifier` | generator | Classify input into bounded category set for routing |
-| `intentRouter` | sequencer | Pre-wired classifier + router for classification-driven branching |
+| Kind | Factories |
+|------|-----------|
+| generator | `contextReducer`, `memoryExtractor`, `decomposer`, `summarizer`, `analyzer`, `intentClassifier` |
+| handler | `combiner`, `upsertResource` |
+| sequencer | `intentRouter`, `sessionTitleGenerator` |
+| router | `keyedRouter` |
 
 - Access via `utility.<name>(config)` — returns a standard `BlockDefinition`
-- Generator utilities mostly default to `"intent/utility"`; `decomposer` and `sessionTitleGenerator` name a model directly
-- All utilities accept optional `outputSchema` override
-- Combiner is handler-based (deterministic, no model)
+- All utilities accept an optional `outputSchema` override
+- Handler- and router-based utilities take no `model` (deterministic, no LLM)
 
-> [Utility Blocks](../architecture/utility-blocks.md)
+Purposes and default models live in the catalog — don't restate them here.
+
+> [Utility Blocks](../architecture/utility-blocks.md) · [Core Utilities (user docs)](../../apps/docs/docs/patterns/utility-blocks/core.md)
 
 ## Resources and Client Data
 

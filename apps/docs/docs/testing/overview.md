@@ -225,7 +225,7 @@ const report = await evalBlock(myGenerator, {
         "Response does not hallucinate facts",
         "Tone is professional and concise",
       ],
-      model: "claude-haiku",   // cheaper model for grading
+      model: "anthropic/claude-haiku-4-5",   // cheaper model for grading
       scoreMapping: "mean",    // average across criteria
     }),
   ],

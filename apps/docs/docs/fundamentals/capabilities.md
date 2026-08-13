@@ -18,7 +18,7 @@ import { workingMemoryCapability as memoryCapability } from "@flow-state-dev/mem
 const assistant = generator({
   name: "assistant",
   uses: [memoryCapability],
-  model: selectModel("gpt-4o"),
+  model: "openai/gpt-5.4-mini",
   prompt: (input) => input.message,
 });
 
@@ -44,7 +44,7 @@ List the capability in `uses`:
 generator({
   name: "assistant",
   uses: [memoryCapability],
-  model: selectModel("gpt-4o"),
+  model: "openai/gpt-5.4-mini",
   prompt: (input) => input.message,
 });
 ```

@@ -182,7 +182,7 @@ Generators have built-in support for *generator-native web search*: web search t
 ```ts
 const agent = generator({
   name: "research-agent",
-  model: "claude-sonnet-4-20250514",
+  model: "anthropic/claude-sonnet-4-6",
   prompt: "You are a research assistant. Search the web when needed.",
   search: true,
   tools: [readDoc, updateDoc],
@@ -197,7 +197,7 @@ For fine-grained control, pass a config object instead of `true`:
 ```ts
 const agent = generator({
   name: "docs-agent",
-  model: "claude-sonnet-4-20250514",
+  model: "anthropic/claude-sonnet-4-6",
   search: {
     maxUses: 3,
     allowedDomains: ["docs.anthropic.com", "developer.mozilla.org"],
@@ -251,7 +251,7 @@ import { anthropic } from "@ai-sdk/anthropic";
 
 const agent = generator({
   name: "code-agent",
-  model: "claude-sonnet-4-20250514",
+  model: "anthropic/claude-sonnet-4-6",
   providerTools: [
     providerTool("code_execution", anthropic.tools.codeExecution()),
   ],
@@ -267,7 +267,7 @@ You can combine `search`, `providerTools`, and block `tools` freely. They all me
 ```ts
 const agent = generator({
   name: "full-agent",
-  model: "claude-sonnet-4-20250514",
+  model: "anthropic/claude-sonnet-4-6",
   search: true,                                    // provider-native search
   providerTools: [                                  // raw provider tools
     providerTool("code_exec", anthropic.tools.codeExecution()),
@@ -470,7 +470,7 @@ const modeRouter = router({
 
 If the chosen branch suspends for a human, resume keeps that same branch — the selector re-runs and is validated against the recorded decision. See [Generator and router suspend/resume](/docs/advanced/generator-and-router-suspend-resume).
 
-#### `utility.keyedRouter` — dispatch by string key
+#### `utility.keyedRouter` — dispatch by string key {#keyedrouter}
 
 When the choice is just "pick a block from a `Record` by string key", reach for `utility.keyedRouter`. It wraps the full router with the common case so you don't hand-roll the lookup and the not-found error.
 
@@ -686,7 +686,7 @@ const classify = utility.intentClassifier({ name: "triage", categories: { ... } 
 const decompose = utility.decomposer({ name: "plan" });
 ```
 
-Each utility returns a standard block — composable in sequencers, routers, and flows like any block you build yourself. Nine utilities produce generator blocks (LLM-powered), and one (`combiner`) produces a handler block (deterministic, no LLM).
+Each utility returns a standard block — composable in sequencers, routers, and flows like any block you build yourself. Most are generators that call a model; `combiner`, `upsertResource`, and `keyedRouter` are deterministic and make no LLM call.
 
 See the [Core Utilities guide](/docs/patterns/utility-blocks/core) for the full catalog with examples and output schemas, or [Extension Utilities](/docs/patterns/utility-blocks/extensions) for adapter-driven utilities.
 

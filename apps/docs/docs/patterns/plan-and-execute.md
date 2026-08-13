@@ -376,7 +376,7 @@ import { z } from "zod";
 
 const customSynthesizer = generator({
   name: "report-writer",
-  model: "gpt-5",
+  model: "openai/gpt-5.5",
   outputSchema: z.object({
     executiveSummary: z.string(),
     sections: z.array(z.object({ title: z.string(), content: z.string() })),
