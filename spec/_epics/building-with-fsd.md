@@ -33,8 +33,10 @@ runs rather than code that merely looks right.
 (`fsdev init`) is the substance — it is the only thing that reaches an existing project, and
 both other issues are built on it. FIX-1160 (the authoring pack) carries the objective's
 second clause; cutting it cuts the objective in half, so it stays. **FIX-548
-(`create-fsd-app`) is the weakest of the three**: `npx create-next-app && npx fsdev init`
-already reaches the outcome in two commands, and a starter mostly saves one. **Kept, scoped
+(`create-fsd-app`) is the weakest of the three**: `npx create-next-app && npx
+@flow-state-dev/cli init` already reaches the outcome in two commands, and a starter mostly
+saves one — one command *and* the scoped package name a stranger would otherwise have to
+know. **Kept, scoped
 down** to a thin wrapper — bare app, then init, then one demo flow, with no scaffolding logic
 of its own. If it grows template logic that `fsdev init` does not have, that is the signal it
 should have been dropped.
@@ -82,20 +84,41 @@ call.
    copying those.
 
 5. **DevTool and CLI discovery is not its own workstream — it is folded into FIX-1159.**
-   `@flow-state-dev/devtool` is already a dev dependency that `fsdev dev` serves
-   automatically; the gap is purely that nobody is told it exists. It is fixed by what init
-   writes and prints. **There is one next-steps block, authored in FIX-1159 and reused
-   verbatim by FIX-548** — a second copy is how the two entry paths start telling people
-   different things.
+   `@flow-state-dev/devtool` is an **optional peer** of `@flow-state-dev/cli`, satisfied
+   inside this monorepo by a dev dependency and by nothing at all in a consumer's project —
+   so outside our repo `fsdev dev` cannot resolve its assets and fails. The gap is therefore
+   two things, not one: init has to make the DevTool **resolvable** as well as **known**.
+   Both are FIX-1159's, and neither is a fourth issue. **There is one next-steps block,
+   authored in FIX-1159 and reused verbatim by FIX-548** — a second copy is how the two entry
+   paths start telling people different things. **A next-steps block must not print a command
+   the project cannot run**, which is what ties the two halves together.
 
-6. **`fsdev init` is additive.** Its only in-place edits are `package.json` (dependencies and
-   a script), `.gitignore` (`.fsdev/`), and an appended key in `.env.local`. It never
-   overwrites a file it did not write. That is what makes FIX-1159's goal check — a route that
-   existed before init still responds — a check on the whole design rather than on one code
-   path.
+6. **`fsdev init` is additive, and `AGENTS.md` is an in-place edit like the others.** Init
+   edits exactly four things in place and nothing else: `package.json` (dependencies and a
+   script), `.gitignore` (FSD's ignore entries), `.env.local` (an appended key), and
+   `AGENTS.md` (an appended, delimited FSD section — the filename decided in §5 Q1). What goes
+   *into* each is FIX-1159's to settle; this theme fixes the boundary and the guarantee:
+   **all four are append-only — init never overwrites a file it did not write, and never
+   rewrites content it did not author.** That is what makes taking the shared `AGENTS.md`
+   filename safe, and it is what makes FIX-1159's goal check (a route that existed before init
+   still responds) a check on the whole design rather than one code path. **The output states
+   what happened to each of the four**; a "nothing else was touched" line printed in a repo
+   where init just appended to a tracked `AGENTS.md` is the failure this theme prevents.
 
 7. **No separate docs issue.** End-user functionality is documented in the change set that
    ships it. The docs-site work named in §1's *Not doing* stays outside this epic.
+
+8. **FSD arrives as a mounted route only where the host's conventions make the mount point
+   knowable; everywhere else it arrives as a second process — and init says which.** Next.js
+   App Router gives init a location it can derive, so it writes a real route into the existing
+   app. A plain-Node project does not, and theme 6 forbids editing an entrypoint init did not
+   write, so there FSD runs as a separate server alongside the one already there. Both are
+   legitimate; what is not legitimate is leaving the developer to work out which they got.
+   **Greenfield and brownfield must mean the same thing by "wire FSD into your project"** —
+   the Node *template* and the Node *init* path deliver the same process model, described in
+   the same words. This binds FIX-1159 (what init writes) and FIX-548 (what the Node template
+   ships), which is why it is a theme rather than either issue's local call. Surfaced by §3's
+   sketch, where it sat as an observation with no owner.
 
 ## 3. Shape of the whole
 
@@ -118,11 +141,12 @@ which is which is how a first-hour user lands on a blank page, and both entry pa
 Third, an asymmetry the prose hid: in a Next.js app init can mount a real route, because App
 Router conventions make the location knowable, but in a plain-Node app it cannot edit an
 entrypoint it did not write — so init there delivers a **second process**, not an integrated
-route.
+route. That third finding is now **theme 8**, which is where it binds; it sat here as an
+observation with no owner until epic review pointed out that §3 is explicitly non-binding.
 
 **Changed:** added theme 5's second half (one next-steps block, authored in FIX-1159, reused
-verbatim) and theme 6 (init is additive, with the three named in-place edits). Both came out
-of drawing the diffs; neither was visible in prose.
+verbatim) and theme 6 (init is additive, over its named in-place edits). Both came out of
+drawing the diffs; neither was visible in prose.
 
 ### Template A — Next.js chat app
 
@@ -136,7 +160,7 @@ my-app/
     chat.ts                        defineFlow — one action, one generator
   fsdev.config.ts                  default-exports createFlowState({ flows })
   .env.local                       OPENAI_API_KEY=…
-  AGENTS.md                        written by init — see §5 Q1
+  AGENTS.md                        written by init (§5 Q1 — decided)
   package.json                     next, react, @flow-state-dev/{core,engine,next,react,cli}
   next.config.ts
   tsconfig.json
@@ -164,9 +188,9 @@ my-api/
 +   app/api/flows/[...path]/route.ts
 +   flows/hello.ts
 +   fsdev.config.ts
-+   AGENTS.md
+~   AGENTS.md        +FSD section, delimited   (created if absent, appended if present)
 ~   package.json     deps +@flow-state-dev/{core,engine,next,react,cli} · scripts +"fsdev"
-~   .gitignore       +.fsdev/
+~   .gitignore       +FSD ignore entries
 ~   .env.local       +OPENAI_API_KEY=   (created if absent, appended if present)
     app/api/billing/route.ts        untouched
     app/page.tsx                    untouched
@@ -180,11 +204,12 @@ my-api/
 +   src/fsdev-server.ts             serve(…) — a second process, run alongside yours
 +   flows/hello.ts
 +   fsdev.config.ts
-+   AGENTS.md
+~   AGENTS.md                       +FSD section, delimited  (created if absent, appended if present)
 ~   package.json                    deps +@flow-state-dev/{core,engine,node,cli}
-~   .gitignore                      +.fsdev/
+~   .gitignore                      +FSD ignore entries
 ~   .env.local                      +OPENAI_API_KEY=
     src/index.ts                    untouched — init does not edit an entrypoint it did not write
+                                    (theme 8: so FSD arrives here as a second process)
 ```
 
 ### Transcript — greenfield, Next.js template
@@ -239,7 +264,7 @@ $ npx create-fsd-app@latest my-api --template node-api
 
 ```
 $ cd my-existing-app
-$ npx fsdev init
+$ npx @flow-state-dev/cli init
 
   Detected  Next.js 15 (App Router)  ·  package manager: pnpm
   Adapter   @flow-state-dev/next
@@ -250,11 +275,11 @@ $ npx fsdev init
   Created   app/api/flows/[...path]/route.ts
             flows/hello.ts
             fsdev.config.ts
-            AGENTS.md
-  Modified  package.json   (+5 dependencies, +1 script)
-            .gitignore     (+.fsdev/)
+  Modified  package.json   (+6 dependencies, +1 script)
+            .gitignore     (FSD ignore entries)
+            AGENTS.md      (appended an FSD section — your existing content is unchanged)
 
-  Nothing else in this project was touched.
+  Nothing was overwritten. Every file above was created or appended to.
 
   Next steps
 
@@ -279,10 +304,11 @@ spec-approval gate. FIX-1159 lands before FIX-548 (theme 1).
 
 ## 5. Open cross-cutting questions
 
-Both entries below need the product owner's call. Neither blocks: every issue can be specced
-against the recommendation and folds if the answer differs.
+Q1 is **decided** and stays here with its answer, so no issue reopens it. Q2 still needs the
+product owner's call and blocks nothing: every issue can be specced against the recommendation
+and folds if the answer differs.
 
-### Q1 — What filename does init write the agent instructions to, and what happens when one is already there?
+### ~~Q1 — What filename does init write the agent instructions to, and what happens when one is already there?~~ — decided: `AGENTS.md`
 
 *Raised while drawing §3's diffs; it touches all three issues (FIX-1160 authors the content,
 FIX-1159 writes it, FIX-548 ships it in both templates), so no single issue can settle it.*
@@ -297,21 +323,25 @@ risks landing on top of, or tangled into, a file the project already owns. A nam
 (`.fsd/agent-instructions.md`) can never collide, and is read by nobody unless the developer
 wires it up — which is the same as not shipping it.
 
-**My recommendation: write `AGENTS.md`, and never overwrite.** If the file exists, append a
+**My recommendation was: write `AGENTS.md`, and never overwrite.** If the file exists, append a
 delimited FSD section and say so in the output; if it does not, create it. Pickup is the whole
 point of the objective's second clause, and a file nothing reads fails that clause silently
 rather than loudly.
-
-**What would change my mind:** evidence that appending to a project's `AGENTS.md` degrades how
-assistants follow the rest of it, or a design partner who says a tool writing to that file is
-unacceptable regardless of care.
 
 **Cost of being wrong.** Choosing `AGENTS.md` and being wrong is noisy and recoverable — a
 developer sees a diff in a tracked file and deletes it. Choosing the namespaced file and being
 wrong is quiet: FIX-1160 ships, nothing reads it, and the objective's second half is unproven
 while looking done.
 
-**Resolution:** *(open)*
+**Resolution — `AGENTS.md`.** Decided by the objective's first line: the outcome is that the
+assistant beside the developer writes working FSD code, and a namespaced file nothing reads
+fails that outcome by construction. **Collision risk is the cost of the objective, not an
+alternative to it** — so it is managed, not avoided. **Behaviour init implements: append a
+delimited FSD section, never overwrite, and leave any pre-existing content untouched.** That
+guarantee is now carried by **theme 6**, which owns `AGENTS.md` as an in-place edit alongside
+the other three; this entry is the record of why. **Closed — not reopenable by an issue.** A
+sub-issue that finds the append mechanics hard is looking at an implementation problem in
+FIX-1159, not at this decision.
 
 ### Q2 — Is the Claude Code plugin publicly listed at launch, or install-by-URL only?
 
@@ -351,6 +381,16 @@ green during the noisiest period we will have.
   Scoped `create-fsd-app` down to a thin wrapper over `fsdev init`, and recorded the accepted
   cost of shipping two templates instead of one.
 - **After the inline end-state sketch** — added theme 5's one-next-steps-block clause and
-  theme 6 (init is additive, three named in-place edits), because drawing the two diffs made
+  theme 6 (init is additive over its named in-place edits), because drawing the two diffs made
   visible what the prose had not: both entry paths print the same block, and the risky half of
-  init is exactly three files.
+  init is a short, nameable file list.
+- **Q1 answered — `AGENTS.md`** — theme 6 re-drafted to own `AGENTS.md` as a fourth in-place
+  edit carrying an append-only, never-overwrite guarantee, because the spec had recommended
+  appending to that file while theme 6 listed only three editable ones. §3's diffs and the
+  "Nothing else was touched" output are corrected to match.
+- **After epic review** — added theme 8 (a mounted route where the host's conventions make the
+  location knowable, a second process otherwise, and init says which), because §3 had surfaced
+  that asymmetry inside a section that explicitly binds nothing, leaving the constraint
+  unowned across FIX-1159 and FIX-548. Corrected theme 5's premise: `@flow-state-dev/devtool`
+  is an *optional peer* of the CLI, so outside this monorepo `fsdev dev` cannot resolve its
+  assets — DevTool discovery is not purely a "nobody is told it exists" gap.
