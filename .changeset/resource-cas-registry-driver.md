@@ -83,3 +83,5 @@ Task boards backed by a durable resource collection inherit this: a claim writte
 against a stale read is refused and re-applied rather than overwriting the worker
 that won. The filesystem store remains the exception — it compares within a
 single process, so a board fanned across replicas wants SQLite or Postgres.
+
+(FIX-992)

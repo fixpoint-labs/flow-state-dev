@@ -93,7 +93,7 @@ type SequencerOpResult = {
   /**
    * BlockValue hint for the sequencer's output after this op runs (FIX-413).
    * - Unset: op did not change the sequencer's output kind. The running
-   *   descriptor from prior ops carries over (e.g., `.tap`, `.work`, no-op
+   *   descriptor from prior ops carries over (e.g., `.tap`, `.sideChain`, no-op
    *   `.stepIf`).
    * - Set: replaces the running descriptor. `.step` produces a ref to the
    *   child item, `.map` produces inline, `.stepAll` produces structure.

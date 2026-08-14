@@ -138,7 +138,7 @@ function resolveDetachedDrainTimeout(configured: number | undefined): number {
 }
 
 /**
- * Resolve `true` when `work` settles within `ms`, `false` when the budget runs
+ * Resolve `true` when `pending` settles within `ms`, `false` when the budget runs
  * out first. Never rejects — the caller passes an `allSettled`, and a timeout is
  * an answer rather than an error.
  *

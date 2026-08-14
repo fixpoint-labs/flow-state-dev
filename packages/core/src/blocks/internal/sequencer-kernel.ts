@@ -4,7 +4,7 @@
 // `doWhile`) — shares the same skeleton: apply the connector, stash the child's
 // input descriptor, run the block at a caller-derived path, then resolve a `ref`
 // descriptor pointing at the child's emitted trace. `runChild` is that skeleton.
-// `runSideChain` is the fire-and-forget analogue used by `work` / `sideChainIf`.
+// `runSideChain` is the fire-and-forget analogue used by `sideChain` / `sideChainIf`.
 //
 // The primitives wrap `executeBlock` and the hint/descriptor helpers that live
 // in `sequencer.ts`; importing them back here forms a module cycle that is safe

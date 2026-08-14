@@ -1,5 +1,5 @@
 // Argument-shape resolution for the sequencer DSL. Several dispatching methods
-// (`step`, `stepIf`, `work`, `sideChainIf`, `forEach`, `forEachSideChain`) accept
+// (`step`, `stepIf`, `sideChain`, `sideChainIf`, `forEach`, `forEachSideChain`) accept
 // the same families of overloads — a bare block, a connector plus block, a
 // factory plus inline config, or a block plus options. This module is the
 // single home for the discriminators that pull those overloads apart, so a new
@@ -197,7 +197,7 @@ function isStepOptions(value: unknown): value is StepOptions {
   return "abortSignal" in bag || "onSettled" in bag || Object.keys(bag).length === 0;
 }
 
-/** The resolved shape for a background method (`work`, `sideChainIf`). */
+/** The resolved shape for a side-chain method (`sideChain`, `sideChainIf`). */
 export type SideChainCallShape = {
   block: BlockDefinition<any, any>;
   connector?: ConnectorFn<any, any>;
