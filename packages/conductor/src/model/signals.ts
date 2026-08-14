@@ -1,0 +1,153 @@
+/**
+ * Signals — what the world reported, or what reconciliation inferred was missed.
+ *
+ * A signal is the only thing that moves an entity. `decide` reduces one signal
+ * at a time against a world snapshot, so the signal vocabulary is the complete
+ * surface conductor responds to.
+ *
+ * Two properties this file exists to keep true:
+ *
+ * - **Reconciliation adds no new signal kinds.** A missed `pr_opened` is
+ *   re-emitted as an ordinary `pr_opened` carrying `synthesized: true` and a
+ *   backdated `at`, so it reduces ahead of the comment that revealed the gap.
+ * - **A model may produce a signal; it may never produce an action.** The three
+ *   prose-derived kinds (`feedback_received`, `question_asked`,
+ *   `approval_expressed`) are classifier output. Everything else is structural.
+ *   `approval_expressed` is advisory and must never satisfy an approval gate —
+ *   a gate reads a real review state, never a model's reading of prose.
+ */
+
+/** Every signal kind conductor responds to. */
+export type SignalKind =
+  // — structural, from GitHub state —
+  | "pr_opened"
+  | "review_submitted"
+  | "changes_requested"
+  | "approved"
+  | "ci_concluded"
+  | "merge_conflict"
+  | "base_recovered"
+  | "merged"
+  | "pr_closed"
+  // — prose-derived, from the classifier (M3+; M1 emits `feedback_received` only) —
+  | "feedback_received"
+  | "question_asked"
+  | "approval_expressed"
+  // — conductor's own —
+  | "phase_entered"
+  | "dispatch_completed"
+  | "dispatch_failed"
+  // — the goal harness —
+  | "goal_check_passed"
+  | "goal_check_failed"
+  // — ambient —
+  | "guidance_changed"
+  | "external_status_changed"
+  // — epic —
+  | "objective_approved"
+  | "issue_settled";
+
+/** Fields every signal carries. */
+export interface SignalBase {
+  readonly kind: SignalKind;
+  /** The entity this signal is about — an issue id or an epic id. */
+  readonly entityId: string;
+  /**
+   * When the underlying event happened, ISO-8601. Reconciliation backdates
+   * synthesized signals to the event's inferred time so ordering is preserved.
+   */
+  readonly at: string;
+  /** True when reconciliation inferred this rather than observing it live. */
+  readonly synthesized?: boolean;
+}
+
+/** CI concluded on a head SHA. */
+export interface CiConcludedSignal extends SignalBase {
+  readonly kind: "ci_concluded";
+  readonly conclusion: "success" | "failure";
+  readonly sha: string;
+}
+
+/**
+ * A human submitted a review with an explicit state.
+ *
+ * `pullNumber` is load-bearing, not bookkeeping: an issue in `IMPLEMENTATION`
+ * still has its spec PR sitting there, and without knowing which PR a review
+ * landed on, a late approval on the spec would read as an approval of the
+ * implementation.
+ */
+export interface ReviewStateSignal extends SignalBase {
+  readonly kind: "review_submitted" | "changes_requested" | "approved";
+  readonly reviewer: string;
+  readonly sha: string;
+  readonly pullNumber: number;
+}
+
+/** A pull request changed structural state. */
+export interface PullRequestSignal extends SignalBase {
+  readonly kind: "pr_opened" | "merged" | "pr_closed" | "merge_conflict" | "base_recovered";
+  readonly pullNumber: number;
+}
+
+/** Classifier output over a human comment. Scoped to the PR it was left on. */
+export interface ProseSignal extends SignalBase {
+  readonly kind: "feedback_received" | "question_asked" | "approval_expressed";
+  readonly author: string;
+  readonly commentId: string;
+  readonly pullNumber: number;
+}
+
+/** A dispatched phase execution settled. */
+export interface DispatchSignal extends SignalBase {
+  readonly kind: "dispatch_completed" | "dispatch_failed";
+  readonly dispatchId: string;
+}
+
+/** A guidance document's content hash moved. */
+export interface GuidanceChangedSignal extends SignalBase {
+  readonly kind: "guidance_changed";
+  readonly path: string;
+}
+
+/** A child issue passed its goal check. */
+export interface IssueSettledSignal extends SignalBase {
+  readonly kind: "issue_settled";
+  readonly childId: string;
+}
+
+/** Signals that carry no payload beyond the base fields. */
+export interface PlainSignal extends SignalBase {
+  readonly kind:
+    | "phase_entered"
+    | "goal_check_passed"
+    | "goal_check_failed"
+    | "external_status_changed"
+    | "objective_approved";
+}
+
+/** The discriminated union `decide` reduces over. */
+export type Signal =
+  | CiConcludedSignal
+  | ReviewStateSignal
+  | PullRequestSignal
+  | ProseSignal
+  | DispatchSignal
+  | GuidanceChangedSignal
+  | IssueSettledSignal
+  | PlainSignal;
+
+/**
+ * Signal kinds a model is allowed to produce. Everything else must come from a
+ * structural read, so a misclassification can never invent a merge or an
+ * approval.
+ */
+export const PROSE_DERIVED_KINDS = [
+  "feedback_received",
+  "question_asked",
+  "approval_expressed",
+] as const satisfies readonly SignalKind[];
+
+/** True when `kind` is classifier output rather than a structural observation. */
+export function isProseDerived(kind: SignalKind): boolean {
+  return (PROSE_DERIVED_KINDS as readonly string[]).includes(kind);
+}

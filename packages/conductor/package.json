@@ -1,0 +1,67 @@
+{
+  "name": "@flow-state-dev/conductor",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Development orchestration for flow-state-dev: a deterministic driver that runs a software development process, dispatching the coding work to a vendor harness.",
+  "keywords": [
+    "ai",
+    "agents",
+    "orchestration",
+    "workflow",
+    "typescript",
+    "flow-state-dev",
+    "conductor"
+  ],
+  "homepage": "https://flow-state.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fixpoint-labs/flow-state-dev.git",
+    "directory": "packages/conductor"
+  },
+  "bugs": {
+    "url": "https://github.com/fixpoint-labs/flow-state-dev/issues"
+  },
+  "author": "Fixpoint Labs",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.ts"
+    },
+    "./model": {
+      "types": "./dist/model/index.d.ts",
+      "default": "./src/model/index.ts"
+    },
+    "./driver": {
+      "types": "./dist/driver/index.d.ts",
+      "default": "./src/driver/index.ts"
+    }
+  },
+  "license": "MIT",
+  "files": [
+    "dist",
+    "!dist/**/*.map"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "sideEffects": false,
+  "dependencies": {
+    "@flow-state-dev/core": "workspace:*",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "node ../../scripts/typecheck.mjs",
+    "lint": "echo 'lint not configured yet'",
+    "test": "vitest run --root .",
+    "test:watch": "vitest --root ."
+  }
+}
