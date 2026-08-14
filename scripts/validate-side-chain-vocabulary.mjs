@@ -218,14 +218,6 @@ const PATH_OP_ARG_INDEX = 2;
 const SEQUENCER_SRC = /packages[/\\]core[/\\]src[/\\]blocks[/\\]sequencer\.ts$/;
 
 /**
- * E2: a `"work"` string literal standing for the tier.
- *
- * Accepted in three positions, which between them cover both public unions that
- * carry it — `ItemProvenance.phase` and `FlowErrorScope` — plus the value
- * positions that feed them. A rule that only accepted `"work"` when bound to
- * `phase` let `FlowErrorScope` ship the retired term.
- */
-/**
  * Step out through type-only wrappers — `x as const`, `x as T`, `x satisfies T`,
  * `x!`, `(x)`. These change no value, and they are exactly what sits between a
  * literal and its property in fixture code (`phase: "work" as const`), so a rule
@@ -248,6 +240,24 @@ function effectiveParent(node) {
   return parent;
 }
 
+/**
+ * E2: a `"work"` string literal standing for the tier.
+ *
+ * Five accepted positions, which between them cover both public unions that
+ * carry the value — `ItemProvenance.phase` and `FlowErrorScope` — plus the
+ * places that feed them. The count grew from three during implementation, and
+ * every addition was a real site some OTHER check caught first:
+ *
+ *   1. a literal-type union member           `… | "work" | …`
+ *   2. a `phase:` / `scope:` property value   `{ phase: "work" }`
+ *   3. a comparison against the field         `x.phase === "work"`
+ *   4. an assertion naming the field          `expect(x.phase).toBe("work")`
+ *   5. a phase/provenance builder's argument   `makeProvenance(…, "work")`
+ *
+ * …plus, through {@link effectiveParent}, the same five behind `as const` and
+ * friends. A rule that only accepted `"work"` when bound to `phase` let
+ * `FlowErrorScope` ship the retired term, which is where this started.
+ */
 function isRetiredTierLiteral(literal) {
   if (literal.getLiteralValue() !== "work") return false;
   const parent = effectiveParent(literal);
