@@ -23,7 +23,7 @@ We'll build it in five steps. Each step is runnable on its own.
 
 ## Step 0. Prerequisites
 
-If you haven't yet, follow [Setting Up Models](/docs/getting-started/setting-up-models) to install the framework and configure an API key. The rest of this page assumes you have `@flow-state-dev/core`, `@flow-state-dev/engine`, `@flow-state-dev/react`, and `zod` installed, and that one of `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` is set in your environment.
+If you haven't yet, follow [Setting Up Models](/docs/getting-started/setting-up-models) to install the framework and configure an API key. The rest of this page assumes you have `@flow-state-dev/core`, `@flow-state-dev/engine`, `@flow-state-dev/react`, and `zod` installed, along with the SDK package for your provider (`@ai-sdk/openai`, `@ai-sdk/anthropic`, or `@ai-sdk/google`), and that the matching API key is set in your environment.
 
 ## Step 1. A generator on its own
 
@@ -37,7 +37,7 @@ export const inputSchema = z.object({ message: z.string() });
 
 export const chat = generator({
   name: "chat",
-  model: "preset/small",
+  model: "intent/chat",
   prompt: "You are a helpful assistant.",
   inputSchema,
   history: true,
@@ -48,7 +48,7 @@ export const chat = generator({
 A few things to notice:
 
 - **`name`** is the block's identifier. It shows up in traces and the DevTool.
-- **`model`** is a string. `"preset/small"` resolves at runtime to the first small-tier model whose provider has a key. See [Setting Up Models](/docs/getting-started/setting-up-models).
+- **`model`** is a string. `"intent/chat"` names an *intent* — a role you point at an ordered list of models in your runtime config, rather than a specific model here in the block. The framework takes the first candidate you have a key and an SDK package for, so this same block runs against whichever provider you set up. You can also name a model outright (`"openai/gpt-5.4-mini"`). [Setting Up Models](/docs/getting-started/setting-up-models) covers both.
 - **`inputSchema`** is a Zod schema. It's what the framework validates incoming data against, and what TypeScript uses to type the `input` parameter in `user`.
 - **`history: true`** tells the generator to read prior conversation turns out of the session and include them in the LLM call. You don't manage messages yourself.
 - **`user`** is a function that builds the user message from the input. The system prompt comes from `prompt`.
@@ -90,7 +90,7 @@ export const sessionStateSchema = z.object({
 
 export const chat = generator({
   name: "chat",
-  model: "preset/small",
+  model: "intent/chat",
   prompt: "You are a helpful assistant.",
   inputSchema,
   history: true,
@@ -178,10 +178,21 @@ import chatFlow from "@/flows/hello-chat/flow";
 
 export const flowstate = createFlowState({
   flows: { chatFlow },
-  models: { default: "openai/gpt-5.4-mini" },
+  models: {
+    default: "openai/gpt-5.4-mini",
+    intents: {
+      chat: [
+        "anthropic/claude-sonnet-4-6",
+        "openai/gpt-5.4-mini",
+        "google/gemini-3.1-pro",
+      ],
+    },
+  },
   stores: { default: { primary: inMemoryStores() } },
 });
 ```
+
+The `intents` map is what `model: "intent/chat"` in step 1 resolves against. Keeping it here means the model list lives in one place instead of being spread across every block that calls an LLM.
 
 ```ts title="app/api/flows/[...path]/route.ts"
 import { flowstate } from "@/lib/flowstate";

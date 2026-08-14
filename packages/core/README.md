@@ -590,7 +590,7 @@ Two adapter helpers are shared through `@flow-state-dev/core/helpers`: `sanitize
 
 Generators reference a model with a string. The string can be:
 
-- `provider/model` — direct, e.g., `"anthropic/claude-sonnet-4.6"`
+- `provider/model` — direct, e.g., `"anthropic/claude-sonnet-4-6"`
 - `gateway/provider/model` — routed through a gateway, e.g., `"vercel/openai/gpt-5.5"`
 - `intent/<name>` — a named routing group resolved by the model resolver
 
@@ -600,11 +600,11 @@ Configure intents on the resolver. Each intent maps a name to an ordered list of
 import { createModelResolver } from "@flow-state-dev/core/models";
 
 const resolver = createModelResolver({
-  defaultModel: "anthropic/claude-sonnet-4.6",
+  defaultModel: "anthropic/claude-sonnet-4-6",
   intents: {
-    utility: ["anthropic/claude-haiku-4.5", "openai/gpt-5.4-nano"],
-    chat: ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
-    synthesize: ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
+    utility: ["anthropic/claude-haiku-4-5", "openai/gpt-5.4-nano"],
+    chat: ["anthropic/claude-sonnet-4-6", "openai/gpt-5.5"],
+    synthesize: ["anthropic/claude-sonnet-4-6", "openai/gpt-5.5"],
   },
 });
 ```
@@ -620,7 +620,7 @@ Configure `providerOptions` (e.g. Anthropic thinking) per intent so generators d
 ```ts
 const resolver = createModelResolver({
   defaultModel: "openai/gpt-5.4",
-  intents: { plan: ["anthropic/claude-opus-4.7"] },
+  intents: { plan: ["anthropic/claude-opus-4-7"] },
   intentDefaults: {
     plan: {
       providerOptions: {

@@ -77,7 +77,7 @@ One row per block execution. The same row is emitted at `item.added`, patched in
   "id": "item_block_trace_4_a1b2",
   "patch": {
     "generator": {
-      "model": "openai/gpt-4o-mini",
+      "model": "openai/gpt-5.4-mini",
       "messages": [/* ... */],
       "temperature": 0.2
     }
@@ -99,7 +99,7 @@ One row per block execution. The same row is emitted at `item.added`, patched in
   "completedAt": 1717000004210,
   "duration": 4210,
   "modelUsage": {
-    "model": "openai/gpt-4o-mini",
+    "model": "openai/gpt-5.4-mini",
     "promptTokens": 412,
     "completionTokens": 94,
     "totalTokens": 506
@@ -246,7 +246,7 @@ type ContinuationItem = {
 
 See [Durable execution](/docs/advanced/durable-execution) for the resume lifecycle and [Block memoization and replay](/docs/advanced/block-memoization-and-replay) for what gets restored versus re-run.
 
-## `content.audio.delta` — streaming TTS audio chunks
+## `content.audio.delta` — streaming TTS audio chunks {#contentaudiodelta-streaming-tts-audio-chunks}
 
 When the configured voice provider supports streaming TTS, the server emits `content.audio.delta` events carrying base64-encoded audio chunks for an in-flight `OutputAudioContent` part. These are live-only — they do not replay on reconnect. The durable representation is the eventual `OutputAudioContent` delivered via `content.added`.
 
@@ -423,7 +423,7 @@ Generator-emitted items carry `model`: `message`, `reasoning`, `source`, `tool_o
   "blockKind": "generator",
   "generator": { "model": "intent/chat", "tools": [], "prompt": "…" },
   "modelUsage": { "model": "intent/chat", "promptTokens": 100, "completionTokens": 80, "totalTokens": 180 },
-  "model": { "actual": "anthropic/sonnet", "requested": "intent/chat" }
+  "model": { "actual": "anthropic/claude-sonnet-4-6", "requested": "intent/chat" }
 }
 ```
 

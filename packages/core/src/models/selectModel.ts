@@ -68,7 +68,8 @@ export type ModelSelection =
 const LEGACY_PREFER_MIGRATION_MESSAGE =
   "selectModel: the `prefer` rule has been replaced. Use `preferProvider` for\n" +
   "provider-name semantics, or restructure as a `when` rule for model\n" +
-  "replacement. See FIX-512 for context.";
+  "replacement. See https://flow-state.dev/docs/fundamentals/models for the\n" +
+  "selection rules.";
 
 /**
  * Type-guard for the structured {@link ModelSelection} object form.

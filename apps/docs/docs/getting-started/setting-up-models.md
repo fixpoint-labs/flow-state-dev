@@ -38,66 +38,69 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 That's the whole configuration step for the default setup. The framework will detect the key when it boots.
 
-## What `preset/small` resolves to
+## Declare your intents
 
-The quick-start uses `model: "preset/small"`. A **preset** is a named list of models tried in order. The resolver picks the first one whose provider has a working key:
+Blocks don't have to name a model. An **intent** is a role — `chat`, `utility`, `plan` — that you point at an ordered list of models once, in your runtime config. Blocks ask for the role; the config decides what fills it.
 
-```ts
-small = [
-  "openai/gpt-5.4-mini",
-  "anthropic/claude-haiku-4-5",
-  "google/gemini-3-flash",
-]
-```
+Declare the map on `createFlowState`, alongside your flows and stores:
 
-If only `ANTHROPIC_API_KEY` is set, `preset/small` resolves to `claude-haiku-4-5`. If Anthropic is down, the resolver retries, then falls back to the next available model in the list. Your generator code doesn't change.
-
-The full list of built-in presets (`tiny`, `small`, `medium`, `large`, `thinking-small`, `thinking-medium`, `thinking-large`) is documented in [Models — Built-in Presets](/docs/fundamentals/models#built-in-presets).
-
-## Override a preset
-
-You can replace any built-in preset or define a new one when you create the resolver:
-
-```ts title="app/api/flows/[...path]/route.ts"
-import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/engine";
-import { createModelResolver } from "@flow-state-dev/core/models";
+```ts title="lib/flowstate.ts"
+import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import chatFlow from "@/flows/hello-chat/flow";
 
-const registry = createFlowRegistry();
-registry.register(chatFlow);
-
-const router = createFlowApiRouter({
-  registry,
-  modelResolver: createModelResolver({
-    presets: {
-      // Override `small` to prefer Anthropic
-      small: { models: ["anthropic/claude-haiku-4-5", "openai/gpt-5.4-mini"] },
-
-      // Add a new preset
-      coding: {
-        models: ["anthropic/claude-opus-4-6", "openai/gpt-5.4"],
-        defaults: { maxTokens: 8192 },
-      },
+export const flowstate = createFlowState({
+  flows: { chatFlow },
+  models: {
+    default: "openai/gpt-5.4-mini",
+    intents: {
+      utility: [
+        "anthropic/claude-haiku-4-5",
+        "openai/gpt-5.4-mini",
+        "google/gemini-3.1-flash-lite",
+      ],
+      chat: [
+        "anthropic/claude-sonnet-4-6",
+        "openai/gpt-5.5",
+        "google/gemini-3.1-pro",
+      ],
     },
-  }),
+  },
+  stores: { default: { primary: inMemoryStores() } },
 });
-
-export const GET = router.GET;
-export const POST = router.POST;
-export const DELETE = router.DELETE;
 ```
 
-Use the new preset like any other:
+Each ladder lists a candidate for all three direct providers, so this same config works whichever key you set above.
+
+Then point a generator at the name:
 
 ```ts
-const coder = generator({ name: "coder", model: "preset/coding", /* ... */ });
+const chat = generator({ name: "chat", model: "intent/chat", /* ... */ });
 ```
 
-## Use a specific model directly
+### How a candidate gets picked
 
-Skip presets if you want exactly one model:
+The framework walks the list in order and takes the first candidate you can actually serve — one whose provider has a working key *and* an installed SDK package. Everything else is skipped. With only `ANTHROPIC_API_KEY` set, `intent/chat` above resolves to `claude-sonnet-4-6`; with only `OPENAI_API_KEY` it resolves to `gpt-5.5`; with only `GOOGLE_GENERATIVE_AI_API_KEY`, to `gemini-3.1-pro`. A gateway key covers all three at once. If a model fails at runtime, it retries, then moves to the next candidate. Your block code doesn't change in any of these cases.
+
+`default` is what an intent falls back to when none of its candidates are reachable, and what a generator gets if it names an intent you never declared. Declaring any intent makes `default` required, and it has to name a model directly rather than another intent. Both rules are checked when the runtime is built, so a mistake surfaces at startup rather than mid-request.
+
+**Point `default` at a model you can actually serve.** It's a plain model string, so it gets no ladder of its own — if it names a provider you have no key for, anything that falls through to it fails. The example above defaults to OpenAI; change it to your own provider if that isn't you.
+
+### Why roles instead of model names
+
+Two reasons, and the second is the one that compounds:
+
+- **One place to change.** Moving your chat traffic to a new model is an edit to this map, not a search across every block that calls an LLM.
+- **Role names outlive model names.** `intent/chat` reads the same in a year. A specific model ID is a moving target — it gets superseded, renamed, or retired, and every copy of it in your code and docs quietly goes stale.
+
+Intent names are yours to choose. [Models](/docs/fundamentals/models) lists six the framework documents (`utility`, `chat`, `plan`, `synthesize`, `code`, `reason`) and describes what each is for.
+
+## Name a model directly
+
+You can also skip the indirection and name a model on the block:
 
 ```ts
+import { generator } from "@flow-state-dev/core";
+
 const chat = generator({
   name: "chat",
   model: "anthropic/claude-sonnet-4-6",
@@ -105,7 +108,9 @@ const chat = generator({
 });
 ```
 
-The format is `provider/model-id`, or `gateway/provider/model-id` for gateway routing (`"vercel/openai/gpt-5.4"`).
+The format is `provider/model-id`, or `gateway/provider/model-id` for gateway routing (`"vercel/openai/gpt-5.4"`). Match the provider to the key you set, and the generator will run.
+
+This is the right call when a block genuinely needs one specific model — an eval pinned to a known baseline, or a block that depends on a quirk of a particular model. It pins that block to one provider, so it fails if that provider is unreachable, and it's a string you'll have to revisit when the model is superseded.
 
 ## Plug in a custom resolver
 

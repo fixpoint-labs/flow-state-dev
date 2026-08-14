@@ -60,10 +60,12 @@ Update policy:
 
 - Status: Active
 - Date: 2026-02-15
-- Scope: Universal — every claimed deliverable.
+- Scope: Universal — every claimed deliverable, and the claims that scope it.
 - Rule:
   - Every claimed deliverable must have an evidence path and pass criteria, recorded on the change's spec / Linear issue.
-- Why: Eliminates ambiguous "done" — a deliverable isn't complete until something proves it.
+  - A claim the change *rests* on carries the same burden — how many sites are in scope, whether one form is equivalent to another, what a path does at runtime. Settle it by executing or parsing; a careful reading and a reviewer's assertion are both guesses.
+  - The command itself is subject to **tenet 7** (`docs/philosophy.md` — *a check that cannot fire is not a check*). The shape to watch for: a green result from a command aimed at a **neighbour** of the claim, which passes for a reason unrelated to it.
+- Why: Eliminates ambiguous "done" — and stops a change being scoped by an argument nobody ran.
 
 ### BP-007: Concise API and file-level documentation
 

@@ -338,6 +338,12 @@ export type RequestConfig = {
   /**
    * Heartbeat interval in milliseconds for the active request registry.
    * Default: 10000 (10 seconds). Set to 0 to disable.
+   *
+   * The same tick carries cross-process abort delivery and keeps a running
+   * request's registry entry warm, so `0` disables both: a cancellation
+   * recorded elsewhere is never delivered, and a run outliving the stale
+   * threshold can be marked `interrupted` while it is still running
+   * (FIX-1131).
    */
   heartbeatIntervalMs?: number;
   /**
@@ -519,10 +525,8 @@ export type FlowInstanceOptions<
   resources?: TResources;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
-  mcp?: McpConfig;
-  chat?: ChatConfig;
-  webhooks?: WebhookConfig;
-  schedules?: SchedulesConfig;
+  // `mcp`, `chat`, `webhooks` and `schedules` are deliberately ABSENT — they are
+  // definition-only; see `rejectDefinitionOnlyOptions` in `flow/defineFlow.ts` (FIX-1048).
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
   isolateUserState?: boolean;

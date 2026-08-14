@@ -67,6 +67,17 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 - `getBlockOutput(blockDef)`: returns completed output from already-dispatched sibling blocks at the current execution level, otherwise `undefined`
 - `getBlockResult(blockDef)`: returns `{status: not_started|running|completed|failed}` for already-dispatched sibling blocks at the current execution level (not ancestor chain), with output/error payload on terminal states
 
+## Detached work (Workstreams)
+
+- A Workstream is a **child session**, not a new scope level
+- Locality is decided by the effective dispatcher (`isInProcessDispatcher`), **not** by `worker.mode`
+- `worker-only` constructs no dispatcher → detached work runs **in-process and is not durable**
+- `dispose()`'s **drain** covers in-process detached children only, bounded by `detachedDrainTimeoutMs`; a queued job is not drained — but closing the worker afterwards waits, unbounded, for any job this process has claimed (`colocated` and `worker-only` both consume)
+- Shutdown cancels rather than settling, with one exception today: a child still queued behind the concurrency gate is written `aborted` before it ever runs (FIX-1121)
+- Recovery is by re-claim, not by lease expiry alone — the next claim takes a lapsed task back as a fresh attempt and the row stays `in_progress` (`errored` only past the abandonment allowance); a sweep marks the request `interrupted`
+
+→ [Detached Work](../architecture/detached-work.md)
+
 ## Streaming
 
 - SSE named events; deterministic ordering by `sequence_number`
@@ -119,27 +130,22 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 
 ## Utility Blocks
 
-Ten pre-built utility factories wrapping generator/handler blocks:
+Eleven pre-built factories, exported from `packages/core/src/utility/index.ts`:
 
-| Utility | Kind | Purpose |
-|---------|------|---------|
-| `contextReducer` | generator | Context reduction (distill, denoise, compress) |
-| `memoryExtractor` | generator | Extract durable memory candidates |
-| `decomposer` | generator | Break requests into subtasks with dependency graph |
-| `composer` | generator | Assemble coherent output from parts |
-| `summarizer` | generator | Summarize at brief/detailed/executive granularity |
-| `combiner` | handler | Deterministic artifact merge (no LLM) |
-| `synthesizer` | generator | Reconcile overlapping/conflicting inputs |
-| `analyzer` | generator | Evaluate artifacts against criteria |
-| `intentClassifier` | generator | Classify input into bounded category set for routing |
-| `intentRouter` | sequencer | Pre-wired classifier + router for classification-driven branching |
+| Kind | Factories |
+|------|-----------|
+| generator | `contextReducer`, `memoryExtractor`, `decomposer`, `summarizer`, `analyzer`, `intentClassifier` |
+| handler | `combiner`, `upsertResource` |
+| sequencer | `intentRouter`, `sessionTitleGenerator` |
+| router | `keyedRouter` |
 
 - Access via `utility.<name>(config)` — returns a standard `BlockDefinition`
-- All generators default to `"preset/fast"` model
-- All utilities accept optional `outputSchema` override
-- Combiner is handler-based (deterministic, no model)
+- All utilities accept an optional `outputSchema` override
+- Handler- and router-based utilities take no `model` (deterministic, no LLM)
 
-> [Utility Blocks](../architecture/utility-blocks.md)
+Purposes and default models live in the catalog — don't restate them here.
+
+> [Utility Blocks](../architecture/utility-blocks.md) · [Core Utilities (user docs)](../../apps/docs/docs/patterns/utility-blocks/core.md)
 
 ## Resources and Client Data
 

@@ -65,7 +65,7 @@ Stored values must be JSON-serializable. The framework writes them through the `
 
 `runOnce` is request-scoped. Two important consequences:
 
-- **Crash recovery starts fresh.** If a request is interrupted and `retryRequest` (FIX-294) dispatches a new attempt, the recovered request has a new `requestId` and therefore an empty `runOnce` namespace. Handlers that need cross-request de-dup should pass `ctx.idempotencyKey` to the external provider and rely on the provider's own dedup window, or store a user-controlled key in the user/session scope.
+- **Crash recovery starts fresh.** If a request is interrupted and `retryRequest` dispatches a new attempt, the recovered request has a new `requestId` and therefore an empty `runOnce` namespace. Handlers that need cross-request de-dup should pass `ctx.idempotencyKey` to the external provider and rely on the provider's own dedup window, or store a user-controlled key in the user/session scope.
 - **No distributed cache.** `runOnce` writes through the local request store. A distributed idempotency cache is out of scope for Phase 1; if you're running multiple instances behind a load balancer, rely on provider-side idempotency for cross-instance safety.
 
 The scope boundary is deliberate. Cross-request de-dup is a different problem with different durability requirements (it implies persistent storage indexed by a user-controlled key, not the request lifecycle), and the framework would rather you reach for the external provider's contract than pretend to solve it locally.

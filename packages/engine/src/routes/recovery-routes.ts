@@ -313,10 +313,25 @@ export async function handleListActiveRequests(
  * Sweep stale active-request entries for a single user and mark their
  * `in_progress` request records as `interrupted`.
  *
- * The framework only auto-runs `detectInterruptedRequests` at server startup
- * (and many deployments disable that for serverless safety). This endpoint
- * lets a client poke detection on demand — typically the DevTool calls it
- * when it mounts and on every session-list refresh.
+ * The framework runs `detectInterruptedRequests` itself in two places, under
+ * **two independent controls** that are easy to read as one:
+ *
+ * - **Startup**, governed by `detectInterruptedOnStartup` alone —
+ *   `createFlowState`'s `#detectInterruptedOnStartup`, which runs on every
+ *   runtime init whether or not a router exists, plus the route handlers' own
+ *   pass. Turning it off leaves periodic sweeping running exactly as before.
+ * - **Periodic**, governed by `staleSweepIntervalMs` alone
+ *   (`createStaleRequestSweeper`, built by `createFlowApiRouter`). At `<= 0`
+ *   the factory returns a no-op handle and nothing sweeps on a timer, with
+ *   startup detection unaffected. Default `30_000`.
+ *
+ * So "startup detection is off" does NOT mean nothing recovers — the usual
+ * router deployment still sweeps every 30s — and a deployment is without
+ * automatic detection only when it has disabled both.
+ *
+ * This endpoint covers what neither does: an answer *now* rather than at the
+ * next tick, which is why the DevTool calls it on mount and on every
+ * session-list refresh, and a router that has turned both controls off.
  *
  * Optional query: `staleThresholdMs` (defaults to the host's configured
  * `staleSweepThresholdMs`, so an unparameterised poke sweeps on the same clock

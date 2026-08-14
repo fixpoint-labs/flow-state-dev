@@ -12,7 +12,7 @@ Every AI feature needs the same infrastructure: call an LLM, stream the response
 
 ```ts
 // Define blocks
-const chat = generator({ name: "chat", model: "preset/fast", prompt: "..." });
+const chat = generator({ name: "chat", model: "openai/gpt-5.4-mini", prompt: "..." });
 const track = handler({ name: "track", execute: async (input, ctx) => {
   await ctx.session.incState({ count: 1 });
   return input;
@@ -119,6 +119,10 @@ request → session → user → project
 
 Each scope provides `patchState`, `setState`, `incState`, `pushState`, `atomicState`, and more — all CAS-guarded for concurrency safety. Blocks declare only the state fields they need via partial schemas, so a counter block doesn't need to know about a preferences block's state. See [State and Scopes](./state-and-scopes.md).
 
+### Detached work — outliving the request
+
+Work dispatched through `ctx.requestHost.startDetached` runs in a **Workstream**, a child session that keeps going after the request that started it has returned. Where it runs, whether it survives the process, and what recovers it if the process stops all depend on the deployment topology. See [Detached Work](./detached-work.md).
+
 ### Streaming — resilient by default
 
 SSE-based item/content streaming with built-in resume:
@@ -151,7 +155,7 @@ const pipeline = sequencer({ name: "review" })
   .step(analyze);
 ```
 
-Ten utilities ship in Phase 1, grouped into five categories: Context & Memory, Planning & Decomposition, Synthesis & Output, Evaluation, and Routing. See [Utility Blocks](./utility-blocks.md).
+The full catalog — which utilities exist, their kinds, and their default models — is in [Utility Blocks](./utility-blocks.md).
 
 ## Data flow
 

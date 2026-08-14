@@ -52,9 +52,9 @@ const resolver = createModelResolver({
     openai: process.env.MY_OPENAI_KEY,
     anthropic: process.env.MY_ANTHROPIC_KEY,
   },
-  defaultModel: "anthropic/claude-sonnet-4.6",
+  defaultModel: "anthropic/claude-sonnet-4-6",
   intents: {
-    utility: ["anthropic/claude-haiku-4.5", "openai/gpt-5.4-nano"],
+    utility: ["anthropic/claude-haiku-4-5", "openai/gpt-5.4-nano"],
   },
   retryPolicy: {
     maxAttemptsPerModel: 3,
@@ -68,14 +68,14 @@ Intents are named routing groups configured on the resolver. Generators referenc
 
 ```ts
 const resolver = createModelResolver({
-  defaultModel: "anthropic/claude-sonnet-4.6",
+  defaultModel: "anthropic/claude-sonnet-4-6",
   intents: {
-    utility:   ["anthropic/claude-haiku-4.5", "openai/gpt-5.4-nano"],
-    chat:      ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
-    plan:      ["anthropic/claude-opus-4.7"],
-    synthesize:["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
-    code:      ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
-    reason:    ["anthropic/claude-opus-4.7"],
+    utility:   ["anthropic/claude-haiku-4-5", "openai/gpt-5.4-nano"],
+    chat:      ["anthropic/claude-sonnet-4-6", "openai/gpt-5.5"],
+    plan:      ["anthropic/claude-opus-4-7"],
+    synthesize:["anthropic/claude-sonnet-4-6", "openai/gpt-5.5"],
+    code:      ["anthropic/claude-sonnet-4-6", "openai/gpt-5.5"],
+    reason:    ["anthropic/claude-opus-4-7"],
   },
 });
 ```
@@ -130,8 +130,8 @@ Tests and library callers can pass an explicit env source:
 
 ```ts
 const resolver = createModelResolver({
-  defaultModel: "anthropic/claude-sonnet-4.6",
-  intents: { chat: ["anthropic/claude-sonnet-4.6"] },
+  defaultModel: "anthropic/claude-sonnet-4-6",
+  intents: { chat: ["anthropic/claude-sonnet-4-6"] },
   env: { FSDEV_INTENT_CHAT: "openai/gpt-5.4-mini" },
 });
 ```
@@ -192,7 +192,7 @@ When an intent has no available candidate and falls through to `defaultModel`, n
 const resolver = createModelResolver({
   defaultModel: "openai/gpt-5.4",
   intents: {
-    plan: ["anthropic/claude-opus-4.7", "openai/gpt-5.5"],
+    plan: ["anthropic/claude-opus-4-7", "openai/gpt-5.5"],
     utility: ["openai/gpt-5.4-mini"],
   },
   intentDefaults: {
