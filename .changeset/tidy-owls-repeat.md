@@ -11,7 +11,7 @@ gone. `ctx.org` is identity-only — its state and mutation ops were removed. Th
 session state route no longer returns `clientData.org`.
 
 `@flow-state-dev/testing`: `TestBlockResult.state.org` is removed, and the org
-entry of `TestStateSeed` / `TestTargetSeed` narrows from `TestScopeSeed` to the
+entry of `TestStateSeed` / `TestBlockOptions` narrows from `TestScopeSeed` to the
 new `TestOrgSeed` (resources only) — org-scoped resources are still seedable.
 
 Org-scoped resources, `ctx.org.identity`, `requiresOrg` and `isolateOrgState`
