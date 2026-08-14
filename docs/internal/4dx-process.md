@@ -94,13 +94,19 @@ branch, can't see `.orchestration/`, and isn't woken by the thing being measured
 measure moved to the **epic report**, which the coordinator writes from its own status table,
 and §4 went back to being a pure audit log.
 
-**3. The lead measure is rows at `DONE`, and it is honest about what that proves.** Every
-issue proves its goal on the real path before its PR opens, so `DONE` is stronger than a merge
-count — but `mergeDerivedPhase()` marks a single-PR row done on the merge alone, so a feedback
-round that changes behaviour after the goal ran is not re-proven. The measure therefore means
-*goal-proven, then merged*, and is written that way. **Closing that gap is an `issue-implement`
-change** — re-run the goal when a feedback round touches flow logic — not something the measure
-can fix by being described differently.
+**3. The lead measure is a named list, not a ratio.** *Goal proven — FIX-775, FIX-776. To go —
+FIX-777.* Four separate review findings landed on the ratio version, each about the denominator
+— exempt rows, cancelled rows, dropped rows, a custom §1 measure — because every ratio over a
+heterogeneous set needs a policy per exception. A list has no denominator, so it has no
+exceptions to govern: an exempt row is *said to be exempt*, a cancelled one simply isn't
+listed, and the reader learns **which** work is proven rather than a number that hides it.
+
+`DONE` is what the list is read off, and it is honest about what that proves: every issue
+proves its goal on the real path before its PR opens, but `mergeDerivedPhase()` marks a
+single-PR row done on the merge alone, so a feedback round that changes behaviour afterwards is
+not re-proven. *Goal-proven, then merged.* **Closing that gap is an `issue-implement` change** —
+re-run the goal when feedback touches flow logic — not something the measure can fix by being
+described differently.
 
 ---
 
@@ -142,10 +148,14 @@ will be useful here and which will be cargo.
 
 It would be dishonest to add a discipline that demands falsifiable objectives and exempt itself.
 
-**Kill it if, after a handful of epics:** the lead measure only ever rises, which means goals
-are being written to the measure rather than to the goal; or the Account line is never wrong,
-which means it is being written after the fact to match what happened; or nobody has looked at
-either in a month.
+**You are the instrument, and that is deliberate.** Nothing durable stores report history —
+`cycle-ledger.md` records PR review rounds, not Accounts or lead measures — so these conditions
+are judged by whoever reads the reports, not queried. Persisting them would be more machinery
+than the practice is worth.
+
+**Kill it if, after a handful of epics:** the lead measure never shows work *not* proven, which
+means it is being written to flatter; or the Account line is never wrong, which means it is
+written after the fact to match what happened; or you have stopped reading either.
 
 Any of those means the instrument is decorative, and a decorative instrument is worse than none
 because it reads as evidence. **Where to check:** [`cycle-ledger.md`](cycle-ledger.md), the

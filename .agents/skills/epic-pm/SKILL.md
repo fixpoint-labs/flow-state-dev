@@ -39,10 +39,10 @@ guess at for the rest of the run:
    would have to build to see whether we succeeded.
 3. **Lead measure** — what you watch *while the epic runs* that predicts the Proof. Same
    constraint as line 2: readable off work the epic already produces, never an instrument we'd
-   have to build. **The default is rows at `DONE` over the set**, straight off your status
-   table — each proved its goal before its PR opened, so it beats a merge count without being
-   a live proof (see `epic-em` → Review).
-   Name a different one only if the default doesn't predict this epic's Proof, and say why.
+   have to build. **The default is the set's goal-proven issues, named** — a list off your
+   status table, not a ratio (see `epic-em` → Review for why, and for what `DONE` does and
+   doesn't prove). Name a different measure only if the default doesn't predict this epic's
+   Proof, and say why.
 4. **Not doing** — the neighbouring things this deliberately excludes. The template asks for it;
    here it is load-bearing, because it is the line an implementer, a reviewer, and every later
    *"while we're in there"* all read.

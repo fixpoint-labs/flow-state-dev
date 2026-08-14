@@ -207,7 +207,7 @@ Resume after disconnect: `Last-Event-ID` or `starting_after` query param replays
 
 ## Current status
 
-Phase 1 (Foundation) — Waves 1.a through 1.k are complete. Core contracts, block builders, server runtime, client transport, React bindings, and testing utilities are all implemented and tested. CLI and devtool are in active development.
+Phase 1 (Foundation) — Waves 1.a through 1.m are complete. Core contracts, block builders, server runtime, client transport, React bindings, testing utilities, the CLI and the devtool are all implemented and tested. Remaining: 1.n, cross-package validation.
 
 ## Contributing
 

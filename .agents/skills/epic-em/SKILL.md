@@ -67,7 +67,7 @@ Three **lines**, not three sections, above `epic-lifecycle`'s per-issue lines:
 | | The line |
 |---|---|
 | **Account** | What the last report said would happen, and whether it did. Name the misses plainly — this is the only line in the report that can be *wrong*, which is the entire reason it is first. **The first report of a session has no prior Plan to check** (nothing durable stores one, and this posture adds no state): say *"first report this session — no prior Plan"* and move on. Inventing one is the failure this line exists to prevent |
-| **Review** | **Lead with the lead measure** — rows at `DONE` over the set, straight off your status table. Stronger than a merge count (every issue proves its goal before its PR opens) but **not** a live proof: a single-PR row reaches `DONE` on the merge alone, so feedback rounds after that goal run aren't re-proven. Say *goal-proven then merged*, never *currently passing*. Then what the epic can now do that it couldn't, what's at risk, what's waiting on you. Never phases |
+| **Review** | **Lead with the lead measure — §1's, if it names one; otherwise name the issues whose goal is proven and those still to go.** A list, not a ratio: exempt, cancelled and dropped rows are said as what they are instead of silently distorting a denominator, and a reader learns *which* work is proven. Say *goal-proven then merged* — a single-PR row reaches `DONE` on the merge, so a later feedback round isn't re-proven. Then what the epic can now do that it couldn't, what's at risk, what's waiting on you. Never phases |
 | **Plan** | The one or two things that will move the lead measure before the next report. Not a list of every dispatchable row — the point is a commitment the next Account can be checked against |
 
 **No Account = a status update**: nothing in it can be false, so nothing gets checked.
@@ -79,7 +79,7 @@ the status table; if one needs enriching, dispatch a `scout` rather than opening
 > **Since the last report (~6h).**
 > **Account:** FIX-776 reached spec approval as said. FIX-777's goal check didn't run — blocked
 > on a cross-spec conflict, which I resolved instead.
-> **Review:** goal checks passing 1/4, up from 0. At risk: FIX-777 has no check written.
+> **Review:** goal proven — FIX-775, FIX-776. To go — FIX-777 (no check written yet). FIX-781 exempt (docs).
 > **Plan:** get FIX-777's check written and run. Nothing else moves the lead measure.
 
 ## Boundaries
