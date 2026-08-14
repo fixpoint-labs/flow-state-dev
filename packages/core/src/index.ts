@@ -407,6 +407,7 @@ export type {
   RequestWorkPoolResult,
   RequestWorkPoolDrainOptions,
   RequestWorkPoolDrainAllOptions,
+  RequestWorkPoolDrainToQuiescenceOptions,
   RequestWorkTaskMeta
 } from "./execution/request-work-pool";
 export { getRequestWorkPool } from "./execution/request-work-pool";

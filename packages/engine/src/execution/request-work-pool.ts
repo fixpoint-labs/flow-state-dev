@@ -1,7 +1,8 @@
 /**
  * Per-request background work pool implementation. Sequencer DSL pushes
  * `.work()` / `.workIf()` / `.forEachBackground()` tasks here; the request
- * executor in `runAction.ts` drains the pool once before terminal status.
+ * executor in `runAction.ts` drains the pool to quiescence before terminal
+ * status, on every terminal path.
  *
  * The interface lives in `@flow-state-dev/core` so sequencer code can push
  * without a `core → server` dependency violation; the implementation lives
@@ -11,6 +12,7 @@ import type {
   RequestWorkPool,
   RequestWorkPoolDrainAllOptions,
   RequestWorkPoolDrainOptions,
+  RequestWorkPoolDrainToQuiescenceOptions,
   RequestWorkPoolResult,
   RequestWorkTaskMeta
 } from "@flow-state-dev/core";
@@ -99,6 +101,26 @@ class RequestWorkPoolImpl implements RequestWorkPool {
       return await this.awaitEntries(matching, options?.signal);
     } finally {
       this.drainListener = undefined;
+    }
+  }
+
+  async drainToQuiescence(
+    options?: RequestWorkPoolDrainToQuiescenceOptions
+  ): Promise<RequestWorkPoolResult> {
+    const completed: RequestWorkPoolResult["completed"] = [];
+    const failed: RequestWorkPoolResult["failed"] = [];
+
+    // Unconditional first pass, then repeat until one consumes nothing.
+    // `drainAll` returns an empty result the moment `entries` is empty, so
+    // that is both the termination condition and a cheap no-op for a request
+    // that never queued anything.
+    for (;;) {
+      const pass = await this.drainAll({ onPendingChange: options?.onPendingChange });
+      if (pass.completed.length + pass.failed.length === 0) {
+        return { completed, failed };
+      }
+      completed.push(...pass.completed);
+      failed.push(...pass.failed);
     }
   }
 

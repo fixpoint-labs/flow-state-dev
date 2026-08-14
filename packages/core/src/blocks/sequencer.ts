@@ -948,8 +948,8 @@ function runSequencerOperations(
         // Per-sequencer auto-await fallback. Runs only when the request
         // executor's `_requestWorkPool` is absent (unit-test contexts). Under
         // the request-scoped pool model, inner sequencers do not block on
-        // their own background work — the request executor drains the pool
-        // exactly once before terminal status. See FIX-554.
+        // their own background work — the request executor drains the pool to
+        // quiescence before terminal status. See FIX-554, FIX-1001.
         const hasRequestPool = getRequestWorkPool(ctx) !== undefined;
         if (!hasRequestPool && runtime.workTasks.length > 0) {
           const pending = runtime.workTasks.splice(0, runtime.workTasks.length);
