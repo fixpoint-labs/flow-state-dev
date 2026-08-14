@@ -73,8 +73,8 @@ Each entity uses both halves a resource already gives you:
 
 - **`stateSchema` → `ResourceStateStore`** — the structured fields. This is the
   reducer's read set and nothing else.
-- **content → `ContentStore`** — the prose: a spec document, a review body, a
-  retrospective. Never read by `decide`.
+- **content → `ContentStore`** — the prose: a spec document, a retrospective.
+  Never read by `decide`.
 
 > **Structured state is exactly what `decide` reads. Everything else is content.**
 

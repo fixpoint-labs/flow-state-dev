@@ -10,8 +10,8 @@
  *
  * - **`stateSchema` → `ResourceStateStore`.** The structured fields, persisted
  *   per-key. This is the *reducer's read set* and nothing else.
- * - **content → `ContentStore`.** The prose: a spec document, a review's body,
- *   a retrospective. Free-form, and never read by `decide`.
+ * - **content → `ContentStore`.** The prose: a spec document, a retrospective.
+ *   Free-form, and never read by `decide`.
  *
  * That split is the rule that keeps M0 honest. `decide` is a pure, exhaustively
  * testable function *because* it reduces over structured fields. The moment a
@@ -84,21 +84,6 @@ export const artifactStateSchema = z.object({
   lastRoundSha: z.string().nullable().default(null),
 });
 
-/**
- * One review round against an artifact, by one reviewer. The reviewer's prose
- * is the resource's **content**; the state carries only what a gate reads.
- */
-export const reviewStateSchema = z.object({
-  id: z.string(),
-  artifactId: z.string(),
-  reviewer: z.string(),
-  /** False for bots and for conductor's own identity — such reviews never satisfy a gate. */
-  isHuman: z.boolean(),
-  state: z.enum(["COMMENTED", "CHANGES_REQUESTED", "APPROVED"]),
-  sha: z.string(),
-  at: z.string(),
-});
-
 /** One agent run: what actually executed, against which vendor, at what cost. */
 export const dispatchStateSchema = z.object({
   id: z.string(),
@@ -168,16 +153,27 @@ export const ledgerEntryStateSchema = z.object({
 export type IssueState = z.infer<typeof issueStateSchema>;
 export type EpicState = z.infer<typeof epicStateSchema>;
 export type ArtifactState = z.infer<typeof artifactStateSchema>;
-export type ReviewState = z.infer<typeof reviewStateSchema>;
 export type DispatchState = z.infer<typeof dispatchStateSchema>;
 export type ObservedPrState = z.infer<typeof observedPrStateSchema>;
 export type LedgerEntryState = z.infer<typeof ledgerEntryStateSchema>;
 
 /**
  * Conductor's entities live at `org` scope: one repo's work record, durable
- * across every session and user that touches it. A session-scoped entity would
- * vanish the moment the operator's conversation ended, which is the opposite of
- * what a multi-day issue needs.
+ * across every session and user that touches it.
+ *
+ * **Session scope is not an option here, and this is worth writing down because
+ * it looks like one.** A tick is a short request, and the thing that fires it
+ * varies: a webhook today, a cron tomorrow, a CLI invocation from an operator's
+ * terminal after that. Those are *different sessions*. Anything the driver needs
+ * on the next tick — the entity's phase, the observed PR copy reconciliation
+ * diffs against, the ledger a transition is replayed from — would be gone by the
+ * time that next tick ran, and conductor would rediscover every PR from scratch
+ * on every pass. Restart-safety is the property this whole design exists to
+ * buy; session scope spends it.
+ *
+ * `sharedToWorkstream` does not rescue this either. It gives one session and the
+ * background children it spawns a single identity — a lineage, not a repo. Two
+ * independent future sessions still see two empty collections.
  */
 const SCOPE = "org" as const;
 
@@ -202,30 +198,93 @@ export const conductorArtifacts = defineResourceCollection({
   stateSchema: artifactStateSchema,
 });
 
-/** Reviews, keyed `reviews/<id>`. Reviewer prose lives in resource content. */
-export const conductorReviews = defineResourceCollection({
-  pattern: "reviews/**",
-  scope: SCOPE,
-  stateSchema: reviewStateSchema,
-});
+/**
+ * **There is deliberately no `reviews` collection.** GitHub owns review facts —
+ * that is the same "GitHub always wins" rule the observed-PR copy is governed by
+ * — and the tick already materializes them fresh into
+ * `World.pullRequests[].reviews` on every pass, which is where every gate reads
+ * them from. Persisting a second copy of each review would create a second
+ * authority for data GitHub has already been designated the winner of: the exact
+ * mistake that made the earlier attempt loop forever after a cold restart, and
+ * one that grows a row per review for the life of the repo.
+ *
+ * The only review bookkeeping conductor needs is *which reviews it has already
+ * reduced over*, and that is `observedPrStateSchema.knownReviewIds` — a list of
+ * ids per PR, not a copy of the reviews themselves.
+ */
 
-/** Agent runs, keyed `dispatches/<id>`. */
+/**
+ * Agent runs, keyed `dispatches/<id>`.
+ *
+ * One row per phase execution, so this accumulates for the life of the repo.
+ * Capped and LRU-evicted, which is safe here in a way it is not for the ledger:
+ * a dispatch row is operational telemetry (which vendor ran, what it cost, how
+ * it ended). The *transition* it produced is recorded in the ledger, so an
+ * evicted dispatch costs cost-reporting history, not replayability.
+ *
+ * 2,000 at roughly 5–20 dispatches per issue is on the order of the last 100–400
+ * issues — far longer than any open work window. LRU rather than `oldest`
+ * because an in-flight dispatch is written to again when it settles, so recency
+ * keeps it alive; `oldest` would pick a victim by creation time and could
+ * tombstone a run that has not reported back yet.
+ */
 export const conductorDispatches = defineResourceCollection({
   pattern: "dispatches/**",
   scope: SCOPE,
   stateSchema: dispatchStateSchema,
+  maxInstances: 2_000,
+  eviction: "lru",
 });
 
-/** Observed PR facts, keyed `observations/pr/<number>`. */
+/**
+ * Observed PR facts, keyed `observations/pr/<number>`.
+ *
+ * **Deliberately uncapped.** One small row per PR conductor has ever seen, so it
+ * grows at the repo's PR rate — bounded by how fast humans and agents can open
+ * PRs, orders of magnitude below the ledger.
+ *
+ * More to the point, eviction here is not merely lossy, it is *wrong*: this copy
+ * is the baseline `reconcile` diffs against. Drop the row for a PR that is still
+ * open and the next tick sees a PR it has never observed, synthesizes a
+ * `pr_opened` plus a signal for every review already on it, and re-reduces
+ * transitions that already happened. The correct cleanup is deletion when a PR
+ * settles — a merged or closed PR can produce no further signals — not a
+ * capacity policy that picks its victim by age or recency.
+ */
 export const conductorObservations = defineResourceCollection({
   pattern: "observations/**",
   scope: SCOPE,
   stateSchema: observedPrStateSchema,
 });
 
-/** The workflow ledger, keyed `ledger/<entityId>/<seq>`. */
+/**
+ * The workflow ledger, keyed `ledger/<entityId>/<seq>`.
+ *
+ * The highest-volume collection by far: one append per signal reduced per
+ * entity, forever.
+ *
+ * **The cap is a tripwire, not a retention policy, and `eviction` is `"none"` on
+ * purpose.** This is the audit trail the central invariant rests on — *every
+ * transition is reproducible from the ledger* — and LRU or `oldest` eviction
+ * would quietly falsify it, dropping precisely the early entries of an entity's
+ * history while its later ones remain. A partially-replayable ledger is worse
+ * than a full one and worse than an honest failure, because nothing announces
+ * that it happened.
+ *
+ * `"none"` refuses the write instead: at the cap, appending raises rather than
+ * destroying evidence, which is loud, operator-recoverable, and cannot corrupt a
+ * replay. 20,000 is set where a healthy repo will not reach it (at ~10–40
+ * entries per issue lifecycle it covers several hundred issues) while staying
+ * small enough to bulk-load per tick, since this collection prefetches eagerly.
+ *
+ * **When it trips, the fix is archival — rolling settled entities' entries into
+ * cold storage or a per-entity digest — not a larger number.** A cap alone can
+ * only ever defer the question.
+ */
 export const conductorLedger = defineResourceCollection({
   pattern: "ledger/**",
   scope: SCOPE,
   stateSchema: ledgerEntryStateSchema,
+  maxInstances: 20_000,
+  eviction: "none",
 });
