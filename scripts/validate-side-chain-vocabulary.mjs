@@ -44,7 +44,16 @@
  *     position.
  *   - string literals naming the DSL verbs outside the path-builder positions
  *     of E4 — a test title, an error message.
+ *   - a tier passed positionally through a helper this rule set does not know
+ *     by name (`makeItem(id, i, "work")`). E2 recognises builders whose callee
+ *     mentions `phase`/`provenance`; anything else is invisible, because
+ *     without type information "a `"work"` argument" and "the tier" are the
+ *     same shape, and the wider rule flags correct code.
  *   - `.js` / `.jsx` sources. Every first-party source is TypeScript.
+ *   - UNTRACKED files. The walk is `git ls-files`, so a new file is not checked
+ *     until it is staged. Deliberate — it is what keeps `.claude/worktrees/**`
+ *     copies from multiplying every count — but it means a local run can be
+ *     greener than CI.
  *
  * ## The allowlists, and why they are concept rules rather than name lists
  *
