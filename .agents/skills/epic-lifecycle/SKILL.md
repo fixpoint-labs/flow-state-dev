@@ -596,7 +596,13 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
 - **2 — Cap (skip when step 1 found a reuse).** At most **two** epics active; count the
   **others**, and active means **epic PR open** (wrap moves no Linear state). At two: a
   *question, not a refusal* — hold this one, or wrap one of them first. Nothing is created until
-  it's answered. **No "displace"**: an epic is active exactly while its PR is open, so there is
+  it's answered.
+
+  **Frame it as a business decision, not a scheduling fork**
+  ([`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md)) — they are
+  choosing which outcome lands sooner, not operating a queue. The one fact only you can supply
+  is **how close each active epic is to wrapping**; give that, a recommendation, and what the
+  delay costs either way. **No "displace"**: an epic is active exactly while its PR is open, so there is
   nothing to displace it into. **Held = nothing created**; the issues stay on the board and the
   epic starts when the user re-invokes. Name held work at the next wrap.
 - **3 — Resume or create — never the wrong one.**
