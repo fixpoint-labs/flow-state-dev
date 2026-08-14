@@ -52,16 +52,9 @@ guess at for the rest of the run:
 5. **Kill line** — what we would have to learn for finishing this to be the wrong call. If
    nothing could, the outcome is not falsifiable and line 1 is not done yet.
 
-**Lines 2 and 3 are not the same line said twice.** Line 2 answers *did it work*, and arrives
-at the wrap — too late to change anything. Line 3 answers *is it working*, at every report, while there
-is still an epic to steer. Without it the only mid-flight signal is the status table, and the
-status table counts activity: an epic can look healthy the whole way and land on a Proof that
-fails.
-
-**Line 3 is scoreable, so it is gameable.** "Goal checks passing" degrades into weak goal
-checks the moment it becomes a target. Score the **method**, not the number — the same
-discipline `distill-lessons` applies to the cycle-ledger. A lead measure that only ever goes up
-is measuring the wrong thing.
+**Lines 2 and 3 differ in *when*.** Proof arrives at the wrap, too late to steer; the lead
+measure answers *is it working* at every report. And line 3 is scoreable, so it is gameable —
+score the method, not the number.
 
 They live in **§1 of the epic-spec**, written by `epic-agent`, never by you
 ([`epic-spec-template.md`](../../../docs/contributing/epic-spec-template.md) → §1). You keep a

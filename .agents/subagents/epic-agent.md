@@ -23,65 +23,25 @@ PR and never will — an empty Spec PR cell there is correct, not a gap to chase
 ([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a
 spec").
 
-**§4's scoreboard is derived, never typed from memory.** When a dispatch tells you to
-refresh §4, refresh the index's **Goal check** column first — one cell per issue — then
-count the scoreboard's Lead line *from that column*. The count is auditable that way rather
-than asserted, and it cannot drift from the rows under it.
+**§4's scoreboard is derived, never typed from memory.** Refresh the index's **Goal check**
+column first, then count the Lead line *from that column* — so the count can't drift from the
+rows under it. Shape: [`epic-spec-template.md`](../../docs/contributing/epic-spec-template.md) §4.
 
-**One issue can own several goals, and the cell is the *weakest* of them.** This is a live
-shape, not a hypothetical — FIX-276 has three `goals/suspension/*/goal.md` entries and FIX-865
-has two under `goals/continue-interrupted-run/`. So aggregate deliberately: the row is `pass`
-only when **every** applicable goal for that issue passes; any `fail` makes it `fail`,
-otherwise any `—` or `blocked` makes it that. Without the rule a fold can report `pass` off
-whichever goal it happened to read first while another one is failing — the single most
-flattering way this measure could lie. Name the goals you aggregated when there is more
-than one.
+Deriving a cell — four rules, each of which has been got wrong:
 
-**Where the verdict lives depends on the issue's route, and there are two homes.** Read the
-right one or the row is wrong:
+1. **Source by route.** spec-route → the **Verdict log** in `goals/<describe>/<it>/goal.md`,
+   never PR narration. **bug** → diagnose's real-path confirmation on the impl PR (most bugs
+   have no `goals/` entry).
+2. **Match the commit being scored**, not the last row appended — a good goal logs a pre-fix
+   baseline `FAIL` *after* its `PASS`, so append order scores it backwards. Ignore baseline and
+   diagnostic rows. No row for this work → `—`.
+3. **Several goals on one issue → the weakest wins** (`pass` only if all pass). Live shape:
+   FIX-276 has three, FIX-865 two.
+4. **Five states:** `pass` · `fail` · `—` not run · `blocked` (no inference credential) · `n/a`
+   (no goal check applies). **`n/a` is excluded from the denominator** — otherwise one docs
+   issue makes the target unreachable. A model-free goal is evidence like any other; never `n/a`.
 
-| Route | Home of the verdict | Why |
-|---|---|---|
-| **spec** (feature/enhancement) | The **Verdict log table** in `goals/<describe>/<it>/goal.md` | Appended, one row per run — this is what makes a goal a regression record ([`goals/README.md`](../../goals/README.md)) |
-| **direct** (bug) | **diagnose's real-path confirmation**, recorded on the impl PR and in the Linear doc | A bug's goal proof is re-running the original repro through the real path; `issue-implement` requires it and files it there. **Most bugs have no `goals/` entry at all**, so looking for one finds nothing and the row would sit at `—` forever, permanently depressing the count |
-
-**Never derive a spec-route cell from PR narration.** A PR thread may or may not mention that
-a check ran; the log is where it is *recorded*. Where a `run.mts` exists with no verdict row,
-the check genuinely has not been run — a real `—`, not a missing record.
-
-**Pick the verdict row for the commit being scored — not the last one appended.** The log is a
-**regression record spanning multiple commits**, and a well-written goal deliberately appends a
-pre-fix baseline `FAIL` *after* its `PASS` to prove the check isn't vacuous (`goals/README.md`
-→ Anti-game; `goals/task-board/contains-a-worker-outcome-that-lands-on-a-settled-task/goal.md`
-is a live example: `fix/FIX-951` PASS, then `origin/main` FAIL (expected)). Append order would
-score that goal — one of the best-documented in the repo — as a failure. So match the row whose
-**Commit** is the issue's branch or merged head, and **ignore baseline and diagnostic rows**
-(any row run against `main`/pre-fix, usually marked *(expected)*). No row matches this
-implementation → the check has not been run *for this work*: `—`.
-
-**Five cell states, and collapsing any two corrupts the measure:**
-
-| Cell | Means | Why it is its own state |
-|---|---|---|
-| **pass** | the row for this commit is `PASS` — or, for a **bug**, diagnose's real-path confirmation is recorded | Counts toward the numerator either way; the two routes prove the same thing by different means |
-| **fail** | the row for this commit is `FAIL` | — |
-| **`—`** | no verdict for this commit yet | An unrun check is **not** a failure |
-| **blocked** | the run couldn't complete for environmental reasons — no working inference credential ([`goals/README.md`](../../goals/README.md) → Credentials) | Tells you about the environment, not the product. Counted as a fail it says the epic is losing when it isn't; counted as `—` it hides an infra problem that will not fix itself |
-| **n/a** | **no goal check applies** — docs, refactor or config work with no observable outcome, or a bug that was a pure type/unit regression (`issue-implement` records *"N/A — type/unit-only"*) | **Excluded from the denominator** |
-
-**The denominator is the issues a goal check applies to, not the size of the set.** Without
-the `n/a` exclusion, one docs issue makes the Lead line permanently unreachable: that row can
-never be `pass`, so a healthy epic reads as 3/4 forever and the measure becomes noise its
-readers learn to ignore. An `n/a` is a judgment you record, not a blank you leave — say it in
-the cell so the exclusion is visible rather than inferred.
-
-**A model-free goal check counts exactly like a model-backed one.** `goals/README.md` defines
-both; what makes a goal check evidence is that it drives the **real path**, not that a model
-was involved. Don't mark a model-free row `n/a`.
-
-The Lead line counts **pass over applicable**; `fail`, `—` and `blocked` are all "not yet
-passing" for the count, and are distinguished in the column so a reader can see *why*. The
-template's §4 is canonical for the shape.
+The Lead line is **pass over applicable**.
 
 ## Your job (one bounded action per dispatch)
 

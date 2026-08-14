@@ -583,76 +583,30 @@ worked example) — read those; below is only the coordinator's *operating proce
 The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md`, worktree, no
 `AskUserQuestion`) writes:
 
-**Discovery, the cap, and creation are three steps in that order.** They used to be two, and
-the collapse is a trap: "discover, *then create*" dispatches the `epic-agent` in its own
-`otherwise` branch, so a cap checked after it fires only once the third epic already exists —
-Linear issue created, issues destructively re-parented, PR opened — and the question *"should
-this queue?"* arrives too late to mean anything.
+**Discover → cap → create/resume, in that order.** Reasoning and cost:
+[`orchestration.md`](../../../docs/contributing/orchestration.md) → "How many epics run at once".
 
-- **1 — Discover only.** An issue's epic is its **parent** — have `scout` check the set in one
-  pass and return `{ epicIssueId, consistent }`, **plus whether that epic's PR is still open.**
-  If the set is **mixed** (some under an epic, some not) or carries **two different epic
-  parents**, don't guess — surface it to the user. **Dispatch nothing here**, whatever
-  discovery returns.
+- **1 — Discover only. Dispatch nothing here.** An issue's epic is its **parent** — have `scout`
+  return `{ epicIssueId, consistent }` **and whether that epic's PR is open**. Mixed parents, or
+  two different ones: surface it, don't guess.
+  - same parent, **PR open** → reuse: skip step 2, take step 3's **resume**
+  - same parent, **PR closed** (wrapped) → surface it; a new epic or a reopen is the user's call
+  - none → step 2
+- **2 — Cap (skip when step 1 found a reuse).** At most **two** epics active; count the
+  **others**, and active means **epic PR open** (wrap moves no Linear state). At two: a
+  *question, not a refusal* — hold this one, or wrap one of them first. Nothing is created until
+  it's answered. **No "displace"**: an epic is active exactly while its PR is open, so there is
+  nothing to displace it into. **Held = nothing created**; the issues stay on the board and the
+  epic starts when the user re-invokes. Name held work at the next wrap.
+- **3 — Resume or create — never the wrong one.**
+  - **Resume:** recover handles (Epic issue, `epic/<name>`, its open PR, the attached doc).
+    **Create nothing, re-parent nothing.** Dispatch `epic-agent` only if this wake has a spec
+    update.
+  - **Create:** dispatch `epic-agent` — Epic issue (`Epic` Kind label), re-parent the set as
+    sub-issues, write the epic-spec (`epic/<name>` + never-merged PR + Linear document), return
+    handles.
 
-  **A shared parent is only reusable while its epic PR is open**, and asking for the parent
-  alone is not enough. Wrap closes that PR but leaves every issue parented, so a finished epic
-  keeps looking reusable forever — and the two definitions then disagree: this step would take
-  the resume branch while step 2 correctly counts the epic as inactive and step 3's resume has
-  no open PR to recover.
-
-  | Parent found | Its epic PR | Do |
-  |---|---|---|
-  | same for all | **open** | **Reuse** — skip step 2, take step 3's *resume* branch |
-  | same for all | **closed (wrapped)** | **Surface it.** The coordination for that epic is finished; revisiting work under it is either a new epic or a deliberate reopen, and both are the user's call. Don't silently resume a wrapped epic, and don't silently start a second one over its children |
-  | none | — | Continue to step 2 |
-- **2 — Check the cap, but only when step 1 found no epic to reuse.** At most **two** epics run
-  at once; the rule, its reasoning and its cost are in
-  [`orchestration.md`](../../../docs/contributing/orchestration.md) → "How many epics run at
-  once". Two things decide whether it fires, and getting either wrong makes it fire on the
-  common path:
-  1. **Count the *others*, never this one.** Re-entering an existing epic is the normal case
-     across sessions; a count that includes the epic being resumed reads every resumption as a
-     third objective and asks you to hold work already in flight. Step 1 resolving to a
-     reused epic is what makes this step skippable.
-  2. **Active means its epic PR is open**, not that a Linear `Epic` issue exists. Wrap closes
-     the epic PR unmerged but moves no Linear state, so counting open `Epic`-labelled issues
-     counts every epic ever run and the cap jams shut permanently. The PR's lifetime is defined
-     as exactly the epic's, which is what makes it the honest signal.
-
-  At two others active, this is a **question, not a refusal**: name the two and ask whether to
-  hold this one, or to **wrap one of them first**. Nothing is created until it is answered.
-
-  **There is deliberately no "displace" option**, and the reason is that nothing can implement
-  it. An epic is active precisely while its PR is open, so displacing one means either leaving
-  that PR open — in which case three are active by this rule's own definition and the cap did
-  nothing — or closing it, which is the *completion* signal and would mark unfinished work
-  done. A pause state would have to be invented to make the word mean anything, and that is
-  more machinery than the cap is worth. Wrapping an epic is the only way a slot frees.
-
-  **"Held" means nothing is created — and there is no queue to be in.** The work items are
-  already Linear issues; declining to start the epic leaves them exactly as they are,
-  unparented and visible on the board like any other backlog. That is the whole mechanism. So
-  don't tell the user it is "in the queue": say that the issues stay as they are and the epic
-  starts when they re-invoke this skill, which is the only dequeue trigger there is. Nothing
-  auto-starts a held epic when a slot frees — **but the wrap of any epic is when a slot does
-  free**, so name the held work there if you still hold it.
-- **3 — Create *or* resume — two different actions, and the resume path must never run the
-  create one.** Step 1 reaching here with an epic in hand is the **normal cross-session case**;
-  following the create branch there would stand up a *second* Epic issue and destructively
-  re-parent children that already have a parent.
-  - **Resume** (step 1 found a reusable epic): recover the handles from the existing epic —
-    its Linear Epic issue, its `epic/<name>` branch, its open epic PR, and its attached
-    document. Dispatch `epic-agent` only if this wake actually has an epic-spec update for it;
-    a resume that needs no edit dispatches nothing at all. **Create no issue and re-parent
-    nothing.**
-  - **Create** (step 1 found none, and step 2 cleared): dispatch `epic-agent` to stand the epic
-    up — it creates the **Epic issue** (`Epic` Kind label), **re-parents the set's issues as
-    sub-issues**, writes the epic-spec (`epic/<name>` branch + never-merged epic PR + the spec
-    attached as the Epic issue's Linear document), and returns the handles.
-
-  Either way the coordinator holds only handles (epic issue ID, name, branch, epic PR#), never
-  the spec text.
+  Either way the coordinator holds only handles, never the spec text.
 - **Name which project objective this serves.** One line, in the dispatch to `epic-agent`, from
   [`docs/objectives.md`](../../../docs/objectives.md): which objective, and how much of its gap
   this closes. An epic serving none of them is worth surfacing *before* the gate — a product

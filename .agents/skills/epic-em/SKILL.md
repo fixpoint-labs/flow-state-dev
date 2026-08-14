@@ -70,19 +70,11 @@ Three **lines**, not three sections, above `epic-lifecycle`'s per-issue lines:
 | **Review** | What the epic can now do that it couldn't, what's at risk, and what's waiting on the user. Lead with the §4 scoreboard's Lead line, not with phases |
 | **Plan** | The one or two things that will move the lead measure before the next report. Not a list of every dispatchable row — the point is a commitment the next Account can be checked against |
 
-**A report with no Account is a status update**: nothing in it can be false, so nothing in it
-gets checked, and an epic drifts for weeks while every report reads fine.
+**No Account = a status update**: nothing in it can be false, so nothing gets checked.
 
-**The window is "since the last report", and you say what that window was.** This loop is
-event-driven, so the span between reports is whatever the events made it — an hour or four
-days. That is a real difference from a fixed weekly cadence and it is handled by *naming* the
-span, not by pretending to one: an Account over an unstated window is unfalsifiable, because a
-miss can always be excused as "that was only twenty minutes ago."
-
-**Nothing here is a licence to read.** All three lines are built from what workers reported and
-the status table — **not** from a diff, a thread, or a spec
-([`orchestration.md`](../../../docs/contributing/orchestration.md) → "The coordinator dispatches;
-it never does the work"). If a line needs enriching, dispatch a `scout`; don't open the surface.
+**Name the window.** Reports fire on events, so the span is whatever the events made it — an
+Account over an unstated window is unfalsifiable. All three lines come from worker reports and
+the status table; if one needs enriching, dispatch a `scout` rather than opening a surface.
 
 > **Since the last report (~6h).**
 > **Account:** FIX-776 reached spec approval as said. FIX-777's goal check didn't run — blocked

@@ -46,29 +46,16 @@ Read orientation docs to understand current phase and priorities:
 **Before cleaning anything, account for the last plan.** Step 2b deletes the evidence, so
 this runs first.
 
-**The cohort is read from `replanned_on`, never inferred from what is on disk.** Todo files
-are *deliberately preserved* across runs (Step 2b, "Preserve good todos"), so "the files
-that are here" is not "what was planned last time" — a todo carried for five days would be
-counted as a fresh commitment every one of them, and the Account would report promises
-nobody made. So each todo carries two dates in its frontmatter:
+**Read the cohort from `replanned_on`, never from what's on disk** — todos are deliberately
+preserved (Step 2b), so a todo carried five days would count as a fresh commitment every day.
 
-- **`planned_on`** — when it was **first** planned. Never rewritten once set.
-- **`replanned_on`** — an ISO **timestamp** (not a bare date) for the most recent run that
-  selected it. Rewritten every run that does.
+- **`planned_on`** — when first planned. Set once, never rewritten.
+- **`replanned_on`** — ISO **timestamp** of the most recent run that selected it.
 
-**The cohort is every todo sharing the newest `replanned_on` value older than this run** —
-not "yesterday's date". Two things make the max-value rule the right one rather than a
-fussier alternative: `plan-day` can run **twice in a day**, and a bare date would merge two
-different plans into one cohort (run 1 picks A+B, run 2 picks only B, and A is then reported
-as an unmet commitment it never was); and a run that plans **nothing** writes no stamp, so
-the max correctly still points at the last run that actually planned something. A run ID or
-a separate manifest would work too and buys nothing over a timestamp.
-
-**A todo predating this rule keeps an unknown age — backfill `replanned_on` only.** Stamping
-it is a fact (this run selected it); stamping `planned_on` would be an invention, and the
-`carried Nd` line below would then compute a real-looking age off a made-up date, which is
-worse than no age at all. Leave `planned_on` absent and report those as *carried, age
-unknown* until they are next planned.
+**The cohort is every todo sharing the newest `replanned_on` older than this run** — not
+"yesterday's date", which merges two same-day runs and misreads a zero-task run. A todo with no
+`replanned_on` predates this: stamp it, leave `planned_on` absent, and report its age as
+unknown rather than backfilling a date and computing from it.
 
 For each todo in that cohort, report one line: **landed** (merged), **in flight** (PR
 open), or **didn't start** — and for anything that didn't land, the one-line reason

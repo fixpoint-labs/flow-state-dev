@@ -209,38 +209,22 @@ each section owes its reader, exactly as `spec-template.md` is for an issue spec
 
 **At most two epics are active at a time.** A third is held, not cancelled.
 
-**The cap is on objectives, not on work items — this is the part that gets misread.** An
-epic running eight issues in parallel is *one* objective with throughput, and nothing here
-constrains it: issue concurrency is sized to the VM and is a different axis entirely
-(`epic-lifecycle` → "Sizing to the VM"). What the cap constrains is how many *distinct
-outcomes* we are driving at once. Four epics under four objectives is the violation; eight
-issues under one is not.
+**The cap is on objectives, not work items** — the part that gets misread. Eight issues in
+parallel under one epic is *one* objective with throughput, and issue concurrency is a
+different axis (`epic-lifecycle` → "Sizing to the VM"). Four epics under four objectives is
+the violation. Why two: an objective is only worth having if something is tested against it,
+and past two nothing is — gates queue, attention splits, every epic reads "in progress"
+forever.
 
-**Why two.** An epic's objective is the only thing that makes its issues a set rather than
-a pile, and an objective is worth having only if something is actually tested against it.
-Past two, nothing is: gates queue behind each other, the product owner's attention splits,
-and every epic's scoreboard reads "in progress" indefinitely. The cap is a bet that
-finishing one objective beats advancing three.
+**There is no queue, and that is the honest cost.** The work items are already Linear issues,
+so holding an epic just leaves them unparented on the board; nothing auto-starts one when a
+slot frees, and re-invoking the lifecycle is the only trigger. Say so plainly when you hold
+something, and name it again at the wrap that frees the slot.
 
-**What it costs, stated plainly, and there is no queue.** Real work waits, and "held" is not
-a state anything tracks: the work items are already Linear issues, so declining to start the
-epic simply leaves them unparented on the board, and the only thing that starts them is someone
-re-invoking the lifecycle. Nothing auto-starts a held epic when a slot frees. That is a real
-cost of the cap, not a gap to paper over with a queue we don't have — say it plainly when you
-hold something, and name the held work again at the wrap that frees the slot.
-
-**Who enforces it, and the two ways it misfires.** The coordinator, at epic setup
-(`epic-lifecycle` → "Epic setup"), as a question put to the user rather than a refusal.
-Both misfires make it fire on the *common* path, so they are part of the rule:
-
-- **Resolve the requested epic before counting.** Re-entering an existing epic is the normal
-  case across sessions. Count first and you include the epic being resumed, so every
-  resumption reads as a third objective. A reused epic is not a new one and the cap does not
-  apply to it.
-- **Active means the epic PR is open.** Wrap closes that PR unmerged but moves no Linear
-  state, so a count of open `Epic`-labelled Linear issues counts every epic ever run and the
-  cap jams shut forever. The epic PR's lifetime is defined as exactly the epic's, which is
-  what makes it the signal.
+**Enforced at epic setup** (`epic-lifecycle` → "Epic setup") as a question, not a refusal.
+Two rules keep it off the common path: **resolve the requested epic before counting** (a
+resumed epic is not a third one), and **active means its epic PR is open** — wrap closes that
+PR but moves no Linear state, so counting `Epic`-labelled issues jams the cap shut forever.
 
 ## Which issues get a spec (the two routes)
 
