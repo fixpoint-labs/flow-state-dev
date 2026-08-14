@@ -55,7 +55,7 @@ flowchart TD
 
 **Read it as one question asked at four altitudes:** *what are we driving at, and is it
 working?* The project objective asks it for the quarter, the epic's five lines ask it for the
-set, the scoreboard answers it weekly, and the report is where the answer gets checked against
+set, the scoreboard answers it at each fold, and the report is where the answer gets checked against
 what was promised last time.
 
 ---
@@ -71,7 +71,7 @@ ten places is corrected in none, and `stale-restatement` is a live recurring cla
 | The project objective, its finish line and its lead measure | [`docs/objectives.md`](../objectives.md) |
 | At most two epics at once; the cap is on objectives, not work items | [`orchestration.md`](../contributing/orchestration.md) → "How many epics run at once" |
 | The epic objective's five lines, incl. what a lead measure must be | [`epic-pm`](../../.agents/skills/epic-pm/SKILL.md) → "The objective is five lines" |
-| The scoreboard's shape, its ceiling, and the Goal check column | [`epic-spec-template.md`](../contributing/epic-spec-template.md) → §4 |
+| The scoreboard's shape and the Goal check column | [`epic-spec-template.md`](../contributing/epic-spec-template.md) → §4 |
 | Deriving the scoreboard at fold time | [`epic-agent`](../../.agents/subagents/epic-agent.md) · the fold prompt in `.agents/workflows/epic-wake.js` |
 | Account → Review → Plan | [`epic-em`](../../.agents/skills/epic-em/SKILL.md) — `epic-pm` inherits it and adds the cut line |
 | The daily Account and the ⭑ objective mark | [`plan-day`](../../.agents/skills/plan-day/SKILL.md) |
@@ -89,8 +89,15 @@ keeps its ceiling of 8 and the cap lives on epics instead.
 **2. Nothing on the scoreboard is maintained by hand.** A number a human has to remember to
 update is a number that will be wrong, and a stale scoreboard is worse than none — it reads as
 evidence. So the Lead line is *counted off* the per-issue **Goal check** column rather than
-asserted beside it, and the column is refreshed by the `epic-agent` from the PR handles it
-already reads.
+asserted beside it, and each cell of that column is read from the goal's **verdict log** in
+`goals/<describe>/<it>/goal.md` — the appended record that makes a goal a regression check —
+rather than from PR narration, which may or may not mention that a check ran.
+
+**The same rule cost the scoreboard a line.** `epic-pm` reports what left the scope each turn,
+and cuts are a genuine lead indicator, but that tally lives in the coordinator's
+`.orchestration/` state which the folding agent never sees. Rather than have the scoreboard
+carry a number its refresher cannot derive, cuts stay in the report. Three derivable lines beat
+four with one that rots.
 
 **The honest limit on that:** the scoreboard refreshes when the `epic-agent` folds, which is the
 same cadence the running index has always had — not continuously. A fold-less stretch means a
@@ -101,11 +108,16 @@ documentation change. If the fold cadence proves too slow in practice, that is t
 wants its own review.
 
 **3. The lead measure counts passing goal checks, not merged issues.** Merging is activity. A
-passing real-model goal check is the only per-issue evidence we already produce that predicts
-the epic's Proof — tenet 7 (*prove the goal, not the mock*) read as a running measure instead of
-a completion criterion. It also means the three cell states must stay distinct: **pass**,
-**fail**, and **not yet run**. An unrun check is not a failure, and collapsing them corrupts the
-count in whichever direction the collapser prefers.
+passing goal check is the only per-issue evidence we already produce that predicts the epic's
+Proof — tenet 7 (*prove the goal, not the mock*) read as a running measure instead of a
+completion criterion. A model-free goal check counts the same as a model-backed one; what makes
+it evidence is that it drives the real path.
+
+It also means five cell states must stay distinct — **pass · fail · not yet run · blocked ·
+n/a** — and that **`n/a` is excluded from the denominator**. Collapsing any two corrupts the
+count: an unrun check is not a failure, a blocked one is a fact about the environment rather
+than the product, and without the `n/a` exclusion a single docs issue makes the target
+permanently unreachable.
 
 ---
 
@@ -121,8 +133,10 @@ count in whichever direction the collapser prefers.
   *not* adopt **WIG**: "objective" is already used across `epic-pm`, `epic-lifecycle`,
   `orchestration.md` and the epic-spec template, and renaming it buys nothing while breaking
   every cross-reference.
-- **No new doc, skill, gate or agent.** Five existing files changed, plus this narrative. The
-  process added zero surface to the lifecycle.
+- **No new skill, gate, agent or lifecycle surface.** The change is edits to files that already
+  existed, plus two internal docs — this narrative and the review it came from. Neither is
+  loaded by an agent on any hot path; both are read by humans deciding whether the process is
+  working.
 
 ---
 

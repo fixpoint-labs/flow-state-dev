@@ -40,7 +40,7 @@ guess at for the rest of the run:
 3. **Lead measure** — the thing you can watch *while the epic runs* that predicts the Proof.
    Same constraint as line 2, inherited verbatim: readable off work the epic already produces,
    never an instrument we would have to build. **The default is the count of the set's issues
-   whose real-model goal check passes** — and the thing it is deliberately *not* is the count
+   whose goal check passes** — and the thing it is deliberately *not* is the count
    merged. Merging is activity; a passing goal check is the only per-issue evidence we produce
    that predicts line 2. Name a different one only when the default genuinely doesn't predict
    this epic's Proof, and say why in the same line.
@@ -51,7 +51,7 @@ guess at for the rest of the run:
    nothing could, the outcome is not falsifiable and line 1 is not done yet.
 
 **Lines 2 and 3 are not the same line said twice.** Line 2 answers *did it work*, and arrives
-at the wrap — too late to change anything. Line 3 answers *is it working*, weekly, while there
+at the wrap — too late to change anything. Line 3 answers *is it working*, at every report, while there
 is still an epic to steer. Without it the only mid-flight signal is the status table, and the
 status table counts activity: an epic can look healthy the whole way and land on a Proof that
 fails.

@@ -85,11 +85,10 @@ the status table — **not** from a diff, a thread, or a spec
 it never does the work"). If a line needs enriching, dispatch a `scout`; don't open the surface.
 
 > **Since the last report (~6h).**
-> **Account:** said FIX-776 would reach spec approval — it did. Said FIX-777's goal check would
-> run — it didn't; the row blocked on a cross-spec conflict I resolved instead.
-> **Review:** goal checks passing 1/3, up from 0. Reconnect works end to end. At risk: FIX-777
-> is the only row with no check written yet.
-> **Plan:** get FIX-777's goal check written and run. Nothing else moves the lead measure.
+> **Account:** FIX-776 reached spec approval as said. FIX-777's goal check didn't run — blocked
+> on a cross-spec conflict, which I resolved instead.
+> **Review:** goal checks passing 1/4, up from 0. At risk: FIX-777 has no check written.
+> **Plan:** get FIX-777's check written and run. Nothing else moves the lead measure.
 
 ## Boundaries
 

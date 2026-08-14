@@ -22,7 +22,7 @@ serves and how much of the gap it closes.
 > agreed.
 
 **Why a lead measure and not just the finish line.** *Winning when* is a lag measure: we
-learn it at the end, too late to change it. The lead measure is the weekly read that
+learn it at the end, too late to change it. The lead measure is the running read that
 predicts it, and it counts passing goal checks rather than merged work because merging is
 activity and a passing goal check is evidence. The distinction, and where it came from, is
 [`docs/internal/4dx-process.md`](internal/4dx-process.md).

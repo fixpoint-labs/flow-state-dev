@@ -8,12 +8,19 @@ things changed during implementation, both worth knowing:
 
 - **The scoreboard needed a source.** R3 claimed the Lead line was derivable from state the
   coordinator already holds; it wasn't — no `goalCheck` field exists on the status table or in
-  `epic-wake`'s args. Resolved by deriving it at **fold time** from the PR handles the
-  `epic-agent` already reads, which needs no new coordinator state. Making it *wake-fresh*
-  instead is deferred and wants its own review — see
+  `epic-wake`'s args. Resolved by reading each cell from the goal's **verdict log** in
+  `goals/<describe>/<it>/goal.md` at fold time, which needs no new coordinator state. Making it
+  *wake-fresh* instead is deferred and wants its own review — see
   [`4dx-process.md`](4dx-process.md) → design call 2.
 - **R4's variable window** (flagged below as an open worry) is handled by *naming* the span in
   each report rather than pretending to a weekly cadence.
+- **Two things R3 proposed were cut in review**, both for the same reason — a number the
+  refresher cannot derive rots silently. The **cut tally** left the scoreboard (it lives in
+  `.orchestration/`, which the folding agent never sees) and stays in the report; the imported
+  **"≤6 measures" ceiling** was dropped as a rule that could never fire against a
+  three-line scoreboard. The Goal check column also grew from three states to five —
+  `blocked` and `n/a`, the latter excluded from the denominator, without which one docs issue
+  makes the target permanently unreachable.
 
 The narrative description of the resulting process is
 [`4dx-process.md`](4dx-process.md); this file is the reasoning that produced it, kept as
@@ -31,7 +38,7 @@ whether the epic is *winning*.
 That is the gap 4DX is actually good at, and it is one gap, not four. Two of the four
 disciplines transfer with real force, one transfers partially, and one shouldn't be
 imported at all. The recommendations below are five edits to documents that already
-exist. None of them adds a doc, a skill, a gate, or a meeting.
+exist. None of them adds a skill, a gate, or a meeting.
 
 The one new word worth adopting is **lead measure**. We have no term for it, and the
 distinction it names is the whole value of the framework.
@@ -71,7 +78,7 @@ half our surface.
 
 | 4DX | Ours today | Verdict |
 |---|---|---|
-| **D1 — a goal with a finish line** | `epic-pm`'s four lines (Outcome · Proof · Not doing · Kill line). The **Kill line** is a genuine improvement on 4DX — it demands the goal be *falsifiable*, which 4DX never asks for | Strong at epic altitude. **Absent above it** |
+| **D1 — a goal with a finish line** | `epic-pm`'s objective lines — at review time four (Outcome · Proof · Not doing · Kill line); **five since adoption**, the Lead measure being what R2 added. The **Kill line** is a genuine improvement on 4DX — it demands the goal be *falsifiable*, which 4DX never asks for | Strong at epic altitude. **Absent above it** |
 | **D2 — lead vs lag** | `distill-lessons` runs this correctly, on the process: *"rounds-to-approval and `design-off` frequency trending down — that downward trend **is** the proof the harness is improving."* That is textbook lead-measure reasoning, and the ledger even guards its own gaming (*"score the method, not the outcome"*) | Correct — but applied **only to the loop, never to the product outcome** |
 | **D3 — scoreboard** | Epic-spec §4 running index; the coordinator's status table; `cycle-ledger.md` | The ledger is a real scoreboard (retrospective, per-cycle). §4 and the status table are **audit logs of activity** — they cannot answer *are we winning* |
 | **D4 — cadence** | Event-driven wakes · gates · epic wrap (auto-dispatches `distill-lessons` + `polish-docs`) · `plan-day` | Cadence exists and is bound to the **right thing** (the epic cycle, not the calendar). What's missing is the **Account** half, everywhere |
@@ -156,6 +163,9 @@ table like the index already is:
 > **Winning when:** the reconnect goal check passes end to end. **Now:** not yet.
 > **Lead:** goal checks passing **1 / 3** · cut this epic: 1 issue, 2 knobs.
 
+*(As proposed. The cut half was **removed** during implementation — the folding agent cannot
+derive it. Copy the shipped shape from `epic-spec-template.md` §4, not this line.)*
+
 **Why.** §4 today is *Issue · delivers · route · spec PR · impl PR · state*. Every column
 is activity. A reader cannot tell from it whether the epic is winning, which is D3's only
 test.
@@ -218,7 +228,7 @@ the accretion tenet 3 and `distill-lessons`' anti-bloat gate exist to stop.
 
 ---
 
-## 6. What's asked of you
+## 6. What was asked *(closed — answered yes on 2026-08-14; kept as the record)*
 
 **The fork: adopt the lead measure, or keep Proof as the only outcome signal?**
 
@@ -244,6 +254,7 @@ paid in weeks, and it is the one recommendation here that can actually block wor
 
 ---
 
-*Nothing in this review has been enacted. The recommendations touch `docs/objectives.md`,
-`.agents/skills/epic-pm/SKILL.md`, `docs/contributing/epic-spec-template.md`,
-`.agents/skills/epic-em/SKILL.md`, and `.agents/skills/plan-day/SKILL.md` — no new files.*
+*Adopted 2026-08-14. §6's ask below is **closed** — it is kept as the record of the decision
+that was put, not as a live gate; the answer was yes to all five. For what the process
+currently is, read [`4dx-process.md`](4dx-process.md), which is the owner-linked narrative and
+is maintained. This file is not.*

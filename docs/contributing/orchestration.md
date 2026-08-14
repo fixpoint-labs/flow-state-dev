@@ -226,9 +226,18 @@ finishing one objective beats advancing three.
 reason the queue is visible rather than silent — a third epic that never gets to start is a
 decision someone should be able to see and overrule.
 
-**Who enforces it.** The coordinator, at epic setup, before it dispatches anything
-(`epic-lifecycle` → "Epic setup"). It is a question put to the user, not a refusal: name
-the two that are active and ask which this displaces, or whether it queues.
+**Who enforces it, and the two ways it misfires.** The coordinator, at epic setup
+(`epic-lifecycle` → "Epic setup"), as a question put to the user rather than a refusal.
+Both misfires make it fire on the *common* path, so they are part of the rule:
+
+- **Resolve the requested epic before counting.** Re-entering an existing epic is the normal
+  case across sessions. Count first and you include the epic being resumed, so every
+  resumption reads as a third objective. A reused epic is not a new one and the cap does not
+  apply to it.
+- **Active means the epic PR is open.** Wrap closes that PR unmerged but moves no Linear
+  state, so a count of open `Epic`-labelled Linear issues counts every epic ever run and the
+  cap jams shut forever. The epic PR's lifetime is defined as exactly the epic's, which is
+  what makes it the signal.
 
 ## Which issues get a spec (the two routes)
 

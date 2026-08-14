@@ -41,14 +41,33 @@ Read orientation docs to understand current phase and priorities:
 - `packages/*/CHANGELOG.md` and `.changeset/*.md` — recent completions and pending release notes
 - `docs/objectives.md` — if it exists, project goals
 
-### Step 2: Account for Yesterday's Plan
+### Step 2: Account for the Last Plan
 
 **Before cleaning anything, account for the last plan.** Step 2b deletes the evidence, so
 this runs first.
 
-For each todo from the previous run, report one line: **landed** (merged), **in flight**
-(PR open), or **didn't start** — and for anything that didn't land, the one-line reason
+**The cohort is read from `planned_on`, never inferred from what is on disk.** Todo files
+are *deliberately preserved* across runs (Step 2b, "Preserve good todos"), so "the files
+that are here" is not "what was planned last time" — a todo carried for five days would be
+counted as a fresh commitment every one of them, and the Account would report promises
+nobody made. So each todo carries two dates in its frontmatter:
+
+- **`planned_on`** — the date it was **first** planned. Never rewritten once set.
+- **`replanned_on`** — the date of the most recent run that carried it forward. Rewritten
+  each run.
+
+The cohort to account for is every todo whose `replanned_on` is the **previous** run's
+date. A todo with no `planned_on` predates this rule — count it, and backfill the field
+rather than guessing its age.
+
+For each todo in that cohort, report one line: **landed** (merged), **in flight** (PR
+open), or **didn't start** — and for anything that didn't land, the one-line reason
 (blocked, deprioritized, harder than scoped, never picked up).
+
+**Call out the carried ones by age.** `planned_on` makes the most useful signal here
+visible for the first time: a todo planned five days running and never started is not a
+task, it is a decision nobody is making. Report those as *carried Nd* and say what should
+happen to them.
 
 **Why this is first and not optional.** A plan with no account is unfalsifiable: a task
 that was wrong to plan yesterday looks identical to one that was right, so the same

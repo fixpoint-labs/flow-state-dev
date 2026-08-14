@@ -178,33 +178,39 @@ survived contact with code is worth knowing.
 
 Two things, in this order, and the order matters. The **scoreboard** answers *are we
 winning?* in a five-second read. The **running index** below it is the durable audit log.
-Both are refreshed from the coordinator's status table — projections, not second live
-sources.
+
+**Both are refreshed by the `epic-agent` when it folds** — the index from the PR handles it
+is given, the scoreboard's Lead line counted off the index's own **Goal check** column,
+which it reads from each goal's verdict log in `goals/<describe>/<it>/goal.md`. They are
+projections, not second live sources. The cadence is therefore *per fold*, not per wake: a
+stretch with no fold leaves a scoreboard as old as the last one.
 
 ### The scoreboard (three lines, above the index)
 
 The index alone cannot tell you whether the epic is winning: every column in it is
-activity. These three lines are the answer, and each is derivable from state the
-coordinator already holds — **nothing here is maintained by hand**, because a number a
-human has to remember to update is a number that will be wrong.
+activity. These three lines are the answer, and every one of them is **derived** —
+**nothing here is maintained by hand**, because a number a human has to remember to update
+is a number that will be wrong.
 
 - **Outcome** — §1's outcome sentence, verbatim. One line, so the scoreboard is readable
   without scrolling up.
 - **Winning when** — §1's **Proof**, plus where it stands right now. Where the epic has no
   Proof line (any run that isn't [`epic-pm`](../../.agents/skills/epic-pm/SKILL.md)), state
   the outcome's observable form instead; don't leave the line out.
-- **Lead** — §1's **Lead measure** against its target, plus what the set has *cut*. Both
-  halves are influenceable and both predict the outcome, which is what makes them lead
-  rather than lag. The default lead measure is passing goal checks over set size; the cut
-  count is already mandated by `epic-pm`'s reporting and simply had nowhere to be seen.
+- **Lead** — §1's **Lead measure** against its target. The default is passing goal checks
+  over the issues one *applies to* (see the Goal check column below — an issue with no
+  user-visible behaviour to prove is excluded, or the target is unreachable by
+  construction).
 
-**Six measures is the ceiling** — past that nobody reads it and it stops being a
-scoreboard. If a fourth line is genuinely needed, it replaces one of these rather than
-joining them.
+**Scope note — cuts are reported, not scoreboarded.** `epic-pm` reports what left the scope
+each turn, and that is a real lead indicator, but it lives in the coordinator's
+`.orchestration/` state which the folding agent never sees. A number the refresher cannot
+derive is a number that goes stale silently, so it stays in the report where the coordinator
+holds it. **Three lines, all derivable** beats four with one that quietly rots.
 
 > **Outcome:** a dropped connection is a non-event for an app built on FSD.
 > **Winning when:** FIX-775's reconnect goal check passes end to end. **Now:** not yet.
-> **Lead:** goal checks passing **1 / 3** · cut this epic: 1 issue, 2 knobs.
+> **Lead:** goal checks passing **1 / 4**.
 
 ### The running index
 
@@ -217,16 +223,23 @@ set from one place. **Keep it a table, not prose.**
 > | FIX-776 | Heartbeat frames so a dead connection is detectable | spec | [#815](https://github.com/o/r/pull/815) | — | — | In Spec Review |
 > | FIX-777 | Default reconnect backoff in the client | spec | — | — | — | Needs spec |
 > | FIX-781 | Reconnect drops the last partial frame | **bug** | — | [#833](https://github.com/o/r/pull/833) | ❌ fail | In Review |
+> | FIX-784 | Document the reconnect contract | spec | [#818](https://github.com/o/r/pull/818) | [#835](https://github.com/o/r/pull/835) | n/a | Merged |
 >
 > *A bug carries no spec PR by design — it routes straight to implementation
 > ([`orchestration.md`](orchestration.md) → "Which issues get a spec"). An empty
 > Spec PR cell on a `bug` row is correct, not a gap.*
 >
-> *The **Goal check** column is what the scoreboard's Lead line counts — one cell per
-> issue, so the count above is auditable rather than asserted. `—` means not yet run,
-> which is different from a fail and must not be collapsed into one: an epic with three
-> unrun checks is not an epic with three failures, and reading it as either is how the
-> lead measure starts lying.*
+> *The **Goal check** column is what the scoreboard's Lead line counts — one cell per issue,
+> so the count is auditable rather than asserted. Read each cell from that goal's **verdict
+> log** in `goals/<describe>/<it>/goal.md`, never from PR narration: a check that ran without
+> being mentioned on its PR would otherwise read as unrun. Five states —* `pass` · `fail` ·
+> `—` *(not yet run)* · `blocked` *(no working inference credential) ·* `n/a` *(no goal check
+> applies — docs, refactor, config). `n/a` is **excluded from the denominator**, which is why
+> the five rows above count **1 / 4** and not 1 / 5; without that exclusion one docs issue
+> makes the target permanently unreachable. The other four states
+> must not be collapsed either: an unrun check is not a failure, and a blocked one is a fact
+> about the environment rather than the product.
+> [`epic-agent`](../../.agents/subagents/epic-agent.md) is canonical for how each is derived.*
 
 ## 5. Open cross-cutting questions
 
