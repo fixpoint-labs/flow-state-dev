@@ -69,6 +69,9 @@ describe("TraceView — continuation/suspension_resume boundary", () => {
     // their SC badge — the divider must not clobber the existing badge logic.
     const sideChainBadges = screen.getAllByTitle(/Side chain/i);
     expect(sideChainBadges).toHaveLength(2);
+    // The visible label is the operator's whole cue at a glance, so pin the
+    // text itself and not just the tooltip behind it.
+    expect(sideChainBadges.map((b) => b.textContent)).toEqual(["SC", "SC"]);
 
     // Prior block sits above the divider, re-dispatched block below it.
     const allText = document.body.textContent ?? "";
