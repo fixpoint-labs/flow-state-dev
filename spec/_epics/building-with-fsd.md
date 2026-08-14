@@ -1,6 +1,8 @@
 # Epic — Building with FSD: the first hour in someone else's project
 
-Linear epic: **FIX-1161** · Branch `epic/building-with-fsd` · Project **Public Launch**
+Linear epic: **FIX-1161** · Branch `epic/building-with-fsd` · Epic PR
+[#1301](https://github.com/fixpoint-labs/flow-state-dev/pull/1301) (never merged) · Project
+**Public Launch**
 
 ## 1. Purpose & objective *(the gated sign-off surface)*
 
