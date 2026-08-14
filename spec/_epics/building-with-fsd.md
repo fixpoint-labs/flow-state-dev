@@ -25,9 +25,13 @@ runs rather than code that merely looks right.
 - *FIX-548* — in an empty directory with only a provider key in the environment, the npx
   command followed by the printed dev command yields a streamed model response. Run once per
   template.
-- *FIX-1160* — one recorded run: a coding assistant in a freshly scaffolded project, given a
-  stated feature goal and nothing else, produces a flow that passes `fsdev run`. A single
-  observation, stated as such, not a metric.
+- *FIX-1160* — one recorded run covering **both halves of the pack**: the Claude plugin
+  installed from its URL and one of its packaged skills invoked, and then a coding assistant
+  in a freshly scaffolded project, given a stated feature goal and nothing else, produces a
+  flow that passes `fsdev run`. A single observation, stated as such, not a metric. **The
+  plugin is inside the run because it is a deliverable** — a check the scaffolded `AGENTS.md`
+  satisfies on its own would pass while the plugin's manifest, install URL, and packaged
+  skills sat unexercised until a stranger tried them.
 
 **Holistic necessity.** Three issues of substance, and the honest question is whether it is
 two. FIX-1159 (`fsdev init`) is the substance — it is the only thing that reaches an existing
@@ -85,7 +89,9 @@ call.
    `packages/mcp` points outward — it exposes flows so other people's agents can call them —
    and is not an authoring aid; nothing in this epic changes that direction. **The plugin
    ships install-by-URL only at launch — no public directory listing** (§5 Q2, decided), which
-   narrows FIX-1160's distribution channel and nothing else about it. **And the epic writes
+   narrows FIX-1160's distribution channel and nothing else about it. **That single channel is
+   the one §1's proof runs through** — with no directory listing, the install URL is the only
+   way in, so nothing would exercise it before a stranger did. **And the epic writes
    *Claude skills* / *the Claude plugin* wherever the packaged kind could be read as FSD's own
    runtime `skills`, which keeps the bare word** (§5 Q3, decided).
 
@@ -321,14 +327,22 @@ $ npx @flow-state-dev/cli init
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| FIX-1159 | `fsdev init` — wire FSD into an existing project (incl. the next-steps block and DevTool discovery) | spec | — | — | Backlog |
-| FIX-1162 | Register the npm names the launch needs — the short CLI entry name and the `create-fsd-app` scaffolding name | spec | — | — | Backlog |
-| FIX-548 | `create-fsd-app` — npx-able scaffolding, a thin wrapper over init, two templates | spec | — | — | Todo |
-| FIX-1160 | Consumer authoring pack — agent-instructions file + Claude plugin, install-by-URL at launch | spec | — | — | Backlog |
+| FIX-1159 | `fsdev init` — wire FSD into an existing project (incl. the next-steps block and DevTool discovery) | spec | — | — | Needs spec — held at the objective gate |
+| FIX-1162 | Register the npm names the launch needs — the short CLI entry name and the `create-fsd-app` scaffolding name | spec | — | — | With the owner — npm credentials |
+| FIX-548 | `create-fsd-app` — npx-able scaffolding, a thin wrapper over init, two templates | spec | — | — | Blocked by FIX-1159 and FIX-1162 |
+| FIX-1160 | Consumer authoring pack — agent-instructions file + Claude plugin, install-by-URL at launch | spec | — | — | Needs spec — held at the objective gate |
 
-All four are Feature-labelled, so all four take the spec route and each carries its own
-spec-approval gate. FIX-1159 lands before FIX-548, and FIX-1162 gates FIX-548's headline
-command (theme 1).
+**No spec PR has opened yet, and the empty cells say why: every row is held behind the
+epic-objective gate** (§1) — the epic's own sign-off, not a per-issue one. All four are
+Feature-labelled, so all four derive the **spec** route and each carries its own
+spec-approval gate when it ramps. FIX-1159 lands before FIX-548, and FIX-1162 gates
+FIX-548's headline command (theme 1).
+
+**FIX-1162 is the one row that is not an agent workstream.** Registering an npm name needs
+account credentials nothing in this epic holds, so it sits with the owner and is tracked
+here rather than dispatched; its route reads `spec` because the label derives it, but no
+spec is written and no spec gate is waiting. It is done when the names are secured, which
+is what unblocks FIX-548 on that side.
 
 ## 5. Open cross-cutting questions
 
@@ -402,8 +416,10 @@ that goes past the recommendation above: a public listing is a **support commitm
 week we can least afford one**, and the asymmetry is what settles it — a listing is trivially
 added afterwards, while delisting later reads as abandonment. No public directory listing
 during the launch window. **FIX-1160 is scoped accordingly — the plugin still ships; only its
-distribution channel is narrowed.** Carried by theme 3. **Closed — not reopenable by an
-issue.**
+distribution channel is narrowed.** And because the channel is now singular, **§1's proof runs
+through it**: FIX-1160's recorded run installs the plugin from its URL and invokes one packaged
+skill, so the only remaining way in is also the one we have checked. Carried by theme 3.
+**Closed — not reopenable by an issue.**
 
 ### ~~Q3 — FSD ships a runtime concept called `skills`, and FIX-1160 ships Claude `skills`. Rename ours, rename theirs, or ship the collision?~~ — decided: no rename, qualify instead
 
@@ -453,3 +469,10 @@ and 4). Carried by theme 3. **Closed — not reopenable by an issue.**
   on its first run. §3's two diffs and the existing-Next.js transcript are corrected to match.
   FIX-1162 added to the running index — it was parented under the epic after the `npx fsdev`
   naming correction and had no row; §1 and theme 1 now say what it gates.
+- **After epic review (round 3)** — §1's proof for FIX-1160 now runs *through the plugin*
+  (installed from its URL, one packaged skill invoked) rather than through the scaffolded
+  `AGENTS.md` alone, because the goal check as written could pass in full while the plugin's
+  manifest, install URL, and skills were unusable — and §5 Q2 had just narrowed the plugin to
+  that one channel, leaving nothing else to exercise it. Theme 3 and Q2's record carry the
+  same clause. The running index is refreshed against the coordinator's handles and now states
+  why no row has a spec PR, and that FIX-1162 waits on the owner rather than on a spec.
