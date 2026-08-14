@@ -94,10 +94,13 @@ branch, can't see `.orchestration/`, and isn't woken by the thing being measured
 measure moved to the **epic report**, which the coordinator writes from its own status table,
 and §4 went back to being a pure audit log.
 
-**3. The lead measure is rows at `DONE`, not rows merged.** `DONE` already requires the goal
-proven — `epic-wake.js` only returns it once the assembled goal passes, and a single-PR issue
-proves its goal before the PR opens — so counting it is counting evidence, and it needs no new
-field anywhere. Tenet 7 read as a running measure instead of a completion criterion.
+**3. The lead measure is rows at `DONE`, and it is honest about what that proves.** Every
+issue proves its goal on the real path before its PR opens, so `DONE` is stronger than a merge
+count — but `mergeDerivedPhase()` marks a single-PR row done on the merge alone, so a feedback
+round that changes behaviour after the goal ran is not re-proven. The measure therefore means
+*goal-proven, then merged*, and is written that way. **Closing that gap is an `issue-implement`
+change** — re-run the goal when a feedback round touches flow logic — not something the measure
+can fix by being described differently.
 
 ---
 
@@ -139,11 +142,10 @@ will be useful here and which will be cargo.
 
 It would be dishonest to add a discipline that demands falsifiable objectives and exempt itself.
 
-**Kill it if, after a handful of epics:** the scoreboard is routinely stale when someone reads
-it (the fold cadence is too slow and design call 2's deferred fix didn't happen); or the lead
-measure only ever goes up, which means goal checks are being written to the measure rather than
-to the goal; or the Account line is never wrong, which means it is being written after the fact
-to match what happened.
+**Kill it if, after a handful of epics:** the lead measure only ever rises, which means goals
+are being written to the measure rather than to the goal; or the Account line is never wrong,
+which means it is being written after the fact to match what happened; or nobody has looked at
+either in a month.
 
 Any of those means the instrument is decorative, and a decorative instrument is worse than none
 because it reads as evidence. **Where to check:** [`cycle-ledger.md`](cycle-ledger.md), the

@@ -67,7 +67,7 @@ Three **lines**, not three sections, above `epic-lifecycle`'s per-issue lines:
 | | The line |
 |---|---|
 | **Account** | What the last report said would happen, and whether it did. Name the misses plainly — this is the only line in the report that can be *wrong*, which is the entire reason it is first. **The first report of a session has no prior Plan to check** (nothing durable stores one, and this posture adds no state): say *"first report this session — no prior Plan"* and move on. Inventing one is the failure this line exists to prevent |
-| **Review** | **Lead with the lead measure** — rows at `DONE` over the set, straight off your status table; `DONE` already requires the goal proven, so it is evidence rather than activity. Then what the epic can now do that it couldn't, what's at risk, and what's waiting on the user. Never phases |
+| **Review** | **Lead with the lead measure** — rows at `DONE` over the set, straight off your status table. Stronger than a merge count (every issue proves its goal before its PR opens) but **not** a live proof: a single-PR row reaches `DONE` on the merge alone, so feedback rounds after that goal run aren't re-proven. Say *goal-proven then merged*, never *currently passing*. Then what the epic can now do that it couldn't, what's at risk, what's waiting on you. Never phases |
 | **Plan** | The one or two things that will move the lead measure before the next report. Not a list of every dispatchable row — the point is a commitment the next Account can be checked against |
 
 **No Account = a status update**: nothing in it can be false, so nothing gets checked.

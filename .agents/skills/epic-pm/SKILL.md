@@ -40,7 +40,8 @@ guess at for the rest of the run:
 3. **Lead measure** — what you watch *while the epic runs* that predicts the Proof. Same
    constraint as line 2: readable off work the epic already produces, never an instrument we'd
    have to build. **The default is rows at `DONE` over the set**, straight off your status
-   table — `DONE` already requires the goal proven, so it is evidence, not the merge count.
+   table — each proved its goal before its PR opened, so it beats a merge count without being
+   a live proof (see `epic-em` → Review).
    Name a different one only if the default doesn't predict this epic's Proof, and say why.
 4. **Not doing** — the neighbouring things this deliberately excludes. The template asks for it;
    here it is load-bearing, because it is the line an implementer, a reviewer, and every later
