@@ -1,0 +1,225 @@
+/**
+ * The config layer — discovery, and the errors that stand in for defaults.
+ *
+ * The claim under test is level 1: `defineConductor()` with no arguments has to
+ * produce a fully resolved config from the environment alone. The second claim
+ * is the one that keeps the first honest — every discovery that cannot answer
+ * raises rather than falling back, because a silent `main` or a silent vendor
+ * choice fails twenty minutes later as something else.
+ */
+
+import { describe, expect, it } from "vitest";
+import {
+  ConductorConfigError,
+  defineConductor,
+  parseRepoRef,
+  resolveConductor,
+} from "../../src/config";
+import type { GitResult, GitRunner } from "../../src/dispatch/branch";
+import type { Dispatcher } from "../../src/dispatch/types";
+
+/** A git that answers from a table, and reports "not found" for anything else. */
+function fakeGit(answers: Record<string, string>): GitRunner {
+  return (argv) => {
+    const key = argv.join(" ");
+    const stdout = answers[key];
+    const result: GitResult =
+      stdout === undefined
+        ? { code: 1, stdout: "", stderr: `no answer for \`git ${key}\`` }
+        : { code: 0, stdout, stderr: "" };
+    return Promise.resolve(result);
+  };
+}
+
+const HAPPY = {
+  "rev-parse --show-toplevel": "/repo\n",
+  "remote get-url origin": "git@github.com:fixpoint-labs/flow-state-dev.git\n",
+  "symbolic-ref --quiet refs/remotes/origin/HEAD": "refs/remotes/origin/main\n",
+};
+
+const ENV = { GITHUB_TOKEN: "t0ken" } as NodeJS.ProcessEnv;
+
+describe("parseRepoRef", () => {
+  it.each([
+    ["git@github.com:fixpoint-labs/flow-state-dev.git", "github.com", "fixpoint-labs"],
+    ["https://github.com/fixpoint-labs/flow-state-dev.git", "github.com", "fixpoint-labs"],
+    ["ssh://git@ghe.internal/acme/thing", "ghe.internal", "acme"],
+    ["https://ghe.internal/acme/thing/", "ghe.internal", "acme"],
+  ])("reads owner and repo out of %s", (url, host, owner) => {
+    expect(parseRepoRef(url)).toMatchObject({ host, owner });
+  });
+
+  it("refuses a remote that names no owner, rather than guessing one", () => {
+    expect(parseRepoRef("/srv/git/thing.git")).toBeNull();
+    expect(parseRepoRef("")).toBeNull();
+  });
+});
+
+describe("resolveConductor at level 1", () => {
+  it("fills in the repo, the base branch, the root and the dispatcher from the environment", async () => {
+    const resolved = await resolveConductor(defineConductor(), {
+      cwd: "/repo/examples/thing",
+      env: ENV,
+      git: fakeGit(HAPPY),
+      probe: (bin) => bin === "claude",
+    });
+
+    expect(resolved.repo).toEqual({
+      host: "github.com",
+      owner: "fixpoint-labs",
+      repo: "flow-state-dev",
+    });
+    expect(resolved.repoRoot).toBe("/repo");
+    expect(resolved.baseBranch).toBe("main");
+    expect(resolved.dispatcher.vendor).toBe("claude-code");
+    expect(resolved.token).toBe("t0ken");
+    expect(resolved.origins).toEqual({
+      repoRoot: "discovered",
+      repo: "discovered",
+      baseBranch: "discovered",
+      dispatcher: "discovered",
+    });
+  });
+
+  it("falls back to the remote's own HEAD when the local ref is unset", async () => {
+    const resolved = await resolveConductor(defineConductor(), {
+      env: ENV,
+      git: fakeGit({
+        "rev-parse --show-toplevel": "/repo\n",
+        "remote get-url origin": "https://github.com/acme/thing.git\n",
+        "ls-remote --symref origin HEAD": "ref: refs/heads/trunk\tHEAD\nsha\tHEAD\n",
+      }),
+      probe: () => true,
+    });
+    expect(resolved.baseBranch).toBe("trunk");
+  });
+
+  it("reads GH_TOKEN as well as GITHUB_TOKEN", async () => {
+    const resolved = await resolveConductor(defineConductor(), {
+      env: { GH_TOKEN: "gh0" } as NodeJS.ProcessEnv,
+      git: fakeGit(HAPPY),
+      probe: () => true,
+    });
+    expect(resolved.token).toBe("gh0");
+  });
+});
+
+describe("a discovery that cannot answer", () => {
+  const cases: [string, Parameters<typeof resolveConductor>[1], string][] = [
+    [
+      "not a checkout",
+      { env: ENV, git: fakeGit({}), probe: () => true },
+      "repoRoot",
+    ],
+    [
+      "no origin remote",
+      {
+        env: ENV,
+        git: fakeGit({ "rev-parse --show-toplevel": "/repo\n" }),
+        probe: () => true,
+      },
+      "repo",
+    ],
+    [
+      "a remote that is not a GitHub URL",
+      {
+        env: ENV,
+        git: fakeGit({
+          "rev-parse --show-toplevel": "/repo\n",
+          "remote get-url origin": "/srv/git/thing.git\n",
+        }),
+        probe: () => true,
+      },
+      "repo",
+    ],
+    [
+      "no default branch anywhere",
+      {
+        env: ENV,
+        git: fakeGit({
+          "rev-parse --show-toplevel": "/repo\n",
+          "remote get-url origin": "https://github.com/acme/thing.git\n",
+        }),
+        probe: () => true,
+      },
+      "baseBranch",
+    ],
+    [
+      "no coding harness installed",
+      { env: ENV, git: fakeGit(HAPPY), probe: () => false },
+      "dispatcher",
+    ],
+    [
+      "no GitHub token",
+      { env: {} as NodeJS.ProcessEnv, git: fakeGit(HAPPY), probe: () => true },
+      "github.token",
+    ],
+  ];
+
+  it.each(cases)("raises rather than defaulting when there is %s", async (_label, options, field) => {
+    await expect(resolveConductor(defineConductor(), options)).rejects.toMatchObject({
+      name: "ConductorConfigError",
+      field,
+    });
+  });
+
+  it("names the harnesses it looked for, so the fix is in the message", async () => {
+    const error = await resolveConductor(defineConductor(), {
+      env: ENV,
+      git: fakeGit(HAPPY),
+      probe: () => false,
+    }).catch((e: unknown) => e as ConductorConfigError);
+    expect(error.message).toContain("claude");
+    expect(error.message).toContain("conductor.config.ts");
+  });
+});
+
+describe("the overrides discovery cannot cover", () => {
+  it("takes an explicit repo without reading any remote, and says it was configured", async () => {
+    const resolved = await resolveConductor(
+      defineConductor({ repo: { host: "github.com", owner: "upstream", repo: "thing" } }),
+      {
+        env: ENV,
+        git: fakeGit({
+          "rev-parse --show-toplevel": "/repo\n",
+          "symbolic-ref --quiet refs/remotes/origin/HEAD": "refs/remotes/origin/main\n",
+        }),
+        probe: () => true,
+      },
+    );
+    expect(resolved.repo.owner).toBe("upstream");
+    expect(resolved.remoteUrl).toBeNull();
+    expect(resolved.origins.repo).toBe("configured");
+  });
+
+  it("uses a named remote for both the repo and the base branch", async () => {
+    const resolved = await resolveConductor(defineConductor({ remote: "upstream" }), {
+      env: ENV,
+      git: fakeGit({
+        "rev-parse --show-toplevel": "/repo\n",
+        "remote get-url upstream": "https://github.com/acme/thing.git\n",
+        "symbolic-ref --quiet refs/remotes/upstream/HEAD": "refs/remotes/upstream/release\n",
+      }),
+      probe: () => true,
+    });
+    expect(resolved.repo.owner).toBe("acme");
+    expect(resolved.baseBranch).toBe("release");
+  });
+
+  it("keeps a supplied dispatcher instead of probing for one", async () => {
+    const mine: Dispatcher = {
+      vendor: "mine",
+      isolation: "remote",
+      run: () => {
+        throw new Error("not called");
+      },
+    };
+    const resolved = await resolveConductor(defineConductor({ dispatcher: mine }), {
+      env: ENV,
+      git: fakeGit(HAPPY),
+      probe: () => false,
+    });
+    expect(resolved.dispatcher).toBe(mine);
+    expect(resolved.origins.dispatcher).toBe("configured");
+  });
+});

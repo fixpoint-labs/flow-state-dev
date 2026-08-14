@@ -48,6 +48,9 @@
     "examples/*": {
       "entry": ["src/**/index.ts", "test/**/*.{test,spec}.ts"]
     },
+    "examples/conductor-self-drive": {
+      "entry": ["src/**/index.ts", "conductor.config.ts"]
+    },
     "labs/knowledge-hub": {
       "entry": ["src/index.ts", "fsdev.config.ts", "test/**/*.spec.ts", "scripts/**/*.mts"]
     }

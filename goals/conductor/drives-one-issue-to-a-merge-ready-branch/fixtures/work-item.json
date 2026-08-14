@@ -1,0 +1,10 @@
+{
+  "operation": "reverse",
+  "brief": "Add an operation named `reverse` to the registry in `examples/conductor-self-drive/src/operations.ts`. It returns the input string with its characters in the opposite order. Register it alongside the existing operations so that `tsx examples/conductor-self-drive/src/cli.ts --list` shows it and `tsx examples/conductor-self-drive/src/cli.ts reverse <input>` runs it. Give it a one-line summary, matching the style of the entries already there, and keep the file dependency-free.",
+  "cases": [
+    { "input": "conductor", "expected": "rotcudnoc" },
+    { "input": "flow state", "expected": "etats wolf" },
+    { "input": "a", "expected": "a" },
+    { "input": "", "expected": "" }
+  ]
+}

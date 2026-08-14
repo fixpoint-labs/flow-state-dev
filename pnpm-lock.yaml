@@ -346,6 +346,22 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@25.3.2)(happy-dom@20.8.3)(jiti@2.7.0)(jsdom@27.4.0)(lightningcss@1.32.0)(terser@5.46.0)(tsx@4.21.0)(yaml@2.9.0)
 
+  examples/conductor-self-drive:
+    dependencies:
+      '@flow-state-dev/conductor':
+        specifier: workspace:*
+        version: link:../../packages/conductor
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.13
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   examples/guides/board-lifecycle:
     dependencies:
       '@flow-state-dev/core':
@@ -563,6 +579,9 @@ importers:
       '@electric-sql/pglite':
         specifier: ^0.5.4
         version: 0.5.4
+      '@flow-state-dev/conductor':
+        specifier: workspace:*
+        version: link:../packages/conductor
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../packages/core

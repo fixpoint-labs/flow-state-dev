@@ -161,6 +161,61 @@ Two rules separate a cache from a second authority:
   `synthesized: true` and a backdated `at`, so a replayed history and a live one
   reduce identically.
 
+## Configuring it
+
+A project's whole configuration:
+
+```ts
+// conductor.config.ts
+import { defineConductor } from "@flow-state-dev/conductor";
+
+export default defineConductor();
+```
+
+That is not a trimmed excerpt. The four things conductor needs before it can start are
+facts of the machine it runs on, so it reads them rather than asking:
+
+| Not configured  | Discovered from                                              |
+| --------------- | ------------------------------------------------------------ |
+| the repository  | `git remote get-url origin`, in the checkout conductor runs in |
+| GitHub auth     | `GITHUB_TOKEN` / `GH_TOKEN` — the variables `gh` already uses  |
+| the base branch | the remote's HEAD                                             |
+| the dispatcher  | the coding harness that is installed (the `claude` CLI, today) |
+
+**A field earns its place only if it encodes an intent the environment cannot reveal.**
+Asking for something discoverable is not a harmless knob — it is a second place for one
+fact to live, which is how the config and the machine end up disagreeing.
+
+**A discovery that cannot answer raises; it never defaults.** No fallback to `main`, no
+"dispatch to whichever vendor we shipped first". `ConductorConfigError` names the field
+that overrides it. Both of those failures would otherwise surface twenty minutes later,
+wearing something else's clothes.
+
+Declaring and resolving are separate on purpose. `defineConductor` is a typed identity
+function returning plain data, so `conductor.config.ts` stays synchronous and importable
+anywhere — an editor, a test, a machine with no git and no token. `resolveConductor` is the
+async half that touches the environment, and it runs inside conductor's own process where a
+failure has somewhere to be reported.
+
+```ts
+import { resolveConductor } from "@flow-state-dev/conductor";
+
+const config = await resolveConductor(declared, { cwd });
+config.origins; // { repoRoot: "discovered", repo: "discovered", … }
+```
+
+`origins` answers the first question a project asks — *what did it decide, and did I decide
+any of it?* — and is what a board renders.
+
+Fields do exist for the cases inference genuinely cannot cover: `repo` for a fork whose PRs
+belong upstream, `remote` for a checkout with several, `repoRoot` for one conductor driving a
+repo it is not inside, `dispatcher` to pin a vendor, and `guidance` for the documents
+conductor should read (the one field with no discovery behind it — which documents govern a
+project is the project's own statement).
+
+`examples/conductor-self-drive` is the whole thing end to end: a level-1 config, and a small
+piece of source for conductor to change.
+
 ## What conductor never does
 
 It never merges. Three human gates exist — the epic objective, each spec, and

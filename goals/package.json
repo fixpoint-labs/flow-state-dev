@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.4",
+    "@flow-state-dev/conductor": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/engine": "workspace:*",
     "@flow-state-dev/mcp": "workspace:*",

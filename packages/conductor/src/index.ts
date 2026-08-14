@@ -10,12 +10,14 @@
  * `docs/contributing/orchestration.md`. Conductor does not invent it. Conductor
  * **executes it in code instead of interpreting it in a prompt.**
  *
- * This entrypoint exports the entity model, the pure driver, and the dispatch
- * seam. The test scaffolding built on that seam — `fakeDispatcher` and the
- * `replay` harness — lives at `@flow-state-dev/conductor/testing` instead, so
- * it never lands in a consumer's bundle.
+ * This entrypoint exports the config surface, the entity model, the pure
+ * driver, and the dispatch seam. The test scaffolding built on that seam —
+ * `fakeDispatcher` and the `replay` harness — lives at
+ * `@flow-state-dev/conductor/testing` instead, so it never lands in a
+ * consumer's bundle.
  */
 
+export * from "./config";
 export * from "./dispatch";
 export * from "./driver";
 export * from "./model";

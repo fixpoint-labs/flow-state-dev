@@ -1,0 +1,20 @@
+{
+  "name": "@flow-state-dev/example-conductor-self-drive",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Example: a repo that puts itself under conductor's management with a level-1 conductor.config.ts, and a tiny operation registry for conductor to change.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "ops": "tsx src/cli.ts --list",
+    "verify": "tsx src/cli.ts --verify"
+  },
+  "dependencies": {
+    "@flow-state-dev/conductor": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

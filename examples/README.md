@@ -7,6 +7,7 @@ One exception: a lab that finishes its incubation can be preserved here as a **f
 | Directory | Purpose |
 |-----------|---------|
 | `hello-chat/` | Minimal chat flow — generator + handler + sequencer in ~50 lines. The best starting point. |
+| `conductor-self-drive/` | What configuring conductor looks like: a level-1 `conductor.config.ts` (one call, everything discovered) and a tiny operation registry for conductor to change. |
 | `knowledge-base/` | A complete personal knowledge wiki: OKF import/export, a concept-CRUD capability, and a secured MCP server. Frozen reference app — grew up in [`labs/`](../labs/), preserved here as a standalone example. Its successor is [`labs/knowledge-hub`](../labs/knowledge-hub). |
 
 The trading desk moved to [`labs/trading-desk`](../labs/trading-desk) once it grew past a single-concept snippet into a real research app. The knowledge base made the reverse trip: it finished incubating in `labs/` and landed here as a frozen reference.
