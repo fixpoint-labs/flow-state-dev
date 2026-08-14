@@ -46,26 +46,20 @@ Read orientation docs to understand current phase and priorities:
 **Before cleaning anything, account for the last plan.** Step 2b deletes the evidence, so
 this runs first.
 
-**Read the cohort from `replanned_on`, never from what's on disk** — todos are deliberately
-preserved (Step 2b), so a todo carried five days would count as a fresh commitment every day.
+**The cohort is `agents/todos/.last-plan.json`** — the manifest Step 4 writes:
+`{ ranAt, selected: [<linear-id>, ...] }`. Never infer it from what's on disk: todos are
+deliberately preserved (Step 2b), so a carried todo would read as a fresh commitment every day.
+A run that selects nothing writes `selected: []`, which is a real answer. **No manifest yet**
+(first run after this change): say so and skip the Account.
 
-- **`planned_on`** — when first planned. Set once, never rewritten.
-- **`replanned_on`** — ISO **timestamp** of the most recent run that selected it.
-
-**The cohort is every todo sharing the newest `replanned_on` older than this run** — not
-"yesterday's date", which merges two same-day runs and misreads a zero-task run. A todo with no
-`replanned_on` predates this: stamp it, leave `planned_on` absent, and report its age as
-unknown rather than backfilling a date and computing from it.
-
-For each todo in that cohort, report one line: **landed** (merged), **in flight** (PR
+For each ID in `selected`, report one line: **landed** (merged), **in flight** (PR
 open), or **didn't start** — and for anything that didn't land, the one-line reason
 (blocked, deprioritized, harder than scoped, never picked up).
 
-**Call out the carried ones by age.** `planned_on` makes the most useful signal here
-visible for the first time: a todo planned five days running and never started is not a
-task, it is a decision nobody is making. Report those as *carried Nd* and say what should
-happen to them — and where `planned_on` is absent, *carried, age unknown*. Never compute an
-age from a date you backfilled; an invented `Nd` reads exactly like a measured one.
+**Call out the carried ones by age**, from each todo's `planned_on`: planned five days
+running and never started is a decision nobody is making, not a task. Report `carried Nd` — or
+*carried, age unknown* where `planned_on` is absent. Never compute an age from a date you
+backfilled.
 
 **Why this is first and not optional.** A plan with no account is unfalsifiable: a task
 that was wrong to plan yesterday looks identical to one that was right, so the same
@@ -119,13 +113,11 @@ signal**, and it is one you can only see if the eight are all still listed.
 
 For each selected task, create a todo file in `agents/todos/`.
 
-**Every selected task gets `replanned_on` stamped with this run's timestamp — including the
-ones you don't regenerate.** A task preserved from an earlier run (Step 2b) is skipped for *content*,
-not for this: open it and update the one field. That stamp is the only record that **this**
-plan selected it, and it is what tomorrow's Account (Step 2) reads to identify its cohort.
-Skip it and the two dates never get written at all — new todos enter the next run as legacy
-records with no `planned_on`, carried ones never show they were re-selected, and the Account
-falls back to exactly the guesswork these fields exist to remove.
+**Write `agents/todos/.last-plan.json` before you finish** — `{ ranAt, selected }` with every
+ID this run selected, preserved ones included, and `[]` when nothing was. That manifest is the
+only record of what this plan committed to, and tomorrow's Account reads nothing else. Set
+`planned_on` when you *create* a todo; never rewrite it, and never stamp a file you didn't
+select.
 
 **File naming:** `{linear-id}-{priority}-{kebab-description}.md`
 Example: `FSD-142-p2-fix-sse-resume-token.md`
@@ -142,7 +134,6 @@ tags: [server, streaming]
 blocked_by: []             # or ["FSD-140"] / ["PR #87"]
 estimated_scope: small     # small | medium | large
 planned_on: 2026-08-14T09:12:00Z    # first planned. Set once, NEVER rewritten
-replanned_on: 2026-08-14T09:12:00Z  # this run. Rewritten by every run that selects it
 ---
 
 # Fix SSE resume token not persisting across reconnections

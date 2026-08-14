@@ -11,7 +11,7 @@ serves and how much of the gap it closes.
 
 | | |
 |---|---|
-| **Winning when** | Every Phase 1 subsystem is exercised end to end by a goal check driving the real path from a real app, and Wave 1.n (cross-package validation) is closed |
+| **Winning when** | `goal:all` is green across the whole defined corpus, and Wave 1.n (cross-package validation) is closed |
 | **Lead measure** | **Goals passing over goals *defined*** — read off one `pnpm goal:all` run. Not packages shipped, not waves closed |
 | **Now** | Waves 1.a–1.m complete · 1.n open · **34 defined, 33 with a runner** · passing `<RUN goal:all ONCE TO SET>` |
 | **Kill line** | If real usage shows the four block kinds don't compose into the workflows apps actually need, Phase 1 isn't unfinished — it's mis-shaped, and what changes is the composition model, not the remaining wave list |
@@ -20,10 +20,11 @@ serves and how much of the gap it closes.
 > `pnpm goal:all` run to establish honestly. Both are left visible rather than guessed — a
 > fabricated finish line is worse than an absent one, because it reads as agreed.
 
-**The lead measure is derivable from one `goal:all` run, and that is the point.** An earlier
-draft counted *"Phase 1 subsystems covered"*, which sounds better and cannot be computed: no
-subsystem inventory exists, and nothing maps 34 capability-shaped goal files onto one. A
-measure whose denominator has to be invented gets invented differently every time it is read.
+**Both lines are the goal corpus, deliberately.** An earlier draft said *"every Phase 1
+subsystem covered"* — unmeasurable, since no subsystem inventory exists and nothing maps 34
+capability-shaped goal files onto one, and a denominator that has to be invented gets invented
+differently every time it's read. The corpus is what we chose to define, so the finish line
+moves when we add a goal; that is the honest trade for a condition someone can evaluate.
 
 **Read the denominator carefully — it is not the ratio the tool prints.** `goal:all` reports
 `X/Y passed` over the goals that **have a runner**, and lists any `goal.md` with no `run.mts`
