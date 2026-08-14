@@ -29,10 +29,10 @@ runs rather than code that merely looks right.
   stated feature goal and nothing else, produces a flow that passes `fsdev run`. A single
   observation, stated as such, not a metric.
 
-**Holistic necessity.** Three issues, and the honest question is whether it is two. FIX-1159
-(`fsdev init`) is the substance — it is the only thing that reaches an existing project, and
-both other issues are built on it. FIX-1160 (the authoring pack) carries the objective's
-second clause; cutting it cuts the objective in half, so it stays. **FIX-548
+**Holistic necessity.** Three issues of substance, and the honest question is whether it is
+two. FIX-1159 (`fsdev init`) is the substance — it is the only thing that reaches an existing
+project, and both other issues are built on it. FIX-1160 (the authoring pack) carries the
+objective's second clause; cutting it cuts the objective in half, so it stays. **FIX-548
 (`create-fsd-app`) is the weakest of the three**: `npx create-next-app && npx
 @flow-state-dev/cli init` already reaches the outcome in two commands, and a starter mostly
 saves one — one command *and* the scoped package name a stranger would otherwise have to
@@ -40,6 +40,13 @@ know. **Kept, scoped
 down** to a thin wrapper — bare app, then init, then one demo flow, with no scaffolding logic
 of its own. If it grows template logic that `fsdev init` does not have, that is the signal it
 should have been dropped.
+
+**FIX-1162 (npm name registration) is a fourth issue but not a fourth workstream.** npm short
+names are first-come and unrecoverable, and the objective promises *a single command* — which
+needs a name we own. It serves FIX-1159's headline command as much as FIX-548's, so it
+survives even if FIX-548 is cut. **It sharpens the question above rather than answering it:**
+if FIX-1162 secures the short name, FIX-548 no longer saves a stranger the scoped package
+name, and only the saved command is left — the weaker half of the case for keeping it.
 
 **Not doing.**
 
@@ -64,6 +71,8 @@ call.
    `create-fsd-app` is a thin wrapper over it: bare app, then init, then one demo flow. No
    scaffolding logic exists in two places. **This is why FIX-1159 lands before FIX-548** —
    they can be specced in parallel, but the wrapper cannot merge before the thing it wraps.
+   **FIX-1162 gates FIX-548 one level earlier still**: a spec cannot commit to a headline
+   command under a package name we have not registered.
 
 2. **Two templates, and only two: a Next.js chat app and a framework-neutral Node API.** The
    accepted cost is two starters to keep green on machines we do not control, which is why
@@ -74,36 +83,50 @@ call.
    agent-instructions file written into the consumer's project by init (works with any coding
    assistant), plus an installable Claude Code plugin carrying the deeper authoring skills.
    `packages/mcp` points outward — it exposes flows so other people's agents can call them —
-   and is not an authoring aid; nothing in this epic changes that direction.
+   and is not an authoring aid; nothing in this epic changes that direction. **The plugin
+   ships install-by-URL only at launch — no public directory listing** (§5 Q2, decided), which
+   narrows FIX-1160's distribution channel and nothing else about it. **And the epic writes
+   *Claude skills* / *the Claude plugin* wherever the packaged kind could be read as FSD's own
+   runtime `skills`, which keeps the bare word** (§5 Q3, decided).
 
 4. **Nothing this epic produces reads from our monorepo at runtime.** A constraint the
    objective imposes, not a new call, and it binds two issues at once: a template cannot carry
    `workspace:*` dependencies or a build script that reaches the repo root (which is why
    `apps/kitchen-sink` is not a template), and the five build-with skills in `agents/skills/`
-   all hardcode monorepo paths today, so FIX-1160 packages rewritten skills rather than
-   copying those.
+   all hardcode monorepo paths today, so FIX-1160 packages rewritten **Claude skills** rather
+   than copying those.
 
 5. **DevTool and CLI discovery is not its own workstream — it is folded into FIX-1159.**
    `@flow-state-dev/devtool` is an **optional peer** of `@flow-state-dev/cli`, satisfied
    inside this monorepo by a dev dependency and by nothing at all in a consumer's project —
    so outside our repo `fsdev dev` cannot resolve its assets and fails. The gap is therefore
    two things, not one: init has to make the DevTool **resolvable** as well as **known**.
-   Both are FIX-1159's, and neither is a fourth issue. **There is one next-steps block,
+   Both are FIX-1159's, and neither becomes an issue of its own. **There is one next-steps block,
    authored in FIX-1159 and reused verbatim by FIX-548** — a second copy is how the two entry
    paths start telling people different things. **A next-steps block must not print a command
    the project cannot run**, which is what ties the two halves together.
 
-6. **`fsdev init` is additive, and `AGENTS.md` is an in-place edit like the others.** Init
-   edits exactly four things in place and nothing else: `package.json` (dependencies and a
-   script), `.gitignore` (FSD's ignore entries), `.env.local` (an appended key), and
-   `AGENTS.md` (an appended, delimited FSD section — the filename decided in §5 Q1). What goes
-   *into* each is FIX-1159's to settle; this theme fixes the boundary and the guarantee:
-   **all four are append-only — init never overwrites a file it did not write, and never
-   rewrites content it did not author.** That is what makes taking the shared `AGENTS.md`
-   filename safe, and it is what makes FIX-1159's goal check (a route that existed before init
-   still responds) a check on the whole design rather than one code path. **The output states
-   what happened to each of the four**; a "nothing else was touched" line printed in a repo
-   where init just appended to a tracked `AGENTS.md` is the failure this theme prevents.
+6. **`fsdev init` is additive, and its boundary is the four files it authors plus the lockfile
+   its install rewrites.** Init edits exactly four things in place and nothing else:
+   `package.json` (dependencies and a script), `.gitignore` (FSD's ignore entries),
+   `.env.local` (an appended key), and `AGENTS.md` (an appended, delimited FSD section — the
+   filename decided in §5 Q1). What goes *into* each is FIX-1159's to settle; this theme fixes
+   the boundary and the guarantee: **all four are append-only — init never overwrites a file
+   it did not write, and never rewrites content it did not author.** That is what makes taking
+   the shared `AGENTS.md` filename safe, and it is what makes FIX-1159's goal check (a route
+   that existed before init still responds) a check on the whole design rather than one code
+   path.
+
+   **A fifth file moves, and init does not author it: the lockfile.** Declaring dependencies
+   is not the same as making them available — until an install runs, `fsdev` is not on the
+   project's path and the next-steps block prints commands the project cannot run, which theme
+   5 forbids. So init installs, the project's own package manager rewrites the lockfile, and
+   that edit is **delegated rather than append-only**. Two things follow, and both bind: init
+   runs the install **through the detected package manager** rather than writing a lockfile
+   itself, and **the output names the lockfile alongside the four** — a repo with a
+   frozen-lockfile CI job needs to see it coming. **The output states what happened to each of
+   the five**; a "nothing else was touched" line printed in a repo where init just appended to
+   a tracked `AGENTS.md` and rewrote `pnpm-lock.yaml` is the failure this theme prevents.
 
 7. **No separate docs issue.** End-user functionality is documented in the change set that
    ships it. The docs-site work named in §1's *Not doing* stays outside this epic.
@@ -192,6 +215,7 @@ my-api/
 ~   package.json     deps +@flow-state-dev/{core,engine,next,react,cli} · scripts +"fsdev"
 ~   .gitignore       +FSD ignore entries
 ~   .env.local       +OPENAI_API_KEY=   (created if absent, appended if present)
+~   pnpm-lock.yaml   rewritten by your package manager when init installs (theme 6)
     app/api/billing/route.ts        untouched
     app/page.tsx                    untouched
     next.config.ts                  untouched
@@ -208,6 +232,7 @@ my-api/
 ~   package.json                    deps +@flow-state-dev/{core,engine,node,cli}
 ~   .gitignore                      +FSD ignore entries
 ~   .env.local                      +OPENAI_API_KEY=
+~   package-lock.json               rewritten by your package manager when init installs (theme 6)
     src/index.ts                    untouched — init does not edit an entrypoint it did not write
                                     (theme 8: so FSD arrives here as a second process)
 ```
@@ -278,8 +303,9 @@ $ npx @flow-state-dev/cli init
   Modified  package.json   (+6 dependencies, +1 script)
             .gitignore     (FSD ignore entries)
             AGENTS.md      (appended an FSD section — your existing content is unchanged)
+  Installed via pnpm — pnpm-lock.yaml was rewritten by pnpm, not by init
 
-  Nothing was overwritten. Every file above was created or appended to.
+  Nothing was overwritten. Every file init wrote was created or appended to.
 
   Next steps
 
@@ -296,17 +322,18 @@ $ npx @flow-state-dev/cli init
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
 | FIX-1159 | `fsdev init` — wire FSD into an existing project (incl. the next-steps block and DevTool discovery) | spec | — | — | Backlog |
+| FIX-1162 | Register the npm names the launch needs — the short CLI entry name and the `create-fsd-app` scaffolding name | spec | — | — | Backlog |
 | FIX-548 | `create-fsd-app` — npx-able scaffolding, a thin wrapper over init, two templates | spec | — | — | Todo |
-| FIX-1160 | Consumer authoring pack — agent-instructions file + Claude Code plugin | spec | — | — | Backlog |
+| FIX-1160 | Consumer authoring pack — agent-instructions file + Claude plugin, install-by-URL at launch | spec | — | — | Backlog |
 
-All three are Feature-labelled, so all three take the spec route and each carries its own
-spec-approval gate. FIX-1159 lands before FIX-548 (theme 1).
+All four are Feature-labelled, so all four take the spec route and each carries its own
+spec-approval gate. FIX-1159 lands before FIX-548, and FIX-1162 gates FIX-548's headline
+command (theme 1).
 
 ## 5. Open cross-cutting questions
 
-Q1 is **decided** and stays here with its answer, so no issue reopens it. Q2 still needs the
-product owner's call and blocks nothing: every issue can be specced against the recommendation
-and folds if the answer differs.
+All three questions are **decided** and stay here with their answers, so no issue reopens
+them. Nothing on this list blocks anything.
 
 ### ~~Q1 — What filename does init write the agent instructions to, and what happens when one is already there?~~ — decided: `AGENTS.md`
 
@@ -343,7 +370,7 @@ the other three; this entry is the record of why. **Closed — not reopenable by
 sub-issue that finds the append mechanics hard is looking at an implementation problem in
 FIX-1159, not at this decision.
 
-### Q2 — Is the Claude Code plugin publicly listed at launch, or install-by-URL only?
+### ~~Q2 — Is the Claude Code plugin publicly listed at launch, or install-by-URL only?~~ — decided: install-by-URL only
 
 *Raised by the epic-spec against the verified state: there is no packaging or publishing path
 for skills today — no `.claude-plugin/`, no marketplace manifest. It sets FIX-1160's scope and
@@ -370,7 +397,27 @@ a channel, that is a business fact I do not have and it inverts this.
 — fully recoverable. Wrong on listing, and we own a public entry we may not be ready to keep
 green during the noisiest period we will have.
 
-**Resolution:** *(open)*
+**Resolution — install-by-URL only at launch.** Decided by the product owner, on reasoning
+that goes past the recommendation above: a public listing is a **support commitment in the
+week we can least afford one**, and the asymmetry is what settles it — a listing is trivially
+added afterwards, while delisting later reads as abandonment. No public directory listing
+during the launch window. **FIX-1160 is scoped accordingly — the plugin still ships; only its
+distribution channel is narrowed.** Carried by theme 3. **Closed — not reopenable by an
+issue.**
+
+### ~~Q3 — FSD ships a runtime concept called `skills`, and FIX-1160 ships Claude `skills`. Rename ours, rename theirs, or ship the collision?~~ — decided: no rename, qualify instead
+
+*Raised by the epic-spec: the two words would sit on adjacent public docs pages, and FIX-417 /
+FIX-424 own the existing one. It touches naming across the set, so it is not FIX-1160's alone.*
+
+**Resolution — no rename, and the premise that the two are unrelated is rejected.** Both are
+the same *kind* of thing — a packaged capability an agent loads — at different layers, so the
+shared word is coherent rather than colliding, and this is not the incoherence case it was
+raised as. The resolution is **qualification, not renaming**: write *Claude skills* or *the
+Claude plugin* wherever ambiguity is genuinely possible, and let FSD's runtime concept keep
+the bare name `skills`. **FIX-417 and FIX-424 are unaffected and must not be touched.**
+FIX-1160's prose follows the qualification convention, and so does this document (themes 3
+and 4). Carried by theme 3. **Closed — not reopenable by an issue.**
 
 ---
 
@@ -394,3 +441,15 @@ green during the noisiest period we will have.
   unowned across FIX-1159 and FIX-548. Corrected theme 5's premise: `@flow-state-dev/devtool`
   is an *optional peer* of the CLI, so outside this monorepo `fsdev dev` cannot resolve its
   assets — DevTool discovery is not purely a "nobody is told it exists" gap.
+- **Q2 answered — install-by-URL only** — theme 3 now carries the plugin's distribution
+  channel, because FIX-1160's scope turns on it and a decision living only in §5 is one a
+  child issue reads too late.
+- **Q3 answered — no rename, qualify instead** — themes 3 and 4 now write *Claude skills*
+  where this doc means the packaged kind, because a convention the epic asks FIX-1160 to
+  follow has to hold in the epic's own prose first.
+- **After epic review (round 2)** — theme 6's boundary widened to name the lockfile: init has
+  to install for the next-steps block to be runnable at all (theme 5), an install rewrites a
+  file init does not author, and a four-file guarantee that omits it is a promise init breaks
+  on its first run. §3's two diffs and the existing-Next.js transcript are corrected to match.
+  FIX-1162 added to the running index — it was parented under the epic after the `npx fsdev`
+  naming correction and had no row; §1 and theme 1 now say what it gates.
