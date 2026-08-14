@@ -28,24 +28,37 @@ refresh §4, refresh the index's **Goal check** column first — one cell per is
 count the scoreboard's Lead line *from that column*. The count is auditable that way rather
 than asserted, and it cannot drift from the rows under it.
 
-**Read each cell from the goal's verdict log, not from the PR.** The authoritative record of
-a goal check is the **Verdict log table in `goals/<describe>/<it>/goal.md`** — one row per
-run, appended, which is exactly what makes a goal a regression record
-([`goals/README.md`](../../goals/README.md)). A PR thread may or may not narrate that a check
-ran; the log is where it is *recorded*. Derive the cell from a PR and every goal that ran
-without being mentioned on its PR reads as unrun, which silently under-counts the Lead line.
-Where a `run.mts` exists with no verdict row, the check has not been run — that is a real
-`—`, not a missing record.
+**Where the verdict lives depends on the issue's route, and there are two homes.** Read the
+right one or the row is wrong:
+
+| Route | Home of the verdict | Why |
+|---|---|---|
+| **spec** (feature/enhancement) | The **Verdict log table** in `goals/<describe>/<it>/goal.md` | Appended, one row per run — this is what makes a goal a regression record ([`goals/README.md`](../../goals/README.md)) |
+| **direct** (bug) | **diagnose's real-path confirmation**, recorded on the impl PR and in the Linear doc | A bug's goal proof is re-running the original repro through the real path; `issue-implement` requires it and files it there. **Most bugs have no `goals/` entry at all**, so looking for one finds nothing and the row would sit at `—` forever, permanently depressing the count |
+
+**Never derive a spec-route cell from PR narration.** A PR thread may or may not mention that
+a check ran; the log is where it is *recorded*. Where a `run.mts` exists with no verdict row,
+the check genuinely has not been run — a real `—`, not a missing record.
+
+**Pick the verdict row for the commit being scored — not the last one appended.** The log is a
+**regression record spanning multiple commits**, and a well-written goal deliberately appends a
+pre-fix baseline `FAIL` *after* its `PASS` to prove the check isn't vacuous (`goals/README.md`
+→ Anti-game; `goals/task-board/contains-a-worker-outcome-that-lands-on-a-settled-task/goal.md`
+is a live example: `fix/FIX-951` PASS, then `origin/main` FAIL (expected)). Append order would
+score that goal — one of the best-documented in the repo — as a failure. So match the row whose
+**Commit** is the issue's branch or merged head, and **ignore baseline and diagnostic rows**
+(any row run against `main`/pre-fix, usually marked *(expected)*). No row matches this
+implementation → the check has not been run *for this work*: `—`.
 
 **Five cell states, and collapsing any two corrupts the measure:**
 
 | Cell | Means | Why it is its own state |
 |---|---|---|
-| **pass** | latest verdict row is `PASS` | — |
-| **fail** | latest verdict row is `FAIL` | — |
-| **`—`** | no verdict row yet | An unrun check is **not** a failure |
+| **pass** | the row for this commit is `PASS` — or, for a **bug**, diagnose's real-path confirmation is recorded | Counts toward the numerator either way; the two routes prove the same thing by different means |
+| **fail** | the row for this commit is `FAIL` | — |
+| **`—`** | no verdict for this commit yet | An unrun check is **not** a failure |
 | **blocked** | the run couldn't complete for environmental reasons — no working inference credential ([`goals/README.md`](../../goals/README.md) → Credentials) | Tells you about the environment, not the product. Counted as a fail it says the epic is losing when it isn't; counted as `—` it hides an infra problem that will not fix itself |
-| **n/a** | **no goal check applies** — a docs, refactor, config or process issue with no user-visible behaviour to prove | **Excluded from the denominator** |
+| **n/a** | **no goal check applies** — docs, refactor or config work with no observable outcome, or a bug that was a pure type/unit regression (`issue-implement` records *"N/A — type/unit-only"*) | **Excluded from the denominator** |
 
 **The denominator is the issues a goal check applies to, not the size of the set.** Without
 the `n/a` exclusion, one docs issue makes the Lead line permanently unreachable: that row can

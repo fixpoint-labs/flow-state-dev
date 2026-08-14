@@ -119,7 +119,15 @@ signal**, and it is one you can only see if the eight are all still listed.
 
 ### Step 4: Generate Todo Files
 
-For each selected task, create a todo file in `agents/todos/`. Skip tasks that already have a valid, up-to-date todo file (preserved in Step 2b).
+For each selected task, create a todo file in `agents/todos/`.
+
+**Every selected task gets `replanned_on` stamped with today's date — including the ones you
+don't regenerate.** A task preserved from an earlier run (Step 2b) is skipped for *content*,
+not for this: open it and update the one field. That stamp is the only record that **this**
+plan selected it, and it is what tomorrow's Account (Step 2) reads to identify its cohort.
+Skip it and the two dates never get written at all — new todos enter the next run as legacy
+records with no `planned_on`, carried ones never show they were re-selected, and the Account
+falls back to exactly the guesswork these fields exist to remove.
 
 **File naming:** `{linear-id}-{priority}-{kebab-description}.md`
 Example: `FSD-142-p2-fix-sse-resume-token.md`
@@ -133,8 +141,10 @@ linear_url: "https://linear.app/..."
 status: ready
 priority: p2
 tags: [server, streaming]
-blocked_by: []           # or ["FSD-140"] / ["PR #87"]
-estimated_scope: small   # small | medium | large
+blocked_by: []             # or ["FSD-140"] / ["PR #87"]
+estimated_scope: small     # small | medium | large
+planned_on: 2026-08-14     # first planned. Set once, NEVER rewritten
+replanned_on: 2026-08-14   # this run's date. Rewritten every run that selects it
 ---
 
 # Fix SSE resume token not persisting across reconnections

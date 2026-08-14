@@ -583,34 +583,38 @@ worked example) — read those; below is only the coordinator's *operating proce
 The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md`, worktree, no
 `AskUserQuestion`) writes:
 
-- **Discover, then create.** An issue's epic is its **parent** — have `scout` check the set
-  in one pass and return `{ epicIssueId, consistent }`. If they all share the same
-  **`Epic`-labelled (Kind group)** parent, reuse it. If the set is **mixed** (some under an
-  epic, some not) or carries **two different epic parents**, don't guess — surface it to the
-  user before creating a second epic. Otherwise dispatch `epic-agent` to stand one up: it
-  creates the **Epic issue**
-  (`Epic` Kind label), **re-parents the set's issues as sub-issues**, writes the epic-spec
-  (`epic/<name>` branch + never-merged epic PR + the spec attached as the Epic issue's Linear
-  document), and returns the handles. The coordinator holds only handles (epic issue ID, name,
-  branch, epic PR#), never the spec text.
-- **Then check the cap — after discovery, and only when this epic is genuinely new.** At most
-  **two** epics run at once; the rule, its reasoning and its cost are in
+**Discovery, the cap, and creation are three steps in that order.** They used to be two, and
+the collapse is a trap: "discover, *then create*" dispatches the `epic-agent` in its own
+`otherwise` branch, so a cap checked after it fires only once the third epic already exists —
+Linear issue created, issues destructively re-parented, PR opened — and the question *"should
+this queue?"* arrives too late to mean anything.
+
+- **1 — Discover only.** An issue's epic is its **parent** — have `scout` check the set in one
+  pass and return `{ epicIssueId, consistent }`. If they all share the same **`Epic`-labelled
+  (Kind group)** parent, **reuse it: skip step 2 entirely and go to step 3's dispatch**. If the
+  set is **mixed** (some under an epic, some not) or carries **two different epic parents**,
+  don't guess — surface it to the user. **Dispatch nothing here**, whatever discovery returns.
+- **2 — Check the cap, but only when step 1 found no epic to reuse.** At most **two** epics run
+  at once; the rule, its reasoning and its cost are in
   [`orchestration.md`](../../../docs/contributing/orchestration.md) → "How many epics run at
   once". Two things decide whether it fires, and getting either wrong makes it fire on the
   common path:
-  1. **Resolve this epic first, then count the *others*.** Re-entering an existing epic is the
-     normal case across sessions, and a count taken before discovery includes the very epic
-     being resumed — so every resumption reads as a third objective and asks you to displace
-     work already in flight. Reused epic → the cap does not apply at all.
+  1. **Count the *others*, never this one.** Re-entering an existing epic is the normal case
+     across sessions; a count that includes the epic being resumed reads every resumption as a
+     third objective and asks you to displace work already in flight. Step 1 resolving to a
+     reused epic is what makes this step skippable.
   2. **Active means its epic PR is open**, not that a Linear `Epic` issue exists. Wrap closes
      the epic PR unmerged but moves no Linear state, so counting open `Epic`-labelled issues
      counts every epic ever run and the cap jams shut permanently. The PR's lifetime is defined
      as exactly the epic's, which is what makes it the honest signal.
 
   At two others active, this is a **question, not a refusal**: name them and ask which this
-  displaces, or whether it queues. Ask before the `epic-agent` *create* dispatch — an epic issue
-  and a never-merged PR stood up for work that then queues is the coordination artifact nobody
-  needs.
+  displaces, or whether it queues. Nothing is created until it is answered.
+- **3 — Create (or resume).** Dispatch `epic-agent` to stand the epic up: it creates the **Epic
+  issue** (`Epic` Kind label), **re-parents the set's issues as sub-issues**, writes the
+  epic-spec (`epic/<name>` branch + never-merged epic PR + the spec attached as the Epic issue's
+  Linear document), and returns the handles. The coordinator holds only handles (epic issue ID,
+  name, branch, epic PR#), never the spec text.
 - **Name which project objective this serves.** One line, in the dispatch to `epic-agent`, from
   [`docs/objectives.md`](../../../docs/objectives.md): which objective, and how much of its gap
   this closes. An epic serving none of them is worth surfacing *before* the gate — a product

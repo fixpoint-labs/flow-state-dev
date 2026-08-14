@@ -230,16 +230,19 @@ set from one place. **Keep it a table, not prose.**
 > Spec PR cell on a `bug` row is correct, not a gap.*
 >
 > *The **Goal check** column is what the scoreboard's Lead line counts — one cell per issue,
-> so the count is auditable rather than asserted. Read each cell from that goal's **verdict
-> log** in `goals/<describe>/<it>/goal.md`, never from PR narration: a check that ran without
-> being mentioned on its PR would otherwise read as unrun. Five states —* `pass` · `fail` ·
-> `—` *(not yet run)* · `blocked` *(no working inference credential) ·* `n/a` *(no goal check
-> applies — docs, refactor, config). `n/a` is **excluded from the denominator**, which is why
-> the five rows above count **1 / 4** and not 1 / 5; without that exclusion one docs issue
-> makes the target permanently unreachable. The other four states
-> must not be collapsed either: an unrun check is not a failure, and a blocked one is a fact
-> about the environment rather than the product.
-> [`epic-agent`](../../.agents/subagents/epic-agent.md) is canonical for how each is derived.*
+> so the count is auditable rather than asserted. Five states —* `pass` · `fail` · `—` *(not
+> yet run)* · `blocked` *(no working inference credential) ·* `n/a` *(no goal check applies).
+> `n/a` is **excluded from the denominator**, which is why the five rows above count **1 / 4**
+> and not 1 / 5; without that exclusion one docs issue makes the target permanently
+> unreachable. The other four must not be collapsed either: an unrun check is not a failure,
+> and a blocked one is a fact about the environment rather than the product.*
+>
+> *Two sourcing rules decide a cell, and both are easy to get wrong. A **spec**-route issue's
+> verdict lives in its goal's verdict log, while a **bug**'s is diagnose's real-path
+> confirmation on the impl PR — most bugs have no `goals/` entry at all. And the row to read is
+> the one matching **this** commit, never the last appended: a well-written goal deliberately
+> logs a pre-fix baseline `FAIL` after its `PASS` to prove the check isn't vacuous.
+> [`epic-agent`](../../.agents/subagents/epic-agent.md) is canonical for both.*
 
 ## 5. Open cross-cutting questions
 
