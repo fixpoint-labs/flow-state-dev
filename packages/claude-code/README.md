@@ -1,10 +1,11 @@
 # @flow-state-dev/claude-code
 
 Claude Code integration for flow-state-dev, with two entry points. The `/cli`
-entry dispatches a cloud coding task by shelling out to your local `claude` CLI
-(no Anthropic SDK dependency). The `/sdk` entry runs a Claude Code agent
-in-process and streams its work through the flow's item stream, backed by the
-optional `@anthropic-ai/claude-agent-sdk` peer dependency.
+entry shells out to your local `claude` CLI (no Anthropic SDK dependency), either
+dispatching a cloud coding task or running the agent locally and waiting for it.
+The `/sdk` entry runs a Claude Code agent in-process and streams its work through
+the flow's item stream, backed by the optional `@anthropic-ai/claude-agent-sdk`
+peer dependency.
 
 ## Installation
 
@@ -95,9 +96,42 @@ type ClaudeRemoteHandle = {
 A later request reads `ctx.session.state.claudeRemoteTasks` to reference prior
 dispatches.
 
+## Running the agent locally and waiting for it
+
+Cloud dispatch is one of two things the `claude` binary can do. The other is a
+headless local run: point the agent at a directory, block until it finishes, and
+read what it cost. That is `runClaudeHeadless` — a plain async function, not a
+block, so anything can call it, inside a flow or not.
+
+```ts
+import { runClaudeHeadless } from "@flow-state-dev/claude-code/cli";
+
+const run = await runClaudeHeadless({
+  prompt: "Fix the failing test in src/parser.ts.",
+  cwd: "/path/to/checkout",
+  permissionMode: "acceptEdits", // nothing can answer a prompt with no terminal
+  timeoutMs: 30 * 60 * 1000,
+});
+
+if (run.ok) console.log(run.finalMessage, run.costUsd, run.sessionId);
+else console.error(run.error);
+```
+
+It **settles rather than throws**. A missing binary, a timeout, a crash, and a
+non-zero exit all come back as `ok: false` with a reason — so if you keep a
+ledger or a retry budget off the return value, you never lose a record to an
+exception. `costUsd` is populated on failed runs too; the tokens were spent
+either way. Unreadable stdout on a clean exit is a success with no cost, not a
+failure: the envelope shape belongs to the CLI, and a parser that hard-failed on
+it would turn a cosmetic vendor change into a stalled caller.
+
+`--model` and `--permission-mode` are passed only when you set them, so the CLI's
+own defaults apply otherwise. `exec` takes the same `ClaudeCliExec` seam as the
+rest of this entry, so tests spawn nothing.
+
 ## Limitations
 
-- No headless polling/streaming of cloud-task progress (CLI limitation).
+- No headless polling/streaming of *cloud* task progress (CLI limitation).
 - Dispatches the current branch as pushed to GitHub; push local commits first.
 - The exact `claude --remote` stdout shape is undocumented; the parser is
   defensive and falls back to retaining raw output if it can't find a URL.

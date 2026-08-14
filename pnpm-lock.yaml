@@ -868,6 +868,9 @@ importers:
 
   packages/conductor:
     dependencies:
+      '@flow-state-dev/claude-code':
+        specifier: workspace:*
+        version: link:../claude-code
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core

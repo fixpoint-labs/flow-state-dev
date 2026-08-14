@@ -7,11 +7,8 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import {
-  claudeCodeDispatcher,
-  parseClaudeJson,
-  type CliExec,
-} from "../../src/dispatch/claude-code";
+import { type ClaudeCliExec } from "@flow-state-dev/claude-code/cli";
+import { claudeCodeDispatcher } from "../../src/dispatch/claude-code";
 import type { PhaseBrief } from "../../src/dispatch/types";
 
 const BRIEF: PhaseBrief = {
@@ -38,7 +35,7 @@ const success = (extra: Record<string, unknown> = {}) =>
     ...extra,
   });
 
-const execReturning = (stdout: string, code = 0, stderr = ""): CliExec =>
+const execReturning = (stdout: string, code = 0, stderr = ""): ClaudeCliExec =>
   vi.fn(async () => ({ stdout, stderr, code }));
 
 const at = () => new Date("2026-08-14T12:00:00Z");
@@ -129,7 +126,7 @@ describe("the claude-code dispatcher", () => {
   });
 
   it("settles as failed when the binary cannot be launched, instead of throwing past the ledger", async () => {
-    const exec: CliExec = async () => {
+    const exec: ClaudeCliExec = async () => {
       throw Object.assign(new Error("spawn claude ENOENT"), { code: "ENOENT" });
     };
     const result = await claudeCodeDispatcher({ exec, now: at }).run(BRIEF);
@@ -158,12 +155,3 @@ describe("the claude-code dispatcher", () => {
   });
 });
 
-describe("parsing the CLI envelope", () => {
-  it("finds the JSON object even behind leading chatter on stdout", () => {
-    expect(parseClaudeJson(`some banner\n${success()}\n`)?.session_id).toBe("sess-abc");
-  });
-
-  it("returns null rather than throwing when nothing parses", () => {
-    expect(parseClaudeJson("not json at all")).toBeNull();
-  });
-});

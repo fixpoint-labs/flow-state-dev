@@ -1,7 +1,17 @@
 /**
- * Public surface of `@flow-state-dev/claude-code/cli`: the `claude --remote`
- * dispatch block, its opt-in capability, the resolver seam, the stdout parser,
- * handle types, and typed errors.
+ * Public surface of `@flow-state-dev/claude-code/cli` — everything in this
+ * package that reaches Claude Code by shelling out to the `claude` binary. Two
+ * invocation modes live here:
+ *
+ * - **cloud dispatch** — `claude --remote`, fire-and-forget, wrapped as an FSD
+ *   block (`claudeRemoteDispatch`) with its capability, resolver seam, stdout
+ *   parser, handle types, and typed errors.
+ * - **headless local run** — `claude -p --output-format json`, blocking, cwd-
+ *   scoped, reporting cost (`runClaudeHeadless`). A plain function, not a block,
+ *   so a caller outside a flow can use it.
+ *
+ * Both go through the same `ClaudeCliExec` seam, so there is one spawn-and-
+ * capture implementation and one place that mocks.
  */
 export {
   claudeRemoteDispatch,
@@ -26,6 +36,13 @@ export {
 // `claude --remote` (it requires a TTY); pass `resolvePtyClaudeCli` to do so.
 export { scriptPtyClaudeCliExec, resolvePtyClaudeCli, stripAnsi } from "./pty-exec";
 export { parseRemoteDispatchOutput, type ParsedRemoteDispatch } from "./parse-output";
+export {
+  runClaudeHeadless,
+  parseClaudeJson,
+  type ClaudeHeadlessResult,
+  type RunClaudeHeadlessOptions,
+  type ClaudeJsonEnvelope,
+} from "./headless";
 export { claudeRemoteHandleSchema, type ClaudeRemoteHandle } from "./types";
 export { ClaudeCliNotFoundError, ClaudeRemoteDispatchError } from "./errors";
 

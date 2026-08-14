@@ -57,6 +57,7 @@
   },
   "sideEffects": false,
   "dependencies": {
+    "@flow-state-dev/claude-code": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "zod": "^3.24.1"
   },
