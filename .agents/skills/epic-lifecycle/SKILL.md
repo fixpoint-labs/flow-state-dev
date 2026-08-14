@@ -590,7 +590,8 @@ The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md
   return `{ epicIssueId, consistent }` **and whether that epic's PR is open**. Mixed parents, or
   two different ones: surface it, don't guess.
   - same parent, **PR open** → reuse: skip step 2, take step 3's **resume**
-  - same parent, **PR closed** (wrapped) → surface it; a new epic or a reopen is the user's call
+  - same parent, **PR closed** (wrapped) → surface it; a new epic or a reopen is the user's
+    call, and **either way go through step 2 first** — both leave an epic PR open
   - none → step 2
 - **2 — Cap (skip when step 1 found a reuse).** At most **two** epics active; count the
   **others**, and active means **epic PR open** (wrap moves no Linear state). At two: a

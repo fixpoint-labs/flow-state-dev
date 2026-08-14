@@ -114,9 +114,13 @@ signal**, and it is one you can only see if the eight are all still listed.
 For each selected task, create a todo file in `agents/todos/`.
 
 **Write `agents/todos/.last-plan.json` before you finish** — `{ ranAt, selected }` with every
-ID this run selected, preserved ones included, and `[]` when nothing was. That manifest is the
-only record of what this plan committed to, and tomorrow's Account reads nothing else. Set
-`planned_on` when you *create* a todo; never rewrite it, and never stamp a file you didn't
+ID this run **committed to**, preserved ones included, and `[]` when nothing was. It is the only
+record of what this plan promised, and tomorrow's Account reads nothing else.
+
+**Keep 🔴 rows out of `selected`.** Step 5 lists them for visibility and says they are *not*
+expected today, so counting them as commitments would have the Account report a miss by design.
+
+Set `planned_on` when you **create** a todo; never rewrite it, and never stamp a file you didn't
 select.
 
 **File naming:** `{linear-id}-{priority}-{kebab-description}.md`

@@ -98,9 +98,10 @@ visible. Say what the set is deliberately *not* doing.
 
 **Under [`epic-pm`](../../.agents/skills/epic-pm/SKILL.md) this section is stricter**: it
 carries that skill's five objective lines — Outcome · Proof · Lead measure · Not doing ·
-Kill line — and the objective gate is refused without them. `epic-pm` is canonical for what
-each line owes; don't restate them here. The Outcome and Lead measure are what the epic
-**report** leads with each turn.
+Kill line — and the objective gate is refused without them. **The example below shows all
+five**; a non-`epic-pm` epic needs only the objective and the necessity check. `epic-pm` is
+canonical for what each line owes, and the Outcome and Lead measure are what the epic **report**
+leads with each turn.
 
 > **Objective.** Make a dropped connection a non-event for an app built on FSD.
 > Today, every network blip is visible to the end user as duplicated output and
@@ -115,6 +116,12 @@ each line owes; don't restate them here. The Outcome and Lead measure are what t
 > their own, and shipping a default mostly saves a config line. **Kept, scoped
 > down** to a default with no new options — if it grows a knob during
 > implementation, that's the signal it should have been dropped.
+>
+> **Proof.** FIX-775's goal check: a client that drops mid-stream reattaches and the
+> transcript has no gap and no duplicate.
+> **Lead measure.** The set's goal-proven issues, named each report.
+> **Kill line.** If reconnects turn out to be rare enough that apps don't notice them, this
+> is polish and the epic should not finish.
 >
 > **Not doing:** offline queueing, or any *new* durable history — serving a
 > response to a client that was never attached, or retaining anything past the
