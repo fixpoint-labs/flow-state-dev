@@ -590,10 +590,22 @@ Linear issue created, issues destructively re-parented, PR opened — and the qu
 this queue?"* arrives too late to mean anything.
 
 - **1 — Discover only.** An issue's epic is its **parent** — have `scout` check the set in one
-  pass and return `{ epicIssueId, consistent }`. If they all share the same **`Epic`-labelled
-  (Kind group)** parent, **reuse it: skip step 2 and take step 3's *resume* branch**. If the
-  set is **mixed** (some under an epic, some not) or carries **two different epic parents**,
-  don't guess — surface it to the user. **Dispatch nothing here**, whatever discovery returns.
+  pass and return `{ epicIssueId, consistent }`, **plus whether that epic's PR is still open.**
+  If the set is **mixed** (some under an epic, some not) or carries **two different epic
+  parents**, don't guess — surface it to the user. **Dispatch nothing here**, whatever
+  discovery returns.
+
+  **A shared parent is only reusable while its epic PR is open**, and asking for the parent
+  alone is not enough. Wrap closes that PR but leaves every issue parented, so a finished epic
+  keeps looking reusable forever — and the two definitions then disagree: this step would take
+  the resume branch while step 2 correctly counts the epic as inactive and step 3's resume has
+  no open PR to recover.
+
+  | Parent found | Its epic PR | Do |
+  |---|---|---|
+  | same for all | **open** | **Reuse** — skip step 2, take step 3's *resume* branch |
+  | same for all | **closed (wrapped)** | **Surface it.** The coordination for that epic is finished; revisiting work under it is either a new epic or a deliberate reopen, and both are the user's call. Don't silently resume a wrapped epic, and don't silently start a second one over its children |
+  | none | — | Continue to step 2 |
 - **2 — Check the cap, but only when step 1 found no epic to reuse.** At most **two** epics run
   at once; the rule, its reasoning and its cost are in
   [`orchestration.md`](../../../docs/contributing/orchestration.md) → "How many epics run at

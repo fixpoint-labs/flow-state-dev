@@ -11,15 +11,25 @@ serves and how much of the gap it closes.
 
 | | |
 |---|---|
-| **Winning when** | Every Phase 1 subsystem is exercised end to end by a real-model goal check from a real app, and Wave 1.n (cross-package validation) is closed |
-| **Lead measure** | Subsystems carrying a passing real-model goal check — not packages shipped, not waves closed |
-| **Now** | Waves 1.a–1.m complete · 1.n open · goal-check coverage `<COUNT ON FIRST READ>` |
+| **Winning when** | Every Phase 1 subsystem is exercised end to end by a goal check driving the real path from a real app, and Wave 1.n (cross-package validation) is closed |
+| **Lead measure** | **`pnpm goal:all` — goals passing over goals defined.** Not packages shipped, not waves closed |
+| **Now** | Waves 1.a–1.m complete · 1.n open · 34 goals defined, passing count `<RUN goal:all ONCE TO SET>` |
 | **Kill line** | If real usage shows the four block kinds don't compose into the workflows apps actually need, Phase 1 isn't unfinished — it's mis-shaped, and what changes is the composition model, not the remaining wave list |
 
-> **Two blanks are yours, not mine.** The date is a business call, and the coverage count
-> needs one pass over the goal checks to establish honestly. Both are left visible rather
-> than guessed — a fabricated finish line is worse than an absent one, because it reads as
-> agreed.
+> **Two blanks are yours, not mine.** The date is a business call; the passing count needs one
+> `pnpm goal:all` run to establish honestly. Both are left visible rather than guessed — a
+> fabricated finish line is worse than an absent one, because it reads as agreed.
+
+**The lead measure is what `goal:all` already prints, and that is the point.** An earlier
+draft counted *"Phase 1 subsystems covered"*, which sounds better and cannot be computed: no
+subsystem inventory exists, and nothing maps 34 capability-shaped goal files onto one. A
+measure whose denominator has to be invented gets invented differently every time it is read.
+
+**Its honest limitation, stated so nobody has to discover it:** this counts the goals we have
+*written*, so it moves when we write a goal as well as when one passes, and a subsystem with
+no goal at all is invisible to it. Read it next to "is new work arriving with goal checks?"
+— which is exactly the method-not-number discipline `distill-lessons` applies to the
+cycle-ledger.
 
 **Why a lead measure and not just the finish line.** *Winning when* is a lag measure: we
 learn it at the end, too late to change it. The lead measure is the running read that
