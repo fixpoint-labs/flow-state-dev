@@ -148,7 +148,7 @@ export interface SkillsBindingConfig {
    * whenever an upstream matcher (which runs before the generator) writes it.
    */
   activeState?: {
-    scope: "request" | "session" | "user" | "org";
+    scope: "request" | "session" | "user";
     field: string;
   };
   /**
@@ -232,7 +232,7 @@ const bindingConfigSchema = z
     allowed: z.array(z.string()).optional(),
     activeState: z
       .object({
-        scope: z.enum(["request", "session", "user", "org"]),
+        scope: z.enum(["request", "session", "user"]),
         field: z.string().min(1),
       })
       .strict()

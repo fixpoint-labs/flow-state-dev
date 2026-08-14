@@ -12,7 +12,7 @@
  *     the generator's state via `ctx.parent`. Request-scoped, so nothing
  *     carries into the next turn, and it never leaves that generator.
  *   - **Explicit `activeState: { scope, field }`.** A named field at a chosen
- *     durable scope (`session` / `user` / `org`) or `request`. The author owns
+ *     durable scope (`session` / `user`) or `request`. The author owns
  *     lifetime and cross-generator sharing by choosing the scope and field.
  *     An upstream matcher that runs before the generator (so it cannot reach a
  *     downstream generator's not-yet-created block state) must use this.
@@ -31,7 +31,7 @@ import {
 export const BLOCK_STATE_FIELD = "activeSkills";
 
 /** Explicit persisted/request scopes an `activeState` field can live at. */
-export type ExplicitActivationScope = "request" | "session" | "user" | "org";
+export type ExplicitActivationScope = "request" | "session" | "user";
 
 /**
  * Where a binding's dynamic activations live.
@@ -84,8 +84,6 @@ function scopeHandle(
       return ctx.session as unknown as MutableScope;
     case "user":
       return ctx.user as unknown as MutableScope;
-    case "org":
-      return ctx.org as unknown as MutableScope | undefined;
   }
 }
 
