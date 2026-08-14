@@ -184,7 +184,7 @@ const IMPLEMENTATION: PhaseDefinition = {
       // dispatching an agent. Undeclared, `baseRed` reads `false` forever and
       // conductor chases someone else's breakage.
       name: "awaiting_ci",
-      reads: ["pr.state", "pr.checkRuns"],
+      reads: ["pr.state", "pr.checkRuns", "pr.baseStatus"],
       appliesWhen: (w) => implPr(w)?.state === "open" && implPr(w)?.checks !== null,
       satisfiedBy: (w) => implPr(w)?.checks === "success",
     },
