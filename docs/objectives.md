@@ -12,18 +12,27 @@ serves and how much of the gap it closes.
 | | |
 |---|---|
 | **Winning when** | Every Phase 1 subsystem is exercised end to end by a goal check driving the real path from a real app, and Wave 1.n (cross-package validation) is closed |
-| **Lead measure** | **`pnpm goal:all` — goals passing over goals defined.** Not packages shipped, not waves closed |
-| **Now** | Waves 1.a–1.m complete · 1.n open · 34 goals defined, passing count `<RUN goal:all ONCE TO SET>` |
+| **Lead measure** | **Goals passing over goals *defined*** — read off one `pnpm goal:all` run. Not packages shipped, not waves closed |
+| **Now** | Waves 1.a–1.m complete · 1.n open · **34 defined, 33 with a runner** · passing `<RUN goal:all ONCE TO SET>` |
 | **Kill line** | If real usage shows the four block kinds don't compose into the workflows apps actually need, Phase 1 isn't unfinished — it's mis-shaped, and what changes is the composition model, not the remaining wave list |
 
 > **Two blanks are yours, not mine.** The date is a business call; the passing count needs one
 > `pnpm goal:all` run to establish honestly. Both are left visible rather than guessed — a
 > fabricated finish line is worse than an absent one, because it reads as agreed.
 
-**The lead measure is what `goal:all` already prints, and that is the point.** An earlier
+**The lead measure is derivable from one `goal:all` run, and that is the point.** An earlier
 draft counted *"Phase 1 subsystems covered"*, which sounds better and cannot be computed: no
 subsystem inventory exists, and nothing maps 34 capability-shaped goal files onto one. A
 measure whose denominator has to be invented gets invented differently every time it is read.
+
+**Read the denominator carefully — it is not the ratio the tool prints.** `goal:all` reports
+`X/Y passed` over the goals that **have a runner**, and lists any `goal.md` with no `run.mts`
+separately as *unimplemented* without failing the sweep
+(`goals/scripts/run-all.mts`). Today that is one goal:
+`goals/plan-and-execute/carries-original-data-to-workers`. So the measure is **X / (Y +
+unimplemented)**, both numbers from the same run. Taking the printed ratio instead would let
+`33/33 passed` read as complete while a defined goal has never proved anything — a goal you
+wrote and never wired is not a goal you passed.
 
 **Its honest limitation, stated so nobody has to discover it:** this counts the goals we have
 *written*, so it moves when we write a goal as well as when one passes, and a subsystem with
