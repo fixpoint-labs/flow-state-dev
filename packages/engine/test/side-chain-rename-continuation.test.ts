@@ -121,8 +121,8 @@ function spellPathsTheOldWay(items: readonly unknown[]): unknown[] {
   });
 }
 
-/** Run to the gate's suspension, then flip the record to `interrupted`. */
-async function runToInterrupted(flow: FlowInstance, stores: ReturnType<typeof createDurableStores>["stores"], provider: ReturnType<typeof createDurableStores>["provider"]) {
+/** Run until the gate suspends — the side chain has drained by then. */
+async function runToSuspension(flow: FlowInstance, stores: ReturnType<typeof createDurableStores>["stores"], provider: ReturnType<typeof createDurableStores>["provider"]) {
   const initial = await runAction({
     flow,
     actionName: "run",
@@ -143,7 +143,7 @@ describe("continuing a request that was in flight across the side-chain rename",
       runs += 1;
     });
     const { stores, provider } = createDurableStores();
-    const requestId = await runToInterrupted(flow, stores, provider);
+    const requestId = await runToSuspension(flow, stores, provider);
 
     // The side chain drained before the gate suspended.
     expect(runs).toBe(1);
@@ -182,7 +182,7 @@ describe("continuing a request that was in flight across the side-chain rename",
       runs += 1;
     });
     const { stores, provider } = createDurableStores();
-    const requestId = await runToInterrupted(flow, stores, provider);
+    const requestId = await runToSuspension(flow, stores, provider);
 
     expect(runs).toBe(1);
 
