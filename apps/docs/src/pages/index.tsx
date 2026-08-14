@@ -16,7 +16,7 @@ const researchBlockExample = `const researchBlock = sequencer({ name: "research"
     past: recall,            // reads ctx.user.resources.pastFindings and locates relevant items
   })
   .step(synthesize)          // generator — reads ctx.session.state.query and parallel output
-  .work(handler, {
+  .sideChain(handler, {
     name: "save-draft",
     sessionResources: { draft: draftResource },
     sessionStateSchema: z.object({ lastResearched: z.string() }),
@@ -25,7 +25,7 @@ const researchBlockExample = `const researchBlock = sequencer({ name: "research"
       await ctx.session.state.patch({ lastResearched: input.query })
     },
   })
-  .work(updateMemory)        // runs async, never blocks, can continue on after main thread completes
+  .sideChain(updateMemory)        // runs async, never blocks, can continue on after main thread completes
 
 export default defineFlow({
   kind: "research",

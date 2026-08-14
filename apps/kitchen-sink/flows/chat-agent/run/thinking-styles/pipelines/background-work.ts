@@ -183,7 +183,7 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
   });
 
   /** File this turn's message as a durable row for the board to hand off. */
-  const fileBackgroundTask = handler({
+  const fileSideChainTask = handler({
     name: "file-background-task",
     inputSchema: z.object({ message: z.string() }),
     uses: [board.capability],
@@ -229,7 +229,7 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
     // and once it is held here the board publishes no completed row at all —
     // the settle happens in the child, whose stream is its own.
     sessionStateSchema: z.object({
-      reportedBackgroundTaskIds: z.array(z.string()).default([]),
+      reportedSideChainTaskIds: z.array(z.string()).default([]),
     }),
     uses: [board.capability],
     execute: async (input, ctx) => {
@@ -240,7 +240,7 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
       const alreadyReported = new Set(
         // `?? []` and not a truthiness check: a session that predates this key
         // has no value at all (BP-030).
-        ctx.session.state.reportedBackgroundTaskIds ?? [],
+        ctx.session.state.reportedSideChainTaskIds ?? [],
       );
       const rows = handles.map(
         (task): ReportedTask => ({
@@ -347,7 +347,7 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
       if (delivered.length > 0) {
         try {
           await ctx.session.patchState({
-            reportedBackgroundTaskIds: [...alreadyReported, ...delivered],
+            reportedSideChainTaskIds: [...alreadyReported, ...delivered],
           });
         } catch {
           ctx.emit.status("Could not record what was reported; it may repeat.");
@@ -363,7 +363,7 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
     inputSchema: z.object({ message: z.string() }),
     outputSchema: z.string(),
   })
-    .tap(fileBackgroundTask)
+    .tap(fileSideChainTask)
     // The drain claims the row, hands it to a Workstream, and returns with the
     // row still open. `.tap` keeps the turn's message as the running value so
     // the report below reads its own input rather than the drain's bookkeeping.

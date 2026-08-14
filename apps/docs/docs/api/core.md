@@ -111,7 +111,7 @@ const pipeline = sequencer({
 });
 ```
 
-**Methods:** `step`, `stepIf`, `map`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `loopBack`, `work`, `workIf`, `waitForWork`, `tap`, `tapIf`, `rescue`, `branch`, `stepAll`, `stepAny`, `race`, `exitIf`
+**Methods:** `step`, `stepIf`, `map`, `parallel`, `forEach`, `forEachSideChain`, `doUntil`, `doWhile`, `loopBack`, `sideChain`, `sideChainIf`, `waitForSideChain`, `tap`, `tapIf`, `rescue`, `branch`, `stepAll`, `stepAny`, `race`, `exitIf`
 
 ### `router(config)`
 

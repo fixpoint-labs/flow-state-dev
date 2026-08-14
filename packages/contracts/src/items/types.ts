@@ -27,9 +27,9 @@ export type ItemProvenance = {
   blockDefinitionId?: string;
   blockInstanceId: string;
   parentBlockInstanceId?: string;
-  phase: "main" | "work";
+  phase: "main" | "sideChain";
   stepIndex?: number;
-  workGroupId?: string;
+  sideChainGroupId?: string;
   attempt?: number;
 };
 
@@ -450,7 +450,7 @@ export type StatusItem = OutputItemBase & {
   /** When false, the client may send new actions even though the stream is still open. */
   blocked?: boolean;
   /** Number of background work tasks still running. */
-  backgroundTasks?: number;
+  sideChainTasks?: number;
 };
 
 /**

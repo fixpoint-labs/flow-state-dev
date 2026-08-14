@@ -1,13 +1,13 @@
 /**
  * FIX-663 — background work signal isolation.
  *
- * `.work()` background tasks must be decoupled from the request's
+ * `.sideChain()` background tasks must be decoupled from the request's
  * transport-level abort signal. They survive transport teardown (a fired
  * `options.signal`, e.g. client disconnect / SSE close) but still abort on
  * explicit user-requested cancellation (the `/abort` endpoint, modelled here
  * by `abortRequest(requestId)`).
  *
- * Each test dispatches a slow `.work()` task, fires one of the two signals
+ * Each test dispatches a slow `.sideChain()` task, fires one of the two signals
  * from inside the main chain while the task is still in flight, then lets the
  * request drain. The background handler records whether ITS `ctx.signal` was
  * aborted by the time it finished — that is the signal substituted by the
@@ -113,12 +113,12 @@ async function runWith(rootBlock: ReturnType<typeof sequencer>, signal?: AbortSi
 }
 
 describe("FIX-663: background work signal isolation", () => {
-  it("transport-level abort (options.signal) does NOT abort background .work()", async () => {
+  it("transport-level abort (options.signal) does NOT abort background .sideChain()", async () => {
     const marker: TaskMarker = { ran: false, abortedWhenDone: false };
     const transport = new AbortController();
 
     const root = sequencer({ name: "root", inputSchema: z.unknown() })
-      .work(slowTask("bg", marker))
+      .sideChain(slowTask("bg", marker))
       .tap(fireTransport(transport));
 
     const result = await runWith(root, transport.signal);
@@ -129,11 +129,11 @@ describe("FIX-663: background work signal isolation", () => {
     expect(marker.abortedWhenDone).toBe(false);
   });
 
-  it("explicit abort (abortRequest) DOES abort background .work()", async () => {
+  it("explicit abort (abortRequest) DOES abort background .sideChain()", async () => {
     const marker: TaskMarker = { ran: false, abortedWhenDone: false };
 
     const root = sequencer({ name: "root", inputSchema: z.unknown() })
-      .work(slowTask("bg", marker))
+      .sideChain(slowTask("bg", marker))
       .tap(fireExplicitAbort);
 
     await runWith(root);
@@ -148,7 +148,7 @@ describe("FIX-663: background work signal isolation", () => {
     const marker: TaskMarker = { ran: false, abortedWhenDone: false };
     const transport = new AbortController();
 
-    // A nested sequencer inside the .work() task. The slow handler lives two
+    // A nested sequencer inside the .sideChain() task. The slow handler lives two
     // scopes deep, so its ctx.signal is set only if the override propagated
     // through every _withExecutionScope, not just the first.
     const inner = sequencer({ name: "inner", inputSchema: z.unknown() })
@@ -157,7 +157,7 @@ describe("FIX-663: background work signal isolation", () => {
       .step(inner);
 
     const root = sequencer({ name: "root", inputSchema: z.unknown() })
-      .work(nested)
+      .sideChain(nested)
       .tap(fireTransport(transport));
 
     const result = await runWith(root, transport.signal);
@@ -179,7 +179,7 @@ describe("FIX-663: background work signal isolation", () => {
       .step(inner);
 
     const root = sequencer({ name: "root", inputSchema: z.unknown() })
-      .work(nested)
+      .sideChain(nested)
       .tap(fireExplicitAbort);
 
     await runWith(root);

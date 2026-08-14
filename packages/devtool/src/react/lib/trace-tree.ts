@@ -42,13 +42,13 @@ export type TraceNode = {
   blockStartedAt?: number;
   blockCompletedAt?: number;
   /**
-   * Execution phase from `provenance.phase`. Blocks dispatched via the work
-   * queue (`.work()`, `.workIf()` truthy branch, `.forEachBackground()`, and
-   * any descendants thereof) carry `phase: "work"`. Used by the trace view
-   * to render a "BG" sidechain badge so background activity is visually
-   * distinct from main-chain steps.
+   * Execution phase from `provenance.phase`. Blocks dispatched onto a side
+   * chain (`.sideChain()`, `.sideChainIf()` truthy branch, `.forEachSideChain()`,
+   * and any descendants thereof) carry `phase: "sideChain"`. Used by the trace
+   * view to render an "SC" badge so side-chain activity is visually distinct
+   * from main-chain steps.
    */
-  phase?: "main" | "work";
+  phase?: "main" | "sideChain";
   /**
    * `loopBack` generation parsed from the block's `loop[N]` path segment
    * (FIX-643). Undefined for first-pass / non-looped blocks. Internal — the
@@ -201,12 +201,12 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
 
       // Drop structural status items with nothing to render. The sequencer
       // emits `status` items with an empty `message` carrying only a
-      // `backgroundTasks` count (FIX-369) — those still get a synthesized
+      // `sideChainTasks` count (FIX-369) — those still get a synthesized
       // label in `getItemPreview`. Items with no message AND no
-      // backgroundTasks have no label to render, so skip the row entirely.
+      // sideChainTasks have no label to render, so skip the row entirely.
       if (item.type === "status") {
         const status = item as StatusItem;
-        if (!status.message && typeof status.backgroundTasks !== "number") {
+        if (!status.message && typeof status.sideChainTasks !== "number") {
           continue;
         }
       }

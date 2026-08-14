@@ -1,9 +1,9 @@
 /**
  * Request-scoped pool for background work tasks dispatched by sequencer DSL
- * (`.work()`, `.workIf()`, `.forEachBackground()`). The interface is defined in
+ * (`.sideChain()`, `.sideChainIf()`, `.forEachSideChain()`). The interface is defined in
  * core so sequencer code can push tasks; the implementation lives in
  * `@flow-state-dev/engine`. The server's request executor constructs one pool
- * per request, attaches it to `BlockContext._requestWorkPool`, and drains it
+ * per request, attaches it to `BlockContext._requestSideChainPool`, and drains it
  * to quiescence before the SSE stream closes — on every outcome, whether the
  * request succeeds, fails, is aborted, or the client disconnects.
  *
@@ -13,14 +13,14 @@
  */
 
 /**
- * Per-task metadata captured at `.work()` time. `scopeId` lets `.waitForWork()`
+ * Per-task metadata captured at `.sideChain()` time. `scopeId` lets `.waitForSideChain()`
  * drain only the calling sequencer's tasks; `name` is preserved for
  * diagnostic logging when a pooled task fails.
  */
-export interface RequestWorkTaskMeta {
+export interface RequestSideChainTaskMeta {
   /** Human-readable task name. */
   name: string;
-  /** Logical scope ID of the dispatching sequencer instance. `.waitForWork()`
+  /** Logical scope ID of the dispatching sequencer instance. `.waitForSideChain()`
    *  drains by this ID so a sequencer's explicit barrier only waits on its
    *  own queued tasks, not unrelated siblings'. */
   scopeId: string;
@@ -29,28 +29,28 @@ export interface RequestWorkTaskMeta {
 /**
  * Settled-result shape returned by `drainScope` / `drainAll`.
  */
-export interface RequestWorkPoolResult {
-  completed: Array<{ meta: RequestWorkTaskMeta; value: unknown }>;
-  failed: Array<{ meta: RequestWorkTaskMeta; reason: unknown }>;
+export interface RequestSideChainPoolResult {
+  completed: Array<{ meta: RequestSideChainTaskMeta; value: unknown }>;
+  failed: Array<{ meta: RequestSideChainTaskMeta; reason: unknown }>;
 }
 
-export interface RequestWorkPoolDrainOptions {
+export interface RequestSideChainPoolDrainOptions {
   /** Throw the first failure instead of returning a settled result. */
   failOnError?: boolean;
 }
 
-export interface RequestWorkPoolDrainAllOptions {
+export interface RequestSideChainPoolDrainAllOptions {
   /** Abort wait if signalled. In-flight tasks observe this signal via their
    *  own `ctx.signal` and either complete or short-circuit. */
   signal?: AbortSignal;
   /** Notified each time the pool's pending-task count changes during the
-   *  drain — used by the request executor to emit `backgroundTasks: N`
+   *  drain — used by the request executor to emit `sideChainTasks: N`
    *  status updates. */
   onPendingChange?: (count: number) => void;
 }
 
 /**
- * Options for {@link RequestWorkPool.drainToQuiescence}.
+ * Options for {@link RequestSideChainPool.drainToQuiescence}.
  *
  * Deliberately has no `signal`. A quiescence drain is the wait a request makes
  * before reporting itself finished, and background work is decoupled from the
@@ -59,9 +59,9 @@ export interface RequestWorkPoolDrainAllOptions {
  * write the wait exists for. Offering a signal here would advertise a
  * cancellation the design rejects.
  */
-export interface RequestWorkPoolDrainToQuiescenceOptions {
+export interface RequestSideChainPoolDrainToQuiescenceOptions {
   /** Notified each time the pool's pending-task count changes, across every
-   *  pass — used by the request executor to emit `backgroundTasks: N`
+   *  pass — used by the request executor to emit `sideChainTasks: N`
    *  status updates. */
   onPendingChange?: (count: number) => void;
 }
@@ -70,9 +70,9 @@ export interface RequestWorkPoolDrainToQuiescenceOptions {
  * Per-request background work pool. Tasks are already running when registered;
  * the pool tracks settlement and exposes scope-bounded and full drains.
  */
-export interface RequestWorkPool {
+export interface RequestSideChainPool {
   /** Register an in-flight task. The promise must already be running. */
-  addTask(task: { promise: Promise<unknown>; meta: RequestWorkTaskMeta }): void;
+  addTask(task: { promise: Promise<unknown>; meta: RequestSideChainTaskMeta }): void;
 
   /** True iff at least one tracked task with the given scopeId has not settled. */
   hasPendingForScope(scopeId: string): boolean;
@@ -84,8 +84,8 @@ export interface RequestWorkPool {
    */
   drainScope(
     scopeId: string,
-    options?: RequestWorkPoolDrainOptions
-  ): Promise<RequestWorkPoolResult>;
+    options?: RequestSideChainPoolDrainOptions
+  ): Promise<RequestSideChainPoolResult>;
 
   /**
    * Await one snapshot of the pool, and remove the entries it awaited.
@@ -93,9 +93,9 @@ export interface RequestWorkPool {
    * A task that queues further work while it is being drained lands in the
    * pool *after* this snapshot is taken, so a single call does not leave the
    * pool empty. Callers that need "everything, including what draining
-   * produced" want {@link RequestWorkPool.drainToQuiescence}.
+   * produced" want {@link RequestSideChainPool.drainToQuiescence}.
    */
-  drainAll(options?: RequestWorkPoolDrainAllOptions): Promise<RequestWorkPoolResult>;
+  drainAll(options?: RequestSideChainPoolDrainAllOptions): Promise<RequestSideChainPoolResult>;
 
   /**
    * Await tasks until a pass finds nothing left, and return every task settled
@@ -115,8 +115,8 @@ export interface RequestWorkPool {
    * count would skip the drain in exactly that case.
    */
   drainToQuiescence(
-    options?: RequestWorkPoolDrainToQuiescenceOptions
-  ): Promise<RequestWorkPoolResult>;
+    options?: RequestSideChainPoolDrainToQuiescenceOptions
+  ): Promise<RequestSideChainPoolResult>;
 
   /** Snapshot of currently pending tasks, regardless of scope. */
   pendingCount(): number;
@@ -128,8 +128,8 @@ export interface RequestWorkPool {
  * Returns `undefined` in unit-test contexts where no pool was constructed
  * (sequencer DSL falls back to per-sequencer auto-await in that case).
  */
-export function getRequestWorkPool(
-  ctx: { _requestWorkPool?: RequestWorkPool } | object
-): RequestWorkPool | undefined {
-  return (ctx as { _requestWorkPool?: RequestWorkPool })._requestWorkPool;
+export function getRequestSideChainPool(
+  ctx: { _requestSideChainPool?: RequestSideChainPool } | object
+): RequestSideChainPool | undefined {
+  return (ctx as { _requestSideChainPool?: RequestSideChainPool })._requestSideChainPool;
 }

@@ -212,7 +212,7 @@ Full text lives in the category files. Open the file when working in that area.
 | BP-014 | Handlers must never return input as output |
 | BP-024 | Helpers when the body varies; factories when only identity varies |
 | BP-025 | Declare and validate sequencer output schemas deliberately |
-| BP-036 | Prefer conditional step variants (`.workIf`/`.tapIf`/`.stepIf`) over wrapper sequencers |
+| BP-036 | Prefer conditional step variants (`.sideChainIf`/`.tapIf`/`.stepIf`) over wrapper sequencers |
 
 ### [Generators & Prompts](best-practices/generators.md)
 

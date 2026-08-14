@@ -54,7 +54,7 @@ interface BlockContext {
   emit: {
     message(text: string, options?: { itemVisibility?: ItemVisibility; agentName?: string }): void;
     component(component: string, data: Record<string, unknown>, options?: { key?: string; itemVisibility?: ItemVisibility; agentName?: string }): void;
-    status(message: string, options?: { blocked?: boolean; backgroundTasks?: number }): void;
+    status(message: string, options?: { blocked?: boolean; sideChainTasks?: number }): void;
   };
 }
 ```
@@ -317,12 +317,12 @@ definition and resolution semantics.
 | `map(fn)` | Transform current value without a block | `inline` (novel content) |
 | `parallel(steps)` | Execute named steps concurrently | `structure` (object of refs) |
 | `forEach(block)` | Execute block for each array element | `structure` (array of refs) |
-| `forEachBackground(block)` | Fire-and-forget fan-out per element | passthrough (value unchanged) |
+| `forEachSideChain(block)` | Fire-and-forget fan-out per element | passthrough (value unchanged) |
 | `doUntil(condition, block)` | Loop until condition is true | `ref` → final iteration's item |
 | `doWhile(condition, block)` | Loop while condition is true | `ref` → final iteration's item |
 | `loopBack(stepName, opts)` | Jump back to a named step (bounded) | passthrough |
 | `work(block)` | Queue non-aborting side-chain execution | passthrough |
-| `waitForWork(opts)` | Wait for queued work to complete | passthrough |
+| `waitForSideChain(opts)` | Wait for queued work to complete | passthrough |
 | `tap(block)` | Side effect without changing payload | passthrough |
 | `tapIf(condition, block)` | Conditional side effect | passthrough |
 | `rescue(handlers)` | Error recovery by error type | `ref` → rescue branch's item (when taken) |
@@ -340,8 +340,8 @@ handlers always emit `inline` (they are leaves).
 
 ### Work Semantics
 
-- `.work(block)` is **non-aborting** — failures don't stop the main chain
-- `.waitForWork({ failOnError: true })` promotes work failures to terminal errors
+- `.sideChain(block)` is **non-aborting** — failures don't stop the main chain
+- `.waitForSideChain({ failOnError: true })` promotes work failures to terminal errors
 - Use for background tasks like logging, analytics, or async notifications
 
 ### Inline Block Definitions

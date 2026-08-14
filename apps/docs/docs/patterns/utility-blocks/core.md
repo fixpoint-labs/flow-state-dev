@@ -1136,10 +1136,10 @@ const autoTitle = utility.sessionTitleGenerator({
 
 const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
   .step(mainGenerator)
-  .work(autoTitle);      // runs in background after main generator
+  .sideChain(autoTitle);      // runs in background after main generator
 ```
 
-The block is designed for `.work()`. It fires after the main generator completes, runs concurrently with any other background work, and does not block the response or add latency visible to the user.
+The block is designed for `.sideChain()`. It fires after the main generator completes, runs concurrently with any other background work, and does not block the response or add latency visible to the user.
 
 **What it does internally:**
 

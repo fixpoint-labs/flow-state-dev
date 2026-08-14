@@ -1055,7 +1055,7 @@ function resolveMaxIterations(config: { loop?: GeneratorLoopConfig<unknown>; max
 function buildSourceItem(
   source: GeneratorModelSource,
   ctx: BlockContext,
-  provenance: { blockName: string; blockInstanceId: string; phase: "main" | "work" },
+  provenance: { blockName: string; blockInstanceId: string; phase: "main" | "sideChain" },
   itemVisibility: ItemVisibility | undefined,
   agentName: string | undefined,
   model: ModelIdentity | undefined
@@ -1097,7 +1097,7 @@ function buildSourceItem(
 /**
  * FIX-663: rewrites a rejected model call into a legible failure. When the
  * error is abort-like and this block's signal aborted (explicit user
- * cancellation propagated to a background `.work()` task, or a foreground
+ * cancellation propagated to a background `.sideChain()` task, or a foreground
  * `/abort`), surface the unwrapped root-cause text instead of the AI
  * Gateway's doubly-wrapped "Invalid error response format" noise, and log
  * concisely rather than dumping the wrap chain. The error is still thrown so

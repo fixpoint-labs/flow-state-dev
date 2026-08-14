@@ -790,7 +790,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
     : null;
 
   // Background purge of stale framework-managed MOAT containers.
-  // Dispatched via `.workIf(isCold, ...)` so it runs in parallel with
+  // Dispatched via `.sideChainIf(isCold, ...)` so it runs in parallel with
   // the cold-boot ensureSandbox step and never appears on warm paths.
   // Bounded by `DEFAULT_MAX_CONTAINERS` (50); excess oldest-first.
   const purgeStaleContainers = provider.type === "moat"
@@ -944,11 +944,11 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
 
   // Setup-needing providers: `tapIf(isCold, ...)` only emits the
   // ensureSandbox node on the cold path. The purge sidechain (MOAT
-  // only) runs in parallel via `.workIf(isCold, ...)` — fire-and-forget
+  // only) runs in parallel via `.sideChainIf(isCold, ...)` — fire-and-forget
   // so it never blocks the leaf.
-  const withColdSetup = <T extends { workIf: any; tapIf: any }>(s: T): T => {
+  const withColdSetup = <T extends { sideChainIf: any; tapIf: any }>(s: T): T => {
     const stepA = purgeStaleContainers
-      ? s.workIf(isCold, purgeStaleContainers)
+      ? s.sideChainIf(isCold, purgeStaleContainers)
       : s;
     return stepA.tapIf(isCold, ensureSandbox!) as T;
   };

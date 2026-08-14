@@ -38,8 +38,8 @@ import { cn } from "@/lib/utils";
 import { ChevronRight, Hourglass, RotateCw } from "lucide-react";
 
 /** Label for a workstream row. `topic` is display-only and may be absent (BP-030). */
-function rowLabel(work: WorkstreamSummary): string {
-  return work.topic ?? "Background work";
+function rowLabel(workstream: WorkstreamSummary): string {
+  return workstream.topic ?? "Background work";
 }
 
 /**
@@ -162,7 +162,7 @@ export function BackgroundWorkPanel({ session, flowKind }: BackgroundWorkPanelPr
 
   if (workstreams.length === 0 && !workstreamsStale) return null;
 
-  const openRow = workstreams.find((work) => work.id === openId) ?? null;
+  const openRow = workstreams.find((workstream) => workstream.id === openId) ?? null;
 
   return (
     <div className="mx-auto max-w-3xl px-3 pt-2 sm:px-4" data-testid="background-work-panel">
@@ -189,21 +189,21 @@ export function BackgroundWorkPanel({ session, flowKind }: BackgroundWorkPanelPr
         </div>
 
         <ul className="border-t border-indigo-500/20">
-          {workstreams.map((work) => (
-            <li key={work.id}>
+          {workstreams.map((workstream) => (
+            <li key={workstream.id}>
               <button
                 type="button"
                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-indigo-500/10"
-                onClick={() => setOpenId(work.id)}
+                onClick={() => setOpenId(workstream.id)}
                 data-testid="background-work-row"
               >
-                <span className="min-w-0 flex-1 truncate">{rowLabel(work)}</span>
-                {work.coordinate !== undefined && (
+                <span className="min-w-0 flex-1 truncate">{rowLabel(workstream)}</span>
+                {workstream.coordinate !== undefined && (
                   <span className="hidden truncate text-muted-foreground sm:inline">
-                    {work.coordinate}
+                    {workstream.coordinate}
                   </span>
                 )}
-                <span className={statusTone(work.status)}>{statusLabel(work.status)}</span>
+                <span className={statusTone(workstream.status)}>{statusLabel(workstream.status)}</span>
                 <ChevronRight className="size-3 shrink-0 opacity-50" />
               </button>
             </li>
@@ -252,16 +252,16 @@ function BackgroundWorkDetail({
   workstreamId: string;
   flowKind: string;
 }) {
-  const work = useSession(workstreamId, { flowKind, items: true, autoResume: true });
+  const workstream = useSession(workstreamId, { flowKind, items: true, autoResume: true });
 
   return (
     <ScrollArea className="min-h-0 flex-1 pr-3">
-      {work.items.length === 0 ? (
+      {workstream.items.length === 0 ? (
         <p className="py-6 text-center text-xs text-muted-foreground">
-          {work.isLoading ? "Loading…" : "Nothing has been recorded yet."}
+          {workstream.isLoading ? "Loading…" : "Nothing has been recorded yet."}
         </p>
       ) : (
-        <ItemsRenderer items={work.items} />
+        <ItemsRenderer items={workstream.items} />
       )}
     </ScrollArea>
   );

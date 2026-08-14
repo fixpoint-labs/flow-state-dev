@@ -405,7 +405,7 @@ describe('memory/memorySystem', () => {
 
       it('declares digestMemory on the capture pipeline when digest is configured', () => {
         // When digest is enabled, capture must wire `digestRegenerate` as a
-        // `.work()` step so the rolling summary refreshes every turn whose
+        // `.sideChain()` step so the rolling summary refreshes every turn whose
         // source signature drifted. The block's own staleness guard makes
         // the call cheap when nothing has changed.
         // Build through system() so resource references are shared across

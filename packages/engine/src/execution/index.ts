@@ -42,7 +42,7 @@ export {
   summarizeForLog
 } from "./logging";
 export type { RuntimeLogger, RuntimeLoggerLevel } from "./logging";
-export { createRequestWorkPool } from "./request-work-pool";
+export { createRequestSideChainPool } from "./request-side-chain-pool";
 export type {
   ExecuteBlockContext,
   ExecuteBlockOptions,

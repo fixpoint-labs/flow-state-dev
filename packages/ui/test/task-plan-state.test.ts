@@ -355,7 +355,7 @@ describe("humanizeStatus", () => {
 // extractTaskItemWindows / collectTaskOwnedItemIds (FIX-658)
 // ---------------------------------------------------------------------------
 
-function makeWorkMessage(text: string, taskId?: string): OutputItem {
+function makeSideChainMessage(text: string, taskId?: string): OutputItem {
   return {
     id: `item_msg_${nextItemIndex++}`,
     type: "message",
@@ -377,10 +377,10 @@ describe("extractTaskItemWindows / collectTaskOwnedItemIds", () => {
     const anl = makeTask({ id: "analyzer" });
     const items: OutputItem[] = [
       makeTaskChange("c", disc, { kind: "claimed" }),
-      makeWorkMessage("discoverer work", "discoverer"),
+      makeSideChainMessage("discoverer work", "discoverer"),
       makeTaskChange("c", anl, { kind: "claimed" }),
-      makeWorkMessage("analyzer work", "analyzer"),
-      makeWorkMessage("discoverer more", "discoverer"),
+      makeSideChainMessage("analyzer work", "analyzer"),
+      makeSideChainMessage("discoverer more", "discoverer"),
       makeTaskChange("c", anl, { kind: "completed" }),
       makeTaskChange("c", disc, { kind: "completed" }),
     ];
@@ -397,8 +397,8 @@ describe("extractTaskItemWindows / collectTaskOwnedItemIds", () => {
   it("collectTaskOwnedItemIds returns task-owned ids and excludes bookends + unattributed", () => {
     resetItemCounters();
     const t = makeTask({ id: "t1" });
-    const owned = makeWorkMessage("owned", "t1");
-    const orphan = makeWorkMessage("orphan"); // no taskId
+    const owned = makeSideChainMessage("owned", "t1");
+    const orphan = makeSideChainMessage("orphan"); // no taskId
     const items: OutputItem[] = [
       makeTaskChange("c", t, { kind: "claimed" }),
       owned,

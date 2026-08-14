@@ -3,11 +3,11 @@
  *
  * Pipeline order:
  *   applyRequestedMode → applyFeatures → skillActivator → resolveThinkingStyle
- *     → thinkingStyleRouter → biasCheck (.work) → perspective capture (.workIf)
+ *     → thinkingStyleRouter → biasCheck (.work) → perspective capture (.sideChainIf)
  *     → mem.captureFromItems (.work) → autoTitle (.work) → incrementRequestCount
  *
  * The router dispatches to the assistant generator (default) or one of the five
- * pattern pipelines; everything after it runs as background `.work()` except the
+ * pattern pipelines; everything after it runs as background `.sideChain()` except the
  * terminal request-count bump.
  */
 import { sequencer, utility } from "@flow-state-dev/core";
@@ -40,8 +40,8 @@ export const runSequencer = sequencer({ name: "run", inputSchema })
   .tap(skillActivatorBlock)
   .tap(resolveThinkingStyle)
   .step(thinkingStyleRouter)
-  .work(biasCheck)
-  .workIf(
+  .sideChain(biasCheck)
+  .sideChainIf(
     // Skip capture when the assistant produced no text (e.g. a turn that
     // ended in a tool call only). The perspective system already no-ops on
     // empty content, but gating here avoids dispatching a background block
@@ -51,7 +51,7 @@ export const runSequencer = sequencer({ name: "run", inputSchema })
     (response: string) => ({ content: response }),
     analystPerspective.capture,
   )
-  .work(mem.captureFromItems)
-  .work(autoTitle)
+  .sideChain(mem.captureFromItems)
+  .sideChain(autoTitle)
 
   .tap(incrementRequestCount);

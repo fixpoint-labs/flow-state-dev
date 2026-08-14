@@ -297,7 +297,7 @@ function TraceNodeView({
               iter {node.iterationIndex}
             </span>
           )}
-          {node.phase === "work" && <BackgroundBadge />}
+          {node.phase === "sideChain" && <SideChainBadge />}
           {traceErrorSummary && (
             <span className="text-[10px] font-mono px-1 py-0 rounded border border-red-700/60 text-red-300 shrink-0">
               {traceErrorSummary}
@@ -422,14 +422,14 @@ function TraceDividerView({ item, depth }: { item: DevtoolItem; depth: number })
   );
 }
 
-/** Visual marker for blocks dispatched onto the work queue. */
-function BackgroundBadge() {
+/** Visual marker for blocks dispatched onto a side chain. */
+function SideChainBadge() {
   return (
     <span
       className="text-[10px] font-mono text-sky-400/80 px-1 rounded border border-sky-700/50"
-      title="Background sidechain — dispatched via .work() / .workIf() / .forEachBackground()"
+      title="Side chain — dispatched via .sideChain() / .sideChainIf() / .forEachSideChain()"
     >
-      BG
+      SC
     </span>
   );
 }
@@ -533,14 +533,14 @@ function getItemPreview(item: DevtoolItem): string {
       return item.message;
     case "status": {
       // Structural status items from the sequencer's auto-await (FIX-369)
-      // arrive with an empty `message` and only a `backgroundTasks` count.
+      // arrive with an empty `message` and only a `sideChainTasks` count.
       // Synthesize a label so the trace row isn't blank. See also
       // `StatusItemView` in components/items/status-item.tsx — same contract.
       if (item.message) return item.message;
-      if (typeof item.backgroundTasks === "number") {
-        return item.backgroundTasks === 0
+      if (typeof item.sideChainTasks === "number") {
+        return item.sideChainTasks === 0
           ? "background work complete"
-          : `background tasks: ${item.backgroundTasks} pending`;
+          : `background tasks: ${item.sideChainTasks} pending`;
       }
       return "";
     }

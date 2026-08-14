@@ -5,13 +5,13 @@
  * preserves SSE-stream lifetime semantics.
  */
 import { describe, expect, it } from "vitest";
-import { createRequestWorkPool } from "../src/execution/request-work-pool";
+import { createRequestSideChainPool } from "../src/execution/request-side-chain-pool";
 
 const meta = (scopeId: string, name = scopeId) => ({ name, scopeId });
 
-describe("RequestWorkPool", () => {
+describe("RequestSideChainPool", () => {
   it("addTask + drainAll resolves with completed task results", async () => {
-    const pool = createRequestWorkPool();
+    const pool = createRequestSideChainPool();
     pool.addTask({ promise: Promise.resolve(1), meta: meta("scope-a", "task-1") });
     pool.addTask({ promise: Promise.resolve(2), meta: meta("scope-a", "task-2") });
 
@@ -22,7 +22,7 @@ describe("RequestWorkPool", () => {
   });
 
   it("drainScope returns only matching scope's tasks and removes them from the pool", async () => {
-    const pool = createRequestWorkPool();
+    const pool = createRequestSideChainPool();
     pool.addTask({ promise: Promise.resolve("a1"), meta: meta("scope-a", "a1") });
     pool.addTask({ promise: Promise.resolve("b1"), meta: meta("scope-b", "b1") });
 
@@ -35,7 +35,7 @@ describe("RequestWorkPool", () => {
   });
 
   it("calling drainScope twice on the same scope returns empty the second time", async () => {
-    const pool = createRequestWorkPool();
+    const pool = createRequestSideChainPool();
     pool.addTask({ promise: Promise.resolve("ok"), meta: meta("scope-a") });
     await pool.drainScope("scope-a");
     const second = await pool.drainScope("scope-a");
@@ -44,7 +44,7 @@ describe("RequestWorkPool", () => {
   });
 
   it("reports rejected tasks via failed[]", async () => {
-    const pool = createRequestWorkPool();
+    const pool = createRequestSideChainPool();
     const err = new Error("boom");
     pool.addTask({ promise: Promise.reject(err), meta: meta("s", "broken") });
 
@@ -56,7 +56,7 @@ describe("RequestWorkPool", () => {
   });
 
   it("drainScope with failOnError throws the first failure", async () => {
-    const pool = createRequestWorkPool();
+    const pool = createRequestSideChainPool();
     pool.addTask({ promise: Promise.reject(new Error("first")), meta: meta("s", "a") });
     pool.addTask({ promise: Promise.resolve(1), meta: meta("s", "b") });
 
@@ -64,7 +64,7 @@ describe("RequestWorkPool", () => {
   });
 
   it("drainAll's onPendingChange callback receives count snapshots until drain", async () => {
-    const pool = createRequestWorkPool();
+    const pool = createRequestSideChainPool();
 
     let resolveA: (v: unknown) => void = () => {};
     let resolveB: (v: unknown) => void = () => {};
@@ -86,7 +86,7 @@ describe("RequestWorkPool", () => {
   });
 
   it("failed tasks preserve dispatcher name in meta — diagnostic provenance", async () => {
-    const pool = createRequestWorkPool();
+    const pool = createRequestSideChainPool();
     pool.addTask({
       promise: Promise.reject(new Error("worker boom")),
       meta: { name: "memory-consolidate", scopeId: "scope-mem" }
@@ -104,7 +104,7 @@ describe("RequestWorkPool", () => {
   });
 
   it("hasPendingForScope is false after the scope's tasks settle", async () => {
-    const pool = createRequestWorkPool();
+    const pool = createRequestSideChainPool();
     pool.addTask({ promise: Promise.resolve(0), meta: meta("scope-x") });
     await new Promise<void>((r) => queueMicrotask(r));
     // Settled but not yet drained — pool still tracks the entry until drainScope
@@ -114,11 +114,11 @@ describe("RequestWorkPool", () => {
   });
 
   it("drainScope drains settled-but-undrained entries — failures are not lost", async () => {
-    // Regression: a fast-failing .work() task can settle before .waitForWork()
+    // Regression: a fast-failing .sideChain() task can settle before .waitForSideChain()
     // runs. `hasPendingForScope` returns false in that window, but the entry
     // is still in the pool and its failure must surface through drainScope —
     // otherwise failOnError silently drops fast failures.
-    const pool = createRequestWorkPool();
+    const pool = createRequestSideChainPool();
     const err = new Error("fast failure");
     pool.addTask({ promise: Promise.reject(err), meta: meta("scope-fast", "fast-fail") });
 
@@ -135,10 +135,10 @@ describe("RequestWorkPool", () => {
 
   it("drainScope with failOnError throws even when tasks have already settled", async () => {
     // Regression: with the previous `hasPendingForScope` early-return guard,
-    // a failed task that settled before .waitForWork({ failOnError: true })
+    // a failed task that settled before .waitForSideChain({ failOnError: true })
     // ran was silently swallowed. drainScope must throw on the captured
     // failure regardless of timing.
-    const pool = createRequestWorkPool();
+    const pool = createRequestSideChainPool();
     pool.addTask({
       promise: Promise.reject(new Error("settled-before-wait")),
       meta: meta("scope-fast", "fast-fail")
@@ -151,11 +151,11 @@ describe("RequestWorkPool", () => {
   });
 
   it("drainAll surfaces settled-but-undrained failures even when pendingCount is 0", async () => {
-    // Regression: drainRequestWorkPool used to early-return on
+    // Regression: drainRequestSideChainPool used to early-return on
     // `pool.pendingCount() === 0`, dropping failures from tasks that had
     // already settled. drainAll itself reads the entries array and must
     // still process them.
-    const pool = createRequestWorkPool();
+    const pool = createRequestSideChainPool();
     pool.addTask({
       promise: Promise.reject(new Error("late-drain")),
       meta: meta("scope-drain", "late")
@@ -169,7 +169,7 @@ describe("RequestWorkPool", () => {
   });
 
   it("drainAll honors AbortSignal — short-circuits without waiting", async () => {
-    const pool = createRequestWorkPool();
+    const pool = createRequestSideChainPool();
     // A task that never settles.
     pool.addTask({
       promise: new Promise<unknown>(() => {
@@ -187,13 +187,13 @@ describe("RequestWorkPool", () => {
   });
 });
 
-describe("RequestWorkPool.drainToQuiescence", () => {
+describe("RequestSideChainPool.drainToQuiescence", () => {
   it("awaits work queued by a task that is itself being drained", async () => {
-    // The property `drainAll` alone does not have. A task that calls `.work()`
+    // The property `drainAll` alone does not have. A task that calls `.sideChain()`
     // while it is being drained lands in the pool AFTER `drainAll` spliced its
     // snapshot, so one pass returns with that entry unawaited. Reproduced here
     // by having the first task enqueue the second from inside its own promise.
-    const pool = createRequestWorkPool();
+    const pool = createRequestSideChainPool();
     let nestedRan = false;
     let nestedSettled = false;
 
@@ -227,7 +227,7 @@ describe("RequestWorkPool.drainToQuiescence", () => {
   it("drains an entry whose task settled before the first pass", async () => {
     // The case a `pendingCount() > 0` guard would skip: nothing is pending,
     // but the entry is still here carrying a failure the caller has not seen.
-    const pool = createRequestWorkPool();
+    const pool = createRequestSideChainPool();
     pool.addTask({
       promise: Promise.reject(new Error("settled-early")),
       meta: meta("scope-s", "early")
@@ -241,14 +241,14 @@ describe("RequestWorkPool.drainToQuiescence", () => {
   });
 
   it("is a cheap no-op on an empty pool", async () => {
-    const pool = createRequestWorkPool();
+    const pool = createRequestSideChainPool();
     const result = await pool.drainToQuiescence();
     expect(result.completed).toHaveLength(0);
     expect(result.failed).toHaveLength(0);
   });
 
   it("reports pending-count changes across every pass", async () => {
-    const pool = createRequestWorkPool();
+    const pool = createRequestSideChainPool();
     const counts: number[] = [];
 
     const outer = (async () => {

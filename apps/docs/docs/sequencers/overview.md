@@ -70,18 +70,18 @@ The DSL has 21 methods. You'll only use six on day one. The rest are there when 
 | `map` | Inline transform between steps (no block) |
 | `tap` | Run a block for side effects, payload passes through |
 | `stepIf` | Run a block only when a condition holds |
-| `work` | Fire a block in the background, don't wait |
+| `sideChain` | Fire a block in the background, don't wait |
 | `rescue` | Catch errors and route to recovery blocks |
 
 **[Control Flow Reference](/docs/sequencers/control-flow)** — everything else, grouped by use case:
 
 | Group | Methods |
 |-------|---------|
-| Parallelism | `parallel`, `forEach`, `forEachBackground`, `stepAll` |
+| Parallelism | `parallel`, `forEach`, `forEachSideChain`, `stepAll` |
 | Looping | `doUntil`, `doWhile`, `loopBack` |
-| Conditional sub-cases | `tapIf`, `workIf`, `exitIf` |
+| Conditional sub-cases | `tapIf`, `sideChainIf`, `exitIf` |
 | Specialization (rarely needed) | `stepAny`, `race`, `branch` |
-| Side-chain coordination | `waitForWork` |
+| Side-chain coordination | `waitForSideChain` |
 | Connector adaptation | `connectInput` |
 
 Each method returns a sequencer. You chain them: `.step(a).stepIf(cond, b).tap(c).step(d)`.
@@ -225,4 +225,4 @@ This is a rendering hint — it has no effect on execution order or block behavi
 - **[Composing Blocks](/docs/sequencers/composing-blocks)** — start here. The six methods you'll use day one, with a worked example.
 - **[Control Flow Reference](/docs/sequencers/control-flow)** — the remaining methods, grouped by use case.
 - **[Connectors](/docs/sequencers/connectors)** — shaping data between steps, typed refs, and portability.
-- **[Side Chains](/docs/advanced/sequencer-side-chains)** — fire-and-forget work with `.work()` and `.waitForWork()`.
+- **[Side Chains](/docs/advanced/sequencer-side-chains)** — fire-and-forget work with `.sideChain()` and `.waitForSideChain()`.

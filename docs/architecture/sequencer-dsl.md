@@ -79,7 +79,7 @@ blocks down aborts with it. Returning `undefined` is a no-op.
 
 The sequencer owns this because the sequencer is what dispatches the step: a
 statically composed child cannot be handed a signal that only exists at runtime,
-and no other seam carries one (`.work()` takes none either). `stepIf` accepts the
+and no other seam carries one (`.sideChain()` takes none either). `stepIf` accepts the
 same bag.
 
 **Per-step settle hook.** The same bag takes `{ onSettled }`, called once when
@@ -176,14 +176,14 @@ pipeline.forEach((item, index, ctx) => {
 });
 ```
 
-### `forEachBackground(block)` — Fire-and-Forget Fan-Out
+### `forEachSideChain(block)` — Fire-and-Forget Fan-Out
 
-Dispatch each element to a block as background work. The parent sequencer continues immediately without waiting for iterations to complete. Each iteration runs as a sidechain with `.work()` lifetime semantics.
+Dispatch each element to a block as background work. The parent sequencer continues immediately without waiting for iterations to complete. Each iteration runs as a sidechain with `.sideChain()` lifetime semantics.
 
 ```ts
 pipeline
   .map((input) => input.subscribers)
-  .forEachBackground(notifyBlock, { concurrency: 8 });
+  .forEachSideChain(notifyBlock, { concurrency: 8 });
 
 // Output: Subscriber[] (original array — NOT the block results)
 ```
@@ -191,7 +191,7 @@ pipeline
 With a connector:
 
 ```ts
-pipeline.forEachBackground(
+pipeline.forEachSideChain(
   (input) => input.channels,
   broadcastBlock,
   { concurrency: 4 }
@@ -201,14 +201,14 @@ pipeline.forEachBackground(
 Dynamic block per item:
 
 ```ts
-pipeline.forEachBackground((item, index, ctx) => {
+pipeline.forEachSideChain((item, index, ctx) => {
   return item.urgent ? urgentNotify : normalNotify;
 });
 ```
 
 **Key differences from `forEach`:**
 
-| | `forEach` | `forEachBackground` |
+| | `forEach` | `forEachSideChain` |
 |---|---|---|
 | **Timing** | Blocks until all iterations complete | Dispatches and continues immediately |
 | **Return type** | `T[]` (array of block outputs) | Pass-through (original input unchanged) |
@@ -221,7 +221,7 @@ pipeline.forEachBackground((item, index, ctx) => {
 |--------|---------|--------|
 | `concurrency` | 16 | Maximum number of iterations running simultaneously |
 
-**Lifecycle:** The whole batch is queued on the per-request work pool (same as `.work()`). The request executor drains it before terminal status; inner sequencers do not block. Parent flow cancellation cancels in-flight iterations via the abort signal. See FIX-554.
+**Lifecycle:** The whole batch is queued on the per-request work pool (same as `.sideChain()`). The request executor drains it before terminal status; inner sequencers do not block. Parent flow cancellation cancels in-flight iterations via the abort signal. See FIX-554.
 
 ### `doUntil(condition, block)` — Loop Until True
 
@@ -268,15 +268,15 @@ Queue non-aborting side-chain execution. The main pipeline continues immediately
 ```ts
 pipeline
   .step(mainProcessing)
-  .work(analyticsBlock)       // runs in background
-  .work(notificationBlock)    // runs in background
+  .sideChain(analyticsBlock)       // runs in background
+  .sideChain(notificationBlock)    // runs in background
   .step(nextStep);            // continues immediately
 ```
 
 With a connector:
 
 ```ts
-pipeline.work(
+pipeline.sideChain(
   (output) => ({ event: "processed", data: output }),
   analyticsBlock,
   { name: "log-analytics" }
@@ -285,16 +285,16 @@ pipeline.work(
 
 **Key:** Work failures do NOT abort the main chain. They are logged and surface on the DevTool's trace channel.
 
-**Lifetime — request-scoped pool (FIX-554):** Background work is queued on a single per-request pool, not the sequencer that dispatched it. Inner sequencers do not block their parent on their own background work. The request executor drains the pool to quiescence before terminal status, on every terminal path including `failed` / `aborted` / `interrupted` (FIX-1001); the SSE stream stays open until the drain completes. As tasks settle, the executor emits a `StatusItem` with `blocked: false` and `backgroundTasks: N` — clients use `blocked` to know it's safe to accept new user input (see `isFinishing` on `SessionView` / `UseRequestStreamResult`). When you need a downstream step to read state mutated by a queued task, use `.waitForWork()` as an explicit barrier in the dispatching sequencer.
+**Lifetime — request-scoped pool (FIX-554):** Background work is queued on a single per-request pool, not the sequencer that dispatched it. Inner sequencers do not block their parent on their own background work. The request executor drains the pool to quiescence before terminal status, on every terminal path including `failed` / `aborted` / `interrupted` (FIX-1001); the SSE stream stays open until the drain completes. As tasks settle, the executor emits a `StatusItem` with `blocked: false` and `sideChainTasks: N` — clients use `blocked` to know it's safe to accept new user input (see `isFinishing` on `SessionView` / `UseRequestStreamResult`). When you need a downstream step to read state mutated by a queued task, use `.waitForSideChain()` as an explicit barrier in the dispatching sequencer.
 
-### `workIf(condition, block)` — Conditional Background Work
+### `sideChainIf(condition, block)` — Conditional Background Work
 
 Queue a background sidechain only when a condition is truthy. Complete no-op when falsy — no items emitted, no cost incurred.
 
 ```ts
 pipeline
   .step(mainProcessing)
-  .workIf(
+  .sideChainIf(
     (ctx) => ctx.session.state.features.memory,
     memoryObserveBlock
   )
@@ -303,17 +303,17 @@ pipeline
 
 The condition is evaluated once per execution before dispatching. It receives the full `BlockContext` so it can read live session/request state.
 
-**Static boolean:** Passing `true` is equivalent to `.work(block)`. Passing `false` makes the step a permanent no-op (useful during development).
+**Static boolean:** Passing `true` is equivalent to `.sideChain(block)`. Passing `false` makes the step a permanent no-op (useful during development).
 
 ```ts
 // Feature-flagged background work
-pipeline.workIf(ENABLE_ANALYTICS, analyticsBlock);
+pipeline.sideChainIf(ENABLE_ANALYTICS, analyticsBlock);
 ```
 
 With a connector:
 
 ```ts
-pipeline.workIf(
+pipeline.sideChainIf(
   (ctx) => ctx.session.state.observeEnabled,
   (output) => ({ event: "processed", data: output }),
   analyticsBlock,
@@ -323,15 +323,15 @@ pipeline.workIf(
 
 When the condition is falsy, the connector is never called.
 
-### `waitForWork(opts)` — Converge Work Queue
+### `waitForSideChain(opts)` — Converge Work Queue
 
-Wait for the calling sequencer's queued work to complete at a specific point in the pipeline. Drains by sequencer-instance scope: `.waitForWork()` only waits on `.work()` calls dispatched by *this* sequencer instance, not unrelated siblings'. If you don't need the results mid-pipeline, the request-level pool drain handles it automatically before terminal status (FIX-554).
+Wait for the calling sequencer's queued work to complete at a specific point in the pipeline. Drains by sequencer-instance scope: `.waitForSideChain()` only waits on `.sideChain()` calls dispatched by *this* sequencer instance, not unrelated siblings'. If you don't need the results mid-pipeline, the request-level pool drain handles it automatically before terminal status (FIX-554).
 
 ```ts
 pipeline
-  .work(taskA)
-  .work(taskB)
-  .waitForWork({ failOnError: false });  // wait, but don't fail on work errors
+  .sideChain(taskA)
+  .sideChain(taskB)
+  .waitForSideChain({ failOnError: false });  // wait, but don't fail on work errors
 ```
 
 | Option | Effect |
@@ -449,7 +449,7 @@ pipeline
   .step(finalizeBlock); // also skipped
 ```
 
-Does not skip rescue handlers for errors that occurred before the exit. Outstanding `.work()` tasks dispatched by this sequencer remain on the per-request pool and are drained by the request executor (FIX-554).
+Does not skip rescue handlers for errors that occurred before the exit. Outstanding `.sideChain()` tasks dispatched by this sequencer remain on the per-request pool and are drained by the request executor (FIX-554).
 
 ### `throwIf(condition, error)` — Guard / Invariant Check
 
@@ -490,7 +490,7 @@ Each branch is a tuple: `[connector, condition, block]`.
 
 ## Resource Collection
 
-Sequencers automatically collect `declaredResources` from all child blocks added through the DSL chain. Every method that accepts a block — `step`, `stepIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `work`, `workIf`, `tap`, `tapIf`, `rescue`, `branch`, `stepAll`, `stepAny`, `race` — merges that block's declared resources into the sequencer's accumulated set.
+Sequencers automatically collect `declaredResources` from all child blocks added through the DSL chain. Every method that accepts a block — `step`, `stepIf`, `parallel`, `forEach`, `forEachSideChain`, `doUntil`, `doWhile`, `sideChain`, `sideChainIf`, `tap`, `tapIf`, `rescue`, `branch`, `stepAll`, `stepAny`, `race` — merges that block's declared resources into the sequencer's accumulated set.
 
 ```ts
 const pipeline = sequencer({ name: "pipeline" })

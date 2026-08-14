@@ -30,7 +30,7 @@ Before writing, read at least two existing patterns in `packages/patterns/src/`:
 | `routedSpecialists/index.ts` | Session resources, router dispatch, controller loop, specialist composition |
 | `task-board/index.ts` | TaskCollection substrate, dispatcher + worker registry, concurrent drain, mid-run enqueue |
 | `response-auditor/index.ts` | Simpler pattern: linear chain, tap for side effects, evaluation criteria |
-| `supervisor/index.ts` | forEachBackground for concurrent work, resource-based coordination |
+| `supervisor/index.ts` | forEachSideChain for concurrent work, resource-based coordination |
 | `eventActors/index.ts` | Stigmergic multi-agent coordination, actor dispatch, event-driven drain |
 
 Also read:
@@ -244,7 +244,7 @@ Beyond the basics (`.step()`, `.doUntil()`, `.tap()`, `.loopBack()`), the sequen
 
 | Method | Behavior |
 |--------|----------|
-| `workIf(condition, block)` | Conditional background work dispatch. No-op when falsy. |
+| `sideChainIf(condition, block)` | Conditional background work dispatch. No-op when falsy. |
 | `stepAll(blocks)` | Parallel execution of multiple blocks with the same input. Collects all results (like `Promise.all`). |
 | `stepAny(blocks)` | Sequential attempt through blocks in order. Returns the first success, skips the rest. Throws `AggregateError` if all fail. |
 | `race(blocks)` | Parallel execution, returns the first success, aborts the rest. Throws `AggregateError` if all fail. |

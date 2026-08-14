@@ -133,8 +133,8 @@ describe("sequencer builder", () => {
     expect(capturedIncIds[2]).toContain("loop[2]");
   });
 
-  it("supports work and waitForWork", async () => {
-    const workBlock = handler({
+  it("supports work and waitForSideChain", async () => {
+    const sideChainBlock = handler({
       name: "bg-work",
       inputSchema: z.number(),
       outputSchema: z.number(),
@@ -142,15 +142,15 @@ describe("sequencer builder", () => {
     });
 
     const seq = sequencer({ name: "work-flow", inputSchema: z.number() })
-      .work(workBlock)
-      .waitForWork({ failOnError: true });
+      .sideChain(sideChainBlock)
+      .waitForSideChain({ failOnError: true });
 
     const ctx = createMockContext();
     await expect(runForTest(seq, 1, ctx)).resolves.toBe(1);
   });
 
-  it("waitForWork can fail on background errors", async () => {
-    const failingWork = handler({
+  it("waitForSideChain can fail on background errors", async () => {
+    const failingSideChain = handler({
       name: "failing-work",
       inputSchema: z.number(),
       outputSchema: z.number(),
@@ -160,16 +160,16 @@ describe("sequencer builder", () => {
     });
 
     const seq = sequencer({ name: "work-fail", inputSchema: z.number() })
-      .work(failingWork)
-      .waitForWork({ failOnError: true });
+      .sideChain(failingSideChain)
+      .waitForSideChain({ failOnError: true });
 
     const ctx = createMockContext();
     await expect(runForTest(seq, 1, ctx)).rejects.toThrow("background failure");
   });
 
   it("emits structured status options during auto-await of work tasks", async () => {
-    const statusCalls: Array<{ message: string | undefined; options?: { blocked?: boolean; backgroundTasks?: number } }> = [];
-    const slowWork = handler({
+    const statusCalls: Array<{ message: string | undefined; options?: { blocked?: boolean; sideChainTasks?: number } }> = [];
+    const slowSideChain = handler({
       name: "slow-work",
       inputSchema: z.number(),
       outputSchema: z.number(),
@@ -178,7 +178,7 @@ describe("sequencer builder", () => {
         return v;
       }
     });
-    const fastWork = handler({
+    const fastSideChain = handler({
       name: "fast-work",
       inputSchema: z.number(),
       outputSchema: z.number(),
@@ -186,14 +186,14 @@ describe("sequencer builder", () => {
     });
 
     const seq = sequencer({ name: "status-meta", inputSchema: z.number() })
-      .work(slowWork)
-      .work(fastWork);
+      .sideChain(slowSideChain)
+      .sideChain(fastSideChain);
 
     const ctx = createMockContext({
       emit: {
         message: () => undefined,
         component: () => undefined,
-        status: (message: string | undefined, options?: { blocked?: boolean; backgroundTasks?: number }) => {
+        status: (message: string | undefined, options?: { blocked?: boolean; sideChainTasks?: number }) => {
           statusCalls.push({ message, options });
         },
         trace: {} as any,
@@ -204,14 +204,14 @@ describe("sequencer builder", () => {
 
     // First status: unblock client, report total background tasks
     expect(statusCalls[0]!.options?.blocked).toBe(false);
-    expect(statusCalls[0]!.options?.backgroundTasks).toBe(2);
+    expect(statusCalls[0]!.options?.sideChainTasks).toBe(2);
     // Final status: all background tasks done
     const last = statusCalls[statusCalls.length - 1]!;
     expect(last.options?.blocked).toBe(false);
-    expect(last.options?.backgroundTasks).toBe(0);
+    expect(last.options?.sideChainTasks).toBe(0);
   });
 
-  describe("forEachBackground", () => {
+  describe("forEachSideChain", () => {
     it("dispatches iterations as background work and returns immediately", async () => {
       const executed: number[] = [];
       const processItem = handler({
@@ -225,8 +225,8 @@ describe("sequencer builder", () => {
       });
 
       const seq = sequencer({ name: "bg-foreach", inputSchema: z.array(z.number()) })
-        .forEachBackground(processItem)
-        .waitForWork({ failOnError: true });
+        .forEachSideChain(processItem)
+        .waitForSideChain({ failOnError: true });
 
       const ctx = createMockContext();
       // The sequencer's output should be the original input (pass-through), not the mapped results
@@ -249,11 +249,11 @@ describe("sequencer builder", () => {
       });
 
       const seq = sequencer({ name: "bg-foreach-conn", inputSchema: z.number() })
-        .forEachBackground(
+        .forEachSideChain(
           (value) => [String(value), String(value + 1)],
           processItem
         )
-        .waitForWork({ failOnError: true });
+        .waitForSideChain({ failOnError: true });
 
       const ctx = createMockContext();
       const result = await runForTest(seq, 5, ctx);
@@ -276,8 +276,8 @@ describe("sequencer builder", () => {
 
       // Without failOnError, the parent should succeed even though one iteration fails
       const seq = sequencer({ name: "bg-foreach-isolated", inputSchema: z.array(z.number()) })
-        .forEachBackground(sometimesFails)
-        .waitForWork({ failOnError: false });
+        .forEachSideChain(sometimesFails)
+        .waitForSideChain({ failOnError: false });
 
       const ctx = createMockContext();
       const result = await runForTest(seq, [1, 2, 3], ctx);
@@ -286,7 +286,7 @@ describe("sequencer builder", () => {
       expect(executed.sort()).toEqual([1, 3]);
     });
 
-    it("propagates failures when waitForWork has failOnError", async () => {
+    it("propagates failures when waitForSideChain has failOnError", async () => {
       const failingBlock = handler({
         name: "always-fail",
         inputSchema: z.number(),
@@ -295,8 +295,8 @@ describe("sequencer builder", () => {
       });
 
       const seq = sequencer({ name: "bg-foreach-fail", inputSchema: z.array(z.number()) })
-        .forEachBackground(failingBlock)
-        .waitForWork({ failOnError: true });
+        .forEachSideChain(failingBlock)
+        .waitForSideChain({ failOnError: true });
 
       const ctx = createMockContext();
       await expect(runForTest(seq, [1], ctx)).rejects.toThrow("iteration failure");
@@ -320,8 +320,8 @@ describe("sequencer builder", () => {
       });
 
       const seq = sequencer({ name: "bg-foreach-conc", inputSchema: z.array(z.number()) })
-        .forEachBackground(trackConcurrency, { concurrency: 2 })
-        .waitForWork({ failOnError: true });
+        .forEachSideChain(trackConcurrency, { concurrency: 2 })
+        .waitForSideChain({ failOnError: true });
 
       const ctx = createMockContext();
       await runForTest(seq, [1, 2, 3, 4, 5], ctx);
@@ -344,8 +344,8 @@ describe("sequencer builder", () => {
       });
 
       const seq = sequencer({ name: "bg-foreach-factory", inputSchema: z.array(z.number()) })
-        .forEachBackground((item: number, index) => index % 2 === 0 ? doubler : tripler)
-        .waitForWork({ failOnError: true });
+        .forEachSideChain((item: number, index) => index % 2 === 0 ? doubler : tripler)
+        .waitForSideChain({ failOnError: true });
 
       const ctx = createMockContext();
       await runForTest(seq, [10, 20, 30], ctx);
@@ -733,7 +733,7 @@ describe("sequencer builder", () => {
       expect(typeof connected.step).toBe("function");
       expect(typeof connected.tap).toBe("function");
       expect(typeof connected.map).toBe("function");
-      expect(typeof connected.work).toBe("function");
+      expect(typeof connected.sideChain).toBe("function");
       expect(connected.kind).toBe("sequencer");
     });
 
@@ -1186,19 +1186,19 @@ describe("sequencer builder", () => {
     });
 
     it("works with background work — per-sequencer fallback auto-awaits when no request pool is present", async () => {
-      // Without `_requestWorkPool` on ctx (the unit-test default), sequencer
+      // Without `_requestSideChainPool` on ctx (the unit-test default), sequencer
       // DSL falls back to the legacy per-sequencer auto-await so dispatcher
       // tests don't need to construct a pool. The request-scoped pool
       // behavior — inner sequencers do NOT block their parent — is asserted
       // at the integration level (see packages/integration-tests).
-      let workRan = false;
+      let sideChainRan = false;
       const sideEffect = handler({
         name: "side-effect",
         inputSchema: z.number(),
         outputSchema: z.number(),
         execute: async (v) => {
           await new Promise((r) => setTimeout(r, 10));
-          workRan = true;
+          sideChainRan = true;
           return v;
         },
       });
@@ -1206,14 +1206,14 @@ describe("sequencer builder", () => {
       const addOne = addHandler("add-one", 1);
 
       const seq = sequencer({ name: "exit-work", inputSchema: z.number() })
-        .work(sideEffect)
+        .sideChain(sideEffect)
         .exitIf((value) => value > 0)
         .step(addOne);
 
       const ctx = createMockContext();
       const result = await runForTest(seq, 5, ctx);
       expect(result).toBe(5);
-      expect(workRan).toBe(true);
+      expect(sideChainRan).toBe(true);
     });
 
     it("multiple exitIf in chain — first match wins", async () => {
@@ -1308,112 +1308,112 @@ describe("sequencer builder", () => {
     });
   });
 
-  describe("workIf", () => {
+  describe("sideChainIf", () => {
     it("dispatches sidechain when condition function returns true", async () => {
-      let workExecuted = false;
-      const workBlock = handler({
+      let sideChainExecuted = false;
+      const sideChainBlock = handler({
         name: "bg-work",
         inputSchema: z.number(),
         outputSchema: z.number(),
         execute: async (value) => {
-          workExecuted = true;
+          sideChainExecuted = true;
           return value + 10;
         }
       });
 
-      const seq = sequencer({ name: "workIf-true", inputSchema: z.number() })
-        .workIf(() => true, workBlock)
-        .waitForWork({ failOnError: true });
+      const seq = sequencer({ name: "sideChainIf-true", inputSchema: z.number() })
+        .sideChainIf(() => true, sideChainBlock)
+        .waitForSideChain({ failOnError: true });
 
       const ctx = createMockContext();
       const result = await runForTest(seq, 1, ctx);
       expect(result).toBe(1);
-      expect(workExecuted).toBe(true);
+      expect(sideChainExecuted).toBe(true);
     });
 
     it("skips sidechain when condition function returns false", async () => {
-      let workExecuted = false;
-      const workBlock = handler({
+      let sideChainExecuted = false;
+      const sideChainBlock = handler({
         name: "bg-work",
         inputSchema: z.number(),
         outputSchema: z.number(),
         execute: async (value) => {
-          workExecuted = true;
+          sideChainExecuted = true;
           return value + 10;
         }
       });
 
-      const seq = sequencer({ name: "workIf-false", inputSchema: z.number() })
-        .workIf(() => false, workBlock)
-        .waitForWork({ failOnError: true });
+      const seq = sequencer({ name: "sideChainIf-false", inputSchema: z.number() })
+        .sideChainIf(() => false, sideChainBlock)
+        .waitForSideChain({ failOnError: true });
 
       const ctx = createMockContext();
       const result = await runForTest(seq, 1, ctx);
       expect(result).toBe(1);
-      expect(workExecuted).toBe(false);
+      expect(sideChainExecuted).toBe(false);
     });
 
     it("accepts static boolean true (equivalent to work())", async () => {
-      let workExecuted = false;
-      const workBlock = handler({
+      let sideChainExecuted = false;
+      const sideChainBlock = handler({
         name: "bg-work",
         inputSchema: z.number(),
         outputSchema: z.number(),
         execute: async (value) => {
-          workExecuted = true;
+          sideChainExecuted = true;
           return value + 10;
         }
       });
 
-      const seq = sequencer({ name: "workIf-static-true", inputSchema: z.number() })
-        .workIf(true, workBlock)
-        .waitForWork({ failOnError: true });
+      const seq = sequencer({ name: "sideChainIf-static-true", inputSchema: z.number() })
+        .sideChainIf(true, sideChainBlock)
+        .waitForSideChain({ failOnError: true });
 
       const ctx = createMockContext();
       const result = await runForTest(seq, 1, ctx);
       expect(result).toBe(1);
-      expect(workExecuted).toBe(true);
+      expect(sideChainExecuted).toBe(true);
     });
 
     it("accepts static boolean false (complete no-op)", async () => {
-      let workExecuted = false;
-      const workBlock = handler({
+      let sideChainExecuted = false;
+      const sideChainBlock = handler({
         name: "bg-work",
         inputSchema: z.number(),
         outputSchema: z.number(),
         execute: async (value) => {
-          workExecuted = true;
+          sideChainExecuted = true;
           return value + 10;
         }
       });
 
-      const seq = sequencer({ name: "workIf-static-false", inputSchema: z.number() })
-        .workIf(false, workBlock)
-        .waitForWork({ failOnError: true });
+      const seq = sequencer({ name: "sideChainIf-static-false", inputSchema: z.number() })
+        .sideChainIf(false, sideChainBlock)
+        .waitForSideChain({ failOnError: true });
 
       const ctx = createMockContext();
       const result = await runForTest(seq, 1, ctx);
       expect(result).toBe(1);
-      expect(workExecuted).toBe(false);
+      expect(sideChainExecuted).toBe(false);
     });
 
     it("condition receives the running value and BlockContext", async () => {
       let receivedValue: unknown = null;
       let receivedCtx: unknown = null;
-      const workBlock = handler({
+      const sideChainBlock = handler({
         name: "bg-work",
         inputSchema: z.number(),
         outputSchema: z.number(),
         execute: async (value) => value
       });
 
-      const seq = sequencer({ name: "workIf-ctx", inputSchema: z.number() })
-        .workIf((value, ctx) => {
+      const seq = sequencer({ name: "sideChainIf-ctx", inputSchema: z.number() })
+        .sideChainIf((value, ctx) => {
           receivedValue = value;
           receivedCtx = ctx;
           return true;
-        }, workBlock)
-        .waitForWork({ failOnError: true });
+        }, sideChainBlock)
+        .waitForSideChain({ failOnError: true });
 
       const ctx = createMockContext();
       await runForTest(seq, 1, ctx);
@@ -1423,59 +1423,59 @@ describe("sequencer builder", () => {
     });
 
     it("condition can gate dispatch on the running value", async () => {
-      let workExecuted = false;
-      const workBlock = handler({
+      let sideChainExecuted = false;
+      const sideChainBlock = handler({
         name: "bg-work",
         inputSchema: z.string(),
         outputSchema: z.string(),
         execute: async (value) => {
-          workExecuted = true;
+          sideChainExecuted = true;
           return value;
         }
       });
 
-      const seq = sequencer({ name: "workIf-value", inputSchema: z.string() })
-        .workIf((value) => value.length > 0, workBlock)
-        .waitForWork({ failOnError: true });
+      const seq = sequencer({ name: "sideChainIf-value", inputSchema: z.string() })
+        .sideChainIf((value) => value.length > 0, sideChainBlock)
+        .waitForSideChain({ failOnError: true });
 
       // Empty string fails the predicate — work should not run.
       const ctx = createMockContext();
       await runForTest(seq, "", ctx);
-      expect(workExecuted).toBe(false);
+      expect(sideChainExecuted).toBe(false);
 
       // Non-empty satisfies it.
       await runForTest(seq, "hello", ctx);
-      expect(workExecuted).toBe(true);
+      expect(sideChainExecuted).toBe(true);
     });
 
     it("supports async condition functions", async () => {
-      let workExecuted = false;
-      const workBlock = handler({
+      let sideChainExecuted = false;
+      const sideChainBlock = handler({
         name: "bg-work",
         inputSchema: z.number(),
         outputSchema: z.number(),
         execute: async (value) => {
-          workExecuted = true;
+          sideChainExecuted = true;
           return value + 10;
         }
       });
 
-      const seq = sequencer({ name: "workIf-async", inputSchema: z.number() })
-        .workIf(async () => {
+      const seq = sequencer({ name: "sideChainIf-async", inputSchema: z.number() })
+        .sideChainIf(async () => {
           await new Promise((r) => setTimeout(r, 5));
           return true;
-        }, workBlock)
-        .waitForWork({ failOnError: true });
+        }, sideChainBlock)
+        .waitForSideChain({ failOnError: true });
 
       const ctx = createMockContext();
       const result = await runForTest(seq, 1, ctx);
       expect(result).toBe(1);
-      expect(workExecuted).toBe(true);
+      expect(sideChainExecuted).toBe(true);
     });
 
     it("supports connector overload", async () => {
       const executed: string[] = [];
-      const workBlock = handler({
+      const sideChainBlock = handler({
         name: "bg-work",
         inputSchema: z.string(),
         outputSchema: z.string(),
@@ -1485,13 +1485,13 @@ describe("sequencer builder", () => {
         }
       });
 
-      const seq = sequencer({ name: "workIf-conn", inputSchema: z.number() })
-        .workIf(
+      const seq = sequencer({ name: "sideChainIf-conn", inputSchema: z.number() })
+        .sideChainIf(
           () => true,
           (value) => String(value),
-          workBlock
+          sideChainBlock
         )
-        .waitForWork({ failOnError: true });
+        .waitForSideChain({ failOnError: true });
 
       const ctx = createMockContext();
       const result = await runForTest(seq, 42, ctx);
@@ -1501,23 +1501,23 @@ describe("sequencer builder", () => {
 
     it("does not dispatch connector when condition is false", async () => {
       let connectorCalled = false;
-      const workBlock = handler({
+      const sideChainBlock = handler({
         name: "bg-work",
         inputSchema: z.string(),
         outputSchema: z.string(),
         execute: async (value) => value
       });
 
-      const seq = sequencer({ name: "workIf-no-conn", inputSchema: z.number() })
-        .workIf(
+      const seq = sequencer({ name: "sideChainIf-no-conn", inputSchema: z.number() })
+        .sideChainIf(
           () => false,
           (value) => {
             connectorCalled = true;
             return String(value);
           },
-          workBlock
+          sideChainBlock
         )
-        .waitForWork({ failOnError: true });
+        .waitForSideChain({ failOnError: true });
 
       const ctx = createMockContext();
       await runForTest(seq, 42, ctx);
@@ -1525,7 +1525,7 @@ describe("sequencer builder", () => {
     });
 
     it("returns original value unchanged (fire-and-forget)", async () => {
-      const workBlock = handler({
+      const sideChainBlock = handler({
         name: "bg-work",
         inputSchema: z.number(),
         outputSchema: z.number(),
@@ -1533,17 +1533,17 @@ describe("sequencer builder", () => {
       });
 
       const addOne = addHandler("add-one", 1);
-      const seq = sequencer({ name: "workIf-passthrough", inputSchema: z.number() })
-        .workIf(() => true, workBlock)
+      const seq = sequencer({ name: "sideChainIf-passthrough", inputSchema: z.number() })
+        .sideChainIf(() => true, sideChainBlock)
         .step(addOne);
 
       const ctx = createMockContext();
-      // workIf returns unchanged value (5), then addOne → 6
+      // sideChainIf returns unchanged value (5), then addOne → 6
       await expect(runForTest(seq, 5, ctx)).resolves.toBe(6);
     });
 
-    it("propagates sidechain failures via waitForWork failOnError", async () => {
-      const failingWork = handler({
+    it("propagates sidechain failures via waitForSideChain failOnError", async () => {
+      const failingSideChain = handler({
         name: "failing-work",
         inputSchema: z.number(),
         outputSchema: z.number(),
@@ -1552,9 +1552,9 @@ describe("sequencer builder", () => {
         }
       });
 
-      const seq = sequencer({ name: "workIf-fail", inputSchema: z.number() })
-        .workIf(() => true, failingWork)
-        .waitForWork({ failOnError: true });
+      const seq = sequencer({ name: "sideChainIf-fail", inputSchema: z.number() })
+        .sideChainIf(() => true, failingSideChain)
+        .waitForSideChain({ failOnError: true });
 
       const ctx = createMockContext();
       await expect(runForTest(seq, 1, ctx)).rejects.toThrow("conditional background failure");
@@ -1564,7 +1564,7 @@ describe("sequencer builder", () => {
       // Rejected background tasks are logged. The failed `block_output` reaches
       // the DevTool via the trace channel; nothing surfaces as a public stream
       // item. Parent action still completes successfully.
-      const failingWork = handler({
+      const failingSideChain = handler({
         name: "background-failing-work",
         inputSchema: z.number(),
         outputSchema: z.number(),
@@ -1586,7 +1586,7 @@ describe("sequencer builder", () => {
       });
 
       const seq = sequencer({ name: "work-step-error", inputSchema: z.number() })
-        .workIf(() => true, failingWork);
+        .sideChainIf(() => true, failingSideChain);
 
       await expect(runForTest(seq, 1, ctx)).resolves.toBe(1);
 

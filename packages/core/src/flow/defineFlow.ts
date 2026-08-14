@@ -32,7 +32,6 @@ import type {
   SessionConfig,
   ToolsConfig,
   UserConfig,
-  WorkConfig
 } from "../types/flow";
 import type { ResourceScope } from "../types/resource";
 import { isDefinedResourceCollection } from "../types/resource-collection";
@@ -139,12 +138,11 @@ type AnySession = SessionConfig | undefined;
 type AnyRequest = RequestConfig | undefined;
 type AnyUser = UserConfig | undefined;
 type AnyOrg = OrgConfig | undefined;
-type AnyWork = WorkConfig | undefined;
 
 type AnyResources = Record<string, DeclaredResourceEntry> | undefined;
 
-type AnyFlowDefinition = FlowDefinition<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg, AnyWork>;
-type AnyFlowInstanceOptions = FlowInstanceOptions<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg, AnyWork>;
+type AnyFlowDefinition = FlowDefinition<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg>;
+type AnyFlowInstanceOptions = FlowInstanceOptions<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg>;
 
 function rejectRemovedMiddleware(value: object | undefined, location: string): void {
   if (value !== undefined && Object.hasOwn(value, "middleware")) {
@@ -391,8 +389,8 @@ function actionCoreBlocks(core: {
  *
  * Four binding families all carry the shared `ActionCore` (caller actions,
  * webhook, chat, and static schedule bindings), so each contributes its root and
- * its observers. The flow-level `request` and `work` hooks are blocks too, and
- * are declared once for the whole flow rather than per binding.
+ * its observers. The flow-level `request` hooks are blocks too, and are declared
+ * once for the whole flow rather than per binding.
  *
  * Dynamic schedules (`schedules.resolve`) are deliberately absent: their blocks
  * do not exist until a resolver runs, so there is nothing to collect at
@@ -403,8 +401,7 @@ function actionBlocks(
   webhooks: WebhookConfig | undefined,
   chat: ChatConfig | undefined,
   schedules: SchedulesConfig | undefined,
-  request?: { onStarted?: BlockDefinition<any, any>; onCompleted?: BlockDefinition<any, any>; onErrored?: BlockDefinition<any, any>; onFinished?: BlockDefinition<any, any>; onStepErrored?: BlockDefinition<any, any> },
-  work?: { onStarted?: BlockDefinition<any, any>; onCompleted?: BlockDefinition<any, any>; onErrored?: BlockDefinition<any, any>; onFinished?: BlockDefinition<any, any> }
+  request?: { onStarted?: BlockDefinition<any, any>; onCompleted?: BlockDefinition<any, any>; onErrored?: BlockDefinition<any, any>; onFinished?: BlockDefinition<any, any>; onStepErrored?: BlockDefinition<any, any> }
 ): BlockDefinition[] {
   const blocks: BlockDefinition[] = [];
   for (const action of Object.values(actions)) blocks.push(...actionCoreBlocks(action));
@@ -424,11 +421,7 @@ function actionBlocks(
     request?.onCompleted,
     request?.onErrored,
     request?.onFinished,
-    request?.onStepErrored,
-    work?.onStarted,
-    work?.onCompleted,
-    work?.onErrored,
-    work?.onFinished
+    request?.onStepErrored
   ]) {
     if (hook !== undefined) blocks.push(hook);
   }
@@ -917,7 +910,7 @@ function validateMcpConfig(
 function createFlowInstance(
   definition: AnyFlowDefinition,
   options: AnyFlowInstanceOptions | undefined
-): FlowInstance<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg, AnyWork> {
+): FlowInstance<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg> {
   rejectRemovedMiddleware(definition, `Flow "${definition.kind}"`);
   rejectRemovedMiddleware(options, `Flow "${definition.kind}" instance options`);
   rejectDefinitionOnlyOptions(options, definition.kind);
@@ -985,20 +978,18 @@ function createFlowInstance(
   // walks was how a lifecycle observer's board could reach `runAction` while
   // being invisible to `flow.workstreamBindings`.
   // Merged before collection, not after: `FlowInstanceOptions` can replace a
-  // `request`/`work` lifecycle observer, and the instance returned below runs the
+  // `request` lifecycle observer, and the instance returned below runs the
   // merged one. Collecting from `definition.*` would read the blocks the flow was
   // authored with rather than the blocks it will execute — missing an override's
   // declarations, and keeping a replaced block's.
   const requestMerged = mergeConfig(definition.request, options?.request);
-  const workMerged = mergeConfig(definition.work, options?.work);
 
   const declaredBlocks = actionBlocks(
     actions,
     webhooks,
     chat,
     schedules,
-    requestMerged,
-    workMerged
+    requestMerged
   );
 
   // Bindings are collected FIRST, because a detached worker is no longer
@@ -1100,7 +1091,6 @@ function createFlowInstance(
     request: requestMerged,
     user,
     org,
-    work: workMerged,
     resources: mergedResources,
     flowLevelResourceKeys,
     tools,
@@ -1122,11 +1112,10 @@ export function defineFlow<
   const TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   const TUser extends UserConfig | undefined = UserConfig | undefined,
   const TOrg extends OrgConfig | undefined = OrgConfig | undefined,
-  const TWork extends WorkConfig | undefined = WorkConfig | undefined,
   const TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 >(
-  definition: FlowDefinition<TActions, TSession, TRequest, TUser, TOrg, TWork, TResources>
-): FlowType<TActions, TSession, TRequest, TUser, TOrg, TWork, TResources> {
+  definition: FlowDefinition<TActions, TSession, TRequest, TUser, TOrg, TResources>
+): FlowType<TActions, TSession, TRequest, TUser, TOrg, TResources> {
   const normalizedDefinition: AnyFlowDefinition = {
     ...definition
   };
@@ -1138,7 +1127,6 @@ export function defineFlow<
     TRequest,
     TUser,
     TOrg,
-    TWork,
     TResources
   >;
 
@@ -1163,7 +1151,6 @@ export function defineFlow<
     request: baseInstance.request as TRequest,
     user: baseInstance.user as TUser,
     org: baseInstance.org as TOrg,
-    work: baseInstance.work as TWork,
     resources: baseInstance.resources as TResources | undefined,
     tools: baseInstance.tools,
     voice: baseInstance.voice,

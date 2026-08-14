@@ -296,7 +296,7 @@ describe("testing utilities", () => {
         provenance: {
           blockName: "summary",
           blockInstanceId: "summary_1",
-          phase: "work"
+          phase: "sideChain"
         },
         ts: 2
       }
@@ -305,7 +305,7 @@ describe("testing utilities", () => {
     const selector = testItems(items);
     expect(selector.messages()).toHaveLength(1);
     expect(selector.blockOutputs("summary")).toHaveLength(1);
-    expect(selector.work()).toHaveLength(1);
+    expect(selector.sideChain()).toHaveLength(1);
 
     const trace = snapshotTrace({ items, requestId: "req_1", actionName: "run" });
     expect(trace.requestId).toBe("req_1");

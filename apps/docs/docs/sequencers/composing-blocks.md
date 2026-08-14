@@ -174,11 +174,11 @@ You can also reach into the context to read state from any scope the surrounding
 .stepIf(ENABLE_DISCOUNTS, applyVolumeDiscount)
 ```
 
-For conditional side effects (a tap that runs only when something is true) use `tapIf`. For conditional background work, `workIf`. Both are in the [Control Flow Reference](/docs/sequencers/control-flow).
+For conditional side effects (a tap that runs only when something is true) use `tapIf`. For conditional background work, `sideChainIf`. Both are in the [Control Flow Reference](/docs/sequencers/control-flow).
 
-## `work` — fire-and-forget background tasks
+## `sideChain` — fire-and-forget background tasks
 
-Some work shouldn't block the user. Analytics is the classic example: you want it to run, but the customer doesn't have to wait for it. `.work()` queues a block in the background and lets the chain continue immediately.
+Some work shouldn't block the user. Analytics is the classic example: you want it to run, but the customer doesn't have to wait for it. `.sideChain()` queues a block in the background and lets the chain continue immediately.
 
 ```ts
 const trackOrder = handler({
@@ -197,12 +197,12 @@ orderPipeline
   .tap(validateOrder)
   .step(priceOrder)
   .step(recordOrder)
-  .work(trackOrder);     // dispatched, not awaited
+  .sideChain(trackOrder);     // dispatched, not awaited
 ```
 
-`recordOrder` returns immediately. `trackOrder` runs in parallel. The sequencer waits for outstanding `.work()` tasks to settle before it returns, so they don't get orphaned, but they don't slow the main chain.
+`recordOrder` returns immediately. `trackOrder` runs in parallel. The sequencer waits for outstanding `.sideChain()` tasks to settle before it returns, so they don't get orphaned, but they don't slow the main chain.
 
-If a `.work()` block throws, the main chain is *not* aborted. The framework logs the failure and the failed `block_trace` reaches the DevTool via the trace channel; nothing surfaces in the user-visible stream.
+If a `.sideChain()` block throws, the main chain is *not* aborted. The framework logs the failure and the failed `block_trace` reaches the DevTool via the trace channel; nothing surfaces in the user-visible stream.
 
 For more on background work — including waiting on results, fan-out over arrays, and conditional dispatch — see [Side Chains](/docs/advanced/sequencer-side-chains).
 
@@ -312,7 +312,7 @@ const orderPipeline = sequencer({
     applyVolumeDiscount
   )
   .step(recordOrder)
-  .work(trackOrder)
+  .sideChain(trackOrder)
   .rescue([
     { when: [NetworkError], block: retryWithDifferentProvider },
     { block: recordFailedOrder },
@@ -327,9 +327,9 @@ The six methods above handle the common cases. The DSL has more once you need it
 
 - **Run several blocks at once** → [`parallel`, `stepAll`, `forEach`](/docs/sequencers/control-flow#parallelism)
 - **Loop until a condition is met** → [`doUntil`, `doWhile`, `loopBack`](/docs/sequencers/control-flow#looping)
-- **Conditional taps and work** → [`tapIf`, `workIf`, `exitIf`](/docs/sequencers/control-flow#conditional-sub-cases)
+- **Conditional taps and work** → [`tapIf`, `sideChainIf`, `exitIf`](/docs/sequencers/control-flow#conditional-sub-cases)
 - **Fallback chains and races** → [`stepAny`, `race`, `branch`](/docs/sequencers/control-flow#specialization)
-- **Wait on background work before continuing** → [`waitForWork`](/docs/sequencers/control-flow#side-chain-coordination)
+- **Wait on background work before continuing** → [`waitForSideChain`](/docs/sequencers/control-flow#side-chain-coordination)
 - **Wait for a condition over the item stream** → [`waitForCondition`](/docs/sequencers/wait-for-condition)
 - **Per-block input adaptation** → [`connectInput`](/docs/sequencers/control-flow#connector-adaptation)
 

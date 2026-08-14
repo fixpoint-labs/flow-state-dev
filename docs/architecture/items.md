@@ -96,7 +96,7 @@ Because that row is mutated in place — one object reference, fields changed be
 `block_trace.output` is a `BlockValue<T>` discriminated union with three cases:
 
 - **`inline`** — the block produced novel content. Leaves (generators, handlers) and explicit transforms (`.map`, non-identity `connectOutput`) emit this kind. The payload rides on `output.value`.
-- **`ref`** — the block's output is reference-identical to another item's content. Pass-through composers (`.step`, `.work`, `.tap`, routers, `.rescue`) emit this kind, with `output.sourceItemId` pointing at the content-bearing item. The invariant is **flatten-at-emit**: every ref points one hop to a content-bearing item, never to another ref. Streaming-text generators (`outputSchema: z.string()`, `itemVisibility` set) emit a `ref` pointing at their just-emitted `MessageItem` instead of inlining a duplicate copy of the streamed text. Tool-call paths emit a `ref` pointing at the produced `tool_output` item. `resolveBlockValue` resolves message-targeting refs to the joined `output_text` content.
+- **`ref`** — the block's output is reference-identical to another item's content. Pass-through composers (`.step`, `.sideChain`, `.tap`, routers, `.rescue`) emit this kind, with `output.sourceItemId` pointing at the content-bearing item. The invariant is **flatten-at-emit**: every ref points one hop to a content-bearing item, never to another ref. Streaming-text generators (`outputSchema: z.string()`, `itemVisibility` set) emit a `ref` pointing at their just-emitted `MessageItem` instead of inlining a duplicate copy of the streamed text. Tool-call paths emit a `ref` pointing at the produced `tool_output` item. `resolveBlockValue` resolves message-targeting refs to the joined `output_text` content.
 - **`structure`** — the block produced a novel container of existing content. Aggregators (`.stepAll`, `.parallel`, `.forEach`) emit this kind, with `output.shape` describing the array or object of nested BlockValues.
 
 `block_trace.input.source` is a `BlockValue<T>` of the same shape, stamped at block start. Sequential steps stamp a `ref` to the upstream block's trace; aggregator branches share the same upstream ref; downstream consumers of an aggregator see a `structure` of branch refs; `forEach` per-iteration children see `inline` with the element value; the request entry point sees `inline` with the raw input.
@@ -235,17 +235,17 @@ Prefer `activeStatusMessage` when a block has one meaningful status for its whol
 ```ts
 ctx.emit.status(
   message: string | undefined,
-  options?: { blocked?: boolean; backgroundTasks?: number }
+  options?: { blocked?: boolean; sideChainTasks?: number }
 ): void
 ```
 
 **Message update rules:**
 
 - A string (including `""`) sets the slot. `""` explicitly clears the message; the UI falls back to "Thinking...".
-- `undefined` does not touch the message. Use this when updating only `blocked` / `backgroundTasks` signals.
+- `undefined` does not touch the message. Use this when updating only `blocked` / `sideChainTasks` signals.
 - If `message` equals the current slot value, the emit is skipped (no item, no SSE event).
 
-`blocked` and `backgroundTasks` are flow-control signals — orthogonal to the human-readable message. `emit.status(undefined, { blocked: false, backgroundTasks: 0 })` is the canonical way to update signals without changing the visible text.
+`blocked` and `sideChainTasks` are flow-control signals — orthogonal to the human-readable message. `emit.status(undefined, { blocked: false, sideChainTasks: 0 })` is the canonical way to update signals without changing the visible text.
 
 ## Component items
 
@@ -362,9 +362,9 @@ type ItemProvenance = {
   blockDefinitionId?: string;
   blockInstanceId: string;
   parentBlockInstanceId?: string;
-  phase: "main" | "work"; // work = inside a sequencer work queue
+  phase: "main" | "sideChain"; // sideChain = dispatched onto a side chain
   stepIndex?: number;
-  workGroupId?: string;
+  sideChainGroupId?: string;
   attempt?: number;
 };
 ```

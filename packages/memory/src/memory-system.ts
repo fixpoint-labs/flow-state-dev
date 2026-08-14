@@ -403,7 +403,7 @@ export type RankedMemoryItem = ProviderRankedMemoryItem
 export interface MemorySystem extends MemoryProvider {
   /** Unified capture pipeline: observe → reflect → tick (+ consolidation when semantic). Takes string input. */
   capture: ReturnType<typeof memorySystemCapture>
-  /** Self-serving capture: reads last user message + truncated assistant response from session items. Use with `.work()` after the generator. */
+  /** Self-serving capture: reads last user message + truncated assistant response from session items. Use with `.sideChain()` after the generator. */
   captureFromItems: ReturnType<ReturnType<typeof memorySystemCapture>['connectInput']>
   /** Standalone consolidation sequencer (when semantic configured). */
   consolidate?: ReturnType<typeof memorySystemConsolidate>
@@ -412,7 +412,7 @@ export interface MemorySystem extends MemoryProvider {
   /**
    * Memory hygiene janitor block (when `hygiene !== false` and at least one
    * of semantic/episodic is configured). State-mutation-only — invoke
-   * directly via `.tap()`/`.work()` for custom scheduling, or rely on the
+   * directly via `.tap()`/`.sideChain()` for custom scheduling, or rely on the
    * auto-wiring driven by `hygiene.schedule`.
    */
   janitor?: ReturnType<typeof memorySystemJanitor>
@@ -722,7 +722,7 @@ function buildItemsConnector(maxAssistantChars: number, priorTurns = 3) {
  * // Use in a flow:
  * const pipeline = sequencer({ name: 'chat', inputSchema })
  *   .step(chat)
- *   .work(mem.capture)
+ *   .sideChain(mem.capture)
  * ```
  */
 export function system(config: MemorySystemConfig): MemorySystem {

@@ -298,7 +298,7 @@ describe("response auditor pattern", () => {
     expect(output.surfacedResults).toHaveLength(0);
   });
 
-  it("produces a sequencer block compatible with .work()", () => {
+  it("produces a sequencer block compatible with .sideChain()", () => {
     const auditor = responseAuditor({
       analyzers: [echoAnalyzer],
     });

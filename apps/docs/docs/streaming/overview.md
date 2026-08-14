@@ -38,7 +38,7 @@ You don't need to emit most item types yourself. The framework handles them:
 - **Tool calls** produce `tool_output` items with the tool name, input, and result
 - **State mutations** emit `state_change` notifications so the client stays in sync
 - **Resource mutations** emit `resource_change` notifications
-- **Errors** produce `error` items when the request itself fails. Failures inside `.work()` background tasks don't produce a public item; the failed `block_trace` (visible to the DevTool via the trace channel) is the only signal.
+- **Errors** produce `error` items when the request itself fails. Failures inside `.sideChain()` background tasks don't produce a public item; the failed `block_trace` (visible to the DevTool via the trace channel) is the only signal.
 
 ## Visibility
 

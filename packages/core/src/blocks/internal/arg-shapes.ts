@@ -1,5 +1,5 @@
 // Argument-shape resolution for the sequencer DSL. Several dispatching methods
-// (`step`, `stepIf`, `work`, `workIf`, `forEach`, `forEachBackground`) accept
+// (`step`, `stepIf`, `work`, `sideChainIf`, `forEach`, `forEachSideChain`) accept
 // the same families of overloads — a bare block, a connector plus block, a
 // factory plus inline config, or a block plus options. This module is the
 // single home for the discriminators that pull those overloads apart, so a new
@@ -44,7 +44,7 @@ export function isInlineConfig(value: unknown): boolean {
 
 /**
  * Detects a concurrency-options object in the trailing argument slot of the
- * iterating methods (`forEach`, `forEachBackground`). Rejects block
+ * iterating methods (`forEach`, `forEachSideChain`). Rejects block
  * definitions so a trailing block is never mistaken for options.
  *
  * Note: an empty object `{}` is treated as options (the `Object.keys` clause).
@@ -197,14 +197,14 @@ function isStepOptions(value: unknown): value is StepOptions {
   return "abortSignal" in bag || "onSettled" in bag || Object.keys(bag).length === 0;
 }
 
-/** The resolved shape for a background method (`work`, `workIf`). */
-export type BackgroundCallShape = {
+/** The resolved shape for a background method (`work`, `sideChainIf`). */
+export type SideChainCallShape = {
   block: BlockDefinition<any, any>;
   connector?: ConnectorFn<any, any>;
   options?: Record<string, unknown>;
 };
 
-/** The resolved shape for an iterating method (`forEach`, `forEachBackground`). */
+/** The resolved shape for an iterating method (`forEach`, `forEachSideChain`). */
 export type IteratingCallShape = {
   blockOrFactory: BlockDefinition<any, any> | ((...args: any[]) => BlockDefinition<any, any>);
   connector?: ConnectorFn<any, any>;
@@ -228,12 +228,12 @@ export type IteratingCallShape = {
  *   object.
  */
 export function resolveCallShape(args: unknown[], pattern: "child"): ChildCallShape;
-export function resolveCallShape(args: unknown[], pattern: "background"): BackgroundCallShape;
+export function resolveCallShape(args: unknown[], pattern: "background"): SideChainCallShape;
 export function resolveCallShape(args: unknown[], pattern: "iterating"): IteratingCallShape;
 export function resolveCallShape(
   args: unknown[],
   pattern: "child" | "background" | "iterating"
-): ChildCallShape | BackgroundCallShape | IteratingCallShape {
+): ChildCallShape | SideChainCallShape | IteratingCallShape {
   const [arg1, arg2, arg3] = args;
 
   if (pattern === "child") {

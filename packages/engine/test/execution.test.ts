@@ -676,9 +676,9 @@ describe("execution runtime", () => {
     });
 
     const flow = sequencer({ name: "flow-running", inputSchema: z.number() })
-      .work(worker)
+      .sideChain(worker)
       .step(inspect)
-      .waitForWork();
+      .waitForSideChain();
 
     const result = await executeBlock({
       block: flow,
@@ -758,8 +758,8 @@ describe("execution runtime", () => {
     });
 
     const flow = sequencer({ name: "flow-failed", inputSchema: z.number() })
-      .work(worker)
-      .waitForWork({ failOnError: false })
+      .sideChain(worker)
+      .waitForSideChain({ failOnError: false })
       .step(inspect);
 
     const result = await executeBlock({
@@ -960,9 +960,9 @@ describe("execution runtime", () => {
     const inner = sequencer({ name: "inner", inputSchema: z.number() })
       .step(duplicateA)
       .step(duplicateB)
-      .work(worker)
+      .sideChain(worker)
       .step(inspect)
-      .waitForWork();
+      .waitForSideChain();
 
     const outer = sequencer({ name: "outer", inputSchema: z.number() }).step(inner);
 
@@ -3295,8 +3295,8 @@ describe("emit.status single-slot semantics (FIX-387)", () => {
       outputSchema: z.number(),
       execute: (value, stepCtx) => {
         stepCtx.emit.status("uploading files");
-        stepCtx.emit.status(undefined, { blocked: false, backgroundTasks: 3 });
-        stepCtx.emit.status(undefined, { blocked: false, backgroundTasks: 0 });
+        stepCtx.emit.status(undefined, { blocked: false, sideChainTasks: 3 });
+        stepCtx.emit.status(undefined, { blocked: false, sideChainTasks: 0 });
         return value;
       }
     });
@@ -3310,8 +3310,8 @@ describe("emit.status single-slot semantics (FIX-387)", () => {
     expect(statusItems[0].message).toBe("uploading files");
     expect(statusItems[1].message).toBe("uploading files");
     expect(statusItems[2].message).toBe("uploading files");
-    expect(statusItems[1].backgroundTasks).toBe(3);
-    expect(statusItems[2].backgroundTasks).toBe(0);
+    expect(statusItems[1].sideChainTasks).toBe(3);
+    expect(statusItems[2].sideChainTasks).toBe(0);
   });
 
   it("empty string clears the slot — stored as the new slot value", async () => {

@@ -22,7 +22,7 @@ interface EmitProvenance {
   blockName: string;
   blockInstanceId: string;
   parentBlockInstanceId?: string;
-  phase: "main" | "work";
+  phase: "main" | "sideChain";
 }
 
 /**
@@ -84,7 +84,7 @@ function deriveProvenance(ctx: BlockContext, blockName: string): EmitProvenance 
         blockName?: string;
         blockInstanceId?: string;
         parentBlockInstanceId?: string;
-        phase?: "main" | "work";
+        phase?: "main" | "sideChain";
       };
     }
   )._blockIdentity;

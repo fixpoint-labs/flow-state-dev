@@ -58,7 +58,7 @@ import type {
 import { createModelResolver } from "@flow-state-dev/core/models";
 import type { ModelResolver, ReplayLog } from "@flow-state-dev/core";
 import { DEFAULT_RUNTIME_LOGGER, logRuntimeEvent, summarizeForLog } from "../execution/logging";
-import { createRequestWorkPool } from "../execution/request-work-pool";
+import { createRequestSideChainPool } from "../execution/request-side-chain-pool";
 import { createRequestHost } from "./create-request-host";
 import { ensureSessionRecord } from "./ensure-session-record";
 import { resolveActionCore } from "../execution/resolve-action-core";
@@ -277,10 +277,10 @@ type StatusSlot = { message: string };
 function createEmitStatus(
   emCtx: EmissionContext,
   slot: StatusSlot
-): (message: string | undefined, options?: { blocked?: boolean; backgroundTasks?: number; transient?: boolean }) => void {
+): (message: string | undefined, options?: { blocked?: boolean; sideChainTasks?: number; transient?: boolean }) => void {
   return function emitStatus(
     message: string | undefined,
-    options?: { blocked?: boolean; backgroundTasks?: number; transient?: boolean }
+    options?: { blocked?: boolean; sideChainTasks?: number; transient?: boolean }
   ): void {
     if (message !== undefined) {
       // Dedupe: skip when the proposed message matches the slot. `undefined`
@@ -309,7 +309,7 @@ function createEmitStatus(
       taskId: emCtx.taskId,
       message: slot.message,
       blocked: options?.blocked,
-      backgroundTasks: options?.backgroundTasks
+      sideChainTasks: options?.sideChainTasks
     };
 
     void emCtx.response.emitItemAdded(item);
@@ -343,7 +343,7 @@ function buildTraceEmitters(
     blockKind?: "handler" | "generator" | "sequencer" | "router";
     blockInstanceId?: string;
     parentBlockInstanceId?: string;
-    phase?: "main" | "work";
+    phase?: "main" | "sideChain";
   } | undefined
 ): {
   blockTrace: (item: BlockTraceItem) => void;
@@ -1329,7 +1329,7 @@ export async function createExecutionContext<
   // flow-level collections Wave 1 already loaded. Single resources are tracked
   // implicitly by presence in the state cache. `inflightLoads` single-flights
   // concurrent loads of the same key/prefix across parallel block dispatch
-  // (e.g. a sequencer's `.work()` fan-out), and clears entries in `finally`
+  // (e.g. a sequencer's `.sideChain()` fan-out), and clears entries in `finally`
   // so a failed load retries on the next attempt instead of poisoning the map.
   const loadedCollectionPrefixes: Record<ContentScopeType, Set<string>> = {
     session: new Set<string>(),
@@ -1729,16 +1729,16 @@ export async function createExecutionContext<
        * store call: `runResourceCAS` is the only thing that decides a no-op,
        * and the reason that matters is in its header, not restated here.
        *
-       * **Cancellation uses `backgroundSignal`, not `options.signal`.** The
+       * **Cancellation uses `sideChainSignal`, not `options.signal`.** The
        * spec said `ctx.signal`, which is wrong here for two reasons found in
        * the code. `options.signal` is the composed transport signal and fires
        * on client disconnect / SSE teardown, so threading it would abandon the
-       * resource writes of a `.work()` background task the request is still
+       * resource writes of a `.sideChain()` background task the request is still
        * running — the exact failure FIX-663 exists to prevent. And there is no
        * per-scope signal available at this seam anyway: persisters and
        * `ResourceRef`s are built once per context, while `ctx.signal` is
        * per-execution-scope, so one ref serves foreground and background
-       * callers alike. `backgroundSignal` "fires only on explicit
+       * callers alike. `sideChainSignal` "fires only on explicit
        * user-requested abort, not on transport-level teardown", which is
        * precisely the condition under which a durable write should stop.
        * Absent for non-server callers, where no cancellation applies.
@@ -1771,7 +1771,7 @@ export async function createExecutionContext<
             container,
             mutator,
             intent,
-            signal: options.backgroundSignal,
+            signal: options.sideChainSignal,
             persist: (next, expectedVersion) =>
               stores.resourceState.set(storageScopeOf(scope, scopeId), scopeId, key, next, expectedVersion),
             reread: () => stores.resourceState.get(storageScopeOf(scope, scopeId), scopeId, key)
@@ -2514,11 +2514,11 @@ export async function createExecutionContext<
   // Duck-type the response: if it has emitItemAdded/emitItemDone, use those;
   // otherwise fall back to the generic emit() method via a thin adapter.
 
-  // Per-request background work pool. Sequencer DSL pushes `.work()` /
-  // `.workIf()` / `.forEachBackground()` tasks here; runActionInternal
+  // Per-request background work pool. Sequencer DSL pushes `.sideChain()` /
+  // `.sideChainIf()` / `.forEachSideChain()` tasks here; runActionInternal
   // drains the pool exactly once on the success path. Replaces the legacy
   // per-sequencer auto-await scoping.
-  const requestWorkPool = createRequestWorkPool();
+  const requestSideChainPool = createRequestSideChainPool();
 
   // Request-scoped status slot — shared across every scope's createEmitStatus.
   // Terminates naturally when this context is discarded at request end.
@@ -2893,7 +2893,7 @@ export async function createExecutionContext<
     // FIX-663: when provided, sets this scope's `ctx.signal` instead of the
     // closure-captured `options.signal`. `_withExecutionScope` threads the
     // current parent ctx's signal here so child scopes inherit the parent's
-    // signal (which may be the background signal inside a `.work()` tree)
+    // signal (which may be the background signal inside a `.sideChain()` tree)
     // rather than the root request signal via closure capture.
     signalOverride?: AbortSignal
   ): ExecutionContext<TRequestState, TSessionState, TUserState, TOrgState> => {
@@ -3250,7 +3250,7 @@ export async function createExecutionContext<
           result: { status: "completed", output }
         });
       },
-      _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>, signalOverride?: AbortSignal, backgroundSignalOverride?: AbortSignal) => {
+      _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>, signalOverride?: AbortSignal, sideChainSignalOverride?: AbortSignal) => {
         const resolvedParent: ExecutionParent = {
           ...parent,
           parentInstanceId: parent.parentInstanceId ?? parentChain?.parent.instanceId,
@@ -3371,9 +3371,9 @@ export async function createExecutionContext<
           taskId: resolvedTaskId,
         };
         // FIX-663: propagate the signal down the scope chain. An explicit
-        // `signalOverride` (threaded by `.work()` dispatch) wins; otherwise
+        // `signalOverride` (threaded by `.sideChain()` dispatch) wins; otherwise
         // inherit the *current* parent ctx's signal so descendant scopes of
-        // a `.work()` task tree keep seeing the background signal. Reading
+        // a `.sideChain()` task tree keep seeing the background signal. Reading
         // `context.signal` (not the closure-captured `options.signal`) is
         // what makes the override propagate beyond one level.
         const childSignal = signalOverride ?? context.signal;
@@ -3398,15 +3398,15 @@ export async function createExecutionContext<
         };
 
         // Propagate the request-scoped work pool through every nested scope
-        // so `.work()` calls in inner sequencers reach the same pool the
-        // request executor drains. See `request-work-pool.ts`.
-        (childContext as { _requestWorkPool?: unknown })._requestWorkPool = requestWorkPool;
+        // so `.sideChain()` calls in inner sequencers reach the same pool the
+        // request executor drains. See `request-side-chain-pool.ts`.
+        (childContext as { _requestSideChainPool?: unknown })._requestSideChainPool = requestSideChainPool;
         // FIX-663: re-attach the background signal on every scope so nested
-        // `.work()` dispatches can read it (the dispatch site reads
-        // `ctx._requestBackgroundSignal`, not `ctx.signal`).
+        // `.sideChain()` dispatches can read it (the dispatch site reads
+        // `ctx._requestSideChainSignal`, not `ctx.signal`).
         //
         // Inherited from the PARENT CONTEXT, falling back to the request's
-        // (FIX-1005). Reading the closure-captured `options.backgroundSignal`
+        // (FIX-1005). Reading the closure-captured `options.sideChainSignal`
         // unconditionally is the same defect the `childSignal` line above calls
         // out and fixes for `ctx.signal`: it makes the value un-overridable
         // below the root, because every scope resets it to the request's.
@@ -3415,13 +3415,13 @@ export async function createExecutionContext<
         // via `.step(block, { abortSignal })`. The dispatch composes that
         // signal into the background signal for the subtree, and background
         // work is exactly where an un-cancelled subtree keeps costing money —
-        // a displaced worker's `.work()` generators go on calling models for
+        // a displaced worker's `.sideChain()` generators go on calling models for
         // output the substrate will refuse. Without this line reading the
         // parent, that composition survives one scope and is then discarded.
-        (childContext as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal =
-          backgroundSignalOverride ??
-          (context as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal ??
-          options.backgroundSignal;
+        (childContext as { _requestSideChainSignal?: AbortSignal })._requestSideChainSignal =
+          sideChainSignalOverride ??
+          (context as { _requestSideChainSignal?: AbortSignal })._requestSideChainSignal ??
+          options.sideChainSignal;
         // FIX-406 6H: propagate the request's tracing level so sequencers in
         // any nested scope gate observability snapshots consistently.
         (childContext as { _tracingLevel?: TracingLevel })._tracingLevel = options.tracingLevel;
@@ -3665,7 +3665,7 @@ export async function createExecutionContext<
         blockKind?: "handler" | "generator" | "sequencer" | "router";
         blockInstanceId?: string;
         parentBlockInstanceId?: string;
-        phase?: "main" | "work";
+        phase?: "main" | "sideChain";
       } })._blockIdentity
     );
     context.emit = {
@@ -3756,18 +3756,18 @@ export async function createExecutionContext<
 
   const rootContext = createContext(undefined, undefined, undefined);
   // Attach the per-request background work pool so sequencer DSL can push
-  // `.work()` / `.workIf()` / `.forEachBackground()` tasks. Each child
+  // `.sideChain()` / `.sideChainIf()` / `.forEachSideChain()` tasks. Each child
   // context constructed by `_withExecutionScope` re-attaches the same pool
   // explicitly (see the assignment alongside `_blockIdentity` there) — pool
   // identity is preserved across the entire request scope.
-  (rootContext as { _requestWorkPool?: unknown })._requestWorkPool = requestWorkPool;
+  (rootContext as { _requestSideChainPool?: unknown })._requestSideChainPool = requestSideChainPool;
   // FIX-751: bind the live context so reactive dispatchers can run blocks
   // in-session via `executeBlock`. Set after construction since the handlers
   // (wired into the registries above) close over `reactiveCtxRef`.
   reactiveCtxRef.current = rootContext as unknown as ExecutionContext;
   // FIX-663: attach the background signal to the root context. Child scopes
   // re-attach it in `_withExecutionScope` (alongside the work pool).
-  (rootContext as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal = options.backgroundSignal;
+  (rootContext as { _requestSideChainSignal?: AbortSignal })._requestSideChainSignal = options.sideChainSignal;
   // FIX-406 6H: stamp the tracing level on the root context too, for symmetry
   // with child scopes — keeps observability gating correct if a sequencer ever
   // executes directly on the root context.

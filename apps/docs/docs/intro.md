@@ -54,7 +54,7 @@ The sequencer is the orchestration primitive at the center of every flow. It cha
 
 - `.step()` — sequential steps, full type safety from input to output
 - `.parallel()` — fan out to multiple blocks simultaneously; results merge into a single typed payload
-- `.work()` — background workers that run async alongside the main pipeline without blocking the stream
+- `.sideChain()` — background workers that run async alongside the main pipeline without blocking the stream
 - `.doUntil()` / `.doWhile()` — iterative loops with configurable exit conditions
 - `.rescue()` — per-step error recovery without unwinding the whole flow
 
@@ -69,7 +69,7 @@ const researchPipeline = sequencer({ name: "research-pipeline" })
     past: recall,
   })
   .step(synthesize)          // generator — reads ctx.session.state.query and parallel output
-  .work(handler, {
+  .sideChain(handler, {
     name: "save-draft",
     sessionResources: { draft: draftResource },
     sessionStateSchema: z.object({ lastResearched: z.string() }),
@@ -78,7 +78,7 @@ const researchPipeline = sequencer({ name: "research-pipeline" })
       await ctx.session.state.patch({ lastResearched: input.query })
     },
   })
-  .work(updateMemory)        // async — never blocks the stream
+  .sideChain(updateMemory)        // async — never blocks the stream
 ```
 
 Three parallel searches, a synthesis generator reading from session state, a background worker writing to a resource — all without blocking the response stream. This is the substrate every strategy in the library is built from.

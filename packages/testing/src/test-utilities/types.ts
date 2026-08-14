@@ -95,11 +95,11 @@ export type StepTrace = {
   error: Error | null;
   items: TestItem[];
   durationMs: number;
-  phase: "main" | "work";
+  phase: "main" | "sideChain";
   skipped: boolean;
 };
 
-export type WorkTrace = {
+export type SideChainTrace = {
   blockName: string;
   output: unknown;
   error: Error | null;
@@ -108,7 +108,7 @@ export type WorkTrace = {
 
 export type TestSequencerResult<TOutput> = TestBlockResult<TOutput> & {
   steps: StepTrace[];
-  workResults: WorkTrace[];
+  sideChainResults: SideChainTrace[];
   loopIterations: number;
 };
 

@@ -97,7 +97,7 @@ export type ExecutionParent = {
    * Execution phase for this scope. Inherited by nested scopes when not
    * explicitly overridden.
    */
-  phase?: "main" | "work";
+  phase?: "main" | "sideChain";
   container?: {
     component?: string;
     label?: string;
@@ -365,14 +365,14 @@ export interface BlockContext<
      * - `message` as a string (including `""`) sets the slot; dedupe suppresses
      *   re-emission when the value is unchanged.
      * - `message` as `undefined` preserves the slot value — useful when updating
-     *   only `blocked` / `backgroundTasks` signals.
+     *   only `blocked` / `sideChainTasks` signals.
      *
      * Defaults to `transient: true` (live-only) — statuses are naturally
      * ephemeral. Pass `{ transient: false }` to persist a status item.
      */
     status: (
       message: string | undefined,
-      options?: { blocked?: boolean; backgroundTasks?: number; transient?: boolean }
+      options?: { blocked?: boolean; sideChainTasks?: number; transient?: boolean }
     ) => void;
     /** @internal — used by framework auto-emitters; user code rarely calls these. */
     trace: {
@@ -514,7 +514,7 @@ export interface BlockContext<
      */
     taskId?: string;
     /** Execution phase — "work" for background scopes, "main" otherwise. */
-    phase?: "main" | "work";
+    phase?: "main" | "sideChain";
     /**
      * Structural path to this block within the request's execution tree.
      * Used by runtime helpers to derive deterministic instance IDs for
@@ -537,16 +537,16 @@ export interface BlockContext<
    * metadata. The optional `signalOverride` sets the `ctx.signal` of the
    * child scope (and, transitively, every descendant scope that doesn't
    * supply its own override). The sequencer DSL threads
-   * `_requestBackgroundSignal` here at `.work()` dispatch so background
+   * `_requestSideChainSignal` here at `.sideChain()` dispatch so background
    * task trees see the background signal instead of the request signal.
    * When omitted, the child inherits the current parent ctx's `signal`.
    *
-   * `backgroundSignalOverride` (FIX-1005) does the same for the signal a
+   * `sideChainSignalOverride` (FIX-1005) does the same for the signal a
    * subtree's BACKGROUND dispatches read. It needs its own channel rather than
    * being derived from `signalOverride`, because the two carry deliberately
    * different things: `signalOverride` includes the transport signal, and
    * background work exists precisely to outlive that. It also cannot be passed
-   * by spreading `_requestBackgroundSignal` onto a copy of the context — this
+   * by spreading `_requestSideChainSignal` onto a copy of the context — this
    * function is a closure bound to the context it was built for, so it reads
    * that context's field and never the copy's.
    */
@@ -554,7 +554,7 @@ export interface BlockContext<
     parent: ExecutionParent,
     execute: (ctx: BlockContext) => Promise<TValue>,
     signalOverride?: AbortSignal,
-    backgroundSignalOverride?: AbortSignal
+    sideChainSignalOverride?: AbortSignal
   ): Promise<TValue>;
 
   /**
@@ -651,12 +651,12 @@ export interface BlockContext<
   /**
    * @internal Per-request background work pool. Set by the server's request
    * executor; absent in unit-test contexts. Sequencer DSL pushes here from
-   * `.work()` / `.workIf()` / `.forEachBackground()`. The request executor
+   * `.sideChain()` / `.sideChainIf()` / `.forEachSideChain()`. The request executor
    * drains the pool to quiescence before terminal status, on every terminal
    * path. When absent (unit tests), sequencer DSL falls back to
    * per-sequencer auto-await.
    */
-  _requestWorkPool?: import("../execution/request-work-pool").RequestWorkPool;
+  _requestSideChainPool?: import("../execution/request-side-chain-pool").RequestSideChainPool;
 
   /**
    * @internal Background-work abort signal. Set by the server's request
@@ -664,13 +664,13 @@ export interface BlockContext<
    * explicitly aborted (e.g. POST `/abort`, `session.abortRequest()`), NOT
    * on transport-level events like client disconnect, SSE close, or tab
    * refresh. The sequencer DSL substitutes this for `ctx.signal` when
-   * dispatching `.work()` / `.workIf()` / `.forEachBackground()` tasks so
+   * dispatching `.sideChain()` / `.sideChainIf()` / `.forEachSideChain()` tasks so
    * background generators survive transport teardown.
    *
-   * In unit-test contexts where this is absent, `.work()` falls back to the
+   * In unit-test contexts where this is absent, `.sideChain()` falls back to the
    * parent's `ctx.signal` — matching the pre-FIX-663 behavior.
    */
-  _requestBackgroundSignal?: AbortSignal;
+  _requestSideChainSignal?: AbortSignal;
 
   /**
    * @internal Effective tracing verbosity for this request (FIX-406 6H).

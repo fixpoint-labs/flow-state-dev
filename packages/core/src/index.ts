@@ -193,7 +193,7 @@ export { runRescue } from "./blocks/sequencer";
 // through the sequencer kernel (`dispatchAndExecuteBlock`'s substrate cast), so
 // it composes a subtree's background signal by the same rule the kernel uses
 // rather than a second copy of it.
-export { composeBackgroundSignal } from "./blocks/sequencer";
+export { composeSideChainSignal } from "./blocks/sequencer";
 export {
   defineFlow,
   buildWorkstreamCore,
@@ -403,14 +403,14 @@ export type {
   StrictViolation
 } from "./models";
 export type {
-  RequestWorkPool,
-  RequestWorkPoolResult,
-  RequestWorkPoolDrainOptions,
-  RequestWorkPoolDrainAllOptions,
-  RequestWorkPoolDrainToQuiescenceOptions,
-  RequestWorkTaskMeta
-} from "./execution/request-work-pool";
-export { getRequestWorkPool } from "./execution/request-work-pool";
+  RequestSideChainPool,
+  RequestSideChainPoolResult,
+  RequestSideChainPoolDrainOptions,
+  RequestSideChainPoolDrainAllOptions,
+  RequestSideChainPoolDrainToQuiescenceOptions,
+  RequestSideChainTaskMeta
+} from "./execution/request-side-chain-pool";
+export { getRequestSideChainPool } from "./execution/request-side-chain-pool";
 
 export {
   FlowError,

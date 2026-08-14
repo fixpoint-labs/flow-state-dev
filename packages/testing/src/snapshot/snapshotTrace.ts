@@ -8,7 +8,7 @@ export type SnapshotTrace = {
   steps: Array<{
     blockName: string;
     blockKind: "handler" | "generator" | "sequencer" | "router";
-    phase: "main" | "work";
+    phase: "main" | "sideChain";
     inputSummary: unknown;
     outputSummary: unknown;
     error?: string;
@@ -19,7 +19,7 @@ export type SnapshotTrace = {
     type: OutputItem["type"];
     status: OutputItem["status"];
     blockName: string;
-    phase: "main" | "work";
+    phase: "main" | "sideChain";
   }>;
 };
 
