@@ -60,11 +60,36 @@ It changes **who decides** — not where the information lives, and not where th
 | An epic-keyed answer (`unsettled`, `openQuestions`) | Append `{ question, answer }` to `epic.answers`, **leave the entry**, let the `epic-agent` fold retire it. The row field cannot hold it: the question resurfaces every wake and `mayWrap` never goes true |
 | Any absorbed decision | One line in the next report, naming the fork and the call — absorb and expose, never absorb and hide. Then **run another `epic-wake` before ending the turn**: the wake computed `moreWorkNow` while that row was still blocked, so the row you just unblocked is dispatchable and nothing else will dispatch it |
 
-## Report outcomes, not phases
+## Report outcomes, not phases — Account → Review → Plan
 
-Lead with what the epic can now do that it couldn't, what's at risk, and what's waiting on the
-user; keep `epic-lifecycle`'s per-issue lines under a heading below. Framing only — **not** a
-licence to read a diff or a thread to enrich a summary.
+Three **lines**, not three sections, above `epic-lifecycle`'s per-issue lines:
+
+| | The line |
+|---|---|
+| **Account** | What the last report said would happen, and whether it did. Name the misses plainly — this is the only line in the report that can be *wrong*, which is the entire reason it is first |
+| **Review** | What the epic can now do that it couldn't, what's at risk, and what's waiting on the user. Lead with the §4 scoreboard's Lead line, not with phases |
+| **Plan** | The one or two things that will move the lead measure before the next report. Not a list of every dispatchable row — the point is a commitment the next Account can be checked against |
+
+**A report with no Account is a status update**: nothing in it can be false, so nothing in it
+gets checked, and an epic drifts for weeks while every report reads fine.
+
+**The window is "since the last report", and you say what that window was.** This loop is
+event-driven, so the span between reports is whatever the events made it — an hour or four
+days. That is a real difference from a fixed weekly cadence and it is handled by *naming* the
+span, not by pretending to one: an Account over an unstated window is unfalsifiable, because a
+miss can always be excused as "that was only twenty minutes ago."
+
+**Nothing here is a licence to read.** All three lines are built from what workers reported and
+the status table — **not** from a diff, a thread, or a spec
+([`orchestration.md`](../../../docs/contributing/orchestration.md) → "The coordinator dispatches;
+it never does the work"). If a line needs enriching, dispatch a `scout`; don't open the surface.
+
+> **Since the last report (~6h).**
+> **Account:** said FIX-776 would reach spec approval — it did. Said FIX-777's goal check would
+> run — it didn't; the row blocked on a cross-spec conflict I resolved instead.
+> **Review:** goal checks passing 1/3, up from 0. Reconnect works end to end. At risk: FIX-777
+> is the only row with no check written yet.
+> **Plan:** get FIX-777's goal check written and run. Nothing else moves the lead measure.
 
 ## Boundaries
 

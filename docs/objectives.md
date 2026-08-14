@@ -1,8 +1,31 @@
 # Project Objectives
 
-## Current Focus
+## The objective
 
-Prove the concept with real-world usage. Prioritize patterns and paradigms that are harder to replicate in other frameworks. Complete the Phase 1 foundation and ensure the framework delivers on its core promise at the fundamentals level, so there's a solid base to build on as it matures.
+**From a framework proved by synthetic tests, to one proved by real apps running on real
+models — by `<SET A DATE>`.**
+
+A goal with no finish line can't be finished, and an epic can't be tested against it. So
+this one carries all four parts, and every epic's objective gate asks which of them it
+serves and how much of the gap it closes.
+
+| | |
+|---|---|
+| **Winning when** | Every Phase 1 subsystem is exercised end to end by a real-model goal check from a real app, and Wave 1.n (cross-package validation) is closed |
+| **Lead measure** | Subsystems carrying a passing real-model goal check — not packages shipped, not waves closed |
+| **Now** | Waves 1.a–1.m complete · 1.n open · goal-check coverage `<COUNT ON FIRST READ>` |
+| **Kill line** | If real usage shows the four block kinds don't compose into the workflows apps actually need, Phase 1 isn't unfinished — it's mis-shaped, and what changes is the composition model, not the remaining wave list |
+
+> **Two blanks are yours, not mine.** The date is a business call, and the coverage count
+> needs one pass over the goal checks to establish honestly. Both are left visible rather
+> than guessed — a fabricated finish line is worse than an absent one, because it reads as
+> agreed.
+
+**Why a lead measure and not just the finish line.** *Winning when* is a lag measure: we
+learn it at the end, too late to change it. The lead measure is the weekly read that
+predicts it, and it counts passing goal checks rather than merged work because merging is
+activity and a passing goal check is evidence. The distinction, and where it came from, is
+[`docs/internal/4dx-process.md`](internal/4dx-process.md).
 
 ## Goals
 

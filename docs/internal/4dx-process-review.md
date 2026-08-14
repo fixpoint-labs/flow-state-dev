@@ -1,7 +1,23 @@
 # 4DX process review — what transfers to our loop, and what doesn't
 
 **Date:** 2026-08-14 · **Scope:** `docs/objectives.md`, `epic-pm`, the epic-spec's §1/§4,
-the epic report, `plan-day` · **Status: proposal, nothing adopted**
+the epic report, `plan-day`
+
+**Status: all five adopted (2026-08-14), with one deferral.** R1–R5 landed as written. Two
+things changed during implementation, both worth knowing:
+
+- **The scoreboard needed a source.** R3 claimed the Lead line was derivable from state the
+  coordinator already holds; it wasn't — no `goalCheck` field exists on the status table or in
+  `epic-wake`'s args. Resolved by deriving it at **fold time** from the PR handles the
+  `epic-agent` already reads, which needs no new coordinator state. Making it *wake-fresh*
+  instead is deferred and wants its own review — see
+  [`4dx-process.md`](4dx-process.md) → design call 2.
+- **R4's variable window** (flagged below as an open worry) is handled by *naming* the span in
+  each report rather than pretending to a weekly cadence.
+
+The narrative description of the resulting process is
+[`4dx-process.md`](4dx-process.md); this file is the reasoning that produced it, kept as
+written. Where the two disagree, that one is current.
 
 Source: [Perdoo's 4DX guide](https://www.perdoo.com/resources/online-guides/4dx).
 

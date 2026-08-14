@@ -583,6 +583,18 @@ worked example) — read those; below is only the coordinator's *operating proce
 The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md`, worktree, no
 `AskUserQuestion`) writes:
 
+- **Check the cap before you stand anything up.** At most **two** epics run at once, and the
+  cap is on *objectives*, not work items — the rule, the reasoning and its cost are in
+  [`orchestration.md`](../../../docs/contributing/orchestration.md) → "How many epics run at
+  once". Ask `scout` for the open `Epic`-labelled issues. At two, this is a **question, not a
+  refusal**: name the two that are active and ask which this displaces, or whether it queues.
+  Do it here, before the `epic-agent` dispatch — an epic issue and a never-merged PR created
+  for work that then queues is exactly the coordination artifact nobody needs.
+- **Name which project objective this serves.** One line, in the dispatch to `epic-agent`, from
+  [`docs/objectives.md`](../../../docs/objectives.md): which objective, and how much of its gap
+  this closes. An epic whose objective serves none of them is worth surfacing *before* the
+  gate — that is a product decision the user should make knowingly, not a thing discovered at
+  the wrap.
 - **Discover, then create.** An issue's epic is its **parent** — have `scout` check the set
   in one pass and return `{ epicIssueId, consistent }`. If they all share the same
   **`Epic`-labelled (Kind group)** parent, reuse it. If the set is **mixed** (some under an

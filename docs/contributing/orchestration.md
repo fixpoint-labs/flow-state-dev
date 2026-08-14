@@ -106,7 +106,7 @@ flowchart TD
 | Store | What it is | Lifetime | Home |
 |---|---|---|---|
 | **Coordinator status table** | The coordinator's **internal working memory** — one row per issue (phase, spec PR#, impl PR#, gate-pending, worktree). Updated constantly. | Session-only | `.orchestration/` (**gitignored — never committed**) |
-| **Epic-spec running index** | A **durable, exposed audit log** — links to every issue PR (spec + impl) under the epic, for humans and issue agents to navigate from one place. | Life of the epic | The epic-spec (branch + Linear Epic-issue doc) |
+| **Epic-spec scoreboard & running index** | A **durable, exposed** surface: the scoreboard answers *are we winning* in a five-second read, and the index below it is the audit log — links to every issue PR (spec + impl) under the epic, for humans and issue agents to navigate from one place. | Life of the epic | The epic-spec (branch + Linear Epic-issue doc) |
 
 They overlap in *content* (both know the PR numbers) but differ in *purpose and
 audience*: the table is private and ephemeral; the index is public and durable. The
@@ -179,9 +179,9 @@ one-parent rule** — an issue that already has a functional parent is linked wi
 
 **Contents and shape:
 [`epic-spec-template.md`](epic-spec-template.md)** — the five sections (purpose &
-objective · themes & long-horizon direction · shape of the whole · running index · open
-cross-cutting questions), each with a worked example, plus the reviewer guidance the epic PR
-description leads with. Read the template; it is the single source of truth for what
+objective · themes & long-horizon direction · shape of the whole · scoreboard & running
+index · open cross-cutting questions), each with a worked example, plus the reviewer
+guidance the epic PR description leads with. Read the template; it is the single source of truth for what
 each section owes its reader, exactly as `spec-template.md` is for an issue spec.
 
 **Conventions:**
@@ -204,6 +204,31 @@ each section owes its reader, exactly as `spec-template.md` is for an issue spec
   artifact, so "Spec review: the bar and the convergence rule" below governs its PR too.
   Feedback that doesn't change the epic's objective or a cross-cutting decision belongs to
   the issues under it, not to the epic-spec.
+
+## How many epics run at once (the cap is two)
+
+**At most two epics are active at a time.** A third is queued, visibly, not cancelled.
+
+**The cap is on objectives, not on work items — this is the part that gets misread.** An
+epic running eight issues in parallel is *one* objective with throughput, and nothing here
+constrains it: issue concurrency is sized to the VM and is a different axis entirely
+(`epic-lifecycle` → "Sizing to the VM"). What the cap constrains is how many *distinct
+outcomes* we are driving at once. Four epics under four objectives is the violation; eight
+issues under one is not.
+
+**Why two.** An epic's objective is the only thing that makes its issues a set rather than
+a pile, and an objective is worth having only if something is actually tested against it.
+Past two, nothing is: gates queue behind each other, the product owner's attention splits,
+and every epic's scoreboard reads "in progress" indefinitely. The cap is a bet that
+finishing one objective beats advancing three.
+
+**What it costs, stated plainly.** Real work sits queued. That is the intended cost and the
+reason the queue is visible rather than silent — a third epic that never gets to start is a
+decision someone should be able to see and overrule.
+
+**Who enforces it.** The coordinator, at epic setup, before it dispatches anything
+(`epic-lifecycle` → "Epic setup"). It is a question put to the user, not a refusal: name
+the two that are active and ask which this displaces, or whether it queues.
 
 ## Which issues get a spec (the two routes)
 

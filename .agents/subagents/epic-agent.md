@@ -23,6 +23,14 @@ PR and never will — an empty Spec PR cell there is correct, not a gap to chase
 ([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a
 spec").
 
+**§4's scoreboard is derived, never typed from memory.** When a dispatch tells you to
+refresh §4, refresh the index's **Goal check** column first — one cell per issue, read off
+that issue's impl PR — then count the scoreboard's Lead line *from that column*. The count
+is auditable that way rather than asserted, and it cannot drift from the rows under it.
+Three cell states, and collapsing any two of them corrupts the measure: **pass**, **fail**,
+and **`—` not yet run**. An unrun check is not a failure. The template's §4 is canonical
+for the shape.
+
 ## Your job (one bounded action per dispatch)
 
 You're given: the **epic name / scope**, the **Linear project**, the **current PR

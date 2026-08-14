@@ -96,6 +96,12 @@ Then the **holistic necessity check**: the `issue-spec` Step 3.5 lens raised to 
 Each issue can earn its place while the whole overbuilds; this is the only place that's
 visible. Say what the set is deliberately *not* doing.
 
+**Under [`epic-pm`](../../.agents/skills/epic-pm/SKILL.md) this section is stricter**: it
+carries that skill's five objective lines — Outcome · Proof · Lead measure · Not doing ·
+Kill line — and the objective gate is refused without them. `epic-pm` is canonical for what
+each line owes; don't restate them here. Two of them feed §4's scoreboard, which is why a
+`epic-pm` epic gets a fuller one.
+
 > **Objective.** Make a dropped connection a non-event for an app built on FSD.
 > Today, every network blip is visible to the end user as duplicated output and
 > to the app author as a stream it has to defend against by hand. When this epic
@@ -168,22 +174,59 @@ survived contact with code is worth knowing.
 > just on the encoding, and moved sequence allocation into FIX-775's scope so 776 consumes
 > it. Without the POC that surfaces as a merge conflict in week three.
 
-## 4. Running index
+## 4. Scoreboard & running index
 
-The durable audit log — every issue under the epic and every PR it produced, so a human
-or an agent navigates the set from one place. Refreshed from the coordinator's status
-table; it is a projection, not a second live source. **Keep it a table, not prose.**
+Two things, in this order, and the order matters. The **scoreboard** answers *are we
+winning?* in a five-second read. The **running index** below it is the durable audit log.
+Both are refreshed from the coordinator's status table — projections, not second live
+sources.
 
-> | Issue | What it delivers | Route | Spec PR | Impl PR | State |
-> |---|---|---|---|---|---|
-> | FIX-775 | Resume from a sequence cursor | spec | [#812](https://github.com/o/r/pull/812) | [#830](https://github.com/o/r/pull/830) | In Review |
-> | FIX-776 | Heartbeat frames so a dead connection is detectable | spec | [#815](https://github.com/o/r/pull/815) | — | In Spec Review |
-> | FIX-777 | Default reconnect backoff in the client | spec | — | — | Needs spec |
-> | FIX-781 | Reconnect drops the last partial frame | **bug** | — | [#833](https://github.com/o/r/pull/833) | In Review |
+### The scoreboard (three lines, above the index)
+
+The index alone cannot tell you whether the epic is winning: every column in it is
+activity. These three lines are the answer, and each is derivable from state the
+coordinator already holds — **nothing here is maintained by hand**, because a number a
+human has to remember to update is a number that will be wrong.
+
+- **Outcome** — §1's outcome sentence, verbatim. One line, so the scoreboard is readable
+  without scrolling up.
+- **Winning when** — §1's **Proof**, plus where it stands right now. Where the epic has no
+  Proof line (any run that isn't [`epic-pm`](../../.agents/skills/epic-pm/SKILL.md)), state
+  the outcome's observable form instead; don't leave the line out.
+- **Lead** — §1's **Lead measure** against its target, plus what the set has *cut*. Both
+  halves are influenceable and both predict the outcome, which is what makes them lead
+  rather than lag. The default lead measure is passing goal checks over set size; the cut
+  count is already mandated by `epic-pm`'s reporting and simply had nowhere to be seen.
+
+**Six measures is the ceiling** — past that nobody reads it and it stops being a
+scoreboard. If a fourth line is genuinely needed, it replaces one of these rather than
+joining them.
+
+> **Outcome:** a dropped connection is a non-event for an app built on FSD.
+> **Winning when:** FIX-775's reconnect goal check passes end to end. **Now:** not yet.
+> **Lead:** goal checks passing **1 / 3** · cut this epic: 1 issue, 2 knobs.
+
+### The running index
+
+Every issue under the epic and every PR it produced, so a human or an agent navigates the
+set from one place. **Keep it a table, not prose.**
+
+> | Issue | What it delivers | Route | Spec PR | Impl PR | Goal check | State |
+> |---|---|---|---|---|---|---|
+> | FIX-775 | Resume from a sequence cursor | spec | [#812](https://github.com/o/r/pull/812) | [#830](https://github.com/o/r/pull/830) | ✅ pass | In Review |
+> | FIX-776 | Heartbeat frames so a dead connection is detectable | spec | [#815](https://github.com/o/r/pull/815) | — | — | In Spec Review |
+> | FIX-777 | Default reconnect backoff in the client | spec | — | — | — | Needs spec |
+> | FIX-781 | Reconnect drops the last partial frame | **bug** | — | [#833](https://github.com/o/r/pull/833) | ❌ fail | In Review |
 >
 > *A bug carries no spec PR by design — it routes straight to implementation
 > ([`orchestration.md`](orchestration.md) → "Which issues get a spec"). An empty
 > Spec PR cell on a `bug` row is correct, not a gap.*
+>
+> *The **Goal check** column is what the scoreboard's Lead line counts — one cell per
+> issue, so the count above is auditable rather than asserted. `—` means not yet run,
+> which is different from a fail and must not be collapsed into one: an epic with three
+> unrun checks is not an epic with three failures, and reading it as either is how the
+> lead measure starts lying.*
 
 ## 5. Open cross-cutting questions
 
