@@ -153,17 +153,6 @@ function rejectRemovedMiddleware(value: object | undefined, location: string): v
   }
 }
 
-function rejectRemovedOrgConfig(value: object | undefined, location: string): void {
-  if (value === undefined || !Object.hasOwn(value, "org")) return;
-  if ((value as { org?: unknown }).org === undefined) return;
-  throw new Error(
-    `${location} uses the removed "org" option. ` +
-    "Org scope config is gone in its entirety — stateSchema, client, clientData and cas alike. " +
-    'Move durable org data to defineResource({ scope: "org", stateSchema }) and read it via ' +
-    "ctx.resources. ctx.org keeps its identity, and requiresOrg/isolateOrgState are unchanged."
-  );
-}
-
 /** The definition-only options {@link rejectDefinitionOnlyOptions} refuses. */
 const DEFINITION_ONLY_INSTANCE_OPTIONS = ["webhooks", "chat", "schedules", "mcp"] as const;
 
@@ -929,8 +918,6 @@ function createFlowInstance(
 ): FlowInstance<AnyActions, AnySession, AnyRequest, AnyUser, AnyWork> {
   rejectRemovedMiddleware(definition, `Flow "${definition.kind}"`);
   rejectRemovedMiddleware(options, `Flow "${definition.kind}" instance options`);
-  rejectRemovedOrgConfig(definition, `Flow "${definition.kind}"`);
-  rejectRemovedOrgConfig(options, `Flow "${definition.kind}" instance options`);
   rejectDefinitionOnlyOptions(options, definition.kind);
 
   const authentication = mergeAuthentication(

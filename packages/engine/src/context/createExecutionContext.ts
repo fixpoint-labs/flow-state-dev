@@ -688,18 +688,6 @@ export async function createExecutionContext<
   ) {
     orgRecord = await stores.org.get(resolvedOrgKey);
   }
-  // FIX-1153: org scope state is gone, so a record still carrying a non-empty
-  // state blob is data nothing can reach. Silently serving resource defaults
-  // over the top of it would lose it without a trace — fail loudly instead so
-  // the operator migrates it deliberately (BP-030).
-  if (orgRecord !== undefined && Object.keys(orgRecord.state ?? {}).length > 0) {
-    throw new Error(
-      `Org record "${orgRecord.id}" carries legacy org scope state ` +
-      `(keys: ${Object.keys(orgRecord.state).join(", ")}), which this version no longer reads. ` +
-      'Migrate those values to a defineResource({ scope: "org" }) resource and clear the record\'s ' +
-      "state blob before upgrading."
-    );
-  }
   if (resolvedOrgId !== undefined && resolvedOrgKey !== undefined && orgRecord === undefined) {
     orgRecord = {
       id: resolvedOrgKey,
