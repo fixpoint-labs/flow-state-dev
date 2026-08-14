@@ -1,7 +1,7 @@
 /**
  * Pure reducer that folds a `state_change` SSE item into the React layer's
  * cached `SessionStateSnapshotResponse`, so `useClientData` can surface
- * mid-stream session/user/org-scope updates without waiting for terminal
+ * mid-stream session/user-scope updates without waiting for terminal
  * status (FIX-576).
  *
  * Why "only merge keys already present in clientData[scope]": `clientData` is
@@ -22,12 +22,11 @@
 import type { SessionStateSnapshotResponse } from "@flow-state-dev/client";
 import type { OutputItem, StateChangeItem } from "@flow-state-dev/core/items";
 
-type ReducibleScope = "session" | "user" | "org";
+type ReducibleScope = "session" | "user";
 
 const REDUCIBLE_SCOPES: ReadonlySet<string> = new Set<ReducibleScope>([
   "session",
-  "user",
-  "org"
+  "user"
 ]);
 
 export function isReducibleStateChange(

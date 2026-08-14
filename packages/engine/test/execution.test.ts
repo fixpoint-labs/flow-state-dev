@@ -1324,7 +1324,7 @@ describe("execution runtime", () => {
         id: "org_scope",
         userId: "user_scope_emit",
         orgId: "org_scope",
-        state: { tier: "free" },
+        state: {},
         version: 0,
         createdAt: 0,
         updatedAt: 0

@@ -123,11 +123,6 @@ describe("createTypedClient", () => {
         stateSchema: z.object({
           name: z.string()
         })
-      },
-      org: {
-        stateSchema: z.object({
-          mode: z.string()
-        })
       }
     });
 

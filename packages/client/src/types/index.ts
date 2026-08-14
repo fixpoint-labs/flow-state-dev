@@ -147,7 +147,6 @@ export type SessionDetail = SessionSummary & {
   stateSummary?: {
     session?: Record<string, unknown>;
     user?: Record<string, unknown>;
-    org?: Record<string, unknown>;
   };
 };
 
@@ -364,7 +363,6 @@ export type SessionStateSnapshotResponse = {
   clientData: {
     session?: Record<string, unknown>;
     user?: Record<string, unknown>;
-    org?: Record<string, unknown>;
   };
   resources?: {
     session?: Record<string, ResourceSnapshotEntry | CollectionSnapshotEntry>;

@@ -49,7 +49,7 @@ function snapshot(
 }
 
 describe("isReducibleStateChange", () => {
-  it("matches session/user/org-scope state_change items", () => {
+  it("matches session/user-scope state_change items", () => {
     expect(
       isReducibleStateChange(
         sc({ scope: "session", operation: "patch", version: 1, delta: { a: 1 } })
@@ -60,11 +60,13 @@ describe("isReducibleStateChange", () => {
         sc({ scope: "user", operation: "patch", version: 1, delta: { a: 1 } })
       )
     ).toBe(true);
+    // FIX-1153: org scope state is gone — an org state_change has no
+    // clientData slot to fold into, so it is no longer reducible.
     expect(
       isReducibleStateChange(
         sc({ scope: "org", operation: "patch", version: 1, delta: { a: 1 } })
       )
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("ignores block_instance and request scopes (no clientData slot)", () => {
@@ -332,7 +334,7 @@ describe("mergeStateChangeIntoSnapshot", () => {
     expect(next).toBe(prev);
   });
 
-  it("user and org scopes are reduced independently", () => {
+  it("user scope reduces independently and org is inert", () => {
     const prev = snapshot({
       session: { foo: 1 },
       user: { role: "guest" },
@@ -349,8 +351,10 @@ describe("mergeStateChangeIntoSnapshot", () => {
     );
     expect(afterUser?.clientData.user).toEqual({ role: "admin" });
     expect(afterUser?.clientData.session).toBe(prev.clientData.session);
-    expect(afterUser?.clientData.org).toBe(prev.clientData.org);
 
+    // FIX-1153: org scope state is gone, so an org state_change is no longer
+    // reducible — the engine cannot emit one, and a stray delta must not
+    // resurrect an org slice on the client snapshot.
     const afterOrg = mergeStateChangeIntoSnapshot(
       afterUser,
       sc({
@@ -360,7 +364,6 @@ describe("mergeStateChangeIntoSnapshot", () => {
         delta: { tier: "pro" }
       })
     );
-    expect(afterOrg?.clientData.org).toEqual({ tier: "pro" });
-    expect(afterOrg?.clientData.user).toBe(afterUser?.clientData.user);
+    expect(afterOrg).toBe(afterUser);
   });
 });

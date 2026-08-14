@@ -26,7 +26,6 @@ export type ClientDataScopeSubscribeOptions =
 export type ClientDataSubscribeOptions = {
   session?: ClientDataScopeSubscribeOptions;
   user?: ClientDataScopeSubscribeOptions;
-  org?: ClientDataScopeSubscribeOptions;
 };
 
 type InferSchemaOutput<TSchema> = TSchema extends { _output: infer TOutput }
@@ -58,9 +57,6 @@ export type ClientDataValues<TOptions extends ClientDataSubscribeOptions> =
     : {}) &
   (TOptions extends { user: infer TUser }
     ? { user: InferClientDataMap<TUser> }
-    : {}) &
-  (TOptions extends { org: infer TOrg }
-    ? { org: InferClientDataMap<TOrg> }
     : {});
 
 function toDataNames(options: ClientDataScopeSubscribeOptions | undefined): string[] {
@@ -92,11 +88,9 @@ export function useClientData<TOptions extends ClientDataSubscribeOptions>(
 ): ClientDataValues<TOptions> {
   const sessionNames = toDataNames(options.session);
   const userNames = toDataNames(options.user);
-  const orgNames = toDataNames(options.org);
 
   const sessionNamesKey = sessionNames.join("\u001f");
   const userNamesKey = userNames.join("\u001f");
-  const orgNamesKey = orgNames.join("\u001f");
 
   const previousResultRef = useRef<ClientDataValues<TOptions> | null>(null);
 
@@ -115,10 +109,6 @@ export function useClientData<TOptions extends ClientDataSubscribeOptions>(
       next.user = selectScopeClientData(dataSource.user, userNames);
     }
 
-    if (options.org !== undefined) {
-      next.org = selectScopeClientData(dataSource.org, orgNames);
-    }
-
     const previous = previousResultRef.current as Record<string, unknown> | null;
     if (previous !== null) {
       const sameSession = shallowEqualRecord(
@@ -129,12 +119,7 @@ export function useClientData<TOptions extends ClientDataSubscribeOptions>(
         previous.user as Record<string, unknown> | undefined,
         next.user as Record<string, unknown> | undefined
       );
-      const sameOrg = shallowEqualRecord(
-        previous.org as Record<string, unknown> | undefined,
-        next.org as Record<string, unknown> | undefined
-      );
-
-      if (sameSession && sameUser && sameOrg) {
+      if (sameSession && sameUser) {
         return previousResultRef.current as ClientDataValues<TOptions>;
       }
     }
@@ -146,9 +131,7 @@ export function useClientData<TOptions extends ClientDataSubscribeOptions>(
     session.snapshot?.clientData,
     options.session,
     options.user,
-    options.org,
     sessionNamesKey,
-    userNamesKey,
-    orgNamesKey
+    userNamesKey
   ]);
 }
