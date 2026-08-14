@@ -150,51 +150,158 @@ export const ledgerEntryStateSchema = z.object({
   at: z.string(),
 });
 
+/**
+ * One row per body of work conductor is managing, and the session its ticks run
+ * in. The registry is an **index, not a record**: it holds where to find the
+ * work, never what phase the work is in — that lives on the entity, in the
+ * session, and duplicating it here would be a second authority for one fact.
+ *
+ * The session id is stored, not derived — the same call `SessionRecord.lineageId`
+ * makes. Session identity is deletable and recreatable, so an address computed
+ * from an issue key is one two ticks can compute their way to different answers
+ * about; a value written once and read back is not.
+ */
+export const registryEntryStateSchema = z.object({
+  /** Epic id, or issue id for a standalone issue running without one. */
+  id: z.string(),
+  kind: z.enum(["epic", "issue"]),
+  /** The session every tick for this work runs in. */
+  sessionId: z.string(),
+  addedAt: z.string(),
+});
+
 export type IssueState = z.infer<typeof issueStateSchema>;
 export type EpicState = z.infer<typeof epicStateSchema>;
 export type ArtifactState = z.infer<typeof artifactStateSchema>;
 export type DispatchState = z.infer<typeof dispatchStateSchema>;
 export type ObservedPrState = z.infer<typeof observedPrStateSchema>;
 export type LedgerEntryState = z.infer<typeof ledgerEntryStateSchema>;
+export type RegistryEntryState = z.infer<typeof registryEntryStateSchema>;
+
+/*
+ * ---------------------------------------------------------------------------
+ * WHERE ENTITIES LIVE
+ * ---------------------------------------------------------------------------
+ *
+ * **One session per epic. One workstream — a child session — per issue.** Every
+ * trigger for a piece of work fires a tick into that work's own session:
+ * `flow.webhooks`' `sessionId(event)` routes a GitHub event into it, and a cron
+ * sweep enqueues against it (`enqueueAction({ …, sessionId })`). A tick is one
+ * *request*; many requests belong to one session. Three altitudes follow, and
+ * each one is a different question about who has to see the data.
+ *
+ * | Altitude | Scope | Who sees it |
+ * |---|---|---|
+ * | Cross-epic | `org` | anything, including a tick that belongs to no epic |
+ * | Epic-level | `session` + `sharedToWorkstream` | the epic session and every issue workstream under it |
+ * | Issue-level | `session` | one workstream's own ticks |
+ *
+ * **The mechanism, verified rather than assumed.** A session-scoped resource
+ * resolves to one of exactly two addresses (`createExecutionContext`): the
+ * running session, or — with `sharedToWorkstream: true` — the lineage root.
+ * `SessionRecord.lineageId` is minted by the root and inherited *verbatim* by
+ * every descendant, so the lineage is flat: an issue workstream and the epic
+ * session above it resolve one shared instance set, and so does anything the
+ * workstream itself spawns.
+ *
+ * Two consequences of that flatness, both load-bearing:
+ *
+ * - **There is no intermediate address.** A workstream cannot share a
+ *   collection with only *its* children — the choice is this session or the
+ *   root. So an unshared collection is readable from the workstream's own ticks
+ *   and from nothing else, including a phase execution the workstream detached.
+ *   A detached phase reports back as a signal, never by writing these rows.
+ * - **A standalone issue needs no special case.** With no epic above it its own
+ *   session is the lineage root, so the shared collections resolve there and the
+ *   model is the same one, minus a level.
+ *
+ * **The line between the two session altitudes: the entity graph is shared; each
+ * entity's working record is local.** What exists and where it is hosted is read
+ * from every altitude — an epic's cross-spec review reads its issues' artifacts,
+ * the per-epic board renders the roster. An entity's observed PR copy, its
+ * dispatch history, and its ledger are reduced over only by the tick that
+ * produces them.
+ *
+ * **What org scope is left holding: the registry, and only the registry.** A
+ * cron sweep runs in no epic's session — the scheduled transport dispatches with
+ * no `sessionId` at all — so it cannot reach either session altitude to discover
+ * what to tick. It reads the registry, then fans out one enqueue per session.
+ * That is a genuinely cross-session read, and the store interface offers no
+ * other kind: every resource read is addressed `(scopeType, scopeId, key)`, so
+ * "query state across sessions" does not exist as a primitive. A board spanning
+ * every epic is the same fan-out the devtool already does — list, then read each.
+ *
+ * **Org scope costs a binding.** Org-scoped resources are absent from
+ * `ctx.resources` unless the request resolves an `orgId` from its principal, and
+ * the CLI binds none. Conductor must run under an org-bound principal for the
+ * registry to resolve — a deployment requirement the two session altitudes do
+ * not carry, and the reason nothing else was left up here.
+ */
 
 /**
- * Conductor's entities live at `org` scope: one repo's work record, durable
- * across every session and user that touches it.
+ * What is under management, keyed `registry/<id>`. Org-scoped — see the block
+ * above for why this one collection is, and why nothing else is.
  *
- * **Session scope is not an option here, and this is worth writing down because
- * it looks like one.** A tick is a short request, and the thing that fires it
- * varies: a webhook today, a cron tomorrow, a CLI invocation from an operator's
- * terminal after that. Those are *different sessions*. Anything the driver needs
- * on the next tick — the entity's phase, the observed PR copy reconciliation
- * diffs against, the ledger a transition is replayed from — would be gone by the
- * time that next tick ran, and conductor would rediscover every PR from scratch
- * on every pass. Restart-safety is the property this whole design exists to
- * buy; session scope spends it.
- *
- * `sharedToWorkstream` does not rescue this either. It gives one session and the
- * background children it spawns a single identity — a lineage, not a repo. Two
- * independent future sessions still see two empty collections.
+ * **Capped as a tripwire, and the only capped collection here.** Everything else
+ * is bounded by one epic's or one issue's lifetime; this grows with the repo's,
+ * shrinking only as rows are deleted when work settles. Eviction is `"none"`
+ * because dropping a row here is not lossy but *wrong*: the work stays live and
+ * nothing ticks it again, silently. Refusing to take on new work is loud and
+ * recoverable; abandoning work already accepted is neither. 500 is far past any
+ * plausible count of concurrently managed epics, so tripping it means rows are
+ * leaking rather than accumulating — and the fix is finding the missed deletion,
+ * not a larger number.
  */
-const SCOPE = "org" as const;
-
-/** Issues under management, keyed `issues/<id>`. */
-export const conductorIssues = defineResourceCollection({
-  pattern: "issues/**",
-  scope: SCOPE,
-  stateSchema: issueStateSchema,
+export const conductorRegistry = defineResourceCollection({
+  pattern: "registry/**",
+  scope: "org",
+  stateSchema: registryEntryStateSchema,
+  maxInstances: 500,
+  eviction: "none",
 });
 
-/** Epics under management, keyed `epics/<id>`. */
+/** Epic-level: the epic session and every issue workstream under it read one set. */
+const EPIC_LEVEL = { scope: "session", sharedToWorkstream: true } as const;
+
+/** Issue-level: one workstream's own ticks, and nothing else. */
+const ISSUE_LEVEL = { scope: "session" } as const;
+
+/**
+ * Epics under management, keyed `epics/<id>`.
+ *
+ * Epic-level: an issue workstream reads the epic it runs under without a
+ * cross-session hop.
+ */
 export const conductorEpics = defineResourceCollection({
+  ...EPIC_LEVEL,
   pattern: "epics/**",
-  scope: SCOPE,
   stateSchema: epicStateSchema,
 });
 
-/** Artifacts, keyed `artifacts/<id>`. Document body lives in resource content. */
+/**
+ * Issues under management, keyed `issues/<id>`.
+ *
+ * Epic-level, which makes it the epic's **roster** as well as the issue entity —
+ * deliberately one collection and not two. The epic's tick has to know each
+ * issue's phase to know when the set has settled, and the per-epic board renders
+ * exactly this. A separate roster carrying a copy of `phase` would be a second
+ * place one fact lives, which is the mistake the earlier attempt died of.
+ */
+export const conductorIssues = defineResourceCollection({
+  ...EPIC_LEVEL,
+  pattern: "issues/**",
+  stateSchema: issueStateSchema,
+});
+
+/**
+ * Artifacts, keyed `artifacts/<id>`. Document body lives in resource content.
+ *
+ * Epic-level: cross-spec review reads every sibling issue's spec, so an artifact
+ * has to be visible from an altitude above the workstream that produced it.
+ */
 export const conductorArtifacts = defineResourceCollection({
+  ...EPIC_LEVEL,
   pattern: "artifacts/**",
-  scope: SCOPE,
   stateSchema: artifactStateSchema,
 });
 
@@ -216,75 +323,57 @@ export const conductorArtifacts = defineResourceCollection({
 /**
  * Agent runs, keyed `dispatches/<id>`.
  *
- * One row per phase execution, so this accumulates for the life of the repo.
- * Capped and LRU-evicted, which is safe here in a way it is not for the ledger:
- * a dispatch row is operational telemetry (which vendor ran, what it cost, how
- * it ended). The *transition* it produced is recorded in the ledger, so an
- * evicted dispatch costs cost-reporting history, not replayability.
- *
- * 2,000 at roughly 5–20 dispatches per issue is on the order of the last 100–400
- * issues — far longer than any open work window. LRU rather than `oldest`
- * because an in-flight dispatch is written to again when it settles, so recency
- * keeps it alive; `oldest` would pick a victim by creation time and could
- * tombstone a run that has not reported back yet.
+ * Issue-level, and **uncapped**. One row per phase execution of one entity, so
+ * roughly 5–20 rows over that entity's whole lifetime. The 2,000-row LRU cap
+ * this carried previously was sized against every issue the repo would ever
+ * run, because org scope pooled them; a work unit's own dispatch history does
+ * not need a capacity policy, and shipping one would imply a growth problem
+ * that no longer exists.
  */
 export const conductorDispatches = defineResourceCollection({
+  ...ISSUE_LEVEL,
   pattern: "dispatches/**",
-  scope: SCOPE,
   stateSchema: dispatchStateSchema,
-  maxInstances: 2_000,
-  eviction: "lru",
 });
 
 /**
  * Observed PR facts, keyed `observations/pr/<number>`.
  *
- * **Deliberately uncapped.** One small row per PR conductor has ever seen, so it
- * grows at the repo's PR rate — bounded by how fast humans and agents can open
- * PRs, orders of magnitude below the ledger.
+ * Issue-level: one row per PR of one issue — a spec PR, an implementation PR,
+ * and a multi-PR issue's sub-PRs.
  *
- * More to the point, eviction here is not merely lossy, it is *wrong*: this copy
- * is the baseline `reconcile` diffs against. Drop the row for a PR that is still
- * open and the next tick sees a PR it has never observed, synthesizes a
+ * **Uncapped, and eviction here would be wrong rather than merely lossy.** This
+ * copy is the baseline `reconcile` diffs against. Drop the row for a PR that is
+ * still open and the next tick sees a PR it has never observed, synthesizes a
  * `pr_opened` plus a signal for every review already on it, and re-reduces
  * transitions that already happened. The correct cleanup is deletion when a PR
  * settles — a merged or closed PR can produce no further signals — not a
  * capacity policy that picks its victim by age or recency.
  */
 export const conductorObservations = defineResourceCollection({
+  ...ISSUE_LEVEL,
   pattern: "observations/**",
-  scope: SCOPE,
   stateSchema: observedPrStateSchema,
 });
 
 /**
  * The workflow ledger, keyed `ledger/<entityId>/<seq>`.
  *
- * The highest-volume collection by far: one append per signal reduced per
- * entity, forever.
+ * Issue-level: one append per signal this entity reduced, in the session whose
+ * ticks reduced it. The highest-volume collection here, and still on the order
+ * of 10–40 entries over a work unit's lifetime.
  *
- * **The cap is a tripwire, not a retention policy, and `eviction` is `"none"` on
- * purpose.** This is the audit trail the central invariant rests on — *every
- * transition is reproducible from the ledger* — and LRU or `oldest` eviction
- * would quietly falsify it, dropping precisely the early entries of an entity's
- * history while its later ones remain. A partially-replayable ledger is worse
- * than a full one and worse than an honest failure, because nothing announces
- * that it happened.
- *
- * `"none"` refuses the write instead: at the cap, appending raises rather than
- * destroying evidence, which is loud, operator-recoverable, and cannot corrupt a
- * replay. 20,000 is set where a healthy repo will not reach it (at ~10–40
- * entries per issue lifecycle it covers several hundred issues) while staying
- * small enough to bulk-load per tick, since this collection prefetches eagerly.
- *
- * **When it trips, the fix is archival — rolling settled entities' entries into
- * cold storage or a per-entity digest — not a larger number.** A cap alone can
- * only ever defer the question.
+ * **Uncapped, deliberately, and this is the collection where that is a claim
+ * rather than a shrug.** The invariant it carries is that *every transition is
+ * reproducible from the ledger*, and no capacity policy is compatible with that:
+ * LRU or `oldest` falsify it silently by dropping an entity's early history
+ * while its later entries remain, and `"none"` at a cap converts a long-running
+ * issue into a hard failure. The previous 20,000-row tripwire was answering a
+ * question org scope created — every entity's history, pooled, for the life of
+ * the repo. Bounded by one work unit's lifetime, the question does not arise.
  */
 export const conductorLedger = defineResourceCollection({
+  ...ISSUE_LEVEL,
   pattern: "ledger/**",
-  scope: SCOPE,
   stateSchema: ledgerEntryStateSchema,
-  maxInstances: 20_000,
-  eviction: "none",
 });
