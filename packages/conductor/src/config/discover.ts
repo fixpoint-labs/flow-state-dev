@@ -16,14 +16,13 @@
  *   first" would turn a misconfigured machine into a run that does the wrong
  *   thing quietly. Every failure here names what was looked for and which
  *   config field overrides it.
- * - **Everything is injected.** `git`, the environment, and the PATH probe all
- *   arrive as parameters, so discovery is testable without a checkout, a token,
- *   or an installed CLI.
+ * - **Everything is injected.** `git`, the environment, and the harness probe
+ *   all arrive as parameters, so discovery is testable without a checkout, a
+ *   token, or an installed harness.
  */
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { delimiter, join } from "node:path";
+import { defaultResolveClaudeAgentQuery } from "@flow-state-dev/claude-code/sdk";
 import type { GitResult, GitRunner } from "../dispatch/branch";
 import { claudeCodeDispatcher } from "../dispatch";
 import type { Dispatcher } from "../dispatch/types";
@@ -59,27 +58,6 @@ export const defaultGitRunner: GitRunner = (argv, cwd) =>
     child.on("error", reject);
     child.on("close", (code) => resolve({ code: code ?? 1, stdout, stderr }));
   });
-
-/**
- * True when a binary is runnable. Injected so dispatcher resolution is testable
- * on a machine with no coding harness installed — and so the check never spawns
- * a process just to find out whether it exists.
- */
-export type BinaryProbe = (bin: string) => boolean;
-
-/** Walk `PATH` for an executable entry named `bin`. */
-export function onPath(bin: string, env: NodeJS.ProcessEnv = process.env): boolean {
-  if (bin.includes("/") || bin.includes("\\")) return existsSync(bin);
-  const extensions =
-    process.platform === "win32" ? (env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";") : [""];
-  for (const dir of (env.PATH ?? "").split(delimiter)) {
-    if (dir === "") continue;
-    for (const extension of extensions) {
-      if (existsSync(join(dir, `${bin}${extension}`))) return true;
-    }
-  }
-  return false;
-}
 
 /** Where a repository lives, as GitHub addresses it. */
 export interface RepoRef {
@@ -209,34 +187,81 @@ export function discoverGitHubToken(env: NodeJS.ProcessEnv): string {
   return token.trim();
 }
 
+/** One coding harness conductor knows how to dispatch to. */
+export interface KnownHarness {
+  readonly vendor: string;
+  /**
+   * What has to be present for this vendor's dispatcher to run, named the way a
+   * person would install it. Message text only — {@link available} is what
+   * actually decides.
+   */
+  readonly requires: string;
+  /** True when {@link requires} is satisfied on this machine. */
+  readonly available: () => Promise<boolean>;
+  readonly create: () => Dispatcher;
+}
+
 /**
  * Coding harnesses conductor knows how to dispatch to, in preference order.
  *
  * A vendor earns an entry here by having a {@link Dispatcher} implementation —
- * not by being installed. Discovery picks the first entry whose binary is on
- * PATH, so adding a vendor is one row and no branching.
+ * not by being installed. Discovery picks the first entry that reports itself
+ * available, so adding a vendor is one row and no branching.
+ *
+ * **An entry probes what its dispatcher actually loads, not a binary that
+ * resembles it.** `claudeCodeDispatcher` runs through
+ * `@flow-state-dev/claude-code/sdk`, which loads the Agent SDK in-process and
+ * brings its own executable — so a `claude` binary on `PATH` is neither
+ * necessary nor sufficient, and probing for one reports "no harness available"
+ * on a machine where dispatch works perfectly. The probe resolves the SDK
+ * through the same seam the dispatcher does, so the two can only ever agree.
+ * The SDK itself is never imported here: `@flow-state-dev/claude-code` is the
+ * one package in the repo that imports it, and conductor routes through that
+ * package rather than acquiring the dependency.
  */
-export const KNOWN_HARNESSES: readonly {
-  readonly vendor: string;
-  readonly bin: string;
-  readonly create: () => Dispatcher;
-}[] = [{ vendor: "claude-code", bin: "claude", create: () => claudeCodeDispatcher() }];
+export const KNOWN_HARNESSES: readonly KnownHarness[] = [
+  {
+    vendor: "claude-code",
+    requires: "`@anthropic-ai/claude-agent-sdk` (claude-code)",
+    available: async () => {
+      try {
+        await defaultResolveClaudeAgentQuery();
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    create: () => claudeCodeDispatcher(),
+  },
+];
 
 /**
- * The coding harness installed on this machine.
- *
- * @throws {ConductorConfigError} when none of {@link KNOWN_HARNESSES} is on PATH.
- *   Deliberately loud: a silent default would dispatch every phase to a binary
- *   that is not there and report each one as a failed dispatch instead of as a
- *   machine that is not set up.
+ * True when a harness can actually be dispatched to. Injected so dispatcher
+ * resolution is testable on a machine with no coding harness installed, and so
+ * a test never loads a vendor SDK to find out.
  */
-export function discoverDispatcher(probe: BinaryProbe): Dispatcher {
+export type HarnessProbe = (harness: KnownHarness) => boolean | Promise<boolean>;
+
+/** Ask each harness whether it is available. */
+export const defaultHarnessProbe: HarnessProbe = (harness) => harness.available();
+
+/**
+ * The coding harness available on this machine.
+ *
+ * @throws {ConductorConfigError} when no entry in {@link KNOWN_HARNESSES}
+ *   reports itself available. Deliberately loud: a silent default would
+ *   dispatch every phase to a harness that cannot load and report each one as a
+ *   failed dispatch instead of as a machine that is not set up.
+ */
+export async function discoverDispatcher(
+  probe: HarnessProbe = defaultHarnessProbe,
+): Promise<Dispatcher> {
   for (const harness of KNOWN_HARNESSES) {
-    if (probe(harness.bin)) return harness.create();
+    if (await probe(harness)) return harness.create();
   }
-  const looked = KNOWN_HARNESSES.map((h) => `\`${h.bin}\` (${h.vendor})`).join(", ");
+  const looked = KNOWN_HARNESSES.map((h) => `${h.requires}`).join(", ");
   throw new ConductorConfigError(
-    `No coding harness found on PATH. Conductor looked for ${looked}. Install one, ` +
+    `No coding harness is available. Conductor looked for ${looked}. Install one, ` +
       `or name a dispatcher in conductor.config.ts.`,
     "dispatcher",
   );

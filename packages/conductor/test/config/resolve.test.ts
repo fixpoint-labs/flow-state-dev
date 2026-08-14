@@ -9,11 +9,16 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { defaultResolveClaudeAgentQuery } from "@flow-state-dev/claude-code/sdk";
 import {
   ConductorConfigError,
+  defaultHarnessProbe,
   defineConductor,
+  discoverDispatcher,
+  KNOWN_HARNESSES,
   parseRepoRef,
   resolveConductor,
+  type KnownHarness,
 } from "../../src/config";
 import type { GitResult, GitRunner } from "../../src/dispatch/branch";
 import type { Dispatcher } from "../../src/dispatch/types";
@@ -61,7 +66,7 @@ describe("resolveConductor at level 1", () => {
       cwd: "/repo/examples/thing",
       env: ENV,
       git: fakeGit(HAPPY),
-      probe: (bin) => bin === "claude",
+      probe: (harness) => harness.vendor === "claude-code",
     });
 
     expect(resolved.repo).toEqual({
@@ -163,14 +168,73 @@ describe("a discovery that cannot answer", () => {
     });
   });
 
-  it("names the harnesses it looked for, so the fix is in the message", async () => {
+  it("names what has to be installed, so the fix is in the message", async () => {
     const error = await resolveConductor(defineConductor(), {
       env: ENV,
       git: fakeGit(HAPPY),
       probe: () => false,
     }).catch((e: unknown) => e as ConductorConfigError);
-    expect(error.message).toContain("claude");
+    // The thing to install, not a binary that resembles it: the dispatcher runs
+    // through the Agent SDK, so `claude` on PATH is the wrong instruction.
+    expect(error.message).toContain("@anthropic-ai/claude-agent-sdk");
+    expect(error.message).not.toContain("PATH");
     expect(error.message).toContain("conductor.config.ts");
+  });
+});
+
+describe("what the harness probe actually probes", () => {
+  /**
+   * The regression this guards: the dispatcher runs through the Agent SDK,
+   * which bundles its own executable. A probe for a `claude` binary on `PATH`
+   * answers a different question — it can say "no harness" on a machine where
+   * dispatch works, and "harness found" on one where the SDK will not load.
+   */
+  it("hands the probe the whole harness, so availability is the harness's own answer", async () => {
+    const asked: string[] = [];
+    const dispatcher = await discoverDispatcher((harness) => {
+      asked.push(harness.vendor);
+      // A probe that could only see a binary name could not do this.
+      return typeof harness.available === "function";
+    });
+    expect(asked).toEqual([KNOWN_HARNESSES[0]!.vendor]);
+    expect(dispatcher.vendor).toBe("claude-code");
+  });
+
+  it("never claims a harness on the strength of a `claude` binary being on PATH", () => {
+    // `bin` is gone from the table on purpose: the SDK bundles its own
+    // executable, so a name on PATH is neither necessary nor sufficient.
+    for (const harness of KNOWN_HARNESSES) {
+      expect(harness).not.toHaveProperty("bin");
+    }
+  });
+
+  it("agrees with the resolver the dispatcher itself loads the SDK through", async () => {
+    const claudeCode = KNOWN_HARNESSES.find((h) => h.vendor === "claude-code");
+    expect(claudeCode).toBeDefined();
+
+    // Whether the optional peer is installed here is not the point and is not
+    // asserted. The point is that the probe and the dispatcher can only ever
+    // give the same answer, because they go through one seam.
+    const dispatcherCanLoad = await defaultResolveClaudeAgentQuery().then(
+      () => true,
+      () => false,
+    );
+    await expect(claudeCode!.available()).resolves.toBe(dispatcherCanLoad);
+  });
+
+  it("delegates to the harness rather than deciding anything itself", async () => {
+    const stub: KnownHarness = {
+      vendor: "stub",
+      requires: "nothing",
+      available: () => Promise.resolve(true),
+      create: () => {
+        throw new Error("not created");
+      },
+    };
+    await expect(defaultHarnessProbe(stub)).resolves.toBe(true);
+    await expect(
+      defaultHarnessProbe({ ...stub, available: () => Promise.resolve(false) }),
+    ).resolves.toBe(false);
   });
 });
 

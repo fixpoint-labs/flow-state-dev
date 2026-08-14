@@ -11,7 +11,13 @@
  * Nothing in this file performs or describes I/O. What gets fetched is driven
  * by the `reads` each gate declares (see `./phases`), which the tick resolves
  * during its read-world step.
+ *
+ * The types are the contract; {@link worldSchema} at the bottom is the same
+ * shape as runtime data, because a ledger row stores the snapshot a transition
+ * was reduced against and a stored thing needs a schema.
  */
+
+import { z } from "zod";
 
 /** A review submitted against an artifact, as GitHub reports it. */
 export interface ReviewFacts {
@@ -141,3 +147,69 @@ export function hasHumanReviewAtHead(pr: PullRequestFacts | undefined): boolean 
   if (!pr) return false;
   return pr.reviews.some((r) => r.isHuman && r.sha === pr.headSha);
 }
+
+/*
+ * ---------------------------------------------------------------------------
+ * RUNTIME SHAPES
+ * ---------------------------------------------------------------------------
+ *
+ * Each schema below mirrors the interface above it and is annotated with it, so
+ * a field added to the type and forgotten here fails to compile rather than
+ * going quietly missing from a persisted snapshot. The annotation catches the
+ * dangerous direction only — a schema missing a field the type has — which is
+ * exactly the drift that would silently weaken the ledger's replay claim.
+ */
+
+/** Where an artifact is hosted. A PR is not an entity — it is a hosting location. */
+export const hostedAtSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("pr"), number: z.number().int() }),
+  z.object({ type: z.literal("file"), path: z.string() }),
+]);
+
+const reviewFactsSchema: z.ZodType<ReviewFacts> = z.object({
+  id: z.string(),
+  reviewer: z.string(),
+  isHuman: z.boolean(),
+  state: z.enum(["COMMENTED", "CHANGES_REQUESTED", "APPROVED"]),
+  sha: z.string(),
+  at: z.string(),
+});
+
+const pullRequestFactsSchema: z.ZodType<PullRequestFacts> = z.object({
+  number: z.number().int(),
+  state: z.enum(["open", "closed", "merged"]),
+  headSha: z.string(),
+  mergeable: z.boolean().nullable(),
+  checks: z.enum(["pending", "success", "failure"]).nullable(),
+  baseRed: z.boolean(),
+  reviews: z.array(reviewFactsSchema),
+});
+
+const artifactFactsSchema: z.ZodType<ArtifactFacts> = z.object({
+  id: z.string(),
+  kind: z.enum(["spec", "implementation", "epic_spec", "retrospective"]),
+  hostedAt: hostedAtSchema,
+  reviewRounds: z.number().int(),
+});
+
+const conductorPolicySchema: z.ZodType<ConductorPolicy> = z.object({
+  specReviewRoundBudget: z.number().int(),
+  implementationReviewRoundBudget: z.number().int(),
+  onGuidanceChanged: z.enum(["reExamineOpenPrs", "ignore"]),
+});
+
+/**
+ * {@link World} as runtime data.
+ *
+ * `pullRequests` is keyed by PR number, and JSON has no numeric object keys —
+ * hence the coercion, so a snapshot survives a round trip through a store
+ * without the keys quietly becoming strings.
+ */
+export const worldSchema: z.ZodType<World> = z.object({
+  artifacts: z.array(artifactFactsSchema),
+  pullRequests: z.record(z.coerce.number().int(), pullRequestFactsSchema),
+  goalCheck: z.enum(["passed", "failed"]).nullable(),
+  childIssues: z.array(z.object({ id: z.string(), settled: z.boolean() })),
+  guidanceHashes: z.record(z.string(), z.string()),
+  policy: conductorPolicySchema,
+});

@@ -31,9 +31,8 @@ import {
   discoverGitHubToken,
   discoverRemoteUrl,
   discoverRepoRoot,
-  onPath,
   parseRepoRef,
-  type BinaryProbe,
+  type HarnessProbe,
   type RepoRef,
 } from "./discover";
 import type { GitRunner } from "../dispatch/branch";
@@ -126,8 +125,11 @@ export interface ResolveOptions {
   readonly env?: NodeJS.ProcessEnv;
   /** How to run git. Defaults to spawning the `git` binary. */
   readonly git?: GitRunner;
-  /** How to check a harness is installed. Defaults to a PATH walk. */
-  readonly probe?: BinaryProbe;
+  /**
+   * How to check a harness can be dispatched to. Defaults to asking each known
+   * harness to resolve what it actually loads.
+   */
+  readonly probe?: HarnessProbe;
 }
 
 /**
@@ -155,12 +157,7 @@ export async function resolveConductor(
   config: ConductorConfig = {},
   options: ResolveOptions = {},
 ): Promise<ResolvedConductor> {
-  const {
-    cwd = process.cwd(),
-    env = process.env,
-    git = defaultGitRunner,
-    probe = (bin: string) => onPath(bin, env),
-  } = options;
+  const { cwd = process.cwd(), env = process.env, git = defaultGitRunner, probe } = options;
   const remote = config.remote ?? "origin";
 
   const repoRoot = config.repoRoot ?? (await discoverRepoRoot(git, cwd));
@@ -182,7 +179,7 @@ export async function resolveConductor(
   }
 
   const baseBranch = config.baseBranch ?? (await discoverDefaultBranch(git, repoRoot, remote));
-  const dispatcher = config.dispatcher ?? discoverDispatcher(probe);
+  const dispatcher = config.dispatcher ?? (await discoverDispatcher(probe));
 
   return {
     repoRoot,

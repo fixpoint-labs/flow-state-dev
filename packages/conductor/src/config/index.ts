@@ -28,14 +28,15 @@ export {
 export {
   ConductorConfigError,
   defaultGitRunner,
+  defaultHarnessProbe,
   discoverDefaultBranch,
   discoverDispatcher,
   discoverGitHubToken,
   discoverRemoteUrl,
   discoverRepoRoot,
   KNOWN_HARNESSES,
-  onPath,
   parseRepoRef,
-  type BinaryProbe,
+  type HarnessProbe,
+  type KnownHarness,
   type RepoRef,
 } from "./discover";

@@ -31,6 +31,26 @@ Three kinds of thing, kept deliberately separate:
 
 > **Every transition is reproducible from the ledger.**
 
+Reproducible is meant literally, not as a slogan. `decide` takes three arguments
+— the entity, the signal that arrived, and the world snapshot it was reduced
+against — and a ledger row carries all three, whole. So a row replays:
+
+```ts
+decide(
+  { id: row.entityId, kind: row.entityKind, phase: row.phaseBefore },
+  row.signal,
+  row.world,
+);
+// → the actions that were taken, including row.actionKind
+```
+
+That is what costs the ledger its size: a row is a few KB rather than a few
+hundred bytes, because it archives the snapshot. The alternative — a hash of the
+world, or only the facts the phase declared — would let you *verify* a
+transition without being able to *re-run* it, and `src/model/entities.ts` walks
+through why each cheaper option was rejected. A weaker invariant honestly stated
+would have been fine; a strong one that the schema did not support was not.
+
 A model may sit anywhere *upstream* of a signal. Classifying a human comment
 into "this is feedback" versus "this is a question" is real judgment and belongs
 to a model — its output is recorded as a signal, so a wrong call produces a
@@ -40,6 +60,12 @@ A model inside `decide` would produce a different transition each run from
 identical state: unauditable, untestable, and the exact failure this design
 exists to remove. The claim is not that judgment is unwelcome. It is that
 **judgment must be recorded before it is acted on.**
+
+**One limit, stated rather than buried.** A row written before the payload
+fields existed reads back with `signal`, `world` and `entityKind` at `null`.
+That row is still *auditable* — the phase chain proves nothing moved outside a
+recorded action — but it is not replayable, and a consumer has to branch on it
+rather than assume the payload is there.
 
 ## Why gates are derived, not stored
 
@@ -180,7 +206,7 @@ facts of the machine it runs on, so it reads them rather than asking:
 | the repository  | `git remote get-url origin`, in the checkout conductor runs in |
 | GitHub auth     | `GITHUB_TOKEN` / `GH_TOKEN` — the variables `gh` already uses  |
 | the base branch | the remote's HEAD                                             |
-| the dispatcher  | the coding harness that is installed (the `claude` CLI, today) |
+| the dispatcher  | the coding harness that can actually be loaded (Claude Code's Agent SDK, today) |
 
 **A field earns its place only if it encodes an intent the environment cannot reveal.**
 Asking for something discoverable is not a harmless knob — it is a second place for one
@@ -190,6 +216,12 @@ fact to live, which is how the config and the machine end up disagreeing.
 "dispatch to whichever vendor we shipped first". `ConductorConfigError` names the field
 that overrides it. Both of those failures would otherwise surface twenty minutes later,
 wearing something else's clothes.
+
+**A harness probe asks whether the thing the dispatcher loads will load.** Not whether
+something with a similar name is on `PATH`: dispatch runs through the Agent SDK, which
+brings its own executable, so a `claude` binary is neither necessary nor sufficient and
+probing for one gets the answer wrong in both directions. Discovery and dispatch go
+through one resolver, so they cannot disagree.
 
 Declaring and resolving are separate on purpose. `defineConductor` is a typed identity
 function returning plain data, so `conductor.config.ts` stays synchronous and importable

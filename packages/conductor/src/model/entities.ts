@@ -20,6 +20,12 @@
  *
  * > **Structured state is exactly what `decide` reads. Everything else is content.**
  *
+ * That rule is about **entities** — the things `decide` reduces *over*. The
+ * ledger is not one: it is a transcript of reductions that already happened, so
+ * its rows hold `decide`'s past inputs rather than its current read set. Same
+ * store, different job, and the reason its `signal` and `world` fields are not
+ * a violation of the line above.
+ *
  * These are declarations only — `defineResourceCollection` comes from `core`,
  * so this module stays free of `engine` and M0 remains pure. Registering the
  * collections against a scope registry is M1's job.
@@ -27,6 +33,8 @@
 
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
+import { signalSchema } from "./signals";
+import { hostedAtSchema, worldSchema } from "./world";
 
 /** Issue type — a routing key selecting discipline and review lenses, not a state machine. */
 export const issueTypeSchema = z.enum([
@@ -39,12 +47,6 @@ export const issueTypeSchema = z.enum([
 ]);
 
 export type IssueType = z.infer<typeof issueTypeSchema>;
-
-/** Where an artifact is hosted. A PR is not an entity — it is a hosting location. */
-export const hostedAtSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("pr"), number: z.number().int() }),
-  z.object({ type: z.literal("file"), path: z.string() }),
-]);
 
 /** One unit of work moving through the issue phases. */
 export const issueStateSchema = z.object({
@@ -129,20 +131,88 @@ export const observedPrStateSchema = z.object({
 });
 
 /**
- * One append-only record of a reduction: the signal that arrived, the action it
- * produced, and when. **This is what makes a transition reproducible** — the
- * invariant the whole design rests on. A model may appear anywhere upstream of
- * a signal, because its output is recorded here and replayable; it may never
- * appear where the output *is* the transition.
+ * One append-only record of a reduction. **This is what makes a transition
+ * reproducible** — the invariant the whole design rests on — and reproducible
+ * is meant literally: a row carries `decide`'s three arguments whole, so
+ * `decide({ id: entityId, kind: entityKind, phase: phaseBefore }, signal, world)`
+ * can be re-run from the row alone and must produce `actionKind` again. A model
+ * may appear anywhere upstream of a signal, because its output is recorded here
+ * and replayable; it may never appear where the output *is* the transition.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE WHOLE WORLD, AND NOT SOMETHING SMALLER
+ * ---------------------------------------------------------------------------
+ *
+ * The signal is the easy half: small, typed, and half of `decide`'s input.
+ * Storing the world was the real choice, and it was made deliberately, because
+ * the next reader will otherwise assume the strongest reading of the invariant
+ * and be wrong about the storage it costs. Three cheaper options and why none
+ * of them holds the claim:
+ *
+ * - **A content hash of the world.** Tells you two rows saw the same world and
+ *   that a re-materialized world has drifted. Tells you nothing about *what* it
+ *   held, so `decide` cannot be re-run and a wrong transition cannot be
+ *   diagnosed. That is verification, not reproduction.
+ * - **The subset the phase declared via `factsReadBy()`.** Appealing, and wrong
+ *   twice. `decide` reads more than the gates declare — `world.policy` for the
+ *   round budgets, `world.artifacts` to scope a PR-bound signal to its phase —
+ *   and no gate declares either. And a phase with no gates (`SETTLED`,
+ *   `CROSS_SPEC_REVIEW`) declares nothing at all, so its rows would carry no
+ *   world. A subset that is silently short is the same overclaim in a
+ *   thriftier costume.
+ * - **Store the world only when it differs from the previous row's.** Halves
+ *   the storage, since the rows a single tick appends share one snapshot
+ *   exactly. Rejected: it makes a row interpretable only in the presence of its
+ *   predecessors, so one missing row costs every row after it. A bounded
+ *   storage saving is not worth an unbounded correctness cost on the one
+ *   collection that exists to be trustworthy.
+ *
+ * So: the whole snapshot. Note that this is *not* an arbitrary blob —
+ * {@link World} is already defined as "everything `decide` and every gate
+ * predicate may read, and nothing else", so the whole snapshot **is** the
+ * minimal sufficient projection. There is no smaller thing that still replays.
+ *
+ * **What it costs.** A row is a few KB once its PR has accumulated reviews, so
+ * an issue's whole ledger runs to a few hundred KB — bounded by one work unit's
+ * lifetime, and smaller than the spec document that issue produced.
+ *
+ * **This is a third copy of GitHub facts, and that is deliberate.** GitHub wins
+ * on PR facts, {@link observedPrStateSchema} is the current-facts cache
+ * `reconcile` diffs against, and the ledger's copy is neither: it is a
+ * transcript of what was true at one instant, append-only, never read back as
+ * current state and never diffed against. A copy with no claim to being current
+ * cannot become a second authority.
+ *
+ * **A row written before these fields existed reads back with them `null`
+ * (BP-030).** Such a row is *auditable* — the phase chain still proves nothing
+ * moved outside a recorded action — but it is not *replayable*, and a consumer
+ * must branch on that rather than assume the payload is there.
  */
 export const ledgerEntryStateSchema = z.object({
   id: z.string(),
   entityId: z.string(),
+  /**
+   * Which phase table this row's phases belong to. Stored rather than looked up
+   * on the entity, so a row reproduces its transition without reading a second
+   * collection — `SETTLED` belongs to both tables and would otherwise be
+   * ambiguous. `null` on a row written before the field existed.
+   */
+  entityKind: z.enum(["issue", "epic"]).nullable().default(null),
   /** Monotonic per entity. Ordering is the ledger's job, not the store's. */
   seq: z.number().int(),
+  /**
+   * The signal's kind, kept alongside the payload so a board can scan the
+   * ledger without parsing every row, and so a legacy row without a payload
+   * still says what arrived. When `signal` is present the two always agree, and
+   * `signal` is what a replay reads.
+   */
   signalKind: z.string(),
   /** True when the signal was inferred by reconciliation rather than observed. */
   signalSynthesized: z.boolean().default(false),
+  /** `decide`'s second argument, whole. `null` on a row written before this field. */
+  signal: signalSchema.nullable().default(null),
+  /** `decide`'s third argument, whole. `null` on a row written before this field. */
+  world: worldSchema.nullable().default(null),
   actionKind: z.string(),
   phaseBefore: z.string(),
   phaseAfter: z.string(),
@@ -361,7 +431,10 @@ export const conductorObservations = defineResourceCollection({
  *
  * Issue-level: one append per signal this entity reduced, in the session whose
  * ticks reduced it. The highest-volume collection here, and still on the order
- * of 10–40 entries over a work unit's lifetime.
+ * of 10–40 entries over a work unit's lifetime — each carrying the world
+ * snapshot it was reduced against, so a few KB per row rather than a few
+ * hundred bytes. See {@link ledgerEntryStateSchema} for why that is the right
+ * trade.
  *
  * **Uncapped, deliberately, and this is the collection where that is a claim
  * rather than a shrug.** The invariant it carries is that *every transition is

@@ -35,6 +35,7 @@ import { pathToFileURL } from "node:url";
 import * as conductor from "@flow-state-dev/conductor";
 import {
   ConductorConfigError,
+  decide,
   resolveConductor,
   type ConductorConfig,
   type ConductorEntity,
@@ -180,14 +181,15 @@ function exampleCli(checkout: string, args: readonly string[]): Ran {
  * ------------------------------------------------------------------------- */
 
 /**
- * Check that no phase moved outside a recorded action.
+ * Check that no phase moved outside a recorded action, and that each row's
+ * recorded action is the one `decide` actually produces from that row's own
+ * arguments.
  *
- * What the ledger's schema supports, and no more: `seq` contiguity, a
- * `phaseBefore`/`phaseAfter` chain with no break in it, `enterPhase` as the only
- * action a phase change may ride on, and the stored phase agreeing with the last
- * row. Literal replay — re-running `decide` from a row — is not possible, because
- * the row carries `signalKind` but neither the signal's payload nor the world it
- * was reduced against. See goal.md, "seams this goal could not close".
+ * The structural half — `seq` contiguity, an unbroken `phaseBefore`/`phaseAfter`
+ * chain, `enterPhase` as the only action a phase change may ride on, the stored
+ * phase agreeing with the last row — catches a phase that moved outside the
+ * ledger. It does not catch a chain that is internally consistent and entirely
+ * made up, which is what {@link replayFailures} is for.
  */
 function ledgerFailures(
   ledger: readonly LedgerEntryState[],
@@ -233,6 +235,56 @@ function ledgerFailures(
     );
   }
   return failures;
+}
+
+/**
+ * Re-run `decide` from each row's own recorded arguments and require it to
+ * produce that row's action.
+ *
+ * This is the literal reading of the invariant, and the reason the schema
+ * carries `signal` and `world` at all: a row that records an action `decide`
+ * would not take from the state the row itself recorded is a row written as
+ * decoration. Nothing here is hand-built — the entity, the signal and the world
+ * all come out of the row.
+ *
+ * A row whose payload is `null` predates those fields (BP-030). It is reported
+ * as unreplayable rather than counted as a pass, so a driver that stopped
+ * writing the payload shows up as coverage falling to zero rather than as green.
+ */
+function replayFailures(ledger: readonly LedgerEntryState[]): {
+  readonly failures: readonly string[];
+  readonly replayed: number;
+} {
+  const failures: string[] = [];
+  let replayed = 0;
+
+  for (const row of ledger) {
+    if (row.signal === null || row.world === null || row.entityKind === null) {
+      failures.push(
+        `ledger row ${row.seq} carries no ${row.signal === null ? "signal" : row.world === null ? "world" : "entity kind"} — ` +
+          `the transition it records cannot be re-run, so "reproducible from the ledger" ` +
+          `does not hold for it`,
+      );
+      continue;
+    }
+
+    const produced = decide(
+      { id: row.entityId, kind: row.entityKind, phase: row.phaseBefore as Phase },
+      row.signal,
+      row.world,
+    ).map((action): string => action.kind);
+
+    if (!produced.includes(row.actionKind)) {
+      failures.push(
+        `replaying ledger row ${row.seq} produced [${produced.join(", ") || "nothing"}] but the ` +
+          `row records "${row.actionKind}" — the recorded action is not what \`decide\` derives ` +
+          `from the signal and world the row itself carries`,
+      );
+    }
+    replayed += 1;
+  }
+
+  return { failures, replayed };
 }
 
 /* ------------------------------------------------------------------------- *
@@ -378,9 +430,12 @@ await runGoal(async () => {
 
   const atGate = managed;
 
-  // — signal 3: nothing moved the phase outside the ledger —
+  // — signal 3: nothing moved the phase outside the ledger, and every row
+  //   replays to the action it recorded —
 
   failures.push(...ledgerFailures(atGate.ledger, startPhase, atGate.entity.phase));
+  const replay = replayFailures(atGate.ledger);
+  failures.push(...replay.failures);
 
   // — signal 4: no coordinator model call decided a transition —
   //
@@ -543,7 +598,9 @@ await runGoal(async () => {
       `level 1 config discovered ${discovered}; conductor drove ${WORK_ID} in ${ticks} tick(s) ` +
       `to phase "${atGate.entity.phase}" at gate "${atGate.gate}" over ${atGate.ledger.length} ` +
       `ledger rows and ${atGate.dispatchCount} dispatch(es); the seq/phase chain is contiguous and ` +
-      `the stored phase matches its last row; a further tick against an unchanged world appended ` +
+      `the stored phase matches its last row; all ${replay.replayed} row(s) re-ran through ` +
+      `\`decide\` from their own recorded signal and world and produced the action they record; ` +
+      `a further tick against an unchanged world appended ` +
       `nothing and dispatched nothing; re-opening durable state and ticking kept the same gate, ` +
       `phase and dispatch count; \`${branch}\` on origin runs the example green for all ` +
       `${fixture.cases.length} held-out \`${fixture.operation}\` cases and lists it in the registry; ` +

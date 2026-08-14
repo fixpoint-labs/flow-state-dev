@@ -15,7 +15,13 @@
  *   `approval_expressed`) are classifier output. Everything else is structural.
  *   `approval_expressed` is advisory and must never satisfy an approval gate —
  *   a gate reads a real review state, never a model's reading of prose.
+ *
+ * The types are the contract; {@link signalSchema} at the bottom is the same
+ * shape as runtime data, because a ledger row stores the signal a transition
+ * was reduced from and a stored thing needs a schema.
  */
+
+import { z } from "zod";
 
 /** Every signal kind conductor responds to. */
 export type SignalKind =
@@ -151,3 +157,65 @@ export const PROSE_DERIVED_KINDS = [
 export function isProseDerived(kind: SignalKind): boolean {
   return (PROSE_DERIVED_KINDS as readonly string[]).includes(kind);
 }
+
+/** Fields every variant carries, spread into each option below. */
+const base = {
+  entityId: z.string(),
+  at: z.string(),
+  synthesized: z.boolean().optional(),
+};
+
+/**
+ * {@link Signal} as runtime data — one option per interface in the union above,
+ * in the same order.
+ *
+ * Annotated with the union so a variant whose shape drifts from its interface
+ * fails to compile. The annotation cannot catch a variant that is *missing*
+ * altogether (a narrower union is still assignable), so totality over
+ * `SignalKind` is held by a test that round-trips every kind rather than by the
+ * type system.
+ */
+export const signalSchema: z.ZodType<Signal> = z.discriminatedUnion("kind", [
+  z.object({
+    ...base,
+    kind: z.literal("ci_concluded"),
+    conclusion: z.enum(["success", "failure"]),
+    sha: z.string(),
+  }),
+  z.object({
+    ...base,
+    kind: z.enum(["review_submitted", "changes_requested", "approved"]),
+    reviewer: z.string(),
+    sha: z.string(),
+    pullNumber: z.number().int(),
+  }),
+  z.object({
+    ...base,
+    kind: z.enum(["pr_opened", "merged", "pr_closed", "merge_conflict", "base_recovered"]),
+    pullNumber: z.number().int(),
+  }),
+  z.object({
+    ...base,
+    kind: z.enum(["feedback_received", "question_asked", "approval_expressed"]),
+    author: z.string(),
+    commentId: z.string(),
+    pullNumber: z.number().int(),
+  }),
+  z.object({
+    ...base,
+    kind: z.enum(["dispatch_completed", "dispatch_failed"]),
+    dispatchId: z.string(),
+  }),
+  z.object({ ...base, kind: z.literal("guidance_changed"), path: z.string() }),
+  z.object({ ...base, kind: z.literal("issue_settled"), childId: z.string() }),
+  z.object({
+    ...base,
+    kind: z.enum([
+      "phase_entered",
+      "goal_check_passed",
+      "goal_check_failed",
+      "external_status_changed",
+      "objective_approved",
+    ]),
+  }),
+]);
