@@ -1,9 +1,5 @@
 # Epic — Building with FSD: the first hour in someone else's project
 
-Linear epic: **FIX-1161** · Branch `epic/building-with-fsd` · Epic PR
-[#1301](https://github.com/fixpoint-labs/flow-state-dev/pull/1301) (never merged) · Project
-**Public Launch**
-
 ## 1. Purpose & objective *(the gated sign-off surface)*
 
 Someone who hears about FSD today cannot use it. The root README tells them to clone our
@@ -13,6 +9,10 @@ repo by hand — and the coding assistant they would normally lean on has nothin
 it writes FSD-shaped code that does not run. Public Launch is the reason this is now rather
 than later: everything else in that project points people at a front door that is not there.
 
+*Linear epic **FIX-1161** · Branch `epic/building-with-fsd` · Epic PR
+[#1301](https://github.com/fixpoint-labs/flow-state-dev/pull/1301) (never merged) · Project
+**Public Launch**.*
+
 **Outcome.** Someone who has never used FSD gets a working AI feature streaming from a real
 model inside their own project — new or existing — from a single command, without cloning our
 repository or reading our source; and the coding assistant they work with writes FSD code that
@@ -20,10 +20,20 @@ runs rather than code that merely looks right.
 
 **Proof** — carried by the issues' own goal checks, no new measurement apparatus:
 
-- *FIX-1159* — a fresh `create-next-app`, then the init command, then `fsdev run` returns a
-  streamed model response, and a route that existed before init still responds.
+- *FIX-1159, mounted-route path* — a fresh `create-next-app`, then the init command, then
+  `fsdev run` returns a streamed model response, and a route that existed before init still
+  responds.
+- *FIX-1159, second-process path* — the same init command in an **existing plain-Node
+  project**: the printed command starts the generated server, a call to it returns a streamed
+  model response, and the project's own server still runs. **Theme 8 makes this a different
+  shape, not the same check twice** — host detection, and a second process rather than a
+  mounted route — so the Next.js run above does not cover it, and FIX-548's Node run exercises
+  the *template* rather than init into a project that already exists. Without this one, Node
+  detection and the second-process wiring can be entirely broken while every other listed
+  proof passes. Same apparatus as the rest; no new measurement machinery.
 - *FIX-548* — in an empty directory with only a provider key in the environment, the npx
-  command followed by the printed dev command yields a streamed model response. Run once per
+  command followed by the printed dev command yields a streamed model response **from the
+  surface that template ships** — the chat page for Next.js, the API for Node. Run once per
   template.
 - *FIX-1160* — one recorded run covering **both halves of the pack**: the Claude plugin
   installed from its URL and one of its packaged skills invoked, and then a coding assistant
@@ -40,10 +50,18 @@ objective's second clause; cutting it cuts the objective in half, so it stays. *
 (`create-fsd-app`) is the weakest of the three**: `npx create-next-app && npx
 @flow-state-dev/cli init` already reaches the outcome in two commands, and a starter mostly
 saves one — one command *and* the scoped package name a stranger would otherwise have to
-know. **Kept, scoped
-down** to a thin wrapper — bare app, then init, then one demo flow, with no scaffolding logic
-of its own. If it grows template logic that `fsdev init` does not have, that is the signal it
-should have been dropped.
+know. **Kept, scoped down** to a thin wrapper — bare app, then init, then the template's
+**demo content**: one demo flow, and for the Next.js template the chat page that flow talks
+to.
+
+**The wrapper owns demo content; init owns scaffolding.** That split is forced rather than
+chosen. Theme 2 promises a Next.js *chat app*, `create-next-app` ships its own stock
+`app/page.tsx`, and theme 6 forbids init from overwriting a file it did not write — so a chat
+UI can only come from the greenfield wrapper, and never from init. Without that clause no
+permitted step produced the advertised chat app. Scaffolding is the other half and stays
+singular: detection, file authoring, config generation, and the next-steps block are all
+`fsdev init`'s, and none of them exists twice. If it grows template logic that `fsdev init`
+does not have, that is the signal it should have been dropped.
 
 **FIX-1162 (npm name registration) is a fourth issue but not a fourth workstream.** npm short
 names are first-come and unrecoverable, and the objective promises *a single command* — which
@@ -72,8 +90,12 @@ call.
 ## 2. Themes & long-horizon direction
 
 1. **Both entry paths ship, and `fsdev init` is the primitive both rest on.**
-   `create-fsd-app` is a thin wrapper over it: bare app, then init, then one demo flow. No
-   scaffolding logic exists in two places. **This is why FIX-1159 lands before FIX-548** —
+   `create-fsd-app` is a thin wrapper over it: bare app, then init, then the template's demo
+   content — one demo flow, plus the chat page for the Next.js template. **The wrapper owns
+   demo content; init owns scaffolding**, and no scaffolding logic exists in two places. The
+   line falls there because theme 6 forbids init from overwriting a file it did not write and
+   `create-next-app` ships its own `app/page.tsx`: a chat UI is therefore the greenfield
+   wrapper's or nobody's. **This is why FIX-1159 lands before FIX-548** —
    they can be specced in parallel, but the wrapper cannot merge before the thing it wraps.
    **FIX-1162 gates FIX-548 one level earlier still**: a spec cannot commit to a headline
    command under a package name we have not registered.
@@ -98,7 +120,7 @@ call.
 4. **Nothing this epic produces reads from our monorepo at runtime.** A constraint the
    objective imposes, not a new call, and it binds two issues at once: a template cannot carry
    `workspace:*` dependencies or a build script that reaches the repo root (which is why
-   `apps/kitchen-sink` is not a template), and the five build-with skills in `agents/skills/`
+   `apps/kitchen-sink` is not a template), and the five build-with skills in `.agents/skills/`
    all hardcode monorepo paths today, so FIX-1160 packages rewritten **Claude skills** rather
    than copying those.
 
@@ -147,7 +169,10 @@ call.
    the Node *template* and the Node *init* path deliver the same process model, described in
    the same words. This binds FIX-1159 (what init writes) and FIX-548 (what the Node template
    ships), which is why it is a theme rather than either issue's local call. Surfaced by §3's
-   sketch, where it sat as an observation with no owner.
+   sketch, where it sat as an observation with no owner. **§1's proof runs this path
+   directly** — a real init into an existing plain-Node project — because the two checks that
+   were already listed cover the Next.js path and the Node *template*, and neither touches the
+   brownfield Node behaviour this theme commits to.
 
 ## 3. Shape of the whole
 
@@ -163,8 +188,12 @@ the polish.
 
 **Showed:** three things. First, the two templates share almost nothing except
 `fsdev.config.ts`, `flows/`, `.env.local`, and the agent-instructions file — and that common
-set is exactly what `fsdev init` writes, with one host file differing per template. The
-division into issues holds. Second, the next-steps block has to name **two** servers with
+set is exactly what `fsdev init` writes. Everything past it is per-template: the host wiring
+(a route for Next.js, a server entrypoint for Node) and the Next.js chat page. The division
+into issues holds, and the boundary falls there — init owns the common set, the wrapper owns
+what is left. **Epic review found that boundary drawn but not assigned**: the chat page sat in
+this tree with no issue's scope claiming it, so no permitted step produced the advertised chat
+app. Theme 1 and §1 now give it to FIX-548. Second, the next-steps block has to name **two** servers with
 different jobs (the app on its own port, the DevTool on 4200); printing both without saying
 which is which is how a first-hour user lands on a blank page, and both entry paths print it.
 Third, an asymmetry the prose hid: in a Next.js app init can mount a real route, because App
@@ -183,11 +212,12 @@ drawing the diffs; neither was visible in prose.
 my-app/
   app/
     api/flows/[...path]/route.ts   createNextHandler(<default export of fsdev.config.ts>)
-    page.tsx                       chat UI, @flow-state-dev/react
+    page.tsx                       chat UI, @flow-state-dev/react — the wrapper's demo
+                                   content (theme 1); init never writes this file
     layout.tsx
   flows/
     chat.ts                        defineFlow — one action, one generator
-  fsdev.config.ts                  default-exports createFlowState({ flows })
+  fsdev.config.ts                  default-exports createFlowState({ flows, stores })
   .env.local                       OPENAI_API_KEY=…
   AGENTS.md                        written by init (§5 Q1 — decided)
   package.json                     next, react, @flow-state-dev/{core,engine,next,react,cli}
@@ -203,12 +233,19 @@ my-api/
     server.ts                      serve(<default export of fsdev.config.ts>)
   flows/
     assistant.ts
-  fsdev.config.ts
+  fsdev.config.ts                  default-exports createFlowState({ flows, stores })
   .env.local
   AGENTS.md
   package.json                     @flow-state-dev/{core,engine,node,cli}
   tsconfig.json
 ```
+
+**The generated config declares a store profile, in both templates and in what init writes.**
+`stores` is a required option and needs at least one named profile, so
+`createFlowState({ flows })` alone does not typecheck and does not initialize — which would
+block every command the next-steps block prints. Illustratively that is
+`stores: { default: { primary: inMemoryStores() } }`; **which profile ships is FIX-1159's
+call**, since init authors the config and the templates inherit it.
 
 ### Diff — `fsdev init` into an existing Next.js app
 
@@ -223,7 +260,8 @@ my-api/
 ~   .env.local       +OPENAI_API_KEY=   (created if absent, appended if present)
 ~   pnpm-lock.yaml   rewritten by your package manager when init installs (theme 6)
     app/api/billing/route.ts        untouched
-    app/page.tsx                    untouched
+    app/page.tsx                    untouched — theme 6; a chat UI is the greenfield
+                                    wrapper's (FIX-548), never init's
     next.config.ts                  untouched
 ```
 
@@ -329,7 +367,7 @@ $ npx @flow-state-dev/cli init
 |---|---|---|---|---|---|
 | FIX-1159 | `fsdev init` — wire FSD into an existing project (incl. the next-steps block and DevTool discovery) | spec | — | — | Needs spec — held at the objective gate |
 | FIX-1162 | Register the npm names the launch needs — the short CLI entry name and the `create-fsd-app` scaffolding name | spec | — | — | With the owner — npm credentials |
-| FIX-548 | `create-fsd-app` — npx-able scaffolding, a thin wrapper over init, two templates | spec | — | — | Blocked by FIX-1159 and FIX-1162 |
+| FIX-548 | `create-fsd-app` — npx-able scaffolding, a thin wrapper over init; two templates and their demo content, incl. the Next.js chat page | spec | — | — | Blocked by FIX-1159 and FIX-1162 |
 | FIX-1160 | Consumer authoring pack — agent-instructions file + Claude plugin, install-by-URL at launch | spec | — | — | Needs spec — held at the objective gate |
 
 **No spec PR has opened yet, and the empty cells say why: every row is held behind the
@@ -476,3 +514,16 @@ and 4). Carried by theme 3. **Closed — not reopenable by an issue.**
   that one channel, leaving nothing else to exercise it. Theme 3 and Q2's record carry the
   same clause. The running index is refreshed against the coordinator's handles and now states
   why no row has a spec PR, and that FIX-1162 waits on the owner rather than on a spec.
+- **After convergence — uncontested corrections** (not a review round; the epic PR had spent
+  its budget). Two gaps and three factual fixes, none of which reopens a settled decision.
+  FIX-548's scope now names the Next.js **chat page** as the wrapper's demo content, because
+  theme 2 promised a chat app while every permitted step left `create-next-app`'s stock page —
+  the promise had no owner. Theme 1 re-drafted around *demo content vs. scaffolding* so the
+  "no scaffolding logic in two places" tripwire still bites on logic and not on a demo file;
+  §3's tree, its `page.tsx untouched` line, *Showed*, and the running index moved with it.
+  §1's proof gained the **existing-Node init run** (theme 8 commits init to a brownfield Node
+  path that no listed check exercised — Node detection could be broken while every proof
+  passed); theme 8 carries the same clause. Corrected inline: the skills directory is
+  `.agents/skills/`, not `agents/skills/`; the generated config must declare a store profile,
+  since `stores` is required and `createFlowState({ flows })` would not typecheck; and §1's
+  metadata line moved below the opening problem, per AGENTS.md — nothing precedes the problem.
