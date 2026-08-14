@@ -64,8 +64,11 @@ as an unmet commitment it never was); and a run that plans **nothing** writes no
 the max correctly still points at the last run that actually planned something. A run ID or
 a separate manifest would work too and buys nothing over a timestamp.
 
-A todo with no `replanned_on` predates this rule — count it, backfill both fields, and don't
-guess its age.
+**A todo predating this rule keeps an unknown age — backfill `replanned_on` only.** Stamping
+it is a fact (this run selected it); stamping `planned_on` would be an invention, and the
+`carried Nd` line below would then compute a real-looking age off a made-up date, which is
+worse than no age at all. Leave `planned_on` absent and report those as *carried, age
+unknown* until they are next planned.
 
 For each todo in that cohort, report one line: **landed** (merged), **in flight** (PR
 open), or **didn't start** — and for anything that didn't land, the one-line reason
@@ -74,7 +77,8 @@ open), or **didn't start** — and for anything that didn't land, the one-line r
 **Call out the carried ones by age.** `planned_on` makes the most useful signal here
 visible for the first time: a todo planned five days running and never started is not a
 task, it is a decision nobody is making. Report those as *carried Nd* and say what should
-happen to them.
+happen to them — and where `planned_on` is absent, *carried, age unknown*. Never compute an
+age from a date you backfilled; an invented `Nd` reads exactly like a measured one.
 
 **Why this is first and not optional.** A plan with no account is unfalsifiable: a task
 that was wrong to plan yesterday looks identical to one that was right, so the same

@@ -44,7 +44,7 @@ Focus on capabilities that other frameworks handle poorly or not at all:
 
 ### 3. Complete Phase 1 foundation
 
-Finish the remaining waves (1.l CLI, 1.m devtool, 1.n cross-package validation) with the same rigor as waves 1.a–1.k. No shortcuts on the foundation. Every package boundary, type contract, and runtime behavior should be solid before moving to Phase 2.
+Finish the remaining wave (1.n cross-package validation) with the same rigor as 1.a–1.m. No shortcuts on the foundation. Every package boundary, type contract, and runtime behavior should be solid before moving to Phase 2.
 
 ### 4. Keep the foundation honest
 
