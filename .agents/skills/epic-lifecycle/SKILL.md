@@ -591,7 +591,7 @@ this queue?"* arrives too late to mean anything.
 
 - **1 — Discover only.** An issue's epic is its **parent** — have `scout` check the set in one
   pass and return `{ epicIssueId, consistent }`. If they all share the same **`Epic`-labelled
-  (Kind group)** parent, **reuse it: skip step 2 entirely and go to step 3's dispatch**. If the
+  (Kind group)** parent, **reuse it: skip step 2 and take step 3's *resume* branch**. If the
   set is **mixed** (some under an epic, some not) or carries **two different epic parents**,
   don't guess — surface it to the user. **Dispatch nothing here**, whatever discovery returns.
 - **2 — Check the cap, but only when step 1 found no epic to reuse.** At most **two** epics run
@@ -610,11 +610,30 @@ this queue?"* arrives too late to mean anything.
 
   At two others active, this is a **question, not a refusal**: name them and ask which this
   displaces, or whether it queues. Nothing is created until it is answered.
-- **3 — Create (or resume).** Dispatch `epic-agent` to stand the epic up: it creates the **Epic
-  issue** (`Epic` Kind label), **re-parents the set's issues as sub-issues**, writes the
-  epic-spec (`epic/<name>` branch + never-merged epic PR + the spec attached as the Epic issue's
-  Linear document), and returns the handles. The coordinator holds only handles (epic issue ID,
-  name, branch, epic PR#), never the spec text.
+
+  **"Queued" means nothing is created — and there is no queue to be in.** The work items are
+  already Linear issues; declining to start the epic leaves them exactly as they are,
+  unparented and visible on the board like any other backlog. That is the whole mechanism. So
+  don't tell the user it is "in the queue": say that the issues stay as they are and the epic
+  starts when they re-invoke this skill, which is the only dequeue trigger there is. Nothing
+  auto-starts a held epic when a slot frees — **but the wrap of any epic is when a slot does
+  free**, so name the held work there if you still hold it.
+- **3 — Create *or* resume — two different actions, and the resume path must never run the
+  create one.** Step 1 reaching here with an epic in hand is the **normal cross-session case**;
+  following the create branch there would stand up a *second* Epic issue and destructively
+  re-parent children that already have a parent.
+  - **Resume** (step 1 found a reusable epic): recover the handles from the existing epic —
+    its Linear Epic issue, its `epic/<name>` branch, its open epic PR, and its attached
+    document. Dispatch `epic-agent` only if this wake actually has an epic-spec update for it;
+    a resume that needs no edit dispatches nothing at all. **Create no issue and re-parent
+    nothing.**
+  - **Create** (step 1 found none, and step 2 cleared): dispatch `epic-agent` to stand the epic
+    up — it creates the **Epic issue** (`Epic` Kind label), **re-parents the set's issues as
+    sub-issues**, writes the epic-spec (`epic/<name>` branch + never-merged epic PR + the spec
+    attached as the Epic issue's Linear document), and returns the handles.
+
+  Either way the coordinator holds only handles (epic issue ID, name, branch, epic PR#), never
+  the spec text.
 - **Name which project objective this serves.** One line, in the dispatch to `epic-agent`, from
   [`docs/objectives.md`](../../../docs/objectives.md): which objective, and how much of its gap
   this closes. An epic serving none of them is worth surfacing *before* the gate — a product

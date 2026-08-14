@@ -46,7 +46,7 @@ Read orientation docs to understand current phase and priorities:
 **Before cleaning anything, account for the last plan.** Step 2b deletes the evidence, so
 this runs first.
 
-**The cohort is read from `planned_on`, never inferred from what is on disk.** Todo files
+**The cohort is read from `replanned_on`, never inferred from what is on disk.** Todo files
 are *deliberately preserved* across runs (Step 2b, "Preserve good todos"), so "the files
 that are here" is not "what was planned last time" — a todo carried for five days would be
 counted as a fresh commitment every one of them, and the Account would report promises

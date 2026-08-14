@@ -207,7 +207,7 @@ each section owes its reader, exactly as `spec-template.md` is for an issue spec
 
 ## How many epics run at once (the cap is two)
 
-**At most two epics are active at a time.** A third is queued, visibly, not cancelled.
+**At most two epics are active at a time.** A third is held, not cancelled.
 
 **The cap is on objectives, not on work items — this is the part that gets misread.** An
 epic running eight issues in parallel is *one* objective with throughput, and nothing here
@@ -222,9 +222,12 @@ Past two, nothing is: gates queue behind each other, the product owner's attenti
 and every epic's scoreboard reads "in progress" indefinitely. The cap is a bet that
 finishing one objective beats advancing three.
 
-**What it costs, stated plainly.** Real work sits queued. That is the intended cost and the
-reason the queue is visible rather than silent — a third epic that never gets to start is a
-decision someone should be able to see and overrule.
+**What it costs, stated plainly, and there is no queue.** Real work waits, and "held" is not
+a state anything tracks: the work items are already Linear issues, so declining to start the
+epic simply leaves them unparented on the board, and the only thing that starts them is someone
+re-invoking the lifecycle. Nothing auto-starts a held epic when a slot frees. That is a real
+cost of the cap, not a gap to paper over with a queue we don't have — say it plainly when you
+hold something, and name the held work again at the wrap that frees the slot.
 
 **Who enforces it, and the two ways it misfires.** The coordinator, at epic setup
 (`epic-lifecycle` → "Epic setup"), as a question put to the user rather than a refusal.
