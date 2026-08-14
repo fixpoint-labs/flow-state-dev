@@ -106,7 +106,7 @@ flowchart TD
 | Store | What it is | Lifetime | Home |
 |---|---|---|---|
 | **Coordinator status table** | The coordinator's **internal working memory** — one row per issue (phase, spec PR#, impl PR#, gate-pending, worktree). Updated constantly. | Session-only | `.orchestration/` (**gitignored — never committed**) |
-| **Epic-spec scoreboard & running index** | A **durable, exposed** surface: the scoreboard answers *are we winning* in a five-second read, and the index below it is the audit log — links to every issue PR (spec + impl) under the epic, for humans and issue agents to navigate from one place. | Life of the epic | The epic-spec (branch + Linear Epic-issue doc) |
+| **Epic-spec running index** | A **durable, exposed audit log** — links to every issue PR (spec + impl) under the epic, for humans and issue agents to navigate from one place. *Are we winning* is not here; it is in the epic report, where live state is. | Life of the epic | The epic-spec (branch + Linear Epic-issue doc) |
 
 They overlap in *content* (both know the PR numbers) but differ in *purpose and
 audience*: the table is private and ephemeral; the index is public and durable. The
@@ -179,8 +179,8 @@ one-parent rule** — an issue that already has a functional parent is linked wi
 
 **Contents and shape:
 [`epic-spec-template.md`](epic-spec-template.md)** — the five sections (purpose &
-objective · themes & long-horizon direction · shape of the whole · scoreboard & running
-index · open cross-cutting questions), each with a worked example, plus the reviewer
+objective · themes & long-horizon direction · shape of the whole · running index · open
+cross-cutting questions), each with a worked example, plus the reviewer
 guidance the epic PR description leads with. Read the template; it is the single source of truth for what
 each section owes its reader, exactly as `spec-template.md` is for an issue spec.
 

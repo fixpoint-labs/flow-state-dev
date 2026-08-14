@@ -99,8 +99,8 @@ visible. Say what the set is deliberately *not* doing.
 **Under [`epic-pm`](../../.agents/skills/epic-pm/SKILL.md) this section is stricter**: it
 carries that skill's five objective lines — Outcome · Proof · Lead measure · Not doing ·
 Kill line — and the objective gate is refused without them. `epic-pm` is canonical for what
-each line owes; don't restate them here. Two of them feed §4's scoreboard, which is why a
-`epic-pm` epic gets a fuller one.
+each line owes; don't restate them here. The Outcome and Lead measure are what the epic
+**report** leads with each turn.
 
 > **Objective.** Make a dropped connection a non-event for an app built on FSD.
 > Today, every network blip is visible to the end user as duplicated output and
@@ -174,75 +174,28 @@ survived contact with code is worth knowing.
 > just on the encoding, and moved sequence allocation into FIX-775's scope so 776 consumes
 > it. Without the POC that surfaces as a merge conflict in week three.
 
-## 4. Scoreboard & running index
+## 4. Running index
 
-Two things, in this order, and the order matters. The **scoreboard** answers *are we
-winning?* in a five-second read. The **running index** below it is the durable audit log.
+The durable audit log — every issue under the epic and every PR it produced, so a human or an
+agent navigates the set from one place. Refreshed from the coordinator's status table when the
+`epic-agent` folds; it is a projection, not a second live source. **Keep it a table, not prose.**
 
-**Both are refreshed by the `epic-agent` when it folds** — the index from the PR handles it
-is given, the scoreboard's Lead line counted off the index's own **Goal check** column,
-which it reads from each goal's verdict log in `goals/<describe>/<it>/goal.md`. They are
-projections, not second live sources. The cadence is therefore *per fold*, not per wake: a
-stretch with no fold leaves a scoreboard as old as the last one.
+**No scoreboard here, deliberately.** *Are we winning* is answered in the epic **report**
+([`epic-em`](../../.agents/skills/epic-em/SKILL.md) → Review), because only the coordinator
+holds live state — a number in this document would need a refresh trigger that nothing fires,
+and would sit stale while reading as evidence. This section answers *what happened*; the report
+answers *how it's going*.
 
-### The scoreboard (three lines, above the index)
-
-The index alone cannot tell you whether the epic is winning: every column in it is
-activity. These three lines are the answer, and every one of them is **derived** —
-**nothing here is maintained by hand**, because a number a human has to remember to update
-is a number that will be wrong.
-
-- **Outcome** — §1's outcome sentence, verbatim. One line, so the scoreboard is readable
-  without scrolling up.
-- **Winning when** — §1's **Proof**, plus where it stands right now. Where the epic has no
-  Proof line (any run that isn't [`epic-pm`](../../.agents/skills/epic-pm/SKILL.md)), state
-  the outcome's observable form instead; don't leave the line out.
-- **Lead** — §1's **Lead measure** against its target. The default is passing goal checks
-  over the issues one *applies to* (see the Goal check column below — an issue with no
-  user-visible behaviour to prove is excluded, or the target is unreachable by
-  construction).
-
-**Scope note — cuts are reported, not scoreboarded.** `epic-pm` reports what left the scope
-each turn, and that is a real lead indicator, but it lives in the coordinator's
-`.orchestration/` state which the folding agent never sees. A number the refresher cannot
-derive is a number that goes stale silently, so it stays in the report where the coordinator
-holds it. **Three lines, all derivable** beats four with one that quietly rots.
-
-> **Outcome:** a dropped connection is a non-event for an app built on FSD.
-> **Winning when:** FIX-775's reconnect goal check passes end to end. **Now:** not yet.
-> **Lead:** goal checks passing **1 / 4**.
-
-### The running index
-
-Every issue under the epic and every PR it produced, so a human or an agent navigates the
-set from one place. **Keep it a table, not prose.**
-
-> | Issue | What it delivers | Route | Spec PR | Impl PR | Goal check | State |
-> |---|---|---|---|---|---|---|
-> | FIX-775 | Resume from a sequence cursor | spec | [#812](https://github.com/o/r/pull/812) | [#830](https://github.com/o/r/pull/830) | ✅ pass | In Review |
-> | FIX-776 | Heartbeat frames so a dead connection is detectable | spec | [#815](https://github.com/o/r/pull/815) | — | — | In Spec Review |
-> | FIX-777 | Default reconnect backoff in the client | spec | — | — | — | Needs spec |
-> | FIX-781 | Reconnect drops the last partial frame | **bug** | — | [#833](https://github.com/o/r/pull/833) | ❌ fail | In Review |
-> | FIX-784 | Document the reconnect contract | spec | [#818](https://github.com/o/r/pull/818) | [#835](https://github.com/o/r/pull/835) | n/a | Merged |
+> | Issue | What it delivers | Route | Spec PR | Impl PR | State |
+> |---|---|---|---|---|---|
+> | FIX-775 | Resume from a sequence cursor | spec | [#812](https://github.com/o/r/pull/812) | [#830](https://github.com/o/r/pull/830) | In Review |
+> | FIX-776 | Heartbeat frames so a dead connection is detectable | spec | [#815](https://github.com/o/r/pull/815) | — | In Spec Review |
+> | FIX-777 | Default reconnect backoff in the client | spec | — | — | Needs spec |
+> | FIX-781 | Reconnect drops the last partial frame | **bug** | — | [#833](https://github.com/o/r/pull/833) | In Review |
 >
 > *A bug carries no spec PR by design — it routes straight to implementation
 > ([`orchestration.md`](orchestration.md) → "Which issues get a spec"). An empty
 > Spec PR cell on a `bug` row is correct, not a gap.*
->
-> *The **Goal check** column is what the scoreboard's Lead line counts — one cell per issue,
-> so the count is auditable rather than asserted. Five states —* `pass` · `fail` · `—` *(not
-> yet run)* · `blocked` *(no working inference credential) ·* `n/a` *(no goal check applies).
-> `n/a` is **excluded from the denominator**, which is why the five rows above count **1 / 4**
-> and not 1 / 5; without that exclusion one docs issue makes the target permanently
-> unreachable. The other four must not be collapsed either: an unrun check is not a failure,
-> and a blocked one is a fact about the environment rather than the product.*
->
-> *Two sourcing rules decide a cell, and both are easy to get wrong. A **spec**-route issue's
-> verdict lives in its goal's verdict log, while a **bug**'s is diagnose's real-path
-> confirmation on the impl PR — most bugs have no `goals/` entry at all. And the row to read is
-> the one matching **this** commit, never the last appended: a well-written goal deliberately
-> logs a pre-fix baseline `FAIL` after its `PASS` to prove the check isn't vacuous.
-> [`epic-agent`](../../.agents/subagents/epic-agent.md) is canonical for both.*
 
 ## 5. Open cross-cutting questions
 

@@ -23,26 +23,6 @@ PR and never will — an empty Spec PR cell there is correct, not a gap to chase
 ([`orchestration.md`](../../docs/contributing/orchestration.md) → "Which issues get a
 spec").
 
-**§4's scoreboard is derived, never typed from memory.** Refresh the index's **Goal check**
-column first, then count the Lead line *from that column* — so the count can't drift from the
-rows under it. Shape: [`epic-spec-template.md`](../../docs/contributing/epic-spec-template.md) §4.
-
-Deriving a cell — four rules, each of which has been got wrong:
-
-1. **Source by route.** spec-route → the **Verdict log** in `goals/<describe>/<it>/goal.md`,
-   never PR narration. **bug** → diagnose's real-path confirmation on the impl PR (most bugs
-   have no `goals/` entry).
-2. **Match the commit being scored**, not the last row appended — a good goal logs a pre-fix
-   baseline `FAIL` *after* its `PASS`, so append order scores it backwards. Ignore baseline and
-   diagnostic rows. No row for this work → `—`.
-3. **Several goals on one issue → the weakest wins** (`pass` only if all pass). Live shape:
-   FIX-276 has three, FIX-865 two.
-4. **Five states:** `pass` · `fail` · `—` not run · `blocked` (no inference credential) · `n/a`
-   (no goal check applies). **`n/a` is excluded from the denominator** — otherwise one docs
-   issue makes the target unreachable. A model-free goal is evidence like any other; never `n/a`.
-
-The Lead line is **pass over applicable**.
-
 ## Your job (one bounded action per dispatch)
 
 You're given: the **epic name / scope**, the **Linear project**, the **current PR

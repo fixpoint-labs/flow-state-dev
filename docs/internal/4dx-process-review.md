@@ -6,21 +6,19 @@ the epic report, `plan-day`
 **Status: all five adopted (2026-08-14), with one deferral.** R1–R5 landed as written. Two
 things changed during implementation, both worth knowing:
 
-- **The scoreboard needed a source.** R3 claimed the Lead line was derivable from state the
-  coordinator already holds; it wasn't — no `goalCheck` field exists on the status table or in
-  `epic-wake`'s args. Resolved by reading each cell from the goal's **verdict log** in
-  `goals/<describe>/<it>/goal.md` at fold time, which needs no new coordinator state. Making it
-  *wake-fresh* instead is deferred and wants its own review — see
-  [`4dx-process.md`](4dx-process.md) → design call 2.
+- **R3 landed in the report, not in §4.** As proposed, the scoreboard sat in the epic-spec —
+  and eight review rounds established it could not be kept true there: nothing triggers a
+  refresh on child progress, and the `epic-agent` that would write it works on an unrebased
+  branch and can't see `.orchestration/`. The owner chose to move it. *Are we winning* is now a
+  line in the **epic report**, computed as **rows at `DONE`** off the coordinator's status
+  table — no new field, no trigger — and §4 stayed a pure audit log. See
+  [`4dx-process.md`](4dx-process.md) → design calls 2 and 3.
 - **R4's variable window** (flagged below as an open worry) is handled by *naming* the span in
   each report rather than pretending to a weekly cadence.
-- **Two things R3 proposed were cut in review**, both for the same reason — a number the
-  refresher cannot derive rots silently. The **cut tally** left the scoreboard (it lives in
-  `.orchestration/`, which the folding agent never sees) and stays in the report; the imported
-  **"≤6 measures" ceiling** was dropped as a rule that could never fire against a
-  three-line scoreboard. The Goal check column also grew from three states to five —
-  `blocked` and `n/a`, the latter excluded from the denominator, without which one docs issue
-  makes the target permanently unreachable.
+- **Everything the scoreboard accreted was dropped with it** — the cut tally, the imported
+  "≤6 measures" ceiling, the five-state Goal check column and its denominator rules. Each was
+  a correct fix to a mechanism that shouldn't have been in a document, which is the cheapest
+  lesson in this whole review.
 
 The narrative description of the resulting process is
 [`4dx-process.md`](4dx-process.md); this file is the reasoning that produced it, kept as

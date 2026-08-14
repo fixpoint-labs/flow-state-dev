@@ -43,20 +43,20 @@ flowchart TD
   O["docs/objectives.md<br/><b>project objective</b><br/>X → Y by when · lead measure"]
   C{"at most<br/><b>2 epics</b> at once"}
   E["epic-spec §1<br/><b>five lines</b> under epic-pm<br/>Outcome · Proof · <b>Lead</b> · Not doing · Kill"]
-  S["epic-spec §4<br/><b>scoreboard</b><br/>are we winning?"]
-  R["the epic report<br/><b>Account → Review → Plan</b>"]
+  S["the epic report<br/><b>lead measure</b><br/>are we winning?"]
+  R["<b>Account → Review → Plan</b><br/>checked next turn"]
   P["plan-day<br/>Account · ⭑ objective mark"]
 
   O --> C --> E --> S --> R
   O -.->|"⭑ marks which tasks serve it"| P
   R -.->|"next Account checks<br/>this Plan"| R
-  S -.->|"Lead line counted off<br/>the Goal check column"| S
+  S -.->|"rows at DONE,<br/>off the status table"| S
 ```
 
 **Read it as one question asked at four altitudes:** *what are we driving at, and is it
 working?* The project objective asks it for the quarter, the epic's five lines ask it for the
-set, the scoreboard answers it at each fold, and the report is where the answer gets checked against
-what was promised last time.
+set, and the report answers it each turn — and is where the answer gets checked against what
+was promised last time.
 
 ---
 
@@ -71,8 +71,7 @@ ten places is corrected in none, and `stale-restatement` is a live recurring cla
 | The project objective, its finish line and its lead measure | [`docs/objectives.md`](../objectives.md) |
 | At most two epics at once; the cap is on objectives, not work items | [`orchestration.md`](../contributing/orchestration.md) → "How many epics run at once" |
 | The epic objective's five lines, incl. what a lead measure must be | [`epic-pm`](../../.agents/skills/epic-pm/SKILL.md) → "The objective is five lines" |
-| The scoreboard's shape and the Goal check column | [`epic-spec-template.md`](../contributing/epic-spec-template.md) → §4 |
-| Deriving the scoreboard at fold time | [`epic-agent`](../../.agents/subagents/epic-agent.md) · the fold prompt in `.agents/workflows/epic-wake.js` |
+| The running index (audit log, no scoreboard) | [`epic-spec-template.md`](../contributing/epic-spec-template.md) → §4 |
 | Account → Review → Plan | [`epic-em`](../../.agents/skills/epic-em/SKILL.md) — `epic-pm` inherits it and adds the cut line |
 | The daily Account and the ⭑ objective mark | [`plan-day`](../../.agents/skills/plan-day/SKILL.md) |
 
@@ -86,38 +85,19 @@ four epics under four objectives is the violation. A human team caps at one or t
 attention splits — ours run in isolated worktrees and cost each other nothing, so `plan-day`
 keeps its ceiling of 8 and the cap lives on epics instead.
 
-**2. Nothing on the scoreboard is maintained by hand.** A number a human has to remember to
-update is a number that will be wrong, and a stale scoreboard is worse than none — it reads as
-evidence. So the Lead line is *counted off* the per-issue **Goal check** column rather than
-asserted beside it, and each cell of that column is read from the goal's **verdict log** in
-`goals/<describe>/<it>/goal.md` — the appended record that makes a goal a regression check —
-rather than from PR narration, which may or may not mention that a check ran.
+**2. The measure lives where live state lives — not in a document.** A number a human or an
+agent has to remember to refresh is a number that will be wrong, and a stale one is worse than
+none because it reads as evidence. An earlier draft put a scoreboard in the epic-spec's §4; it
+had no refresh trigger (`foldEpicWanted` fires on epic-PR activity, never on child progress),
+and every attempt to source it hit the same wall — the `epic-agent` works on an unrebased epic
+branch, can't see `.orchestration/`, and isn't woken by the thing being measured. So the
+measure moved to the **epic report**, which the coordinator writes from its own status table,
+and §4 went back to being a pure audit log.
 
-**The same rule cost the scoreboard a line.** `epic-pm` reports what left the scope each turn,
-and cuts are a genuine lead indicator, but that tally lives in the coordinator's
-`.orchestration/` state which the folding agent never sees. Rather than have the scoreboard
-carry a number its refresher cannot derive, cuts stay in the report. Three derivable lines beat
-four with one that rots.
-
-**The honest limit on that:** the scoreboard refreshes when the `epic-agent` folds, which is the
-same cadence the running index has always had — not continuously. A fold-less stretch means a
-scoreboard that is as old as the last fold. Carrying a `goalCheck` field through the
-coordinator's status table and `epic-wake`'s args would make it wake-fresh; that is a real
-change to a script with a verification harness, and it was deliberately **not** bundled into a
-documentation change. If the fold cadence proves too slow in practice, that is the fix, and it
-wants its own review.
-
-**3. The lead measure counts passing goal checks, not merged issues.** Merging is activity. A
-passing goal check is the only per-issue evidence we already produce that predicts the epic's
-Proof — tenet 7 (*prove the goal, not the mock*) read as a running measure instead of a
-completion criterion. A model-free goal check counts the same as a model-backed one; what makes
-it evidence is that it drives the real path.
-
-It also means five cell states must stay distinct — **pass · fail · not yet run · blocked ·
-n/a** — and that **`n/a` is excluded from the denominator**. Collapsing any two corrupts the
-count: an unrun check is not a failure, a blocked one is a fact about the environment rather
-than the product, and without the `n/a` exclusion a single docs issue makes the target
-permanently unreachable.
+**3. The lead measure is rows at `DONE`, not rows merged.** `DONE` already requires the goal
+proven — `epic-wake.js` only returns it once the assembled goal passes, and a single-PR issue
+proves its goal before the PR opens — so counting it is counting evidence, and it needs no new
+field anywhere. Tenet 7 read as a running measure instead of a completion criterion.
 
 ---
 

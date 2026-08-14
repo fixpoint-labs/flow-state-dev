@@ -37,15 +37,11 @@ guess at for the rest of the run:
    something the work already produces — say **which issue's goal check** carries it
    (`epic-lifecycle` → "Goal verification is part of done") — not a measurement apparatus we
    would have to build to see whether we succeeded.
-3. **Lead measure** — the thing you can watch *while the epic runs* that predicts the Proof.
-   Same constraint as line 2, inherited verbatim: readable off work the epic already produces,
-   never an instrument we would have to build. **The default is passing goal checks over the
-   issues a goal check *applies to*** (`epic-spec-template.md` §4 — an issue with no
-   user-visible behaviour to prove is excluded, or the target is unreachable by construction)
-   — and the thing it is deliberately *not* is the count merged. Merging is activity; a
-   passing goal check is the only per-issue evidence we produce that predicts line 2. Name a
-   different one only when the default genuinely doesn't predict this epic's Proof, and say
-   why in the same line.
+3. **Lead measure** — what you watch *while the epic runs* that predicts the Proof. Same
+   constraint as line 2: readable off work the epic already produces, never an instrument we'd
+   have to build. **The default is rows at `DONE` over the set**, straight off your status
+   table — `DONE` already requires the goal proven, so it is evidence, not the merge count.
+   Name a different one only if the default doesn't predict this epic's Proof, and say why.
 4. **Not doing** — the neighbouring things this deliberately excludes. The template asks for it;
    here it is load-bearing, because it is the line an implementer, a reviewer, and every later
    *"while we're in there"* all read.
@@ -124,10 +120,8 @@ Cuts are proposed to a spec, never applied to one here — the coordinator edits
 this turn.** Restraint nobody can see reads as work that never happened, and the cut list is the
 evidence this posture is doing anything at all.
 
-The cut line rides in **Review**, and the report is its **only** home. `epic-spec-template.md`
-§4 deliberately does not carry it: the tally lives in `.orchestration/`, which the folding
-`epic-agent` never sees, so a scoreboard term for it would go stale silently. You hold the
-state, so you state it.
+The cut line rides in **Review**, next to the lead measure. Both are yours to state because
+you hold the state they come from — nothing in the epic-spec carries either.
 
 ## Boundaries
 
