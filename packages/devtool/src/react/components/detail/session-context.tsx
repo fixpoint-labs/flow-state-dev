@@ -92,9 +92,6 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
           {snapshot.clientData.user && Object.keys(snapshot.clientData.user).length > 0 && (
             <ScopeBlock label="User" data={snapshot.clientData.user} />
           )}
-          {snapshot.clientData.org && Object.keys(snapshot.clientData.org).length > 0 && (
-            <ScopeBlock label="Org" data={snapshot.clientData.org} />
-          )}
         </CollapsibleSection>
       )}
 

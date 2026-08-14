@@ -162,7 +162,8 @@ function rejectRemovedOrgConfig(value: object | undefined, location: string): vo
     'Move durable org data to defineResource({ scope: "org", stateSchema }) and read it via ' +
     "ctx.resources. ctx.org keeps its identity, and requiresOrg/isolateOrgState are unchanged."
   );
-  
+}
+
 /** The definition-only options {@link rejectDefinitionOnlyOptions} refuses. */
 const DEFINITION_ONLY_INSTANCE_OPTIONS = ["webhooks", "chat", "schedules", "mcp"] as const;
 
