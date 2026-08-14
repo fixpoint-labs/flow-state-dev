@@ -153,18 +153,15 @@ function rejectRemovedMiddleware(value: object | undefined, location: string): v
   }
 }
 
-function rejectRemovedOrgState(value: object | undefined, location: string): void {
-  if (value === undefined) return;
-  const org = Object.hasOwn(value, "org")
-    ? (value as { org?: unknown }).org
-    : undefined;
-  if (org !== undefined && typeof org === "object" && org !== null && Object.hasOwn(org, "stateSchema")) {
-    throw new Error(
-      `${location} declares the removed "org.stateSchema" option. ` +
-      'Org scope state is gone; move durable org data to defineResource({ scope: "org", stateSchema }) ' +
-      "and read it via ctx.resources. ctx.org keeps its identity, and requiresOrg/isolateOrgState are unchanged."
-    );
-  }
+function rejectRemovedOrgConfig(value: object | undefined, location: string): void {
+  if (value === undefined || !Object.hasOwn(value, "org")) return;
+  if ((value as { org?: unknown }).org === undefined) return;
+  throw new Error(
+    `${location} uses the removed "org" option. ` +
+    "Org scope config is gone in its entirety — stateSchema, client, clientData and cas alike. " +
+    'Move durable org data to defineResource({ scope: "org", stateSchema }) and read it via ' +
+    "ctx.resources. ctx.org keeps its identity, and requiresOrg/isolateOrgState are unchanged."
+  );
 }
 
 function mergeToolsConfig(base: ToolsConfig | undefined, override: ToolsConfig | undefined): ToolsConfig | undefined {
@@ -899,8 +896,8 @@ function createFlowInstance(
 ): FlowInstance<AnyActions, AnySession, AnyRequest, AnyUser, AnyWork> {
   rejectRemovedMiddleware(definition, `Flow "${definition.kind}"`);
   rejectRemovedMiddleware(options, `Flow "${definition.kind}" instance options`);
-  rejectRemovedOrgState(definition, `Flow "${definition.kind}"`);
-  rejectRemovedOrgState(options, `Flow "${definition.kind}" instance options`);
+  rejectRemovedOrgConfig(definition, `Flow "${definition.kind}"`);
+  rejectRemovedOrgConfig(options, `Flow "${definition.kind}" instance options`);
 
   const authentication = mergeAuthentication(
     definition.authentication,
