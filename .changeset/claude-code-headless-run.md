@@ -2,7 +2,7 @@
 "@flow-state-dev/claude-code": minor
 ---
 
-Add `runClaudeHeadless` — a blocking, directory-scoped `claude -p` run that returns a result you can read a cost off.
+Add `runClaudeHeadless` — a blocking, directory-scoped `claude -p` run that returns a result you can read a cost off (LAB-66).
 
 The package's existing CLI surface hands work to a cloud session and returns immediately, wrapped as a flow block. That leaves nothing for a caller that needs the other thing: run the agent locally in a specific directory, wait for it to finish, and find out what happened and what it cost. Callers were reimplementing the spawn, the flags and the JSON envelope themselves.
 
