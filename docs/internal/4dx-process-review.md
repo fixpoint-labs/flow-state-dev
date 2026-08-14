@@ -3,8 +3,8 @@
 **Date:** 2026-08-14 · **Scope:** `docs/objectives.md`, `epic-pm`, the epic-spec's §1/§4,
 the epic report, `plan-day`
 
-**Status: all five adopted (2026-08-14), with one deferral.** R1–R5 landed as written. Two
-things changed during implementation, both worth knowing:
+**Status: all five adopted (2026-08-14).** Nothing is deferred. Three things changed between
+the proposal and what shipped:
 
 - **R3 landed in the report, not in §4.** As proposed, the scoreboard sat in the epic-spec —
   and eight review rounds established it could not be kept true there: nothing triggers a
