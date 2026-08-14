@@ -1,7 +1,17 @@
 /**
- * Public surface of `@flow-state-dev/claude-code/sdk`: the in-process Agent SDK
- * handler block, its opt-in capability, the resolver seam, the session-continuity
- * provider, the pure translation layer, handle/event types, and typed errors.
+ * Public surface of `@flow-state-dev/claude-code/sdk`: everything in this
+ * package that reaches Claude Code through the in-process Agent SDK. Two
+ * invocation modes live here:
+ *
+ * - **flow-shaped** — `claudeCodeAgent`, a handler block that runs the SDK loop
+ *   while emitting FSD items, with its capability, session-continuity provider,
+ *   and the pure translation layer behind it.
+ * - **headless run** — `runClaudeHeadless`, blocking, cwd-scoped, reporting the
+ *   terminal subtype, cost and usage. A plain function, not a block, so a caller
+ *   outside a flow can use it.
+ *
+ * Both go through the same resolver seam, so there is one place the SDK is
+ * loaded and one place that mocks.
  */
 export {
   claudeCodeAgent,
@@ -17,8 +27,16 @@ export {
 export {
   defaultResolveClaudeAgent,
   createDefaultResolveClaudeAgent,
+  defaultResolveClaudeAgentQuery,
+  createResolveClaudeAgentQuery,
   type SdkImporter,
 } from "./sdk-client";
+export {
+  runClaudeHeadless,
+  type ClaudeHeadlessResult,
+  type ClaudeHeadlessUsage,
+  type RunClaudeHeadlessOptions,
+} from "./headless";
 export {
   createClaudeAgentSessionProvider,
   type ClaudeAgentSession,
@@ -42,9 +60,12 @@ export {
   type SdkMessageLike,
   type TranslatedEvent,
   type ResolveClaudeAgent,
+  type ResolveClaudeAgentQuery,
   type ResolvedClaudeAgent,
   type ClaudeAgentQuery,
   type ClaudeAgentQueryOptions,
+  type ClaudeSettingSource,
+  type ClaudeSystemPrompt,
   type ToolApprovalRequest,
   type ToolApprovalDecision,
 } from "./types";

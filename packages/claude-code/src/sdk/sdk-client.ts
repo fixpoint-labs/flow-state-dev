@@ -6,9 +6,13 @@
  * {@link ClaudeAgentSdkNotInstalledError} when it is absent. Tests inject a
  * scripted `query` via their own resolver and never touch the real SDK.
  */
-import type { BlockContext } from "@flow-state-dev/core/types";
 import { ClaudeAgentSdkNotInstalledError } from "./errors";
-import type { ClaudeAgentQuery, ResolveClaudeAgent, ResolvedClaudeAgent } from "./types";
+import type {
+  ClaudeAgentQuery,
+  ResolveClaudeAgent,
+  ResolveClaudeAgentQuery,
+  ResolvedClaudeAgent,
+} from "./types";
 
 /** The SDK module path. Kept as a variable so bundlers don't eagerly resolve it. */
 const SDK_MODULE = "@anthropic-ai/claude-agent-sdk";
@@ -24,16 +28,19 @@ const defaultImporter: SdkImporter = () =>
   import(/* @vite-ignore */ SDK_MODULE) as Promise<{ query?: unknown }>;
 
 /**
- * Build a resolver that loads the SDK via `importSdk` and returns its `query`.
- * Throws {@link ClaudeAgentSdkNotInstalledError} if the module can't be loaded
- * or lacks a `query` export. Exported mainly so tests can supply an importer
- * that rejects (simulating an absent SDK); production uses
- * {@link defaultResolveClaudeAgent}.
+ * Build a context-free resolver that loads the SDK via `importSdk` and returns
+ * its `query`. Throws {@link ClaudeAgentSdkNotInstalledError} if the module
+ * can't be loaded or lacks a `query` export. Exported mainly so tests can
+ * supply an importer that rejects (simulating an absent SDK); production uses
+ * {@link defaultResolveClaudeAgentQuery}.
+ *
+ * This is the single implementation: {@link createDefaultResolveClaudeAgent}
+ * is the block-shaped wrapper around it.
  */
-export function createDefaultResolveClaudeAgent(
+export function createResolveClaudeAgentQuery(
   importSdk: SdkImporter = defaultImporter,
-): ResolveClaudeAgent {
-  return async (_ctx: BlockContext<any>): Promise<ResolvedClaudeAgent> => {
+): ResolveClaudeAgentQuery {
+  return async (): Promise<ResolvedClaudeAgent> => {
     let mod: { query?: unknown };
     try {
       mod = await importSdk();
@@ -50,8 +57,24 @@ export function createDefaultResolveClaudeAgent(
 }
 
 /**
- * Default resolver: lazily imports the SDK and returns its `query`. The import
- * is deferred to call time so merely importing this package (without the SDK
- * installed) never fails.
+ * Build a block-level resolver. Identical to
+ * {@link createResolveClaudeAgentQuery} but shaped as a {@link ResolveClaudeAgent},
+ * whose `ctx` the resolution never reads.
  */
+export function createDefaultResolveClaudeAgent(
+  importSdk: SdkImporter = defaultImporter,
+): ResolveClaudeAgent {
+  const resolve = createResolveClaudeAgentQuery(importSdk);
+  return () => resolve();
+}
+
+/**
+ * Default context-free resolver: lazily imports the SDK and returns its `query`.
+ * The import is deferred to call time so merely importing this package (without
+ * the SDK installed) never fails.
+ */
+export const defaultResolveClaudeAgentQuery: ResolveClaudeAgentQuery =
+  createResolveClaudeAgentQuery();
+
+/** Default block-level resolver. See {@link defaultResolveClaudeAgentQuery}. */
 export const defaultResolveClaudeAgent: ResolveClaudeAgent = createDefaultResolveClaudeAgent();

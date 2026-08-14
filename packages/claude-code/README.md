@@ -1,11 +1,11 @@
 # @flow-state-dev/claude-code
 
 Claude Code integration for flow-state-dev, with two entry points. The `/cli`
-entry shells out to your local `claude` CLI (no Anthropic SDK dependency), either
-dispatching a cloud coding task or running the agent locally and waiting for it.
-The `/sdk` entry runs a Claude Code agent in-process and streams its work through
-the flow's item stream, backed by the optional `@anthropic-ai/claude-agent-sdk`
-peer dependency.
+entry shells out to your local `claude` CLI (no Anthropic SDK dependency) to
+dispatch a cloud coding task. The `/sdk` entry runs Claude Code in-process,
+backed by the optional `@anthropic-ai/claude-agent-sdk` peer dependency — either
+as a flow block that streams the agent's work through the item stream, or as a
+plain headless run you point at a directory and wait for.
 
 ## Installation
 
@@ -96,39 +96,6 @@ type ClaudeRemoteHandle = {
 A later request reads `ctx.session.state.claudeRemoteTasks` to reference prior
 dispatches.
 
-## Running the agent locally and waiting for it
-
-Cloud dispatch is one of two things the `claude` binary can do. The other is a
-headless local run: point the agent at a directory, block until it finishes, and
-read what it cost. That is `runClaudeHeadless` — a plain async function, not a
-block, so anything can call it, inside a flow or not.
-
-```ts
-import { runClaudeHeadless } from "@flow-state-dev/claude-code/cli";
-
-const run = await runClaudeHeadless({
-  prompt: "Fix the failing test in src/parser.ts.",
-  cwd: "/path/to/checkout",
-  permissionMode: "acceptEdits", // nothing can answer a prompt with no terminal
-  timeoutMs: 30 * 60 * 1000,
-});
-
-if (run.ok) console.log(run.finalMessage, run.costUsd, run.sessionId);
-else console.error(run.error);
-```
-
-It **settles rather than throws**. A missing binary, a timeout, a crash, and a
-non-zero exit all come back as `ok: false` with a reason — so if you keep a
-ledger or a retry budget off the return value, you never lose a record to an
-exception. `costUsd` is populated on failed runs too; the tokens were spent
-either way. Unreadable stdout on a clean exit is a success with no cost, not a
-failure: the envelope shape belongs to the CLI, and a parser that hard-failed on
-it would turn a cosmetic vendor change into a stalled caller.
-
-`--model` and `--permission-mode` are passed only when you set them, so the CLI's
-own defaults apply otherwise. `exec` takes the same `ClaudeCliExec` seam as the
-rest of this entry, so tests spawn nothing.
-
 ## Limitations
 
 - No headless polling/streaming of *cloud* task progress (CLI limitation).
@@ -163,16 +130,63 @@ items as it runs, and its session persists across requests. See the
 [Claude Code SDK agent guide](https://flow-state.dev/docs/tools/claude-code-sdk)
 for the full surface.
 
+## Running the agent locally and waiting for it
+
+Sometimes you do not want a flow at all: you want the agent to work in a
+directory until it is done, and then to find out what happened and what it cost.
+That is `runClaudeHeadless` — a plain async function with no `BlockContext`, no
+session state, and no emitted items, so anything can call it.
+
+```ts
+import { runClaudeHeadless } from "@flow-state-dev/claude-code/sdk";
+
+const run = await runClaudeHeadless({
+  prompt: "Fix the failing test in src/parser.ts.",
+  cwd: "/path/to/checkout",
+  permissionMode: "acceptEdits", // nothing can answer a prompt with no terminal
+  timeoutMs: 30 * 60 * 1000,
+});
+
+if (run.ok) console.log(run.finalMessage, run.costUsd, run.usage, run.sessionId);
+else console.error(run.error, run.subtype);
+```
+
+It **settles rather than throws**. An uninstalled SDK, a timeout, a crash
+mid-run, and a run that ends on an error subtype all come back as `ok: false`
+with a reason — so if you keep a ledger or a retry budget off the return value,
+you never lose a record to an exception. `costUsd` and `usage` are populated on
+failed runs too; the tokens were spent either way.
+
+`subtype` is the run's own account of how it ended, so you can tell a ceiling you
+set (`error_max_turns`, `error_max_budget_usd`) from a failure you cannot raise
+your way out of (`error_during_execution`). A subtype this package does not
+recognize is treated as a failure, never as a success, and the raw value is kept
+in `error`.
+
+Two defaults are worth knowing, because they are not the SDK's:
+
+- **`settingSources` defaults to `["user", "project", "local"]`.** The SDK loads
+  no filesystem settings unless asked, which means no `CLAUDE.md`, no project
+  settings and no project skills — fine for an isolated one-shot, wrong for an
+  agent working in your repository. Pass `[]` to get the isolated behaviour back.
+- **`systemPrompt` defaults to Claude Code's own preset.** Omitting it in the SDK
+  gives an *empty* system prompt. Pass a string to replace the prompt, or
+  `{ type: "preset", preset: "claude_code", append }` to extend it.
+
+`model`, `maxTurns` and `maxBudgetUsd` are passed only when you set them, so the
+vendor's own defaults apply otherwise. `resolveAgent` is the same seam the agent
+block uses, so tests run nothing.
+
 ## Choosing `/cli` or `/sdk`
 
 | | `/cli` | `/sdk` |
 |--|--------|--------|
-| Execution | Fire-and-forget cloud session | In-process agent |
+| Execution | Fire-and-forget cloud session | In-process agent (flow block or headless run) |
 | Dependency | None (shells out to `claude`) | Optional `@anthropic-ai/claude-agent-sdk` peer |
 | Auth | claude.ai subscription | Anthropic credentials |
 | Progress | Watch via `/tasks`, claude.ai, mobile | Streamed live as flow-state-dev items |
 | Session | Cloud session handle | Persistent, resumed across requests |
-| Reach for it when | Offloading long autonomous work | A real agent in the loop, observed step by step |
+| Reach for it when | Offloading long autonomous work | A real agent in the loop, observed step by step — or a blocking local run you wait on |
 
 ## Running tests
 

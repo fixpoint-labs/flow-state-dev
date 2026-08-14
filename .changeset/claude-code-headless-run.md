@@ -2,13 +2,19 @@
 "@flow-state-dev/claude-code": minor
 ---
 
-Add `runClaudeHeadless` — a blocking, directory-scoped `claude -p` run that returns a result you can read a cost off (LAB-66).
+Add `runClaudeHeadless` — point the Claude Code agent at a directory, wait for it to finish, and read what it did and what it cost (LAB-66).
 
-The package's existing CLI surface hands work to a cloud session and returns immediately, wrapped as a flow block. That leaves nothing for a caller that needs the other thing: run the agent locally in a specific directory, wait for it to finish, and find out what happened and what it cost. Callers were reimplementing the spawn, the flags and the JSON envelope themselves.
+The package's `/cli` entry hands work to a cloud session and returns immediately, and `/sdk`'s `claudeCodeAgent` runs the agent as a flow block. That left nothing for the third thing a caller can want: run the agent locally in a specific directory, block until it is done, and find out what happened. Callers were reimplementing the invocation themselves.
 
-New exports from `@flow-state-dev/claude-code/cli`:
+New from `@flow-state-dev/claude-code/sdk`:
 
-- `runClaudeHeadless(options)` — runs `claude -p "<prompt>" --output-format json` in `options.cwd` and resolves to `{ ok, error, finalMessage, sessionId, costUsd }`. `--model` and `--permission-mode` are only passed when you set them, so the CLI's own defaults stand otherwise.
-- `parseClaudeJson(stdout)` — the envelope parser, if you drive the CLI yourself. Tolerates leading chatter on stdout and returns `null` rather than throwing when nothing parses.
+- `runClaudeHeadless(options)` — runs the agent in `options.cwd` and resolves to `{ ok, error, finalMessage, sessionId, costUsd, subtype, usage }`. A plain async function, not a block, so it needs no `BlockContext` and no session.
+- `defaultResolveClaudeAgentQuery` / `createResolveClaudeAgentQuery` — the same resolver seam the agent block uses, without a block context. Inject one to run the SDK yourself, or to run nothing in a test.
 
-It **settles rather than throws**: a missing binary, a timeout, a crash, and a non-zero exit all come back as `ok: false` with a reason, so a caller keeping a ledger off the return value never loses the record to an exception. Cost is reported on failed runs too — the tokens were still spent. It is a plain async function, not a block, so it needs no `BlockContext`; it runs through the same `ClaudeCliExec` seam as the rest of the CLI surface, so `exec` is injectable and tests spawn nothing.
+It goes through the Agent SDK's `query()`, so a run gets the harness Anthropic maintains — the tool loop, context management, permission modes, sub-agents — and reports a structured outcome. `subtype` tells a ceiling you set (`error_max_turns`, `error_max_budget_usd`) apart from a failure you cannot raise your way out of; `usage` reports tokens, which is the only spend signal when the credentials in play bill no dollar cost.
+
+It **settles rather than throws**: an uninstalled SDK, a timeout, a crash mid-run, and an error-subtype result all come back as `ok: false` with a reason, so a caller keeping a ledger off the return value never loses the record to an exception. Cost and usage are reported on failed runs too — the tokens were still spent.
+
+Two defaults differ deliberately from the SDK's own, so a run behaves like Claude Code does in the same directory: `settingSources` defaults to `["user", "project", "local"]` (the SDK loads none, which means no `CLAUDE.md`), and `systemPrompt` defaults to Claude Code's preset (the SDK's default is an empty prompt). Pass `settingSources: []` for an isolated run.
+
+`@anthropic-ai/claude-agent-sdk` stays an optional peer dependency, loaded lazily on first use — importing the package without it installed still works, and a run without it settles as a failure naming what is missing.

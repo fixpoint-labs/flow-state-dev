@@ -1,13 +1,16 @@
 /**
  * The Claude Code dispatcher — the vendor-specific half of the seam.
  *
- * The behaviour worth pinning is not the flag list; it is that this dispatcher
+ * The behaviour worth pinning is not the option list; it is that this dispatcher
  * **settles rather than throws** on every way a vendor can go wrong, because a
- * thrown error skips the ledger and loses the transition.
+ * thrown error skips the ledger and loses the transition. The vendor failures
+ * themselves are pinned where they happen, in `@flow-state-dev/claude-code`;
+ * what is checked here is that each one arrives as a `failed` result with a
+ * reason, and that cost survives the trip.
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { type ClaudeCliExec } from "@flow-state-dev/claude-code/cli";
+import type { ResolveClaudeAgentQuery } from "@flow-state-dev/claude-code/sdk";
 import { claudeCodeDispatcher } from "../../src/dispatch/claude-code";
 import type { PhaseBrief } from "../../src/dispatch/types";
 
@@ -24,134 +27,151 @@ const BRIEF: PhaseBrief = {
   summary: "Make the thing work.",
 };
 
-const success = (extra: Record<string, unknown> = {}) =>
-  JSON.stringify({
-    type: "result",
-    subtype: "success",
-    is_error: false,
-    result: "done",
-    session_id: "sess-abc",
-    total_cost_usd: 1.25,
-    ...extra,
-  });
+/** A terminal `result` message from the vendor SDK, success by default. */
+const result = (extra: Record<string, unknown> = {}) => ({
+  type: "result" as const,
+  subtype: "success",
+  is_error: false,
+  result: "done",
+  session_id: "sess-abc",
+  total_cost_usd: 1.25,
+  usage: { input_tokens: 900, output_tokens: 120 },
+  ...extra,
+});
 
-const execReturning = (stdout: string, code = 0, stderr = ""): ClaudeCliExec =>
-  vi.fn(async () => ({ stdout, stderr, code }));
+/** A resolver whose `query` replays `messages` and records how it was called. */
+function scriptedAgent(messages: readonly unknown[]) {
+  const query = vi.fn(async function* (_args: unknown) {
+    for (const message of messages) yield message as never;
+  });
+  const resolveAgent = (() => ({ query })) as unknown as ResolveClaudeAgentQuery;
+  return { query, resolveAgent };
+}
+
+/** The options the scripted `query` was called with. */
+const optionsOf = (query: ReturnType<typeof scriptedAgent>["query"]) =>
+  (vi.mocked(query).mock.calls[0]![0] as { options: Record<string, unknown> }).options;
+
+/** The prompt the scripted `query` was called with. */
+const promptOf = (query: ReturnType<typeof scriptedAgent>["query"]) =>
+  (vi.mocked(query).mock.calls[0]![0] as { prompt: string }).prompt;
 
 const at = () => new Date("2026-08-14T12:00:00Z");
 
 describe("the claude-code dispatcher", () => {
-  it("declares worktree isolation, because the CLI edits whatever directory it is pointed at", () => {
+  it("declares worktree isolation, because the agent edits whatever directory it is pointed at", () => {
     const dispatcher = claudeCodeDispatcher();
     expect(dispatcher.isolation).toBe("worktree");
     expect(dispatcher.vendor).toBe("claude-code");
   });
 
-  it("runs headlessly in the provisioned workspace with a non-interactive permission mode", async () => {
-    const exec = execReturning(success());
-    await claudeCodeDispatcher({ exec, now: at }).run(BRIEF);
+  it("runs in the provisioned workspace with a non-interactive permission mode", async () => {
+    const { query, resolveAgent } = scriptedAgent([result()]);
+    await claudeCodeDispatcher({ resolveAgent, now: at }).run(BRIEF);
 
-    expect(exec).toHaveBeenCalledTimes(1);
-    const [bin, args, options] = vi.mocked(exec).mock.calls[0]!;
-    expect(bin).toBe("claude");
-    expect(args[0]).toBe("-p");
-    expect(args.slice(2)).toEqual([
-      "--output-format",
-      "json",
-      "--permission-mode",
-      "acceptEdits",
-    ]);
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(optionsOf(query).cwd).toBe(BRIEF.workspacePath);
     // A prompting permission mode would hang forever: there is no terminal.
-    expect(args).not.toContain("manual");
-    expect(options.cwd).toBe(BRIEF.workspacePath);
+    expect(optionsOf(query).permissionMode).toBe("acceptEdits");
   });
 
   it("passes the rendered brief as the prompt, so the harness knows the work, the branch and the reason", async () => {
-    const exec = execReturning(success());
-    await claudeCodeDispatcher({ exec, now: at }).run(BRIEF);
-    const prompt = vi.mocked(exec).mock.calls[0]![1][1]!;
+    const { query, resolveAgent } = scriptedAgent([result()]);
+    await claudeCodeDispatcher({ resolveAgent, now: at }).run(BRIEF);
+    const prompt = promptOf(query);
     expect(prompt).toContain("FIX-1");
     expect(prompt).toContain("fix/FIX-1");
     expect(prompt).toContain("The spec was approved.");
     expect(prompt).toContain("docs/philosophy.md");
   });
 
-  it("adds --model only when one is configured, so the CLI's own default is not overridden by accident", async () => {
-    const withModel = execReturning(success());
-    await claudeCodeDispatcher({ exec: withModel, model: "opus", now: at }).run(BRIEF);
-    expect(vi.mocked(withModel).mock.calls[0]![1]).toContain("--model");
+  it("sets a model only when one is configured, so the vendor's own default is not overridden by accident", async () => {
+    const withModel = scriptedAgent([result()]);
+    await claudeCodeDispatcher({ resolveAgent: withModel.resolveAgent, model: "opus", now: at }).run(
+      BRIEF,
+    );
+    expect(optionsOf(withModel.query).model).toBe("opus");
 
-    const withoutModel = execReturning(success());
-    await claudeCodeDispatcher({ exec: withoutModel, now: at }).run(BRIEF);
-    expect(vi.mocked(withoutModel).mock.calls[0]![1]).not.toContain("--model");
+    const withoutModel = scriptedAgent([result()]);
+    await claudeCodeDispatcher({ resolveAgent: withoutModel.resolveAgent, now: at }).run(BRIEF);
+    expect(optionsOf(withoutModel.query).model).toBeUndefined();
   });
 
   it("reports the vendor's cost and run id, which is the only place cost accounting can come from", async () => {
-    const result = await claudeCodeDispatcher({ exec: execReturning(success()), now: at }).run(
-      BRIEF,
-    );
-    expect(result.outcome).toBe("completed");
-    expect(result.costUsd).toBe(1.25);
-    expect(result.vendorRunId).toBe("sess-abc");
-    expect(result.dispatchId).toBe("FIX-1#1");
-    expect(result.startedAt).toBe("2026-08-14T12:00:00.000Z");
+    const { resolveAgent } = scriptedAgent([result()]);
+    const dispatched = await claudeCodeDispatcher({ resolveAgent, now: at }).run(BRIEF);
+    expect(dispatched.outcome).toBe("completed");
+    expect(dispatched.costUsd).toBe(1.25);
+    expect(dispatched.vendorRunId).toBe("sess-abc");
+    expect(dispatched.dispatchId).toBe("FIX-1#1");
+    expect(dispatched.startedAt).toBe("2026-08-14T12:00:00.000Z");
   });
 
   it("reports the branch it worked on and nothing more — a PR is a fact conductor reads from GitHub", async () => {
-    const result = await claudeCodeDispatcher({ exec: execReturning(success()), now: at }).run(
-      BRIEF,
-    );
-    expect(result.produced).toEqual({ branch: "fix/FIX-1" });
-    expect(result.produced.pullNumber).toBeUndefined();
+    const { resolveAgent } = scriptedAgent([result()]);
+    const dispatched = await claudeCodeDispatcher({ resolveAgent, now: at }).run(BRIEF);
+    expect(dispatched.produced).toEqual({ branch: "fix/FIX-1" });
+    expect(dispatched.produced.pullNumber).toBeUndefined();
   });
 
-  it("fails on a non-zero exit and carries the vendor's stderr as the reason", async () => {
-    const result = await claudeCodeDispatcher({
-      exec: execReturning("", 1, "context window exceeded"),
-      now: at,
-    }).run(BRIEF);
-    expect(result.outcome).toBe("failed");
-    expect(result.error).toBe("context window exceeded");
-  });
-
-  it("fails when the vendor reports is_error despite exiting zero", async () => {
-    const result = await claudeCodeDispatcher({
-      exec: execReturning(success({ is_error: true, result: "hit max turns" })),
-      now: at,
-    }).run(BRIEF);
-    expect(result.outcome).toBe("failed");
-    expect(result.error).toBe("hit max turns");
+  it("fails when the run ends on an error subtype, naming the class in the reason", async () => {
+    const { resolveAgent } = scriptedAgent([
+      result({
+        subtype: "error_max_turns",
+        is_error: true,
+        result: undefined,
+        errors: ["ran out of turns"],
+      }),
+    ]);
+    const dispatched = await claudeCodeDispatcher({ resolveAgent, now: at }).run(BRIEF);
+    expect(dispatched.outcome).toBe("failed");
+    expect(dispatched.error).toContain("ran out of turns");
+    // The failure class survives into the vendor-neutral reason, so an escalation
+    // can tell a ceiling the operator set from a crash it cannot raise its way out of.
+    expect(dispatched.error).toContain("error_max_turns");
     // Cost is still real when the run failed — the tokens were spent.
-    expect(result.costUsd).toBe(1.25);
+    expect(dispatched.costUsd).toBe(1.25);
   });
 
-  it("settles as failed when the binary cannot be launched, instead of throwing past the ledger", async () => {
-    const exec: ClaudeCliExec = async () => {
-      throw Object.assign(new Error("spawn claude ENOENT"), { code: "ENOENT" });
+  it("settles as failed when the vendor SDK cannot be loaded, instead of throwing past the ledger", async () => {
+    const resolveAgent: ResolveClaudeAgentQuery = () => {
+      throw new Error("Cannot find module '@anthropic-ai/claude-agent-sdk'");
     };
-    const result = await claudeCodeDispatcher({ exec, now: at }).run(BRIEF);
-    expect(result.outcome).toBe("failed");
-    expect(result.error).toContain("ENOENT");
+    const dispatched = await claudeCodeDispatcher({ resolveAgent, now: at }).run(BRIEF);
+    expect(dispatched.outcome).toBe("failed");
+    expect(dispatched.error).toContain("claude-agent-sdk");
   });
 
-  it("treats unreadable stdout on a zero exit as a completion with no cost, not as a failure", async () => {
-    const result = await claudeCodeDispatcher({
-      exec: execReturning("Welcome to Claude Code!\n"),
-      now: at,
-    }).run(BRIEF);
-    expect(result.outcome).toBe("completed");
-    expect(result.costUsd).toBeNull();
-    expect(result.vendorRunId).toBeNull();
+  it("settles as failed when the run throws mid-stream, instead of throwing past the ledger", async () => {
+    const resolveAgent = (() => ({
+      query: async function* () {
+        yield { type: "system", subtype: "init", session_id: "sess-partial" } as never;
+        throw new Error("stream closed unexpectedly");
+      },
+    })) as unknown as ResolveClaudeAgentQuery;
+    const dispatched = await claudeCodeDispatcher({ resolveAgent, now: at }).run(BRIEF);
+    expect(dispatched.outcome).toBe("failed");
+    expect(dispatched.error).toContain("stream closed unexpectedly");
+    // The session is still worth recording: a human can open the partial run.
+    expect(dispatched.vendorRunId).toBe("sess-partial");
+  });
+
+  it("settles as failed when the run ends without a terminal result", async () => {
+    const { resolveAgent } = scriptedAgent([
+      { type: "system", subtype: "init", session_id: "sess-truncated" },
+    ]);
+    const dispatched = await claudeCodeDispatcher({ resolveAgent, now: at }).run(BRIEF);
+    expect(dispatched.outcome).toBe("failed");
+    expect(dispatched.error).toContain("without a terminal result");
   });
 
   it("refuses to run without the workspace its isolation model promised", async () => {
-    const exec = execReturning(success());
-    const result = await claudeCodeDispatcher({ exec, now: at }).run({
+    const { query, resolveAgent } = scriptedAgent([result()]);
+    const dispatched = await claudeCodeDispatcher({ resolveAgent, now: at }).run({
       ...BRIEF,
       workspacePath: null,
     });
-    expect(result.outcome).toBe("failed");
-    expect(exec).not.toHaveBeenCalled();
+    expect(dispatched.outcome).toBe("failed");
+    expect(query).not.toHaveBeenCalled();
   });
 });
-

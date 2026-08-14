@@ -127,6 +127,12 @@ export type SdkMessageLike =
       result?: string;
       /** Present only on error-subtype results (replaces `result`). */
       errors?: string[];
+      /**
+       * The SDK's own error flag. Present on both result variants, and set on a
+       * success-subtype result whose run nonetheless went wrong — so it is read
+       * alongside `subtype`, not instead of it.
+       */
+      is_error?: boolean;
       session_id?: string;
       /** `NonNullableUsage` carries `input_tokens`/`output_tokens` (+ cache). */
       usage?: { input_tokens?: number; output_tokens?: number } | null;
@@ -203,18 +209,48 @@ export type ClaudeAgentQuery = (args: {
   options?: ClaudeAgentQueryOptions;
 }) => AsyncIterable<SdkMessageLike>;
 
+/**
+ * Where the SDK may load filesystem settings from — the SDK's `SettingSource`.
+ *
+ * This is the option that decides whether a run sees the project it is pointed
+ * at. The SDK loads **none** of these unless asked (its isolation mode), so a
+ * run that should behave like `claude` in a checkout has to name them; `project`
+ * in particular is what loads `CLAUDE.md`.
+ */
+export type ClaudeSettingSource = "user" | "project" | "local";
+
+/**
+ * The Claude Code system prompt, as the SDK models it. A bare string replaces
+ * it; the preset object keeps Claude Code's own prompt (optionally appending to
+ * it). Omitting the field entirely gives an **empty** system prompt — the SDK's
+ * isolation default, not Claude Code's behaviour.
+ */
+export type ClaudeSystemPrompt =
+  | string
+  | { type: "preset"; preset: "claude_code"; append?: string };
+
 /** Options forwarded to the SDK `query()` call. Loosely typed by design. */
 export interface ClaudeAgentQueryOptions {
   model?: string;
-  systemPrompt?: string;
+  systemPrompt?: ClaudeSystemPrompt;
   allowedTools?: string[];
   disallowedTools?: string[];
   permissionMode?: string;
+  /** Required by the SDK alongside `permissionMode: "bypassPermissions"`. */
+  allowDangerouslySkipPermissions?: boolean;
   canUseTool?: SdkCanUseTool;
   agents?: unknown;
   maxTurns?: number;
+  /** Vendor-side spend ceiling; the run stops with `error_max_budget_usd`. */
+  maxBudgetUsd?: number;
   resume?: string;
   includePartialMessages?: boolean;
+  /** Directory the run reads and writes. Defaults to the host process's cwd. */
+  cwd?: string;
+  /** Environment for the agent process. Defaults to the host process's env. */
+  env?: Record<string, string | undefined>;
+  /** Filesystem settings to load. See {@link ClaudeSettingSource}. */
+  settingSources?: readonly ClaudeSettingSource[];
   /** Forwarded to the SDK so an aborted `ctx.signal` stops the run. */
   abortController?: AbortController;
 }
@@ -239,6 +275,18 @@ export type SdkToolDecision =
 export type ResolveClaudeAgent = (
   ctx: BlockContext<any>,
 ) => ResolvedClaudeAgent | Promise<ResolvedClaudeAgent>;
+
+/**
+ * The same hook without a block context, for callers that have none.
+ *
+ * {@link ResolveClaudeAgent} takes a `ctx` because it is a block-level seam; the
+ * resolution itself never reads one. A non-flow caller (`runClaudeHeadless`)
+ * uses this shape so it has nothing to invent, and the two share one
+ * implementation in `sdk-client.ts`.
+ */
+export type ResolveClaudeAgentQuery = () =>
+  | ResolvedClaudeAgent
+  | Promise<ResolvedClaudeAgent>;
 
 /** An approval request handed to {@link ClaudeCodeAgentOptions.onToolApproval}. */
 export interface ToolApprovalRequest {
