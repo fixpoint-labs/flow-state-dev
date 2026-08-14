@@ -66,7 +66,7 @@ Three **lines**, not three sections, above `epic-lifecycle`'s per-issue lines:
 
 | | The line |
 |---|---|
-| **Account** | What the last report said would happen, and whether it did. Name the misses plainly — this is the only line in the report that can be *wrong*, which is the entire reason it is first |
+| **Account** | What the last report said would happen, and whether it did. Name the misses plainly — this is the only line in the report that can be *wrong*, which is the entire reason it is first. **The first report of a session has no prior Plan to check** (nothing durable stores one, and this posture adds no state): say *"first report this session — no prior Plan"* and move on. Inventing one is the failure this line exists to prevent |
 | **Review** | What the epic can now do that it couldn't, what's at risk, and what's waiting on the user. Lead with the §4 scoreboard's Lead line, not with phases |
 | **Plan** | The one or two things that will move the lead measure before the next report. Not a list of every dispatchable row — the point is a commitment the next Account can be checked against |
 

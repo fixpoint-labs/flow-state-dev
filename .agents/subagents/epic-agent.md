@@ -28,6 +28,15 @@ refresh §4, refresh the index's **Goal check** column first — one cell per is
 count the scoreboard's Lead line *from that column*. The count is auditable that way rather
 than asserted, and it cannot drift from the rows under it.
 
+**One issue can own several goals, and the cell is the *weakest* of them.** This is a live
+shape, not a hypothetical — FIX-276 has three `goals/suspension/*/goal.md` entries and FIX-865
+has two under `goals/continue-interrupted-run/`. So aggregate deliberately: the row is `pass`
+only when **every** applicable goal for that issue passes; any `fail` makes it `fail`,
+otherwise any `—` or `blocked` makes it that. Without the rule a fold can report `pass` off
+whichever goal it happened to read first while another one is failing — the single most
+flattering way this measure could lie. Name the goals you aggregated when there is more
+than one.
+
 **Where the verdict lives depends on the issue's route, and there are two homes.** Read the
 right one or the row is wrong:
 

@@ -131,9 +131,10 @@ Cuts are proposed to a spec, never applied to one here — the coordinator edits
 this turn.** Restraint nobody can see reads as work that never happened, and the cut list is the
 evidence this posture is doing anything at all.
 
-The cut line rides in **Review**, next to the scoreboard's Lead — `epic-spec-template.md` §4
-already counts cuts as the Lead line's second half, so the report and the scoreboard say the
-same thing rather than two things.
+The cut line rides in **Review**, and the report is its **only** home. `epic-spec-template.md`
+§4 deliberately does not carry it: the tally lives in `.orchestration/`, which the folding
+`epic-agent` never sees, so a scoreboard term for it would go stale silently. You hold the
+state, so you state it.
 
 ## Boundaries
 

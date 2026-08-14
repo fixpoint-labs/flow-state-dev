@@ -601,17 +601,24 @@ this queue?"* arrives too late to mean anything.
   common path:
   1. **Count the *others*, never this one.** Re-entering an existing epic is the normal case
      across sessions; a count that includes the epic being resumed reads every resumption as a
-     third objective and asks you to displace work already in flight. Step 1 resolving to a
+     third objective and asks you to hold work already in flight. Step 1 resolving to a
      reused epic is what makes this step skippable.
   2. **Active means its epic PR is open**, not that a Linear `Epic` issue exists. Wrap closes
      the epic PR unmerged but moves no Linear state, so counting open `Epic`-labelled issues
      counts every epic ever run and the cap jams shut permanently. The PR's lifetime is defined
      as exactly the epic's, which is what makes it the honest signal.
 
-  At two others active, this is a **question, not a refusal**: name them and ask which this
-  displaces, or whether it queues. Nothing is created until it is answered.
+  At two others active, this is a **question, not a refusal**: name the two and ask whether to
+  hold this one, or to **wrap one of them first**. Nothing is created until it is answered.
 
-  **"Queued" means nothing is created — and there is no queue to be in.** The work items are
+  **There is deliberately no "displace" option**, and the reason is that nothing can implement
+  it. An epic is active precisely while its PR is open, so displacing one means either leaving
+  that PR open — in which case three are active by this rule's own definition and the cap did
+  nothing — or closing it, which is the *completion* signal and would mark unfinished work
+  done. A pause state would have to be invented to make the word mean anything, and that is
+  more machinery than the cap is worth. Wrapping an epic is the only way a slot frees.
+
+  **"Held" means nothing is created — and there is no queue to be in.** The work items are
   already Linear issues; declining to start the epic leaves them exactly as they are,
   unparented and visible on the board like any other backlog. That is the whole mechanism. So
   don't tell the user it is "in the queue": say that the issues stay as they are and the epic

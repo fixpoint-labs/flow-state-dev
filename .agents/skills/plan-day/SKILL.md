@@ -52,13 +52,20 @@ that are here" is not "what was planned last time" — a todo carried for five d
 counted as a fresh commitment every one of them, and the Account would report promises
 nobody made. So each todo carries two dates in its frontmatter:
 
-- **`planned_on`** — the date it was **first** planned. Never rewritten once set.
-- **`replanned_on`** — the date of the most recent run that carried it forward. Rewritten
-  each run.
+- **`planned_on`** — when it was **first** planned. Never rewritten once set.
+- **`replanned_on`** — an ISO **timestamp** (not a bare date) for the most recent run that
+  selected it. Rewritten every run that does.
 
-The cohort to account for is every todo whose `replanned_on` is the **previous** run's
-date. A todo with no `planned_on` predates this rule — count it, and backfill the field
-rather than guessing its age.
+**The cohort is every todo sharing the newest `replanned_on` value older than this run** —
+not "yesterday's date". Two things make the max-value rule the right one rather than a
+fussier alternative: `plan-day` can run **twice in a day**, and a bare date would merge two
+different plans into one cohort (run 1 picks A+B, run 2 picks only B, and A is then reported
+as an unmet commitment it never was); and a run that plans **nothing** writes no stamp, so
+the max correctly still points at the last run that actually planned something. A run ID or
+a separate manifest would work too and buys nothing over a timestamp.
+
+A todo with no `replanned_on` predates this rule — count it, backfill both fields, and don't
+guess its age.
 
 For each todo in that cohort, report one line: **landed** (merged), **in flight** (PR
 open), or **didn't start** — and for anything that didn't land, the one-line reason
@@ -121,8 +128,8 @@ signal**, and it is one you can only see if the eight are all still listed.
 
 For each selected task, create a todo file in `agents/todos/`.
 
-**Every selected task gets `replanned_on` stamped with today's date — including the ones you
-don't regenerate.** A task preserved from an earlier run (Step 2b) is skipped for *content*,
+**Every selected task gets `replanned_on` stamped with this run's timestamp — including the
+ones you don't regenerate.** A task preserved from an earlier run (Step 2b) is skipped for *content*,
 not for this: open it and update the one field. That stamp is the only record that **this**
 plan selected it, and it is what tomorrow's Account (Step 2) reads to identify its cohort.
 Skip it and the two dates never get written at all — new todos enter the next run as legacy
@@ -143,8 +150,8 @@ priority: p2
 tags: [server, streaming]
 blocked_by: []             # or ["FSD-140"] / ["PR #87"]
 estimated_scope: small     # small | medium | large
-planned_on: 2026-08-14     # first planned. Set once, NEVER rewritten
-replanned_on: 2026-08-14   # this run's date. Rewritten every run that selects it
+planned_on: 2026-08-14T09:12:00Z    # first planned. Set once, NEVER rewritten
+replanned_on: 2026-08-14T09:12:00Z  # this run. Rewritten by every run that selects it
 ---
 
 # Fix SSE resume token not persisting across reconnections
