@@ -198,8 +198,10 @@ const IMPLEMENTATION: PhaseDefinition = {
     },
     {
       // Conductor never merges. This gate is released by a human, always.
+      // `artifact.reviews`: it only applies once the PR carries a fresh human
+      // approval, which is a read of the PR's reviews.
       name: "awaiting_merge",
-      reads: ["pr.state", "pr.mergeable"],
+      reads: ["pr.state", "pr.mergeable", "artifact.reviews"],
       appliesWhen: (w) => hasFreshHumanApproval(implPr(w)),
       satisfiedBy: (w) => implPr(w)?.state === "merged",
     },
