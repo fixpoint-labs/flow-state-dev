@@ -39,11 +39,13 @@ guess at for the rest of the run:
    would have to build to see whether we succeeded.
 3. **Lead measure** — the thing you can watch *while the epic runs* that predicts the Proof.
    Same constraint as line 2, inherited verbatim: readable off work the epic already produces,
-   never an instrument we would have to build. **The default is the count of the set's issues
-   whose goal check passes** — and the thing it is deliberately *not* is the count
-   merged. Merging is activity; a passing goal check is the only per-issue evidence we produce
-   that predicts line 2. Name a different one only when the default genuinely doesn't predict
-   this epic's Proof, and say why in the same line.
+   never an instrument we would have to build. **The default is passing goal checks over the
+   issues a goal check *applies to*** (`epic-spec-template.md` §4 — an issue with no
+   user-visible behaviour to prove is excluded, or the target is unreachable by construction)
+   — and the thing it is deliberately *not* is the count merged. Merging is activity; a
+   passing goal check is the only per-issue evidence we produce that predicts line 2. Name a
+   different one only when the default genuinely doesn't predict this epic's Proof, and say
+   why in the same line.
 4. **Not doing** — the neighbouring things this deliberately excludes. The template asks for it;
    here it is load-bearing, because it is the line an implementer, a reviewer, and every later
    *"while we're in there"* all read.
