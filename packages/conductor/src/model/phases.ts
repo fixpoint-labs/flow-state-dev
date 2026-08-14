@@ -16,6 +16,16 @@
  * shape — declare the dependency, get it injected — not a new mechanism. Two
  * consequences, both accepted: the tick may over-fetch (it reads for gates that
  * turn out not to apply), and a phase cannot gate on a fact it did not declare.
+ *
+ * **`reads` covers the gate's whole handling, not only its two predicates.**
+ * The branch `decide` keys on a gate reduces against the same snapshot and has
+ * no declaration site of its own, so what it consults is declared here or
+ * nowhere. `awaiting_ci` declares `pr.baseStatus` for exactly that reason: no
+ * predicate touches it, but the branch that handles a red CI does — and a fetch
+ * driven strictly by declarations would otherwise hand that branch a default
+ * and leave the guard dead. The relation is a subset one: `reads` is what the
+ * handling *may* touch, and a fact may be declared for reconciliation's sake
+ * without any predicate reading it.
  */
 
 import {
@@ -60,6 +70,26 @@ export type Gate = IssueGate | EpicGate;
 /**
  * The vocabulary a gate declares in `reads`. The tick maps each entry to the
  * fetch that materializes it. A user-defined phase declares from this same set.
+ *
+ * **`guidance` is deliberately declared by no gate, and is therefore inert.**
+ * Written down rather than left to be rediscovered, because an undeclared fact
+ * that looks live is the same hazard twice over. Three things have to be true
+ * before it earns a declaration, and none of them is today:
+ *
+ * 1. Nothing in the driver reads `world.guidanceHashes`. `decide`'s
+ *    `guidance_changed` branch reads the *signal's* path and the policy, not
+ *    the snapshot. Declaring `guidance` on a gate would assert a read no
+ *    predicate and no branch performs — the same incoherence from the other
+ *    side — and would buy a content-hash request per guidance path per tick
+ *    that nothing consumes.
+ * 2. Nothing produces `guidance_changed`. The hashes exist to be diffed against
+ *    the previous tick's, and no such comparison exists (`driver/reconcile`
+ *    diffs PR facts only). Materializing them changes no behaviour.
+ * 3. The default policy is `onGuidanceChanged: "ignore"`.
+ *
+ * When (2) is built, `guidance` needs a declaration site — and not a gate,
+ * since `guidance_changed` is handled phase-universally, above the gate table.
+ * That is a real design question and it belongs with the producer, not here.
  */
 export type WorldFact =
   | "artifact.reviews"
@@ -79,6 +109,12 @@ export type WorldFact =
  */
 export interface GateDefinition {
   readonly name: Gate;
+  /**
+   * Every fact this gate's handling may consult — its two predicates *and* the
+   * `decide` branch keyed on it. The tick materializes exactly this set, so an
+   * omission is not a style slip: it hands the branch a default value and kills
+   * the behaviour silently.
+   */
   readonly reads: readonly WorldFact[];
   readonly appliesWhen: (world: World) => boolean;
   readonly satisfiedBy: (world: World) => boolean;
@@ -119,14 +155,16 @@ const SPEC: PhaseDefinition = {
   onEnter: ["draftSpec"],
   gates: [
     {
+      // `artifact.rounds`: feedback here is revised or escalated on the
+      // spec-review budget, and that comparison reads the artifact's rounds.
       name: "awaiting_spec_review",
-      reads: ["pr.state", "artifact.reviews"],
+      reads: ["pr.state", "artifact.reviews", "artifact.rounds"],
       appliesWhen: (w) => specPr(w)?.state === "open",
       satisfiedBy: (w) => hasHumanReviewAtHead(specPr(w)),
     },
     {
       name: "awaiting_spec_approval",
-      reads: ["pr.state", "artifact.reviews"],
+      reads: ["pr.state", "artifact.reviews", "artifact.rounds"],
       appliesWhen: (w) => specPr(w)?.state === "open",
       satisfiedBy: (w) => hasFreshHumanApproval(specPr(w)),
     },
@@ -141,14 +179,20 @@ const IMPLEMENTATION: PhaseDefinition = {
   onEnter: ["implement"],
   gates: [
     {
+      // `pr.baseStatus`: a red CI on a red base is not this PR's failure, and
+      // the branch handling it waits for `base_recovered` instead of
+      // dispatching an agent. Undeclared, `baseRed` reads `false` forever and
+      // conductor chases someone else's breakage.
       name: "awaiting_ci",
-      reads: ["pr.state", "pr.checkRuns"],
+      reads: ["pr.state", "pr.checkRuns", "pr.baseStatus"],
       appliesWhen: (w) => implPr(w)?.state === "open" && implPr(w)?.checks !== null,
       satisfiedBy: (w) => implPr(w)?.checks === "success",
     },
     {
+      // `artifact.rounds`: review feedback here is revised or escalated on the
+      // implementation budget, and that comparison reads the artifact's rounds.
       name: "awaiting_review",
-      reads: ["pr.state", "artifact.reviews"],
+      reads: ["pr.state", "artifact.reviews", "artifact.rounds"],
       appliesWhen: (w) => implPr(w)?.state === "open",
       satisfiedBy: (w) => hasFreshHumanApproval(implPr(w)),
     },
@@ -184,8 +228,10 @@ const FRAMING: PhaseDefinition = {
   onEnter: ["draftSpec"],
   gates: [
     {
+      // `artifact.rounds`: shares the spec-review budget path — feedback on the
+      // epic spec is revised or escalated against the artifact's rounds.
       name: "awaiting_objective_approval",
-      reads: ["pr.state", "artifact.reviews"],
+      reads: ["pr.state", "artifact.reviews", "artifact.rounds"],
       appliesWhen: (w) => epicSpecPr(w)?.state === "open",
       satisfiedBy: (w) => hasFreshHumanApproval(epicSpecPr(w)),
     },

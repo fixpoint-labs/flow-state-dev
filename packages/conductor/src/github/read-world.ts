@@ -35,23 +35,6 @@ import type { GitHubClient } from "./client";
 import { GitHubApiError } from "./client";
 import { isHumanActor, type GitHubActor } from "./identity";
 
-/**
- * Facts `decide` reads outside any gate's declaration, so the tick must
- * materialize them regardless of the phase's `reads`.
- *
- * These are not an escape hatch — they are a record of a genuine gap in the
- * phase table. `decide`'s `awaiting_ci` branch consults `baseRed` (a red base
- * is not our failure) and its round-budget check consults `reviewRounds`, but
- * no gate in `model/phases.ts` declares `pr.baseStatus` or `artifact.rounds`.
- * Fetching them here keeps those branches live; the right long-term fix is for
- * the gates that depend on them to declare them.
- */
-export const DRIVER_READS: readonly WorldFact[] = [
-  "pr.state",
-  "pr.baseStatus",
-  "artifact.rounds",
-];
-
 /** What a caller hands the reader. Everything conductor owns arrives here. */
 export interface ReadWorldInput {
   /** The entity being ticked — its kind and stored phase drive what is read. */
@@ -73,7 +56,7 @@ export interface ReadWorldInput {
 export interface ReadWorldResult {
   /** The snapshot `decide` and every gate predicate reduce against. */
   readonly world: World;
-  /** The facts this read materialized — the declared set plus {@link DRIVER_READS}. */
+  /** The facts this read materialized — exactly what the phase's gates declared. */
   readonly facts: readonly WorldFact[];
 }
 
@@ -296,10 +279,7 @@ export async function readWorld(
   client: GitHubClient,
   input: ReadWorldInput,
 ): Promise<ReadWorldResult> {
-  const facts = new Set<WorldFact>([
-    ...factsReadBy(input.entity.kind, input.entity.phase),
-    ...DRIVER_READS,
-  ]);
+  const facts = new Set<WorldFact>(factsReadBy(input.entity.kind, input.entity.phase));
   const plan = prReadPlan(facts);
 
   const pullNumbers = [

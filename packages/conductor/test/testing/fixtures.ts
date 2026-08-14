@@ -8,7 +8,7 @@
  * signal arrived, which is what the tick's read-world step would have produced.
  */
 
-import type { ReplayStep } from "../../src/dispatch/replay";
+import type { ReplayStep } from "../../src/testing/replay";
 import type { World } from "../../src/model/world";
 import { artifact, freshApproval, pr, world } from "../fixtures";
 

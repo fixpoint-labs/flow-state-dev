@@ -11,47 +11,24 @@ import { describe, expect, it } from "vitest";
 import { decide } from "../src/driver/decide";
 import type { Action } from "../src/model/actions";
 import { EPIC_PHASES, ISSUE_PHASES } from "../src/model/phases";
-import type { Signal, SignalKind } from "../src/model/signals";
+import type { Signal } from "../src/model/signals";
 import { DEFAULT_POLICY } from "../src/model/world";
 import {
   ENTITY_ID,
   HEAD,
+  SIGNAL_AT as AT,
+  SIGNAL_KINDS as ISSUE_SIGNAL_KINDS,
   epic,
   freshApproval,
   issue,
   pr,
   review,
+  signal,
   world,
   worldWith,
 } from "./fixtures";
 
-const AT = "2026-08-14T12:00:00Z";
-
 const kinds = (actions: Action[]) => actions.map((a) => a.kind);
-
-/** Build a signal with the right payload shape for its kind. */
-function signal(kind: SignalKind, overrides: Record<string, unknown> = {}): Signal {
-  const base = { entityId: ENTITY_ID, at: AT };
-  const payloads: Partial<Record<SignalKind, Record<string, unknown>>> = {
-    pr_opened: { pullNumber: 10 },
-    merged: { pullNumber: 10 },
-    pr_closed: { pullNumber: 10 },
-    merge_conflict: { pullNumber: 10 },
-    base_recovered: { pullNumber: 10 },
-    review_submitted: { reviewer: "alice", sha: HEAD, pullNumber: 10 },
-    changes_requested: { reviewer: "alice", sha: HEAD, pullNumber: 10 },
-    approved: { reviewer: "alice", sha: HEAD, pullNumber: 10 },
-    ci_concluded: { conclusion: "failure", sha: HEAD },
-    feedback_received: { author: "alice", commentId: "c1", pullNumber: 10 },
-    question_asked: { author: "alice", commentId: "c1", pullNumber: 10 },
-    approval_expressed: { author: "alice", commentId: "c1", pullNumber: 10 },
-    dispatch_completed: { dispatchId: "d1" },
-    dispatch_failed: { dispatchId: "d1" },
-    guidance_changed: { path: "docs/philosophy.md" },
-    issue_settled: { childId: "FIX-2" },
-  };
-  return { kind, ...base, ...payloads[kind], ...overrides } as Signal;
-}
 
 describe("the decide table", () => {
   it("drafts the spec when an issue enters SPEC — a phase's entry work is the phase's job", () => {
@@ -206,6 +183,104 @@ describe("keeping judgment out of the transition", () => {
   });
 });
 
+describe("recording the gate releases a human owns", () => {
+  /** A world holding both PRs: the approved spec, and the implementation. */
+  const bothPrs = (implOverrides: Partial<ReturnType<typeof pr>> = {}) =>
+    world({
+      artifacts: [
+        { id: "a-spec", kind: "spec", hostedAt: { type: "pr", number: 10 }, reviewRounds: 1 },
+        {
+          id: "a-impl",
+          kind: "implementation",
+          hostedAt: { type: "pr", number: 11 },
+          reviewRounds: 0,
+        },
+      ],
+      pullRequests: {
+        10: pr({ number: 10, state: "closed", reviews: [freshApproval()] }),
+        11: pr({ number: 11, checks: "success", ...implOverrides }),
+      },
+    });
+
+  it("records the approval that opens the merge gate, even though the phase runs on past it", () => {
+    // IMPLEMENTATION completes on the goal check, not on approval. Recording
+    // only on the completing path would leave the ledger with the spec approval
+    // and no trace of the human who released `awaiting_review` — a real state
+    // change, driven by a human decision, that could not be replayed.
+    const w = worldWith(
+      "implementation",
+      pr({ checks: "success", reviews: [freshApproval()] }),
+    );
+    expect(decide(issue("IMPLEMENTATION"), signal("approved"), w)).toEqual([
+      {
+        kind: "recordApproval",
+        entityId: ENTITY_ID,
+        gate: "awaiting_review",
+        reviewer: "alice",
+        sha: HEAD,
+      },
+    ]);
+  });
+
+  it("records the approval even while CI is red, because the human decided when they decided", () => {
+    // The entity is still gated on `awaiting_ci`, so nothing advances — but the
+    // approval happened, and a ledger that only records approvals on a green PR
+    // cannot replay the order the two arrived in.
+    const w = worldWith(
+      "implementation",
+      pr({ checks: "failure", reviews: [freshApproval()] }),
+    );
+    const actions = decide(issue("IMPLEMENTATION"), signal("approved"), w);
+    expect(actions).toMatchObject([{ kind: "recordApproval", gate: "awaiting_review" }]);
+  });
+
+  it("records the approval exactly once when it also completes the phase", () => {
+    // The completing path and the gate-release path are the same approval. Two
+    // entries in the ledger would replay as two approvals by two reviewers.
+    const w = worldWith("spec", pr({ reviews: [freshApproval()] }));
+    const actions = decide(issue("SPEC"), signal("approved"), w);
+    expect(kinds(actions)).toEqual(["recordApproval", "enterPhase"]);
+    expect(actions[0]).toMatchObject({ gate: "awaiting_spec_approval" });
+  });
+
+  it("records nothing for a stale approval on the implementation PR — a push invalidates it", () => {
+    const w = worldWith(
+      "implementation",
+      pr({ headSha: "sha-new", checks: "success", reviews: [freshApproval("sha-old")] }),
+    );
+    expect(decide(issue("IMPLEMENTATION"), signal("approved", { sha: "sha-old" }), w)).toEqual(
+      [],
+    );
+  });
+
+  it("records nothing for a bot approval on the implementation PR — no gate moved", () => {
+    const w = worldWith(
+      "implementation",
+      pr({ checks: "success", reviews: [review({ state: "APPROVED", isHuman: false })] }),
+    );
+    expect(decide(issue("IMPLEMENTATION"), signal("approved"), w)).toEqual([]);
+  });
+
+  it("records nothing for an approval on the spec PR while the issue is implementing", () => {
+    // Crediting a spec-PR approval to the merge gate would put a release in the
+    // ledger that no human ever gave for this artifact.
+    const w = bothPrs();
+    expect(
+      decide(issue("IMPLEMENTATION"), signal("approved", { pullNumber: 10 }), w),
+    ).toEqual([]);
+  });
+
+  it("records the same single entry when the approval arrives twice", () => {
+    // Duplicate delivery is normal. The ledger entry is derived from the world,
+    // not from how many times the signal was seen.
+    const w = bothPrs({ reviews: [freshApproval()] });
+    const first = decide(issue("IMPLEMENTATION"), signal("approved", { pullNumber: 11 }), w);
+    const second = decide(issue("IMPLEMENTATION"), signal("approved", { pullNumber: 11 }), w);
+    expect(kinds(first)).toEqual(["recordApproval"]);
+    expect(second).toEqual(first);
+  });
+});
+
 describe("review-round budgets", () => {
   it("escalates instead of revising once the spec budget is spent", () => {
     const w = worldWith(
@@ -239,31 +314,6 @@ describe("review-round budgets", () => {
     );
   });
 });
-
-/** Every signal kind, for totality sweeps. */
-const ISSUE_SIGNAL_KINDS: SignalKind[] = [
-  "pr_opened",
-  "review_submitted",
-  "changes_requested",
-  "approved",
-  "ci_concluded",
-  "merge_conflict",
-  "base_recovered",
-  "merged",
-  "pr_closed",
-  "feedback_received",
-  "question_asked",
-  "approval_expressed",
-  "phase_entered",
-  "dispatch_completed",
-  "dispatch_failed",
-  "goal_check_passed",
-  "goal_check_failed",
-  "guidance_changed",
-  "external_status_changed",
-  "objective_approved",
-  "issue_settled",
-];
 
 describe("the full phase × gate × signal matrix is total", () => {
   const worlds = [

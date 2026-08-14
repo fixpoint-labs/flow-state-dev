@@ -43,7 +43,6 @@ export {
 
 export {
   aggregateChecks,
-  DRIVER_READS,
   readPullRequest,
   readWorld,
   toObservedPr,

@@ -29,14 +29,15 @@
  *   answer.
  */
 
-import type { Action, ActionBase } from "../model/actions";
+import type { Action, ActionBase, RecordApprovalAction } from "../model/actions";
+import { artifactKindForPhase, phaseDefinition } from "../model/phases";
+import type { ReviewStateSignal, Signal } from "../model/signals";
 import {
-  artifactKindForPhase,
-  phaseDefinition,
-  type Gate,
-} from "../model/phases";
-import type { Signal } from "../model/signals";
-import { artifactOfKind, type ArtifactFacts, type World } from "../model/world";
+  artifactOfKind,
+  type ArtifactFacts,
+  type PullRequestFacts,
+  type World,
+} from "../model/world";
 import { deriveGate, isPhaseComplete, type ConductorEntity } from "./derive-gate";
 
 /** The PR number a signal is about, or `undefined` when it is not PR-bound. */
@@ -173,10 +174,55 @@ function decideUniversal(
   }
 }
 
-/** The gate an approval releases in this phase — its last, by construction. */
-function terminalGate(entity: ConductorEntity): Gate | undefined {
+/**
+ * The snapshot as it stood one moment before a fresh human approval landed —
+ * every approving human review at its PR's head removed, and nothing else
+ * touched.
+ */
+function withoutFreshHumanApproval(world: World): World {
+  const pullRequests: Record<number, PullRequestFacts> = {};
+  for (const pr of Object.values(world.pullRequests)) {
+    pullRequests[pr.number] = {
+      ...pr,
+      reviews: pr.reviews.filter(
+        (r) => !(r.isHuman && r.state === "APPROVED" && r.sha === pr.headSha),
+      ),
+    };
+  }
+  return { ...world, pullRequests };
+}
+
+/**
+ * The ledger entry for a human approval that released a gate, or `undefined`
+ * when this approval released nothing — a stale one against an older head, a
+ * bot's, or a duplicate arriving after the gate had already moved on.
+ *
+ * The released gate is **derived, not named**: it is the gate that is satisfied
+ * in this world and would not be without the approval. Naming it would get
+ * `IMPLEMENTATION` wrong, whose approval releases `awaiting_review` in the
+ * middle of the table rather than its last gate, and a phase added later could
+ * forget to name one at all — which is exactly how the record goes missing.
+ */
+function approvalRecordFor(
+  entity: ConductorEntity,
+  signal: ReviewStateSignal,
+  world: World,
+): RecordApprovalAction | undefined {
   const def = phaseDefinition(entity.kind, entity.phase);
-  return def?.gates.at(-1)?.name;
+  if (!def) return undefined;
+  const before = withoutFreshHumanApproval(world);
+  const released = def.gates.filter(
+    (g) => g.appliesWhen(world) && g.satisfiedBy(world) && !g.satisfiedBy(before),
+  );
+  const gate = released.at(-1)?.name;
+  if (!gate) return undefined;
+  return {
+    kind: "recordApproval",
+    entityId: entity.id,
+    gate,
+    reviewer: signal.reviewer,
+    sha: signal.sha,
+  };
 }
 
 /**
@@ -210,25 +256,24 @@ export function decide(
     return (def.onEnter ?? []).map((kind) => ({ kind, entityId: entity.id }) as Action);
   }
 
+  // A human approval that releases a gate is recorded whether or not it also
+  // completes the phase. `SPEC` completes on the very approval that releases
+  // its gate, but `IMPLEMENTATION` completes on the goal check — so recording
+  // only on the completing path loses the approval that opened `awaiting_merge`
+  // entirely, and with it the ledger's ability to replay that release.
+  const approval =
+    signal.kind === "approved" ? approvalRecordFor(entity, signal, world) : undefined;
+
   // Advance before consulting the gate table, so the signal that *completes* a
   // phase advances it rather than being absorbed by the gate it just released.
   if (isPhaseComplete(entity, world) && def.next) {
     const actions: Action[] = [];
-    if (signal.kind === "approved") {
-      const gate = terminalGate(entity);
-      if (gate) {
-        actions.push({
-          kind: "recordApproval",
-          entityId: entity.id,
-          gate,
-          reviewer: signal.reviewer,
-          sha: signal.sha,
-        });
-      }
-    }
+    if (approval) actions.push(approval);
     actions.push({ kind: "enterPhase", entityId: entity.id, phase: def.next });
     return actions;
   }
+
+  if (approval) return [approval];
 
   const gate = deriveGate(entity, world);
 

@@ -27,10 +27,10 @@ import { isDispatch, type Action } from "../model/actions";
 import type { Gate, Phase } from "../model/phases";
 import type { Signal, SignalKind } from "../model/signals";
 import type { World } from "../model/world";
-import { branchNameFor, worktreePath } from "./branch";
-import { briefFor } from "./brief";
+import { branchNameFor, worktreePath } from "../dispatch/branch";
+import { briefFor } from "../dispatch/brief";
+import type { DispatchResult, Dispatcher, PhaseBrief } from "../dispatch/types";
 import { fakeDispatcher } from "./fake";
-import type { DispatchResult, Dispatcher, PhaseBrief } from "./types";
 
 /** One tick of the script: a world as it then stood, and the signal that arrived. */
 export interface ReplayStep {

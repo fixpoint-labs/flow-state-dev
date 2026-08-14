@@ -37,6 +37,14 @@
     "./driver": {
       "types": "./dist/driver/index.d.ts",
       "default": "./src/driver/index.ts"
+    },
+    "./dispatch": {
+      "types": "./dist/dispatch/index.d.ts",
+      "default": "./src/dispatch/index.ts"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "default": "./src/testing/index.ts"
     }
   },
   "license": "MIT",

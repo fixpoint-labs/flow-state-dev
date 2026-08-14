@@ -9,9 +9,9 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { fakeDispatcher } from "../../src/dispatch/fake";
-import { replay } from "../../src/dispatch/replay";
 import type { Action } from "../../src/model/actions";
+import { fakeDispatcher } from "../../src/testing/fake";
+import { replay } from "../../src/testing/replay";
 import { issue } from "../fixtures";
 import { EMPTY_WORLD, LIFECYCLE_STEPS } from "./fixtures";
 
@@ -46,7 +46,11 @@ describe("one issue, end to end", () => {
     ]);
   });
 
-  it("records the human approval that released the spec gate, so the transition is reproducible", async () => {
+  it("records every human gate release, so each transition a human drove is reproducible", async () => {
+    // Both approvals are gate releases: one lets the spec through, one opens
+    // the merge gate. The second does not complete its phase — IMPLEMENTATION
+    // ends on the goal check — and a ledger that only recorded phase-completing
+    // approvals would have no trace of the human who released `awaiting_review`.
     const result = await replay(script());
     const approvals = result.actions.filter((a) => a.kind === "recordApproval");
     expect(approvals).toEqual([
@@ -56,6 +60,13 @@ describe("one issue, end to end", () => {
         gate: "awaiting_spec_approval",
         reviewer: "alice",
         sha: "spec-sha-2",
+      },
+      {
+        kind: "recordApproval",
+        entityId: "FIX-1",
+        gate: "awaiting_review",
+        reviewer: "alice",
+        sha: "impl-sha-2",
       },
     ]);
   });
@@ -69,7 +80,11 @@ describe("one issue, end to end", () => {
     const result = await replay(script());
     const atMerge = result.records.filter((r) => r.gate === "awaiting_merge");
     expect(atMerge.length).toBeGreaterThan(0);
-    expect(atMerge.every((r) => r.actions.length === 0)).toBe(true);
+    // Writing the human's approval into the ledger is allowed here. Doing
+    // anything *to* the PR is not: no dispatch, no phase move, and above all no
+    // merge — this gate is released by a human or not at all.
+    const actedOn = atMerge.flatMap((r) => r.actions).filter((a) => a.kind !== "recordApproval");
+    expect(actedOn).toEqual([]);
   });
 
   it("ignores the spec PR closing after implementation started — a late signal on another PR is not this phase's", async () => {

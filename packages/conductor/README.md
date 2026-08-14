@@ -83,6 +83,46 @@ That split is what keeps the driver honest. `decide` is exhaustively testable
 count, or a review state drifts into prose, the reducer needs a model to read it
 and the determinism claim collapses.
 
+## Where entities live
+
+**One session per epic. One workstream — a child session — per issue.** A tick is
+a single request, not a session: a webhook, a cron beat, a CLI invocation and a
+chat message all fire a tick *into* the session that owns the work. Webhook
+bindings route by `sessionId(event)`; a cron sweep enqueues an action against a
+session id. So the work's own session is where its record belongs.
+
+| Altitude | Scope | Who sees it | Collections |
+|---|---|---|---|
+| Cross-epic | `org` | anything, including a tick belonging to no epic | `conductorRegistry` |
+| Epic-level | `session`, `sharedToWorkstream` | the epic session and every issue workstream under it | `conductorEpics`, `conductorIssues`, `conductorArtifacts` |
+| Issue-level | `session` | one workstream's own ticks | `conductorObservations`, `conductorDispatches`, `conductorLedger` |
+
+A session-scoped resource resolves to one of two addresses: the running session,
+or — with `sharedToWorkstream: true` — the lineage root. The lineage id is minted
+by the root and inherited verbatim, so an issue workstream and the epic session
+above it address one instance set. There is no third address, which is the rule
+worth remembering: an unshared collection is readable from its own session's
+ticks and from nothing else, including a phase execution that session detached.
+A detached phase reports back as a signal, never by writing these rows.
+
+The line between the two session altitudes: **the entity graph is shared, each
+entity's working record is local.** Cross-spec review reads its sibling issues'
+artifacts and the per-epic board renders the roster, so what exists and where it
+is hosted has to be visible from above. An observed PR copy, a dispatch history
+and a ledger are only ever reduced over by the tick that produced them.
+
+An issue running without an epic needs no special case — its own session is the
+lineage root, so the shared collections resolve there and the model is the same
+one, minus a level.
+
+**Org scope holds the registry and nothing else.** A cron sweep runs in no epic's
+session, so it has nothing to read from either session altitude; the registry
+tells it which sessions exist and it fans out one enqueue per session. Every
+resource read is addressed by `(scope, scopeId, key)`, so a query across sessions
+is not a primitive — a board spanning every epic is that same fan-out. Note the
+cost: org-scoped resources require the request to resolve an `orgId` from its
+principal, so conductor must run org-bound for the registry to resolve at all.
+
 ## Gates declare what they read
 
 A gate asks a question about the world, and the world lives in GitHub — which is

@@ -15,7 +15,7 @@ import type {
   Dispatcher,
   IsolationModel,
   PhaseBrief,
-} from "./types";
+} from "../dispatch/types";
 
 /** One scripted outcome. Anything omitted falls back to a plain completion. */
 export interface ScriptedDispatch {

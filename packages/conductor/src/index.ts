@@ -10,9 +10,12 @@
  * `docs/contributing/orchestration.md`. Conductor does not invent it. Conductor
  * **executes it in code instead of interpreting it in a prompt.**
  *
- * This entrypoint currently exports M0: the entity model and the pure driver.
- * The tick, the connectors, and the dispatcher seam land with M1.
+ * This entrypoint exports the entity model, the pure driver, and the dispatch
+ * seam. The test scaffolding built on that seam — `fakeDispatcher` and the
+ * `replay` harness — lives at `@flow-state-dev/conductor/testing` instead, so
+ * it never lands in a consumer's bundle.
  */
 
+export * from "./dispatch";
 export * from "./driver";
 export * from "./model";

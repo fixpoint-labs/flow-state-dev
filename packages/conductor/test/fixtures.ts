@@ -9,6 +9,7 @@
 
 import type { ConductorEntity } from "../src/driver/derive-gate";
 import type { Phase } from "../src/model/phases";
+import type { Signal, SignalKind } from "../src/model/signals";
 import type {
   ArtifactFacts,
   ArtifactKind,
@@ -101,3 +102,54 @@ export function worldWith(
 export function freshApproval(sha = HEAD): ReviewFacts {
   return review({ id: "rev-approve", state: "APPROVED", sha });
 }
+
+export const SIGNAL_AT = "2026-08-14T12:00:00Z";
+
+/** Build a signal with the right payload shape for its kind. */
+export function signal(kind: SignalKind, overrides: Record<string, unknown> = {}): Signal {
+  const base = { entityId: ENTITY_ID, at: SIGNAL_AT };
+  const payloads: Partial<Record<SignalKind, Record<string, unknown>>> = {
+    pr_opened: { pullNumber: 10 },
+    merged: { pullNumber: 10 },
+    pr_closed: { pullNumber: 10 },
+    merge_conflict: { pullNumber: 10 },
+    base_recovered: { pullNumber: 10 },
+    review_submitted: { reviewer: "alice", sha: HEAD, pullNumber: 10 },
+    changes_requested: { reviewer: "alice", sha: HEAD, pullNumber: 10 },
+    approved: { reviewer: "alice", sha: HEAD, pullNumber: 10 },
+    ci_concluded: { conclusion: "failure", sha: HEAD },
+    feedback_received: { author: "alice", commentId: "c1", pullNumber: 10 },
+    question_asked: { author: "alice", commentId: "c1", pullNumber: 10 },
+    approval_expressed: { author: "alice", commentId: "c1", pullNumber: 10 },
+    dispatch_completed: { dispatchId: "d1" },
+    dispatch_failed: { dispatchId: "d1" },
+    guidance_changed: { path: "docs/philosophy.md" },
+    issue_settled: { childId: "FIX-2" },
+  };
+  return { kind, ...base, ...payloads[kind], ...overrides } as Signal;
+}
+
+/** Every signal kind, for totality sweeps. */
+export const SIGNAL_KINDS: readonly SignalKind[] = [
+  "pr_opened",
+  "review_submitted",
+  "changes_requested",
+  "approved",
+  "ci_concluded",
+  "merge_conflict",
+  "base_recovered",
+  "merged",
+  "pr_closed",
+  "feedback_received",
+  "question_asked",
+  "approval_expressed",
+  "phase_entered",
+  "dispatch_completed",
+  "dispatch_failed",
+  "goal_check_passed",
+  "goal_check_failed",
+  "guidance_changed",
+  "external_status_changed",
+  "objective_approved",
+  "issue_settled",
+];

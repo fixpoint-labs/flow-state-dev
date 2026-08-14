@@ -231,6 +231,10 @@ describe("reads are driven by what the phase declared", () => {
     expect(facts).not.toContain("pr.checkRuns");
     expect(calls).not.toContain(`GET ${P}/commits/sha-head/check-runs`);
     expect(world.pullRequests[7]!.checks).toBeNull();
+    // Nor the base's: `pr.baseStatus` belongs to awaiting_ci, and SPEC has no
+    // such gate. Every fetch here follows from this phase's own table entry.
+    expect(facts).not.toContain("pr.baseStatus");
+    expect(calls).not.toContain(`GET ${P}/commits/main/check-runs`);
   });
 
   it("fetches the head check-runs for IMPLEMENTATION, which does declare them", async () => {
@@ -250,10 +254,10 @@ describe("reads are driven by what the phase declared", () => {
     expect(world.pullRequests[7]!.checks).toBe("success");
   });
 
-  it("reads the base status even though no gate declares it, because decide does", async () => {
+  it("reads the base status for IMPLEMENTATION, because awaiting_ci declares it", async () => {
     // `decide`'s awaiting_ci branch consults baseRed to avoid dispatching an
-    // agent at someone else's breakage. No gate declares pr.baseStatus, so the
-    // reader covers it explicitly (DRIVER_READS).
+    // agent at someone else's breakage, and the gate declares pr.baseStatus so
+    // the fetch follows from the table rather than from a second list.
     const { client: gh, calls } = client({
       [`GET ${P}/pulls/7`]: pullPayload(),
       [`GET ${P}/pulls/7/reviews`]: [],
