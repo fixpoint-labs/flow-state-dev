@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { decide } from "../src/driver/decide";
 import { deriveGate, isPhaseComplete } from "../src/driver/derive-gate";
+import { reconcile } from "../src/driver/reconcile";
 import type { Action } from "../src/model/actions";
 import { EPIC_PHASES, ISSUE_PHASES } from "../src/model/phases";
 import type { Signal } from "../src/model/signals";
@@ -619,6 +620,80 @@ describe("reducing against the artifact the phase is actually working on", () =>
         ),
       ),
     ).toEqual(["addressFeedback"]);
+  });
+});
+
+describe("a signal queued from the phase the entity has just left", () => {
+  it("does not escalate the spec PR closure that is the process working", () => {
+    // The first poll of an issue whose spec was approved and whose spec PR was
+    // then closed unmerged — which *is* the process (BP-037: a spec lives on
+    // its spec PR and in Linear, never on the base branch). Reconciliation
+    // replays the whole batch, and the backdated `pr_opened` advances the
+    // entity to IMPLEMENTATION before the `pr_closed` behind it is reduced.
+    // The new phase holds no implementation artifact yet, so nothing scopes the
+    // stale spec signal and the universal handler files a human-intervention
+    // escalation against correct behaviour. An escalation that fires on the
+    // happy path is worse than none: it trains everyone to ignore escalations.
+    //
+    // Only visible as a batch. Reduced on its own, this `pr_closed` arrives
+    // while the entity is still in SPEC, where the spec PR is the phase's own
+    // artifact and the guard has something to compare against.
+    const fresh = pr({ state: "closed", reviews: [freshApproval()] });
+    const w = worldWith("spec", fresh);
+    const signals = reconcile({
+      entityId: ENTITY_ID,
+      observed: [],
+      fresh: [fresh],
+      now: AT,
+    });
+    // The ordering is what makes the defect reachable, so it is pinned rather
+    // than assumed: `pr_opened` is backdated to the approval it missed, and the
+    // closure carries the poll's own timestamp.
+    expect(signals.map((s) => s.kind)).toEqual(["pr_opened", "approved", "pr_closed"]);
+
+    let entity = issue("SPEC");
+    const actions = signals.flatMap((s) => {
+      const produced = decide(entity, s, w);
+      for (const action of produced) {
+        if (action.kind === "enterPhase") entity = issue(action.phase);
+      }
+      return produced;
+    });
+
+    // Asserted on the actions, so a regression reports the false escalation
+    // rather than an internal predicate's answer about the signal.
+    expect(actions.filter((a) => a.kind === "escalate")).toEqual([]);
+    // The batch advances the issue and asks for nothing else. No
+    // `recordApproval` rides along, and that is a *separate* gap from this
+    // one — both spec gates apply only while the spec PR is open, so an
+    // approval first observed on an already-closed PR releases no gate to
+    // credit. Pinned as it stands rather than as it ought to be, because
+    // fixing it is a change to the phase table, not to this guard.
+    expect(kinds(actions)).toEqual(["enterPhase"]);
+    expect(entity.phase).toBe("IMPLEMENTATION");
+  });
+
+  it("does not aim a conflict on the old spec PR at the implementation branch", () => {
+    // The same hole, one signal along: an issue that has moved to
+    // IMPLEMENTATION but has no PR of its own yet still owns a spec PR, and a
+    // queued `merge_conflict` from it would dispatch an agent to rebase a
+    // branch GitHub never complained about.
+    const w = worldWith("spec", pr({ mergeable: false }));
+    expect(decide(issue("IMPLEMENTATION"), signal("merge_conflict"), w)).toEqual([]);
+  });
+
+  it("still lets through a pr_opened for a PR the phase holds no artifact for", () => {
+    // The leniency this guard was written for, and it is narrowed rather than
+    // removed. A synthesized `pr_opened` arrives *because* conductor had no
+    // record of the PR, and it is the one PR-bound signal that can dispatch
+    // nothing of its own: the most it does is re-derive completion against the
+    // snapshot, which only moves the phase if the world already says it is
+    // done. Here that is the nested multi-PR shape — the assembled goal passed
+    // and the issue holds no implementation PR of its own.
+    const w = world({ goalCheck: "passed" });
+    expect(decide(issue("IMPLEMENTATION"), signal("pr_opened"), w)).toEqual([
+      { kind: "enterPhase", entityId: ENTITY_ID, phase: "SETTLED" },
+    ]);
   });
 });
 

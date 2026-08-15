@@ -436,6 +436,50 @@ describe("ordinary catch-up", () => {
     ]);
   });
 
+  it("emits the second conflict, because a new head is a different repair", () => {
+    // The sibling of the second red build, and the same defect: `mergeable` is
+    // a fact about a *commit*, so two reads that both say `false` have not
+    // said the same thing when the commit under them changed. Conductor
+    // dispatched `resolveConflict`, the agent pushed a head that still
+    // conflicts, and a value comparison sees nothing move — precisely at the
+    // moment conductor was supposed to notice the repair did not work.
+    //
+    // Reduced as a batch with the phase carried between signals, because the
+    // symptom is not a missing signal: the cursor adopts the new head, the copy
+    // then agrees with the world, and no later tick can dispatch another
+    // resolution pass. The PR stays unmergeable forever.
+    const fresh = pr({ headSha: "sha-repair", mergeable: false });
+    const w = worldWith("implementation", fresh);
+    const signals = reconcile({
+      entityId: ENTITY_ID,
+      observed: [observed({ headSha: "sha-conflicted", mergeable: false })],
+      fresh: [fresh],
+      now: NOW,
+    });
+
+    let entity = issue("IMPLEMENTATION");
+    const actions = signals.flatMap((s) => {
+      const produced = decide(entity, s, w);
+      for (const action of produced) {
+        if (action.kind === "enterPhase") entity = issue(action.phase);
+      }
+      return produced;
+    });
+
+    // Asserted first, so a regression reports the PR left unmergeable rather
+    // than the missing signal that caused it.
+    expect(actions.map((a) => a.kind)).toEqual(["resolveConflict"]);
+    expect(signals).toEqual([
+      {
+        kind: "merge_conflict",
+        entityId: ENTITY_ID,
+        at: NOW,
+        synthesized: true,
+        pullNumber: 10,
+      },
+    ]);
+  });
+
   it("notices mergeability lost and the base recovering", () => {
     expect(
       reconcile({

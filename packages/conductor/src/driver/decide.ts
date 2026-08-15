@@ -70,10 +70,25 @@ function activeArtifact(
  *   for a commit that is not the active PR's head is stale whatever produced it:
  *   it grades code that has already been superseded.
  *
- * Deliberately lenient when the artifact or its PR is not in the snapshot yet:
- * a backdated `pr_opened` synthesized by reconciliation arrives precisely
- * because conductor had no record of that PR, and dropping it would defeat the
- * recovery it exists for.
+ * **The leniency for a phase that holds no PR yet is `pr_opened` and nothing
+ * else.** A backdated `pr_opened` synthesized by reconciliation arrives
+ * precisely because conductor had no record of that PR, so dropping it would
+ * defeat the recovery it exists for — and it is the one PR-bound signal that
+ * can dispatch nothing on its own. The most it does is re-derive completion
+ * against the snapshot, which can only advance a phase the *world* already says
+ * is finished. Every other PR-bound signal answers with work aimed at the
+ * phase's own artifact, and with no artifact to aim at, that work lands on the
+ * wrong branch.
+ *
+ * A blanket leniency did exactly that, on the ordinary happy path: closing an
+ * approved spec PR unmerged *is* the process, and the batch that first observes
+ * it advances the entity to `IMPLEMENTATION` on the backdated `pr_opened`
+ * before the queued `pr_closed` is reduced. The new phase has no implementation
+ * artifact yet, so the stale spec closure passed unscoped and the universal
+ * handler filed a human-intervention escalation against correct behaviour. An
+ * escalation that fires on the happy path trains everyone to ignore
+ * escalations. A queued `merge_conflict` from the same spec PR was the same
+ * hole with a dispatch on the end of it.
  */
 function belongsToThisPhase(
   entity: ConductorEntity,
@@ -85,7 +100,10 @@ function belongsToThisPhase(
     artifact && artifact.hostedAt.type === "pr" ? artifact.hostedAt.number : undefined;
 
   const signalPr = signalPullNumber(signal);
-  if (signalPr !== undefined && hostPr !== undefined && hostPr !== signalPr) return false;
+  if (signalPr !== undefined) {
+    if (hostPr === undefined) return signal.kind === "pr_opened";
+    if (hostPr !== signalPr) return false;
+  }
 
   if (signal.kind === "ci_concluded" && hostPr !== undefined) {
     const pr = world.pullRequests[hostPr];

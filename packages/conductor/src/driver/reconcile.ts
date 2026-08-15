@@ -189,6 +189,22 @@ export function reconcile(input: ReconcileInput): Signal[] {
     }
     const prior = seen ?? unseenPr(pr, now);
 
+    // — the head moved —
+    // Two of the diffs below read facts that belong to a *commit* rather than
+    // to the PR: the CI conclusion, and the mergeability verdict. For those,
+    // the same value on a new head is not the same fact, and comparing values
+    // alone loses the case the feedback loop most depends on — the head was
+    // red (or conflicting), an agent pushed a repair, and the repair failed
+    // too before the next poll. Nothing appears to move, the cursor then adopts
+    // the new head, the copy agrees with the world, and no later tick can emit
+    // it: the entity waits forever at exactly the moment conductor was supposed
+    // to notice the repair did not work.
+    //
+    // Named once and read twice on purpose. The two guards are one idea, and
+    // when they were written by hand as two conditions the CI one was fixed and
+    // the mergeability one three lines below it was not.
+    const onANewCommit = pr.headSha !== prior.headSha;
+
     // — state moved forward —
     if (STATE_RANK[pr.state] > STATE_RANK[prior.state]) {
       signals.push({
@@ -229,22 +245,15 @@ export function reconcile(input: ReconcileInput): Signal[] {
     }
 
     // — CI concluded while conductor was not listening —
-    // A conclusion is a fact about a *commit*, not about the PR, so what makes
-    // one news is a new conclusion or a new commit under it. Comparing the
-    // value alone loses the case the feedback loop most depends on: the
-    // previous head failed, an agent pushed a fix, and the fix failed too
-    // before the next poll. Both reads say `failure`, nothing appears to move,
-    // and the cursor then adopts the new head — so the copy agrees with the
-    // world and no later tick can emit it. The issue sits in `awaiting_ci`
-    // forever, at exactly the moment conductor was supposed to notice the fix
-    // did not work.
+    // A conclusion is a fact about a commit, so what makes one news is a new
+    // conclusion or a new commit under it — see `onANewCommit` above for the
+    // failure the second half exists to catch.
     //
     // Still silent on a redundant tick: an unchanged world has both the same
     // conclusion and the same head. And a first observation stays a first
     // observation — `unseenPr` copies the fresh head, so what makes a settled
     // conclusion news there is the `null` prior, not a SHA that never differed.
-    const concludedOnANewCommit =
-      pr.checks !== prior.checks || pr.headSha !== prior.headSha;
+    const concludedOnANewCommit = pr.checks !== prior.checks || onANewCommit;
     if (
       concludedOnANewCommit &&
       (pr.checks === "success" || pr.checks === "failure")
@@ -264,7 +273,16 @@ export function reconcile(input: ReconcileInput): Signal[] {
     }
 
     // — mergeability lost —
-    if (prior.mergeable !== false && pr.mergeable === false) {
+    // A conflict is a fact about a commit too: a head that still conflicts
+    // after `resolveConflict` pushed it is a *failed repair of a different
+    // commit*, not the conflict conductor already dispatched against. Silent,
+    // it strands the PR unmergeable with no tick left that can ask for another
+    // pass. Same `onANewCommit` as the conclusion above, for the same reason.
+    //
+    // A first observation is unaffected: `unseenPr` holds `mergeable: true` and
+    // copies the fresh head, so a first read that already conflicts emits on
+    // the value, exactly as it did before.
+    if ((prior.mergeable !== false || onANewCommit) && pr.mergeable === false) {
       signals.push({
         kind: "merge_conflict",
         entityId,
