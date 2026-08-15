@@ -406,7 +406,7 @@ function childBlockPath(
  * `ctx._withExecutionScope` — opens a scoped child context that drives the
  * unified trace lifecycle; otherwise it runs the block directly (unit-test
  * contexts). The `options.phase`/`signalOverride` thread background dispatch
- * (`"work"` phase, FIX-663 signal) into the descendant scope. The kernel
+ * (`"sideChain"` phase, FIX-663 signal) into the descendant scope. The kernel
  * primitives (`runChild`/`runSideChain`) and the loop/aggregator/rescue paths
  * all dispatch through here; it is the one place a child block is invoked.
  */
@@ -1610,9 +1610,9 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
                 const iterName = `${block.name}[${currentIndex}]`;
                 const path = childBlockPath(ctx, runtime, "forEachSideChain", stepIndex, currentIndex);
                 try {
-                  // Background iterations run in the "work" phase; this flows
+                  // Side-chain iterations run in the "sideChain" phase; this flows
                   // into _blockIdentity.phase and drives the generator's
-                  // position-based default role (work → "trace"). Element is
+                  // position-based default role (sideChain → "trace"). Element is
                   // the iteration's input — stamp it inline (FIX-573 §5).
                   stashInputHint(ctx, { kind: "inline", value: item });
                   const result = await executeBlock(block, item, taskCtx, path, { phase: "sideChain", signalOverride });
@@ -1786,8 +1786,8 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       arg2?: BlockDefinition<any, any> | SideChainOptions,
       arg3?: SideChainOptions
     ): SequencerDefinition<TInput, TOutput, TStateSchema> {
-      // Shapes: work(block) | work(connector, block) | work(block, options) |
-      // work(connector, block, options).
+      // Shapes: sideChain(block) | sideChain(connector, block) |
+      // sideChain(block, options) | sideChain(connector, block, options).
       const shape = resolveCallShape([arg1, arg2, arg3], "sideChain");
       const block = shape.block;
       const connector = shape.connector as ConnectorFn<TOutput, TStepIn> | undefined;
@@ -1797,7 +1797,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
         {
           name: options?.name ?? `sideChain:${block.name}`,
           run: async (value, ctx, runtime, stepIndex) => {
-            // Dispatched in the "work" phase so nested generators apply the
+            // Dispatched in the "sideChain" phase so nested generators apply the
             // trace default; the side-chain block's input is the parent step's
             // output (FIX-573 §5). runSideChain passes the value through.
             const path = childBlockPath(ctx, runtime, "sideChain", stepIndex);
@@ -1818,7 +1818,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       arg3?: BlockDefinition<any, any> | SideChainOptions,
       arg4?: SideChainOptions
     ): SequencerDefinition<TInput, TOutput, TStateSchema> {
-      // Shapes mirror work(), prefixed by a boolean/predicate condition.
+      // Shapes mirror sideChain(), prefixed by a boolean/predicate condition.
       const shape = resolveCallShape([arg2, arg3, arg4], "sideChain");
       const block = shape.block;
       const connector = shape.connector as ConnectorFn<TOutput, TStepIn> | undefined;

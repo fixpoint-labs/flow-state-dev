@@ -1,5 +1,5 @@
 /**
- * FIX-554 — request-scoped background work pool.
+ * FIX-554 — request-scoped side-chain pool.
  *
  * Verifies that `.sideChain()` tasks dispatched inside an inner sequencer no
  * longer block the parent's next step. Two parallel branches each call

@@ -130,10 +130,10 @@ export type RunSideChainResult = {
  * Dispatch one child block as fire-and-forget side-chain work.
  *
  * Applies the connector, stashes the sequential input hint, runs the block in
- * the `"work"` phase under the background signal (so the task tree survives
+ * the `"sideChain"` phase under the side-chain signal (so the task tree survives
  * transport teardown — FIX-663), and registers the in-flight promise with the
  * side-chain pool via `dispatchSideChainTask`. Returns the upstream value unchanged;
- * background dispatch never rewrites the running output descriptor.
+ * side-chain dispatch never rewrites the running output descriptor.
  */
 export async function runSideChain(
   ctx: BlockContext,

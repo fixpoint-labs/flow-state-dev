@@ -513,7 +513,7 @@ export interface BlockContext<
      * this scope emits as `OutputItem.taskId`.
      */
     taskId?: string;
-    /** Execution phase — "work" for background scopes, "main" otherwise. */
+    /** Execution phase — "sideChain" for side-chain scopes, "main" otherwise. */
     phase?: "main" | "sideChain";
     /**
      * Structural path to this block within the request's execution tree.

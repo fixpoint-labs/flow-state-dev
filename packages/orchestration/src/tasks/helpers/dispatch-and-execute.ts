@@ -212,7 +212,7 @@ function workerCtx(
             // background dispatch arrives here with the request's background
             // signal as its `signalOverride`; composing the foreground into
             // that would put the transport signal back into work that exists
-            // to outlive transport teardown. So a `"work"` scope is composed
+            // to outlive transport teardown. So a `"sideChain"` scope is composed
             // with the raw lease signal and a main scope with the foreground.
             const isSideChain = parent.phase === "sideChain";
             const extra = isSideChain ? leaseLost : foreground;
