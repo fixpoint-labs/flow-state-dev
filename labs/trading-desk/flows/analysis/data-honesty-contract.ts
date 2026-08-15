@@ -2,14 +2,23 @@
  * The data-honesty contract stamp (FIX-1063) — a pure browser-safe leaf so the
  * flow, the Summary components, and the artifacts bundle all read one copy.
  *
- * WHAT IT IS. A **version marker for legacy-report detection**: it answers "was
- * this report produced before or after the FIX-1063 producer fixes", so an old
- * report can be marked as unvouchable.
+ * WHAT IT IS. A **version marker for legacy-report detection**: it records which
+ * round of PRODUCER CODE a report was generated under, so an old report can be
+ * marked as unvouchable.
  *
  * WHAT IT IS NOT. **NOT a certification that every figure in the report was
  * observed.** Its scope is exactly the surfaces enumerated below. Widening it
  * back into a blanket "nothing here was fabricated" claim would be the same
  * unfalsifiable over-claim this issue exists to stop.
+ *
+ * IT VERSIONS THE CODE, NOT THE DATA. The stamp records which producer code
+ * ran — not the vintage of the data that code ran on. The two come apart in
+ * FIXTURE mode: `resolveToolPayload` returns `loadFixture(...)` and the adapters
+ * never execute, so a snapshot recorded before these fixes replays its pre-fix
+ * zeros under a current stamp. Literally accurate, and still exactly the kind of
+ * report this marker exists to flag. The corpus carries no version of its own;
+ * adding one is tracked in FIX-1141. Live and record runs DO execute the current
+ * producers, so the stamp means there what it says.
  *
  * THE SURFACES IT COVERS. The list is what makes the claim checkable, so a
  * reader may trust every line of it. Before adding an entry, go to the surface
