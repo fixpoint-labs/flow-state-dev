@@ -1,24 +1,16 @@
 /**
  * FIX-780 — a flat call's price levels are named as monitoring levels, never as
- * a stop and a target.
+ * a stop and a target, on every surface that shows one.
  *
- * The defect these tests exist to catch: a run that decided NOT to take a
- * position still wrote its two watch levels into `stopPrice` / `targetPrice`, so
- * a "Hold, no position" report read `stop 320 · target 195` — a short setup with
- * the stop above the target — on the screen, on the chart, and in the prompt the
- * risk officers and the portfolio manager read. Ten of the thirteen stored runs
- * are flat, so that was the common report, not the rare one.
+ * The negative assertions carry as much weight as the positive ones: naming a
+ * level correctly and ALSO still emitting the old name would leave the
+ * contradiction on the page.
  *
- * Every assertion below is written so a CORRECT implementation satisfies it and
- * the pre-fix behaviour fails it. The negative assertions carry as much weight
- * as the positive ones: naming a level correctly and ALSO still emitting the old
- * name would leave the contradiction on the page.
- *
- * BP-030 note, and it is the load-bearing one: a record written before FIX-780
- * has no `reassessBelowPrice` / `invalidateAbovePrice` KEYS at all. That is a
- * different input from an explicit `null`, and only the missing-key shape
- * reproduces a `=== null` guard bug. The legacy cases below use object literals
- * that genuinely omit the keys, and one test pins that both shapes read alike.
+ * BP-030, and it is the load-bearing constraint here: a legacy record has no
+ * `reassessBelowPrice` / `invalidateAbovePrice` KEYS at all. That is a different
+ * input from an explicit `null`, and only the missing-key shape reproduces a
+ * `=== null` guard bug — so the legacy cases below use object literals that
+ * genuinely omit the keys, and one test pins that both shapes read alike.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -44,15 +36,11 @@ import type { TradeLevels } from "../components/summary/aggregate";
 /**
  * Build a memo the way the system actually stores one — THROUGH the schema.
  *
- * The stance-less test below used to pass an object literal that simply omitted
- * `direction`, and that shape is unreachable: `memoStateSchema` declares
- * `direction` as `.nullable().default(null)`, so every parsed or persisted memo
- * carries `direction: null`, never `undefined`. A fixture composed alongside the
- * artifact instead of derived from it let a guard written against `undefined`
- * pass a test while being false for every real memo.
- *
- * Deriving the fixture from the schema is what makes the pass condition trace to
- * the stored shape rather than to the test author's memory of it (BP-030).
+ * `memoStateSchema` declares `direction` as `.nullable().default(null)`, so a
+ * stance-less memo carries `direction: null`, never `undefined`. A hand-written
+ * literal that omits the key is an unreachable shape, and it lets a guard
+ * written against `undefined` pass here while being false for every real memo
+ * (BP-030).
  */
 function persistedMemo(fields: Record<string, unknown>) {
   return memoStateSchema.parse({
@@ -101,9 +89,8 @@ describe("buildTradeLevelModel — the one rule every surface names levels by", 
       { kind: "monitoring", label: "reassess below", value: 195 },
       { kind: "monitoring", label: "invalidate above", value: 320 },
     ]);
-    // The pre-fix behaviour is exactly this pair carrying trade names. A
-    // renderer that still emitted either word on a flat call would re-create the
-    // "stop above target on a Hold" line this issue exists to remove.
+    // A renderer that still emitted either word on a flat call re-creates the
+    // "stop above target on a Hold" contradiction.
     const names = model.rows.map((r) => r.label);
     expect(names).not.toContain("stop");
     expect(names).not.toContain("target");
@@ -142,18 +129,16 @@ describe("buildTradeLevelModel — the one rule every surface names levels by", 
   it("shows a pre-fix flat record's numbers unlabeled and marked, never re-read as monitoring levels", () => {
     const model = buildTradeLevelModel(FLAT_PRE_FIX);
     expect(model.predatesLabelingFix).toBe(true);
-    // Ascending, and unnamed. Nothing in the old record says which number was
-    // the "look again" level and which was the "we were wrong" level, so any
-    // name — including the correct-sounding new ones — would be a guess
-    // presented as a stored fact.
+    // Ascending, and unnamed. Nothing in a legacy record says which number was
+    // which, so any name — including the correct-sounding new ones — would be a
+    // guess presented as a stored fact.
     expect(model.rows).toEqual([
       { kind: "legacy", label: "", value: 195 },
       { kind: "legacy", label: "", value: 320 },
     ]);
     // Specifically NOT mapped onto the new names by position: the stored
-    // `stopPrice` was 320 and `targetPrice` 195, so a positional re-read would
-    // name 320 "reassess below" — the exact inversion that made the old report
-    // nonsense in the first place.
+    // `stopPrice` is 320 and `targetPrice` 195, so a positional re-read would
+    // name 320 "reassess below" — an inversion.
     expect(model.rows.map((r) => r.label)).toEqual(["", ""]);
   });
 
@@ -262,9 +247,8 @@ describe("levelsForStance — the commit gate that makes the stance binding", ()
   });
 
   it("drops a flat run's wrongly-filed levels instead of re-filing them under the monitoring names", () => {
-    // This is the whole of decision 4. Re-filing 320 as "invalidate above"
-    // would look like the feature working while asserting an intent the model
-    // never expressed — the same dishonesty one layer down.
+    // Decision 4: re-filing 320 as "invalidate above" would look like the
+    // feature working while asserting an intent the model never expressed.
     expect(
       levelsForStance("flat", { stopPrice: 320, targetPrice: 195 }),
     ).toEqual({
@@ -301,9 +285,9 @@ describe("withDerivedLevelMetrics — the stored metrics map is not exempt", () 
   // pin that it is re-derived from the typed fields wherever it is read.
 
   it("strips a legacy flat record's stop and target rather than passing them on", () => {
-    // The defect: a resumed pre-fix session handed the risk officers
-    // `stop=$320, target=$195` — the exact mislabeled pair — and, two lines
-    // later, a note saying the desk cannot tell which level is which.
+    // A resumed legacy session must not hand the risk officers `stop=$320,
+    // target=$195` and, two lines later, a note saying the desk cannot tell
+    // which level is which.
     expect(
       withDerivedLevelMetrics(FLAT_PRE_FIX, {
         rating: "Hold",
@@ -366,11 +350,11 @@ describe("withDerivedLevelMetrics — the stored metrics map is not exempt", () 
 });
 
 describe("tradeLevelChips — the PM hero's level chips on a REOPENED report", () => {
-  // The read path. `withDerivedLevelMetrics` corrects the PM's stored metrics at
+  // The read path. `withDerivedLevelMetrics` corrects the stored metrics at
   // COMMIT, and opening a historical report never runs a commit — so the hero
-  // used to render whatever keys the persisted map carried. On a pre-FIX-780
-  // flat record those keys are `stop` and `target`, which is a fabricated
-  // stop-loss on a stand-aside call, shown on the decision surface a user reads.
+  // must not render whatever keys the persisted map carried. On a legacy flat
+  // record those keys are `stop` and `target`: a fabricated stop-loss on a
+  // stand-aside call, on the decision surface a user reads.
 
   it("captions a legacy flat record's numbers instead of naming either one", () => {
     expect(tradeLevelChips(buildTradeLevelModel(FLAT_PRE_FIX))).toEqual([
@@ -414,10 +398,10 @@ describe("tradeLevelChips — the PM hero's level chips on a REOPENED report", (
 
 describe("withDisplayLevelMetrics — a memo doc opened from a HISTORICAL report", () => {
   // The fifth surface. The trader memo renders through the generic
-  // ThesisHeader/ThesisMetrics chip grid, and the pre-FIX-780 trader schema
-  // required `{direction, size, stop, target, conviction}` on EVERY stance — so
-  // reopening a stand-aside report and clicking the trader memo showed
-  // `stop $320 / target $195`. There is no commit on that path to correct it.
+  // ThesisHeader/ThesisMetrics chip grid, and the legacy trader schema required
+  // `{direction, size, stop, target, conviction}` on EVERY stance — so a
+  // reopened stand-aside report must not show `stop $320 / target $195`. There
+  // is no commit on that path to correct it.
 
   it("captions a legacy flat trader row instead of showing stop and target", () => {
     const out = withDisplayLevelMetrics(FLAT_PRE_FIX, {
@@ -561,9 +545,8 @@ describe("withoutLevelMetrics — the PM memo carries no price levels at all", (
 describe("formatMemoBlock — the composition seam every memo's metrics pass through", () => {
   it("does not hand a resumed pre-fix proposal a stop and a target", () => {
     // The `tradeProposal` capability composes this block ABOVE the corrected
-    // extension block, so leaving it alone made the prompt contradict itself
-    // two lines apart — the exact failure this PR's own description predicted
-    // for the trader's row and closed only for the new path.
+    // extension block, so leaving it uncorrected makes the prompt contradict
+    // itself two lines apart.
     const out = formatMemoBlock("Trade proposal", {
       headline: "Stand aside on NVDA.",
       rating: "flat",
@@ -593,10 +576,9 @@ describe("formatMemoBlock — the composition seam every memo's metrics pass thr
     // metrics is a level name — this rule must not touch them.
     //
     // Built through `memoStateSchema` deliberately: a stance-less memo is
-    // `direction: null`, NOT a memo missing the key. The earlier literal omitted
-    // `direction` entirely, which no parse and no store ever produces, and that
-    // is precisely why this test passed while the guard was false for every real
-    // analyst, lens, and research memo.
+    // `direction: null`, NOT a memo missing the key. A literal that omits
+    // `direction` is a shape no parse and no store ever produces, and it would
+    // let an absence-test guard pass here while being false for every real memo.
     const out = formatMemoBlock(
       "Fundamentals",
       persistedMemo({

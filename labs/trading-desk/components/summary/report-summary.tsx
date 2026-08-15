@@ -40,6 +40,7 @@ import type { PriceHistorySlice } from "@/flows/analysis/price-history-resource"
 import {
   buildTradeLevelModel,
   LEGACY_LEVELS_CAPTION,
+  storedTradeLevelsFrom,
   type TradeLevelKind,
 } from "@/flows/analysis/lib/trade-levels";
 import { buildReportSummary } from "./aggregate";
@@ -288,13 +289,7 @@ function PricePanel({
   // cannot call a level something the list beside it does not. Only the colour
   // is the chart's own, keyed off `kind`. A pre-fix flat record's levels are
   // drawn unlabeled — the numbers are real, the names are not recoverable.
-  const levelModel = buildTradeLevelModel({
-    direction: trade?.direction ?? null,
-    stopPrice: trade?.stopPrice,
-    targetPrice: trade?.targetPrice,
-    reassessBelowPrice: trade?.reassessBelowPrice,
-    invalidateAbovePrice: trade?.invalidateAbovePrice,
-  });
+  const levelModel = buildTradeLevelModel(storedTradeLevelsFrom(trade ?? {}));
   const levels: PriceOverlayLevel[] = levelModel.rows.map((row) => ({
     label: row.label,
     value: row.value,
@@ -353,13 +348,7 @@ function TradeLevelsList({
   // either one would be a guess wearing a stored value's authority. The
   // disclosure itself belongs to the report's ONE shared provenance notice,
   // never to a second marker down here.
-  const levels = buildTradeLevelModel({
-    direction: trade?.direction ?? null,
-    stopPrice: trade?.stopPrice,
-    targetPrice: trade?.targetPrice,
-    reassessBelowPrice: trade?.reassessBelowPrice,
-    invalidateAbovePrice: trade?.invalidateAbovePrice,
-  });
+  const levels = buildTradeLevelModel(storedTradeLevelsFrom(trade ?? {}));
   if (levels.predatesLabelingFix) {
     rows.push({
       label: LEGACY_LEVELS_CAPTION,

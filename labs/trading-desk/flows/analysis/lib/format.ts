@@ -22,6 +22,7 @@ import {
   formatLegacyLevels,
   hasTradeStance,
   PRE_FLAT_STANCE_LABELING_FIX_REASON,
+  storedTradeLevelsFrom,
   withDerivedLevelMetrics,
 } from "./trade-levels";
 import type { ThesisRecord } from "@/domain/portfolio/schema/thesis-schema";
@@ -62,13 +63,7 @@ export function formatMemoBlock(label: string, memo: any): string {
     // deliberately publishes.
     const metrics = hasTradeStance(memo.direction)
       ? withDerivedLevelMetrics(
-          {
-            direction: memo.direction,
-            stopPrice: memo.stopPrice,
-            targetPrice: memo.targetPrice,
-            reassessBelowPrice: memo.reassessBelowPrice,
-            invalidateAbovePrice: memo.invalidateAbovePrice,
-          },
+          storedTradeLevelsFrom(memo),
           memo.metrics as Record<string, string>,
         )
       : (memo.metrics as Record<string, string>);
@@ -113,13 +108,7 @@ export function formatTradeProposalExtensions(memo: any): string {
   const lines: string[] = [];
   if (memo.direction != null) lines.push(`Direction: ${memo.direction}`);
   if (memo.sizePct != null) lines.push(`Size (% NAV): ${memo.sizePct}`);
-  const levels = buildTradeLevelModel({
-    direction: memo.direction ?? null,
-    stopPrice: memo.stopPrice,
-    targetPrice: memo.targetPrice,
-    reassessBelowPrice: memo.reassessBelowPrice,
-    invalidateAbovePrice: memo.invalidateAbovePrice,
-  });
+  const levels = buildTradeLevelModel(storedTradeLevelsFrom(memo));
   if (levels.predatesLabelingFix) {
     // Reachable when a session written before FIX-780 is resumed and re-runs a
     // later phase against its stored trader memo. Nothing in that memo says

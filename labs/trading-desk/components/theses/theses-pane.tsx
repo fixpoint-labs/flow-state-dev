@@ -78,6 +78,7 @@ import { memosCollection } from "@/flows/analysis/resources";
 import {
   buildTradeLevelModel,
   hasTradeStance,
+  storedTradeLevelsFrom,
   withDisplayLevelMetrics,
 } from "@/flows/analysis/lib/trade-levels";
 import type { ClientDataOf } from "@flow-state-dev/core";
@@ -427,16 +428,7 @@ function MemoDoc({
     const metrics = data?.metrics ?? null;
     if (metrics === null) return null;
     if (!hasTradeStance(data?.direction)) return metrics;
-    return withDisplayLevelMetrics(
-      {
-        direction: data.direction,
-        stopPrice: data.stopPrice,
-        targetPrice: data.targetPrice,
-        reassessBelowPrice: data.reassessBelowPrice,
-        invalidateAbovePrice: data.invalidateAbovePrice,
-      },
-      metrics,
-    );
+    return withDisplayLevelMetrics(storedTradeLevelsFrom(data), metrics);
   }, [data]);
 
   if (status === "unavailable" || status === "pending") {
@@ -548,13 +540,7 @@ function PmHeroWithScenarios({
   const levels = useMemo(() => {
     const td = traderItem?.clientData ?? null;
     if (td === null) return null;
-    return buildTradeLevelModel({
-      direction: td.direction ?? null,
-      stopPrice: td.stopPrice,
-      targetPrice: td.targetPrice,
-      reassessBelowPrice: td.reassessBelowPrice,
-      invalidateAbovePrice: td.invalidateAbovePrice,
-    });
+    return buildTradeLevelModel(storedTradeLevelsFrom(td));
   }, [traderItem]);
   const scenarioStrip = useMemo(() => {
     if (scenarioItem === null) return null;

@@ -42,6 +42,7 @@ import {
 } from "../../decision-snapshot-resource";
 import { clampRatingToBand } from "../../lib/rating-engine";
 import {
+  hasTradeStance,
   levelsForStance,
   withoutLevelMetrics,
   type TradeStance,
@@ -131,6 +132,12 @@ export const commitPortfolioManagerMemo = handler({
         }
       | undefined;
     const traderDirection = traderState?.direction;
+    // Narrowed ONCE here so the stance is a `TradeStance` everywhere below — the
+    // snapshot's `direction` field and the `levelsForStance` gate read the same
+    // value, and neither needs a cast.
+    const traderStance: TradeStance = hasTradeStance(traderDirection)
+      ? traderDirection
+      : null;
 
     // Lineage enforcement: every dependency the trader named must be
     // dispositioned by the PM — carried forward as a live judgment or
@@ -501,12 +508,7 @@ export const commitPortfolioManagerMemo = handler({
       finalRating, // post-clamp value computed above
       decisionConfidence: decision.decisionConfidence,
       decisionSummary: decision.decisionSummary,
-      direction:
-        traderDirection === "long" ||
-        traderDirection === "short" ||
-        traderDirection === "flat"
-          ? traderDirection
-          : null,
+      direction: traderStance,
       entryPrice: null, // TODO(outcome-tracking): source from price-history resource
       // FIX-780 — the four level fields pass through the WRITE half of the rule
       // (`levelsForStance`) rather than being mirrored verbatim, because THIS IS
@@ -531,15 +533,12 @@ export const commitPortfolioManagerMemo = handler({
       // which number was which, so re-filing them as `reassessBelowPrice` would
       // be the same guess wearing a stored value's authority that the legacy
       // display rule already refuses.
-      ...levelsForStance(
-        (traderDirection ?? null) as TradeStance,
-        {
-          stopPrice: traderState?.stopPrice,
-          targetPrice: traderState?.targetPrice,
-          reassessBelowPrice: traderState?.reassessBelowPrice,
-          invalidateAbovePrice: traderState?.invalidateAbovePrice,
-        },
-      ),
+      ...levelsForStance(traderStance, {
+        stopPrice: traderState?.stopPrice,
+        targetPrice: traderState?.targetPrice,
+        reassessBelowPrice: traderState?.reassessBelowPrice,
+        invalidateAbovePrice: traderState?.invalidateAbovePrice,
+      }),
       sizePct: traderState?.sizePct ?? null,
       holdingPeriod: traderState?.holdingPeriod ?? null,
       // Risk-mandate decision (FIX-752) — the FIX-614 sensitivity-benchmark

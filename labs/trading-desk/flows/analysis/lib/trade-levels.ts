@@ -1,36 +1,26 @@
 /**
- * The ONE rule that decides what a stored decision's price levels are called
- * (FIX-780), and the stance gate that decides which of them a run may store.
+ * The ONE rule that decides what a stored decision's price levels are called,
+ * and the stance gate that decides which of them a run may store.
  *
- * A directional call records a **stop** and a **target**. A flat call — the desk
- * deciding not to take a position — records the level below which it would
- * reconsider and the level above which standing aside is proven wrong, and
- * records no stop and no target, because there is no position to stop out of.
- * Before this rule existed a flat run wrote its two monitoring levels into
- * `stopPrice` / `targetPrice`, so a "Hold, no position" report also read
- * "stop $320 / target $195" — a short setup with the stop above the target.
+ * Which pair belongs to which stance:
  *
- * Two exported rules, deliberately in one file because they are two halves of
- * the same knowledge (which pair belongs to which stance):
+ *  - **directional** (long / short) — a `stop` and a `target`.
+ *  - **flat** (no position taken) — a `reassess below` and an `invalidate
+ *    above`, and NO stop and NO target: there is no position to stop out of.
  *
- *  - {@link levelsForStance} — the WRITE half. Applied in the trader's commit
- *    handler: the stance decides which pair survives, so a non-compliant run
- *    loses the numbers it filled in rather than storing them under names they
- *    were not written as (spec §6 decision 4).
- *  - {@link buildTradeLevelModel} — the READ half. Every surface that shows a
- *    level reads it: the Summary's levels list, the price-overlay legend, the
- *    decision one-liner, and the trade-proposal prompt block the risk officers
- *    and the PM reason over (spec §6 decision 2). A fifth surface must read it
- *    too rather than spell the labels a third way.
+ * Two exported halves of that one rule, deliberately in one file:
+ * {@link levelsForStance} is the WRITE half (applied at the trader's commit),
+ * {@link buildTradeLevelModel} the READ half. Every surface that shows a level
+ * reads the READ half rather than spelling a label itself.
  *
- * Pure and dependency-free by design — it is imported from both the server-side
- * flow (`lib/format.ts`, the trader writer) and the client bundle
- * (`components/summary/*`), the `lib/rating-engine` precedent. No React, no zod,
+ * Pure and dependency-free by design — imported from both the server-side flow
+ * and the client bundle (the `lib/rating-engine` precedent). No React, no zod,
  * no `@flow-state-dev/core`.
  *
- * BP-030: records written before FIX-780 carry no monitoring keys at all, so
- * every level input is read as `number | null | undefined` and tested with
- * `== null`. A missing key and an explicit null are the same absence here.
+ * BP-030: records written before the monitoring fields existed carry no
+ * monitoring keys at all, so every level input is read as
+ * `number | null | undefined` and tested with `== null`. A missing key and an
+ * explicit null are the same absence here.
  */
 
 /** The stance a stored decision recorded. Null on a run that never reached the
@@ -41,18 +31,11 @@ export type TradeStance = "long" | "short" | "flat" | null;
  * Does this memo record a stance at all?
  *
  * The guard every caller needs before applying a level rule, and it must be
- * written POSITIVELY — "is one of the three stances" — never as an absence test.
- * `memoStateSchema` declares `direction` as `.nullable().default(null)`, so a
- * parsed or persisted memo that records no stance carries `null`, never
- * `undefined`. A guard spelled `direction === undefined` is therefore false for
- * every real memo, and silently runs the level rule over the analyst, lens, and
- * research memos, whose free-form `metrics` map legitimately contains keys named
- * `target` and `stop` (the bull thesis REQUIRES both — see
- * `agents/research/generators.ts`). Those entries are then dropped as stale
- * level copies, discarding the memo's quantitative case.
- *
- * Named here because this file is the single owner of what a stance is, and
- * because the absence-test form is the mistake this rule keeps inviting.
+ * written POSITIVELY — never as an absence test. `direction` is
+ * `.nullable().default(null)`, so a stance-less memo carries `null` and a
+ * `=== undefined` guard would run the level rule over the analyst, lens, and
+ * research memos, whose free-form `metrics` legitimately contain `target` and
+ * `stop` keys (the bull thesis requires both).
  */
 export function hasTradeStance(
   direction: unknown,
@@ -63,10 +46,10 @@ export function hasTradeStance(
 /**
  * The four stored level fields plus the stance that says which pair is real.
  *
- * The level fields are optional AND nullable: a decision record written before
- * FIX-780 has no `reassessBelowPrice` / `invalidateAbovePrice` keys, so reads
- * see `undefined` rather than `null` (BP-030 — the missing-key shape is the
- * legacy shape, and it is the majority of the stored corpus).
+ * The level fields are optional AND nullable: a legacy decision record has no
+ * `reassessBelowPrice` / `invalidateAbovePrice` keys, so reads see `undefined`
+ * rather than `null` (BP-030 — the missing-key shape is the legacy shape, and it
+ * is the majority of the stored corpus).
  */
 export type StoredTradeLevels = {
   direction: TradeStance;
@@ -80,6 +63,31 @@ export type StoredTradeLevels = {
   invalidateAbovePrice?: number | null;
 };
 
+/**
+ * Pack a memo, snapshot, or aggregate row into {@link StoredTradeLevels}.
+ *
+ * The ONE way callers assemble the input to the read half. Every surface holds
+ * these five fields on some wider record, and hand-assembling the literal at
+ * each one is how a surface comes to read three of the four levels. `direction`
+ * is normalized through {@link hasTradeStance}, so a caller passes its record
+ * straight in without an `?? null` or a cast.
+ */
+export function storedTradeLevelsFrom(source: {
+  direction?: unknown;
+  stopPrice?: number | null;
+  targetPrice?: number | null;
+  reassessBelowPrice?: number | null;
+  invalidateAbovePrice?: number | null;
+}): StoredTradeLevels {
+  return {
+    direction: hasTradeStance(source.direction) ? source.direction : null,
+    stopPrice: source.stopPrice,
+    targetPrice: source.targetPrice,
+    reassessBelowPrice: source.reassessBelowPrice,
+    invalidateAbovePrice: source.invalidateAbovePrice,
+  };
+}
+
 /** What kind of level a row is. Consumers map this to presentation (the chart
  *  picks a colour off it); the *name* is always {@link TradeLevelRow.label}, so
  *  no surface invents its own spelling. */
@@ -90,12 +98,11 @@ export type TradeLevelRow = {
   kind: TradeLevelKind;
   /**
    * What every surface calls this level. Canonical lower-case; a surface with a
-   * different house style (the prompt block capitalises its field names) may
-   * re-case it, but must not rename it.
+   * different house style may re-case it, but must not rename it.
    *
-   * Empty string for `kind: "legacy"` — a pre-FIX-780 flat record does not
-   * record which of its two numbers was which, and naming one would be a guess
-   * presented as a record (spec §6 decision 3).
+   * Empty string for `kind: "legacy"` — a legacy flat record does not record
+   * which of its two numbers was which, and naming one would be a guess
+   * presented as a record.
    */
   label: string;
   value: number;
@@ -104,42 +111,39 @@ export type TradeLevelRow = {
 /** The named levels to show for one stored decision. */
 export type TradeLevelModel = {
   /** The levels to show, in display order. Empty when the record has none —
-   *  surfaces show nothing rather than a fabricated range (spec §6 decision 4). */
+   *  surfaces show nothing rather than a fabricated range. */
   rows: TradeLevelRow[];
   /**
-   * True for a flat record written before FIX-780: it carries trade levels and
-   * no monitoring levels, so its two numbers are shown unlabeled. Detection is
-   * data-shape-based and needs no version stamp.
+   * True for a legacy flat record: it carries trade levels and no monitoring
+   * levels, so its two numbers are shown unlabeled. Detection is by data SHAPE
+   * and needs no version stamp.
    *
-   * This flag does NOT render anything itself. It is the input to the report's
-   * ONE shared provenance notice — see {@link PRE_FLAT_STANCE_LABELING_FIX_REASON}.
+   * Renders NOTHING itself. It is the input to the report's one shared
+   * provenance notice — see {@link PRE_FLAT_STANCE_LABELING_FIX_REASON}.
    */
   predatesLabelingFix: boolean;
 };
 
 // The canonical names of a flat run's two monitoring levels. Deliberately NOT
-// exported: a consumer reads the name off the row it is rendering, so there is
-// no call site that needs to say the word itself. That is the guarantee.
+// exported: a consumer reads the name off the row it is rendering, so no call
+// site needs to say the word itself. That is the guarantee.
 const REASSESS_BELOW_LABEL = "reassess below";
 const INVALIDATE_ABOVE_LABEL = "invalidate above";
 
 /**
- * What a pre-FIX-780 record's levels are called COLLECTIVELY. There is no name
- * for either one — the caption names the pair, which is all the record supports.
+ * What a legacy record's levels are called COLLECTIVELY. There is no name for
+ * either one — the caption names the pair, which is all the record supports.
  */
 export const LEGACY_LEVELS_CAPTION = "levels recorded";
 
 /**
- * What a reader is told about a pre-FIX-780 record's levels — ONE ENTRY in the
+ * What a reader is told about a legacy record's levels — ONE ENTRY in the
  * report's shared provenance-notice reason list, never a marker of its own.
  *
- * `ReportProvenanceNotice` (FIX-1063, `components/summary/`) is the single
- * report-level "this predates a fix" banner, and it was built to carry exactly
- * this case: it takes a list of reasons so a later fix adds an entry rather
- * than a second banner. Two stacked markers read worse to a user than either
- * alone, and they stack on precisely the reports a reader already has least
- * reason to trust. So nothing in this change renders a notice — it produces
- * `predatesLabelingFix` and this string, and the report surface appends it.
+ * `ReportProvenanceNotice` is the single report-level "this predates a fix"
+ * banner and takes a LIST of reasons, so nothing here renders a notice: this
+ * file produces `predatesLabelingFix` and this string, and the report surface
+ * appends it. Never add a second marker.
  *
  * Phrased as a statement about the report, matching `PRE_DATA_HONESTY_FIX_REASON`.
  */
@@ -155,11 +159,9 @@ function level(value: number | null | undefined): number | null {
 /**
  * Collapse rows that sit at the same price into one row, joining their names.
  *
- * A flat record whose two monitoring levels are equal describes one decision
- * line, not a range — there is nothing to straddle, so it reads as one row
- * (spec §9). Applied only to the flat branches: a directional record's stop and
- * target render as two rows exactly as they did before FIX-780, even in the
- * degenerate case where they coincide.
+ * Two monitoring levels at the same price describe one decision line, not a
+ * range. Applied only to the flat branches: a directional stop and target render
+ * as two rows even in the degenerate case where they coincide.
  */
 function collapseEqual(rows: TradeLevelRow[]): TradeLevelRow[] {
   const collapsed: TradeLevelRow[] = [];
@@ -184,17 +186,15 @@ function collapseEqual(rows: TradeLevelRow[]): TradeLevelRow[] {
  *
  * Three cases, in the order they are decided:
  *
- *  1. **Flat with monitoring levels** — the post-fix flat record. Shows the one
- *     or two it has, labeled. A missing partner is left missing; nothing is
- *     inferred from the one that is present.
- *  2. **Flat with only trade levels** — the pre-fix record (`predatesLabelingFix`).
- *     Shows the numbers unlabeled, in ascending order: presenting them in their
- *     stored `stop, target` order would leak the old field identity by position,
- *     which is the same guess-as-record the labels themselves refuse to make.
- *  3. **Anything else** — the directional path, unchanged from before FIX-780.
- *     Monitoring levels on a directional record are ignored rather than shown
- *     under a name the stance cannot carry (the read-side mirror of
- *     {@link levelsForStance}).
+ *  1. **Flat with monitoring levels** — shows the one or two it has, labeled. A
+ *     missing partner is left missing; nothing is inferred from the one present.
+ *  2. **Flat with only trade levels** — the legacy record
+ *     (`predatesLabelingFix`). Shows the numbers unlabeled, in ASCENDING order:
+ *     their stored `stop, target` order would leak the old field identity by
+ *     position, which is the same guess-as-record the labels refuse to make.
+ *  3. **Anything else** — the directional path. Monitoring levels on a
+ *     directional record are ignored rather than shown under a name the stance
+ *     cannot carry (the read-side mirror of {@link levelsForStance}).
  *
  * A flat record carrying BOTH pairs is read as case 1: it has stance-correct
  * levels, so the trade pair is the part that does not belong.
@@ -248,17 +248,13 @@ export function buildTradeLevelModel(
 }
 
 /**
- * The ONE way a pre-FIX-780 record's unlabeled levels are captioned, as a single
+ * The ONE way a legacy record's unlabeled levels are captioned, as a single
  * segment: `levels recorded: 195, 320`.
  *
- * Both surfaces that show a legacy record read this — the decision one-liner and
+ * Read by both surfaces that show a legacy record — the decision one-liner and
  * the trade-proposal prompt block — so the screen and the desk's own prompt
  * cannot caption the same two numbers differently. Only `formatValue` varies
- * (the prompt writes `$195`, the screen writes `195`); the caption word and the
- * join are the shared part, which is the part that would otherwise drift.
- *
- * A surface with a different house style may re-case the result, the same
- * latitude {@link TradeLevelRow.label} grants — but must not re-word it.
+ * (the prompt writes `$195`, the screen writes `195`).
  */
 export function formatLegacyLevels(
   rows: readonly TradeLevelRow[],
@@ -269,20 +265,13 @@ export function formatLegacyLevels(
 
 /**
  * The level entries of the trader memo's display `metrics` row, derived from the
- * typed level fields through {@link buildTradeLevelModel} rather than taken from
- * the model's own metric strings.
+ * typed level fields rather than taken from the model's own metric strings.
  *
- * The `metrics` row is rendered as `key=value` pairs into the trade-proposal
- * prompt block that the risk officers and the PM read, so its KEYS are level
- * names and fall under the same one-rule guarantee as every other surface. They
- * are derived at commit for the same reason the stance gate is: a flat run that
- * writes `stop=$320` in its metrics row contradicts its own typed fields, and
- * the desk can determine which name is right without asking.
+ * The `metrics` row renders as `key=value` pairs into the trade-proposal prompt
+ * block, so its KEYS are level names and fall under the same one rule.
  *
- * Rows with no name (a pre-FIX-780 legacy record) contribute no entry — a
- * `key=value` row cannot show an unlabeled number without inventing a key.
- * Unreachable at commit, where the record being written is post-fix by
- * construction.
+ * A row with no name (a legacy record) contributes no entry — a `key=value` row
+ * cannot show an unlabeled number without inventing a key.
  */
 export function tradeLevelMetricEntries(
   stored: StoredTradeLevels,
@@ -298,9 +287,9 @@ export function tradeLevelMetricEntries(
 /**
  * Every metric key that NAMES a price level — the keys this rule owns.
  *
- * `stop` / `target` are here because they are what a pre-FIX-780 record's
- * `metrics` map persisted, and that stored map is a second, untyped copy of the
- * level names that no schema constrains.
+ * `stop` / `target` are here because they are what a legacy record's `metrics`
+ * map persisted, and that stored map is a second, untyped copy of the level
+ * names that no schema constrains.
  */
 const LEVEL_METRIC_KEYS: ReadonlySet<string> = new Set([
   "stop",
@@ -310,25 +299,17 @@ const LEVEL_METRIC_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Re-derive a stored `metrics` map's level entries from the typed levels.
+ * Re-derive a stored `metrics` map's level entries from the typed levels — the
+ * COMMIT/prompt path.
  *
- * The display `metrics` map is free-form `Record<string, string>` — no schema
- * constrains its keys — so it is a SECOND copy of the level names sitting
- * outside {@link buildTradeLevelModel}'s reach. A record written before FIX-780
- * has `stop` / `target` frozen into it, and it is rendered `key=value` straight
- * into the prompt the risk officers and the PM read. Left alone, a resumed
- * pre-fix session hands them `stop=$320, target=$195` and, two lines later, a
- * note saying the desk cannot tell which level is which.
+ * The map is free-form and no schema constrains its keys, so it is a second copy
+ * of the level names outside {@link buildTradeLevelModel}'s reach. Level keys are
+ * DROPPED and replaced by what the typed fields support; non-level keys pass
+ * through untouched. A legacy flat record supports no name for either number, so
+ * it contributes no entry and the captioned line carries them instead.
  *
- * So the map is not exempt from the one rule: the level keys are DROPPED and
- * replaced by what the typed fields actually support. A legacy flat record
- * supports no name for either number, so it contributes no entry at all and the
- * numbers are carried by the captioned line instead. Non-level keys
- * (`rating`, `size`, `conviction`, …) pass through untouched.
- *
- * Position is preserved: the derived entries land where the first level key sat,
- * so a post-fix record's prompt block reads exactly as it did before. Only a
- * record that was actually mislabeled changes.
+ * Position is preserved: derived entries land where the first level key sat, so
+ * only a record that was actually mislabeled changes.
  */
 export function withDerivedLevelMetrics(
   stored: StoredTradeLevels,
@@ -339,8 +320,8 @@ export function withDerivedLevelMetrics(
 
 /**
  * Drop every level-named key from a stored metrics map and put `derived` where
- * the first one sat. Shared by the two derivations below so the placement rule
- * (and the "the rest are stale copies" rule) is written once.
+ * the first one sat. Shared by the three derivations so the placement rule (and
+ * the "the rest are stale copies" rule) is written once.
  */
 function replaceLevelKeys(
   metrics: Record<string, string> | null | undefined,
@@ -368,21 +349,11 @@ function replaceLevelKeys(
  * Strip every level-named key and put nothing back — for a participant whose
  * memo has no business carrying price levels at all.
  *
- * The portfolio manager is that participant. Its levels were only ever the
- * TRADER's, copied in for display, and the desk supports the two disagreeing —
- * so a PM Hold's metrics could carry a stop and a target, and a PM Buy's could
- * carry monitoring levels. Attributing that at each consumer (the hero renders
- * them under a "trader proposal" label) works only where there is a surface to
- * label; a formatter that serializes the whole memo — `formatMemoBlock`, which
- * feeds the Phase 6 thesis auditor a block headed "Portfolio decision" — has
- * nowhere to put the attribution, and neither will the next consumer.
- *
- * So the levels leave the data instead. The PM memo carries the PM's decision;
- * anything that wants the trader's levels reads the trader memo, which is what
- * every corrected surface now does.
- *
- * Also removes the stale pair from a pre-FIX-780 PM record, whose old schema
- * REQUIRED `metrics.stop` / `metrics.target` on every stance.
+ * The portfolio manager is that participant: its levels were only ever the
+ * TRADER's, copied in for display, and the desk supports the two disagreeing.
+ * Attribution works only where there is a surface to label it on, and
+ * `formatMemoBlock` serializes the whole memo with nowhere to put one — so the
+ * levels leave the PM's data instead, and consumers read the trader memo.
  */
 export function withoutLevelMetrics(
   metrics: Record<string, string> | null | undefined,
@@ -391,18 +362,16 @@ export function withoutLevelMetrics(
 }
 
 /**
- * The metrics map a RENDERED memo doc shows — the read-path twin of
+ * The metrics map a RENDERED memo doc shows — the READ-path twin of
  * {@link withDerivedLevelMetrics}.
  *
- * Same correction, one deliberate difference: a legacy record's two numbers are
- * kept under the shared caption rather than dropped. The prompt path drops them
- * because {@link formatTradeProposalExtensions} discloses the pair separately,
- * with its reason, a line below; a chip grid has no such second line, so
- * dropping them here would silently discard measurements the desk really took.
+ * Same correction, ONE DELIBERATE DIFFERENCE that keeps the two separate: a
+ * legacy record's numbers are kept under the shared caption rather than dropped.
+ * The prompt path can drop them because `formatTradeProposalExtensions`
+ * discloses the pair a line below; a chip grid has no such second line.
  *
  * Needed because a memo doc opened from a HISTORICAL report never runs a commit,
- * so the stored map is whatever the run wrote — and a pre-FIX-780 trader record
- * wrote `stop` / `target` on every stance, flat included.
+ * so the stored map is whatever the run wrote.
  */
 export function withDisplayLevelMetrics(
   stored: StoredTradeLevels,
@@ -422,19 +391,12 @@ export type TradeLevelChip = { key: string; label: string; value: string };
 /**
  * The PM hero's level chips, named by the same rule as every other surface.
  *
- * The hero is the fourth surface to need these, and the first to need them on a
- * READ. The PM's stored `metrics` map cannot supply them: a pre-FIX-780 PM
- * record always carries `stop` / `target` (the old `portfolioDecisionOutputSchema`
- * required both on every stance), and a post-fix DIRECTIONAL record carries the
- * same two keys, correctly derived at commit. The shapes are identical and the
- * meanings are opposite, so the chips are derived from the trader's stance and
- * typed levels instead — the same inputs `withDerivedLevelMetrics` uses at commit.
+ * Derived from the trader's stance and typed levels, never from the PM's stored
+ * `metrics`: a legacy PM record and a post-fix DIRECTIONAL one both carry `stop`
+ * / `target`, so the shapes are identical and the meanings are opposite.
  *
- * A legacy record's numbers are captioned, not suppressed and not renamed: the
- * pair gets a name and neither number does, exactly as the decision one-liner
- * does through {@link formatLegacyLevels}. Suppressing them would discard
- * measurements the desk really took; renaming them would be a guess wearing a
- * stored record's authority.
+ * A legacy record's numbers are captioned, not suppressed and not renamed —
+ * the pair gets a name and neither number does.
  */
 export function tradeLevelChips(
   levels: TradeLevelModel | null,
@@ -460,9 +422,8 @@ export function tradeLevelChips(
  * The non-level fields the trade one-liner shows around its levels.
  *
  * Structural rather than an import of `components/summary/aggregate`'s
- * `TradeLevels`: this leaf is dependency-free by design (it is imported from
- * both the server-side flow and the client bundle), so it describes the shape it
- * needs and lets the aggregate's type satisfy it.
+ * `TradeLevels`: this leaf is dependency-free by design, so it describes the
+ * shape it needs and lets the aggregate's type satisfy it.
  */
 type TradeLineFields = {
   direction: TradeStance;
@@ -475,15 +436,12 @@ type TradeLineFields = {
  * contributes no segment rather than a `—` placeholder, so an empty result means
  * the trader published no levels at all.
  *
- * The level segments are named by {@link buildTradeLevelModel}, never here: this
- * line said "stop 320 · target 195" on a flat, no-position call before that rule
- * existed. A pre-fix record's two numbers collapse into one captioned segment
- * ({@link formatLegacyLevels}), because the record supports a name for the pair
- * and not for either one.
+ * The level segments are named by {@link buildTradeLevelModel}, never here. A
+ * legacy record's two numbers collapse into one captioned segment
+ * ({@link formatLegacyLevels}).
  *
  * Lives beside the rule rather than in the component that renders it: it is a
- * domain formatter over a stored record, and the tests that pin the one-liner's
- * wording should not have to import a React module to reach it.
+ * domain formatter over a stored record.
  */
 export function tradeLineParts(
   trade: TradeLineFields,
@@ -517,15 +475,14 @@ export type StanceGatedLevels = {
  * The WRITE half: keep only the pair of levels the stance can carry.
  *
  * The trader is told in its prompt which pair to produce; this is the desk
- * deciding what it can decide rather than trusting the answer (the
- * `agreesWithTrader` precedent). A flat run keeps the monitoring pair and stores
- * no stop and no target; any other stance does the reverse.
+ * deciding rather than trusting the answer (the `agreesWithTrader` precedent). A
+ * flat run keeps the monitoring pair and stores no stop and no target; any other
+ * stance does the reverse.
  *
- * A run that fills in the wrong pair LOSES those numbers (spec §6 decision 4):
- * the price is that an occasional non-compliant run shows no levels at all,
- * which is honest, where storing a stop on a position the desk did not take is
- * not. The numbers are never re-filed under the other pair's names — nothing in
- * the output says the model meant them that way.
+ * A run that fills in the wrong pair LOSES those numbers, and they are never
+ * re-filed under the other pair's names — nothing in the output says the model
+ * meant them that way. Showing no levels is honest; storing a stop on a position
+ * the desk did not take is not.
  */
 export function levelsForStance(
   stance: TradeStance,

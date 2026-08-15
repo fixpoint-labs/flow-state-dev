@@ -103,56 +103,29 @@ export type PmHeroProps = {
   // predating the gate (the panel is omitted, like the siblings above).
   evidenceDecision: EvidenceDecision | null;
   // FIX-780 — the TRADER's price levels, named from its recorded stance and typed
-  // fields. Rendered under their own "trader proposal" label, never inside the
-  // PM's metric grid. Null when the trader memo is not readable (a run that never
-  // reached Phase 3, or a still-loading resource): no level block rather than the
-  // stored keys, which on a legacy record are the mislabeled pair this issue
-  // exists to remove.
+  // fields, rendered under their own "trader proposal" label. Null when the
+  // trader memo is not readable (no Phase 3 yet, or a still-loading resource):
+  // render no level block rather than the stored keys.
   levels: TradeLevelModel | null;
 };
 
 /**
- * The PM's own decision chips, in display order. This grid is the PORTFOLIO
- * MANAGER's call and contains no price levels at all.
- *
- * Price levels are the TRADER's and render in {@link TraderLevelChips} below,
- * under their own label. Three ways to get this wrong, and all three have been
- * shipped on this surface — the `<dt>` IS the claim in every one:
- *
- *  1. Hardcoding "stop" and "target" here put a stop-loss on a stand-aside Hold.
- *  2. Rendering whatever keys the stored `metrics` map carried kept it there on
- *     a reopened report — a pre-fix record carries `stop` / `target` whatever the
- *     desk decided, and no commit runs on that path to correct it.
- *  3. Deriving them correctly from the trader but showing them INSIDE this grid
- *     put one participant's levels under another participant's decision.
+ * The PM's own decision chips, in display order. PM metrics never include price
+ * levels; the trader's levels render as an attributed sibling via
+ * {@link TraderLevelChips}. The `<dt>` is the claim — never spell a level name
+ * here.
  */
 const FIXED_METRIC_ORDER = ["rating", "ticker", "window", "size"] as const;
 
 /**
  * The trader's price levels, as a labeled SIBLING of the PM's decision metrics —
- * never chips inside that grid.
+ * never chips inside that grid. Matches the Summary's "trader proposal" sibling
+ * (`decision-header.tsx`); same spelling on purpose.
  *
- * These levels come from the TRADER memo; the grid above them is the PM's
- * decision. The desk supports the two disagreeing (it derives `agreesWithTrader`
- * at commit precisely to record it), so mixing them put a long trader's stop and
- * target inside a PM Hold's metric row, and a flat trader's monitoring levels
- * inside a PM Buy's — the same labeling contradiction FIX-780 exists to remove,
- * one participant further down.
- *
- * Attribution, not suppression. Hiding the levels when the two differ would
- * destroy what a reader most wants there: what the trader proposed, and that the
- * PM departed from it. The disagreement is signal.
- *
- * Follows the FIX-1060 treatment for exactly this confusion on the Summary,
- * where the trade block is a sibling of the decision block labeled "trader
- * proposal" so it can never be read as the PM's call (`decision-header.tsx`).
- * Same problem, same surface family, same spelling — a third treatment here is
- * the drift this issue exists to end.
- *
- * When the trader published no levels, this renders nothing. On a PM Buy off a
- * flat trader that is a REAL gap — the desk holds no stop and no target for the
- * position the PM just decided to take — and it stays visible as absence rather
- * than being filled from the PM's own stance. Absent stays absent.
+ * Attribution, not suppression: the desk supports the trader and the PM
+ * disagreeing, so a difference is shown, never hidden. When the trader published
+ * no levels this renders nothing — on a PM Buy off a flat trader that gap is
+ * real and stays visible rather than being filled from the PM's own stance.
  */
 function TraderLevelChips({
   levels,

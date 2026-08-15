@@ -19,6 +19,7 @@ import type {
 } from "./aggregate";
 import {
   buildTradeLevelModel,
+  storedTradeLevelsFrom,
   tradeLineParts,
 } from "@/flows/analysis/lib/trade-levels";
 import { InvalidationList } from "./invalidation-list";
@@ -203,13 +204,7 @@ export function DecisionHeader({
  */
 function TradeBlock({ trade }: { trade: TradeLevels }): ReactElement | null {
   if (trade === null) return null;
-  const levels = buildTradeLevelModel({
-    direction: trade.direction,
-    stopPrice: trade.stopPrice,
-    targetPrice: trade.targetPrice,
-    reassessBelowPrice: trade.reassessBelowPrice,
-    invalidateAbovePrice: trade.invalidateAbovePrice,
-  });
+  const levels = buildTradeLevelModel(storedTradeLevelsFrom(trade));
   const parts = tradeLineParts(trade, levels);
   const criteria = trade.invalidationCriteria ?? [];
   if (parts.length === 0 && criteria.length === 0) return null;
