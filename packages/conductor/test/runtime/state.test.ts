@@ -27,7 +27,6 @@ import {
 } from "../../src/model/entities";
 import {
   addressFor,
-  collectionHandle,
   conductorCollections,
   type ConductorScopeIds,
 } from "../../src/runtime/collections";
