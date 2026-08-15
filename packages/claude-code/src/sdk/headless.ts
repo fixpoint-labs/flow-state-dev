@@ -23,6 +23,7 @@
  * too, because the tokens were still spent.
  */
 import { ClaudeAgentSdkNotInstalledError } from "./errors";
+import { readTerminalResult, type SdkTokenUsage } from "./result";
 import { defaultResolveClaudeAgentQuery } from "./sdk-client";
 import type {
   ClaudeAgentQuery,
@@ -54,11 +55,12 @@ const REPO_SETTING_SOURCES: readonly ClaudeSettingSource[] = ["user", "project",
  */
 const CLAUDE_CODE_SYSTEM_PROMPT: ClaudeSystemPrompt = { type: "preset", preset: "claude_code" };
 
-/** Token usage for one run, as the SDK reported it. */
-export interface ClaudeHeadlessUsage {
-  readonly inputTokens: number;
-  readonly outputTokens: number;
-}
+/**
+ * Token usage for one run, as the SDK reported it. The package-wide shape under
+ * this surface's own name — the terminal result is read in one place
+ * (`./result`), and this is what that reading yields here.
+ */
+export type ClaudeHeadlessUsage = SdkTokenUsage;
 
 /** What one headless run settled to. */
 export interface ClaudeHeadlessResult {
@@ -133,20 +135,6 @@ export interface RunClaudeHeadlessOptions {
   readonly resolveAgent?: ResolveClaudeAgentQuery;
 }
 
-/** Terminal subtypes this package recognizes, in the SDK's spelling. */
-const KNOWN_SUBTYPES = new Set<string>([
-  "success",
-  "error_max_turns",
-  "error_max_budget_usd",
-  "error_during_execution",
-  "error_max_structured_output_retries",
-]);
-
-/** Normalize the SDK's terminal subtype string to a known value or `null`. */
-function normalizeSubtype(raw: string | undefined): SdkResultSubtype | null {
-  return raw !== undefined && KNOWN_SUBTYPES.has(raw) ? (raw as SdkResultSubtype) : null;
-}
-
 /** Build a failure with nothing the SDK never told us invented. */
 function failed(error: string, partial: Partial<ClaudeHeadlessResult> = {}): ClaudeHeadlessResult {
   return {
@@ -170,18 +158,13 @@ function failed(error: string, partial: Partial<ClaudeHeadlessResult> = {}): Cla
  * alongside it, for a `success` result the SDK itself flagged.
  */
 function reduceResult(msg: Extract<SdkMessageLike, { type: "result" }>): ClaudeHeadlessResult {
-  const rawSubtype = msg.subtype;
-  const subtype = normalizeSubtype(rawSubtype);
-  const finalMessage = typeof msg.result === "string" ? msg.result : null;
-  const sessionId = msg.session_id ?? null;
-  const costUsd = typeof msg.total_cost_usd === "number" ? msg.total_cost_usd : null;
-  const usage =
-    msg.usage && (msg.usage.input_tokens !== undefined || msg.usage.output_tokens !== undefined)
-      ? { inputTokens: msg.usage.input_tokens ?? 0, outputTokens: msg.usage.output_tokens ?? 0 }
-      : null;
+  const { subtype, subtypeLabel, succeeded, isError, finalMessage, errorDetail, sessionId, usage, costUsd } =
+    readTerminalResult(msg);
 
-  const ok = rawSubtype === "success" && msg.is_error !== true;
-  if (ok) {
+  // `is_error` is honoured alongside the subtype here, and only here: this
+  // surface's whole contract is a settled ok/not-ok value, so a `success` the
+  // SDK itself flagged must not come back `ok`. See `./result`.
+  if (succeeded && !isError) {
     return { ok: true, error: null, finalMessage, sessionId, costUsd, subtype, usage };
   }
 
@@ -189,11 +172,12 @@ function reduceResult(msg: Extract<SdkMessageLike, { type: "result" }>): ClaudeH
   // carries `result` and no `errors`. Take whichever is there, and always name
   // the subtype so the failure class survives into the caller's plain-text
   // reason without the caller having to read a Claude-shaped field.
-  const detail = msg.errors && msg.errors.length > 0 ? msg.errors.join("; ") : finalMessage;
-  const label = rawSubtype ?? "unknown subtype";
+  const detail = errorDetail ?? finalMessage;
   return {
     ok: false,
-    error: detail ? `${detail} (${label})` : `Claude Code run failed (${label}).`,
+    error: detail
+      ? `${detail} (${subtypeLabel})`
+      : `Claude Code run failed (${subtypeLabel}).`,
     finalMessage,
     sessionId,
     costUsd,

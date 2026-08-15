@@ -13,7 +13,8 @@
  * - partial: `stream_event` messages carry `content_block_delta` tokens (only
  *   present when `includePartialMessages` is on).
  */
-import type { SdkMessageLike, SdkResultSubtype, TranslatedEvent } from "./types";
+import { readTerminalResult } from "./result";
+import type { SdkMessageLike, TranslatedEvent } from "./types";
 
 /** The SDK tool names that denote a sub-agent spawn (alias pair). */
 const SUBAGENT_TOOL_NAMES = new Set(["Agent", "Task"]);
@@ -49,20 +50,6 @@ export function createTranslateState(options: TranslateStateOptions = {}): Trans
     openSubagents: new Set<string>(),
     partialMessages: options.partialMessages ?? true,
   };
-}
-
-/** Normalize the SDK's terminal subtype string to a known value or `null`. */
-function normalizeSubtype(raw: string | undefined): SdkResultSubtype | null {
-  switch (raw) {
-    case "success":
-    case "error_max_turns":
-    case "error_max_budget_usd":
-    case "error_during_execution":
-    case "error_max_structured_output_retries":
-      return raw;
-    default:
-      return null;
-  }
 }
 
 /** Serialize a tool input to a stable JSON argument string (never throws). */
@@ -211,40 +198,27 @@ function translateStreamEvent(
 
 /** `result` terminal message → an optional error notice plus a result event. */
 function translateResult(msg: Extract<SdkMessageLike, { type: "result" }>): TranslatedEvent[] {
-  const rawSubtype = msg.subtype;
-  const subtype = normalizeSubtype(rawSubtype);
-  const usage =
-    msg.usage && (msg.usage.input_tokens !== undefined || msg.usage.output_tokens !== undefined)
-      ? {
-          inputTokens: msg.usage.input_tokens ?? 0,
-          outputTokens: msg.usage.output_tokens ?? 0,
-        }
-      : null;
-  const costUsd = typeof msg.total_cost_usd === "number" ? msg.total_cost_usd : null;
-
-  // Success results carry `result`; error-subtype results carry `errors[]` and
-  // have no `result`. Coalesce to the best detail available, else a generic.
-  const errorsText =
-    msg.errors && msg.errors.length > 0 ? msg.errors.join("; ") : undefined;
+  const { subtype, subtypeLabel, succeeded, finalMessage, errorDetail, sessionId, usage, costUsd } =
+    readTerminalResult(msg);
 
   const events: TranslatedEvent[] = [];
   // Any terminal subtype that is not "success" is an errored outcome — including
-  // an unrecognized subtype (a future SDK failure mode), which `normalizeSubtype`
-  // maps to `null`. Keying off the raw subtype here (and `subtype !== "success"`
-  // in the agent's status check) prevents a failed run from reporting "completed".
-  if (rawSubtype !== "success") {
+  // an unrecognized subtype (a future SDK failure mode), which normalizes to
+  // `null`. `succeeded` is defined on the raw subtype for exactly that reason,
+  // so a failed run never reports "completed" downstream.
+  if (!succeeded) {
     events.push({
       kind: "error",
-      message: msg.result ?? errorsText ?? `Claude Code agent run failed (${rawSubtype ?? "unknown subtype"}).`,
-      code: rawSubtype ?? "unknown",
+      message:
+        finalMessage ?? errorDetail ?? `Claude Code agent run failed (${subtypeLabel}).`,
+      code: msg.subtype ?? "unknown",
     });
   }
   events.push({
     kind: "result",
     subtype,
-    finalMessage:
-      typeof msg.result === "string" ? msg.result : (errorsText ?? null),
-    sessionId: msg.session_id ?? null,
+    finalMessage: finalMessage ?? errorDetail,
+    sessionId,
     usage,
     costUsd,
   });
