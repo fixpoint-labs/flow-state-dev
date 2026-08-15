@@ -76,6 +76,23 @@ function belongsToThisPhase(
   return artifact.hostedAt.number === signalPr;
 }
 
+/** The PR facts behind the entity's active artifact, when it is hosted on one. */
+function activePr(entity: ConductorEntity, world: World): PullRequestFacts | undefined {
+  const artifact = activeArtifact(entity, world);
+  if (!artifact || artifact.hostedAt.type !== "pr") return undefined;
+  return world.pullRequests[artifact.hostedAt.number];
+}
+
+/**
+ * A red base is not our failure. Both gates that handle a failing CI wait for
+ * `base_recovered` rather than dispatching an agent to chase someone else's
+ * breakage — `awaiting_ci` when CI is the only thing outstanding, and
+ * `awaiting_review` when a red base lands while the PR is already under review.
+ */
+function baseIsRed(entity: ConductorEntity, world: World): boolean {
+  return activePr(entity, world)?.baseRed === true;
+}
+
 /** Review rounds allowed against the entity's active artifact. */
 function roundBudget(entity: ConductorEntity, world: World): number {
   return entity.phase === "IMPLEMENTATION"
@@ -335,12 +352,7 @@ export function decide(
 
     case "awaiting_ci":
       if (signal.kind === "ci_concluded" && signal.conclusion === "failure") {
-        const pr = activeArtifact(entity, world);
-        const prFacts =
-          pr && pr.hostedAt.type === "pr" ? world.pullRequests[pr.hostedAt.number] : undefined;
-        // A red base is not our failure. Wait for `base_recovered` rather than
-        // dispatching an agent to chase someone else's breakage.
-        if (prFacts?.baseRed) return [];
+        if (baseIsRed(entity, world)) return [];
         return [
           {
             kind: "addressFeedback",
@@ -370,6 +382,9 @@ export function decide(
         ];
       }
       if (signal.kind === "ci_concluded" && signal.conclusion === "failure") {
+        // Same suppression as `awaiting_ci`: a red base is someone else's
+        // breakage whether or not review has started on this PR.
+        if (baseIsRed(entity, world)) return [];
         return [
           {
             kind: "addressFeedback",

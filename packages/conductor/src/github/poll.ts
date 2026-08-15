@@ -150,8 +150,14 @@ export async function pollGitHub(
   const prose: Signal[] = [];
   const commentKeys: string[] = [];
 
-  for (const pr of fresh) {
-    for (const comment of await readComments(client, pr.number)) {
+  // Each PR's comment read is independent, so they run together. The results
+  // are consumed in `fresh` order regardless of which response returned first,
+  // which is what keeps `commentKeys` — and the prose signals before the sort —
+  // in the same order a sequential read produced.
+  const commentsByPr = await Promise.all(fresh.map((pr) => readComments(client, pr.number)));
+
+  for (const comments of commentsByPr) {
+    for (const comment of comments) {
       commentKeys.push(comment.key);
       if (seen.has(comment.key)) continue;
       // Author-first: a bot's comment and conductor's own are dropped here,

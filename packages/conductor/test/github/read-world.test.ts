@@ -296,6 +296,57 @@ describe("reads are driven by what the phase declared", () => {
   });
 });
 
+describe("several pull requests in one world", () => {
+  it("keys each PR's facts to its own number when the reads finish out of order", async () => {
+    // The PRs are read concurrently, so response order is not request order.
+    // Delaying PR 7 makes the slower read land last on every run; a version
+    // that keyed the record by arrival rather than by number swaps them here.
+    const routes = stubFetch({
+      [`GET ${P}/pulls/7`]: pullPayload({ number: 7, head: { sha: "sha-7" } }),
+      [`GET ${P}/pulls/7/reviews`]: [reviewPayload({ id: 71 })],
+      [`GET ${P}/commits/sha-7/check-runs`]: checkRuns(checkRun("completed", "failure")),
+      [`GET ${P}/pulls/9`]: pullPayload({ number: 9, head: { sha: "sha-9" }, mergeable: false }),
+      [`GET ${P}/pulls/9/reviews`]: [reviewPayload({ id: 91 })],
+      [`GET ${P}/commits/sha-9/check-runs`]: checkRuns(checkRun("completed", "success")),
+      [`GET ${P}/commits/main/check-runs`]: checkRuns(),
+    });
+    const gh = createGitHubClient({
+      owner: OWNER,
+      repo: REPO,
+      token: "t",
+      baseUrl: BASE_URL,
+      fetch: (url, init) =>
+        url.includes("/pulls/7")
+          ? new Promise((resolve) => setTimeout(() => resolve(routes(url, init)), 10))
+          : routes(url, init),
+      selfLogin: SELF_LOGIN,
+      botLogins: ["coderabbit"],
+    });
+
+    const { world } = await readWorld(gh, {
+      entity: { kind: "issue", phase: "IMPLEMENTATION" },
+      artifacts: [
+        implArtifact,
+        { ...implArtifact, id: "art-impl-2", hostedAt: { type: "pr", number: 9 } },
+      ],
+    });
+
+    expect(world.pullRequests[7]).toMatchObject({
+      number: 7,
+      headSha: "sha-7",
+      checks: "failure",
+    });
+    expect(world.pullRequests[7]!.reviews.map((review) => review.id)).toEqual(["71"]);
+    expect(world.pullRequests[9]).toMatchObject({
+      number: 9,
+      headSha: "sha-9",
+      checks: "success",
+      mergeable: false,
+    });
+    expect(world.pullRequests[9]!.reviews.map((review) => review.id)).toEqual(["91"]);
+  });
+});
+
 describe("conductor-owned facts pass through rather than being fetched", () => {
   it("carries reviewRounds, goalCheck, childIssues, and policy from the caller", async () => {
     const { client: gh } = client({

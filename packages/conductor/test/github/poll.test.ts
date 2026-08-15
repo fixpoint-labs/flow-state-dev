@@ -222,6 +222,69 @@ describe("state that moved while conductor was not listening", () => {
   });
 });
 
+describe("an entity with more than one open PR", () => {
+  it("attributes each comment to the PR it was read from, whatever order they return in", async () => {
+    // Comments are read for every PR concurrently. Delaying PR 7 makes its
+    // response land last on every run, so a version that paired results with
+    // the wrong PR — or dropped the slower one — fails here rather than
+    // sometimes.
+    const routes = stubFetch({
+      [`GET ${P}/pulls/7`]: pullPayload({ number: 7, head: { sha: "sha-7" } }),
+      [`GET ${P}/pulls/7/reviews`]: [],
+      [`GET ${P}/commits/sha-7/check-runs`]: checkRuns(checkRun("completed", "success")),
+      [`GET ${P}/issues/7/comments`]: [
+        commentPayload({ id: 700, created_at: "2026-08-14T11:00:00Z" }),
+      ],
+      [`GET ${P}/pulls/7/comments`]: [],
+      [`GET ${P}/pulls/9`]: pullPayload({ number: 9, head: { sha: "sha-9" } }),
+      [`GET ${P}/pulls/9/reviews`]: [],
+      [`GET ${P}/commits/sha-9/check-runs`]: checkRuns(checkRun("completed", "success")),
+      [`GET ${P}/issues/9/comments`]: [
+        commentPayload({ id: 900, created_at: "2026-08-14T11:30:00Z" }),
+      ],
+      [`GET ${P}/pulls/9/comments`]: [],
+      [`GET ${P}/commits/main/check-runs`]: checkRuns(),
+    });
+    const client = createGitHubClient({
+      owner: OWNER,
+      repo: REPO,
+      token: "t",
+      baseUrl: BASE_URL,
+      fetch: (url, init) =>
+        url.includes("/issues/7/comments")
+          ? new Promise((resolve) => setTimeout(() => resolve(routes(url, init)), 10))
+          : routes(url, init),
+      selfLogin: SELF_LOGIN,
+      botLogins: ["coderabbit"],
+    });
+
+    const result = await pollGitHub(client, {
+      entityId: "FIX-1",
+      entity: { kind: "issue", phase: "IMPLEMENTATION" },
+      artifacts: [
+        artifact,
+        { ...artifact, id: "art-impl-2", hostedAt: { type: "pr", number: 9 } },
+      ],
+      cursor: EMPTY_POLL_CURSOR,
+      now: NOW,
+    });
+
+    const feedback = result.signals.filter((signal) => signal.kind === "feedback_received");
+    expect(
+      feedback.map((signal) => [
+        (signal as { commentId: string }).commentId,
+        (signal as { pullNumber: number }).pullNumber,
+      ]),
+    ).toEqual([
+      ["700", 7],
+      ["900", 9],
+    ]);
+    // Ordered by PR, not by which response arrived first — the cursor is what
+    // the next tick diffs against, so its contents must not depend on latency.
+    expect(result.cursor.commentKeys).toEqual(["issue:700", "issue:900"]);
+  });
+});
+
 describe("the cursor", () => {
   it("carries the fresh facts forward so the next tick has something to diff", async () => {
     const client = githubWith({

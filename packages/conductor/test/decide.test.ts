@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 import { decide } from "../src/driver/decide";
+import { deriveGate } from "../src/driver/derive-gate";
 import type { Action } from "../src/model/actions";
 import { EPIC_PHASES, ISSUE_PHASES } from "../src/model/phases";
 import type { Signal } from "../src/model/signals";
@@ -180,6 +181,47 @@ describe("keeping judgment out of the transition", () => {
   it("ignores a red base rather than dispatching an agent to chase someone else's break", () => {
     const w = worldWith("implementation", pr({ checks: "failure", baseRed: true }));
     expect(decide(issue("IMPLEMENTATION"), signal("ci_concluded"), w)).toEqual([]);
+  });
+
+  describe("and once review has started, a red base is still not our failure", () => {
+    /**
+     * The PR is under review with no aggregate check conclusion at its head, so
+     * `awaiting_ci` does not apply and the entity is gated on `awaiting_review`
+     * — the gate whose handling also has to answer a CI failure. Whether the
+     * base broke before review or during it changes nothing about whose
+     * breakage it is, so the suppression has to hold on both paths.
+     */
+    const underReview = (baseRed: boolean) =>
+      worldWith("implementation", pr({ checks: null, baseRed, reviews: [review()] }));
+
+    it("suppresses the dispatch while the base is broken, and waits for base_recovered", () => {
+      const w = underReview(true);
+      expect(deriveGate(issue("IMPLEMENTATION"), w)).toBe("awaiting_review");
+      expect(decide(issue("IMPLEMENTATION"), signal("ci_concluded"), w)).toEqual([]);
+
+      // Suppressed, not dropped: the recovery signal is what resumes the work.
+      expect(kinds(decide(issue("IMPLEMENTATION"), signal("base_recovered"), w))).toEqual([
+        "rebaseOnBase",
+      ]);
+    });
+
+    it("still addresses the failure when the base is green — the guard suppresses nothing else", () => {
+      const w = underReview(false);
+      expect(deriveGate(issue("IMPLEMENTATION"), w)).toBe("awaiting_review");
+      expect(kinds(decide(issue("IMPLEMENTATION"), signal("ci_concluded"), w))).toEqual([
+        "addressFeedback",
+      ]);
+    });
+
+    it("declares pr.baseStatus on the gate whose branch reads it, not just on its neighbour", () => {
+      // The guard is only alive if the tick materializes `baseRed`, and the
+      // tick materializes strictly what the gates declare. `awaiting_ci`
+      // declaring it today is not this gate's guarantee.
+      const gate = ISSUE_PHASES.find((p) => p.name === "IMPLEMENTATION")?.gates.find(
+        (g) => g.name === "awaiting_review",
+      );
+      expect(gate?.reads).toContain("pr.baseStatus");
+    });
   });
 });
 

@@ -9,9 +9,22 @@ The process it encodes is not new — it is the one already written down in
 `docs/contributing/orchestration.md`. Conductor does not invent it. Conductor
 **executes it in code instead of interpreting it in a prompt.**
 
-> **Status: M0.** This package currently ships the entity model and the pure
-> driver. The tick, the GitHub connector, the dispatcher seam, and the CLI board
-> land with M1.
+> **Status: M0 — nothing here runs end to end yet.**
+>
+> **In the tree:** the entity model; the pure driver (`decide`, `deriveGate`,
+> `reconcile`); the GitHub layer — world materialization, polling, signal
+> parsing, and the PR write operations, internal to the package rather than
+> exported; the config surface (`defineConductor` / `resolveConductor` and its
+> discovery); and the dispatch seam with its Claude Code implementation.
+>
+> **Not in the tree:** the **tick** — nothing assembles poll → decide → execute,
+> and there is no `openConductor`. **Persistence** — the collections described
+> below are declared but never registered, so nothing survives a tick.
+> **Phase execution** — running the actions `decide` produces. And the **CLI
+> board**. All four are M1.
+>
+> Every module here is tested against fixtures. None of it has been run against
+> the real path, because the piece that would run it is the tick.
 
 ## The shape
 

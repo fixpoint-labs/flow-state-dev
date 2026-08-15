@@ -290,10 +290,17 @@ export async function readWorld(
     ),
   ];
 
+  // One PR's read tells the next one nothing, so they run together: an epic
+  // with several open PRs pays one PR's latency rather than the sum. The
+  // results are keyed back by position, so the record still maps each number to
+  // its own facts no matter what order the responses land in.
+  const read = await Promise.all(
+    pullNumbers.map((number) => readPullRequest(client, number, plan)),
+  );
   const pullRequests: Record<number, PullRequestFacts> = {};
-  for (const number of pullNumbers) {
-    pullRequests[number] = await readPullRequest(client, number, plan);
-  }
+  pullNumbers.forEach((number, index) => {
+    pullRequests[number] = read[index]!;
+  });
 
   const guidanceHashes: Record<string, string> = {};
   if (facts.has("guidance")) {

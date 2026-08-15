@@ -191,8 +191,14 @@ const IMPLEMENTATION: PhaseDefinition = {
     {
       // `artifact.rounds`: review feedback here is revised or escalated on the
       // implementation budget, and that comparison reads the artifact's rounds.
+      // `pr.baseStatus`: this gate handles a failing CI too — a red base that
+      // lands once review has started is no more this PR's failure than one
+      // that lands before it — and it declares that read itself rather than
+      // borrowing `awaiting_ci`'s. The tick unions a phase's declarations, so
+      // relying on the neighbour would work right up until the neighbour
+      // changed, and then fail silently with `baseRed` at its default.
       name: "awaiting_review",
-      reads: ["pr.state", "artifact.reviews", "artifact.rounds"],
+      reads: ["pr.state", "artifact.reviews", "artifact.rounds", "pr.baseStatus"],
       appliesWhen: (w) => implPr(w)?.state === "open",
       satisfiedBy: (w) => hasFreshHumanApproval(implPr(w)),
     },
