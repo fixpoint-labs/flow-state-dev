@@ -131,6 +131,36 @@ export const observedPrStateSchema = z.object({
 });
 
 /**
+ * The comment half of an observation cursor — the keys conductor has already
+ * reduced over, for one entity.
+ *
+ * The other half of that cursor is {@link observedPrStateSchema}, and the split
+ * is not an accident of storage. A PR fact is an *asset*: it is what
+ * `reconcile` diffs the world against, and it is a fact about the PR whichever
+ * source read it. A comment key is neither — it is conductor's own bookkeeping,
+ * it is namespaced by the source that minted it (`local:1:alice.1`,
+ * `issue:4471`), and no diff consumes it. Attaching it to the PR rows would
+ * mean attributing an opaque key back to a PR by parsing it, which is the
+ * source's private format, and the seam exists precisely so that conductor does
+ * not read it.
+ *
+ * Hence `source`: keys minted by a source are meaningless to another, so a
+ * cursor written by GitHub tells a local observer nothing. Reading it back
+ * under a different source is not a migration and not an error — it is an
+ * entity that changed where it is read from, and the honest answer is an empty
+ * cursor and one replayed pass over the comments (whose actions are idempotent).
+ */
+export const observationCursorStateSchema = z.object({
+  entityId: z.string(),
+  /** The observer that minted these keys — an `Observer`'s `source`. */
+  source: z.string(),
+  /** Comment keys already reduced over, verbatim as the source produced them. */
+  commentKeys: z.array(z.string()).default([]),
+  /** When this cursor was last written, ISO-8601. */
+  at: z.string(),
+});
+
+/**
  * One append-only record of a reduction. **This is what makes a transition
  * reproducible** — the invariant the whole design rests on — and reproducible
  * is meant literally: a row carries `decide`'s three arguments whole, so
@@ -245,6 +275,7 @@ export type EpicState = z.infer<typeof epicStateSchema>;
 export type ArtifactState = z.infer<typeof artifactStateSchema>;
 export type DispatchState = z.infer<typeof dispatchStateSchema>;
 export type ObservedPrState = z.infer<typeof observedPrStateSchema>;
+export type ObservationCursorState = z.infer<typeof observationCursorStateSchema>;
 export type LedgerEntryState = z.infer<typeof ledgerEntryStateSchema>;
 export type RegistryEntryState = z.infer<typeof registryEntryStateSchema>;
 
@@ -424,6 +455,22 @@ export const conductorObservations = defineResourceCollection({
   ...ISSUE_LEVEL,
   pattern: "observations/**",
   stateSchema: observedPrStateSchema,
+});
+
+/**
+ * Observation cursors, keyed `cursors/<entityId>`.
+ *
+ * Issue-level, and for the same reason the observed PR copy is: a cursor is the
+ * working record of the ticks that reduced over it, and a tick belonging to
+ * another entity has no business advancing it. One row per entity — the cursor
+ * is per-entity, not per-PR, because the source hands it back as one list.
+ *
+ * Uncapped. One row, replaced in place, for the life of the work item.
+ */
+export const conductorCursors = defineResourceCollection({
+  ...ISSUE_LEVEL,
+  pattern: "cursors/**",
+  stateSchema: observationCursorStateSchema,
 });
 
 /**

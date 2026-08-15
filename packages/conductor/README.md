@@ -9,24 +9,27 @@ The process it encodes is not new — it is the one already written down in
 `docs/contributing/orchestration.md`. Conductor does not invent it. Conductor
 **executes it in code instead of interpreting it in a prompt.**
 
-> **Status: M0 — nothing here runs end to end yet.**
+> **Status: M1 — the loop runs; the board does not exist.**
 >
 > **In the tree:** the entity model; the pure driver (`decide`, `deriveGate`,
 > `reconcile`); the two seams — `Dispatcher` for how work gets done, `Observer`
 > for how the world is read — with their implementations, internal to the
 > package rather than exported: Claude Code behind the first, GitHub and a local
-> checkout behind the second; and the config surface (`defineConductor` /
-> `resolveConductor` and its discovery).
+> checkout behind the second; the config surface (`defineConductor` /
+> `resolveConductor` and its discovery); and the **tick** — `openConductor`,
+> which assembles observe → decide → execute → ledger over durable state,
+> registers the collections below against it, and provisions and runs a phase.
 >
-> **Not in the tree:** the **tick** — nothing assembles observe → decide →
-> execute, and there is no `openConductor`. **Persistence** — the collections
-> described below are declared but never registered, so nothing survives a tick.
-> **Phase execution** — running the actions `decide` produces. And the **CLI
-> board**. All four are M1.
+> **Not in the tree:** the **CLI board**. Two seams the model does not close are
+> reported rather than papered over: nothing records a goal check's result, so
+> an issue cannot reach `SETTLED` on its own; and an issue running *under* an
+> epic has no place to record its workstream session.
 >
-> The GitHub layer is tested against recorded payloads; the local source is
-> tested against real repositories it creates and commits to. What has not run
-> is the whole loop, because the piece that would run it is the tick.
+> The GitHub layer is tested against recorded payloads; the local source and the
+> tick are tested against real repositories they create and commit to. What has
+> not run end to end is the goal check at
+> `goals/conductor/drives-one-issue-to-a-merge-ready-branch`, which needs a real
+> coding harness and a real remote.
 
 ## The shape
 
@@ -339,10 +342,59 @@ project is the project's own statement).
 `examples/conductor-self-drive` is the whole thing end to end: a level-1 config, and a small
 piece of source for conductor to change.
 
+## Running it
+
+```ts
+import { openConductor, resolveConductor } from "@flow-state-dev/conductor";
+
+const session = await openConductor({
+  config: await resolveConductor(declared, { cwd }),
+  statePath: ".conductor/state",
+});
+
+await session.manage({
+  id: "FIX-1",
+  kind: "issue",
+  issueType: "Bug",
+  phase: "IMPLEMENTATION",   // a bug enters at implementation
+  summary: "Add a `reverse` operation to the registry.",
+});
+
+const work = await session.tick("FIX-1");
+work.gate;           // what it is waiting on, derived from this tick's world
+work.ledger;         // every transition, in order
+work.dispatchCount;  // phase executions performed, ever
+```
+
+A tick is one request: read the world, reduce every signal it reports, execute
+what `decide` returned, append the ledger. Call it from a webhook, a cron beat,
+or a command line — conductor holds nothing in memory between two of them.
+
+Three properties the runtime is built to hold, all three of them consequences of
+the order it does things in rather than checks it performs:
+
+- **A redundant tick costs nothing.** An unchanged world appends zero ledger rows
+  and performs zero dispatches, because signals come from `reconcile` diffing the
+  world against the copy the previous tick persisted.
+- **Re-opening over the same `statePath` is a restart, and it resumes.** No gate
+  is lost, because none is stored; no dispatch is repeated, because the ledger
+  row that records one is written before the dispatch runs.
+- **Every transition replays.** `decide` re-run from a row's own recorded
+  arguments produces that row's action again.
+
+`src/runtime/README.md` carries the orderings those rest on, and the one crash
+window they deliberately leave open.
+
 ## What conductor never does
 
 It never merges. Three human gates exist — the epic objective, each spec, and
 every merge — and everything between them moves without asking.
+
+**No model runs inside a tick.** Judgment is welcome anywhere upstream of a
+signal — classifying a human's comment is real judgment — but by the time the
+tick acts on it, it has been recorded. A model inside the loop would produce a
+different transition each run from identical state, which is the failure the
+ledger exists to make impossible.
 
 ## Development
 

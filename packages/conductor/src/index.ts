@@ -11,10 +11,11 @@
  * **executes it in code instead of interpreting it in a prompt.**
  *
  * This entrypoint exports the config surface, the entity model, the pure
- * driver, and the two seams — `Dispatcher` for how work gets done, `Observer`
- * for how the world is read. Their implementations stay internal to the package
- * (`src/github`, `src/local`), and the test scaffolding built on the dispatch
- * seam — `fakeDispatcher` and the `replay` harness — lives at
+ * driver, the two seams — `Dispatcher` for how work gets done, `Observer` for
+ * how the world is read — and `openConductor`, the runtime that assembles them
+ * into a tick over durable state. The seams' implementations stay internal to
+ * the package (`src/github`, `src/local`), and the test scaffolding built on the
+ * dispatch seam — `fakeDispatcher` and the `replay` harness — lives at
  * `@flow-state-dev/conductor/testing`, so neither lands in a consumer's bundle.
  */
 
@@ -23,3 +24,4 @@ export * from "./dispatch";
 export * from "./driver";
 export * from "./model";
 export * from "./observe";
+export * from "./runtime";
