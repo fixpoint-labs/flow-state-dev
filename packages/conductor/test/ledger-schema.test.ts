@@ -131,6 +131,21 @@ describe("a ledger row carries `decide`'s three arguments", () => {
     }
   });
 
+  it("reads a `ci_concluded` row from either side of the pullNumber change", () => {
+    // The field is new, and rows written before it exists have to keep parsing
+    // — a ledger that rejects its own history cannot replay it (BP-030). The
+    // sweep above already covers the legacy shape, since the fixture carries no
+    // `pullNumber`; this pins that the field survives the round trip when it is
+    // there, rather than being dropped back to the unscoped shape on the way in.
+    const scoped = signal("ci_concluded", { pullNumber: 7 });
+    expect(signalSchema.parse(JSON.parse(JSON.stringify(scoped)))).toEqual(scoped);
+
+    const legacy = signal("ci_concluded");
+    expect(signalSchema.parse(JSON.parse(JSON.stringify(legacy)))).not.toHaveProperty(
+      "pullNumber",
+    );
+  });
+
   it("holds `pullRequests` to being keyed by PR number", () => {
     // JSON has no numeric object keys, so the key arrives as a string and has
     // to be coerced back — a lookup by number then finds it, and a key that is

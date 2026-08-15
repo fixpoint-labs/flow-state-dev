@@ -65,6 +65,49 @@ describe("a PR conductor never saw opened", () => {
     ]);
   });
 
+  it("keeps the human's release in the ledger when the whole batch is reduced", () => {
+    // The first poll of an already-approved spec PR, played through end to end
+    // the way a tick plays it: every synthesized signal reduced in order,
+    // against the one snapshot, with the entity's phase carried between them.
+    //
+    // The ordering is deliberate — `pr_opened` is backdated ahead of the review
+    // that revealed it — so `pr_opened` is what finds the phase complete. If
+    // that advance skips the record, nothing later can restore it: the entity
+    // is in IMPLEMENTATION by the time `approved` is reduced, where a spec
+    // approval releases no gate at all. The ledger would then show a phase that
+    // moved with no human release behind it, which is the one thing it exists
+    // to make replayable.
+    const fresh = pr({ reviews: [freshApproval()] });
+    const w = worldWith("spec", fresh);
+    const signals = reconcile({
+      entityId: ENTITY_ID,
+      observed: [],
+      fresh: [fresh],
+      now: NOW,
+    });
+    expect(signals.map((s) => s.kind)).toEqual(["pr_opened", "approved"]);
+
+    let entity = issue("SPEC");
+    const actions = signals.flatMap((s) => {
+      const produced = decide(entity, s, w);
+      for (const action of produced) {
+        if (action.kind === "enterPhase") entity = issue(action.phase);
+      }
+      return produced;
+    });
+
+    expect(actions.filter((a) => a.kind === "recordApproval")).toEqual([
+      {
+        kind: "recordApproval",
+        entityId: ENTITY_ID,
+        gate: "awaiting_spec_approval",
+        reviewer: "alice",
+        sha: HEAD,
+      },
+    ]);
+    expect(entity.phase).toBe("IMPLEMENTATION");
+  });
+
   it("feeds the driver a world it can actually act on", () => {
     // End to end: the synthesized approval advances the phase, which is the
     // recovery the local copy exists to enable.
