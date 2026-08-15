@@ -30,12 +30,15 @@
  */
 
 import type { Action, ActionBase, RecordApprovalAction } from "../model/actions";
-import { artifactKindForPhase, phaseDefinition } from "../model/phases";
+import {
+  activeArtifact,
+  activePr,
+  artifactKindForPhase,
+  phaseDefinition,
+} from "../model/phases";
 import type { Signal } from "../model/signals";
 import {
-  artifactOfKind,
   freshHumanApprovals,
-  type ArtifactFacts,
   type PullRequestFacts,
   type World,
 } from "../model/world";
@@ -44,15 +47,6 @@ import { deriveGate, isPhaseComplete, type ConductorEntity } from "./derive-gate
 /** The PR number a signal is about, or `undefined` when it is not PR-bound. */
 function signalPullNumber(signal: Signal): number | undefined {
   return "pullNumber" in signal ? signal.pullNumber : undefined;
-}
-
-/** The artifact the entity's current phase produces and reviews. */
-function activeArtifact(
-  entity: ConductorEntity,
-  world: World,
-): ArtifactFacts | undefined {
-  const kind = artifactKindForPhase(entity.phase);
-  return kind ? artifactOfKind(world, kind) : undefined;
 }
 
 /**
@@ -95,7 +89,7 @@ function belongsToThisPhase(
   signal: Signal,
   world: World,
 ): boolean {
-  const artifact = activeArtifact(entity, world);
+  const artifact = activeArtifact(entity.phase, world);
   const hostPr =
     artifact && artifact.hostedAt.type === "pr" ? artifact.hostedAt.number : undefined;
 
@@ -113,13 +107,6 @@ function belongsToThisPhase(
   return true;
 }
 
-/** The PR facts behind the entity's active artifact, when it is hosted on one. */
-function activePr(entity: ConductorEntity, world: World): PullRequestFacts | undefined {
-  const artifact = activeArtifact(entity, world);
-  if (!artifact || artifact.hostedAt.type !== "pr") return undefined;
-  return world.pullRequests[artifact.hostedAt.number];
-}
-
 /**
  * A red base is not our failure. Both gates that handle a failing CI wait for
  * `base_recovered` rather than dispatching an agent to chase someone else's
@@ -127,7 +114,7 @@ function activePr(entity: ConductorEntity, world: World): PullRequestFacts | und
  * `awaiting_review` when a red base lands while the PR is already under review.
  */
 function baseIsRed(entity: ConductorEntity, world: World): boolean {
-  return activePr(entity, world)?.baseRed === true;
+  return activePr(entity.phase, world)?.baseRed === true;
 }
 
 /** Review rounds allowed against the entity's active artifact. */
@@ -139,7 +126,7 @@ function roundBudget(entity: ConductorEntity, world: World): number {
 
 /** True when the artifact has spent its review-round budget. */
 function budgetSpent(entity: ConductorEntity, world: World): boolean {
-  const artifact = activeArtifact(entity, world);
+  const artifact = activeArtifact(entity.phase, world);
   if (!artifact) return false;
   return artifact.reviewRounds >= roundBudget(entity, world);
 }
@@ -201,7 +188,7 @@ function reviseOrEscalate(
  */
 function stalledReason(entity: ConductorEntity, world: World): string {
   const kind = artifactKindForPhase(entity.phase);
-  const artifact = kind ? activeArtifact(entity, world) : undefined;
+  const artifact = activeArtifact(entity.phase, world);
 
   const holding =
     kind === null
@@ -460,7 +447,7 @@ function approvalRecordFromWorld(
 ): RecordApprovalAction | undefined {
   const gate = gateReleasedByApproval(entity, world);
   if (!gate) return undefined;
-  const approval = freshHumanApprovals(activePr(entity, world)).at(-1);
+  const approval = freshHumanApprovals(activePr(entity.phase, world)).at(-1);
   if (!approval) return undefined;
   return {
     kind: "recordApproval",
@@ -563,7 +550,7 @@ export function decide(
     // One predicate over both signals, not a guard on the one that bites today.
     // A conflict reported against a merged PR is exactly as impossible to act
     // on, and a pair fixed by halves is how the unfixed half survives.
-    const prIsOpen = activePr(entity, world)?.state === "open";
+    const prIsOpen = activePr(entity.phase, world)?.state === "open";
 
     if (signal.kind === "merge_conflict" && prIsOpen) {
       return [
@@ -653,7 +640,7 @@ export function decide(
     // this function already routes through here is how one of them stops
     // matching the process doc.
     if (signal.kind === "goal_check_failed") {
-      if (activePr(entity, world)?.state === "merged") {
+      if (activePr(entity.phase, world)?.state === "merged") {
         return [
           {
             kind: "escalate",

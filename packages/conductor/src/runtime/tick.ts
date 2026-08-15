@@ -96,6 +96,8 @@ import {
   type DispatchAction,
 } from "../model/actions";
 import {
+  activeArtifact,
+  activePr,
   artifactKindForPhase,
   phaseDefinition,
   type EntityKind,
@@ -104,8 +106,6 @@ import {
 } from "../model/phases";
 import type { Signal } from "../model/signals";
 import {
-  artifactOfKind,
-  prForArtifact,
   requiredGround,
   type ArtifactFacts,
   type ArtifactKind,
@@ -286,9 +286,7 @@ async function persistGoalCheck(
  * is an absent revision rather than a revision named `""`.
  */
 function activeHead(entity: ConductorEntity, world: World): string | null {
-  const kind = artifactKindForPhase(entity.phase);
-  if (!kind) return null;
-  return prForArtifact(world, artifactOfKind(world, kind))?.headSha || null;
+  return activePr(entity.phase, world)?.headSha || null;
 }
 
 /**
@@ -634,8 +632,7 @@ function dispatchKey(
   action: DispatchAction,
   world: World,
 ): string {
-  const kind = artifactKindForPhase(entity.phase);
-  const hostedAt = kind ? artifactOfKind(world, kind)?.hostedAt : undefined;
+  const hostedAt = activeArtifact(entity.phase, world)?.hostedAt;
   const host =
     hostedAt === undefined
       ? "none"
@@ -1008,9 +1005,7 @@ function claimedGoalCheck(
  * passes but is not what a reader of the base gets.
  */
 function proofGroundFor(entity: ConductorEntity, world: World): ProofGround {
-  const kind = artifactKindForPhase(entity.phase);
-  const artifact = kind ? artifactOfKind(world, kind) : undefined;
-  return requiredGround(prForArtifact(world, artifact));
+  return requiredGround(activePr(entity.phase, world));
 }
 
 /**

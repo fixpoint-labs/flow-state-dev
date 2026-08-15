@@ -9,13 +9,13 @@
  */
 
 import {
-  artifactKindForPhase,
+  activeArtifact,
   phaseDefinition,
   type EntityKind,
   type Gate,
   type Phase,
 } from "../model/phases";
-import { artifactOfKind, standingVerdict, type World } from "../model/world";
+import { standingVerdict, type World } from "../model/world";
 
 /** The minimum an entity must carry for the driver to reduce against it. */
 export interface ConductorEntity {
@@ -132,7 +132,6 @@ export function outstandingProof(
   world: World,
 ): "goal_check_needed" | "goal_check_failed" | null {
   if (deriveGate(entity, world) !== "awaiting_goal_check") return null;
-  const kind = artifactKindForPhase(entity.phase);
-  const verdict = kind ? standingVerdict(world, artifactOfKind(world, kind)) : null;
+  const verdict = standingVerdict(world, activeArtifact(entity.phase, world));
   return verdict === "failed" ? "goal_check_failed" : "goal_check_needed";
 }

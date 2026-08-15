@@ -34,7 +34,9 @@ import {
   hasHumanReviewAtHead,
   prForArtifact,
   standingVerdict,
+  type ArtifactFacts,
   type ArtifactKind,
+  type PullRequestFacts,
   type World,
 } from "./world";
 
@@ -148,9 +150,9 @@ export interface PhaseDefinition {
   readonly next: Phase | null;
 }
 
-const specPr = (world: World) => prForArtifact(world, artifactOfKind(world, "spec"));
-const implArtifact = (world: World) => artifactOfKind(world, "implementation");
-const implPr = (world: World) => prForArtifact(world, implArtifact(world));
+const specPr = (world: World) => activePr("SPEC", world);
+const implArtifact = (world: World) => activeArtifact("IMPLEMENTATION", world);
+const implPr = (world: World) => activePr("IMPLEMENTATION", world);
 /**
  * The goal verdict, but only where it still describes **the code the issue's
  * implementation is sitting at** and **the claim that code now has to answer
@@ -160,8 +162,7 @@ const implPr = (world: World) => prForArtifact(world, implArtifact(world));
  * which hole.
  */
 const implProof = (world: World) => standingVerdict(world, implArtifact(world));
-const epicSpecPr = (world: World) =>
-  prForArtifact(world, artifactOfKind(world, "epic_spec"));
+const epicSpecPr = (world: World) => activePr("FRAMING", world);
 
 const SPEC: PhaseDefinition = {
   name: "SPEC",
@@ -589,7 +590,7 @@ const WRAP: PhaseDefinition = {
   entity: "epic",
   onEnter: ["retrospect", "polishDocs"],
   gates: [],
-  completedWhen: (w) => artifactOfKind(w, "retrospective") !== undefined,
+  completedWhen: (w) => activeArtifact("WRAP", w) !== undefined,
   next: "SETTLED",
 };
 
@@ -648,6 +649,38 @@ export function artifactKindForPhase(phase: Phase): ArtifactKind | null {
     default:
       return null;
   }
+}
+
+/**
+ * **The artifact this phase is working on**, or `undefined` — for a phase that
+ * produces none, or one that has not produced its own yet.
+ *
+ * The composition of {@link artifactKindForPhase} with `artifactOfKind` is the
+ * question nearly every reader of a snapshot is actually asking, and it has
+ * exactly one answer. Written once because a duplicated predicate is a place a
+ * future fix can land without landing: the gate table, `decide`'s scoping, the
+ * proof's ground and the tick's dispatch key must all resolve *the same*
+ * artifact, and reconstructions cannot be kept in step by review.
+ *
+ * Keyed on the phase rather than the kind, because the phase is what a caller
+ * holds and the mapping between the two is this file's to own.
+ */
+export function activeArtifact(phase: Phase, world: World): ArtifactFacts | undefined {
+  const kind = artifactKindForPhase(phase);
+  return kind ? artifactOfKind(world, kind) : undefined;
+}
+
+/**
+ * The pull request {@link activeArtifact} is hosted at, or `undefined` when the
+ * phase holds no artifact or hosts it at a file rather than a submission.
+ *
+ * The second half of the same composition, and the one every gate predicate
+ * reads. `undefined` is deliberately ambiguous across those cases — a phase with
+ * nothing to review and a phase whose output is a file are both "no submission
+ * to ask about", and the callers that need to tell them apart read the artifact.
+ */
+export function activePr(phase: Phase, world: World): PullRequestFacts | undefined {
+  return prForArtifact(world, activeArtifact(phase, world));
 }
 
 /** Every world fact the gates of a phase declare, deduplicated. */
