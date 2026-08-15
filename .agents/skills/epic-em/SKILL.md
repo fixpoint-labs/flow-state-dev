@@ -60,11 +60,27 @@ It changes **who decides** — not where the information lives, and not where th
 | An epic-keyed answer (`unsettled`, `openQuestions`) | Append `{ question, answer }` to `epic.answers`, **leave the entry**, let the `epic-agent` fold retire it. The row field cannot hold it: the question resurfaces every wake and `mayWrap` never goes true |
 | Any absorbed decision | One line in the next report, naming the fork and the call — absorb and expose, never absorb and hide. Then **run another `epic-wake` before ending the turn**: the wake computed `moreWorkNow` while that row was still blocked, so the row you just unblocked is dispatchable and nothing else will dispatch it |
 
-## Report outcomes, not phases
+## Report outcomes, not phases — Account → Review → Plan
 
-Lead with what the epic can now do that it couldn't, what's at risk, and what's waiting on the
-user; keep `epic-lifecycle`'s per-issue lines under a heading below. Framing only — **not** a
-licence to read a diff or a thread to enrich a summary.
+Three **lines**, not three sections, above `epic-lifecycle`'s per-issue lines:
+
+| | The line |
+|---|---|
+| **Account** | What the last report said would happen, and whether it did. Name the misses plainly — this is the only line in the report that can be *wrong*, which is the entire reason it is first. **The first report of a session has no prior Plan to check** (nothing durable stores one, and this posture adds no state): say *"first report this session — no prior Plan"* and move on. Inventing one is the failure this line exists to prevent |
+| **Review** | **Lead with the lead measure — §1's, if it names one; otherwise name the issues whose goal is proven and those still to go.** A list, not a ratio: exempt, cancelled and dropped rows are said as what they are instead of silently distorting a denominator, and a reader learns *which* work is proven. Say *goal-proven then merged* — a single-PR row reaches `DONE` on the merge, so a later feedback round isn't re-proven. Then what the epic can now do that it couldn't, what's at risk, what's waiting on you. Never phases |
+| **Plan** | The one or two things that will move the lead measure before the next report. Not a list of every dispatchable row — the point is a commitment the next Account can be checked against |
+
+**No Account = a status update**: nothing in it can be false, so nothing gets checked.
+
+**Name the window.** Reports fire on events, so the span is whatever the events made it — an
+Account over an unstated window is unfalsifiable. All three lines come from worker reports and
+the status table; if one needs enriching, dispatch a `scout` rather than opening a surface.
+
+> **Since the last report (~6h).**
+> **Account:** FIX-776 reached spec approval as said. FIX-777's goal check didn't run — blocked
+> on a cross-spec conflict, which I resolved instead.
+> **Review:** goal proven — FIX-775, FIX-776. To go — FIX-777 (no check written yet). FIX-781 exempt (docs).
+> **Plan:** get FIX-777's check written and run. Nothing else moves the lead measure.
 
 ## Boundaries
 

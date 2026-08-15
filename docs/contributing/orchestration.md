@@ -106,7 +106,7 @@ flowchart TD
 | Store | What it is | Lifetime | Home |
 |---|---|---|---|
 | **Coordinator status table** | The coordinator's **internal working memory** — one row per issue (phase, spec PR#, impl PR#, gate-pending, worktree). Updated constantly. | Session-only | `.orchestration/` (**gitignored — never committed**) |
-| **Epic-spec running index** | A **durable, exposed audit log** — links to every issue PR (spec + impl) under the epic, for humans and issue agents to navigate from one place. | Life of the epic | The epic-spec (branch + Linear Epic-issue doc) |
+| **Epic-spec running index** | A **durable, exposed audit log** — links to every issue PR (spec + impl) under the epic, for humans and issue agents to navigate from one place. *Are we winning* is not here; it is in the epic report, where live state is. | Life of the epic | The epic-spec (branch + Linear Epic-issue doc) |
 
 They overlap in *content* (both know the PR numbers) but differ in *purpose and
 audience*: the table is private and ephemeral; the index is public and durable. The
@@ -180,8 +180,8 @@ one-parent rule** — an issue that already has a functional parent is linked wi
 **Contents and shape:
 [`epic-spec-template.md`](epic-spec-template.md)** — the five sections (purpose &
 objective · themes & long-horizon direction · shape of the whole · running index · open
-cross-cutting questions), each with a worked example, plus the reviewer guidance the epic PR
-description leads with. Read the template; it is the single source of truth for what
+cross-cutting questions), each with a worked example, plus the reviewer
+guidance the epic PR description leads with. Read the template; it is the single source of truth for what
 each section owes its reader, exactly as `spec-template.md` is for an issue spec.
 
 **Conventions:**
@@ -204,6 +204,27 @@ each section owes its reader, exactly as `spec-template.md` is for an issue spec
   artifact, so "Spec review: the bar and the convergence rule" below governs its PR too.
   Feedback that doesn't change the epic's objective or a cross-cutting decision belongs to
   the issues under it, not to the epic-spec.
+
+## How many epics run at once (the cap is two)
+
+**At most two epics are active at a time.** A third is held, not cancelled.
+
+**The cap is on objectives, not work items** — the part that gets misread. Eight issues in
+parallel under one epic is *one* objective with throughput, and issue concurrency is a
+different axis (`epic-lifecycle` → "Sizing to the VM"). Four epics under four objectives is
+the violation. Why two: an objective is only worth having if something is tested against it,
+and past two nothing is — gates queue, attention splits, every epic reads "in progress"
+forever.
+
+**There is no queue, and that is the honest cost.** The work items are already Linear issues,
+so holding an epic just leaves them unparented on the board; nothing auto-starts one when a
+slot frees, and re-invoking the lifecycle is the only trigger. Say so plainly when you hold
+something, and name it again at the wrap that frees the slot.
+
+**Enforced at epic setup** (`epic-lifecycle` → "Epic setup") as a question, not a refusal.
+Two rules keep it off the common path: **resolve the requested epic before counting** (a
+resumed epic is not a third one), and **active means its epic PR is open** — wrap closes that
+PR but moves no Linear state, so counting `Epic`-labelled issues jams the cap shut forever.
 
 ## Which issues get a spec (the two routes)
 

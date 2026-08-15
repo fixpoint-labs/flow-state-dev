@@ -583,16 +583,41 @@ worked example) — read those; below is only the coordinator's *operating proce
 The coordinator coordinates; the **`epic-agent`** (`.claude/agents/epic-agent.md`, worktree, no
 `AskUserQuestion`) writes:
 
-- **Discover, then create.** An issue's epic is its **parent** — have `scout` check the set
-  in one pass and return `{ epicIssueId, consistent }`. If they all share the same
-  **`Epic`-labelled (Kind group)** parent, reuse it. If the set is **mixed** (some under an
-  epic, some not) or carries **two different epic parents**, don't guess — surface it to the
-  user before creating a second epic. Otherwise dispatch `epic-agent` to stand one up: it
-  creates the **Epic issue**
-  (`Epic` Kind label), **re-parents the set's issues as sub-issues**, writes the epic-spec
-  (`epic/<name>` branch + never-merged epic PR + the spec attached as the Epic issue's Linear
-  document), and returns the handles. The coordinator holds only handles (epic issue ID, name,
-  branch, epic PR#), never the spec text.
+**Discover → cap → create/resume, in that order.** Reasoning and cost:
+[`orchestration.md`](../../../docs/contributing/orchestration.md) → "How many epics run at once".
+
+- **1 — Discover only. Dispatch nothing here.** An issue's epic is its **parent** — have `scout`
+  return `{ epicIssueId, consistent }` **and whether that epic's PR is open**. Mixed parents, or
+  two different ones: surface it, don't guess.
+  - same parent, **PR open** → reuse: skip step 2, take step 3's **resume**
+  - same parent, **PR closed** (wrapped) → surface it; a new epic or a reopen is the user's
+    call, and **either way go through step 2 first** — both leave an epic PR open
+  - none → step 2
+- **2 — Cap (skip when step 1 found a reuse).** At most **two** epics active; count the
+  **others**, and active means **epic PR open** (wrap moves no Linear state). At two: a
+  *question, not a refusal* — hold this one, or wrap one of them first. Nothing is created until
+  it's answered.
+
+  **Frame it as a business decision, not a scheduling fork**
+  ([`asking-for-decisions.md`](../../../docs/contributing/asking-for-decisions.md)) — they are
+  choosing which outcome lands sooner, not operating a queue. The one fact only you can supply
+  is **how close each active epic is to wrapping**; give that, a recommendation, and what the
+  delay costs either way. **No "displace"**: an epic is active exactly while its PR is open, so there is
+  nothing to displace it into. **Held = nothing created**; the issues stay on the board and the
+  epic starts when the user re-invokes. Name held work at the next wrap.
+- **3 — Resume or create — never the wrong one.**
+  - **Resume:** recover handles (Epic issue, `epic/<name>`, its open PR, the attached doc).
+    **Create nothing, re-parent nothing.** Dispatch `epic-agent` only if this wake has a spec
+    update.
+  - **Create:** dispatch `epic-agent` — Epic issue (`Epic` Kind label), re-parent the set as
+    sub-issues, write the epic-spec (`epic/<name>` + never-merged PR + Linear document), return
+    handles.
+
+  Either way the coordinator holds only handles, never the spec text.
+- **Name which project objective this serves.** One line, in the dispatch to `epic-agent`, from
+  [`docs/objectives.md`](../../../docs/objectives.md): which objective, and how much of its gap
+  this closes. An epic serving none of them is worth surfacing *before* the gate — a product
+  decision you should make knowingly, not one discovered at the wrap.
 - **Consider an end-state POC — before the objective gate, not after.** The objective gate is the
   **last moment the division into issues is cheap to change**, and whether the assembled surface
   is right is the one question only this altitude can ask. When that's genuinely unclear, dispatch
