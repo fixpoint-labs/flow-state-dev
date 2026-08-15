@@ -17,6 +17,11 @@
  * - **No new signal kinds.** Reconciliation re-emits the ordinary vocabulary
  *   with `synthesized: true` and a backdated `at`, so a replayed history and a
  *   live one reduce identically.
+ *
+ * There is exactly **one diff**, and a PR conductor has never seen goes through
+ * it like any other, against a copy that holds nothing (`unseenPr`). A separate
+ * first-observation path is not a shortcut but a second thing to keep in sync,
+ * and what it forgets to emit is lost for good rather than late.
  */
 
 import type { Signal } from "../model/signals";
@@ -95,6 +100,51 @@ function earliestKnownAt(pr: PullRequestFacts, fallback: string): string {
   return times[0] ?? fallback;
 }
 
+/**
+ * The copy a PR is diffed against when conductor has never seen it — every fact
+ * at the value it held before anything had happened.
+ *
+ * This exists so that a first observation is an *ordinary catch-up*, not a
+ * second code path. The two were never different problems: a PR conductor has
+ * never seen is one whose copy holds nothing, and the diff below already knows
+ * how to turn "held nothing, now holds this" into signals. A separate bootstrap
+ * branch has to remember every emit the diff makes, and each one it forgets is
+ * lost permanently rather than temporarily — a PR first read already closed, a
+ * build first read already red, a merge first read already conflicting all
+ * emitted nothing, and could never emit later, because the next tick has a copy
+ * that agrees. The entity waits on a gate nothing will ever release.
+ *
+ * Each zero below is the value that makes the diff tell the truth about a first
+ * read, and the last one is the one that has to be argued rather than assumed:
+ *
+ * - `state: "open"` — every PR was open once, so a first read of a closed or
+ *   merged one is a genuine forward move and ranks as one.
+ * - `checks: null` — nothing has reported, so a settled conclusion is news.
+ * - `mergeable: true` — *not known to conflict*, so a first read that is
+ *   already conflicting emits `merge_conflict`.
+ * - `baseRed: false` — deliberately the value that keeps `base_recovered`
+ *   **silent**. A base conductor never saw red has not recovered, and there is
+ *   no signal for a base going red in the first place, so `false` is both the
+ *   honest prior and the one that emits nothing spurious.
+ * - `knownReviewIds: []` — nothing has been reduced over, so every review
+ *   replays, which is what the old bootstrap branch did explicitly.
+ *
+ * @param pr Facts as just read from the source.
+ * @param observedAt When this read happened, ISO-8601.
+ */
+function unseenPr(pr: PullRequestFacts, observedAt: string): ObservedPr {
+  return {
+    number: pr.number,
+    state: "open",
+    headSha: pr.headSha,
+    checks: null,
+    mergeable: true,
+    baseRed: false,
+    knownReviewIds: [],
+    observedAt,
+  };
+}
+
 /** Map a review state onto the signal kind it produces. */
 function reviewSignalKind(
   state: ReviewFacts["state"],
@@ -120,10 +170,15 @@ export function reconcile(input: ReconcileInput): Signal[] {
   const signals: Signal[] = [];
 
   for (const pr of fresh) {
-    const prior = byNumber.get(pr.number);
+    const seen = byNumber.get(pr.number);
 
     // — a PR conductor never saw open —
-    if (!prior) {
+    // The opening is the one thing no diff can produce, so it is synthesized
+    // here and backdated so it reduces ahead of whatever revealed the gap.
+    // Everything *else* a first observation reveals is left to the ordinary
+    // diff below, run against a copy that holds nothing — see `unseenPr` for
+    // why that unification is the fix rather than a tidy-up.
+    if (!seen) {
       signals.push({
         kind: "pr_opened",
         entityId,
@@ -131,28 +186,8 @@ export function reconcile(input: ReconcileInput): Signal[] {
         synthesized: true,
         pullNumber: pr.number,
       });
-      for (const review of pr.reviews) {
-        signals.push({
-          kind: reviewSignalKind(review.state),
-          entityId,
-          at: review.at,
-          synthesized: true,
-          reviewer: review.reviewer,
-          sha: review.sha,
-          pullNumber: pr.number,
-        });
-      }
-      if (pr.state === "merged") {
-        signals.push({
-          kind: "merged",
-          entityId,
-          at: now,
-          synthesized: true,
-          pullNumber: pr.number,
-        });
-      }
-      continue;
     }
+    const prior = seen ?? unseenPr(pr, now);
 
     // — state moved forward —
     if (STATE_RANK[pr.state] > STATE_RANK[prior.state]) {
@@ -169,6 +204,19 @@ export function reconcile(input: ReconcileInput): Signal[] {
     const known = new Set(prior.knownReviewIds);
     for (const review of pr.reviews) {
       if (known.has(review.id)) continue;
+      // A machine's review is not feedback anyone is waiting on. Emitted, it
+      // spends a review round against the budget and can dispatch an agent to
+      // answer a bot — and conductor reading its own review back is a loop that
+      // costs money every turn. The webhook path already drops a bot's review
+      // on this rule (`github/signals`); this is the polling path agreeing with
+      // it, so a poll and a webhook still reduce identically.
+      //
+      // Humanness is read off the fact, never asked of a source: `isHuman` is
+      // decided structurally by whoever read the author record (GitHub's reader
+      // via `github/identity`; the local source knows conductor never writes
+      // into `reviews/`, so every entry there is a person's). Reaching for that
+      // guard from here would put source-shaped detail inside the pure driver.
+      if (!review.isHuman) continue;
       signals.push({
         kind: reviewSignalKind(review.state),
         entityId,

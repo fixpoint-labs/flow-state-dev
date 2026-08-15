@@ -80,10 +80,16 @@ describe("the first poll of a PR conductor has no record of", () => {
 
     const result = await poll(client);
 
+    // `ci_concluded` is in here because a first observation is an ordinary
+    // catch-up against a copy that holds nothing: the fixture's checks have
+    // already reported, and that is as much news on the first poll as it is on
+    // the fiftieth. It sorts last because it is dated `now` — reconciliation
+    // backdates only the opening, which is the one event it can place.
     expect(result.signals.map((signal) => signal.kind)).toEqual([
       "pr_opened",
       "changes_requested",
       "feedback_received",
+      "ci_concluded",
     ]);
     // The synthesized opening reduces ahead of what revealed the gap.
     expect(result.signals[0]!.at <= result.signals[1]!.at).toBe(true);
@@ -155,7 +161,12 @@ describe("machines never become signals, on any tick", () => {
     });
 
     const first = await poll(client);
-    expect(first.signals).toEqual([expect.objectContaining({ kind: "pr_opened" })]);
+    // Structural signals only — the opening and the checks the first read
+    // revealed. Not one of the three comments became a signal.
+    expect(first.signals).toEqual([
+      expect.objectContaining({ kind: "pr_opened" }),
+      expect.objectContaining({ kind: "ci_concluded", conclusion: "success" }),
+    ]);
 
     // They are recorded as seen so a later identity change cannot resurrect
     // them as a flood of feedback.

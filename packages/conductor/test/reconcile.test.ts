@@ -9,6 +9,7 @@
 import { describe, expect, it } from "vitest";
 import { decide } from "../src/driver/decide";
 import { divergences, reconcile, type ObservedPr } from "../src/driver/reconcile";
+import type { ReviewFacts } from "../src/model/world";
 import { ENTITY_ID, HEAD, freshApproval, issue, pr, review, worldWith } from "./fixtures";
 
 const NOW = "2026-08-14T12:00:00Z";
@@ -124,6 +125,168 @@ describe("a PR conductor never saw opened", () => {
       "recordApproval",
       "enterPhase",
     ]);
+  });
+});
+
+describe("a PR first seen after it had already moved", () => {
+  // The bug this block exists for: a first observation is the *only* chance to
+  // emit what a PR already is. On the next tick the copy agrees with the world,
+  // the divergence is gone, and nothing will ever emit it. A fact missed here is
+  // missed permanently, and the entity waits on a gate no signal will release.
+
+  it("emits every transition the first read reveals, not only the opening", () => {
+    const signals = reconcile({
+      entityId: ENTITY_ID,
+      observed: [],
+      fresh: [pr({ state: "closed", checks: "failure", mergeable: false })],
+      now: NOW,
+    });
+
+    expect(signals.map((s) => s.kind)).toEqual([
+      "pr_opened",
+      "pr_closed",
+      "ci_concluded",
+      "merge_conflict",
+    ]);
+  });
+
+  it("still emits the merge of a PR that was already merged when first read", () => {
+    expect(
+      reconcile({
+        entityId: ENTITY_ID,
+        observed: [],
+        fresh: [pr({ state: "merged" })],
+        now: NOW,
+      }).map((s) => s.kind),
+    ).toEqual(["pr_opened", "merged"]);
+  });
+
+  it("invents no base recovery for a base it never saw red", () => {
+    // The one emit a zero-valued prior must *not* produce. `base_recovered`
+    // fires on red → green, and a first read has no red to have come from —
+    // whichever way the base happens to stand right now. There is no signal for
+    // a base going red, so both cases are correctly silent.
+    for (const baseRed of [false, true]) {
+      expect(
+        reconcile({
+          entityId: ENTITY_ID,
+          observed: [],
+          fresh: [pr({ baseRed })],
+          now: NOW,
+        }).map((s) => s.kind),
+      ).toEqual(["pr_opened"]);
+    }
+  });
+
+  it("gets the driver moving on a build that was already red when it first looked", () => {
+    // The batch reduced end to end, the way a tick reduces it: every signal in
+    // order, against the one snapshot, with the phase carried between them. A
+    // per-signal assertion would not show the symptom — the symptom is that the
+    // issue sits in `awaiting_ci` with nothing left to release it.
+    const fresh = pr({ checks: "failure" });
+    const w = worldWith("implementation", fresh);
+    const signals = reconcile({
+      entityId: ENTITY_ID,
+      observed: [],
+      fresh: [fresh],
+      now: NOW,
+    });
+
+    let entity = issue("IMPLEMENTATION");
+    const actions = signals.flatMap((s) => {
+      const produced = decide(entity, s, w);
+      for (const action of produced) {
+        if (action.kind === "enterPhase") entity = issue(action.phase);
+      }
+      return produced;
+    });
+
+    expect(actions.map((a) => a.kind)).toEqual(["addressFeedback"]);
+  });
+});
+
+describe("a machine's review", () => {
+  function botReview(overrides: Partial<ReviewFacts> = {}): ReviewFacts {
+    return review({
+      id: "bot-1",
+      reviewer: "coderabbit",
+      isHuman: false,
+      state: "CHANGES_REQUESTED",
+      ...overrides,
+    });
+  }
+
+  it("produces no signal on catch-up", () => {
+    expect(
+      reconcile({
+        entityId: ENTITY_ID,
+        observed: [observed()],
+        fresh: [pr({ reviews: [botReview()] })],
+        now: NOW,
+      }),
+    ).toEqual([]);
+  });
+
+  it("produces no signal on the first observation either, where every review replays", () => {
+    expect(
+      reconcile({
+        entityId: ENTITY_ID,
+        observed: [],
+        fresh: [pr({ reviews: [botReview({ state: "APPROVED", reviewer: "renovate" })] })],
+        now: NOW,
+      }).map((s) => s.kind),
+    ).toEqual(["pr_opened"]);
+  });
+
+  it("does not silence the human reviewing the same PR", () => {
+    const signals = reconcile({
+      entityId: ENTITY_ID,
+      observed: [observed()],
+      fresh: [
+        pr({
+          reviews: [
+            botReview({ at: "2026-08-14T10:00:00Z" }),
+            review({ id: "r2", state: "CHANGES_REQUESTED", at: "2026-08-14T11:00:00Z" }),
+          ],
+        }),
+      ],
+      now: NOW,
+    });
+
+    expect(signals.map((s) => [s.kind, (s as { reviewer?: string }).reviewer])).toEqual([
+      ["changes_requested", "alice"],
+    ]);
+  });
+
+  it("costs the implementation no review round and dispatches no agent to answer it", () => {
+    // The sharp case, reduced as a batch: under `awaiting_review` a change
+    // request dispatches `addressFeedback` and spends one of the twelve rounds
+    // the budget holds for humans. A bot must buy neither.
+    // No checks reported, so `awaiting_ci` does not apply and the derived gate
+    // is `awaiting_review` — the gate whose handling spends the budget.
+    const fresh = pr({ reviews: [botReview()] });
+    const w = worldWith("implementation", fresh);
+    const signals = reconcile({
+      entityId: ENTITY_ID,
+      observed: [],
+      fresh: [fresh],
+      now: NOW,
+    });
+
+    let entity = issue("IMPLEMENTATION");
+    const actions = signals.flatMap((s) => {
+      const produced = decide(entity, s, w);
+      for (const action of produced) {
+        if (action.kind === "enterPhase") entity = issue(action.phase);
+      }
+      return produced;
+    });
+
+    // Asserted before the signal list, so a regression reports the cost — an
+    // agent dispatched to answer a machine — rather than the signal that bought
+    // it.
+    expect(actions).toEqual([]);
+    expect(signals.map((s) => s.kind)).toEqual(["pr_opened"]);
   });
 });
 
