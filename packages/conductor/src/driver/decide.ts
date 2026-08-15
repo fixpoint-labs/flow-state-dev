@@ -331,20 +331,9 @@ function decideUniversal(
         },
       ];
 
-    // `approval_expressed` is advisory: a model's reading of prose satisfies
-    // nothing. It produces no action of its own, and the empty result falls
-    // through to the completion check like any other absorbed signal — which
-    // can only advance a phase a *real* review in the snapshot already
-    // completed. The prose is never what released the gate.
-    case "approval_expressed":
-      return [];
-
     // A dispatch settling changes the world, not the phase. Whatever it
     // produced arrives as its own structural signal.
     case "dispatch_completed":
-      return [];
-
-    case "external_status_changed":
       return [];
 
     default:

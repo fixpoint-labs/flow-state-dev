@@ -143,10 +143,8 @@ export function signal(kind: SignalKind, overrides: Record<string, unknown> = {}
     ci_concluded: { conclusion: "failure", sha: HEAD },
     feedback_received: { author: "alice", commentId: "c1", pullNumber: 10 },
     question_asked: { author: "alice", commentId: "c1", pullNumber: 10 },
-    approval_expressed: { author: "alice", commentId: "c1", pullNumber: 10 },
     dispatch_completed: { dispatchId: "d1" },
     dispatch_failed: { dispatchId: "d1" },
-    issue_settled: { childId: "FIX-2" },
   };
   return { kind, ...base, ...payloads[kind], ...overrides } as Signal;
 }
@@ -164,7 +162,6 @@ export const SIGNAL_KINDS: readonly SignalKind[] = [
   "pr_closed",
   "feedback_received",
   "question_asked",
-  "approval_expressed",
   "phase_entered",
   "dispatch_completed",
   "dispatch_failed",
@@ -172,7 +169,4 @@ export const SIGNAL_KINDS: readonly SignalKind[] = [
   "goal_check_needed",
   "goal_check_passed",
   "goal_check_failed",
-  "external_status_changed",
-  "objective_approved",
-  "issue_settled",
 ];

@@ -97,11 +97,6 @@ export function isPhaseComplete(entity: ConductorEntity, world: World): boolean 
   return def.completedWhen(world);
 }
 
-/** The phase this entity advances to when complete, or `null` at a terminal phase. */
-export function nextPhase(entity: ConductorEntity): Phase | null {
-  return phaseDefinition(entity.kind, entity.phase)?.next ?? null;
-}
-
 /**
  * What the work in front of the entity still **owes a proof**, or `null`.
  *

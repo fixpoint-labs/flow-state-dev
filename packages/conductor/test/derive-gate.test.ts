@@ -11,7 +11,6 @@ import {
   deriveGate,
   isPhaseComplete,
   isPhaseStranded,
-  nextPhase,
 } from "../src/driver/derive-gate";
 import { factsReadBy, ISSUE_PHASES } from "../src/model/phases";
 import {
@@ -477,7 +476,6 @@ describe("derivation is stateless", () => {
       proved("passed", HEAD, "base"),
     );
     expect(deriveGate(issue("SETTLED"), w)).toBeNull();
-    expect(nextPhase(issue("SETTLED"))).toBeNull();
   });
 });
 

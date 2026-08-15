@@ -5,8 +5,8 @@
  * `feedback_received` without asking a model what kind of comment it is. That
  * is crude — a question and a change request reduce to the same signal — and it
  * is correct for the one case M1 has, because it is what keeps a tick free of
- * a generator call. `question_asked` and `approval_expressed` arrive with the
- * classifier in M3. **Nothing in this file may read a comment body.**
+ * a generator call. `question_asked` arrives with the classifier in M3.
+ * **Nothing in this file may read a comment body.**
  *
  * The two shapes GitHub reports are not interchangeable and are not treated as
  * such here:

@@ -10,11 +10,10 @@
  * - **Reconciliation adds no new signal kinds.** A missed `pr_opened` is
  *   re-emitted as an ordinary `pr_opened` carrying `synthesized: true` and a
  *   backdated `at`, so it reduces ahead of the comment that revealed the gap.
- * - **A model may produce a signal; it may never produce an action.** The three
- *   prose-derived kinds (`feedback_received`, `question_asked`,
- *   `approval_expressed`) are classifier output. Everything else is structural.
- *   `approval_expressed` is advisory and must never satisfy an approval gate —
- *   a gate reads a real review state, never a model's reading of prose.
+ * - **A model may produce a signal; it may never produce an action.** The
+ *   prose-derived kinds (`feedback_received`, `question_asked`) are classifier
+ *   output. Everything else is structural, and no gate ever turns on a
+ *   classifier's reading of prose — an approval gate reads a real review state.
  *
  * The types are the contract; {@link signalSchema} at the bottom is the same
  * shape as runtime data, because a ledger row stores the signal a transition
@@ -38,7 +37,6 @@ export type SignalKind =
   // — prose-derived, from the classifier (M3+; M1 emits `feedback_received` only) —
   | "feedback_received"
   | "question_asked"
-  | "approval_expressed"
   // — conductor's own —
   | "phase_entered"
   | "dispatch_completed"
@@ -47,12 +45,7 @@ export type SignalKind =
   // — the goal harness —
   | "goal_check_needed"
   | "goal_check_passed"
-  | "goal_check_failed"
-  // — ambient —
-  | "external_status_changed"
-  // — epic —
-  | "objective_approved"
-  | "issue_settled";
+  | "goal_check_failed";
 
 /** Fields every signal carries. */
 export interface SignalBase {
@@ -112,7 +105,7 @@ export interface PullRequestSignal extends SignalBase {
 
 /** Classifier output over a human comment. Scoped to the PR it was left on. */
 export interface ProseSignal extends SignalBase {
-  readonly kind: "feedback_received" | "question_asked" | "approval_expressed";
+  readonly kind: "feedback_received" | "question_asked";
   readonly author: string;
   readonly commentId: string;
   readonly pullNumber: number;
@@ -143,12 +136,6 @@ export interface DispatchSignal extends SignalBase {
   readonly kind: "dispatch_completed" | "dispatch_failed";
   readonly dispatchId: string;
   readonly detail?: string | null;
-}
-
-/** A child issue passed its goal check. */
-export interface IssueSettledSignal extends SignalBase {
-  readonly kind: "issue_settled";
-  readonly childId: string;
 }
 
 /**
@@ -184,9 +171,7 @@ export interface PlainSignal extends SignalBase {
     | "goal_check_needed"
     | "goal_check_passed"
     | "goal_check_failed"
-    | "progress_stalled"
-    | "external_status_changed"
-    | "objective_approved";
+    | "progress_stalled";
 }
 
 /** The discriminated union `decide` reduces over. */
@@ -196,7 +181,6 @@ export type Signal =
   | PullRequestSignal
   | ProseSignal
   | DispatchSignal
-  | IssueSettledSignal
   | PlainSignal;
 
 /**
@@ -207,7 +191,6 @@ export type Signal =
 export const PROSE_DERIVED_KINDS = [
   "feedback_received",
   "question_asked",
-  "approval_expressed",
 ] as const satisfies readonly SignalKind[];
 
 /** True when `kind` is classifier output rather than a structural observation. */
@@ -235,7 +218,13 @@ export function isProseDerived(kind: SignalKind): boolean {
  * **Entries are permanent.** Removing one does not tidy anything up; it makes
  * the rows that named it start throwing again.
  */
-export const RETIRED_SIGNAL_KINDS: readonly string[] = ["guidance_changed"];
+export const RETIRED_SIGNAL_KINDS: readonly string[] = [
+  "guidance_changed",
+  "issue_settled",
+  "objective_approved",
+  "external_status_changed",
+  "approval_expressed",
+];
 
 /**
  * True when `value` is a stored signal payload naming a retired kind.
@@ -290,7 +279,7 @@ export const signalSchema: z.ZodType<Signal> = z.discriminatedUnion("kind", [
   }),
   z.object({
     ...base,
-    kind: z.enum(["feedback_received", "question_asked", "approval_expressed"]),
+    kind: z.enum(["feedback_received", "question_asked"]),
     author: z.string(),
     commentId: z.string(),
     pullNumber: z.number().int(),
@@ -302,7 +291,6 @@ export const signalSchema: z.ZodType<Signal> = z.discriminatedUnion("kind", [
     // Optional so a row written before the field existed still parses (BP-030).
     detail: z.string().nullable().optional(),
   }),
-  z.object({ ...base, kind: z.literal("issue_settled"), childId: z.string() }),
   z.object({
     ...base,
     kind: z.enum([
@@ -311,8 +299,6 @@ export const signalSchema: z.ZodType<Signal> = z.discriminatedUnion("kind", [
       "goal_check_passed",
       "goal_check_failed",
       "progress_stalled",
-      "external_status_changed",
-      "objective_approved",
     ]),
   }),
 ]);

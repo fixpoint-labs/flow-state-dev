@@ -171,13 +171,17 @@ describe("the decide table", () => {
   });
 
   it("advances an epic to WRAP only when every child issue has settled", () => {
+    // Carried on `phase_entered`, which is the honest choice: completion is
+    // re-derived against the snapshot on whatever signal arrives, and `ISSUES`
+    // dispatches nothing on entry so nothing absorbs it. The child settling is
+    // a fact of the world here, never a signal — no source reports one.
     const partial = world({
       childIssues: [
         { id: "FIX-2", settled: true },
         { id: "FIX-3", settled: false },
       ],
     });
-    expect(decide(epic("ISSUES"), signal("issue_settled"), partial)).toEqual([]);
+    expect(decide(epic("ISSUES"), signal("phase_entered"), partial)).toEqual([]);
 
     const complete = world({
       childIssues: [
@@ -185,19 +189,13 @@ describe("the decide table", () => {
         { id: "FIX-3", settled: true },
       ],
     });
-    expect(decide(epic("ISSUES"), signal("issue_settled"), complete)).toEqual([
+    expect(decide(epic("ISSUES"), signal("phase_entered"), complete)).toEqual([
       { kind: "enterPhase", entityId: ENTITY_ID, phase: "WRAP" },
     ]);
   });
 });
 
 describe("keeping judgment out of the transition", () => {
-  it("never advances a gate on prose approval, however confident the classifier is", () => {
-    // "lgtm, ship it" is a model's reading of a comment. A gate reads a review.
-    const w = worldWith("spec", pr({ reviews: [review()] }));
-    expect(decide(issue("SPEC"), signal("approval_expressed"), w)).toEqual([]);
-  });
-
   it("does not treat a stale approval as approval — a push invalidates the review", () => {
     const w = worldWith(
       "spec",
