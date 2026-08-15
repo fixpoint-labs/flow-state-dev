@@ -298,7 +298,7 @@ facts of the machine it runs on, so it reads them rather than asking:
 | Not configured  | Discovered from                                              |
 | --------------- | ------------------------------------------------------------ |
 | the repository  | `git remote get-url origin`, in the checkout conductor runs in |
-| GitHub auth     | `GITHUB_TOKEN` / `GH_TOKEN` — the variables `gh` already uses  |
+| GitHub auth     | `GH_TOKEN`, then `GITHUB_TOKEN` — the variables `gh` already uses, in `gh`'s own precedence |
 | the base branch | the remote's HEAD                                             |
 | the dispatcher  | the coding harness that can actually be loaded (Claude Code's Agent SDK, today) |
 

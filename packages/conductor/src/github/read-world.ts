@@ -32,7 +32,7 @@ import {
 } from "../model/world";
 import type { GitHubClient } from "./client";
 import { GitHubApiError } from "./client";
-import { isHumanActor, type GitHubActor } from "./identity";
+import { isHumanActor, type ConductorIdentity, type GitHubActor } from "./identity";
 
 /** What a caller hands the reader. Everything conductor owns arrives here. */
 export interface ReadWorldInput {
@@ -143,7 +143,7 @@ async function checkRunsFor(
  */
 function toReviewFacts(
   payload: ReviewPayload,
-  client: GitHubClient,
+  identity: ConductorIdentity,
 ): ReviewFacts | null {
   const state = (payload.state ?? "").toUpperCase();
   if (state !== "APPROVED" && state !== "CHANGES_REQUESTED" && state !== "COMMENTED") {
@@ -152,7 +152,7 @@ function toReviewFacts(
   return {
     id: String(payload.id),
     reviewer: payload.user?.login ?? "",
-    isHuman: isHumanActor(payload.user, client.identity),
+    isHuman: isHumanActor(payload.user, identity),
     state,
     sha: payload.commit_id ?? "",
     at: payload.submitted_at ?? "",
@@ -200,11 +200,15 @@ export async function readPullRequest(
 
   const reviews: ReviewFacts[] = [];
   if (plan.reviews) {
+    // Conductor submits reviews as well as reading them, so `isHuman` rests on
+    // the same resolved identity the comment path does: a review conductor
+    // wrote must not satisfy an approval gate.
+    const identity = await client.identity();
     const payloads = await client.paginate<ReviewPayload>(
       client.path("pulls", pullNumber, "reviews"),
     );
     for (const payload of payloads) {
-      const facts = toReviewFacts(payload, client);
+      const facts = toReviewFacts(payload, identity);
       if (facts) reviews.push(facts);
     }
   }

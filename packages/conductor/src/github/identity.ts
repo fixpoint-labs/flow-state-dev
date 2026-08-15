@@ -31,7 +31,12 @@ export interface ConductorIdentity {
 }
 
 export interface IdentityOptions {
-  /** The login conductor posts as. Required in production; optional for reads. */
+  /**
+   * The login conductor posts as. Optional, but never absent by the time the
+   * read path runs: `client.identity()` resolves it from `GET /user` when it
+   * was not configured, and raises rather than handing back an identity that
+   * cannot recognize conductor's own comments.
+   */
   readonly selfLogin?: string;
   /** Additional logins to treat as machines. Case-insensitive. */
   readonly botLogins?: readonly string[];

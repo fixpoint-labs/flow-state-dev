@@ -56,6 +56,43 @@ export function isPendingReviewConflict(error: unknown): boolean {
   return /pending review/i.test(error.body);
 }
 
+/**
+ * Conductor could not work out which account its token belongs to.
+ *
+ * Fatal on the read path by design. Conductor posts on the pull requests it
+ * polls, so a read that cannot recognize its own authorship turns every reply
+ * into fresh feedback and dispatches a paid agent to answer it — forever. A
+ * failed tick is the cheap outcome; see `./identity`.
+ */
+export class GitHubIdentityError extends Error {
+  constructor(detail: string, options?: { cause?: unknown }) {
+    super(
+      `Conductor could not determine which GitHub account its token belongs to (${detail}). ` +
+        `It reads its own comments back from the pull requests it polls, so it must be able ` +
+        `to recognize them. Set \`selfLogin\` on the GitHub client, or use a token that can ` +
+        `call GET /user.`,
+      options,
+    );
+    this.name = "GitHubIdentityError";
+  }
+}
+
+/**
+ * True when `GET /user` was refused because the credential is not a user at all.
+ *
+ * A GitHub App installation token — which is what Actions' own `GITHUB_TOKEN`
+ * is — cannot call `/user`. It also cannot post a comment that looks human: its
+ * writes are attributed to `<app>[bot]`, which `isHumanActor` drops on the login
+ * suffix. So there is no self-login to learn, and none is needed. Every other
+ * failure (a 401, a 5xx, a rate limit, a network fault) leaves conductor not
+ * knowing who it is, which is the state that must be loud.
+ */
+function isNotAUserToken(error: unknown): boolean {
+  if (!(error instanceof GitHubApiError)) return false;
+  if (error.status !== 403) return false;
+  return /not accessible by integration/i.test(error.body);
+}
+
 /** Max characters of a failing response body retained on the error. */
 const BODY_LIMIT = 1000;
 
@@ -76,8 +113,18 @@ export interface GitHubClientOptions extends IdentityOptions {
 export interface GitHubClient {
   readonly owner: string;
   readonly repo: string;
-  /** Who counts as a bot, and who conductor itself is. Read by `./identity`. */
-  readonly identity: ConductorIdentity;
+  /**
+   * Who counts as a bot, and who conductor itself is. Read by `./identity`.
+   *
+   * Asynchronous because conductor's own login is a fact of the token, and a
+   * token does not carry it: when `selfLogin` was not configured this asks
+   * GitHub `GET /user` once and memoizes the answer, including the failure.
+   * A property could only ever have returned the unsafe guess.
+   *
+   * @throws {GitHubIdentityError} when the token can neither be told apart from
+   *   a human nor identified.
+   */
+  identity(): Promise<ConductorIdentity>;
   /** Build a path under `/repos/{owner}/{repo}` — `path("pulls", 7)`. */
   path(...segments: readonly (string | number)[]): string;
   /**
@@ -125,7 +172,6 @@ function withPageSize(url: string): string {
 export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
   const baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "");
   const doFetch: FetchLike = options.fetch ?? ((input, init) => fetch(input, init));
-  const identity = createIdentity(options);
 
   const absolute = (path: string) => (path.startsWith("http") ? path : `${baseUrl}${path}`);
 
@@ -157,21 +203,71 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
     return response;
   }
 
+  /** Parse a JSON body, or `undefined` for a 204. */
+  async function requestJson<T>(method: string, path: string, body?: unknown): Promise<T> {
+    const response = await send(method, path, body);
+    if (response.status === 204) return undefined as T;
+    const text = await response.text();
+    return (text ? JSON.parse(text) : undefined) as T;
+  }
+
+  /**
+   * The login this token posts as.
+   *
+   * Configured wins, because a caller that knows saves a request and works for
+   * a token that cannot answer. Otherwise GitHub is asked — self-correcting, and
+   * impossible to misconfigure. `null` is returned only for the one credential
+   * that provably cannot look human (see {@link isNotAUserToken}); anything else
+   * that goes wrong raises.
+   */
+  async function resolveSelfLogin(): Promise<string | null> {
+    const configured = options.selfLogin?.trim() ?? "";
+    if (configured !== "") return configured;
+
+    let me: { login?: string | null } | undefined;
+    try {
+      me = await requestJson<{ login?: string | null }>("GET", "/user");
+    } catch (error) {
+      if (isNotAUserToken(error)) return null;
+      throw new GitHubIdentityError(`GET /user failed`, { cause: error });
+    }
+
+    const login = typeof me?.login === "string" ? me.login.trim() : "";
+    if (login === "") throw new GitHubIdentityError("GET /user returned no login");
+    return login;
+  }
+
+  // Memoized as a promise, so concurrent reads in one tick share the single
+  // request and a failure is not silently retried into a different answer.
+  let pendingIdentity: Promise<ConductorIdentity> | undefined;
+
   return {
     owner: options.owner,
     repo: options.repo,
-    identity,
+
+    identity() {
+      pendingIdentity ??= resolveSelfLogin()
+        .then((selfLogin) =>
+          createIdentity({
+            ...(selfLogin === null ? {} : { selfLogin }),
+            botLogins: options.botLogins ?? [],
+          }),
+        )
+        .catch((error: unknown) => {
+          // A rate limit or a 5xx must not poison the client for the rest of
+          // the process. Forget the failure so the next tick asks again; only
+          // a resolved identity is kept.
+          pendingIdentity = undefined;
+          throw error;
+        });
+      return pendingIdentity;
+    },
 
     path(...segments) {
       return `/repos/${options.owner}/${options.repo}/${segments.join("/")}`;
     },
 
-    async request<T>(method: string, path: string, body?: unknown): Promise<T> {
-      const response = await send(method, path, body);
-      if (response.status === 204) return undefined as T;
-      const text = await response.text();
-      return (text ? JSON.parse(text) : undefined) as T;
-    },
+    request: requestJson,
 
     async paginate<T>(
       path: string,

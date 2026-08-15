@@ -139,7 +139,11 @@ export async function pollGitHub(
 
   const ctx: SignalParseContext = {
     entityId: input.entityId,
-    identity: client.identity,
+    // Resolved, not assumed. A poll that cannot tell conductor's own comment
+    // from a reviewer's turns every reply conductor posts into fresh feedback
+    // and dispatches a paid agent to answer it. This raises rather than
+    // guessing — see `./client`'s `GitHubIdentityError`.
+    identity: await client.identity(),
     now: input.now,
   };
 

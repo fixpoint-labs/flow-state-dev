@@ -112,6 +112,23 @@ describe("resolveConductor at level 1", () => {
     });
     expect(resolved.token).toBe("gh0");
   });
+
+  it("prefers GH_TOKEN when both are set, the order `gh` documents", async () => {
+    // The case this decides: a workflow where Actions injects a
+    // repository-scoped GITHUB_TOKEN on its own while the operator supplies a
+    // broader GH_TOKEN deliberately. Authenticating with the narrower one fails
+    // later as a permissions error on an upstream read or write, which is a
+    // confusing way to discover a precedence bug.
+    const resolved = await resolveConductor(defineConductor(), {
+      env: {
+        GITHUB_TOKEN: "narrow-token-actions-injected",
+        GH_TOKEN: "broad-token-operator-supplied",
+      } as NodeJS.ProcessEnv,
+      git: fakeGit(HAPPY),
+      probe: () => true,
+    });
+    expect(resolved.token).toBe("broad-token-operator-supplied");
+  });
 });
 
 describe("a discovery that cannot answer", () => {

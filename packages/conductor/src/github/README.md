@@ -7,7 +7,7 @@ can tell which source produced them.
 
 | File | What it owns |
 |---|---|
-| `client.ts` | auth, pagination, typed errors. Nothing domain-shaped. |
+| `client.ts` | auth, pagination, typed errors, and which account the token is. Nothing domain-shaped. |
 | `identity.ts` | who counts as a human |
 | `read-world.ts` | GitHub → `World`, fetching the facts the phase's gates declare |
 | `signals.ts` | payloads → signals, structural only |
@@ -24,6 +24,11 @@ Two things worth knowing before changing anything here:
   what a comment says. A bot's review must not satisfy a gate, and conductor reading its
   own comment back as fresh feedback is a loop that costs money every turn.
   `identity.ts` is that guard, and it treats an unattributable author as not human.
+  The guard only works if conductor knows its own login, and a token does not carry
+  one — so `client.identity()` resolves it from `GET /user` when `selfLogin` was not
+  configured, and **the read path raises rather than polling without it.** A token on
+  an ordinary `User` account, which is what a personal access token is, looks exactly
+  like a human otherwise.
 
 Polling is the whole read path today; webhooks come later. That is not a degraded mode —
 reconciliation is what makes a poll authoritative, because a tick diffs what it read

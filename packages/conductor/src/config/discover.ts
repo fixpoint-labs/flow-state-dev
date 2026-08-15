@@ -171,16 +171,28 @@ export async function discoverDefaultBranch(
 /**
  * The GitHub token, from the variables `gh` already uses.
  *
+ * **`GH_TOKEN` wins over `GITHUB_TOKEN`, which is the order `gh` documents**
+ * (`gh help environment`: "GH_TOKEN, GITHUB_TOKEN (in order of precedence)").
+ * Borrowing `gh`'s variables and not its precedence is worse than having our
+ * own: the case it decides is a workflow where Actions injects a
+ * repository-scoped `GITHUB_TOKEN` on its own while the operator supplies a
+ * broader `GH_TOKEN` deliberately, and picking the narrower one surfaces much
+ * later as a permissions error on an upstream read or write.
+ *
  * GitHub is the one connector that is not optional — it hosts the artifacts and
  * the gates — so an absent token is an error rather than a degraded mode.
  */
 export function discoverGitHubToken(env: NodeJS.ProcessEnv): string {
-  const token = env.GITHUB_TOKEN ?? env.GH_TOKEN;
+  // Blank is unset. A workflow that writes `GH_TOKEN: ${{ secrets.PAT }}` with
+  // no such secret exports an empty string, and `??` alone would take it and
+  // report "no token" with a perfectly good `GITHUB_TOKEN` sitting there.
+  const token = [env.GH_TOKEN, env.GITHUB_TOKEN].find((value) => (value ?? "").trim() !== "");
   if (!token || token.trim() === "") {
     throw new ConductorConfigError(
-      "No GitHub token found. Conductor reads GITHUB_TOKEN or GH_TOKEN, the same " +
-        "variables the `gh` CLI uses. GitHub hosts the artifacts and the gates, so " +
-        "there is no mode that runs without it.",
+      "No GitHub token found. Conductor reads GH_TOKEN or GITHUB_TOKEN, in that " +
+        "order — the same variables the `gh` CLI uses, in the same precedence. " +
+        "GitHub hosts the artifacts and the gates, so there is no mode that runs " +
+        "without it.",
       "github.token",
     );
   }
