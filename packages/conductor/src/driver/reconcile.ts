@@ -229,8 +229,24 @@ export function reconcile(input: ReconcileInput): Signal[] {
     }
 
     // — CI concluded while conductor was not listening —
+    // A conclusion is a fact about a *commit*, not about the PR, so what makes
+    // one news is a new conclusion or a new commit under it. Comparing the
+    // value alone loses the case the feedback loop most depends on: the
+    // previous head failed, an agent pushed a fix, and the fix failed too
+    // before the next poll. Both reads say `failure`, nothing appears to move,
+    // and the cursor then adopts the new head — so the copy agrees with the
+    // world and no later tick can emit it. The issue sits in `awaiting_ci`
+    // forever, at exactly the moment conductor was supposed to notice the fix
+    // did not work.
+    //
+    // Still silent on a redundant tick: an unchanged world has both the same
+    // conclusion and the same head. And a first observation stays a first
+    // observation — `unseenPr` copies the fresh head, so what makes a settled
+    // conclusion news there is the `null` prior, not a SHA that never differed.
+    const concludedOnANewCommit =
+      pr.checks !== prior.checks || pr.headSha !== prior.headSha;
     if (
-      pr.checks !== prior.checks &&
+      concludedOnANewCommit &&
       (pr.checks === "success" || pr.checks === "failure")
     ) {
       signals.push({

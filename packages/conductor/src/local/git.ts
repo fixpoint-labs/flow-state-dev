@@ -45,20 +45,50 @@ async function must(
 }
 
 /**
+ * The exit code `git rev-parse --verify` uses for "the repository answered, and
+ * it has no such revision".
+ *
+ * Verified against git 2.43: a missing ref exits **1**, while a directory that
+ * is not a checkout — or a revision spec git cannot parse — exits **128**.
+ *
+ * **Only this code means absence,** the same rule the branch layer's
+ * `LS_REMOTE_NO_MATCHING_REFS` holds one layer up. Everything else means
+ * the question was never asked, and reading it as absence does not merely lose
+ * information, it asserts a different true fact: `resolveState` finds no head
+ * for a live branch, reports the submission closed, and reconciliation
+ * synthesizes `pr_closed` and escalates it. A transient git problem would
+ * become a durable, wrong transition in the ledger.
+ */
+const REV_PARSE_NO_SUCH_REF = 1;
+
+/**
  * The commit a ref points at, or `null` when the ref does not exist.
  *
  * Absence is an answer here rather than a failure: a branch that has been
  * deleted is exactly how a local submission gets closed, and `rev-parse` exits
- * non-zero for it.
+ * {@link REV_PARSE_NO_SUCH_REF} for it. Any *other* non-zero exit is a question
+ * that could not be asked and raises.
+ *
+ * @throws {LocalGitError} when the repository could not be queried.
  */
 export async function headSha(
   git: GitRunner,
   repoRoot: string,
   ref: string,
 ): Promise<string | null> {
-  const result = await git(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], repoRoot);
-  const sha = result.stdout.trim();
-  return result.code === 0 && sha ? sha : null;
+  const argv = ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`];
+  const result = await git(argv, repoRoot);
+  if (result.code === REV_PARSE_NO_SUCH_REF) return null;
+  if (result.code !== 0) {
+    throw new LocalGitError(
+      `git ${argv.join(" ")} failed in ${repoRoot} (exit ${result.code}), so conductor ` +
+        `cannot tell whether ${ref} exists. Refusing to answer: reading this as a missing ` +
+        `ref would close a submission that is still open.`,
+      argv,
+      result.stderr,
+    );
+  }
+  return result.stdout.trim() || null;
 }
 
 /**

@@ -389,6 +389,53 @@ describe("ordinary catch-up", () => {
     ]);
   });
 
+  it("emits the second red build, because it condemns a different commit", () => {
+    // The feedback loop's sharpest moment: the previous head failed, an agent
+    // pushed a fix, and that fix failed too before the next poll. Both snapshots
+    // read `checks: "failure"`, so a value comparison sees nothing move — but
+    // the failure belongs to a new SHA, and it is precisely the evidence that
+    // the agent's fix did not work.
+    //
+    // Reduced as a batch with the phase carried between signals, because the
+    // symptom is not a missing signal, it is an issue left in `awaiting_ci`
+    // with nothing that will ever release it: the cursor adopts the new head,
+    // the copy then agrees with the world, and no later tick can emit this.
+    const fresh = pr({ headSha: "sha-fix", checks: "failure" });
+    const w = worldWith("implementation", fresh);
+    const signals = reconcile({
+      entityId: ENTITY_ID,
+      observed: [observed({ headSha: "sha-broken", checks: "failure" })],
+      fresh: [fresh],
+      now: NOW,
+    });
+
+    let entity = issue("IMPLEMENTATION");
+    const actions = signals.flatMap((s) => {
+      const produced = decide(entity, s, w);
+      for (const action of produced) {
+        if (action.kind === "enterPhase") entity = issue(action.phase);
+      }
+      return produced;
+    });
+
+    // Asserted first, so a regression reports the stranding rather than the
+    // missing signal that caused it.
+    expect(actions.map((a) => a.kind)).toEqual(["addressFeedback"]);
+    // The conclusion has to name the new head — `decide` drops a `ci_concluded`
+    // whose SHA is not the PR's current one as stale.
+    expect(signals).toEqual([
+      {
+        kind: "ci_concluded",
+        entityId: ENTITY_ID,
+        at: NOW,
+        synthesized: true,
+        conclusion: "failure",
+        sha: "sha-fix",
+        pullNumber: 10,
+      },
+    ]);
+  });
+
   it("notices mergeability lost and the base recovering", () => {
     expect(
       reconcile({

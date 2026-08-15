@@ -13,6 +13,10 @@
  * by what git wrote rather than by what it exited with.
  */
 
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import { afterEach, describe, expect, it } from "vitest";
 
 import { headSha, isAncestor, LocalGitError, mergesCleanly } from "../../src/local/git";
@@ -54,5 +58,27 @@ describe("a ref that is simply not there", () => {
 
     expect(await headSha(repo.git, repo.root, "deleted/branch")).toBeNull();
     expect(await headSha(repo.git, repo.root, "main")).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it("is told apart from a repository that cannot be queried at all", async () => {
+    // Driven against a real directory that is not a checkout, not a stubbed
+    // runner: the whole claim is about what git exits with, and a fake would
+    // only prove it agrees with itself. Against git 2.43 a missing ref exits 1
+    // and a non-repository exits 128 — one is absence, the other is a question
+    // that was never asked.
+    //
+    // Reading 128 as absence is worse than losing the answer, because it
+    // asserts a different true fact: `resolveState` finds no head, calls a live
+    // submission closed, and reconciliation synthesizes `pr_closed` and
+    // escalates it. A transient git problem becomes a durable wrong transition
+    // in the ledger.
+    repo = await createTestRepo();
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "conductor-not-a-repo-"));
+    try {
+      await expect(headSha(repo.git, outside, "main")).rejects.toThrow(/exit 128/);
+      await expect(headSha(repo.git, outside, "main")).rejects.toBeInstanceOf(LocalGitError);
+    } finally {
+      await fs.rm(outside, { recursive: true, force: true });
+    }
   });
 });
