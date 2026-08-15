@@ -192,8 +192,11 @@ function decideUniversal(
         },
       ];
 
-    // `approval_expressed` is advisory and deliberately inert: a model's
-    // reading of prose must never advance a gate. The gate reads a real review.
+    // `approval_expressed` is advisory: a model's reading of prose satisfies
+    // nothing. It produces no action of its own, and the empty result falls
+    // through to the completion check like any other absorbed signal — which
+    // can only advance a phase a *real* review in the snapshot already
+    // completed. The prose is never what released the gate.
     case "approval_expressed":
       return [];
 
@@ -331,11 +334,23 @@ export function decide(
 
   if (!belongsToThisPhase(entity, signal, world)) return [];
 
+  // Universal handling and entry dispatch may *produce* work, and when they do
+  // that work is the whole answer. What neither may do is **absorb** a signal on
+  // behalf of a phase that has already completed. `CROSS_SPEC_REVIEW` is the
+  // proof: it dispatches nothing on entry and is complete the moment it is
+  // entered, so an entry branch that swallowed its own `phase_entered` left the
+  // epic sitting in a finished phase with no signal left to move it. The same
+  // hole strands `WRAP` when the `dispatch_completed` that produced the
+  // retrospective is swallowed by the universal branch. Falling through on an
+  // empty result closes both without touching a path that answers.
   const universal = decideUniversal(entity, signal, world);
-  if (universal !== undefined) return universal;
+  if (universal !== undefined && universal.length > 0) return universal;
 
   if (signal.kind === "phase_entered") {
-    return (def.onEnter ?? []).map((kind) => ({ kind, entityId: entity.id }) as Action);
+    const entry = (def.onEnter ?? []).map(
+      (kind) => ({ kind, entityId: entity.id }) as Action,
+    );
+    if (entry.length > 0) return entry;
   }
 
   // A human approval that releases a gate is recorded whether or not it also
@@ -348,9 +363,15 @@ export function decide(
 
   // Advance before consulting the gate table, so the signal that *completes* a
   // phase advances it rather than being absorbed by the gate it just released.
+  //
+  // The record comes from the snapshot when this signal is not itself the
+  // approval, because the approval may have landed before conductor was
+  // watching — see `approvalRecordFromWorld`. Whatever completes the phase, the
+  // human release that got it there is written down exactly once.
   if (isPhaseComplete(entity, world) && def.next) {
+    const record = approval ?? approvalRecordFromWorld(entity, world);
     const actions: Action[] = [];
-    if (approval) actions.push(approval);
+    if (record) actions.push(record);
     actions.push({ kind: "enterPhase", entityId: entity.id, phase: def.next });
     return actions;
   }

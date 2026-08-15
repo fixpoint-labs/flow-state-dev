@@ -267,25 +267,18 @@ describe("decide reads only what the phase declares", () => {
   /**
    * Reads the driver performs today that its phase does not declare.
    *
-   * Exactly one cause, and it is a live gap rather than an accepted exception:
-   * on an `approved` signal `decide` normalizes the *whole* snapshot — every
-   * PR, not the phase's own — to ask which gate the approval released. In an
-   * epic phase with no review-reading gate that is a read of a fact the tick
-   * never materializes, so it sees `reviews: []`. Harmless today (none of those
-   * phases has a gate an approval could release) and wrong by the contract.
+   * **Empty, and it is meant to stay that way.** It used to hold six entries,
+   * all one cause: on an `approved` signal `decide` normalized the *whole*
+   * snapshot — every PR, not the phase's own — to ask which gate the approval
+   * released, and in an epic phase with no review-reading gate that was a read
+   * of a fact the tick never materializes. The driver now asks that question
+   * only of gates that declare `artifact.reviews`, so a phase with none does
+   * not touch the snapshot at all and the gap is closed rather than waived.
    *
-   * Scoped to the exact phase × signal × fact triples so any other undeclared
-   * read still fails. Deletable the moment the driver stops reading reviews for
-   * a phase whose gates do not.
+   * Kept as a list so a future exception has somewhere to be argued for, in
+   * writing, instead of being tucked into the assertion.
    */
-  const KNOWN_GAPS: readonly string[] = [
-    "epic/CROSS_SPEC_REVIEW on approved reads artifact.reviews",
-    "epic/CROSS_SPEC_REVIEW on approved reads pr.state",
-    "epic/ISSUES on approved reads artifact.reviews",
-    "epic/ISSUES on approved reads pr.state",
-    "epic/WRAP on approved reads artifact.reviews",
-    "epic/WRAP on approved reads pr.state",
-  ];
+  const KNOWN_GAPS: readonly string[] = [];
 
   it("never consults a fact outside the phase's declared set", () => {
     const undeclared = new Set<string>();

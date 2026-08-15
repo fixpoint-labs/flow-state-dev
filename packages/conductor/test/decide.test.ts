@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 import { decide } from "../src/driver/decide";
-import { deriveGate } from "../src/driver/derive-gate";
+import { deriveGate, isPhaseComplete } from "../src/driver/derive-gate";
 import type { Action } from "../src/model/actions";
 import { EPIC_PHASES, ISSUE_PHASES } from "../src/model/phases";
 import type { Signal } from "../src/model/signals";
@@ -512,6 +512,286 @@ describe("the five edge paths the current harness drops", () => {
     const w = worldWith("spec", pr({ reviews: [review()] }));
     const other = signal("feedback_received", { entityId: "FIX-999" });
     expect(decide(issue("SPEC"), other, w)).toEqual([]);
+  });
+});
+
+describe("reducing against the artifact the phase is actually working on", () => {
+  /**
+   * An implementation PR that was closed and replaced. Both artifacts stay in
+   * the ledger — newest last — and the first one has already merged, which is
+   * the shape that hurts: reducing against it satisfies `awaiting_goal_check`
+   * and settles an issue whose real work is still open.
+   */
+  const replaced = () =>
+    world({
+      artifacts: [
+        {
+          id: "a-impl-1",
+          kind: "implementation",
+          hostedAt: { type: "pr", number: 11 },
+          reviewRounds: DEFAULT_POLICY.implementationReviewRoundBudget,
+        },
+        {
+          id: "a-impl-2",
+          kind: "implementation",
+          hostedAt: { type: "pr", number: 12 },
+          reviewRounds: 0,
+        },
+      ],
+      pullRequests: {
+        11: pr({ number: 11, state: "merged", checks: "success" }),
+        12: pr({
+          number: 12,
+          checks: "success",
+          reviews: [review({ state: "CHANGES_REQUESTED" })],
+        }),
+      },
+    });
+
+  it("gates on the live PR, not the one it replaced", () => {
+    expect(deriveGate(issue("IMPLEMENTATION"), replaced())).toBe("awaiting_review");
+  });
+
+  it("does not settle the issue on the merge of a superseded PR", () => {
+    // The dangerous cell. Against the obsolete artifact this is `runGoalCheck`
+    // on work that has already been thrown away.
+    expect(
+      decide(issue("IMPLEMENTATION"), signal("merged", { pullNumber: 11 }), replaced()),
+    ).toEqual([]);
+  });
+
+  it("scopes incoming feedback to the live PR and counts its own rounds", () => {
+    // The obsolete artifact has spent the whole budget, so reducing against it
+    // escalates instead of doing the work — and drops the signal entirely,
+    // because PR 12 is not the PR it thinks the phase owns.
+    expect(
+      kinds(
+        decide(
+          issue("IMPLEMENTATION"),
+          signal("changes_requested", { pullNumber: 12 }),
+          replaced(),
+        ),
+      ),
+    ).toEqual(["addressFeedback"]);
+  });
+});
+
+describe("an approval a reviewer withdrew", () => {
+  const at = (hour: string) => `2026-08-14T${hour}:00:00Z`;
+
+  /** Approved, then changes requested by the same human against the same head. */
+  const withdrawn = () =>
+    worldWith(
+      "spec",
+      pr({
+        reviews: [
+          review({ id: "r1", state: "APPROVED", at: at("10") }),
+          review({ id: "r2", state: "CHANGES_REQUESTED", at: at("11") }),
+        ],
+      }),
+    );
+
+  it("does not advance the phase — the gate is for the reviewer's current answer", () => {
+    expect(isPhaseComplete(issue("SPEC"), withdrawn())).toBe(false);
+    expect(deriveGate(issue("SPEC"), withdrawn())).toBe("awaiting_spec_approval");
+  });
+
+  it("records nothing when the retracted approval is replayed", () => {
+    // A duplicate or reconciled `approved` for the review that has since been
+    // superseded must not put a release in the ledger that no longer holds.
+    expect(decide(issue("SPEC"), signal("approved"), withdrawn())).toEqual([]);
+  });
+
+  it("does the work the change request asked for instead", () => {
+    expect(kinds(decide(issue("SPEC"), signal("changes_requested"), withdrawn()))).toEqual([
+      "reviseSpec",
+    ]);
+  });
+
+  it("opens the gate again once the same human re-approves", () => {
+    const reApproved = worldWith(
+      "spec",
+      pr({
+        reviews: [
+          review({ id: "r1", state: "CHANGES_REQUESTED", at: at("10") }),
+          review({ id: "r2", state: "APPROVED", at: at("11") }),
+        ],
+      }),
+    );
+    const actions = decide(issue("SPEC"), signal("approved"), reApproved);
+    expect(kinds(actions)).toEqual(["recordApproval", "enterPhase"]);
+    expect(actions[0]).toMatchObject({ gate: "awaiting_spec_approval" });
+  });
+});
+
+describe("a CI conclusion is scoped to the PR and the commit it ran on", () => {
+  /** An issue implementing on PR 11, with its spec PR still sitting at PR 10. */
+  const implementing = (specChecks: "failure" | null = "failure") =>
+    world({
+      artifacts: [
+        { id: "a-spec", kind: "spec", hostedAt: { type: "pr", number: 10 }, reviewRounds: 1 },
+        {
+          id: "a-impl",
+          kind: "implementation",
+          hostedAt: { type: "pr", number: 11 },
+          reviewRounds: 0,
+        },
+      ],
+      pullRequests: {
+        10: pr({ number: 10, checks: specChecks }),
+        11: pr({ number: 11, headSha: "sha-impl", checks: "failure" }),
+      },
+    });
+
+  it("ignores a check that failed on the spec PR while the issue implements", () => {
+    // `readWorld` reads every PR the entity owns, so a newly red spec PR is
+    // read on the same tick. Unscoped, it dispatches an agent to fix an
+    // implementation branch that CI never complained about.
+    expect(
+      decide(
+        issue("IMPLEMENTATION"),
+        signal("ci_concluded", { pullNumber: 10, sha: HEAD }),
+        implementing(),
+      ),
+    ).toEqual([]);
+  });
+
+  it("acts on the check that failed on the implementation PR", () => {
+    expect(
+      kinds(
+        decide(
+          issue("IMPLEMENTATION"),
+          signal("ci_concluded", { pullNumber: 11, sha: "sha-impl" }),
+          implementing(),
+        ),
+      ),
+    ).toEqual(["addressFeedback"]);
+  });
+
+  it("ignores a conclusion for a commit the branch has moved past", () => {
+    // The SHA is the second scope, and it is the one that still holds for a
+    // ledger row or a check-run webhook that named no PR at all.
+    expect(
+      decide(
+        issue("IMPLEMENTATION"),
+        signal("ci_concluded", { pullNumber: undefined, sha: "sha-stale" }),
+        implementing(),
+      ),
+    ).toEqual([]);
+
+    // Same signal shape, current head: still real work, so the SHA scope has
+    // not simply turned the branch off.
+    expect(
+      kinds(
+        decide(
+          issue("IMPLEMENTATION"),
+          signal("ci_concluded", { pullNumber: undefined, sha: "sha-impl" }),
+          implementing(),
+        ),
+      ),
+    ).toEqual(["addressFeedback"]);
+  });
+});
+
+describe("a phase that finishes without waiting on anything", () => {
+  it("moves the epic out of CROSS_SPEC_REVIEW on entry", () => {
+    // It dispatches nothing and gates on nothing, so its own `phase_entered` is
+    // the only signal it is guaranteed to get. Absorbing it strands the epic in
+    // a finished phase forever.
+    expect(decide(epic("CROSS_SPEC_REVIEW"), signal("phase_entered"), world())).toEqual([
+      { kind: "enterPhase", entityId: ENTITY_ID, phase: "ISSUES" },
+    ]);
+  });
+
+  it("settles the epic when the retrospective dispatch reports back", () => {
+    // `dispatch_completed` produces no action of its own. If that swallows the
+    // signal, WRAP sits complete with nothing else due to arrive.
+    const w = world({ artifacts: [{ id: "a-retro", kind: "retrospective", hostedAt: { type: "file", path: "docs/internal/retro.md" }, reviewRounds: 0 }] });
+    expect(decide(epic("WRAP"), signal("dispatch_completed"), w)).toEqual([
+      { kind: "enterPhase", entityId: ENTITY_ID, phase: "SETTLED" },
+    ]);
+  });
+
+  it("still dispatches WRAP's entry work rather than skipping past it", () => {
+    // The fall-through must only catch branches that produced nothing. A phase
+    // with real entry work still does it.
+    expect(kinds(decide(epic("WRAP"), signal("phase_entered"), world()))).toEqual([
+      "retrospect",
+      "polishDocs",
+    ]);
+  });
+
+  it("does not let a completed phase swallow an escalation", () => {
+    // The other half of the ordering. A universal signal that answers keeps its
+    // answer — a dispatch that exhausted its attempts is a human's problem
+    // whether or not the phase it was working for has since completed.
+    const w = worldWith("spec", pr({ reviews: [freshApproval()] }));
+    expect(kinds(decide(issue("SPEC"), signal("dispatch_failed"), w))).toEqual([
+      "escalate",
+    ]);
+  });
+
+  it("keeps a completing signal advancing rather than being absorbed by its gate", () => {
+    // The rule the ordering was built for in the first place, re-pinned: the
+    // approval that releases `awaiting_spec_approval` must advance the phase,
+    // not be answered by the gate it just released.
+    const w = worldWith("spec", pr({ reviews: [freshApproval()] }));
+    expect(kinds(decide(issue("SPEC"), signal("approved"), w))).toEqual([
+      "recordApproval",
+      "enterPhase",
+    ]);
+  });
+});
+
+describe("an approval that landed before conductor was watching", () => {
+  /**
+   * The first poll of a spec PR that is already approved. Reconciliation
+   * backdates the missed `pr_opened` so it reduces *ahead* of the approval that
+   * revealed it — and the snapshot both reduce against already carries the
+   * approval, so the `pr_opened` is what completes the phase.
+   */
+  const alreadyApproved = () => worldWith("spec", pr({ reviews: [freshApproval()] }));
+
+  it("records the approval on whichever signal completes the phase", () => {
+    // Advancing without the record loses it for good: by the time the later
+    // `approved` is reduced the entity is in IMPLEMENTATION, where that
+    // approval releases nothing and cannot be credited to any gate.
+    const actions = decide(
+      issue("SPEC"),
+      signal("pr_opened", { synthesized: true }),
+      alreadyApproved(),
+    );
+    expect(kinds(actions)).toEqual(["recordApproval", "enterPhase"]);
+    expect(actions[0]).toMatchObject({
+      kind: "recordApproval",
+      gate: "awaiting_spec_approval",
+      reviewer: "alice",
+      sha: HEAD,
+    });
+  });
+
+  it("credits the human who actually approved, not the phase's entry", () => {
+    const w = worldWith(
+      "spec",
+      pr({ reviews: [freshApproval(), review({ id: "r2", reviewer: "bob", state: "APPROVED" })] }),
+    );
+    const actions = decide(issue("SPEC"), signal("pr_opened"), w);
+    expect(actions[0]).toMatchObject({ kind: "recordApproval", reviewer: "bob" });
+  });
+
+  it("records nothing when the phase completes on something no human released", () => {
+    // IMPLEMENTATION completes on the goal check. There is no approval standing
+    // at the merged PR's head, so inventing a `recordApproval` here would put a
+    // release in the ledger that never happened.
+    const w = worldWith(
+      "implementation",
+      pr({ state: "merged", checks: "success" }),
+      {},
+      { goalCheck: "passed" },
+    );
+    expect(decide(issue("IMPLEMENTATION"), signal("goal_check_passed"), w)).toEqual([
+      { kind: "enterPhase", entityId: ENTITY_ID, phase: "SETTLED" },
+    ]);
   });
 });
 

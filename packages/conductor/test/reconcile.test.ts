@@ -159,6 +159,30 @@ describe("ordinary catch-up", () => {
     expect(signals.map((s) => s.kind)).toEqual(["ci_concluded"]);
   });
 
+  it("says which PR the checks ran on, so the driver can scope them", () => {
+    // Conductor reads every PR an entity owns on the same tick — an issue in
+    // IMPLEMENTATION still has its spec PR. A conclusion that names no PR is
+    // unscoped, and an unscoped failure from the spec PR reduces as a failure
+    // of the implementation branch.
+    const signals = reconcile({
+      entityId: ENTITY_ID,
+      observed: [observed({ number: 7, checks: "pending" })],
+      fresh: [pr({ number: 7, headSha: "sha-seven", checks: "failure" })],
+      now: NOW,
+    });
+    expect(signals).toEqual([
+      {
+        kind: "ci_concluded",
+        entityId: ENTITY_ID,
+        at: NOW,
+        synthesized: true,
+        conclusion: "failure",
+        sha: "sha-seven",
+        pullNumber: 7,
+      },
+    ]);
+  });
+
   it("notices mergeability lost and the base recovering", () => {
     expect(
       reconcile({
