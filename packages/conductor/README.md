@@ -396,6 +396,24 @@ tick acts on it, it has been recorded. A model inside the loop would produce a
 different transition each run from identical state, which is the failure the
 ledger exists to make impossible.
 
+## Written, not yet wired
+
+Two things in `src/github` are finished and tested but sit off the tick path, so
+read them as ready rather than as running:
+
+- **Outbound PR writes** — `openPullRequest`, `submitReview`,
+  `replyToReviewThreads`, `setLabels`, `commentOnPullRequest`, and the handler
+  blocks over them. Today the pull request is opened and answered by the coding
+  harness inside a dispatch, so conductor's own write path has no caller.
+- **Webhook parsing** — `signalsFromWebhook` turns a GitHub delivery into
+  signals, and nothing delivers one. Observation is a poll plus reconciliation,
+  which is also why a missed delivery is survivable.
+
+They stay in the tree because both are the same short step — a transport, and a
+phase that writes back through conductor instead of through the harness — and
+deleting work that is already correct to re-derive it later is the more
+expensive of the two mistakes.
+
 ## Development
 
 ```bash

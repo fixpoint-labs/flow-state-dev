@@ -21,13 +21,13 @@
 
 ## What this needs before it can pass
 
-**It fails today, for one honest reason: the tick does not exist.** Conductor ships the entity model, the pure driver (`decide`, `deriveGate`, `reconcile`), the GitHub world reader and poller, the dispatcher seam with a working `claudeCodeDispatcher`, branch policy and worktree provisioning, and — as of this goal — the config layer. Nothing assembles them into a tick, persists the ledger, or fronts it with a CLI. That is the remaining M1 work, and this goal is its definition of done.
+**The tick exists.** Conductor ships the entity model, the pure driver (`decide`, `deriveGate`, `reconcile`), the GitHub world reader and poller, the dispatcher seam with a working `claudeCodeDispatcher`, branch policy and worktree provisioning, the config layer, and `openConductor` — which assembles observe → decide → execute → ledger over a file-backed store, with the collections of `src/model/entities.ts` registered against it. The runner drives all of that for real, so what it reports is now a verdict on the drive rather than on a missing export.
 
-The runner therefore does its preflight for real — it resolves the example's config, checks the repo and the harness, and reports what discovery found — and then fails with the list of what is missing rather than a stack trace.
+**The runner drives the real API.** It imports `openConductor` from `@flow-state-dev/conductor` and states its work item as the package's own `IssueWorkItem`; the session, and the entity/gate/ledger/dispatch-count shape every call answers with, are inferred from the export rather than restated here. There is no locally declared copy of the tick surface and no export probe, so a drift between what this goal expects and what conductor ships is a compile error rather than something a run discovers at three in the morning. `pnpm --filter @flow-state-dev/goals typecheck` is where that check lives — the conductor package's own typecheck covers `src` only, and reads this file not at all.
 
-**The contract the runner asserts** is declared at the top of `run.mts` as `ConductorRuntime`: `openConductor({ config, statePath })` returning a session with `manage`, `tick`, and `read`, each answering with the entity, its derived gate, its ledger rows, and its dispatch count. Every *type* in it is the conductor package's own; only the four method names are the goal's proposal. If M1 lands with different names, that declaration is the one thing to update — the assertions below it are about behaviour and do not care.
+**Two seams this goal could not close, reported rather than papered over:**
 
-**One seam this goal could not close, reported rather than papered over:**
+- **A goal check's result has no producer.** `World.goalCheck` is an input to an observation and nothing supplies one: `runTick` builds its `ObservationRequest` without it, both world readers default it to `null`, and neither an entity field nor a `DispatchResult` carries a result back for one to be built from. So `IMPLEMENTATION.completedWhen` — which requires `goalCheck === "passed"` — can never hold, and **an issue cannot reach `SETTLED` on its own.** The drive ends by quiescing instead, which the loop below accepts as a stop, so this does not by itself make the check red; what it does mean is that everything downstream of a settled issue is ungraded here, and a green run is a run that produced a merge-ready branch, not one that finished a work item.
 
 - **An issue's start phase is not derived from its type.** `ISSUE_PHASES` begins at `SPEC` for everything, and nothing reads `issueType`. This goal manages its item as a `Bug` starting at `IMPLEMENTATION`, which is the routing `docs/contributing/orchestration.md` describes (a bug skips the spec and enters at implementation) — but conductor does not do that routing itself, the caller does. It also has to: `SPEC`'s exit is a human approval gate, so a spec-first run cannot complete unattended, correctly.
 
@@ -39,7 +39,10 @@ Each run leaves one branch, `fix/GOAL-<stamp>`. It is deleted at the end of a pa
 
 **Credentials.** Needs `GITHUB_TOKEN` or `GH_TOKEN` with push access, and a coding harness the dispatcher can load — today, `@anthropic-ai/claude-agent-sdk` resolvable from `@flow-state-dev/claude-code`. Missing either is a *blocked* run, not a failure — the preflight says which one and stops.
 
+A token that is *present but cannot answer `GET /user`* is a different case, and the preflight does not catch it: discovery only checks that a token exists, so the run gets as far as the first world read and raises `GitHubIdentityError` from `pollGitHub`. That is legible enough to act on — the message names the fix — but it arrives as a thrown error rather than a blocked verdict, which is worth knowing before reading such a run as a failure of the drive.
+
 ## Verdict log
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
 | 2026-08-14 | (unbuilt) | n/a — never reached the harness | FAIL | Expected. Preflight resolved the example's level-1 config for real (repo, base branch, repo root, dispatcher all `discovered`), then failed on the missing tick: `@flow-state-dev/conductor` exports no `openConductor`. This is M1's remaining work, not a regression. |
+| 2026-08-15 | c0e0f5a | n/a — never reached the harness | BLOCKED | The tick is there and the runner drives it: preflight resolved the level-1 config, `openConductor` opened over durable state, and `manage` reached its first world read. It stopped there — the token on that machine could not call `GET /user`, so `pollGitHub` raised `GitHubIdentityError`. A credential wall, not a verdict on the drive; see "Credentials" above for why it surfaces as a throw. |

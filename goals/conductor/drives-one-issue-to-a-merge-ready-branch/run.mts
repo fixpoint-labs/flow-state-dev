@@ -7,17 +7,23 @@
  * real git remote; and a real agent run doing the coding. Nothing is mocked and
  * nothing is stubbed — see goal.md for the contract and the anti-game rules.
  *
- * **This fails today, for one reason: conductor has no tick.** The model, the
- * driver, the GitHub reader, the dispatcher seam, branch policy, and the config
- * layer all exist; nothing assembles them, persists a ledger, or fronts them
- * with a CLI. So the runner does its preflight for real — resolving the config,
- * reporting what discovery found — and then fails with the list of what is
- * missing rather than a stack trace. That list is M1's definition of done.
+ * **The tick exists.** `openConductor` assembles observe → decide → execute →
+ * ledger over durable state, so this drives the real thing from end to end
+ * rather than stopping at a missing export, and what it reports is a verdict on
+ * the drive. One model gap shapes where the drive ends: nothing carries a goal
+ * check's result back into the world, so `world.goalCheck` is always `null`,
+ * `IMPLEMENTATION.completedWhen` never holds, and an issue cannot reach
+ * `SETTLED` on its own — the loop below stops on quiescence instead. See
+ * goal.md → "What this needs before it can pass".
+ *
+ * The runner therefore imports the package's own entry point and typechecks
+ * against it. There is no local re-declaration of the tick surface and no
+ * existence probe: a drift between what this goal expects and what conductor
+ * exports is a compile error, which is the only place it can be caught cheaply.
  *
  * Shape:
  *
  *   preflight   resolve the example's config; assert level 1 discovered it all
- *   require     the tick surface — FAILS TODAY, legibly
  *   drive       manage one work item, tick until it reaches a human gate
  *   stability   tick again with an unchanged world: zero rows, zero dispatches
  *   restart     drop the session, re-open over the same state, tick: no double
@@ -32,15 +38,15 @@ import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import * as conductor from "@flow-state-dev/conductor";
 import {
   ConductorConfigError,
   decide,
+  openConductor,
   resolveConductor,
   type ConductorConfig,
-  type ConductorEntity,
   type Gate,
   type IssueType,
+  type IssueWorkItem,
   type LedgerEntryState,
   type Phase,
   type ResolvedConductor,
@@ -52,67 +58,6 @@ import {
   runGoal,
   RUN_STAMP,
 } from "../../lib/index.mts";
-
-/* ------------------------------------------------------------------------- *
- * The acceptance contract
- *
- * Every TYPE below is conductor's own. Only the four method names are this
- * goal's proposal for M1's tick surface, and they are the one thing to update
- * if M1 lands with different ones — the assertions further down are about
- * behaviour and do not care what it is called.
- * ------------------------------------------------------------------------- */
-
-/** A work item as conductor currently holds it, read back from durable state. */
-interface ManagedWork {
-  readonly entity: ConductorEntity;
-  /** The gate derived from this tick's world — never a stored one. */
-  readonly gate: Gate | null;
-  /** The entity's ledger rows, ordered by `seq`. */
-  readonly ledger: readonly LedgerEntryState[];
-  /** How many dispatches have been performed for this entity, ever. */
-  readonly dispatchCount: number;
-}
-
-/** What conductor is asked to take on. */
-interface WorkItem {
-  readonly id: string;
-  readonly kind: "issue";
-  readonly issueType: IssueType;
-  /** The phase the item enters at. A bug enters at implementation. */
-  readonly phase: Phase;
-  /** What the work item asks for, in plain language. Carried into the brief. */
-  readonly summary: string;
-}
-
-/** One conductor process's handle on durable state. Re-opening it is a restart. */
-interface ConductorSession {
-  /** Put a work item under management. Idempotent on `id`. */
-  manage(item: WorkItem): Promise<ManagedWork>;
-  /** One tick: read the world, reduce, execute the actions, append the ledger. */
-  tick(entityId: string): Promise<ManagedWork>;
-  /** Read the item back without ticking. */
-  read(entityId: string): Promise<ManagedWork>;
-}
-
-/** The M1 entry point this goal drives. */
-interface ConductorRuntime {
-  openConductor(input: {
-    readonly config: ResolvedConductor;
-    /** Durable location the ledger, entities, and observations live in. */
-    readonly statePath: string;
-  }): Promise<ConductorSession>;
-}
-
-/**
- * The tick surface, or `null` when M1 has not built it.
- *
- * A name probe rather than a shim: nothing fake is ever substituted, so a run
- * that gets past this line is a run against the real thing.
- */
-function conductorRuntime(): ConductorRuntime | null {
-  const ns = conductor as unknown as Record<string, unknown>;
-  return typeof ns.openConductor === "function" ? (ns as unknown as ConductorRuntime) : null;
-}
 
 /* ------------------------------------------------------------------------- *
  * Fixtures, paths, and the small amount of shelling out this needs
@@ -338,27 +283,6 @@ await runGoal(async () => {
     `"${resolved.baseBranch}", dispatcher "${resolved.dispatcher.vendor}" ` +
     `(isolation "${resolved.dispatcher.isolation}"), repo root ${resolved.repoRoot}`;
 
-  // — require the tick —
-
-  const runtime = conductorRuntime();
-  if (!runtime) {
-    return {
-      failures: [
-        `@flow-state-dev/conductor exports no \`openConductor\` — the tick does not exist yet.`,
-        `What resolved fine: the example's level-1 config → ${discovered}.`,
-        `What M1 still owes, and this goal is waiting on:`,
-        `  - the tick that composes pollGitHub → reconcile → decide → dispatch → ledger`,
-        `  - persistence for the entity, artifact, dispatch, observation and ledger`,
-        `    collections declared in src/model/entities.ts (they are declared, never registered)`,
-        `  - phase execution: turning a DispatchAction into a provisioned workspace, a brief,`,
-        `    and a settled DispatchResult fed back as a signal`,
-        `  - an entry point that opens durable state so a restart re-attaches to it`,
-        `See goal.md → "What this needs before it can pass" for the contract asserted here.`,
-      ],
-      evidence: "",
-    };
-  }
-
   // — the base branch, before anything runs —
 
   const fetchBase = git(["fetch", "origin", resolved.baseBranch], resolved.repoRoot);
@@ -380,7 +304,7 @@ await runGoal(async () => {
       : "Commit on this branch and push it. Do not open a pull request.",
   ].join("\n");
 
-  const item: WorkItem = {
+  const item: IssueWorkItem = {
     id: WORK_ID,
     kind: "issue",
     // A bug enters at implementation — SPEC's exit is a human approval gate, which
@@ -391,7 +315,7 @@ await runGoal(async () => {
     summary,
   };
 
-  const session = await runtime.openConductor({ config: resolved, statePath: STATE_PATH });
+  const session = await openConductor({ config: resolved, statePath: STATE_PATH });
   let managed = await session.manage(item);
   const startPhase = managed.entity.phase;
 
@@ -462,7 +386,7 @@ await runGoal(async () => {
   // restart. Nothing in-process carries over, which is the whole point: a gate is
   // derived every tick, so there is no remembered gate to lose.
 
-  const restarted = await runtime.openConductor({ config: resolved, statePath: STATE_PATH });
+  const restarted = await openConductor({ config: resolved, statePath: STATE_PATH });
   const reattached = await restarted.read(WORK_ID);
   if (reattached.gate !== atGate.gate) {
     failures.push(
