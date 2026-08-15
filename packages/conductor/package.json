@@ -42,6 +42,10 @@
       "types": "./dist/dispatch/index.d.ts",
       "default": "./src/dispatch/index.ts"
     },
+    "./observe": {
+      "types": "./dist/observe/index.d.ts",
+      "default": "./src/observe/index.ts"
+    },
     "./testing": {
       "types": "./dist/testing/index.d.ts",
       "default": "./src/testing/index.ts"

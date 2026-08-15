@@ -15,6 +15,7 @@
  * | `read-world` | GitHub → `World`, driven by the facts gates declare. |
  * | `signals` | payloads → `Signal[]`, structural only, no classifier. |
  * | `poll` | the tick's read path: fresh read + reconcile + comment cursor. |
+ * | `observe` | the same read path, stated as an `Observer`. |
  * | `operations` | outbound PR writes. Never a merge. |
  * | `blocks` | the same operations as FSD handler blocks. |
  *
@@ -65,6 +66,8 @@ export {
   type PollInput,
   type PollResult,
 } from "./poll";
+
+export { githubObserver, GITHUB_SOURCE } from "./observe";
 
 export {
   commentOnPullRequest,

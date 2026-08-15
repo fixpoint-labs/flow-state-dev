@@ -21,7 +21,6 @@
  */
 
 import { factsReadBy, type EntityKind, type Phase, type WorldFact } from "../model/phases";
-import type { ObservedPr } from "../driver/reconcile";
 import {
   DEFAULT_POLICY,
   type ArtifactFacts,
@@ -233,24 +232,11 @@ export async function readPullRequest(
 /**
  * Project fresh PR facts into the copy conductor persists for the next tick.
  *
- * The copy is what a dropped event is detected against — without it a comment
- * on a PR conductor never saw opened is simply lost. See `driver/reconcile`.
- *
- * @param pr Facts as just read from GitHub.
- * @param observedAt When this read happened, ISO-8601.
+ * Re-exported from `driver/reconcile`, where it moved once a second source
+ * needed it: the projection is the same for every source, and it belongs beside
+ * the `ObservedPr` it produces and the diff that consumes it.
  */
-export function toObservedPr(pr: PullRequestFacts, observedAt: string): ObservedPr {
-  return {
-    number: pr.number,
-    state: pr.state,
-    headSha: pr.headSha,
-    checks: pr.checks,
-    mergeable: pr.mergeable,
-    baseRed: pr.baseRed,
-    knownReviewIds: pr.reviews.map((review) => review.id),
-    observedAt,
-  };
-}
+export { toObservedPr } from "../driver/reconcile";
 
 /** The blob SHA of a repo file, which is its content hash. `null` when absent. */
 async function contentHash(client: GitHubClient, path: string): Promise<string | null> {

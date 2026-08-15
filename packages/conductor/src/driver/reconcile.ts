@@ -34,6 +34,32 @@ export interface ObservedPr {
   readonly observedAt: string;
 }
 
+/**
+ * Project fresh submission facts into the copy conductor persists for the next
+ * observation.
+ *
+ * The copy is what a dropped event is detected against — without it a comment on
+ * a PR conductor never saw opened is simply lost. It lives here, beside
+ * {@link ObservedPr} and the diff that consumes it, because every source needs
+ * it and no source owns it: the GitHub reader and the local one both produce
+ * `PullRequestFacts` and both persist the same projection of them.
+ *
+ * @param pr Facts as just read from the source.
+ * @param observedAt When this read happened, ISO-8601.
+ */
+export function toObservedPr(pr: PullRequestFacts, observedAt: string): ObservedPr {
+  return {
+    number: pr.number,
+    state: pr.state,
+    headSha: pr.headSha,
+    checks: pr.checks,
+    mergeable: pr.mergeable,
+    baseRed: pr.baseRed,
+    knownReviewIds: pr.reviews.map((review) => review.id),
+    observedAt,
+  };
+}
+
 /** A fact where conductor's copy disagreed with its owner. The owner wins. */
 export interface Divergence {
   readonly pullNumber: number;

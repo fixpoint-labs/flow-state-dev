@@ -16,6 +16,27 @@ import { runClaudeHeadless, type ResolveClaudeAgentQuery } from "@flow-state-dev
 import { renderBrief } from "./brief";
 import type { DispatchResult, Dispatcher, PhaseBrief } from "./types";
 
+/**
+ * Where an unexpected throw came from. Not a vendor concept and not part of the
+ * seam — it exists only so the reason can name whose bug it is.
+ */
+type ThrowSite = "prompt" | "harness";
+
+/**
+ * Turn an unexpected throw into a reason a human can act on.
+ *
+ * The site matters more than the message. `renderPrompt` is project-supplied, so
+ * its bugs are debugged nowhere near the CLI or the model, and the reason string
+ * is the only thing that reaches the ledger — an unattributed "dispatch failed"
+ * sends someone looking at the wrong layer.
+ */
+function reasonFor(site: ThrowSite, cause: unknown): string {
+  const detail = cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
+  return site === "prompt"
+    ? `The configured renderPrompt threw, so no agent ran — the bug is in the project's prompt renderer, not in Claude Code: ${detail}`
+    : `The Claude Code harness threw instead of settling: ${detail}`;
+}
+
 export interface ClaudeCodeDispatcherOptions {
   /** Model alias or id. Omitted when unset, so the vendor's default applies. */
   readonly model?: string;
@@ -70,7 +91,18 @@ export function claudeCodeDispatcher(
     isolation: "worktree",
 
     async run(brief: PhaseBrief): Promise<DispatchResult> {
-      const startedAt = now().toISOString();
+      // Taken defensively for the same reason the body is wrapped below: `now`
+      // is configuration too, and a result conductor cannot even stamp is a
+      // transition the ledger never sees. A real clock beats no record.
+      const stamp = (): string => {
+        try {
+          return now().toISOString();
+        } catch {
+          return new Date().toISOString();
+        }
+      };
+
+      const startedAt = stamp();
       const settle = (
         outcome: "completed" | "failed",
         extra: Partial<DispatchResult> = {},
@@ -82,7 +114,7 @@ export function claudeCodeDispatcher(
         vendorRunId: null,
         error: null,
         startedAt,
-        settledAt: now().toISOString(),
+        settledAt: stamp(),
         ...extra,
       });
 
@@ -97,24 +129,38 @@ export function claudeCodeDispatcher(
       // `runClaudeHeadless` settles rather than throwing on every vendor failure
       // — an uninstalled SDK, a timeout, a crash mid-run, an error-subtype
       // result — which is what keeps the transition in the ledger instead of
-      // skipping past it.
-      const run = await runClaudeHeadless({
-        prompt: renderPrompt(brief),
-        cwd: brief.workspacePath,
-        model,
-        permissionMode,
-        maxTurns,
-        maxBudgetUsd,
-        timeoutMs,
-        env,
-        ...(resolveAgent ? { resolveAgent } : {}),
-      });
+      // skipping past it. That guarantee stops at its own boundary, though: the
+      // arguments handed to it are evaluated first, and `renderPrompt` is
+      // project-supplied. A throw anywhere in here would reject `run`, and a
+      // rejected dispatch produces no `dispatch_failed` signal, so `decide`
+      // never escalates and nothing is written down — the transition vanishes
+      // rather than being recorded as failed. So the whole adapter settles, and
+      // `site` carries which half broke into the reason.
+      let site: ThrowSite = "prompt";
+      try {
+        const prompt = renderPrompt(brief);
+        site = "harness";
 
-      return settle(run.ok ? "completed" : "failed", {
-        costUsd: run.costUsd,
-        vendorRunId: run.sessionId,
-        error: run.error,
-      });
+        const run = await runClaudeHeadless({
+          prompt,
+          cwd: brief.workspacePath,
+          model,
+          permissionMode,
+          maxTurns,
+          maxBudgetUsd,
+          timeoutMs,
+          env,
+          ...(resolveAgent ? { resolveAgent } : {}),
+        });
+
+        return settle(run.ok ? "completed" : "failed", {
+          costUsd: run.costUsd,
+          vendorRunId: run.sessionId,
+          error: run.error,
+        });
+      } catch (cause) {
+        return settle("failed", { error: reasonFor(site, cause) });
+      }
     },
   };
 }

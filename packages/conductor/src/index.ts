@@ -11,13 +11,15 @@
  * **executes it in code instead of interpreting it in a prompt.**
  *
  * This entrypoint exports the config surface, the entity model, the pure
- * driver, and the dispatch seam. The test scaffolding built on that seam —
- * `fakeDispatcher` and the `replay` harness — lives at
- * `@flow-state-dev/conductor/testing` instead, so it never lands in a
- * consumer's bundle.
+ * driver, and the two seams — `Dispatcher` for how work gets done, `Observer`
+ * for how the world is read. Their implementations stay internal to the package
+ * (`src/github`, `src/local`), and the test scaffolding built on the dispatch
+ * seam — `fakeDispatcher` and the `replay` harness — lives at
+ * `@flow-state-dev/conductor/testing`, so neither lands in a consumer's bundle.
  */
 
 export * from "./config";
 export * from "./dispatch";
 export * from "./driver";
 export * from "./model";
+export * from "./observe";

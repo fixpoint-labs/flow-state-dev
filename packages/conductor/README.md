@@ -12,19 +12,21 @@ The process it encodes is not new — it is the one already written down in
 > **Status: M0 — nothing here runs end to end yet.**
 >
 > **In the tree:** the entity model; the pure driver (`decide`, `deriveGate`,
-> `reconcile`); the GitHub layer — world materialization, polling, signal
-> parsing, and the PR write operations, internal to the package rather than
-> exported; the config surface (`defineConductor` / `resolveConductor` and its
-> discovery); and the dispatch seam with its Claude Code implementation.
+> `reconcile`); the two seams — `Dispatcher` for how work gets done, `Observer`
+> for how the world is read — with their implementations, internal to the
+> package rather than exported: Claude Code behind the first, GitHub and a local
+> checkout behind the second; and the config surface (`defineConductor` /
+> `resolveConductor` and its discovery).
 >
-> **Not in the tree:** the **tick** — nothing assembles poll → decide → execute,
-> and there is no `openConductor`. **Persistence** — the collections described
-> below are declared but never registered, so nothing survives a tick.
+> **Not in the tree:** the **tick** — nothing assembles observe → decide →
+> execute, and there is no `openConductor`. **Persistence** — the collections
+> described below are declared but never registered, so nothing survives a tick.
 > **Phase execution** — running the actions `decide` produces. And the **CLI
 > board**. All four are M1.
 >
-> Every module here is tested against fixtures. None of it has been run against
-> the real path, because the piece that would run it is the tick.
+> The GitHub layer is tested against recorded payloads; the local source is
+> tested against real repositories it creates and commits to. What has not run
+> is the whole loop, because the piece that would run it is the tick.
 
 ## The shape
 
@@ -199,6 +201,75 @@ Two rules separate a cache from a second authority:
 - **No new signal kinds.** Reconciliation re-emits the ordinary vocabulary with
   `synthesized: true` and a backdated `at`, so a replayed history and a live one
   reduce identically.
+
+## Two seams
+
+A tick has two halves that belong to somebody else, and each gets a seam.
+
+```
+Observer.observe() ──▶ { world, signals } ──▶ decide() ──▶ Action[] ──▶ Dispatcher.run()
+```
+
+`Dispatcher` abstracts **how work gets done** — Claude Code today, another
+coding harness tomorrow. `Observer` abstracts **how the world is read**:
+
+```ts
+interface Observer {
+  readonly source: string;
+  observe(request: ObservationRequest): Promise<Observation>;
+}
+```
+
+An observation carries the world snapshot `decide` reduces against, the signals
+since the last one, the divergences that produced no signal, the cursor to
+persist, and which world facts the phase's gates declared. Conductor stores the
+cursor verbatim and hands it back; how a source learned something changed —
+polling, a webhook, a file watcher — is its own business, because `reconcile`
+turns any source's fresh facts into the same signals.
+
+Neither seam carries a vendor noun. If a field only makes sense for one
+implementation, it lives in that implementation's options.
+
+## Reading a local checkout
+
+The second observer reads a real git repository, which is what makes the process
+runnable without GitHub — no issues burned, no PRs opened, and a kill-mid-gate
+restart you can actually try.
+
+| World fact | GitHub | Local |
+|---|---|---|
+| `headSha` | the PR's head | `git rev-parse <branch>` |
+| `state: merged` | the merge flag | `git merge-base --is-ancestor <branch> <base>` |
+| `mergeable` | a cached background computation | `git merge-tree --write-tree`, the merge itself |
+| `checks` | check runs on the head | what a real check run recorded for that commit |
+| `reviews` | submitted reviews | verdict files a human wrote |
+| `guidanceHashes` | the contents API's blob sha | `git hash-object`, the same blob sha |
+
+The parts git does not hold are files under the checkout:
+
+```
+.conductor/local/
+  submissions/1/submission.json     { number, branch, base, openedAt }
+  submissions/1/reviews/alice.json  { reviewer, state, sha? }   ← a human writes this
+  submissions/1/comments/alice.1.md free prose                  ← and this
+  checks/<sha>.json                 { conclusion, at }          ← a real check run writes this
+```
+
+**This is not a second fake.** The replay harness in `./testing` is one, and says
+so: it is handed a world per step and a dispatcher with scripted results, which
+is right for exercising `decide`'s matrix in milliseconds and proves nothing
+about whether anything works. Nothing in the local source is handed an answer. An
+empty review inbox means nobody has reviewed the work.
+
+A reviewer may leave the SHA out of their verdict, and normally does. The file's
+modification time and git's commit times together say which head they were
+looking at, so an approval written before a push keeps pointing at the head it
+saw — the staleness rule holds without anyone cooperating with it.
+
+Submission numbers are claimed on the write side (`openSubmission`), from what is
+already on disk, exactly as GitHub assigns a PR number when you open one. An
+observer that minted identity while reading would be inventing the thing it is
+supposed to be reporting.
 
 ## Configuring it
 

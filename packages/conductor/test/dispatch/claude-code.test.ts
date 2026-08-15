@@ -9,10 +9,31 @@
  * reason, and that cost survives the trip.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ResolveClaudeAgentQuery } from "@flow-state-dev/claude-code/sdk";
 import { claudeCodeDispatcher } from "../../src/dispatch/claude-code";
 import type { PhaseBrief } from "../../src/dispatch/types";
+
+/**
+ * `runClaudeHeadless` documents that it never throws, and the tests below leave
+ * it alone. But the adapter is what has to hold when a dependency breaks its own
+ * contract, so the real implementation is wrapped in a switch one test flips.
+ */
+const harness = vi.hoisted(() => ({ throws: null as Error | null }));
+vi.mock("@flow-state-dev/claude-code/sdk", async (importActual) => {
+  const actual = await importActual<typeof import("@flow-state-dev/claude-code/sdk")>();
+  return {
+    ...actual,
+    runClaudeHeadless: (options: Parameters<typeof actual.runClaudeHeadless>[0]) => {
+      if (harness.throws) throw harness.throws;
+      return actual.runClaudeHeadless(options);
+    },
+  };
+});
+
+afterEach(() => {
+  harness.throws = null;
+});
 
 const BRIEF: PhaseBrief = {
   dispatchId: "FIX-1#1",
@@ -163,6 +184,56 @@ describe("the claude-code dispatcher", () => {
     const dispatched = await claudeCodeDispatcher({ resolveAgent, now: at }).run(BRIEF);
     expect(dispatched.outcome).toBe("failed");
     expect(dispatched.error).toContain("without a terminal result");
+  });
+
+  it("settles as failed when a project's renderPrompt throws, instead of throwing past the ledger", async () => {
+    const { query, resolveAgent } = scriptedAgent([result()]);
+    const dispatched = await claudeCodeDispatcher({
+      resolveAgent,
+      now: at,
+      renderPrompt: () => {
+        throw new TypeError("Cannot read properties of null (reading 'title')");
+      },
+    }).run(BRIEF);
+
+    expect(dispatched.outcome).toBe("failed");
+    // Whose bug it is has to survive into the reason: a renderer someone wrote
+    // is debugged nowhere near the CLI or the model.
+    expect(dispatched.error).toContain("renderPrompt");
+    expect(dispatched.error).toContain("Cannot read properties of null");
+    // The record is still complete, because the tick attributes it and the
+    // ledger stores it exactly like any other failed dispatch.
+    expect(dispatched.dispatchId).toBe("FIX-1#1");
+    expect(dispatched.startedAt).toBe("2026-08-14T12:00:00.000Z");
+    expect(dispatched.settledAt).toBe("2026-08-14T12:00:00.000Z");
+    // Nothing was invoked and nothing was spent.
+    expect(query).not.toHaveBeenCalled();
+    expect(dispatched.costUsd).toBeNull();
+  });
+
+  it("settles as failed when the harness throws instead of settling, so a broken dependency is still a recorded failure", async () => {
+    harness.throws = new Error("the SDK bridge exploded");
+    const { resolveAgent } = scriptedAgent([result()]);
+    const dispatched = await claudeCodeDispatcher({ resolveAgent, now: at }).run(BRIEF);
+
+    expect(dispatched.outcome).toBe("failed");
+    expect(dispatched.error).toContain("harness threw instead of settling");
+    expect(dispatched.error).toContain("the SDK bridge exploded");
+    // Attribution points at the harness, not at the project's renderer.
+    expect(dispatched.error).not.toContain("renderPrompt");
+  });
+
+  it("settles even when the injected clock throws, because a result it cannot stamp is a transition the ledger never sees", async () => {
+    const { resolveAgent } = scriptedAgent([result()]);
+    // What a mis-parsed frozen-time setting produces: `toISOString` throws.
+    const dispatched = await claudeCodeDispatcher({
+      resolveAgent,
+      now: () => new Date("whenever"),
+    }).run(BRIEF);
+
+    expect(dispatched.outcome).toBe("completed");
+    expect(Number.isNaN(Date.parse(dispatched.startedAt))).toBe(false);
+    expect(Number.isNaN(Date.parse(dispatched.settledAt))).toBe(false);
   });
 
   it("refuses to run without the workspace its isolation model promised", async () => {

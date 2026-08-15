@@ -22,10 +22,11 @@
  * are idempotent, so the replay collapses to the work that was outstanding.
  */
 
-import { divergences, reconcile, type Divergence, type ObservedPr } from "../driver/reconcile";
+import { divergences, reconcile, type Divergence } from "../driver/reconcile";
 import type { Signal } from "../model/signals";
 import type { WorldFact } from "../model/phases";
 import type { PullRequestFacts, World } from "../model/world";
+import { EMPTY_OBSERVATION_CURSOR, type ObservationCursor } from "../observe/types";
 import type { GitHubClient } from "./client";
 import type { GitHubActor } from "./identity";
 import { readWorld, toObservedPr, type ReadWorldInput } from "./read-world";
@@ -34,20 +35,16 @@ import { signalFromComment, type SignalParseContext } from "./signals";
 /**
  * What conductor persists between ticks so the next one can tell new from
  * already-seen. Store it verbatim and hand it back unchanged.
+ *
+ * The GitHub name for {@link ObservationCursor}, which is the same thing every
+ * source persists. GitHub's `commentKeys` are namespaced `"issue:123"` /
+ * `"review:456"`, because the two REST comment endpoints number independently
+ * and a bare id can collide across them.
  */
-export interface PollCursor {
-  /** Last-observed PR facts. The thing a dropped event is detected against. */
-  readonly pullRequests: readonly ObservedPr[];
-  /**
-   * Comments already reduced over, as `"issue:123"` / `"review:456"`. Namespaced
-   * because the two GitHub comment endpoints number independently and a bare id
-   * can collide across them.
-   */
-  readonly commentKeys: readonly string[];
-}
+export type PollCursor = ObservationCursor;
 
 /** The cursor for an entity conductor has never polled. */
-export const EMPTY_POLL_CURSOR: PollCursor = { pullRequests: [], commentKeys: [] };
+export const EMPTY_POLL_CURSOR: PollCursor = EMPTY_OBSERVATION_CURSOR;
 
 export interface PollInput extends ReadWorldInput {
   /** The entity every produced signal is addressed to. */

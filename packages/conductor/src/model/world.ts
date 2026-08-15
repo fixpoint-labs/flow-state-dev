@@ -2,11 +2,17 @@
  * The world snapshot — everything `decide` and every gate predicate may read.
  *
  * This type is the whole reason `decide` can be pure. A gate asks a question
- * about the world (*has this spec been approved?*) and the world lives in
- * GitHub. The resolution is that the tick materializes the answer **before**
- * `decide` runs: by the time any predicate executes, everything it needs is
- * plain data. A gate is therefore an ordinary pure predicate and the whole
- * phase × gate × signal matrix is testable by handing it a literal.
+ * about the world (*has this spec been approved?*) and the answer lives
+ * somewhere with latency — a GitHub API, a git checkout and the files beside it.
+ * The resolution is that the tick materializes the answer **before** `decide`
+ * runs: by the time any predicate executes, everything it needs is plain data. A
+ * gate is therefore an ordinary pure predicate and the whole phase × gate ×
+ * signal matrix is testable by handing it a literal.
+ *
+ * Which source produced a snapshot is not recorded here and must not matter: an
+ * `Observer` (see `../observe/types`) fills this shape, and a gate that could
+ * tell GitHub's world from a local one would be reading the source rather than
+ * the state.
  *
  * Nothing in this file performs or describes I/O. What gets fetched is driven
  * by the `reads` each gate declares (see `./phases`), which the tick resolves
@@ -19,7 +25,7 @@
 
 import { z } from "zod";
 
-/** A review submitted against an artifact, as GitHub reports it. */
+/** A review submitted against an artifact, as its source reports it. */
 export interface ReviewFacts {
   readonly id: string;
   readonly reviewer: string;
@@ -35,7 +41,12 @@ export interface ReviewFacts {
   readonly at: string;
 }
 
-/** Structural facts about one pull request. GitHub always wins on these. */
+/**
+ * Structural facts about one submission under review — a GitHub pull request, a
+ * branch in a local checkout. **The source always wins on these**, whichever it
+ * is; conductor's copy of them is a cache with a designated winner, never a
+ * second authority (see `../driver/reconcile`).
+ */
 export interface PullRequestFacts {
   readonly number: number;
   readonly state: "open" | "closed" | "merged";
