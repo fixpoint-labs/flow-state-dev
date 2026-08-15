@@ -136,7 +136,10 @@ async function readSubmissionFacts(
   if (plan.reviews) {
     // A review that names no SHA is resolved to the head the branch stood at
     // when the file was written. Once the branch is gone there is nothing to
-    // walk, so the last known head is the honest answer.
+    // walk, so the last known head is the honest answer. Consulted once per
+    // review: `readReviews` keeps the first answer, so a review resolved while
+    // the branch was open keeps pointing at the commit it was read against
+    // rather than jumping to the last known head when the branch merges.
     const resolveSha = (at: string) =>
       state === "closed" || state === "merged" || !head
         ? Promise.resolve(head || null)

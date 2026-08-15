@@ -206,6 +206,43 @@ describe("a review a human wrote as a file", () => {
     expect(hasFreshHumanApproval(pr)).toBe(false);
   });
 
+  it("does not follow the branch onto a commit that landed in the same second", async () => {
+    repo = await createTestRepo();
+    // The branch's commit and alice's file land in the same wall-clock second,
+    // which is all `isoSeconds` and git's commit times can tell apart.
+    const { number, head: reviewedHead } = await submitBranch(
+      "spec/FIX-1",
+      "spec.md",
+      "draft\n",
+      T2,
+    );
+    const artifacts = [artifactAt(number)];
+    const entity = { id: ENTITY_ID, kind: "issue", phase: "SPEC" } as const;
+
+    await fileReview(number, "alice.json", { reviewer: "alice", state: "APPROVED" }, T2);
+
+    const first = await observeWith(artifacts);
+    expect(first.world.pullRequests[number]!.reviews[0]!.sha).toBe(reviewedHead);
+    expect(hasFreshHumanApproval(first.world.pullRequests[number]!)).toBe(true);
+
+    // The author pushes inside that same second. `rev-list -1 --before=<second>`
+    // answers with this commit just as readily as with the one alice read, so a
+    // verdict re-resolved on every poll silently moves onto a head nobody
+    // reviewed — and the approval gate it releases was never given.
+    await repo.run("checkout", "-q", "spec/FIX-1");
+    const unreviewedHead = await repo.commit("spec.md", "revised\n", "revision", T2);
+    await repo.run("checkout", "-q", "main");
+    expect(unreviewedHead).not.toBe(reviewedHead);
+
+    const second = await observeWith(artifacts, first.cursor);
+    const pr = second.world.pullRequests[number]!;
+
+    expect(pr.headSha).toBe(unreviewedHead);
+    expect(pr.reviews[0]!.sha).toBe(reviewedHead);
+    expect(hasFreshHumanApproval(pr)).toBe(false);
+    expect(deriveGate(entity, second.world)).toBe("awaiting_spec_review");
+  });
+
   it("honours an explicit SHA when the reviewer wrote one", async () => {
     repo = await createTestRepo();
     const { number } = await submitBranch("spec/FIX-1");
@@ -396,6 +433,24 @@ describe("checks", () => {
     const after = await observeWith(artifacts, before.cursor, "IMPLEMENTATION");
     expect(after.world.pullRequests[number]!.checks).toBe("failure");
     expect(after.signals.map((s) => s.kind)).toContain("ci_concluded");
+  });
+
+  it("refuse a conclusion nothing can act on, rather than stranding the submission", async () => {
+    repo = await createTestRepo();
+    const { number, head } = await submitBranch("fix/FIX-1");
+    const artifacts = [artifactAt(number, "implementation")];
+
+    // A typo in a file a check runner wrote. Cast straight through it is
+    // non-null, so `awaiting_ci` applies — and no gate can ever be satisfied by
+    // it, so the entity waits on a conclusion that will never arrive.
+    await repo.write(
+      `.conductor/local/checks/${head}.json`,
+      `${JSON.stringify({ conclusion: "sucess", at: T2 })}\n`,
+    );
+
+    await expect(
+      observeWith(artifacts, EMPTY_OBSERVATION_CURSOR, "IMPLEMENTATION"),
+    ).rejects.toThrow(/sucess/);
   });
 
   it("mark the base red when the base's own head failed", async () => {

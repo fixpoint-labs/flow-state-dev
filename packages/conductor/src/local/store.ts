@@ -15,6 +15,7 @@
  *       submission.json          { number, branch, base, openedAt }
  *       reviews/alice.json       { reviewer, state, sha? }   ← a human writes this
  *       comments/alice.1.md      free prose                  ← and this
+ *       reviewed-heads.json      { "<review id>": "<sha>" }  ← conductor's own note
  *   checks/<sha>.json            { conclusion, at }          ← a real check run writes this
  * ```
  *
@@ -34,7 +35,9 @@
  *   `reviews/` or `comments/`, which is why the local source can treat every
  *   entry as human without an identity check. GitHub needs `isHumanActor`
  *   because conductor and the reviewer share one comment stream; here they do
- *   not share a directory.
+ *   not share a directory. `reviewed-heads.json` sits *beside* the inbox rather
+ *   than inside it for exactly that reason — it is conductor's note about what
+ *   it observed, and putting it in `reviews/` would cost the property above.
  *
  * **Numbering lives on the write side, exactly as GitHub's does.** A submission
  * gets its number when it is opened ({@link openSubmission}), from the numbers
@@ -44,6 +47,8 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+
+import { z } from "zod";
 
 import type { ReviewFacts } from "../model/world";
 
@@ -184,15 +189,75 @@ function reviewId(name: string, at: string, state: string): string {
   return `${name}@${at}#${state}`;
 }
 
+/** The head each review was resolved against, keyed by {@link reviewId}. */
+const reviewedHeadsSchema = z.record(z.string(), z.string());
+
+/** Where conductor notes the head it first resolved each review against. */
+function reviewedHeadsFile(repoRoot: string, number: number): string {
+  return path.join(submissionDir(repoRoot, number), "reviewed-heads.json");
+}
+
+/**
+ * The heads already resolved for this submission's reviews, or `{}` when none
+ * have been.
+ *
+ * No leniency, the same rule `submission.json` gets: conductor wrote this file,
+ * so a malformed one means something is corrupting the store rather than that a
+ * human fumbled a save. Reading a corrupt one as empty would silently resume
+ * re-deriving the very SHAs it exists to pin.
+ */
+async function readReviewedHeads(
+  repoRoot: string,
+  number: number,
+): Promise<Record<string, string>> {
+  const file = reviewedHeadsFile(repoRoot, number);
+  const raw = await readJson<unknown>(file);
+  if (raw === null) return {};
+
+  const parsed = reviewedHeadsSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new Error(
+      `${file} is not a map of review id to commit. Conductor wrote it, so it cannot ` +
+        `be repaired by guessing: delete it to re-resolve every review against current ` +
+        `branch history, or fix it by hand.`,
+    );
+  }
+  return parsed.data;
+}
+
 /**
  * Every review filed against a submission, as `ReviewFacts`.
  *
  * `sha` may be omitted by the reviewer, and usually is — asking a human to paste
  * a commit hash into a file is friction that buys nothing, because the answer is
  * already derivable. `resolveSha` is handed the file's modification time and
- * returns the head the branch stood at then (see `./git`'s `headShaAt`), so an
- * approval written before a push keeps pointing at the head it actually saw and
- * the staleness rule holds without anyone having to cooperate with it.
+ * returns the head the branch stood at then (see `./git`'s `headShaAt`).
+ *
+ * **The answer is resolved once and then kept.** Timestamps here are truncated
+ * to the second, and so are git's commit times, so `rev-list --before=<second>`
+ * cannot separate a review from a commit that landed later inside that same
+ * second. Re-derived on every poll, the answer therefore *changes*: a commit
+ * pushed moments after the approval becomes the newest commit at or before the
+ * review's timestamp, and the approval silently retargets onto a head nobody
+ * read. That is the failure the whole staleness rule exists to prevent —
+ * `hasFreshHumanApproval` only counts approvals at the current head, and an
+ * approval that follows the branch forward never goes stale.
+ *
+ * So the first resolution is written down, in a file conductor owns, and reused.
+ * Two things this deliberately does not do:
+ *
+ * - **It does not pin the review, only its head.** Re-saving a verdict changes
+ *   the review's id (see {@link reviewId}), which is a different key with no
+ *   entry — so a reviewer who re-reads a newer head and saves still produces a
+ *   new review, resolved against what they actually looked at.
+ * - **It does not record an unresolved head.** `resolveSha` returns `null` when
+ *   the branch has no commit that early, and pinning `""` would freeze a review
+ *   at "no commit" for good. An unresolved head is retried; there is nothing to
+ *   retarget it onto anyway.
+ *
+ * The map is rebuilt from what this read saw rather than appended to — the same
+ * rule the observation cursor follows — so an id no reviewer file produces any
+ * more does not accumulate.
  *
  * `isHuman` is `true` for every entry: conductor never writes into this
  * directory, so there is no machine author to filter out.
@@ -201,6 +266,7 @@ function reviewId(name: string, at: string, state: string): string {
  * @param number The submission whose inbox to read.
  * @param resolveSha Resolves the reviewed head from a review's timestamp.
  */
+
 export async function readReviews(
   repoRoot: string,
   number: number,
@@ -208,6 +274,9 @@ export async function readReviews(
 ): Promise<ReviewFacts[]> {
   const dir = path.join(submissionDir(repoRoot, number), "reviews");
   const out: ReviewFacts[] = [];
+
+  const known = await readReviewedHeads(repoRoot, number);
+  const resolved: Record<string, string> = {};
 
   for (const name of await listFiles(dir)) {
     // A verdict is structured data, so it is a `.json` file. Anything else in
@@ -233,10 +302,16 @@ export async function readReviews(
     }
 
     const at = payload.at ?? isoSeconds((await fs.stat(file)).mtime);
-    const sha = payload.sha ?? (await resolveSha(at)) ?? "";
+    const id = reviewId(name, at, state);
+
+    let sha = payload.sha;
+    if (sha === undefined) {
+      sha = known[id] ?? (await resolveSha(at)) ?? "";
+      if (sha) resolved[id] = sha;
+    }
 
     out.push({
-      id: reviewId(name, at, state),
+      id,
       reviewer: payload.reviewer ?? name.replace(/\.json$/, ""),
       isHuman: true,
       state,
@@ -245,7 +320,36 @@ export async function readReviews(
     });
   }
 
+  await writeReviewedHeads(repoRoot, number, known, resolved);
+
   return out;
+}
+
+/**
+ * Record the heads this read resolved, when they differ from what is on disk.
+ *
+ * Written after the reviews are assembled rather than per entry, so one read
+ * costs at most one write — and no write at all in the steady state, where every
+ * review already has its head and nothing has changed.
+ *
+ * A concurrent read racing this one resolves the same reviews at the same
+ * moment, so the loser overwrites the winner with the same map. What the file
+ * guards is drift *across* observations, which no ordering of two simultaneous
+ * ones can produce.
+ */
+async function writeReviewedHeads(
+  repoRoot: string,
+  number: number,
+  known: Record<string, string>,
+  resolved: Record<string, string>,
+): Promise<void> {
+  const before = JSON.stringify(known);
+  const after = JSON.stringify(resolved);
+  if (before === after) return;
+
+  const file = reviewedHeadsFile(repoRoot, number);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, `${JSON.stringify(resolved, null, 2)}\n`);
 }
 
 /**
@@ -285,18 +389,56 @@ function checkFile(repoRoot: string, sha: string): string {
   );
 }
 
+/** Mirrors {@link LocalCheckRecord}: the shape a check record must actually have. */
+const checkRecordSchema: z.ZodType<LocalCheckRecord> = z.object({
+  conclusion: z.enum(["pending", "success", "failure"]),
+  at: z.string(),
+  command: z.string().optional(),
+});
+
 /**
  * What a real check run recorded for one commit, or `null` when none has run.
  *
  * Keyed by commit rather than by submission, because that is what a check run is
  * about. It also makes `baseRed` fall out of the same read: a base branch is not
  * a submission and has no inbox, but its head is a commit like any other.
+ *
+ * **A conclusion outside the three is refused, not softened.** `{ "conclusion":
+ * "sucess" }` is valid JSON and a plausible typo, and it is the one value that
+ * has no safe reading: non-null, so `awaiting_ci` applies; not `success`, so the
+ * gate can never be satisfied; neither `success` nor `failure`, so reconciliation
+ * emits nothing. The entity waits forever on a conclusion that has already
+ * arrived. Reading it as absent instead would be worse in the other direction —
+ * absent means *no CI is configured here*, so the same typo would wave the
+ * submission past a check that never passed. Refusing names the file and the
+ * value, and a human fixes it in the time it takes to read the message.
+ *
+ * The inbox's leniency does not reach here. That rule is for files a human types
+ * by hand, where a truncated save is ordinary; this one is written by whatever
+ * ran the checks, and a malformed one means that writer is broken.
+ *
+ * @throws When the file exists but is not a check record.
  */
 export async function readCheck(
   repoRoot: string,
   sha: string,
 ): Promise<LocalCheckRecord | null> {
-  return readJson<LocalCheckRecord>(checkFile(repoRoot, sha));
+  const file = checkFile(repoRoot, sha);
+  const raw = await readJson<unknown>(file);
+  if (raw === null) return null;
+
+  const parsed = checkRecordSchema.safeParse(raw);
+  if (!parsed.success) {
+    const found = JSON.stringify((raw as { conclusion?: unknown }).conclusion);
+    throw new Error(
+      `${file} is not a check conclusion conductor can act on (found ${found}; ` +
+        `expected one of "pending", "success", "failure"): ` +
+        `${parsed.error.issues.map((issue) => `${issue.path.join(".") || "(root)"} ${issue.message}`).join("; ")}. ` +
+        `Refusing to read it: it is not "no CI here", and treating it as either that or ` +
+        `a failure would decide a gate on a value nothing recorded.`,
+    );
+  }
+  return parsed.data;
 }
 
 /**
