@@ -18,11 +18,14 @@
 export {
   defineConductor,
   resolveConductor,
+  DEFAULT_GOAL_CHECK_TIMEOUT_MS,
   type BaseBranchOrigin,
   type ConductorConfig,
   type ConductorOrigins,
   type FieldOrigin,
+  type GoalCheckConfig,
   type ResolvedConductor,
+  type ResolvedGoalCheck,
   type ResolveOptions,
 } from "./define";
 

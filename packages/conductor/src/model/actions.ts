@@ -102,6 +102,47 @@ export type Action =
   | RecordDivergenceAction
   | EscalateAction;
 
+/**
+ * **Can a dispatch of this kind put a commit on the branch it ran against?**
+ *
+ * One question, one table, every consumer. It is asked in three places that
+ * would otherwise each keep their own list — what a brief tells an agent to do
+ * at the end of its run (`dispatch/brief`), whether a standing goal proof
+ * survives the dispatch (`runtime/tick`), and which revision a fresh proof is
+ * recorded against (the same). Those lists have drifted from each other before,
+ * and a brief that told a read-only dispatch to commit and push is what that
+ * drift looks like from the outside.
+ *
+ * **A `Record` over the union rather than a list**, because the failure this
+ * keeps having is *an action nobody thought about*: adding a kind to
+ * {@link DispatchAction} is a **type error** until its author answers here. The
+ * alternative considered was inverting the default — assume harmless unless
+ * listed — which fails safe and *silently*, and silence is the whole defect: it
+ * would make a new mutating action correct by accident and make nobody look at
+ * this table.
+ *
+ * `true` for every kind that can push, including ones that cannot be holding a
+ * verdict when they run — classifying by what a dispatch *does* rather than by
+ * where it happens to sit keeps this readable as one rule. `false` is for the
+ * two that change nothing: `answerQuestion` replies to a human and its brief
+ * says in as many words not to touch the work, and `runGoalCheck` measures
+ * rather than edits — it stands on the merged base, on no branch at all, where
+ * a commit belongs to nothing and a push would prove the wrong code next time.
+ */
+export const MUTATES_WORK: Record<DispatchAction["kind"], boolean> = {
+  draftSpec: true,
+  reviseSpec: true,
+  answerQuestion: false,
+  implement: true,
+  addressFeedback: true,
+  resolveConflict: true,
+  rebaseOnBase: true,
+  runGoalCheck: false,
+  retrospect: true,
+  polishDocs: true,
+  reExamineOpenPrs: true,
+};
+
 /** True when the action hands work to a dispatcher rather than writing the ledger. */
 export function isDispatch(action: Action): action is DispatchAction {
   return (

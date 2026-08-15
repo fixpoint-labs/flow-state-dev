@@ -126,17 +126,34 @@ export const artifactStateSchema = z.object({
   lastRoundSha: z.string().nullable().default(null),
 });
 
-/** One agent run: what actually executed, against which vendor, at what cost. */
+/** One phase execution: what actually ran, against which vendor, at what cost. */
 export const dispatchStateSchema = z.object({
   id: z.string(),
   entityId: z.string(),
   phase: z.string(),
   action: z.string(),
+  /**
+   * Who executed it. A coding harness for work that needs judgment, and
+   * `"conductor"` for the one execution that must not have any — a goal check,
+   * whose verdict is an exit status rather than an agent's account of itself.
+   */
   vendor: z.string(),
   startedAt: z.string(),
   settledAt: z.string().nullable().default(null),
   outcome: z.enum(["completed", "failed"]).nullable().default(null),
   costUsd: z.number().nullable().default(null),
+  /**
+   * What the execution had to say for itself, in plain terms. `null` on a row
+   * written before this field, and on one still in flight.
+   *
+   * It is not only for failures, which is why it is not called `error`'s
+   * narrower cousin: a goal check that *ran* records the exit status it saw
+   * here, so "the goal passed" and "there was no goal to run" are told apart by
+   * a reader of the record rather than being one indistinguishable `passed`.
+   * For a failure it is the reason itself — the one place a dispatcher's
+   * `error` becomes durable, which it previously never did.
+   */
+  detail: z.string().nullable().default(null),
 });
 
 /**

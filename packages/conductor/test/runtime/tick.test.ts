@@ -34,12 +34,12 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { ResolvedConductor } from "../../src/config/define";
+import type { ResolvedConductor, ResolvedGoalCheck } from "../../src/config/define";
 import { decide } from "../../src/driver/decide";
 import type { Dispatcher } from "../../src/dispatch/types";
 import { localObserver } from "../../src/local/observe";
 import { openSubmission, submissionDir, writeCheck } from "../../src/local/store";
-import type { LedgerEntryState } from "../../src/model/entities";
+import type { DispatchState, LedgerEntryState } from "../../src/model/entities";
 import type { Phase } from "../../src/model/phases";
 import type { Signal } from "../../src/model/signals";
 import { DEFAULT_POLICY, type ConductorPolicy } from "../../src/model/world";
@@ -88,7 +88,11 @@ async function addOrigin(): Promise<string> {
 }
 
 /** A resolved config pointing at the test repo, with a given dispatcher. */
-function configFor(dispatcher: Dispatcher, policy: ConductorPolicy = DEFAULT_POLICY): ResolvedConductor {
+function configFor(
+  dispatcher: Dispatcher,
+  policy: ConductorPolicy = DEFAULT_POLICY,
+  goalCheck: ResolvedGoalCheck | null = null,
+): ResolvedConductor {
   return {
     repoRoot: repo.root,
     repo: { host: "github.com", owner: "fixpoint-labs", repo: "flow-state-dev" },
@@ -98,6 +102,7 @@ function configFor(dispatcher: Dispatcher, policy: ConductorPolicy = DEFAULT_POL
     token: "",
     dispatcher,
     guidance: ["docs/philosophy.md"],
+    goalCheck,
     policy,
     origins: {
       repoRoot: "discovered",
@@ -117,6 +122,8 @@ function testClock(): () => Date {
 /** Seams a test wants to substitute when it opens a session. */
 interface OpenOverrides {
   readonly policy?: ConductorPolicy;
+  /** The project's goal command. Defaults to none declared. */
+  readonly goalCheck?: ResolvedGoalCheck | null;
   /** The durable store. Defaults to a real directory under `statePath`. */
   readonly store?: StateStore;
   /** Wraps the local observer, for a test that needs the read to take time. */
@@ -130,7 +137,7 @@ async function open(
 ): Promise<ConductorSession> {
   const observer = localObserver({ repoRoot: repo.root, baseBranch: "main", git: repo.git });
   return openConductor({
-    config: configFor(dispatcher, overrides.policy),
+    config: configFor(dispatcher, overrides.policy, overrides.goalCheck ?? null),
     statePath,
     observer: overrides.observer ? overrides.observer(observer) : observer,
     store: overrides.store,
@@ -1614,9 +1621,15 @@ describe("the goal check, from the dispatch that proves it to SETTLED", () => {
     // a merged PR produces no further signal — so a verdict this tick does not
     // reduce is a verdict nothing ever reduces, and the issue sits one step from
     // SETTLED for good.
+    //
+    // The verdict itself comes from conductor rather than from this dispatcher —
+    // it runs the goal check itself, and with no goal command declared here it
+    // has nothing to prove and says so. What this case is about is the *reducing*
+    // of a verdict that arrives with nothing left to observe; the verdict's own
+    // provenance is pinned against a real program in the block below.
     const dispatcher = fakeDispatcher({
       isolation: "remote",
-      results: [{ produced: { pullNumber: submission.number } }, { goalCheck: "passed" }],
+      results: [{ produced: { pullNumber: submission.number } }],
     });
     const session = await open(dispatcher);
 
@@ -1629,7 +1642,7 @@ describe("the goal check, from the dispatch that proves it to SETTLED", () => {
     await mergeIntoMain(`fix/${ENTITY}`);
     const settled = await session.tick(ENTITY);
 
-    expect(dispatcher.actionsRun()).toEqual(["implement", "runGoalCheck"]);
+    expect(dispatcher.actionsRun()).toEqual(["implement"]);
     expect(settled.entity.phase).toBe("SETTLED");
     expect(settled.ledger.map((row) => row.actionKind)).toEqual([
       "implement",
@@ -1663,104 +1676,16 @@ describe("the goal check, from the dispatch that proves it to SETTLED", () => {
     expect(replayFailures(ticked.ledger)).toEqual([]);
   });
 
-  it("runs the post-merge check against what landed, not the branch still sitting there", async () => {
-    repo = await createTestRepo();
-    await freshState();
-    const submission = await submit(`fix/${ENTITY}`);
-
-    // `awaiting_goal_check` applies only once the PR has merged, and it applies
-    // while the entity is still in `IMPLEMENTATION` — so the *phase* answers
-    // `fix/<id>`, the feature branch, which still exists and still passes. It is
-    // not what landed whenever the merge squashed, resolved a conflict, or the
-    // base moved on, and a proof taken there settles the issue on code that
-    // never reached the base.
-    const dispatcher = fakeDispatcher({
-      isolation: "remote",
-      results: [{ produced: { pullNumber: submission.number } }, { goalCheck: "passed" }],
-    });
-    const session = await open(dispatcher);
-
-    await manageIssue(session);
-    await session.tick(ENTITY);
-    await session.tick(ENTITY);
-    await review(submission.number, "alice", "APPROVED", submission.head);
-    await session.tick(ENTITY);
-    await mergeIntoMain(`fix/${ENTITY}`);
-    await session.tick(ENTITY);
-
-    const brief = dispatcher.briefs.find((b) => b.action === "runGoalCheck");
-    expect(brief).toBeDefined();
-    expect(brief?.branch).not.toBe(`fix/${ENTITY}`);
-
-    // No branch, because a proof is taken *on the base itself* and there is
-    // nothing to commit onto or push. Naming any branch here is what put the
-    // check on the superseded feature branch in the first place, and a name that
-    // stood in for "the base" only meant that as long as nobody pushed it. The
-    // provision is `DETACHED_AT_BASE`; the git it produces is asserted end to
-    // end below.
-    expect(brief?.branch).toBeNull();
-  });
-
-  it("provisions the post-merge check from the base itself, against a real remote", async () => {
-    repo = await createTestRepo();
-    await freshState();
-    await addOrigin();
-
-    const submission = await submit(`fix/${ENTITY}`);
-    await repo.run("push", "-q", "origin", `fix/${ENTITY}`);
-
-    // A vendor doing exactly what its brief says — "commit your work and push" —
-    // with the name the branch-shaped version of this used. Under a plan keyed
-    // on a branch name, this is what flips the next pass onto the re-entry plan
-    // and provisions the PREVIOUS proof's commits instead of the base.
-    await repo.run("push", "-q", "origin", `fix/${ENTITY}:goal-check/${ENTITY}`);
-
-    // `worktree` isolation is what the shipped dispatcher declares, so this is
-    // the real provisioning path rather than a stand-in for it.
-    const dispatcher = fakeDispatcher({
-      isolation: "worktree",
-      results: [{ produced: { pullNumber: submission.number } }, { goalCheck: "passed" }],
-    });
-    const session = await open(dispatcher);
-
-    await manageIssue(session);
-    await session.tick(ENTITY);
-    await session.tick(ENTITY);
-    await review(submission.number, "alice", "APPROVED", submission.head);
-    await session.tick(ENTITY);
-
-    // The merge lands, and the base moves on afterwards — somebody else's merge,
-    // which is the ordinary case and the one that makes the feature branch stop
-    // describing what a reader of the base gets.
-    await mergeIntoMain(`fix/${ENTITY}`);
-    await repo.commit("later.ts", "// landed after\n", "someone else's merge", "2026-08-04T00:00:00Z");
-    await repo.run("push", "-q", "origin", "main");
-    const base = await repo.sha("main");
-
-    await session.tick(ENTITY);
-    expect(dispatcher.actionsRun()).toEqual(["implement", "runGoalCheck"]);
-
-    const brief = dispatcher.briefs.find((b) => b.action === "runGoalCheck")!;
-    expect(brief.branch).toBeNull();
-
-    // The whole composition in one assertion, which the two-halves version could
-    // not make: the directory the agent was handed is standing on the base at the
-    // revision the remote has now.
-    const inWorkspace = async (...argv: string[]) =>
-      (await repo.git(argv, brief.workspacePath!)).stdout.trim();
-
-    expect(await inWorkspace("rev-parse", "HEAD")).toBe(base);
-    expect(await inWorkspace("rev-parse", "HEAD")).not.toBe(submission.head);
-    // Detached: `--abbrev-ref HEAD` answers with the literal "HEAD" when no
-    // branch is checked out, which is what stops a pushed `goal-check/<id>` from
-    // ever being what this stands on.
-    expect(await inWorkspace("rev-parse", "--abbrev-ref", "HEAD")).toBe("HEAD");
-    // And the code is really there — the commit that landed after the merge is
-    // in the tree the check runs against, which is the point of taking it here.
-    // `fix/<id>` does not contain it, so a provision from the feature branch
-    // answers with nothing.
-    expect(await inWorkspace("show", "HEAD:later.ts")).toBe("// landed after");
-  });
+  /*
+   * Two cases used to sit here, asserting *the brief handed to a vendor* for a
+   * `runGoalCheck` — that it named no branch, and that the workspace it carried
+   * stood on the base. Conductor no longer hands that action to a vendor at all:
+   * a verdict must come from an exit status, so conductor runs the goal command
+   * itself and there is no brief to inspect. Both properties they pinned are
+   * asserted in the block below, from inside the goal runner, which is a
+   * stronger place to ask from — it answers where the check *actually* stood
+   * rather than where the workspace was said to be.
+   */
 
   /**
    * **A merge gate never opens on unproved work.** `awaiting_merge` refuses to
@@ -2075,5 +2000,345 @@ describe("the goal check, from the dispatch that proves it to SETTLED", () => {
       expect((await session.read(ENTITY)).gate).toBe("awaiting_merge");
       expect(replayFailures(ticked.ledger)).toEqual([]);
     });
+  });
+});
+
+/**
+ * The goal check conductor runs itself.
+ *
+ * **Not one assertion in this block is made against a scripted verdict.** The
+ * block above it drives `DispatchResult.goalCheck` through a fake, which is the
+ * seam's contract and is worth pinning — but no dispatcher shipped today can
+ * populate that field, because a coding harness returns the terminal subtype of
+ * its own agent loop rather than the exit status of anything the agent ran
+ * inside it. So the field was never set on a real run, `awaiting_goal_check` was
+ * a gate nothing could release, and every merged issue waited at it forever
+ * while a fake made the path look exercised. That is the failure mode this block
+ * exists to make impossible: the verdicts below come from a **real program on
+ * disk, whose exit status conductor read**, and the dispatcher is asserted to
+ * have run nothing but the implementation.
+ */
+describe("the goal check, run by conductor against the repo's own goal command", () => {
+  let goalDir: string;
+
+  afterEach(async () => {
+    if (goalDir) await fs.rm(goalDir, { recursive: true, force: true });
+  });
+
+  /** One call the goal runner recorded about itself. */
+  interface GoalCall {
+    /** Where it ran — the workspace conductor provisioned for it. */
+    readonly cwd: string;
+    /** The final argument, which is the only thing conductor appends. */
+    readonly argument: string | undefined;
+    /** The revision its working directory was standing on. */
+    readonly head: string;
+    /** Its own process id, so a test can ask whether it is still alive. */
+    readonly pid: number;
+  }
+
+  /**
+   * A real goal runner: a program on disk that records how it was called and
+   * exits with the code it was built for.
+   *
+   * Deliberately **not** a fake, an injected seam, or a scripted result. The
+   * verdict conductor records has to come from a process it spawned and an exit
+   * status it read, and the only way to test that is to make it do exactly that.
+   */
+  async function goalRunner(
+    exitCode: number,
+    options: { readonly hang?: boolean; readonly timeoutMs?: number } = {},
+  ): Promise<{
+    goalCheck: ResolvedGoalCheck;
+    /** Every invocation, as the runner itself recorded it. */
+    calls(): Promise<GoalCall[]>;
+  }> {
+    goalDir = await fs.mkdtemp(path.join(os.tmpdir(), "conductor-goal-"));
+    const log = path.join(goalDir, "calls.ndjson");
+    const script = path.join(goalDir, "run.mjs");
+    await fs.writeFile(
+      script,
+      [
+        `import fs from "node:fs";`,
+        `import { execFileSync } from "node:child_process";`,
+        `const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: process.cwd() })`,
+        `  .toString().trim();`,
+        `fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({`,
+        `  cwd: process.cwd(), argument: process.argv[2], head, pid: process.pid,`,
+        `}) + "\\n");`,
+        options.hang ? `setInterval(() => {}, 1000);` : `process.exit(${exitCode});`,
+      ].join("\n"),
+    );
+    return {
+      goalCheck: {
+        command: [process.execPath, script],
+        timeoutMs: options.timeoutMs ?? 60_000,
+      },
+      calls: async () => {
+        const raw = await fs.readFile(log, "utf8").catch(() => "");
+        return raw.split("\n").filter(Boolean).map((line) => JSON.parse(line) as GoalCall);
+      },
+    };
+  }
+
+  /**
+   * Every dispatch record on disk, read the way an operator would — the store
+   * is one file per record, so nothing needs to expose an accessor for a test.
+   */
+  async function dispatchRecords(): Promise<DispatchState[]> {
+    const rows: DispatchState[] = [];
+    const walk = async (dir: string, inside: boolean): Promise<void> => {
+      for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) await walk(full, inside || entry.name === "dispatches");
+        else if (inside && entry.name.endsWith(".json")) {
+          rows.push(JSON.parse(await fs.readFile(full, "utf8")) as DispatchState);
+        }
+      }
+    };
+    await walk(statePath, false);
+    return rows;
+  }
+
+  /** The record of the one execution conductor performed itself. */
+  async function goalCheckRecord(): Promise<DispatchState | undefined> {
+    return (await dispatchRecords()).find((row) => row.action === "runGoalCheck");
+  }
+
+  /**
+   * Whether a process is gone, polled briefly. `kill(pid, 0)` sends no signal
+   * and answers whether the process exists; a kill is asynchronous, so the
+   * honest test waits a moment for it rather than sampling once.
+   */
+  async function stopped(pid: number): Promise<boolean> {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      try {
+        process.kill(pid, 0);
+      } catch {
+        return true;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    return false;
+  }
+
+  /** A goal command naming a program that is not there. */
+  async function missingGoalRunner(): Promise<ResolvedGoalCheck> {
+    goalDir = await fs.mkdtemp(path.join(os.tmpdir(), "conductor-goal-"));
+    return { command: [path.join(goalDir, "no-such-runner")], timeoutMs: 60_000 };
+  }
+
+  /**
+   * Drive one issue to the moment the post-merge check is dispatched: the work
+   * is implemented, submitted, approved by a human, and merged, and the base has
+   * moved on afterwards the way a real base does.
+   *
+   * The dispatcher declares `worktree` isolation — what the shipped one
+   * declares — and there is a real `origin` to fetch from, because the check is
+   * provisioned from the remote's base and a stand-in for that would be a
+   * stand-in for the thing under test.
+   */
+  async function merged(overrides: OpenOverrides = {}): Promise<{
+    session: ConductorSession;
+    dispatcher: FakeDispatcher;
+    /** The revision on the base after the merge — what a reader of it now gets. */
+    base: string;
+    submission: { number: number; head: string };
+  }> {
+    repo = await createTestRepo();
+    await freshState();
+    await addOrigin();
+
+    const submission = await submit(`fix/${ENTITY}`);
+    await repo.run("push", "-q", "origin", `fix/${ENTITY}`);
+
+    // A branch on the remote with the name a branch-shaped goal check would
+    // have used. It is left there on purpose: under a plan keyed on a branch
+    // name, a ref a vendor pushed is what flips the next provision onto the
+    // re-entry plan and stands it on the previous run's commits instead of the
+    // base. The detached plan has no name for that to attach to.
+    await repo.run("push", "-q", "origin", `fix/${ENTITY}:goal-check/${ENTITY}`);
+
+    const dispatcher = fakeDispatcher({
+      isolation: "worktree",
+      results: [{ produced: { pullNumber: submission.number } }],
+    });
+    const session = await open(dispatcher, overrides);
+
+    await manageIssue(session);
+    await session.tick(ENTITY);
+    await session.tick(ENTITY);
+    await review(submission.number, "alice", "APPROVED", submission.head);
+    await session.tick(ENTITY);
+
+    await repo.run("merge", "--no-ff", "-m", `merge fix/${ENTITY}`, `fix/${ENTITY}`);
+    await repo.commit("later.ts", "// landed after\n", "someone else's merge", "2026-08-04T00:00:00Z");
+    await repo.run("push", "-q", "origin", "main");
+
+    return { session, dispatcher, base: await repo.sha("main"), submission };
+  }
+
+  it("settles the issue on a goal command that exited 0, with no scripted verdict anywhere", async () => {
+    const goal = await goalRunner(0);
+    const { session, dispatcher } = await merged({ goalCheck: goal.goalCheck });
+
+    const settled = await session.tick(ENTITY);
+
+    // The milestone: an issue reaching SETTLED because a program exited 0.
+    expect(settled.entity.phase).toBe("SETTLED");
+    expect(settled.ledger.map((row) => row.actionKind)).toEqual([
+      "implement",
+      "recordApproval",
+      "runGoalCheck",
+      "enterPhase",
+    ]);
+    expect(settled.ledger.at(-1)?.signalKind).toBe("goal_check_passed");
+
+    // And it came from a process, not from a harness: the goal ran once, and the
+    // only thing the dispatcher was ever asked for was the implementation.
+    expect(await goal.calls()).toHaveLength(1);
+    expect(dispatcher.actionsRun()).toEqual(["implement"]);
+
+    expect(replayFailures(settled.ledger)).toEqual([]);
+    expect(ledgerFailures(settled.ledger, "IMPLEMENTATION", settled.entity.phase)).toEqual([]);
+  });
+
+  it("does not settle the issue on a goal command that exited non-zero", async () => {
+    const goal = await goalRunner(1);
+    const { session } = await merged({ goalCheck: goal.goalCheck });
+
+    const checked = await session.tick(ENTITY);
+
+    // The work goes back rather than forward. After a merge there is no open PR
+    // left to push a fix to, so back means a human — which is a different answer
+    // from the pre-merge one and the same refusal to settle.
+    expect(checked.entity.phase).toBe("IMPLEMENTATION");
+    expect(checked.ledger.map((row) => row.actionKind)).toEqual([
+      "implement",
+      "recordApproval",
+      "runGoalCheck",
+      "escalate",
+    ]);
+    expect(checked.ledger.at(-1)?.signalKind).toBe("goal_check_failed");
+    expect(await goal.calls()).toHaveLength(1);
+    expect(replayFailures(checked.ledger)).toEqual([]);
+  });
+
+  /**
+   * **What was proved is what landed, not the branch still sitting there.**
+   * `awaiting_goal_check` applies while the entity is still in `IMPLEMENTATION`,
+   * whose branch is `fix/<id>` — which still exists and still passes, and is not
+   * what a reader of the base gets once the merge squashed, resolved a conflict,
+   * or somebody else's change landed on top. Asserted from inside the runner,
+   * which is the only place that can answer where it actually stood.
+   */
+  it("runs the command detached on the base at the revision the remote has now", async () => {
+    const goal = await goalRunner(0);
+    const { session, base, submission } = await merged({ goalCheck: goal.goalCheck });
+
+    await session.tick(ENTITY);
+
+    const [call] = await goal.calls();
+    expect(call.head).toBe(base);
+    expect(call.head).not.toBe(submission.head);
+
+    // Detached, not on a branch: `--abbrev-ref HEAD` answers with the literal
+    // "HEAD" when nothing is checked out, which is what keeps a pushed
+    // `goal-check/<id>` from ever being what a later run stands on.
+    const branch = (await repo.git(["rev-parse", "--abbrev-ref", "HEAD"], call.cwd)).stdout.trim();
+    expect(branch).toBe("HEAD");
+
+    // And the code really is there — the commit that landed after the merge is
+    // in the tree the check ran against. `fix/<id>` does not contain it.
+    const later = (await repo.git(["show", "HEAD:later.ts"], call.cwd)).stdout.trim();
+    expect(later).toBe("// landed after");
+  });
+
+  it("tells the command which work item it is proving, and nothing else", async () => {
+    const goal = await goalRunner(0);
+    const { session } = await merged({ goalCheck: goal.goalCheck });
+
+    await session.tick(ENTITY);
+
+    // The one thing conductor appends, and it comes from its own registry. The
+    // command itself is the project's declaration, verbatim — nothing a
+    // dispatched agent writes can add to it or replace it.
+    const [call] = await goal.calls();
+    expect(call.argument).toBe(ENTITY);
+  });
+
+  /**
+   * **An issue with no goal to run cannot be held on proving one.**
+   *
+   * `awaiting_goal_check` is released by a verdict and by nothing else, so a
+   * project that declares no goal command would otherwise strand every issue it
+   * merges — the same forever-wait, arrived at from the other direction. So
+   * conductor records a pass, and the dispatch record says in as many words that
+   * nothing ran, which is what keeps it distinguishable from a real one.
+   */
+  it("settles an issue whose project declares no goal command, and says nothing ran", async () => {
+    const { session, dispatcher } = await merged();
+
+    const settled = await session.tick(ENTITY);
+
+    expect(settled.entity.phase).toBe("SETTLED");
+    expect(settled.ledger.at(-1)?.signalKind).toBe("goal_check_passed");
+    expect(dispatcher.actionsRun()).toEqual(["implement"]);
+
+    const record = await goalCheckRecord();
+    expect(record?.vendor).toBe("conductor");
+    expect(record?.detail).toContain("No goal command is declared");
+  });
+
+  /**
+   * **A runner that cannot be executed is conductor's failure, not the work's.**
+   *
+   * The two are opposite asks: a failed goal sends somebody to read the diff, a
+   * missing runner sends somebody to fix the configuration. Reporting the second
+   * as the first tells an engineer their change did not do what the issue asked
+   * because a program was not installed — so it claims **no verdict at all**,
+   * settles the dispatch as failed, and escalates with the reason.
+   */
+  it("escalates a goal command that cannot be executed, and claims no verdict", async () => {
+    const { session } = await merged({ goalCheck: await missingGoalRunner() });
+
+    const checked = await session.tick(ENTITY);
+
+    expect(checked.entity.phase).toBe("IMPLEMENTATION");
+    expect(checked.ledger.map((row) => row.actionKind)).toEqual([
+      "implement",
+      "recordApproval",
+      "runGoalCheck",
+      "escalate",
+    ]);
+    expect(checked.ledger.at(-1)?.signalKind).toBe("dispatch_failed");
+
+    // No verdict, either way. A "failed" here would settle nothing and would
+    // read, everywhere it matters, as *the change did not do what was asked*.
+    expect((await session.read(ENTITY)).gate).toBe("awaiting_goal_check");
+
+    const record = await goalCheckRecord();
+    expect(record?.outcome).toBe("failed");
+    expect(record?.detail).toContain("could not be executed");
+  });
+
+  it("kills a goal command that hangs, and reports it as a run that never happened", async () => {
+    const goal = await goalRunner(0, { hang: true, timeoutMs: 250 });
+    const { session } = await merged({ goalCheck: goal.goalCheck });
+
+    const checked = await session.tick(ENTITY);
+
+    // It started — the runner recorded itself before hanging — and it still
+    // proved nothing. "It ran" is not the question; "it reported a status" is.
+    const [call] = await goal.calls();
+    expect(checked.ledger.at(-1)?.signalKind).toBe("dispatch_failed");
+    expect((await session.read(ENTITY)).gate).toBe("awaiting_goal_check");
+    expect((await goalCheckRecord())?.detail).toContain("did not finish within");
+
+    // And it is actually gone. Giving up on a runner without killing it leaves
+    // one orphaned process per timed-out check, holding whatever the check had
+    // open, for the life of the machine — a leak that is invisible from the
+    // ledger, which is exactly why it is asserted against the process table.
+    expect(await stopped(call.pid)).toBe(true);
   });
 });

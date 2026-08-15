@@ -70,6 +70,19 @@ export interface PhaseBrief {
   readonly workspacePath: string | null;
   /** Repo-relative guidance paths the harness should read for this phase. */
   readonly guidancePaths: readonly string[];
+  /**
+   * The command that will prove this work item's goal, or `null` when the
+   * project declares none.
+   *
+   * **Outward only.** It is here so an agent can run the same check conductor
+   * will run and stop when it passes, rather than handing back work it could
+   * have known was unfinished. It is *not* a channel: conductor reads the
+   * command from its own configuration every time, nothing reads a brief back,
+   * and {@link DispatchResult} has nowhere to name a command — so a harness
+   * cannot influence what runs, and a verdict still comes only from an exit
+   * status conductor itself observed.
+   */
+  readonly goalCommand: readonly string[] | null;
   /** What prompted this dispatch, carried from the action. `null` on phase entry. */
   readonly because: string | null;
   /**

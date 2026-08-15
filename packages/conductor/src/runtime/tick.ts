@@ -87,7 +87,12 @@
 
 import { randomUUID } from "node:crypto";
 
-import { isDispatch, type Action, type DispatchAction } from "../model/actions";
+import {
+  isDispatch,
+  MUTATES_WORK,
+  type Action,
+  type DispatchAction,
+} from "../model/actions";
 import {
   artifactKindForPhase,
   phaseDefinition,
@@ -111,14 +116,10 @@ import {
   isPhaseStranded,
   type ConductorEntity,
 } from "../driver/derive-gate";
-import {
-  branchNameFor,
-  provisionWorkspace,
-  DETACHED_AT_BASE,
-  type WorkspaceRef,
-} from "../dispatch/branch";
+import { branchNameFor, provisionWorkspace, DETACHED_AT_BASE } from "../dispatch/branch";
 import { briefFor } from "../dispatch/brief";
 import type { DispatchResult, PhaseBrief } from "../dispatch/types";
+import { runGoalCheckCommand } from "./goal-check";
 import { EMPTY_OBSERVATION_CURSOR, type ObservationCursor } from "../observe/types";
 import type { ConductorCollections } from "./collections";
 import type { RuntimeDeps } from "./deps";
@@ -801,50 +802,32 @@ async function recordProduced(
   await recordArtifact(context, kind, hostedAt);
 }
 
-/**
- * Can a dispatch of this kind put a commit on the branch it ran against?
- *
- * **The one place that question is answered, and it is answered for every kind
- * rather than for the few that bite today.** A `Record` keyed on the action
- * union rather than a list, because the failure this keeps having is *an action
- * nobody thought about*: adding a kind to {@link DispatchAction} is a **type
- * error** until its author answers here. The alternative considered was
- * inverting the default — assume harmless unless listed — which fails safe and
- * *silently*, and silence is the whole defect: it would make a new mutating
- * action correct by accident and make nobody look at this table.
- *
- * `true` for every kind that can push, including the ones that cannot be holding
- * a verdict when they run: `draftSpec`/`reviseSpec` run in `SPEC`, before an
- * issue has one, and `retrospect`/`polishDocs` belong to an epic, which has no
- * verdict at all (see {@link readGoalCheck}). Classifying them by what they *do*
- * rather than by where they happen to sit keeps this readable as one rule, and
- * costs a write of `null` over `null`. `false` is for the two that change
- * nothing: `answerQuestion` replies to a human and its brief says in as many
- * words not to touch the work; `runGoalCheck` measures rather than edits.
- *
+/*
  * ---------------------------------------------------------------------------
- * WHAT THIS TABLE IS, NOW THAT THE PROOF IS BOUND TO A REVISION
+ * WHAT `MUTATES_WORK` DOES FOR THE GOAL PROOF
  * ---------------------------------------------------------------------------
+ *
+ * The table lives in `model/actions`, beside the action union it is total over,
+ * and answers one question: *can a dispatch of this kind put a commit on the
+ * branch it ran against?* Two of this file's rules are consequences of it, which
+ * is why they read it rather than each keeping a list.
  *
  * It used to be the *guarantee* behind "a merge gate never opens on unproved
- * work": a stored verdict survived unless a kind listed here cleared it. It
- * cannot be that, and could never have been — an enumeration over conductor's
- * own dispatches has nothing to say about a head a human moved. The guarantee is
- * now the revision stored beside the verdict (`model/world`'s `goalCheckFor`),
- * which a push nobody dispatched fails exactly as a revision does.
- *
- * **The table stays, and it answers a sharper question than it used to.** Both
- * consequences below fall out of the one question in the heading, which is why
- * this is one table and not two:
+ * work": a stored verdict survived unless a kind cleared it. It cannot be that,
+ * and could never have been — an enumeration over conductor's own dispatches has
+ * nothing to say about a head a human moved. The guarantee is now the revision
+ * stored beside the verdict (`model/world`'s `goalCheckFor`), which a push
+ * nobody dispatched fails exactly as a revision does. What the table answers now
+ * is sharper:
  *
  * - **A verdict from before is stale.** The gate would catch it at the next
  *   observation anyway, but not until then — the snapshot this tick holds was
  *   read *before* the dispatch pushed, so for the rest of this pass the old head
- *   and the old proof still agree with each other. Clearing here closes that
- *   window, and it is conductor's to close because conductor is the only thing
- *   that knows a dispatch it just ran may have moved the head. The visible cost
- *   of leaving it open is a tick reporting `awaiting_merge` to a human on work
- *   its own agent has just rewritten.
+ *   and the old proof still agree with each other. Clearing closes that window,
+ *   and it is conductor's to close because conductor is the only thing that
+ *   knows a dispatch it just ran may have moved the head. The visible cost of
+ *   leaving it open is a tick reporting `awaiting_merge` to a human on work its
+ *   own agent has just rewritten.
  * - **A verdict this dispatch reports names a revision nobody has read yet.**
  *   The check ran on what the agent wrote; the head in the snapshot predates it.
  *   So the proof is recorded *unbound* and resolved by the next observation —
@@ -852,27 +835,12 @@ async function recordProduced(
  *   cannot push has no such gap: the head in the snapshot is the head the check
  *   ran on, and the proof is bound on the spot.
  *
- * **Its failure mode is bounded now, which is the reason keeping it is cheap.**
- * A kind wrongly marked `false` is caught by the revision at the next
- * observation, so it costs a stale gate for one tick rather than a false merge.
- * A kind wrongly marked `true` throws away a live proof and buys a goal check
- * nobody needed. Neither direction can open a merge gate on unproved work, so
- * this is an optimization guarding a window, and the compile-time prompt it puts
- * in front of the next action's author is worth more than the line count.
+ * **The failure mode is bounded, which is why reading it here is cheap.** A kind
+ * wrongly marked `false` is caught by the revision at the next observation, so
+ * it costs a stale gate for one tick rather than a false merge. A kind wrongly
+ * marked `true` throws away a live proof and buys a goal check nobody needed.
+ * Neither direction can open a merge gate on unproved work.
  */
-const INVALIDATES_GOAL_CHECK: Record<DispatchAction["kind"], boolean> = {
-  draftSpec: true,
-  reviseSpec: true,
-  answerQuestion: false,
-  implement: true,
-  addressFeedback: true,
-  resolveConflict: true,
-  rebaseOnBase: true,
-  runGoalCheck: false,
-  retrospect: true,
-  polishDocs: true,
-  reExamineOpenPrs: true,
-};
 
 /**
  * What a settled dispatch leaves the stored goal proof at, or `undefined` when
@@ -912,7 +880,7 @@ function claimedGoalCheck(
   result: DispatchResult,
   head: string | null,
 ): GoalProof | undefined {
-  const mayHavePushed = INVALIDATES_GOAL_CHECK[action.kind];
+  const mayHavePushed = MUTATES_WORK[action.kind];
   const verdict = mayHavePushed ? (result.goalCheck ?? null) : result.goalCheck;
   if (verdict === undefined) return undefined;
   if (verdict === null) return UNPROVED;
@@ -1052,44 +1020,191 @@ async function adoptSubmissionForBranch(
 }
 
 /**
- * The branch a dispatch's workspace and brief are pointed at.
+ * The vendor recorded against a goal check.
  *
- * {@link branchNameFor} answers this from the *phase*, which is right for every
- * action that produces work and wrong for the one that grades it.
- * `runGoalCheck` is dispatched from `awaiting_goal_check`, a gate that applies
- * only once the PR has **merged**, and the entity is still in `IMPLEMENTATION`
- * while it runs — so the phase answers `fix/<id>`: the feature branch, which
- * still exists and still passes, and which is not what landed whenever the merge
- * squashed, resolved a conflict, or the base moved on in between. A proof taken
- * there is a proof of code that never reached the base, and it settles the issue
- * on it. The proof has to be taken against what a reader of the base branch
- * would actually get.
- *
- * So a goal check is provisioned {@link DETACHED_AT_BASE} — `dispatch/branch`'s
- * third plan, which fetches the base and puts HEAD on `<remote>/<base>` while
- * owning no ref. It says "the base, at the revision on it now" in the commands
- * themselves rather than as a consequence of a branch name nobody pushes, and
- * nothing a vendor pushes can flip it onto a different plan. The two shapes it
- * replaces both fail: naming `baseBranch` would provision `checkout -B <base>
- * <remote>/<base>`, occupying the shared base ref in a worktree — the one thing
- * that module's policy exists to prevent — and resetting a developer's local
- * base under `cwd`. Passing `null` skips the branch plan entirely, so a worktree
- * left on `fix/<id>` by an earlier dispatch is reused as-is and the false proof
- * comes back with nothing recording it.
- *
- * **The limit, stated.** A detached provision is conductor putting a local
- * workspace on the base, so it reaches a `worktree` or `cwd` dispatcher — which
- * is every dispatcher shipped today. A `remote` dispatcher provisions its own
- * environment and is told only a branch name, and there is no branch name for
- * "the base at its current revision"; it is told `null`, which is honest but is
- * not an instruction. A vendor that runs its own checkout needs the brief to
- * carry the target some other way, and the brief has nowhere to put it yet.
+ * Not a coding harness, and the record says so rather than leaving a reader to
+ * infer it: no harness ran, no model was consulted, and nothing about this
+ * dispatch's outcome came from an agent.
  */
-function workspaceRefFor(
+const GOAL_CHECK_VENDOR = "conductor";
+
+/**
+ * Run the work item's goal check, and turn its exit status into a verdict.
+ *
+ * **The one action conductor executes itself instead of handing to a harness.**
+ * Every other dispatch is work that needs judgment, and judgment is what a
+ * vendor harness is for. A goal check is the opposite: it is the single moment
+ * where judgment is *disqualifying*, because the question is whether the work
+ * did what the item asked and the agent under examination is the one being
+ * asked. `DispatchResult.goalCheck` has always said the verdict must come from
+ * something with an exit status — and no adapter could supply one, since a
+ * harness returns the terminal subtype of its own agent loop rather than the
+ * status of anything the agent ran inside it. So nothing ever set the field, and
+ * `awaiting_goal_check` was a gate nothing could release: every merged issue
+ * reached it and waited forever, looking healthy because a gate was named.
+ *
+ * Running it here rather than in each adapter is also what keeps it
+ * vendor-neutral — the same command proves the work whoever wrote it, and a
+ * harness conductor has never heard of needs no goal-check code at all.
+ *
+ * ---------------------------------------------------------------------------
+ * WHERE IT RUNS
+ * ---------------------------------------------------------------------------
+ *
+ * {@link DETACHED_AT_BASE}, always. `runGoalCheck` is dispatched from
+ * `awaiting_goal_check`, a gate that applies only once the PR has **merged**,
+ * and the entity is still in `IMPLEMENTATION` while it runs — so the phase's own
+ * branch is `fix/<id>`: the feature branch, which still exists and still passes,
+ * and which is not what landed whenever the merge squashed, resolved a conflict,
+ * or the base moved on in between. A proof taken there is a proof of code that
+ * never reached the base, and it settles the issue on it. The proof has to be
+ * taken against what a reader of the base branch would actually get, and
+ * `dispatch/branch`'s third plan says exactly that in its commands: fetch the
+ * base, put HEAD on `<remote>/<base>`, own no ref.
+ *
+ * The isolation is conductor's own `worktree`, not the dispatcher's declared
+ * model, because this is not the dispatcher's run: a `remote` harness provisions
+ * nothing locally, and conductor cannot spawn a process in an environment it has
+ * no path to. A worktree also keeps a `cwd` harness's repo root from being
+ * detached under the developer standing in it.
+ *
+ * ---------------------------------------------------------------------------
+ * THREE OUTCOMES, NOT TWO
+ * ---------------------------------------------------------------------------
+ *
+ * - **The command ran.** Exit 0 is `passed`, anything else is `failed`, and
+ *   either way the *dispatch* completed — the check did its job. A failing goal
+ *   is a statement about the work, and `decide` routes it: back to the agent
+ *   before the merge, to a human after it.
+ * - **The command could not run** — missing, crashed on the way up, killed,
+ *   timed out. That is conductor's machinery failing, not the work, so it
+ *   settles `failed` with the reason and claims **no verdict at all**. Reporting
+ *   it as a failed goal would tell somebody their change did not do what the
+ *   issue asked because a runner was not installed.
+ * - **No goal was declared.** Then there is nothing to prove and nothing to run,
+ *   and the item is recorded as `passed`. That is the uncomfortable one, so it
+ *   is argued rather than assumed: an issue with no goal check cannot be *held*
+ *   on proving one — `awaiting_goal_check` is released by a verdict and by
+ *   nothing else, so any other answer strands every merged issue in a project
+ *   that declared no goal command, which is the exact failure this change
+ *   exists to remove. It is distinguishable from a real pass in the record (the
+ *   dispatch's own `error` line says nothing was run) and from a real failure by
+ *   the verdict itself. What it is *not* is a silent vendor being read as a
+ *   pass: silence from a harness that was asked is no claim, and this is a
+ *   project stating there is no claim to make.
+ *
+ * Settles rather than throwing, the same contract {@link runDispatch} holds and
+ * for the same reason: an exception skips the ledger, and a transition that
+ * skipped the ledger cannot be recovered by a restart.
+ */
+async function runGoalCheck(
+  context: TickContext,
   entity: ConductorEntity,
-  action: DispatchAction,
-): WorkspaceRef {
-  return action.kind === "runGoalCheck" ? DETACHED_AT_BASE : branchNameFor(entity);
+): Promise<DispatchResult> {
+  const { config, git, now } = context.deps;
+  const startedAt = now().toISOString();
+  const dispatchId = `${context.entityId}#${(await countDispatches(context)) + 1}`;
+
+  const record = async (
+    outcome: "completed" | "failed" | null,
+    settledAt: string | null,
+    detail: string | null,
+  ): Promise<void> => {
+    await context.collections.dispatches.write(dispatchId, {
+      id: dispatchId,
+      entityId: context.entityId,
+      phase: entity.phase,
+      action: "runGoalCheck",
+      vendor: GOAL_CHECK_VENDOR,
+      startedAt,
+      settledAt,
+      outcome,
+      costUsd: null,
+      detail,
+    });
+  };
+
+  /**
+   * `detail` is what the record keeps and `error` is what the seam carries, and
+   * they are not the same string: a check that *ran* has a detail (the exit
+   * status it saw) and no error, because it settled exactly as asked. Folding
+   * the two would put "the goal command exited 0" in a field whose contract is
+   * "why it failed".
+   */
+  const settle = async (
+    outcome: "completed" | "failed",
+    detail: string | null,
+    verdict?: "passed" | "failed",
+  ): Promise<DispatchResult> => {
+    const settledAt = now().toISOString();
+    await record(outcome, settledAt, detail);
+    return {
+      dispatchId,
+      outcome,
+      produced: {},
+      costUsd: null,
+      vendorRunId: null,
+      error: outcome === "failed" ? detail : null,
+      // Spread, so a run that proved nothing carries no key at all — absence is
+      // the claim, and a `goalCheck: undefined` written by hand is a different
+      // statement from one the seam never made.
+      ...(verdict ? { goalCheck: verdict } : {}),
+      startedAt,
+      settledAt,
+    };
+  };
+
+  // Down before the run, not after it, so a check in flight when the process
+  // dies is visible to whoever looks next. Same ordering as `runDispatch`.
+  await record(null, null, null);
+
+  // `== null`, not `=== null`: a hand-built config that omitted the field
+  // reaches here as `undefined`, and reading that as "declared" would spawn the
+  // command's first element out of nothing.
+  if (config.goalCheck == null) {
+    return settle(
+      "completed",
+      "No goal command is declared, so conductor ran nothing and has nothing to prove.",
+      "passed",
+    );
+  }
+
+  let workspacePath: string;
+  try {
+    const workspace = await provisionWorkspace({
+      isolation: "worktree",
+      repoRoot: config.repoRoot,
+      entityId: context.entityId,
+      branch: DETACHED_AT_BASE,
+      git,
+      baseBranch: config.baseBranch,
+      remote: config.remote,
+    });
+    // `worktree` isolation always yields a path; the `null` belongs to `remote`,
+    // which this never asks for. Answered rather than asserted so a provisioning
+    // change cannot turn into a crash here.
+    if (workspace.path === null) {
+      return settle("failed", "The goal check was given no workspace to run in.");
+    }
+    workspacePath = workspace.path;
+  } catch (error) {
+    return settle(
+      "failed",
+      `The goal check could not be provisioned at the base: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+
+  const outcome = await runGoalCheckCommand({
+    goalCheck: config.goalCheck,
+    cwd: workspacePath,
+    entityId: context.entityId,
+  });
+
+  return outcome.kind === "verdict"
+    ? settle("completed", `The goal command exited ${outcome.exitCode}.`, outcome.verdict)
+    : settle("failed", outcome.reason);
 }
 
 /**
@@ -1112,11 +1227,7 @@ async function runDispatch(
   const { config, dispatcher, git, now } = context.deps;
   const startedAt = now().toISOString();
   const dispatchId = `${context.entityId}#${(await countDispatches(context)) + 1}`;
-  const workspaceRef = workspaceRefFor(entity, action);
-  // The brief names a branch only when there is one to name. A detached
-  // provision has none, and saying so is the honest answer: there is nothing to
-  // commit onto and nothing to push.
-  const branch = typeof workspaceRef === "string" ? workspaceRef : null;
+  const branch = branchNameFor(entity);
 
   // The record goes down before the run, not after it: a dispatch that is in
   // flight when the process dies has to be visible to whoever looks next.
@@ -1130,6 +1241,7 @@ async function runDispatch(
     settledAt: null,
     outcome: null,
     costUsd: null,
+    detail: null,
   });
 
   const failed = (error: string): DispatchResult => ({
@@ -1149,7 +1261,7 @@ async function runDispatch(
       isolation: dispatcher.isolation,
       repoRoot: config.repoRoot,
       entityId: context.entityId,
-      branch: workspaceRef,
+      branch,
       git,
       baseBranch: config.baseBranch,
       remote: config.remote,
@@ -1161,6 +1273,10 @@ async function runDispatch(
       workspacePath: workspace.path,
       guidancePaths: config.guidance,
       summary,
+      // Outward only: an agent is told what its work will be measured by, so it
+      // can run the check itself before it stops. Nothing reads a brief back —
+      // see `runtime/goal-check` on why the command may never come from one.
+      goalCommand: config.goalCheck?.command ?? null,
     });
 
     result = await dispatcher.run(brief);
@@ -1178,6 +1294,7 @@ async function runDispatch(
     settledAt: result.settledAt,
     outcome: result.outcome,
     costUsd: result.costUsd,
+    detail: result.error,
   });
 
   if (result.outcome === "completed") await recordProduced(context, entity, result);
@@ -1430,7 +1547,14 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
         await countReviewRound(context, entity, world);
       }
 
-      const result = await runDispatch(context, entity, action, summary);
+      // The one action conductor performs itself. Everything downstream of this
+      // line is identical either way — the same `DispatchResult`, the same
+      // settling signal, the same proof handling — because what changes is who
+      // ran the work, not what a result means. See {@link runGoalCheck}.
+      const result =
+        action.kind === "runGoalCheck"
+          ? await runGoalCheck(context, entity)
+          : await runDispatch(context, entity, action, summary);
       queue.unshift({
         signal: {
           kind: result.outcome === "completed" ? "dispatch_completed" : "dispatch_failed",

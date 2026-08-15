@@ -55,6 +55,7 @@ function configFor(dispatcher: FakeDispatcher): ResolvedConductor {
     token: "",
     dispatcher,
     guidance: [],
+    goalCheck: null,
     policy: DEFAULT_POLICY,
     origins: {
       repoRoot: "discovered",

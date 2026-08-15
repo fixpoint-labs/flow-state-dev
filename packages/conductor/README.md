@@ -335,9 +335,35 @@ any of it?* — and is what a board renders.
 
 Fields do exist for the cases inference genuinely cannot cover: `repo` for a fork whose PRs
 belong upstream, `remote` for a checkout with several, `repoRoot` for one conductor driving a
-repo it is not inside, `dispatcher` to pin a vendor, and `guidance` for the documents
-conductor should read (the one field with no discovery behind it — which documents govern a
-project is the project's own statement).
+repo it is not inside, `dispatcher` to pin a vendor, `guidance` for the documents conductor
+should read, and `goalCheck` for the command that proves a work item did what it asked. The
+last two have no discovery behind them, and that is deliberate for different reasons: which
+documents govern a project is the project's own statement, and a goal command is a **program
+conductor executes** — resolving one by scanning for something runnable is exactly the choice
+it must not make.
+
+### Proving the work
+
+```ts
+export default defineConductor({
+  goalCheck: { command: ["pnpm", "tsx", "goals/run-for-issue.mts"] },
+});
+```
+
+Conductor appends the work item's id and runs it with no shell, in a workspace it has put on
+the merged base — so what gets proved is what a reader of the base branch would actually get,
+not the feature branch that still exists beside it. **The exit status is the verdict**: `0`
+passes, anything else fails, and nothing the command prints is read. That is the whole reason
+conductor runs it rather than asking the coding harness to: a harness reports how its own
+agent loop ended, never the status of what the agent ran inside it, so a verdict taken from
+one is a model grading its own work at a merge gate.
+
+Three outcomes, not two. A command that **ran** settles the work either way. A command that
+could not run — missing, crashed, killed, timed out — is conductor's failure rather than the
+work's: it claims no verdict at all and asks a human, because "your change did not do what
+the issue asked" is the wrong thing to tell someone whose runner was not installed. And a
+project that declares no `goalCheck` proves nothing, which is a valid answer — an issue with
+no goal to run is not held on proving one.
 
 `examples/conductor-self-drive` is the whole thing end to end: a level-1 config, and a small
 piece of source for conductor to change.

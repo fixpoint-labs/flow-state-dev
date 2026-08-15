@@ -36,6 +36,12 @@ export {
 export type { RuntimeDeps } from "./deps";
 
 export {
+  runGoalCheckCommand,
+  type GoalCheckOutcome,
+  type GoalCheckRequest,
+} from "./goal-check";
+
+export {
   addressFor,
   collectionHandle,
   conductorCollections,

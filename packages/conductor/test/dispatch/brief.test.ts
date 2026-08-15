@@ -25,6 +25,7 @@ describe("briefFor", () => {
       guidancePaths: [],
       because: "CI failed.",
       summary: null,
+      goalCommand: null,
     });
   });
 
@@ -66,6 +67,51 @@ describe("renderBrief", () => {
 
   it("tells a remote harness to do its work on the branch, since it has no checkout waiting", () => {
     expect(renderBrief({ ...base, workspacePath: null })).toContain("do your work on it");
+  });
+
+  /**
+   * **A brief for a dispatch that writes nothing must not ask for a commit.**
+   *
+   * Two actions change nothing, and the closing instruction used to tell both to
+   * commit and push anyway. For `answerQuestion` that contradicts the intent
+   * three lines above it — *do not change the work to do it*. For `runGoalCheck`
+   * it is worse than a contradiction: the check stands detached at the merged
+   * base with no branch at all, so an agent obeying it either fails outright or
+   * pushes a `goal-check/<id>` that flips the next provision onto the re-entry
+   * plan and proves the previous run's commits instead of the base.
+   */
+  it.each([
+    ["answerQuestion", "a question is answered without touching the work"],
+    ["runGoalCheck", "a goal check stands on the base, on no branch to commit onto"],
+  ] as const)("never asks a %s dispatch to commit and push — %s", (action) => {
+    const rendered = renderBrief({ ...base, action, branch: null });
+    expect(rendered).not.toContain("Commit your work");
+    expect(rendered).toContain("leave the working tree as you found it");
+  });
+
+  it("still asks work that writes to commit and push", () => {
+    expect(renderBrief(base)).toContain("Commit your work on this branch and push it.");
+  });
+
+  /**
+   * The goal command travels **outward**, so an agent can run the check before
+   * it stops rather than handing back work it could have known was unfinished.
+   * Nothing reads a brief back — conductor takes the command from its own config
+   * every time — so this is information, not a channel.
+   */
+  it("tells writing work what its goal will be measured by, entity id and all", () => {
+    const rendered = renderBrief({ ...base, goalCommand: ["pnpm", "goal"] });
+    expect(rendered).toContain("pnpm goal FIX-1");
+    expect(rendered).toContain("reads its exit status");
+  });
+
+  it("does not hand a goal command to a dispatch that writes nothing", () => {
+    const rendered = renderBrief({
+      ...base,
+      action: "runGoalCheck",
+      goalCommand: ["pnpm", "goal"],
+    });
+    expect(rendered).not.toContain("pnpm goal");
   });
 
   it("omits the sections it has nothing for", () => {

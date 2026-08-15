@@ -80,7 +80,54 @@ export interface ConductorConfig {
    * which documents govern this project is a project's own statement.
    */
   readonly guidance?: readonly string[];
+  /**
+   * How this project proves a work item did what it asked. Omit it and
+   * conductor proves nothing — see {@link GoalCheckConfig}.
+   */
+  readonly goalCheck?: GoalCheckConfig;
 }
+
+/**
+ * The command that proves a work item's goal, as a project declares it.
+ *
+ * **Declared, never discovered.** Every other field on {@link ConductorConfig}
+ * falls back to a lookup; this one cannot, and the asymmetry is the point:
+ * resolving it would mean conductor picking a program off the filesystem and
+ * running it. A repo's goal runners live wherever that repo puts them
+ * (`goals/<subject>/<behaviour>/run.mts` here), under names chosen so a human
+ * can find one by what it proves — the issue id is deliberately *not* in the
+ * path — so there is no convention to derive a per-issue path from, and a scan
+ * for something that looks runnable is a scan for something to execute. If a
+ * project declares nothing, conductor runs nothing; see
+ * {@link ResolvedConductor.goalCheck} for what that means for the work item.
+ */
+export interface GoalCheckConfig {
+  /**
+   * Argv, executable first. Run without a shell, so no element is ever parsed
+   * for redirection, quoting or substitution.
+   *
+   * The work item's id is appended as the final argument — that is the only
+   * thing conductor adds, and it comes from conductor's own registry, never
+   * from a brief, a vendor result, or anything an agent can write.
+   */
+  readonly command: readonly string[];
+  /**
+   * Hard ceiling on one goal run. Default 15 minutes. A runner that never
+   * returns would hold the tick open forever, and a tick that never returns is
+   * a work item nothing can move — the failure this whole change exists to
+   * remove, reintroduced from the other end.
+   */
+  readonly timeoutMs?: number;
+}
+
+/** The goal command with nothing left to default. `null` when none was declared. */
+export interface ResolvedGoalCheck {
+  readonly command: readonly string[];
+  readonly timeoutMs: number;
+}
+
+/** {@link GoalCheckConfig.timeoutMs}'s default. */
+export const DEFAULT_GOAL_CHECK_TIMEOUT_MS = 15 * 60 * 1000;
 
 /** Whether a resolved field came from the environment or from the config file. */
 export type FieldOrigin = "discovered" | "configured";
@@ -142,6 +189,20 @@ export interface ResolvedConductor {
   readonly token: string;
   readonly dispatcher: Dispatcher;
   readonly guidance: readonly string[];
+  /**
+   * The command a `runGoalCheck` runs, or `null` when the project declared
+   * none.
+   *
+   * `null` is not "the goal failed" and it is not "the goal has not run yet" —
+   * it is *this project asks for no proof*, and conductor cannot hold a work
+   * item on a proof nobody asked for. `runtime/goal-check` is where that turns
+   * into a verdict, and says why it is the verdict it is.
+   *
+   * No origin is reported for it, for the same reason `guidance` reports none:
+   * there is no discovery behind it, so an absent command means the project
+   * named none rather than that a lookup came back empty.
+   */
+  readonly goalCheck: ResolvedGoalCheck | null;
   readonly policy: ConductorPolicy;
   readonly origins: ConductorOrigins;
 }
@@ -223,6 +284,19 @@ export async function resolveConductor(
   const baseBranch = config.baseBranch ?? discoveredBranch!.branch;
   const dispatcher = config.dispatcher ?? (await discoverDispatcher(probe));
 
+  // Rejected at open rather than at the merge gate. A declaration with no
+  // executable in it is a project that meant to be proved and will not be, and
+  // the moment that becomes visible is otherwise the moment a merged issue
+  // needs its verdict — hours later, with a human waiting on it.
+  if (config.goalCheck && config.goalCheck.command.length === 0) {
+    throw new ConductorConfigError(
+      `\`goalCheck.command\` is empty, so there is nothing for conductor to run. ` +
+        `Give it the argv of this project's goal runner, executable first, or ` +
+        `remove \`goalCheck\` to declare that this project proves nothing.`,
+      "goalCheck",
+    );
+  }
+
   return {
     repoRoot,
     repo,
@@ -232,6 +306,12 @@ export async function resolveConductor(
     token: discoverGitHubToken(env),
     dispatcher,
     guidance: config.guidance ?? [],
+    goalCheck: config.goalCheck
+      ? {
+          command: [...config.goalCheck.command],
+          timeoutMs: config.goalCheck.timeoutMs ?? DEFAULT_GOAL_CHECK_TIMEOUT_MS,
+        }
+      : null,
     policy: DEFAULT_POLICY,
     origins: {
       repoRoot: config.repoRoot ? "configured" : "discovered",
