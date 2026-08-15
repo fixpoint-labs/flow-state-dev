@@ -845,15 +845,38 @@ function checkDecisionConsistency(bundle: RunArtifactsBundle, c: Checks, memos: 
     if (snapshot.direction !== (trader.direction ?? null)) {
       tradeMismatches.push(`direction ${snapshot.direction} vs ${trader.direction}`);
     }
-    // FIX-780 — the snapshot mirrors the STANCE-GATED levels, not the memo's
-    // raw fields, because the snapshot write applies `levelsForStance` (the PM
-    // writer). For any run written after FIX-780 the two are identical: the
-    // trader's own commit already gated them, so the gate is idempotent. They
-    // differ only for a pre-fix session resumed into Phase 5, whose flat memo
-    // still carries its monitoring levels under `stopPrice` / `targetPrice` —
-    // and there the snapshot recording NOTHING is the correct outcome, not
-    // drift. Comparing against the raw memo would demand the snapshot reproduce
-    // the mislabeling.
+    // FIX-780 — compare the levels through the SAME stance gate on BOTH sides.
+    //
+    // Gating only one side asserts an equality between two different
+    // treatments, which is what this check used to do: it gated the memo and
+    // compared it against the RAW snapshot. That is correct for a session
+    // resumed into Phase 5 (the PM writer re-runs the gate, so the stored
+    // snapshot is rewritten), and WRONG for a report that COMPLETED before the
+    // fix and is merely read back — no write ever re-runs, so its snapshot
+    // still holds the flat call's monitoring levels under `stopPrice` /
+    // `targetPrice` while the memo gates to null. That is not drift between the
+    // two records; it is one record in the legacy shape and a gate applied to
+    // only one of them, and it turned most of the historical corpus red.
+    //
+    // Gating both sides compares like with like: for any post-fix run the gate
+    // is idempotent and nothing changes, a genuine mirror divergence still
+    // fails (both sides are normalized, so a real difference survives), and a
+    // legacy record agrees with itself at "no nameable levels" — which is the
+    // truth about it, since nothing in either copy says which number was which.
+    //
+    // The normalization is NOT silent: when the gate actually drops something
+    // from the stored snapshot, that is surfaced as a SOFT flag below. A check
+    // that stops failing because it was widened has to say so, or the corpus
+    // reports a clean run where a legacy record was quietly tidied.
+    const gatedSnapshot = levelsForStance(
+      (snapshot.direction ?? null) as TradeStance,
+      {
+        stopPrice: snapshot.stopPrice,
+        targetPrice: snapshot.targetPrice,
+        reassessBelowPrice: snapshot.reassessBelowPrice,
+        invalidateAbovePrice: snapshot.invalidateAbovePrice,
+      },
+    );
     const gated = levelsForStance((trader.direction ?? null) as TradeStance, {
       stopPrice: trader.stopPrice,
       targetPrice: trader.targetPrice,
@@ -862,12 +885,16 @@ function checkDecisionConsistency(bundle: RunArtifactsBundle, c: Checks, memos: 
     });
     const numPairs: Array<[string, number | null, number | null]> = [
       ["sizePct", snapshot.sizePct, trader.sizePct ?? null],
-      ["stopPrice", snapshot.stopPrice, gated.stopPrice],
-      ["targetPrice", snapshot.targetPrice, gated.targetPrice],
-      ["reassessBelowPrice", snapshot.reassessBelowPrice, gated.reassessBelowPrice],
+      ["stopPrice", gatedSnapshot.stopPrice, gated.stopPrice],
+      ["targetPrice", gatedSnapshot.targetPrice, gated.targetPrice],
+      [
+        "reassessBelowPrice",
+        gatedSnapshot.reassessBelowPrice,
+        gated.reassessBelowPrice,
+      ],
       [
         "invalidateAbovePrice",
-        snapshot.invalidateAbovePrice,
+        gatedSnapshot.invalidateAbovePrice,
         gated.invalidateAbovePrice,
       ],
     ];
@@ -882,6 +909,42 @@ function checkDecisionConsistency(bundle: RunArtifactsBundle, c: Checks, memos: 
       c.hardPass("decision-consistency/snapshot-trader", "snapshot ↔ trader memo trade mirrors agree");
     } else {
       c.hardFail("decision-consistency/snapshot-trader", `snapshot/trader mirror drift: ${tradeMismatches.join("; ")}`);
+    }
+
+    // FIX-780 — say so when the gate above actually dropped a stored level.
+    // A record written before the stance gate carries a flat call's monitoring
+    // levels under the trade names; the comparison normalizes that away, and
+    // this is what keeps the normalization visible instead of it reading as a
+    // clean run. Soft by design: the record is legacy, not inconsistent — the
+    // run is not being judged for predating a fix.
+    const droppedByGate = (
+      [
+        ["stopPrice", snapshot.stopPrice, gatedSnapshot.stopPrice],
+        ["targetPrice", snapshot.targetPrice, gatedSnapshot.targetPrice],
+        [
+          "reassessBelowPrice",
+          snapshot.reassessBelowPrice,
+          gatedSnapshot.reassessBelowPrice,
+        ],
+        [
+          "invalidateAbovePrice",
+          snapshot.invalidateAbovePrice,
+          gatedSnapshot.invalidateAbovePrice,
+        ],
+      ] as Array<[string, number | null, number | null]>
+    )
+      .filter(([, raw, kept]) => raw != null && kept == null)
+      .map(([name, raw]) => `${name} ${raw}`);
+    if (droppedByGate.length > 0) {
+      c.softFlag(
+        "decision-consistency/snapshot-legacy-levels",
+        `stored snapshot predates the stance gate — levels dropped before comparison: ${droppedByGate.join("; ")}`,
+      );
+    } else {
+      c.softPass(
+        "decision-consistency/snapshot-legacy-levels",
+        "stored snapshot's levels are already stance-consistent",
+      );
     }
   }
 

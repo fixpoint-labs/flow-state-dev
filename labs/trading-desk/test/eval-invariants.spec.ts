@@ -341,11 +341,65 @@ describe("checkRun — snapshot ↔ trader level mirrors (FIX-780)", () => {
     ).toBe("pass");
   });
 
-  it("fails if a resumed legacy flat run copies its mislabeled stop into the snapshot", () => {
-    // The defect itself: mirroring verbatim put `stopPrice: 320` into a durable
-    // record, and `adopt-thesis` turns that into a standing-thesis stop with a
-    // "Price through the stop level" tripwire — on a position the desk declined
-    // to take.
+  /**
+   * A COMPLETED legacy report — both records in the pre-fix shape.
+   *
+   * This assertion used to demand a hard FAIL, on the reasoning that a
+   * mislabeled `stopPrice: 320` in the snapshot becomes a standing-thesis stop
+   * with a live tripwire. That consequence is now closed at its own seam:
+   * `adoptThesis` re-applies the stance gate on the READ, so a legacy record
+   * mints no level and no tripwire.
+   *
+   * What remains is two stored records that agree with each other perfectly —
+   * the same legacy pair, written by the same pre-fix run. That is not an
+   * internal CONTRADICTION, which is the only thing this check is entitled to
+   * report; it is a provenance fact. Ten of the thirteen recorded runs are flat,
+   * so hard-failing it told whoever ran the eval corpus that historical runs
+   * failed a consistency check they did not fail.
+   *
+   * This is NOT the check being widened to go green — the case below proves the
+   * regression it exists to catch still fails, and the legacy shape is still
+   * SURFACED as a soft flag rather than passing silently.
+   */
+  it("does not hard-fail a COMPLETED legacy flat run whose two records agree", () => {
+    const b = legacyCompletedBundle();
+    expect(
+      byId(checkRun(b).checks, "decision-consistency/snapshot-trader")?.status,
+    ).toBe("pass");
+  });
+
+  it("still SURFACES that legacy run as a soft flag, so the normalization is not silent", () => {
+    const b = legacyCompletedBundle();
+    const flag = byId(
+      checkRun(b).checks,
+      "decision-consistency/snapshot-legacy-levels",
+    );
+    expect(flag?.severity).toBe("soft");
+    expect(flag?.status).toBe("flag");
+    expect(flag?.detail).toContain("stopPrice 320");
+  });
+
+  it("still hard-fails when a POST-fix memo's snapshot skipped the stance gate", () => {
+    // The regression that actually matters, and the one the hard check is for:
+    // the trader memo is correctly gated (monitoring levels), but the snapshot
+    // carries a stop — meaning the write-side gate did not run. Both sides are
+    // normalized the same way and a real difference survives that.
+    const b = flatBundle();
+    Object.assign(b.decisionSnapshot!, {
+      stopPrice: 320,
+      targetPrice: 195,
+      reassessBelowPrice: null,
+      invalidateAbovePrice: null,
+    });
+    expect(
+      byId(checkRun(b).checks, "decision-consistency/snapshot-trader")?.status,
+    ).toBe("fail");
+  });
+
+  /** Both records in the pre-fix shape: a flat call whose two MONITORING levels
+   *  are filed as `stopPrice` / `targetPrice` in the memo AND in the snapshot,
+   *  because the whole run predates the stance gate. */
+  function legacyCompletedBundle(): RunArtifactsBundle {
     const b = flatBundle();
     const trader = b.memos.find(
       (m) => m.key === ALL_MEMO_KEYS.trader.collectionKey,
@@ -362,10 +416,8 @@ describe("checkRun — snapshot ↔ trader level mirrors (FIX-780)", () => {
       reassessBelowPrice: null,
       invalidateAbovePrice: null,
     });
-    expect(
-      byId(checkRun(b).checks, "decision-consistency/snapshot-trader")?.status,
-    ).toBe("fail");
-  });
+    return b;
+  }
 });
 
 describe("checkRun — rating-envelope", () => {
