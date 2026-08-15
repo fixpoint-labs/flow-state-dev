@@ -2,7 +2,7 @@
  * FIX-1001 — a request must not report itself finished while its own
  * background work is still writing.
  *
- * The success path already drains the request work pool before writing its
+ * The success path already drains the request side-chain pool before writing its
  * terminal record. The three failure paths (`failed` / `interrupted` /
  * `aborted`) wrote their record and returned with the pool still running, so
  * on an ephemeral host (Vercel `waitUntil`, Next `after()`, Lambda) the

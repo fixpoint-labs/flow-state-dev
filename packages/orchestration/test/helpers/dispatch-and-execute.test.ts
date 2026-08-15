@@ -402,8 +402,8 @@ function withSideChainSignal(ctx: BlockContext, bg: AbortSignal): BlockContext {
   return {
     ...ctx,
     _requestSideChainSignal: bg,
-    // With no request-scoped work pool, the sequencer awaits its own background
-    // tasks and reports progress through `emit.status`. Nothing here asserts on
+    // With no request-scoped side-chain pool, the sequencer awaits its own
+    // side-chain tasks and reports progress through `emit.status`. Nothing here asserts on
     // items, so a no-op emitter is enough to let that path run.
     emit: new Proxy({}, { get: () => () => undefined }),
   } as unknown as BlockContext;

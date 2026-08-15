@@ -8,7 +8,7 @@
  * in-memory engine coverage. Background `block_trace` items ride the same
  * request-store persistence path as foreground traces, so this confirms
  * FIX-839's content-diff persistence fix (`request-store.ts`) covers
- * `phase:"work"` traces on Postgres too.
+ * `phase:"sideChain"` traces on Postgres too.
  *
  * IMPORTANT — the replay source is the REQUEST RECORD's items (durable in the
  * `request_items` table), NOT the Postgres `TraceStore` (which is in-memory —
@@ -64,7 +64,7 @@ function providerFor(stores: StoreRegistry): DurabilityProvider {
 }
 
 /** The background `.sideChain()` block_trace, keyed by its unique block name and its
- *  `phase:"work"` provenance. */
+ *  `phase:"sideChain"` provenance. */
 function sideChainTrace(
   items: readonly { type: string }[]
 ): BlockTraceItem | undefined {
@@ -104,7 +104,7 @@ describe("completed background `.sideChain()` trace replays across a cold restar
         const runs = (bgRuns += 1);
         // Intervening non-transient item.done: flushes the enclosing
         // in_progress block_trace to `request_items` before this block
-        // completes — the FIX-839 content-diff trigger for a phase:"work" trace.
+        // completes — the FIX-839 content-diff trigger for a phase:"sideChain" trace.
         ctx.emit.message("reindexing...");
         await new Promise((resolve) => setTimeout(resolve, 0));
         return { done: true, runs };

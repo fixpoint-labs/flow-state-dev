@@ -1,5 +1,5 @@
 /**
- * Unit tests for the per-request background work pool. The pool replaces the
+ * Unit tests for the per-request side-chain pool. The pool replaces the
  * legacy per-sequencer auto-await: sibling sequencers no longer block each
  * other on background work, and a single drain at the request boundary
  * preserves SSE-stream lifetime semantics.

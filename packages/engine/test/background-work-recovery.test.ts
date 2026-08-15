@@ -285,7 +285,7 @@ describe("attached durable background-work recovery — mid-drain fan-out", () =
     // `completed` traces pre-crash); c,d are NEVER released, so their first-run
     // promises stay parked and cannot advance a counter or emit a completed
     // trace AFTER the simulated crash. This is the harness half of §4.3: the
-    // suspend path neither drains nor aborts the work pool, so a live first-run
+    // suspend path neither drains nor aborts the side-chain pool, so a live first-run
     // promise that later resolved would contaminate the post-crash assertions.
     // Second-run gates release c,d on the continued run so the terminal drain
     // can settle the re-dispatched work.

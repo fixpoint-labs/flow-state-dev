@@ -2026,7 +2026,7 @@ describe("cross-process abort delivered during the background drain", () => {
    * The check sits immediately before `action.onCompleted` — there is no
    * statement between them — so it is already the last instant at which
    * `aborted` is a true statement about what the request did. A cancel that
-   * lands after it stops nothing: the body's output exists, the work pool has
+   * lands after it stops nothing: the body's output exists, the side-chain pool has
    * drained, and the only things left are the success hooks and the record
    * write that reports them.
    *

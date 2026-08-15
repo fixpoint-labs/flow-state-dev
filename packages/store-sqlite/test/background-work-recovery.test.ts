@@ -7,7 +7,7 @@
  * (`packages/engine/test/background-work-recovery.test.ts`). Background
  * `block_trace` items ride the SAME request-store persistence path as
  * foreground traces, so this confirms FIX-839's content-diff persistence fix
- * (`request-store.ts`) covers `phase:"work"` traces too.
+ * (`request-store.ts`) covers `phase:"sideChain"` traces too.
  *
  * The scenario deliberately satisfies four preconditions, each of which the
  * test would otherwise pass vacuously:
@@ -56,7 +56,7 @@ function providerFor(stores: StoreRegistry): DurabilityProvider {
 }
 
 /** The background `.sideChain()` block_trace: keyed by its unique block name and its
- *  `phase:"work"` provenance, so it can't be confused with the gate/sequencer
+ *  `phase:"sideChain"` provenance, so it can't be confused with the gate/sequencer
  *  traces. */
 function sideChainTrace(
   items: readonly { type: string }[]
@@ -104,7 +104,7 @@ describe("completed background `.sideChain()` trace replays across a cold restar
         ctx.emit.message("reindexing...");
         // Drain the coalesced persistItems microtask so the in_progress trace
         // reference is recorded prior to this block's completion mutation —
-        // exactly the FIX-839 content-diff trigger, now for a phase:"work" trace.
+        // exactly the FIX-839 content-diff trigger, now for a phase:"sideChain" trace.
         await new Promise((resolve) => setTimeout(resolve, 0));
         return { done: true, runs };
       }
