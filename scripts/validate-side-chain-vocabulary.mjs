@@ -143,7 +143,37 @@ const RETIRED_NAMES = new Set([
   "SequencerWorkTask",
   "WaitForWorkOptions",
   "BackgroundCallShape",
+  "WorkOptions",
+  "WorkResult",
+  "RunBackgroundResult",
+  // Internal helpers and constants that named the tier, all of which lived in
+  // a `packages/*/src` tree before the rename.
+  "dispatchWorkTask",
+  "buildWorkTraces",
+  "runBackground",
+  "backgroundTaskCtx",
+  "backgroundSignalOverride",
+  "backgroundController",
+  "DEFAULT_BACKGROUND_CONCURRENCY",
+  // DevTool.
+  "BackgroundBadge",
 ]);
+
+/**
+ * Where the denylist deliberately STOPS.
+ *
+ * The rename also touched perhaps forty test locals and fixture names —
+ * `slowWork`, `bgWork`, `failingWork`, `backgroundProbe`, `workRan`. None of
+ * them is here, and that is a decision rather than an omission: they are
+ * ordinary local naming, nothing depends on them, and listing them would
+ * re-create the over-reach this list exists to undo — just spelled out by hand
+ * instead of computed by a token rule. Same for names that read as the umbrella
+ * or as plain English (`isBackground`, `backgroundTask`, `backgroundFlow`).
+ *
+ * The line is: a name is refused when it named the tier AND lived in framework
+ * source. If one of the excluded names comes back in a test tomorrow, nothing
+ * breaks and nobody is taught the wrong word by an API.
+ */
 
 /**
  * Retired names that are also ordinary English, so they are banned only where

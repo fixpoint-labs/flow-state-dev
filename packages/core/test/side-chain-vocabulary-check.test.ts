@@ -220,6 +220,41 @@ describe("the denylist is closed, so ordinary use of the word stays legal", () =
     ).toEqual([]);
   });
 
+  /**
+   * The denylist's failure mode is the quiet one: a retired name left off the
+   * list is never mentioned again. This audits the list against the surfaces
+   * the rename actually moved, so a gap shows up here rather than as a silent
+   * pass three months from now.
+   */
+  it("covers every retired name that lived in framework source", () => {
+    for (const name of [
+      "waitForWork",
+      "forEachBackground",
+      "WorkConfig",
+      "RequestWorkPool",
+      "createRequestWorkPool",
+      "composeBackgroundSignal",
+      "WorkTrace",
+      "dispatchWorkTask",
+      "runBackground",
+      "backgroundTaskCtx",
+      "backgroundController",
+      "DEFAULT_BACKGROUND_CONCURRENCY",
+      "BackgroundBadge",
+      "work",
+      "workGroupId",
+      "backgroundTasks",
+    ]) {
+      expect(retiredNames).toContain(name);
+    }
+  });
+
+  it("deliberately omits test locals and umbrella-ish names", () => {
+    for (const name of ["slowWork", "bgWork", "failingWork", "isBackground", "backgroundTask"]) {
+      expect(retiredNames).not.toContain(name);
+    }
+  });
+
   it("pins the closed set, so a name cannot be dropped from it unnoticed", () => {
     expect(retiredNames).toContain("waitForWork");
     expect(retiredNames).toContain("WorkConfig");
