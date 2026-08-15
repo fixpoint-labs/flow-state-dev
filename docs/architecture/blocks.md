@@ -321,8 +321,8 @@ definition and resolution semantics.
 | `doUntil(condition, block)` | Loop until condition is true | `ref` → final iteration's item |
 | `doWhile(condition, block)` | Loop while condition is true | `ref` → final iteration's item |
 | `loopBack(stepName, opts)` | Jump back to a named step (bounded) | passthrough |
-| `work(block)` | Queue non-aborting side-chain execution | passthrough |
-| `waitForSideChain(opts)` | Wait for queued work to complete | passthrough |
+| `sideChain(block)` | Queue non-aborting side-chain execution | passthrough |
+| `waitForSideChain(opts)` | Wait for queued side chains to complete | passthrough |
 | `tap(block)` | Side effect without changing payload | passthrough |
 | `tapIf(condition, block)` | Conditional side effect | passthrough |
 | `rescue(handlers)` | Error recovery by error type | `ref` → rescue branch's item (when taken) |

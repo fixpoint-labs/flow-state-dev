@@ -175,29 +175,51 @@ describe("the denylist is closed, so ordinary use of the word stays legal", () =
     expect(scan(`export type Status = "idle" | "work" | "done";`)).toEqual([]);
   });
 
-  it("still refuses the retired DSL verb in member position", () => {
+  /**
+   * The four shapes review named, and the reason the earlier rule was wrong.
+   *
+   * "Is it in member position" is not the distinction that matters — it
+   * red-lighted `interface Job { work: string }` and
+   * `const dashboard = { backgroundTasks: 3 }`, taxing ordinary domain models
+   * repo-wide inside `pnpm typecheck`. What matters is what the name BELONGS
+   * to: a `work` that is called is the DSL verb; a `work` that holds a string
+   * is a word.
+   */
+  it("allows an ordinary domain model to use these as FIELD names", () => {
+    expect(scan(`interface Job { work: string; }`, "apps/kitchen-sink/x.ts")).toEqual([]);
+    expect(scan(`const dashboard = { backgroundTasks: 3 };`, "apps/kitchen-sink/x.ts")).toEqual([]);
+    expect(scan(`type Row = { workResults: number };`, "apps/kitchen-sink/x.ts")).toEqual([]);
+  });
+
+  it("refuses the DSL verb when it is CALLED", () => {
     expect(encodings(`pipeline.work(block);`)).toContain("E1");
-    expect(encodings(`pipeline.workIf(cond, block);`)).toContain("E1");
   });
 
-  it("still refuses the retired published types anywhere", () => {
-    expect(encodings(`import type { RequestWorkPool } from "x";`)).toContain("E1");
-    expect(encodings(`export function composeBackgroundSignal() {}`)).toContain("E3");
+  it("refuses the DSL verb when it is DECLARED as a method", () => {
+    expect(encodings(`interface Seq { work(b: B): Seq; }`)).toContain("E1");
   });
 
-  it("allows a plain variable named `work` — a variable is not the DSL verb", () => {
-    expect(scan(`const work = 3; return work + 1;`)).toEqual([]);
+  it("refuses a contract field where the contract is declared", () => {
+    const inContract = "packages/contracts/src/items/types.ts";
+    expect(scan(`export type StatusItem = { backgroundTasks?: number };`, inContract)).not.toEqual([]);
+    expect(scan(`export type P = { workGroupId?: string };`, inContract)).not.toEqual([]);
+  });
+
+  it("allows the same field name declared outside the contract packages", () => {
+    expect(scan(`export type Panel = { backgroundTasks?: number };`, "apps/kitchen-sink/x.ts")).toEqual([]);
   });
 
   /**
-   * `work.id` reads a property OFF something called `work`; `pipeline.work(b)`
-   * calls a property NAMED work. Only the second is the retired verb, and a
-   * member rule that does not check which side of the dot it is on flags every
-   * local holding a row — which is how the kitchen-sink Workstream panel got
-   * caught by an earlier sweep.
+   * Callability is the whole discriminator for `work`, so the un-called read has
+   * to be pinned too — otherwise the rule quietly degrades to "any property
+   * named work", which is the over-reach it was written to remove.
+   *
+   * Under-reach this accepts, stated: `const m = pipeline.work` (referencing the
+   * DSL method without calling it) is not flagged. It is vanishingly rare, and
+   * in `src` it fails `pnpm typecheck` once the method is gone.
    */
-  it("allows `work` as the OBJECT of an access, not just as a bare variable", () => {
-    expect(scan(`const id = work.id; const t = work.topic ?? "";`)).toEqual([]);
+  it("allows reading a FIELD named `work` off an object", () => {
+    expect(scan(`const label = job.work; const n = row.work + 1;`)).toEqual([]);
   });
 
   it("allows a `\"work\"` union with no named declaration holding it", () => {
@@ -205,8 +227,10 @@ describe("the denylist is closed, so ordinary use of the word stays legal", () =
     expect(scan(`function f(): "idle" | "work" { return "idle"; }`)).toEqual([]);
   });
 
-  it("refuses `work` as a declared member, which IS the DSL verb", () => {
-    expect(encodings(`interface Seq { work(b: B): Seq; }`)).toContain("E1");
+  it("still refuses the retired published types anywhere", () => {
+    expect(encodings(`import type { RequestWorkPool } from "x";`)).toContain("E1");
+    expect(encodings(`export function composeBackgroundSignal() {}`)).toContain("E3");
+    expect(encodings(`const x = waitForWork;`)).toContain("E1");
   });
 
   it("keeps sparing the deliberate non-renames", () => {

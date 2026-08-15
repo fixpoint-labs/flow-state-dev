@@ -1,4 +1,5 @@
 import type { BlockTraceItem, OutputItem, StateSnapshotItem, StatusItem } from "@flow-state-dev/core/items";
+import { sideChainTaskCount } from "./side-chain-task-count";
 import { parseBlockInstanceId } from "@flow-state-dev/core/items/internal";
 import type { DevtoolItem } from "./item-types";
 import type { RequestGroup } from "../components/workspace/stream-view";
@@ -201,12 +202,17 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
 
       // Drop structural status items with nothing to render. The sequencer
       // emits `status` items with an empty `message` carrying only a
-      // `sideChainTasks` count (FIX-369) — those still get a synthesized
-      // label in `getItemPreview`. Items with no message AND no
-      // sideChainTasks have no label to render, so skip the row entirely.
+      // side-chain count (FIX-369) — those still get a synthesized label in
+      // `getItemPreview`. Items with no message AND no count have no label to
+      // render, so skip the row entirely.
+      //
+      // The count is read through `sideChainTaskCount`, which tolerates the
+      // pre-FIX-766 `backgroundTasks` spelling: this field is persisted, so a
+      // replayed or mixed-version trace carries the old name and reading only
+      // the new one would drop the row rather than mis-label it.
       if (item.type === "status") {
         const status = item as StatusItem;
-        if (!status.message && typeof status.sideChainTasks !== "number") {
+        if (!status.message && sideChainTaskCount(status) === undefined) {
           continue;
         }
       }

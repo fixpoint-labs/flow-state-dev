@@ -250,7 +250,7 @@ Beyond the basics (`.step()`, `.doUntil()`, `.tap()`, `.loopBack()`), the sequen
 | `race(blocks)` | Parallel execution, returns the first success, aborts the rest. Throws `AggregateError` if all fail. |
 | `exitIf(condition)` | Early exit from the sequencer chain. Current value becomes the sequencer output. |
 | `stepIf(condition, block)` | Conditional step execution. Passthrough when condition is false. |
-| `work(block)` / `background(block)` | Fire-and-forget sidechain. Main chain continues immediately. |
+| `sideChain(block)` | Fire-and-forget side chain. Main chain continues immediately. |
 | `rescue(handlers)` | Error recovery. Matches thrown errors to handler blocks. |
 | `branch(branches)` | Multi-way conditional dispatch with connectors. |
 

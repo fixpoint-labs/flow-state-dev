@@ -176,59 +176,110 @@ const RETIRED_NAMES = new Set([
  */
 
 /**
- * Retired names that are also ordinary English, so they are banned only where
- * they are unambiguously the API: in MEMBER position.
+ * Retired names that are also ordinary English. These need a discriminator, and
+ * the discriminator has to be **what the name belongs to**, not what it is
+ * called — a `work` member on a sequencer builder is the retired API; a `work`
+ * field on somebody's `Job` interface is a word.
  *
- * `pipeline.work(x)` is the retired DSL verb; `const work = 3` is a variable
- * and none of this check's business. The same split covers the contract fields
- * — `item.provenance.workGroupId` is the retired field, while a local named
- * `backgroundTasks` in someone's dashboard code is not ours to police.
+ * The first attempt keyed on "is it in member position", which is not that
+ * distinction at all: it red-lighted `interface Job { work: string }` and
+ * `const dashboard = { backgroundTasks: 3 }`, taxing ordinary domain models
+ * across the whole repo. Two shapes below recover the real distinction without
+ * type information; the third is where this check deliberately under-reaches
+ * rather than guess.
  */
-const RETIRED_MEMBER_NAMES = new Set([
-  "work",
-  "workGroupId",
-  "workResults",
-  "backgroundTasks",
-]);
+
+/**
+ * The DSL verb, which is always **called** or **declared as a method**.
+ *
+ * `pipeline.work(b)` and `work(b: B): Seq` are the retired API. `{ work: string }`
+ * is a data field that happens to share the word, and no amount of it in someone
+ * else's model is this check's business. Callability is the discriminator, and
+ * it needs no type information to read.
+ */
+const RETIRED_CALLABLE_MEMBERS = new Set(["work"]);
+
+/**
+ * Contract fields, refused only where the contract is DECLARED.
+ *
+ * These are data, so callability cannot separate them, and telling
+ * `StatusItem.backgroundTasks` from a dashboard's own `backgroundTasks` needs
+ * the declaring type — which this check does not resolve. What it can do
+ * reliably is refuse the field's **declaration** inside the packages that own
+ * the contract, which is where a reintroduction would actually put the retired
+ * name back on the wire.
+ *
+ * **Stated under-reach:** a *read* of one of these (`row.backgroundTasks`)
+ * anywhere, and a declaration outside these packages, are not caught. In `src`
+ * a read of a field that no longer exists fails `pnpm typecheck` already; in a
+ * test directory that is not typechecked, it is not caught by anything, and
+ * that gap is real. Under-reaching with the boundary written down beats taxing
+ * every domain model in the repo.
+ */
+const RETIRED_CONTRACT_FIELDS = new Set(["workGroupId", "backgroundTasks", "workResults"]);
+
+/** The packages whose `src` owns a persisted or published contract. */
+const CONTRACT_PACKAGES = /packages[/\\](contracts|core|engine|testing)[/\\]src[/\\]/;
 
 /** E1/E3: is this one of the retired names, in any position? */
 export function isRetiredName(id) {
   return RETIRED_NAMES.has(id);
 }
 
-/** E1/E3: is this a retired name that only counts as a member? */
-export function isRetiredMemberName(id) {
-  return RETIRED_MEMBER_NAMES.has(id);
+/** E1/E3: a retired name that only counts when called or declared as a method. */
+export function isRetiredCallableMember(id) {
+  return RETIRED_CALLABLE_MEMBERS.has(id);
+}
+
+/** E1/E3: a retired contract field, refused only where the contract is declared. */
+export function isRetiredContractField(id) {
+  return RETIRED_CONTRACT_FIELDS.has(id);
 }
 
 /**
- * Is this identifier being used as a MEMBER — a property being accessed, a
- * method or property being declared, or a key in an object literal?
+ * Is this identifier the name of something being CALLED, or declared as a
+ * method? That is the shape the retired DSL verb always has.
  *
- * This is what separates `pipeline.work(x)` (the retired DSL verb) from
- * `const work = 3` (a variable, and none of this check's business). Note it
- * deliberately does NOT match the OBJECT of an access: in `work.id`, `work` is
- * the object, so a local named `work` holding something unrelated stays legal.
+ * `pipeline.work(b)` — a property access that is the callee of a call.
+ * `work(b: B): Seq` — a method signature or declaration.
+ *
+ * Deliberately NOT matched: `{ work: string }` (a data field), `work.id` (an
+ * object, not the member), `const work = 3` (a variable).
  */
-function isMemberPosition(node) {
+function isCalledOrMethodDeclaration(node) {
   const parent = node.getParent();
   if (parent === undefined) return false;
-  if (Node.isPropertyAccessExpression(parent)) return parent.getNameNode() === node;
-  if (
-    Node.isMethodDeclaration(parent) ||
-    Node.isMethodSignature(parent) ||
-    Node.isPropertySignature(parent) ||
-    Node.isPropertyAssignment(parent) ||
-    Node.isPropertyDeclaration(parent) ||
-    Node.isShorthandPropertyAssignment(parent)
-  ) {
-    return typeof parent.getNameNode === "function" && parent.getNameNode() === node;
+  if (Node.isPropertyAccessExpression(parent) && parent.getNameNode() === node) {
+    const grandparent = parent.getParent();
+    return Node.isCallExpression(grandparent) && grandparent.getExpression() === parent;
+  }
+  if (Node.isMethodSignature(parent) || Node.isMethodDeclaration(parent)) {
+    return parent.getNameNode() === node;
+  }
+  return false;
+}
+
+/**
+ * Is this identifier DECLARING a field on a type, inside a package that owns a
+ * contract? A reintroduced `backgroundTasks?: number` on `StatusItem` is the
+ * regression worth catching; a dashboard's own field of the same name is not.
+ */
+function isContractFieldDeclaration(node, filePath) {
+  if (!CONTRACT_PACKAGES.test(filePath)) return false;
+  const parent = node.getParent();
+  if (parent === undefined) return false;
+  if (Node.isPropertySignature(parent) || Node.isPropertyDeclaration(parent)) {
+    return parent.getNameNode() === node;
   }
   return false;
 }
 
 /** Every retired name, exported so a test can pin the closed set. */
-export const retiredNames = [...RETIRED_NAMES, ...RETIRED_MEMBER_NAMES];
+export const retiredNames = [
+  ...RETIRED_NAMES,
+  ...RETIRED_CALLABLE_MEMBERS,
+  ...RETIRED_CONTRACT_FIELDS,
+];
 
 /**
  * The single audited exception: the test whose SUBJECT is the retired spelling.
@@ -447,10 +498,16 @@ function collectFindings(project, relativePath) {
       // E1 / E3 — identifiers, against the closed denylist.
       if (Node.isIdentifier(node)) {
         const text = node.getText();
+        const encoding = text.toLowerCase().includes("background") ? "E3" : "E1";
         if (isRetiredName(text)) {
-          record(node, text.toLowerCase().includes("background") ? "E3" : "E1", text);
-        } else if (isRetiredMemberName(text) && isMemberPosition(node)) {
-          record(node, text.toLowerCase().includes("background") ? "E3" : "E1", text);
+          record(node, encoding, text);
+        } else if (isRetiredCallableMember(text) && isCalledOrMethodDeclaration(node)) {
+          record(node, encoding, text);
+        } else if (
+          isRetiredContractField(text) &&
+          isContractFieldDeclaration(node, sourceFile.getFilePath())
+        ) {
+          record(node, encoding, text);
         }
         return;
       }
@@ -524,7 +581,7 @@ function collectFindings(project, relativePath) {
  *   - E4 fires on the op literals, the `work:`-style template heads, and the
  *     `work\[` regex form — all of which contain one of the above.
  *
- * The pattern is BUILT from `RETIRED_NAMES` / `RETIRED_MEMBER_NAMES` instead of
+ * The pattern is BUILT from the three name sets above instead of
  * being maintained alongside them. A hand-written filter is the dangerous shape
  * here: it drifts from the rules silently, and a pre-filter narrower than the
  * rule set deletes coverage without failing anything — which is the exact
@@ -540,7 +597,7 @@ const PREFILTER = new RegExp(
     // preceded by a letter. The lookbehind is what keeps `framework`,
     // `network`, `teamwork` and `homework` out — they contain `work` but can
     // never BE the member `work`, so parsing them buys nothing.
-    ...[...RETIRED_NAMES, ...RETIRED_MEMBER_NAMES].map(
+    ...[...RETIRED_NAMES, ...RETIRED_CALLABLE_MEMBERS, ...RETIRED_CONTRACT_FIELDS].map(
       (n) => `(?<![A-Za-z])${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`
     ),
     // E2's literal, in any quote style JavaScript allows.

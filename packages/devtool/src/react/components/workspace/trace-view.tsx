@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { BlockTraceItem, OutputItem, ItemLookup } from "@flow-state-dev/core/items";
+import { sideChainTaskCount, sideChainTaskLabel } from "../../lib/side-chain-task-count";
 import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
 import type { DevtoolItem } from "../../lib/item-types";
 import { ChevronDown, ChevronRight, Clock, Minus, Inbox } from "lucide-react";
@@ -533,15 +534,13 @@ function getItemPreview(item: DevtoolItem): string {
       return item.message;
     case "status": {
       // Structural status items from the sequencer's auto-await (FIX-369)
-      // arrive with an empty `message` and only a `sideChainTasks` count.
+      // arrive with an empty `message` and only a side-chain count.
       // Synthesize a label so the trace row isn't blank. See also
-      // `StatusItemView` in components/items/status-item.tsx — same contract.
+      // `StatusItemView` in components/items/status-item.tsx — same contract,
+      // and the same dual-read for pre-FIX-766 persisted rows.
       if (item.message) return item.message;
-      if (typeof item.sideChainTasks === "number") {
-        return item.sideChainTasks === 0
-          ? "background work complete"
-          : `background tasks: ${item.sideChainTasks} pending`;
-      }
+      const pending = sideChainTaskCount(item);
+      if (pending !== undefined) return sideChainTaskLabel(pending);
       return "";
     }
     case "block_trace":

@@ -21,6 +21,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { buildTraceTree } from "../src/react/lib/trace-tree";
+import { sideChainTaskCount } from "../src/react/lib/side-chain-task-count";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { RequestGroup } from "../src/react/components/workspace/stream-view";
 
@@ -108,5 +109,66 @@ describe("a record written before the side-chain rename", () => {
 
     expect(blocks.find((n) => n.blockName === "current-side-chain")?.phase).toBe("sideChain");
     expect(blocks.find((n) => n.blockName === "legacy-side-chain")?.phase).toBe("work");
+  });
+});
+
+/**
+ * The side-chain COUNT is a second persisted field the rename moved, and its
+ * failure is quieter than the badge's: the trace tree drops any status row with
+ * neither a message nor a count, so reading only the new spelling makes a
+ * pre-upgrade or replayed row **disappear** rather than render wrong. Mixed
+ * versions then lose the only sign that draining is happening.
+ */
+describe("the side-chain count on a status item", () => {
+  const statusRow = (provenanceless: Record<string, unknown>) =>
+    ({ type: "status", message: "", ...provenanceless }) as never;
+
+  it("reads the current spelling", () => {
+    expect(sideChainTaskCount(statusRow({ sideChainTasks: 2 }))).toBe(2);
+  });
+
+  it("reads a row written before the rename", () => {
+    expect(sideChainTaskCount(statusRow({ backgroundTasks: 3 }))).toBe(3);
+  });
+
+  it("reads a legacy ZERO, which is the drain-complete signal", () => {
+    // `?? ` on the value rather than a truthiness check: 0 is meaningful here
+    // and is exactly the row a naive shim drops.
+    expect(sideChainTaskCount(statusRow({ backgroundTasks: 0 }))).toBe(0);
+  });
+
+  it("prefers the current spelling when both are present", () => {
+    expect(sideChainTaskCount(statusRow({ sideChainTasks: 1, backgroundTasks: 9 }))).toBe(1);
+  });
+
+  it("returns undefined when the row carries no count at all", () => {
+    expect(sideChainTaskCount(statusRow({}))).toBeUndefined();
+  });
+
+  it("keeps a legacy status row in the trace tree instead of dropping it", () => {
+    const items = [
+      makeItem("s1", 0, {
+        blockName: "seq",
+        blockInstanceId: "req-1:main[0]:1",
+        phase: "main",
+      }),
+    ] as unknown as Array<Record<string, unknown>>;
+    // A structural status row as a pre-upgrade engine wrote it: empty message,
+    // count under the retired name.
+    items.push({
+      id: "s2",
+      type: "status",
+      message: "",
+      backgroundTasks: 2,
+      status: "completed",
+      requestId: "req-1",
+      itemIndex: 1,
+      ts: Date.now(),
+      provenance: { blockName: "seq", blockInstanceId: "req-1:main[0]:1", phase: "main" },
+    });
+
+    const tree = buildTraceTree([group(items as never)]);
+    const rendered = JSON.stringify(tree);
+    expect(rendered).toContain("s2");
   });
 });

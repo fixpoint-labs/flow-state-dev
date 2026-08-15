@@ -14,7 +14,7 @@ The six methods are:
 | `map(fn)` | Inline transform. No block. Reshape the value between steps. |
 | `tap(block)` | Run a block for its side effect. The pipeline value passes through unchanged. |
 | `stepIf(cond, block)` | Run a block only when a condition is true. |
-| `work(block)` | Fire a block in the background. The chain continues immediately. |
+| `sideChain(block)` | Fire a block on a side chain. The chain continues immediately. |
 | `rescue(handlers)` | Catch errors and route to recovery blocks. |
 
 The example in this page builds up an order-processing pipeline one method at a time. Each addition introduces one new method.
