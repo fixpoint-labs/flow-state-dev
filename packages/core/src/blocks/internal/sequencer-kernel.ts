@@ -4,7 +4,7 @@
 // `doWhile`) — shares the same skeleton: apply the connector, stash the child's
 // input descriptor, run the block at a caller-derived path, then resolve a `ref`
 // descriptor pointing at the child's emitted trace. `runChild` is that skeleton.
-// `runBackground` is the fire-and-forget analogue used by `work` / `workIf`.
+// `runSideChain` is the fire-and-forget analogue used by `sideChain` / `sideChainIf`.
 //
 // The primitives wrap `executeBlock` and the hint/descriptor helpers that live
 // in `sequencer.ts`; importing them back here forms a module cycle that is safe
@@ -27,9 +27,9 @@ import type {
 import type { BlockValueInternal } from "../../items/types";
 import type { SequencerRuntimeState } from "../sequencer-methods";
 import {
-  backgroundTaskCtx,
-  composeBackgroundSignal,
-  dispatchWorkTask,
+  sideChainTaskCtx,
+  composeSideChainSignal,
+  dispatchSideChainTask,
   executeBlock,
   refDescriptorForPath,
   sequentialInputHint,
@@ -67,13 +67,13 @@ export type RunChildResult = {
  *   only path that exists in a unit-test context);
  * - `signalOverride` carries it into the server-installed execution scope so
  *   every descendant's `ctx.signal` sees it too;
- * - `_requestBackgroundSignal` carries it into the subtree's BACKGROUND
+ * - `_requestSideChainSignal` carries it into the subtree's BACKGROUND
  *   dispatches, which read that field instead of `ctx.signal` and would
  *   otherwise drop the extra signal entirely (see
- *   {@link composeBackgroundSignal}).
+ *   {@link composeSideChainSignal}).
  *
  * The third is the one that is easy to miss, and it is where the un-cancelled
- * work is most expensive: `.work()` generators keep calling models long after
+ * work is most expensive: `.sideChain()` generators keep calling models long after
  * the foreground steps have stopped.
  */
 export async function runChild(
@@ -92,14 +92,14 @@ export async function runChild(
   }
   const composed =
     ctx.signal === undefined ? extraSignal : AbortSignal.any([ctx.signal, extraSignal]);
-  const background = composeBackgroundSignal(ctx, extraSignal);
+  const background = composeSideChainSignal(ctx, extraSignal);
   // Set on the copy for the unit-test path (no execution scope: the child runs
   // on this very object), AND threaded as an override for the server path,
   // where `_withExecutionScope` is a closure bound to the original context and
   // cannot see a field written on a copy.
   const childCtx = { ...ctx, signal: composed } as BlockContext;
   if (background !== undefined) {
-    (childCtx as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal =
+    (childCtx as { _requestSideChainSignal?: AbortSignal })._requestSideChainSignal =
       background;
   }
   // The connector runs under the composed context too. It is part of the step's
@@ -116,40 +116,40 @@ export async function runChild(
   stashInputHint(childCtx, inputHint);
   const value = await executeBlock(shape.block, childInput, childCtx, path, {
     signalOverride: composed,
-    ...(background !== undefined ? { backgroundSignalOverride: background } : {}),
+    ...(background !== undefined ? { sideChainSignalOverride: background } : {}),
   });
   return { value, descriptor: refDescriptorForPath(ctx, path) };
 }
 
 /** Outcome of a background dispatch: the pass-through value (the sequencer's input is unchanged). */
-export type RunBackgroundResult = {
+export type RunSideChainResult = {
   value: unknown;
 };
 
 /**
- * Dispatch one child block as fire-and-forget background work.
+ * Dispatch one child block as fire-and-forget side-chain work.
  *
  * Applies the connector, stashes the sequential input hint, runs the block in
- * the `"work"` phase under the background signal (so the task tree survives
+ * the `"sideChain"` phase under the side-chain signal (so the task tree survives
  * transport teardown — FIX-663), and registers the in-flight promise with the
- * work pool via `dispatchWorkTask`. Returns the upstream value unchanged;
- * background dispatch never rewrites the running output descriptor.
+ * side-chain pool via `dispatchSideChainTask`. Returns the upstream value unchanged;
+ * side-chain dispatch never rewrites the running output descriptor.
  */
-export async function runBackground(
+export async function runSideChain(
   ctx: BlockContext,
   runtime: SequencerRuntimeState,
   shape: ChildDispatch,
   path: string,
   input: unknown,
   taskName: string
-): Promise<RunBackgroundResult> {
+): Promise<RunSideChainResult> {
   const childInput = shape.connector ? await shape.connector(input, ctx) : input;
   stashInputHint(ctx, sequentialInputHint(ctx, runtime));
-  const { taskCtx, signalOverride } = backgroundTaskCtx(ctx);
+  const { taskCtx, signalOverride } = sideChainTaskCtx(ctx);
   const rawPromise = executeBlock(shape.block, childInput, taskCtx, path, {
-    phase: "work",
+    phase: "sideChain",
     signalOverride
   });
-  dispatchWorkTask(ctx, runtime, taskName, rawPromise);
+  dispatchSideChainTask(ctx, runtime, taskName, rawPromise);
   return { value: input };
 }

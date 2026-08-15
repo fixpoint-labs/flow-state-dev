@@ -123,7 +123,7 @@ export default defineFlow({
 - `generator(config)` — LLM call with framework-managed tool loop, streaming, and structured output repair (deterministic `jsonrepair` then LLM coercion that reshapes off-schema output to the schema; on by default, configured via `repair.coerce` / `repair.coerce.model`, defaulting to `intent/utility`)
   - Provider-native web search: set `search: true` (or a `GeneratorSearchConfig`). This is the model provider's built-in search, distinct from the `@flow-state-dev/tools` `tools.search` tool — the tools `tier` knob does not apply, and the generator's `searchDepth` (`"low" | "medium" | "high"`, OpenAI `searchContextSize`) is a different field from the tools `searchDepth` (`"basic" | "advanced"`). See [Web search](https://flow-state.dev/docs/fundamentals/blocks#web-search).
   - Human-in-the-loop inside the tool loop: a generator tool can call `ctx.suspend()` to gate its own call. The request suspends like any sequencer gate, and on a durable resume the tool re-enters past the approval — prior turns and completed sibling tools replay from the item log, so the model is not re-called for them. Constraints: gate before side effects (the tool re-enters from the top on resume, so guard pre-gate work with `runOnce`), one approval gate per model turn (first-suspension-wins), and a gated tool can't be `cacheable` (the cache short-circuits before the tool body). See [Generator and router suspend/resume](https://flow-state.dev/docs/advanced/generator-and-router-suspend-resume).
-- `sequencer(config)` — Fluent composition DSL (21 methods: `step`, `stepIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `work`, `workIf`, `waitForWork`, `waitForCondition`, `loopBack`, `stepAll`, `stepAny`, `race`, `exitIf`)
+- `sequencer(config)` — Fluent composition DSL (21 methods: `step`, `stepIf`, `parallel`, `forEach`, `forEachSideChain`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `sideChain`, `sideChainIf`, `waitForSideChain`, `waitForCondition`, `loopBack`, `stepAll`, `stepAny`, `race`, `exitIf`)
 - `router(config)` — Runtime block selection from declared routes. Route names must be unique per router (validated at build). The selected branch dispatches through the same replay seam as sequencer children, so on a durable resume the branch decision stays stable — the framework validates the re-run selection against the recorded decision and throws `RouteUnavailableError` on a mismatch — and completed work inside the branch replays instead of re-executing. A router whose branch can suspend needs a pure `execute` selector (no side effects, no ambient state reads); see [Control-flow determinism](https://flow-state.dev/docs/advanced/block-memoization-and-replay#control-flow-determinism)
 
 **Block methods** (available on every `BlockDefinition`):
@@ -132,7 +132,7 @@ export default defineFlow({
 - `.mapModelOutput(mapper)` — when the block is used as a generator tool, supply a model-visible string representation of its output
 - `.asTool(opts?)` — wrap the block so it emits a `tool_output` item when run from a sequencer step (same envelope and lifecycle as the AI SDK tool-loop path)
 
-**Background work lifetime:** `.work()`, `.workIf()`, and `.forEachBackground()` queue tasks on a per-request pool, not the sequencer that dispatched them. Inner sequencers do not auto-await their own background work before returning; sibling sequencers run their tasks concurrently. The request executor drains the pool exactly once before terminal status. Use `.waitForWork()` when an inner step depends on a queued task completing first — it drains only the calling sequencer's contributions.
+**Background work lifetime:** `.sideChain()`, `.sideChainIf()`, and `.forEachSideChain()` queue tasks on a per-request pool, not the sequencer that dispatched them. Inner sequencers do not auto-await their own background work before returning; sibling sequencers run their tasks concurrently. The request executor drains the pool before terminal status — on every outcome, and repeatedly until no task is left, so a task that queues more background work is waited on too. Use `.waitForSideChain()` when an inner step depends on a queued task completing first — it drains only the calling sequencer's contributions.
 
 **Event-driven waits:** `.waitForCondition(predicate, { timeoutMs, wakeOn? })` suspends the sequencer until a synchronous predicate over the request's item stream returns true (or the timeout fires). Yields `{ timedOut: boolean }`. Use it to coordinate with side-channel state — a worker writing an artifact, a task-board flipping a status, an external actor resuming a paused review. Predicate helpers ship in `@flow-state-dev/core/items`: `whenResourceChanged({ scope, path, changeType? })`, `whenResourceMatching({ scope, pattern })` (tiny glob with `*` and `**`), and `whenAnyItem(predicate)` as the generic escape hatch. The optional `wakeOn` filter lets high-fanout patterns skip predicate re-evaluation on irrelevant item types; `@flow-state-dev/orchestration` ships `onTaskChangeFor(collectionId)` for collection-bound waiters.
 
@@ -590,7 +590,7 @@ Two adapter helpers are shared through `@flow-state-dev/core/helpers`: `sanitize
 
 Generators reference a model with a string. The string can be:
 
-- `provider/model` — direct, e.g., `"anthropic/claude-sonnet-4.6"`
+- `provider/model` — direct, e.g., `"anthropic/claude-sonnet-4-6"`
 - `gateway/provider/model` — routed through a gateway, e.g., `"vercel/openai/gpt-5.5"`
 - `intent/<name>` — a named routing group resolved by the model resolver
 
@@ -600,11 +600,11 @@ Configure intents on the resolver. Each intent maps a name to an ordered list of
 import { createModelResolver } from "@flow-state-dev/core/models";
 
 const resolver = createModelResolver({
-  defaultModel: "anthropic/claude-sonnet-4.6",
+  defaultModel: "anthropic/claude-sonnet-4-6",
   intents: {
-    utility: ["anthropic/claude-haiku-4.5", "openai/gpt-5.4-nano"],
-    chat: ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
-    synthesize: ["anthropic/claude-sonnet-4.6", "openai/gpt-5.5"],
+    utility: ["anthropic/claude-haiku-4-5", "openai/gpt-5.4-nano"],
+    chat: ["anthropic/claude-sonnet-4-6", "openai/gpt-5.5"],
+    synthesize: ["anthropic/claude-sonnet-4-6", "openai/gpt-5.5"],
   },
 });
 ```
@@ -620,7 +620,7 @@ Configure `providerOptions` (e.g. Anthropic thinking) per intent so generators d
 ```ts
 const resolver = createModelResolver({
   defaultModel: "openai/gpt-5.4",
-  intents: { plan: ["anthropic/claude-opus-4.7"] },
+  intents: { plan: ["anthropic/claude-opus-4-7"] },
   intentDefaults: {
     plan: {
       providerOptions: {

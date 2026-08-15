@@ -12,7 +12,7 @@ Every AI feature needs the same infrastructure: call an LLM, stream the response
 
 ```ts
 // Define blocks
-const chat = generator({ name: "chat", model: "preset/fast", prompt: "..." });
+const chat = generator({ name: "chat", model: "openai/gpt-5.4-mini", prompt: "..." });
 const track = handler({ name: "track", execute: async (input, ctx) => {
   await ctx.session.incState({ count: 1 });
   return input;
@@ -155,7 +155,7 @@ const pipeline = sequencer({ name: "review" })
   .step(analyze);
 ```
 
-Ten utilities ship in Phase 1, grouped into five categories: Context & Memory, Planning & Decomposition, Synthesis & Output, Evaluation, and Routing. See [Utility Blocks](./utility-blocks.md).
+The full catalog — which utilities exist, their kinds, and their default models — is in [Utility Blocks](./utility-blocks.md).
 
 ## Data flow
 

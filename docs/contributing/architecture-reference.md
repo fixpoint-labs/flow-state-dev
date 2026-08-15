@@ -42,17 +42,17 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 
 ## Sequencer Surface (21 methods)
 
-`step`, `stepIf`, `map`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `loopBack`, `work`, `workIf`, `waitForWork`, `tap`, `tapIf`, `rescue`, `branch`, `stepAll`, `stepAny`, `race`, `exitIf`
+`step`, `stepIf`, `map`, `parallel`, `forEach`, `forEachSideChain`, `doUntil`, `doWhile`, `loopBack`, `sideChain`, `sideChainIf`, `waitForSideChain`, `tap`, `tapIf`, `rescue`, `branch`, `stepAll`, `stepAny`, `race`, `exitIf`
 
 - `.stepAll([...blocks])`: run array of blocks concurrently, collect all results as ordered array (like `Promise.all`)
 - `.stepAny([...blocks])`: try blocks sequentially in order, return first successful result; throws `AggregateError` if all fail
 - `.race([...blocks])`: run blocks concurrently, return first successful result, abort the rest; throws `AggregateError` if all fail
 - `.exitIf(condition)`: break out of sequencer chain early when condition is true; auto-await of background work still runs
 
-- `.work(...)`: non-aborting by default
-- `.workIf(condition, block)`: conditional variant of `.work()` — dispatches sidechain only when condition is truthy; accepts static boolean or `(ctx) => boolean | Promise<boolean>`; complete no-op when falsy
-- `.forEachBackground(...)`: fire-and-forget fan-out; dispatches each iteration as background work with configurable concurrency (default 16)
-- `.waitForWork({ failOnError: true })`: promote background failures to terminal request error
+- `.sideChain(...)`: non-aborting by default
+- `.sideChainIf(condition, block)`: conditional variant of `.sideChain()` — dispatches sidechain only when condition is truthy; accepts static boolean or `(ctx) => boolean | Promise<boolean>`; complete no-op when falsy
+- `.forEachSideChain(...)`: fire-and-forget fan-out; dispatches each iteration as background work with configurable concurrency (default 16)
+- `.waitForSideChain({ failOnError: true })`: promote background failures to terminal request error
 
 → [Sequencer DSL](../architecture/sequencer-dsl.md)
 
@@ -130,27 +130,22 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 
 ## Utility Blocks
 
-Ten pre-built utility factories wrapping generator/handler blocks:
+Eleven pre-built factories, exported from `packages/core/src/utility/index.ts`:
 
-| Utility | Kind | Purpose |
-|---------|------|---------|
-| `contextReducer` | generator | Context reduction (distill, denoise, compress) |
-| `memoryExtractor` | generator | Extract durable memory candidates |
-| `decomposer` | generator | Break requests into subtasks with dependency graph |
-| `composer` | generator | Assemble coherent output from parts |
-| `summarizer` | generator | Summarize at brief/detailed/executive granularity |
-| `combiner` | handler | Deterministic artifact merge (no LLM) |
-| `synthesizer` | generator | Reconcile overlapping/conflicting inputs |
-| `analyzer` | generator | Evaluate artifacts against criteria |
-| `intentClassifier` | generator | Classify input into bounded category set for routing |
-| `intentRouter` | sequencer | Pre-wired classifier + router for classification-driven branching |
+| Kind | Factories |
+|------|-----------|
+| generator | `contextReducer`, `memoryExtractor`, `decomposer`, `summarizer`, `analyzer`, `intentClassifier` |
+| handler | `combiner`, `upsertResource` |
+| sequencer | `intentRouter`, `sessionTitleGenerator` |
+| router | `keyedRouter` |
 
 - Access via `utility.<name>(config)` — returns a standard `BlockDefinition`
-- All generators default to `"preset/fast"` model
-- All utilities accept optional `outputSchema` override
-- Combiner is handler-based (deterministic, no model)
+- All utilities accept an optional `outputSchema` override
+- Handler- and router-based utilities take no `model` (deterministic, no LLM)
 
-> [Utility Blocks](../architecture/utility-blocks.md)
+Purposes and default models live in the catalog — don't restate them here.
+
+> [Utility Blocks](../architecture/utility-blocks.md) · [Core Utilities (user docs)](../../apps/docs/docs/patterns/utility-blocks/core.md)
 
 ## Resources and Client Data
 

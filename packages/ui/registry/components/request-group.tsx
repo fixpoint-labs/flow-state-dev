@@ -58,7 +58,7 @@ type RequestGroupRendererProps = {
    *  "Working..." in the indicator when empty. */
   statusMessage?: string;
   /** When true, the request is in its background-task drain phase
-   *  (main response is complete; only `.work()` background tasks are
+   *  (main response is complete; only `.sideChain()` background tasks are
    *  still settling on the open SSE stream). The indicator switches to
    *  a muted "Tidying up..." state so the user is not misled into
    *  thinking the assistant is still producing their answer. Sourced

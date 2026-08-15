@@ -1,5 +1,5 @@
 /**
- * FIX-866 Contract C (Postgres/PGlite mirror) — a completed `.work()` background
+ * FIX-866 Contract C (Postgres/PGlite mirror) — a completed `.sideChain()` background
  * block that finished BEFORE a crash must be REPLAYED (its recorded output
  * injected), not re-run, on `continueRequest` against the REAL Postgres store.
  *
@@ -8,7 +8,7 @@
  * in-memory engine coverage. Background `block_trace` items ride the same
  * request-store persistence path as foreground traces, so this confirms
  * FIX-839's content-diff persistence fix (`request-store.ts`) covers
- * `phase:"work"` traces on Postgres too.
+ * `phase:"sideChain"` traces on Postgres too.
  *
  * IMPORTANT — the replay source is the REQUEST RECORD's items (durable in the
  * `request_items` table), NOT the Postgres `TraceStore` (which is in-memory —
@@ -16,7 +16,7 @@
  * `stores.request.get(requestId)`'s items, exactly as SQLite does.
  *
  * The scenario satisfies the same four preconditions as the SQLite test:
- *   1. `.waitForWork()` barrier before the gate → `.work()` is COMPLETE
+ *   1. `.waitForSideChain()` barrier before the gate → `.sideChain()` is COMPLETE
  *      pre-crash (Contract C), not in-flight (Contract A).
  *   2. Intervening non-transient `item.done` while the work `block_trace` is
  *      still `in_progress`, plus a macrotask await, so the in_progress trace
@@ -63,20 +63,20 @@ function providerFor(stores: StoreRegistry): DurabilityProvider {
   });
 }
 
-/** The background `.work()` block_trace, keyed by its unique block name and its
- *  `phase:"work"` provenance. */
-function backgroundTrace(
+/** The background `.sideChain()` block_trace, keyed by its unique block name and its
+ *  `phase:"sideChain"` provenance. */
+function sideChainTrace(
   items: readonly { type: string }[]
 ): BlockTraceItem | undefined {
   return (items as BlockTraceItem[]).find(
     (i) =>
       i.type === "block_trace" &&
       i.blockName === "reindex" &&
-      i.provenance?.phase === "work"
+      i.provenance?.phase === "sideChain"
   );
 }
 
-describe("completed background `.work()` trace replays across a cold restart on Postgres (Contract C)", () => {
+describe("completed background `.sideChain()` trace replays across a cold restart on Postgres (Contract C)", () => {
   let pglite: PGlite | undefined;
   const originalEnv = { ...process.env };
 
@@ -89,7 +89,7 @@ describe("completed background `.work()` trace replays across a cold restart on 
     pglite = undefined;
   });
 
-  it("injects the completed `.work()` result instead of re-running the handler", async () => {
+  it("injects the completed `.sideChain()` result instead of re-running the handler", async () => {
     // A single in-memory PGlite instance is the durable "database file"; a fresh
     // `createPostgresStores` on it models the cold restart.
     pglite = new PGlite();
@@ -104,7 +104,7 @@ describe("completed background `.work()` trace replays across a cold restart on 
         const runs = (bgRuns += 1);
         // Intervening non-transient item.done: flushes the enclosing
         // in_progress block_trace to `request_items` before this block
-        // completes — the FIX-839 content-diff trigger for a phase:"work" trace.
+        // completes — the FIX-839 content-diff trigger for a phase:"sideChain" trace.
         ctx.emit.message("reindexing...");
         await new Promise((resolve) => setTimeout(resolve, 0));
         return { done: true, runs };
@@ -123,8 +123,8 @@ describe("completed background `.work()` trace replays across a cold restart on 
       actions: {
         run: {
           block: sequencer({ name: "seq", durable: true })
-            .work(bg)
-            .waitForWork()
+            .sideChain(bg)
+            .waitForSideChain()
             .step(gate),
           inputSchema: z.any()
         }
@@ -150,7 +150,7 @@ describe("completed background `.work()` trace replays across a cold restart on 
 
     const items = recordA?.items ?? [];
     expect(items.some((i) => i.type === "message")).toBe(true);
-    const bgTraceA = backgroundTrace(items);
+    const bgTraceA = sideChainTrace(items);
     expect(bgTraceA).toBeDefined();
     expect(bgTraceA!.status).toBe("completed");
 
@@ -165,7 +165,7 @@ describe("completed background `.work()` trace replays across a cold restart on 
     const providerB = providerFor(storesB);
     const recordB = await storesB.request.get(requestId);
     expect(recordB?.status).toBe("suspended");
-    expect(backgroundTrace(recordB?.items ?? [])!.status).toBe("completed");
+    expect(sideChainTrace(recordB?.items ?? [])!.status).toBe("completed");
 
     const [susp] = await providerB.listSuspended({ status: "pending" });
     await providerB.suspend({ ...susp, status: "approved", resolvedAt: Date.now() });
@@ -193,7 +193,7 @@ describe("completed background `.work()` trace replays across a cold restart on 
 
     // (b) The recorded output survived recovery.
     const finalItems = (await storesB.request.get(requestId))?.items ?? [];
-    const finalBg = backgroundTrace(finalItems);
+    const finalBg = sideChainTrace(finalItems);
     expect(finalBg?.status).toBe("completed");
     const lookup = buildItemLookup(finalItems as never);
     expect(resolveBlockValue(finalBg!.output as never, lookup)).toEqual({

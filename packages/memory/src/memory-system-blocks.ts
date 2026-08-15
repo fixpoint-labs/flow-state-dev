@@ -407,7 +407,7 @@ function parseJsonLoose(text: string): unknown {
  * string→JSON.parse case, but is bypassed entirely once `repairOutput` is set
  * (see `applyRepairPolicy` in core's generator), so the simple legs are
  * re-implemented here. Unrecoverable strings degrade to an empty envelope so
- * a single bad consolidation cycle doesn't crash the background `.work()`.
+ * a single bad consolidation cycle doesn't crash the background `.sideChain()`.
  */
 function buildEnvelopeRepair<TKeys extends string>(
   arrayKeys: readonly TKeys[],
@@ -1250,7 +1250,7 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
       // Relations tier (FIX-745): apply extracted edges onto the semantic
       // resource's framework edge graph. Only runs when relations is enabled
       // and the live ref carries the `.edges` API. Every edge failure is
-      // non-fatal (consolidation runs in a background `.work()`): we warn and
+      // non-fatal (consolidation runs in a background `.sideChain()`): we warn and
       // continue rather than crash the turn. Edge extraction NEVER touches fact
       // subjects — it only reads them to canonicalize endpoints (FIX-703).
       if (relations && edgesOf(ctx) && Array.isArray((input as any).edges)) {
@@ -1590,7 +1590,7 @@ export function memorySystemPrune(config: MemorySystemBlocksConfig) {
 
 /**
  * Assembles the full capture pipeline: observe → reflect → tick.
- * When semantic is configured, adds consolidation and prune as .work() steps.
+ * When semantic is configured, adds consolidation and prune as .sideChain() steps.
  * Digest regeneration is appended to the consolidation and prune chains
  * (see `withDigestRegenerate`) rather than scheduled per-turn, matching
  * FIX-408's "consolidation completion + sourceSignature delta" trigger. A
@@ -1614,11 +1614,11 @@ export function memorySystemCapture(config: MemorySystemBlocksConfig) {
   if (config.semantic) {
     const consolidateBlock = memorySystemConsolidate(config)
     const pruneBlock = memorySystemPrune(config)
-    pipeline = pipeline.work(consolidateBlock).work(pruneBlock)
+    pipeline = pipeline.sideChain(consolidateBlock).sideChain(pruneBlock)
   }
 
   // Hygiene with `schedule: 'onCapture'` wires the janitor as a background
-  // `.work()` step every turn. Decay is slow so this rarely earns its keep
+  // `.sideChain()` step every turn. Decay is slow so this rarely earns its keep
   // — `'onConsolidation'` (default) is preferred. `'manual'` skips wiring
   // entirely; the caller invokes `mem.janitor` themselves.
   //
@@ -1630,7 +1630,7 @@ export function memorySystemCapture(config: MemorySystemBlocksConfig) {
     const wantOnCapture = sched === 'onCapture'
     const fallbackForEpisodicOnly = sched === 'onConsolidation' && !config.semantic && !!config.episodic
     if (wantOnCapture || fallbackForEpisodicOnly) {
-      pipeline = pipeline.work(memorySystemJanitor({ ...config, hygiene: config.hygiene }))
+      pipeline = pipeline.sideChain(memorySystemJanitor({ ...config, hygiene: config.hygiene }))
     }
   }
 

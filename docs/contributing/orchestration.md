@@ -106,7 +106,7 @@ flowchart TD
 | Store | What it is | Lifetime | Home |
 |---|---|---|---|
 | **Coordinator status table** | The coordinator's **internal working memory** — one row per issue (phase, spec PR#, impl PR#, gate-pending, worktree). Updated constantly. | Session-only | `.orchestration/` (**gitignored — never committed**) |
-| **Epic-spec running index** | A **durable, exposed audit log** — links to every issue PR (spec + impl) under the epic, for humans and issue agents to navigate from one place. | Life of the epic | The epic-spec (branch + Linear Epic-issue doc) |
+| **Epic-spec running index** | A **durable, exposed audit log** — links to every issue PR (spec + impl) under the epic, for humans and issue agents to navigate from one place. *Are we winning* is not here; it is in the epic report, where live state is. | Life of the epic | The epic-spec (branch + Linear Epic-issue doc) |
 
 They overlap in *content* (both know the PR numbers) but differ in *purpose and
 audience*: the table is private and ephemeral; the index is public and durable. The
@@ -180,8 +180,8 @@ one-parent rule** — an issue that already has a functional parent is linked wi
 **Contents and shape:
 [`epic-spec-template.md`](epic-spec-template.md)** — the five sections (purpose &
 objective · themes & long-horizon direction · shape of the whole · running index · open
-cross-cutting questions), each with a worked example, plus the reviewer guidance the epic PR
-description leads with. Read the template; it is the single source of truth for what
+cross-cutting questions), each with a worked example, plus the reviewer
+guidance the epic PR description leads with. Read the template; it is the single source of truth for what
 each section owes its reader, exactly as `spec-template.md` is for an issue spec.
 
 **Conventions:**
@@ -189,8 +189,8 @@ each section owes its reader, exactly as `spec-template.md` is for an issue spec
 - **Branch `epic/<name>`**; the doc lives at `spec/_epics/<name>.md` on that branch.
 - **Never-merged epic PR** — the reviewable + commentable surface. Stays open for the life
   of the *epic*; closes **unmerged** when the epic wraps.
-- **The epic branch is never deleted** (issue spec branches are; the epic branch is not) —
-  it stays referenceable.
+- **The epic branch is never deleted** — it stays referenceable. Issue spec branches follow
+  the same rule (see "Closing the spec PR"); the difference is only *when* the PR closes.
 - **Dual-synced to the Linear *Epic issue's* document** — same branch + Linear-document
   pattern as issue specs (BP-037), one altitude up: the epic-spec attaches to the epic
   issue exactly as a spec attaches to a work issue. **Discovery is native** — a work issue's
@@ -204,6 +204,27 @@ each section owes its reader, exactly as `spec-template.md` is for an issue spec
   artifact, so "Spec review: the bar and the convergence rule" below governs its PR too.
   Feedback that doesn't change the epic's objective or a cross-cutting decision belongs to
   the issues under it, not to the epic-spec.
+
+## How many epics run at once (the cap is two)
+
+**At most two epics are active at a time.** A third is held, not cancelled.
+
+**The cap is on objectives, not work items** — the part that gets misread. Eight issues in
+parallel under one epic is *one* objective with throughput, and issue concurrency is a
+different axis (`epic-lifecycle` → "Sizing to the VM"). Four epics under four objectives is
+the violation. Why two: an objective is only worth having if something is tested against it,
+and past two nothing is — gates queue, attention splits, every epic reads "in progress"
+forever.
+
+**There is no queue, and that is the honest cost.** The work items are already Linear issues,
+so holding an epic just leaves them unparented on the board; nothing auto-starts one when a
+slot frees, and re-invoking the lifecycle is the only trigger. Say so plainly when you hold
+something, and name it again at the wrap that frees the slot.
+
+**Enforced at epic setup** (`epic-lifecycle` → "Epic setup") as a question, not a refusal.
+Two rules keep it off the common path: **resolve the requested epic before counting** (a
+resumed epic is not a third one), and **active means its epic PR is open** — wrap closes that
+PR but moves no Linear state, so counting `Epic`-labelled issues jams the cap shut forever.
 
 ## Which issues get a spec (the two routes)
 
@@ -530,8 +551,8 @@ in and gets routed continuously, and the objective gate still turns only on a hu
 
 Three facts make that budget safe rather than reckless:
 
-- **An unresolved thread on a spec PR blocks nothing.** The spec PR is *never merged* —
-  `issue-implement` closes it unmerged when implementation starts. It has no merge gate,
+- **An unresolved thread on a spec PR blocks nothing.** The spec PR is *never merged* — it
+  closes unmerged the moment the spec is approved. It has no merge gate,
   so open threads have no gating power. Do not drive them to zero; that's a habit borrowed
   from code PRs, where it's correct, and it does not transfer.
 - **Nothing is lost by converging.** Below-the-bar feedback lands in the notes section and
@@ -586,6 +607,40 @@ So the discipline is ours, not theirs:
   (`.agents/workflows/verify.mjs`) is where the rule's edge cases are pinned down.
 - **`issue-implement`** — reads the notes section as input; an unaddressed below-the-bar
   spec comment is **not** a blocker to starting implementation.
+
+## Closing the spec PR (at approval — branch kept, never merged)
+
+**Approval closes it.** Not the merge — it never merges — and not the start of implementation:
+once the gate passes the document has done its job, and an open PR past that point is an
+artifact every wake re-scans for a decision already made. Whoever sees the gate pass does the
+close: the lifecycle at its approval gate, the `issue-worker` under an epic, `issue-implement`
+Step 3 as the backstop when nothing was watching.
+
+1. **Mirror, then close.** The branch copy is authoritative while the PR is open, so reconcile
+   Linear against the branch head *first* — a close over a stale mirror silently drops the last
+   folded round, and Linear is the only live copy afterwards.
+2. **Close unmerged, with a pointer**: the Linear document, the retained branch, and that
+   implementation is starting. No pointer reads as an abandoned spec.
+3. **Keep the branch.** `spec/<ISSUE-ID>` is never deleted — the rule the epic branch already
+   has. And **never merge it**: merging lands a point-in-time plan on `main`, where it reads as
+   current truth and decays (BP-037). CI enforces the file half; the don't-merge half is ours.
+
+**It stays open where the spec is signed off but not finished** — a POC settlement in flight on
+a load-bearing claim (see "Settling a disputed claim"), or an uncleared cross-spec set, where
+the coherence pass may still hand this spec an alignment edit that earns a review round. Both
+defer cleanup only, never implementation.
+
+### Re-opening for a POC
+
+A POC worth building *after* sign-off goes on the same PR: commit it to the retained branch,
+`gh pr reopen`, then close again unmerged once §7 carries the result on the branch and in
+Linear. A re-opened PR is live — the one exception to a closed spec branch being frozen.
+
+It does not re-open the gate, does not resume spec review (late feedback is implementer notes),
+and never merges. If the POC *changes the direction*, that fold needs fresh sign-off: keep the
+PR open and escalate it as a **blocker** — no existing approval re-gates itself (a `spec
+approved` label survives pushes; an implementing row can't return to the spec gate). Whoever
+applies the answer folds it and closes the PR.
 
 ## PR feedback: the round cap
 
@@ -675,7 +730,7 @@ or epic PR, built so the direction can be validated *before* implementation. The
 The spec PR is the natural home for it, and this is the property that makes the whole thing
 cheap: **it never merges.** Code there can't rot into the codebase, can't accrete public
 surface, and doesn't have to be good. So the cost of being wrong about a direction drops from
-a rewrite to a deleted branch.
+a rewrite to an abandoned branch nobody merges.
 
 **Two POC mechanisms, and they are not the same one.** They're neighbours in the lifecycle
 and get confused constantly:
@@ -737,10 +792,10 @@ flowchart LR
   nothing on the spec branch reaches `main` by default. **Whatever an implementation PR does or
   doesn't carry over from the spec branch, the POC is never part of it** — a characterization
   test worth keeping is re-written under `tdd` as a real CI spec or a `goals/` entry, graduated
-  rather than copied. Closing the spec PR also **deletes its branch** (BP-037), which is fine
-  because the POC's job finished at the gate — but it means the durable citation is **the PR**
-  (GitHub keeps a closed PR's diff viewable), never the branch. An *epic* branch is never
-  deleted, so an epic POC keeps a live home for the life of the epic.
+  rather than copied. The spec PR closes at approval and **its branch is kept** (see "Closing
+  the spec PR"), so a POC stays fetchable after the gate — cite the **PR**, whose diff renders
+  the POC without a checkout, and reach for the branch when you want to run it. A POC worth
+  building *after* approval re-opens that same PR rather than starting a new one.
 - **CI stays green without weakening it.** POCs live in `spec-poc/<ISSUE-ID>-<slug>/`, outside
   every pnpm workspace, so `turbo`-driven typecheck and test never reach them. That matters
   because CI runs on every PR into `main`, spec PRs included, and the coordinator reads that
@@ -920,9 +975,10 @@ implementation starts. Two rules keep that from stranding a `REFUTED` verdict:
 
 - **Keep the spec PR open while a settlement on a load-bearing claim is in flight.** Approval
   still releases implementation immediately — nothing blocks — but the coordinator *defers the
-  spec PR's close-and-delete* until the verdict lands, so the fold has a live artifact and a
-  live thread. Closing it is cleanup, not a precondition for implementing. (If it was already
-  closed, the Linear document is canonical from then on and the fold goes there.)
+  close* until the verdict lands, so the fold has a live artifact and a live thread. Closing it
+  is cleanup, not a precondition for implementing. (If it was already closed, the Linear
+  document is canonical from then on and the fold goes there; the branch is still there, so a
+  fold that genuinely needs the thread back can re-open the PR.)
 - **A late `REFUTED` is a spec blind spot, handled by the path that already exists.** Fold it
   into the spec, tell the in-flight implementation, and re-gate if the direction actually
   changed — exactly what `issue-implement`'s challenger does when it finds the design wrong

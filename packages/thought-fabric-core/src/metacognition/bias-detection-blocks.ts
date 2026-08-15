@@ -361,10 +361,10 @@ export function biasFormat() {
  * const pipeline = sequencer({ name: 'audit-response' })
  *   .step(audit)
  *
- * // As a .work() sidechain alongside a chat block:
+ * // As a .sideChain() sidechain alongside a chat block:
  * const pipeline = sequencer({ name: 'chat-with-audit' })
  *   .step(chat)
- *   .work(audit)
+ *   .sideChain(audit)
  * ```
  *
  * Counter-arguments are only generated when the sycophancy score exceeds the

@@ -41,9 +41,39 @@ Read orientation docs to understand current phase and priorities:
 - `packages/*/CHANGELOG.md` and `.changeset/*.md` — recent completions and pending release notes
 - `docs/objectives.md` — if it exists, project goals
 
-### Step 2: Clean Stale Todos
+### Step 2: Account for the Last Plan
 
-Before generating new plans, clean up `agents/todos/`:
+**Before cleaning anything, account for the last plan.** Step 2b deletes the evidence, so
+this runs first.
+
+**The cohort is `agents/todos/.last-plan.json`** — the manifest Step 4 writes:
+`{ ranAt, selected: [<linear-id>, ...] }`. Never infer it from what's on disk: todos are
+deliberately preserved (Step 2b), so a carried todo would read as a fresh commitment every day.
+A run that selects nothing writes `selected: []`, which is a real answer. **No manifest yet**
+(first run after this change): say so and skip the Account.
+
+For each ID in `selected`, report one line: **landed** (merged), **in flight** (PR
+open), or **didn't start** — and for anything that didn't land, the one-line reason
+(blocked, deprioritized, harder than scoped, never picked up).
+
+**Call out the carried ones by age**, from each todo's `planned_on`: planned five days
+running and never started is a decision nobody is making, not a task. Report `carried Nd` — or
+*carried, age unknown* where `planned_on` is absent. Never compute an age from a date you
+backfilled.
+
+**Why this is first and not optional.** A plan with no account is unfalsifiable: a task
+that was wrong to plan yesterday looks identical to one that was right, so the same
+mis-scoped todo gets regenerated every morning and nothing in the loop notices. The
+cleanup in 2b is *how the evidence disappears* — a completed issue's todo is deleted, so
+by Step 3 there is no longer any record of what was promised.
+
+**Don't editorialize.** Three or four words per item. The value is the tally, not the
+narrative, and a long Account is a sign this is being written for the report rather than
+for the next plan.
+
+### Step 2b: Clean Stale Todos
+
+Now that the last plan has been accounted for, clean up `agents/todos/`:
 
 1. **Remove completed todos** — if the Linear issue is in "Done"/"Cancelled" state, delete the todo file
 2. **Remove outdated todos** — if the task description no longer matches the Linear issue (e.g., scope changed significantly), delete the file so it gets regenerated fresh
@@ -63,15 +93,35 @@ From the Linear issues, filter to tasks that are **actually workable today**:
 
 Rank by:
 1. Priority (from Linear)
-2. Unblocking impact (does completing this unblock other high-priority work?)
-3. Phase alignment (does this advance the current phase goals?)
-4. Momentum (is this a natural continuation of recently completed work?)
+2. **Objective service** — does this move the project objective in [`docs/objectives.md`](../../../docs/objectives.md)? Mark each task ⭑ if it does. Most days most tasks won't, and that's fine — the mark is information, not a filter
+3. Unblocking impact (does completing this unblock other high-priority work?)
+4. Phase alignment (does this advance the current phase goals?)
+5. Momentum (is this a natural continuation of recently completed work?)
 
 Select up to **8 tasks**. If $ARGUMENTS specifies a focus area, weight tasks in that area higher but don't exclude others entirely.
 
+**The ceiling of 8 is deliberate and stays.** A human team focusing on one or two goals is
+solving an attention-splitting problem we don't have — these run in isolated worktrees and
+cost each other nothing. What *does* need bounding is how many distinct **objectives** are
+in flight, and that cap lives on epics
+([`orchestration.md`](../../../docs/contributing/orchestration.md) → "How many epics run at
+once"), not here. So: don't trim the list to look focused. Mark which tasks serve the
+objective and let the count be what it is — **a day where zero of the eight carry ⭑ is the
+signal**, and it is one you can only see if the eight are all still listed.
+
 ### Step 4: Generate Todo Files
 
-For each selected task, create a todo file in `agents/todos/`. Skip tasks that already have a valid, up-to-date todo file (preserved in Step 2).
+For each selected task, create a todo file in `agents/todos/`.
+
+**Write `agents/todos/.last-plan.json` before you finish** — `{ ranAt, selected }` with every
+ID this run **committed to**, preserved ones included, and `[]` when nothing was. It is the only
+record of what this plan promised, and tomorrow's Account reads nothing else.
+
+**Keep 🔴 rows out of `selected`.** Step 5 lists them for visibility and says they are *not*
+expected today, so counting them as commitments would have the Account report a miss by design.
+
+Set `planned_on` when you **create** a todo; never rewrite it, and never stamp a file you didn't
+select.
 
 **File naming:** `{linear-id}-{priority}-{kebab-description}.md`
 Example: `FSD-142-p2-fix-sse-resume-token.md`
@@ -85,8 +135,9 @@ linear_url: "https://linear.app/..."
 status: ready
 priority: p2
 tags: [server, streaming]
-blocked_by: []           # or ["FSD-140"] / ["PR #87"]
-estimated_scope: small   # small | medium | large
+blocked_by: []             # or ["FSD-140"] / ["PR #87"]
+estimated_scope: small     # small | medium | large
+planned_on: 2026-08-14T09:12:00Z    # first planned. Set once, NEVER rewritten
 ---
 
 # Fix SSE resume token not persisting across reconnections
@@ -129,14 +180,17 @@ If no dependencies, say "None — can start immediately."]
 
 ### Step 5: Present the Plan
 
-Present the day's plan to the user as a prioritized list:
+Lead with the Account from Step 2 — it is what makes today's plan checkable tomorrow — then
+the prioritized list:
 
 ```
-Today's Plan (X tasks):
+Yesterday (4 planned): 2 landed · 1 in flight (#88) · 1 didn't start (blocked on FSD-140)
 
-1. 🟢 FSD-142: Fix SSE resume token [p2, small, unblocked]
-2. 🟢 FSD-145: Add missing middleware seam for state ops [p2, medium, unblocked]
-3. 🟡 FSD-148: Wire resource visibility on server state endpoint [p1, medium, after PR #87]
+Today's Plan (X tasks) — 2 of 8 serve the objective:
+
+1. 🟢 ⭑ FSD-142: Fix SSE resume token [p2, small, unblocked]
+2. 🟢    FSD-145: Add missing middleware seam for state ops [p2, medium, unblocked]
+3. 🟡 ⭑ FSD-148: Wire resource visibility on server state endpoint [p1, medium, after PR #87]
 4. ...
 ```
 
@@ -144,6 +198,7 @@ Legend:
 - 🟢 = unblocked, ready to start
 - 🟡 = blocked by in-flight PR (expected to unblock today)
 - 🔴 = dependency not yet started (included for visibility but not expected today)
+- ⭑ = serves the project objective ([`docs/objectives.md`](../../../docs/objectives.md))
 
 For each task, show: Linear ID, title, priority, estimated scope, and blockers (if any).
 
@@ -151,6 +206,10 @@ After the list, include:
 - **Cleaned todos**: what was removed and why
 - **Notable PRs**: open PRs that are close to merging and what they unblock
 - **Not included**: any high-priority items that are blocked and why, so the user has visibility into what's waiting
+
+**Say the ⭑ count out loud in the header**, even when it's zero. A day of eight unstarred
+tasks is a legitimate day — foundations, bugs, cleanup — but several such days in a row is
+the thing worth seeing, and it is invisible unless the count is stated each time.
 
 ## Todo File Lifecycle
 

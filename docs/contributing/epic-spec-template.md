@@ -96,6 +96,13 @@ Then the **holistic necessity check**: the `issue-spec` Step 3.5 lens raised to 
 Each issue can earn its place while the whole overbuilds; this is the only place that's
 visible. Say what the set is deliberately *not* doing.
 
+**Under [`epic-pm`](../../.agents/skills/epic-pm/SKILL.md) this section is stricter**: it
+carries that skill's five objective lines — Outcome · Proof · Lead measure · Not doing ·
+Kill line — and the objective gate is refused without them. **The example below shows all
+five**; a non-`epic-pm` epic needs only the objective and the necessity check. `epic-pm` is
+canonical for what each line owes, and the Outcome and Lead measure are what the epic **report**
+leads with each turn.
+
 > **Objective.** Make a dropped connection a non-event for an app built on FSD.
 > Today, every network blip is visible to the end user as duplicated output and
 > to the app author as a stream it has to defend against by hand. When this epic
@@ -109,6 +116,12 @@ visible. Say what the set is deliberately *not* doing.
 > their own, and shipping a default mostly saves a config line. **Kept, scoped
 > down** to a default with no new options — if it grows a knob during
 > implementation, that's the signal it should have been dropped.
+>
+> **Proof.** FIX-775's goal check: a client that drops mid-stream reattaches and the
+> transcript has no gap and no duplicate.
+> **Lead measure.** The set's goal-proven issues, named each report.
+> **Kill line.** If reconnects turn out to be rare enough that apps don't notice them, this
+> is polish and the epic should not finish.
 >
 > **Not doing:** offline queueing, or any *new* durable history — serving a
 > response to a client that was never attached, or retaining anything past the
@@ -170,9 +183,15 @@ survived contact with code is worth knowing.
 
 ## 4. Running index
 
-The durable audit log — every issue under the epic and every PR it produced, so a human
-or an agent navigates the set from one place. Refreshed from the coordinator's status
-table; it is a projection, not a second live source. **Keep it a table, not prose.**
+The durable audit log — every issue under the epic and every PR it produced, so a human or an
+agent navigates the set from one place. Refreshed from the coordinator's status table when the
+`epic-agent` folds; it is a projection, not a second live source. **Keep it a table, not prose.**
+
+**No scoreboard here, deliberately.** *Are we winning* is answered in the epic **report**
+([`epic-em`](../../.agents/skills/epic-em/SKILL.md) → Review), because only the coordinator
+holds live state — a number in this document would need a refresh trigger that nothing fires,
+and would sit stale while reading as evidence. This section answers *what happened*; the report
+answers *how it's going*.
 
 > | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 > |---|---|---|---|---|---|

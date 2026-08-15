@@ -522,7 +522,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom lo
 - `hasActiveAbortController(requestId)` — Check if a request can be aborted
 - Abort endpoint: `POST /api/flows/:flowKind/requests/:requestId/abort` — returns 204 when the running process was signalled directly, 202 when the cancellation was recorded for another process to pick up, 404 when no request exists under that id, 409 when the request is no longer `in_progress`. See [Connection Resilience](https://flow-state.dev/docs/server/connection-resilience#stopping-a-request-that-runs-on-another-server) for the cross-process path and what a `202` does and doesn't promise
 - Aborted requests receive `status: "aborted"` with an `abortedAt` timestamp. The SSE stream emits `request.aborted` and closes.
-- Background `.work()` tasks survive client disconnect and only abort on explicit cancellation (`POST /abort` or `session.abortRequest()`). See the [sequencer side-chains reference](https://flow-state.dev/docs/advanced/sequencer-side-chains) for the two-signal cancellation contract.
+- Background `.sideChain()` tasks survive client disconnect and only abort on explicit cancellation (`POST /abort` or `session.abortRequest()`). See the [sequencer side-chains reference](https://flow-state.dev/docs/advanced/sequencer-side-chains) for the two-signal cancellation contract.
 
 **Registry/routes:**
 - `createFlowRegistry` — Register flow instances
@@ -611,7 +611,7 @@ Conflicts report what actually happened rather than collapsing into one error:
 | A delete's version check failed against a live row | `ConcurrentModificationError` — nothing was deleted |
 | Retry budget exhausted | `ConcurrentModificationError` |
 
-The driver is deliberately separate from the one the four scope stores use (`runWithCAS`), which treats every conflict as retryable, suppresses a no-op before checking any version, and has no cancellation. The full policy table lives in the `stores/resource-cas.ts` module header. Resource writes honour the request's background abort signal, so a user-requested abort stops them — while a client disconnect does not, since background `.work()` tasks keep running and their writes must land.
+The driver is deliberately separate from the one the four scope stores use (`runWithCAS`), which treats every conflict as retryable, suppresses a no-op before checking any version, and has no cancellation. The full policy table lives in the `stores/resource-cas.ts` module header. Resource writes honour the request's background abort signal, so a user-requested abort stops them — while a client disconnect does not, since background `.sideChain()` tasks keep running and their writes must land.
 
 ```ts
 // branded — see the note under the table below
@@ -900,5 +900,5 @@ pnpm --filter @flow-state-dev/engine test
 ## Architecture reference
 
 - [Server Setup](https://flow-state.dev/docs/server/setup) — Routes, transport, React hooks contract
-- [Error Handling](https://flow-state.dev/docs/advanced/error-handling) — Retry, rescue, work queue
+- [Error Handling](https://flow-state.dev/docs/advanced/error-handling) — Retry, rescue, side chains
 - [Streaming](https://flow-state.dev/docs/streaming/overview) — Item/content model, SSE protocol, resume semantics

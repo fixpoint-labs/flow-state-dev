@@ -129,7 +129,7 @@ Adapting a request/response framework to handle this produces a lot of workaroun
 ```ts
 const agent = generator({
   name: "agent",
-  model: "preset/fast",
+  model: "openai/gpt-5.4-mini",
   prompt: "You are a research assistant.",
   // history feeds completed turns back to the model automatically
   history: true,

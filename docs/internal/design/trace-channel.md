@@ -10,7 +10,7 @@ Three problems:
 
 1. The public `OutputItem` union and `BlockValue` type include four item types and one union case (`ref`) no production consumer ever sees. The public surface is bigger than the actual contract.
 2. `block_debug` payloads (resolved generator prompts, tool definitions, model selection) live only in the request's events log — they vanish along with the `RequestRecord` when retention GC runs. The devtool can't replay traces from a completed request once the request has been GC'd.
-3. One of the eleven public production types (`step_error`, added recently for failed `.work()` background tasks) is observability data, not user-facing. It surfaces a yellow warning in the UI for failures the user has no action to take on.
+3. One of the eleven public production types (`step_error`, added recently for failed `.sideChain()` background tasks) is observability data, not user-facing. It surfaces a yellow warning in the UI for failures the user has no action to take on.
 
 ## 2. Approach: single SSE wire, server-side filter, durable trace store, public/internal type split
 
@@ -137,7 +137,7 @@ Each `ctx.emit.trace.*` call:
 | `recovered: true` | derivable from "failed `block_trace` AND no terminal `error`" |
 | `console.error` log | unchanged at `sequencer.ts:751` |
 
-`emitWorkStepError` is deleted; the `console.error` stays. `executeBlock` continues to emit a failed `block_trace` for any block that throws — that's now the only signal for `.work()` failures, and it rides the trace channel.
+`emitWorkStepError` is deleted; the `console.error` stays. `executeBlock` continues to emit a failed `block_trace` for any block that throws — that's now the only signal for `.sideChain()` failures, and it rides the trace channel.
 
 ### 3.7 Visibility model
 

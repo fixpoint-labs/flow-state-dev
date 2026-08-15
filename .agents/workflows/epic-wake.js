@@ -2809,7 +2809,7 @@ const [advanced, epicFold, epicNotes] = await Promise.all([
               `\nThose are decisions, not suggestions — implement them as given rather than re-deriving the choice, and do not escalate the same forks again. A \`[slice]\` prefix names which sub-PR the answer belongs to. If one turns out not to answer the fork you actually hit, say so as a new \`blocker\` naming precisely what is still open.\n`
             : '') +
           (item.action === 'implement' && settlingClaimFor(item.row.id)
-            ? `A POC settlement is IN FLIGHT on a load-bearing claim for this issue: ${settlingClaimFor(item.row.id)}. Chain into implementation as normal, but do NOT close or delete the spec PR or its branch yet — a REFUTED verdict has to be folded into that live artifact and replied to on its thread. The coordinator closes it once the claim is settled.\n`
+            ? `A POC settlement is IN FLIGHT on a load-bearing claim for this issue: ${settlingClaimFor(item.row.id)}. Chain into implementation as normal, but do NOT close the spec PR yet — a REFUTED verdict has to be folded into that live artifact and replied to on its thread. The coordinator closes it once the claim is settled. (The spec branch is never deleted in any case.)\n`
             : '') +
           (item.row.closedBlocker
             ? `A PR on this issue was CLOSED WITHOUT MERGING — that is what the answer above is about. The handle is dead: do not try to push to it or reopen it. If the decision is to rebuild, open a NEW PR for that slice from fresh origin/main and report its handles; if the human reopened it themselves, the next scan will see it and there is nothing to do here.\n` +

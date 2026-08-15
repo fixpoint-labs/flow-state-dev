@@ -72,7 +72,7 @@ export const chatFlow = defineFlow({
   kind: "chat-flow",
   resources: { ...mem.sessionResources, ...mem.userResources },
   actions: {
-    // ...capture after each turn, e.g. a sequencer ending in `.work(mem.captureFromItems)`
+    // ...capture after each turn, e.g. a sequencer ending in `.sideChain(mem.captureFromItems)`
   },
 });
 ```

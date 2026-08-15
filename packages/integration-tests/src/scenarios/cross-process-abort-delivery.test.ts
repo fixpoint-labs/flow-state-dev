@@ -14,7 +14,7 @@
  * because two of its claims emerge from full `runAction` composition, which
  * the engine tier's single-handler action cannot show:
  *
- *   1. Delivery reaches a background `.work()` task's SUBSTITUTED signal.
+ *   1. Delivery reaches a background `.sideChain()` task's SUBSTITUTED signal.
  *      Background tasks deliberately do not inherit the request's transport
  *      signal (FIX-663) — they are decoupled from it and re-attached to the
  *      registry fan-out. A store-delivered cancel therefore has to travel
@@ -73,8 +73,8 @@ function waitForSignal(
   });
 }
 
-/** A background `.work()` task that records the state of its OWN signal. */
-function backgroundTask(marker: SignalMarker, selfCompleteMs: number) {
+/** A background `.sideChain()` task that records the state of its OWN signal. */
+function sideChainTask(marker: SignalMarker, selfCompleteMs: number) {
   return handler({
     name: "background-task",
     inputSchema: z.unknown(),
@@ -147,7 +147,7 @@ function buildFlow(options: {
   selfCompleteMs: number;
 }) {
   const root = sequencer({ name: "root", inputSchema: z.unknown() })
-    .work(backgroundTask(options.marker, options.selfCompleteMs))
+    .sideChain(sideChainTask(options.marker, options.selfCompleteMs))
     .step(cancelPoint(options))
     .step(afterCancel);
 

@@ -37,7 +37,7 @@ The optional `wakeOn` filter is documented under [Wake filtering](#wake-filterin
 import { whenResourceChanged } from "@flow-state-dev/core/items";
 
 pipeline
-  .work(writerBlock)
+  .sideChain(writerBlock)
   .waitForCondition(
     whenResourceChanged({ scope: "session", path: "artifacts/spec.md" }),
     { timeoutMs: 30_000 }

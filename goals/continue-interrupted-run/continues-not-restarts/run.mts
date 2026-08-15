@@ -11,7 +11,7 @@
  * `@flow-state-dev/engine` directly, so this runs from the repo root, no
  * subprocess/driver-file dance required):
  *
- *   earlyStep (counter A)  →  .work(bgWork) (counter B)  →  .waitForWork()  →
+ *   earlyStep (counter A)  →  .sideChain(sideChainStep) (counter B)  →  .waitForSideChain()  →
  *   gate (ctx.suspend())  →  finish (echoes the held-out note)
  *
  * Sequence:
@@ -75,8 +75,8 @@ await runGoal(async () => {
     },
   });
 
-  const bgWork = handler({
-    name: "bgWork",
+  const sideChainStep = handler({
+    name: "sideChainStep",
     inputSchema: z.any(),
     outputSchema: z.object({ done: z.boolean() }),
     execute: async () => {
@@ -106,8 +106,8 @@ await runGoal(async () => {
       run: {
         block: sequencer({ name: "seq", durable: true })
           .step(earlyStep)
-          .work(bgWork)
-          .waitForWork()
+          .sideChain(sideChainStep)
+          .waitForSideChain()
           .step(gate)
           .step(finish),
         inputSchema: z.any(),
@@ -129,7 +129,7 @@ await runGoal(async () => {
   });
   const requestId = initial.requestId!;
   if (earlyRuns !== 1) failures.push(`expected earlyStep to run once before suspension, ran ${earlyRuns} times`);
-  if (bgRuns !== 1) failures.push(`expected bgWork to run once before suspension, ran ${bgRuns} times`);
+  if (bgRuns !== 1) failures.push(`expected sideChainStep to run once before suspension, ran ${bgRuns} times`);
 
   const beforeCrash = await stores.request.get(requestId);
   if (beforeCrash?.status !== "suspended") {
@@ -179,7 +179,7 @@ await runGoal(async () => {
     failures.push(`earlyStep re-ran after crash-recovery continue (ran ${earlyRuns} times) — it was re-executed, not replayed`);
   }
   if (bgRuns !== 1) {
-    failures.push(`bgWork re-ran after crash-recovery continue (ran ${bgRuns} times) — the completed background block was re-executed, not replayed`);
+    failures.push(`sideChainStep re-ran after crash-recovery continue (ran ${bgRuns} times) — the completed background block was re-executed, not replayed`);
   }
 
   // 4. Resolve the re-suspended gate (ordinary post-crash operator approval)
@@ -205,7 +205,7 @@ await runGoal(async () => {
     failures.push(`expected terminal status "completed", got "${finalRecord?.status}"`);
   }
   if (earlyRuns !== 1) failures.push(`earlyStep re-ran during the resolving continue (ran ${earlyRuns} times)`);
-  if (bgRuns !== 1) failures.push(`bgWork re-ran during the resolving continue (ran ${bgRuns} times)`);
+  if (bgRuns !== 1) failures.push(`sideChainStep re-ran during the resolving continue (ran ${bgRuns} times)`);
 
   const output = result.output as { note?: string | null } | undefined;
   if (output?.note !== fixture.note) {
@@ -218,7 +218,7 @@ await runGoal(async () => {
     failures,
     evidence:
       `interrupted request ${requestId} continued (not restarted): exactly one "recovery" ` +
-      `continuation item (priorItemCount ${contItems[0].priorItemCount}); earlyStep and bgWork each ` +
+      `continuation item (priorItemCount ${contItems[0].priorItemCount}); earlyStep and sideChainStep each ` +
       `ran exactly once across both continue calls; the SAME request id reached "completed" carrying ` +
       `the held-out note "${fixture.note}".`,
   };

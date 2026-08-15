@@ -160,7 +160,7 @@ generators: {
 
 ```ts
 models: {
-  "preset/fast": { output: "Default response" },
+  "openai/gpt-5.4-mini": { output: "Default response" },
 }
 ```
 
@@ -322,7 +322,7 @@ const report = await evalBlock(chatGenerator, {
         "Response does not hallucinate facts not in the context",
         "Tone is professional and concise",
       ],
-      model: "claude-haiku",    // use a cheaper model for grading
+      model: "anthropic/claude-haiku-4-5",    // use a cheaper model for grading
       scoreMapping: "mean",     // average per-criteria scores
       threshold: 0.7,           // pass if mean score >= 0.7
     }),
@@ -346,7 +346,7 @@ analyzerScorer.coherence()     // Is it well-structured and logical?
 analyzerScorer.safety()        // Is it free of harmful content?
 
 // They accept config overrides too
-analyzerScorer.relevance({ model: "claude-haiku", threshold: 0.8 })
+analyzerScorer.relevance({ model: "anthropic/claude-haiku-4-5", threshold: 0.8 })
 ```
 
 You can mix code-based and LLM-based scorers freely in the same eval run.

@@ -17,7 +17,7 @@ describe("createKeyedAsyncGate", () => {
     const running: number[] = [];
     let maxConcurrent = 0;
 
-    const work = (n: number) =>
+    const runTask = (n: number) =>
       gate.runExclusive("k", async () => {
         running.push(n);
         maxConcurrent = Math.max(maxConcurrent, running.length);
@@ -26,7 +26,7 @@ describe("createKeyedAsyncGate", () => {
         running.splice(running.indexOf(n), 1);
       });
 
-    await Promise.all([work(1), work(2), work(3)]);
+    await Promise.all([runTask(1), runTask(2), runTask(3)]);
 
     expect(order).toEqual([1, 2, 3]);
     expect(maxConcurrent).toBe(1);
@@ -37,7 +37,7 @@ describe("createKeyedAsyncGate", () => {
     let concurrent = 0;
     let maxConcurrent = 0;
 
-    const work = (key: string) =>
+    const runTask = (key: string) =>
       gate.runExclusive(key, async () => {
         concurrent += 1;
         maxConcurrent = Math.max(maxConcurrent, concurrent);
@@ -45,7 +45,7 @@ describe("createKeyedAsyncGate", () => {
         concurrent -= 1;
       });
 
-    await Promise.all([work("a"), work("b"), work("c")]);
+    await Promise.all([runTask("a"), runTask("b"), runTask("c")]);
     expect(maxConcurrent).toBe(3);
   });
 

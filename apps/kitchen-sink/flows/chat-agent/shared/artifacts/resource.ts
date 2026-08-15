@@ -10,7 +10,7 @@
  * Summarization is declarative: the collection binds `reactTo.contentUpdated`,
  * so whenever an artifact's body is written (by any server-side path) the
  * summarizer regenerates from the fresh body. The reaction isolates the
- * summarizer with `.work()`, so a summarizer failure never fails the write.
+ * summarizer with `.sideChain()`, so a summarizer failure never fails the write.
  */
 import {
   defineResourceCollection,
@@ -93,14 +93,14 @@ const summarizeArtifactBody = sequencer({
 
 /**
  * The block bound to `reactTo.contentUpdated`. Isolates summarization as
- * background `.work()` so a summarizer failure does not fail the artifact write
+ * background `.sideChain()` so a summarizer failure does not fail the artifact write
  * that triggered it. `patchState` fires a state update, not a content write, so
  * saving the summary does not re-trigger this reaction.
  */
 const summarizeArtifactReaction = sequencer({
   name: "summarize-artifact",
   inputSchema: resourceContentChangeSchema(),
-}).work(summarizeArtifactBody);
+}).sideChain(summarizeArtifactBody);
 
 // ---------------------------------------------------------------------------
 // Resource collection

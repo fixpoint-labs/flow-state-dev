@@ -27,7 +27,7 @@ export const assistantGenerator = generator({
   // two context presets via `.presets({ digest: false, working: false })`.
   // p.capability injects perspective framing (static + accumulated presets).
   // Perspective context appears in all modes but accumulated state only
-  // grows in ask mode (capture is gated via workIf below).
+  // grows in ask mode (capture is gated via sideChainIf below).
   uses: [mem.capability, featuresCapability, analystPerspective.capability],
 
   // Object-form context: each entry becomes its own XML tag in the rendered

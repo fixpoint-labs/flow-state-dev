@@ -254,7 +254,6 @@ const sidebars: SidebarsConfig = {
         "advanced/state-targets-and-parents",
         "advanced/sequencer-state",
         "state/mutation-model",
-        "advanced/utility-blocks-deprecated",
       ],
     },
     {

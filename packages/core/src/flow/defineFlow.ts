@@ -32,7 +32,6 @@ import type {
   SessionConfig,
   ToolsConfig,
   UserConfig,
-  WorkConfig
 } from "../types/flow";
 import type { ResourceScope } from "../types/resource";
 import { isDefinedResourceCollection } from "../types/resource-collection";
@@ -139,12 +138,11 @@ type AnySession = SessionConfig | undefined;
 type AnyRequest = RequestConfig | undefined;
 type AnyUser = UserConfig | undefined;
 type AnyOrg = OrgConfig | undefined;
-type AnyWork = WorkConfig | undefined;
 
 type AnyResources = Record<string, DeclaredResourceEntry> | undefined;
 
-type AnyFlowDefinition = FlowDefinition<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg, AnyWork>;
-type AnyFlowInstanceOptions = FlowInstanceOptions<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg, AnyWork>;
+type AnyFlowDefinition = FlowDefinition<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg>;
+type AnyFlowInstanceOptions = FlowInstanceOptions<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg>;
 
 function rejectRemovedMiddleware(value: object | undefined, location: string): void {
   if (value !== undefined && Object.hasOwn(value, "middleware")) {
@@ -152,6 +150,67 @@ function rejectRemovedMiddleware(value: object | undefined, location: string): v
       `${location} uses the removed "middleware" option. ` +
       "Middleware is not executed; move policy checks to the HTTP authentication layer or block logic."
     );
+  }
+}
+
+/**
+ * Reject the removed flow-level `work` option.
+ *
+ * `work` declared four lifecycle hooks (`onStarted` / `onCompleted` /
+ * `onErrored` / `onFinished`) that the engine never invoked — nothing read
+ * `flow.work` to dispatch them. They are gone from `FlowDefinition` and
+ * `FlowInstanceOptions` (FIX-766), so a TypeScript caller passing a fresh
+ * object literal now fails to compile; this is the runtime half, for plain JS
+ * and for a non-fresh object TypeScript lets through.
+ *
+ * Failing loudly matters even though the hooks never fired. Silently dropping
+ * the key would take the resource declarations with it: the hooks WERE walked
+ * for declaration discovery, so a resource declared only on one of them was
+ * registered, and after the removal it is not. That is a real behaviour change
+ * hiding behind a dead contract, and it is exactly the case BP-030 has in mind
+ * when it says to reject removed keys loudly.
+ */
+function rejectRemovedWork(value: object | undefined, location: string): void {
+  if (value !== undefined && Object.hasOwn(value, "work")) {
+    throw new Error(
+      `${location} uses the removed "work" option. ` +
+      "Its four hooks were never invoked, so no lifecycle behaviour is lost — but they were walked for " +
+      "resource declaration, so any resource declared only there is no longer registered. " +
+      "Move those declarations onto a block that runs, and dispatch background steps with `.sideChain()`."
+    );
+  }
+}
+
+/** The definition-only options {@link rejectDefinitionOnlyOptions} refuses. */
+const DEFINITION_ONLY_INSTANCE_OPTIONS = ["webhooks", "chat", "schedules", "mcp"] as const;
+
+/**
+ * Reject transport configs that are declared on the flow DEFINITION only.
+ *
+ * Passing one as an instance option used to type-check and then do nothing at
+ * all — the instance carried the definition's values either way, so
+ * `flow({ webhooks })` looked configured and was not (FIX-1048). They are gone
+ * from {@link FlowInstanceOptions}, so a TypeScript caller now fails to compile;
+ * this guard is the runtime half, for the caller who reaches past the types
+ * (plain JS, or an `as any` cast): fail loudly rather than accept-and-ignore.
+ *
+ * Being definition-only is also what makes the transport validation in
+ * `createFlowInstance` complete rather than partial: `validateChatConfig` /
+ * `validateWebhookConfig` / `validateSchedulesConfig` read `definition.*` rather
+ * than a merge, and with no instance-side source left there is no config that
+ * could slip past them.
+ */
+function rejectDefinitionOnlyOptions(value: object | undefined, flowKind: string): void {
+  if (value === undefined) return;
+
+  for (const key of DEFINITION_ONLY_INSTANCE_OPTIONS) {
+    if (Object.hasOwn(value, key)) {
+      throw new Error(
+        `Flow "${flowKind}" instance options set "${key}", which is not an instance option. ` +
+        `Per-instance ${DEFINITION_ONLY_INSTANCE_OPTIONS.join("/")} were never applied — the instance ` +
+        `always used the definition's. Declare "${key}" on defineFlow(...) instead.`
+      );
+    }
   }
 }
 
@@ -358,8 +417,8 @@ function actionCoreBlocks(core: {
  *
  * Four binding families all carry the shared `ActionCore` (caller actions,
  * webhook, chat, and static schedule bindings), so each contributes its root and
- * its observers. The flow-level `request` and `work` hooks are blocks too, and
- * are declared once for the whole flow rather than per binding.
+ * its observers. The flow-level `request` hooks are blocks too, and are declared
+ * once for the whole flow rather than per binding.
  *
  * Dynamic schedules (`schedules.resolve`) are deliberately absent: their blocks
  * do not exist until a resolver runs, so there is nothing to collect at
@@ -370,8 +429,7 @@ function actionBlocks(
   webhooks: WebhookConfig | undefined,
   chat: ChatConfig | undefined,
   schedules: SchedulesConfig | undefined,
-  request?: { onStarted?: BlockDefinition<any, any>; onCompleted?: BlockDefinition<any, any>; onErrored?: BlockDefinition<any, any>; onFinished?: BlockDefinition<any, any>; onStepErrored?: BlockDefinition<any, any> },
-  work?: { onStarted?: BlockDefinition<any, any>; onCompleted?: BlockDefinition<any, any>; onErrored?: BlockDefinition<any, any>; onFinished?: BlockDefinition<any, any> }
+  request?: { onStarted?: BlockDefinition<any, any>; onCompleted?: BlockDefinition<any, any>; onErrored?: BlockDefinition<any, any>; onFinished?: BlockDefinition<any, any>; onStepErrored?: BlockDefinition<any, any> }
 ): BlockDefinition[] {
   const blocks: BlockDefinition[] = [];
   for (const action of Object.values(actions)) blocks.push(...actionCoreBlocks(action));
@@ -391,11 +449,7 @@ function actionBlocks(
     request?.onCompleted,
     request?.onErrored,
     request?.onFinished,
-    request?.onStepErrored,
-    work?.onStarted,
-    work?.onCompleted,
-    work?.onErrored,
-    work?.onFinished
+    request?.onStepErrored
   ]) {
     if (hook !== undefined) blocks.push(hook);
   }
@@ -884,9 +938,12 @@ function validateMcpConfig(
 function createFlowInstance(
   definition: AnyFlowDefinition,
   options: AnyFlowInstanceOptions | undefined
-): FlowInstance<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg, AnyWork> {
+): FlowInstance<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg> {
   rejectRemovedMiddleware(definition, `Flow "${definition.kind}"`);
   rejectRemovedMiddleware(options, `Flow "${definition.kind}" instance options`);
+  rejectRemovedWork(definition, `Flow "${definition.kind}"`);
+  rejectRemovedWork(options, `Flow "${definition.kind}" instance options`);
+  rejectDefinitionOnlyOptions(options, definition.kind);
 
   const authentication = mergeAuthentication(
     definition.authentication,
@@ -932,6 +989,9 @@ function createFlowInstance(
   // event binding's handler block participates in resource/`requireOrg`
   // collection, so a malformed binding must be rejected here with a clear
   // message rather than crashing the aggregation (or the tools wrap below).
+  //
+  // Reading `definition.*` rather than a merge is complete, not a gap — see
+  // `rejectDefinitionOnlyOptions`.
   validateChatConfig(kind, definition.chat);
   validateWebhookConfig(kind, definition.webhooks);
   validateSchedulesConfig(kind, definition.schedules);
@@ -948,20 +1008,18 @@ function createFlowInstance(
   // walks was how a lifecycle observer's board could reach `runAction` while
   // being invisible to `flow.workstreamBindings`.
   // Merged before collection, not after: `FlowInstanceOptions` can replace a
-  // `request`/`work` lifecycle observer, and the instance returned below runs the
+  // `request` lifecycle observer, and the instance returned below runs the
   // merged one. Collecting from `definition.*` would read the blocks the flow was
   // authored with rather than the blocks it will execute — missing an override's
   // declarations, and keeping a replaced block's.
   const requestMerged = mergeConfig(definition.request, options?.request);
-  const workMerged = mergeConfig(definition.work, options?.work);
 
   const declaredBlocks = actionBlocks(
     actions,
     webhooks,
     chat,
     schedules,
-    requestMerged,
-    workMerged
+    requestMerged
   );
 
   // Bindings are collected FIRST, because a detached worker is no longer
@@ -1063,7 +1121,6 @@ function createFlowInstance(
     request: requestMerged,
     user,
     org,
-    work: workMerged,
     resources: mergedResources,
     flowLevelResourceKeys,
     tools,
@@ -1085,11 +1142,10 @@ export function defineFlow<
   const TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   const TUser extends UserConfig | undefined = UserConfig | undefined,
   const TOrg extends OrgConfig | undefined = OrgConfig | undefined,
-  const TWork extends WorkConfig | undefined = WorkConfig | undefined,
   const TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 >(
-  definition: FlowDefinition<TActions, TSession, TRequest, TUser, TOrg, TWork, TResources>
-): FlowType<TActions, TSession, TRequest, TUser, TOrg, TWork, TResources> {
+  definition: FlowDefinition<TActions, TSession, TRequest, TUser, TOrg, TResources>
+): FlowType<TActions, TSession, TRequest, TUser, TOrg, TResources> {
   const normalizedDefinition: AnyFlowDefinition = {
     ...definition
   };
@@ -1101,7 +1157,6 @@ export function defineFlow<
     TRequest,
     TUser,
     TOrg,
-    TWork,
     TResources
   >;
 
@@ -1126,7 +1181,6 @@ export function defineFlow<
     request: baseInstance.request as TRequest,
     user: baseInstance.user as TUser,
     org: baseInstance.org as TOrg,
-    work: baseInstance.work as TWork,
     resources: baseInstance.resources as TResources | undefined,
     tools: baseInstance.tools,
     voice: baseInstance.voice,

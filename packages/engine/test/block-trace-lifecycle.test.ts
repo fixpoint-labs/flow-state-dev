@@ -463,7 +463,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
     }
   });
 
-  it(".work() background step's input.source is a ref to the parent step's trace", async () => {
+  it(".sideChain() background step's input.source is a ref to the parent step's trace", async () => {
     const main = handler({
       name: "main-step",
       inputSchema: z.object({ x: z.number() }),
@@ -482,7 +482,7 @@ describe("block_trace lifecycle events (FIX-573 §6.1)", () => {
       inputSchema: z.object({ x: z.number() })
     })
       .step(main)
-      .work(bg);
+      .sideChain(bg);
 
     const flow = defineFlow({
       kind: "work-flow",

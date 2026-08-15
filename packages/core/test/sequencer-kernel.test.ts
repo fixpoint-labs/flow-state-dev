@@ -3,7 +3,7 @@ import { z } from "zod";
 import { handler } from "../src";
 import type { BlockContext } from "../src/types/block";
 import type { SequencerRuntimeState } from "../src/blocks/sequencer-methods";
-import { runBackground, runChild } from "../src/blocks/internal/sequencer-kernel";
+import { runSideChain, runChild } from "../src/blocks/internal/sequencer-kernel";
 import { buildBlockInstanceId } from "../src/blocks/internal/block-instance-id";
 import { createMockContext } from "./helpers";
 
@@ -18,7 +18,7 @@ function runtimeState(): SequencerRuntimeState {
   return {
     stepHistory: [],
     loopCounts: new Map(),
-    workTasks: [],
+    pendingSideChainTasks: [],
     stateVersion: 0,
     scopeId: "seq_scope_test",
     lastChildPath: undefined,
@@ -88,24 +88,24 @@ describe("runChild", () => {
   });
 });
 
-describe("runBackground", () => {
-  it("pushes a work task and the promise resolves with the child's output", async () => {
+describe("runSideChain", () => {
+  it("pushes a side-chain task and the promise resolves with the child's output", async () => {
     const ctx = createMockContext();
     const runtime = runtimeState();
-    const result = await runBackground(ctx, runtime, { block: inc }, "work[0]", 5, "task-a");
+    const result = await runSideChain(ctx, runtime, { block: inc }, "sideChain[0]", 5, "task-a");
     // Pass-through: the sequencer's running value is unchanged.
     expect(result.value).toBe(5);
-    expect(runtime.workTasks).toHaveLength(1);
-    const settled = await runtime.workTasks[0].promise;
+    expect(runtime.pendingSideChainTasks).toHaveLength(1);
+    const settled = await runtime.pendingSideChainTasks[0].promise;
     expect(settled).toEqual({ name: "task-a", status: "fulfilled", value: 6 });
   });
 
-  it("applies the connector before dispatching the background block", async () => {
+  it("applies the connector before dispatching the side-chain block", async () => {
     const ctx = createMockContext();
     const runtime = runtimeState();
     const connector = (v: number): number => v + 100;
-    await runBackground(ctx, runtime, { block: inc, connector }, "work[0]", 1, "task-b");
-    const settled = await runtime.workTasks[0].promise;
+    await runSideChain(ctx, runtime, { block: inc, connector }, "sideChain[0]", 1, "task-b");
+    const settled = await runtime.pendingSideChainTasks[0].promise;
     expect(settled).toMatchObject({ status: "fulfilled", value: 102 }); // (1 + 100) + 1
   });
 });
