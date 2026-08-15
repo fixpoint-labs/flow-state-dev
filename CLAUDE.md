@@ -163,6 +163,14 @@ docs/
 
 ## Linear access (check the env first)
 
+**Check whether the key is set with exactly this, and nothing else:**
+
+```bash
+[ -n "$LINEAR_API_KEY" ] && echo set || echo unset
+```
+
+It prints `set`/`unset` and never the value. Improvised probes are how the key leaks — `${LINEAR_API_KEY:+yes}${LINEAR_API_KEY:-no}` looks like it short-circuits and does not, printing the key when it is set. Do not write your own; use the line above. Same rule for any other secret in the env.
+
 Every skill that touches Linear — `issue-spec`, `issue-implement`, `linear-triage`, `plan-day`, the lifecycles, the `issue-manager` agent — picks its channel here, once, at the start of the task:
 
 - **`LINEAR_API_KEY` set → use the Linear GraphQL API directly. Do not use a Linear MCP server**, even if one is connected. It works in headless/cron runs, where an interactively-authenticated MCP server isn't there.
