@@ -38,9 +38,10 @@ import type { ResolvedConductor } from "../../src/config/define";
 import { decide } from "../../src/driver/decide";
 import type { Dispatcher } from "../../src/dispatch/types";
 import { localObserver } from "../../src/local/observe";
-import { openSubmission, submissionDir } from "../../src/local/store";
+import { openSubmission, submissionDir, writeCheck } from "../../src/local/store";
 import type { LedgerEntryState } from "../../src/model/entities";
 import type { Phase } from "../../src/model/phases";
+import type { Signal } from "../../src/model/signals";
 import { DEFAULT_POLICY, type ConductorPolicy } from "../../src/model/world";
 import type { Observer } from "../../src/observe/types";
 import { openConductor, type ConductorSession } from "../../src/runtime/session";
@@ -146,6 +147,45 @@ function slowObserver(inner: Observer): Observer {
       await new Promise((resolve) => setTimeout(resolve, 5));
       return inner.observe(request);
     },
+  };
+}
+
+/**
+ * An observer that reports one extra signal, on the next observation only.
+ *
+ * Two signal kinds this file needs have no producer yet and are not pretending
+ * otherwise: `guidance_changed` has none at all (see `model/phases` on why
+ * `guidance` is declared by no gate), and `question_asked` arrives with the
+ * classifier — `github/signals` says so in as many words. Both are in the
+ * vocabulary `decide` reduces and both name an action conductor dispatches, so
+ * the honest stand-in for the missing producer is **the signal, injected at the
+ * seam that will one day emit it**. That is a different thing from scripting a
+ * dispatcher result no vendor produces, which is how a defect hid in this file
+ * for weeks: nothing here invents what the *world* looks like, and every
+ * assertion below is still made against a real checkout.
+ *
+ * One-shot, because an observer that re-reported it every tick would be a world
+ * where a guidance document changes forever.
+ */
+function signalInjector(): {
+  send(signal: Signal): void;
+  wrap(inner: Observer): Observer;
+} {
+  let pending: Signal | null = null;
+  return {
+    send(signal) {
+      pending = signal;
+    },
+    wrap: (inner) => ({
+      ...inner,
+      async observe(request) {
+        const observation = await inner.observe(request);
+        if (pending === null) return observation;
+        const extra = pending;
+        pending = null;
+        return { ...observation, signals: [...observation.signals, extra] };
+      },
+    }),
   };
 }
 
@@ -743,6 +783,68 @@ describe("property 2: a restart resumes, it does not redo", () => {
     expect(dispatcher.briefs).toHaveLength(0);
   });
 
+  it("enters a phase with no entry work, on a ledger whose entry dispatch belongs to the phase before", async () => {
+    repo = await createTestRepo();
+    await freshState();
+    const spec = await submit("spec/EPIC-1");
+
+    // The world that pins the *first* clause of `entryCompleted` — a
+    // `phase_entered` row **for the phase being entered** — rather than merely
+    // exercising it. The two worlds that already existed both let something else
+    // do the work: the restart above still has an unsettled dispatch for its own
+    // phase, and the epic that dispatches nothing on entry has an empty ledger,
+    // so "the ledger is nonempty" is false there for free. Here the ledger is
+    // nonempty *and* every entry action of the current phase has settled
+    // (vacuously — `CROSS_SPEC_REVIEW` declares none), and the settled entry
+    // dispatch on record belongs to `FRAMING`. Nothing but the phase the row was
+    // reduced against separates "entered" from "not yet entered".
+    const first = fakeDispatcher({
+      isolation: "remote",
+      results: [{ produced: { pullNumber: spec.number } }],
+    });
+    const session = await open(first, {
+      store: storeDyingAfter(
+        fileStateStore(statePath),
+        (key, state) => key.startsWith("ledger/") && state.actionKind === "enterPhase",
+      ),
+    });
+
+    await session.manage({
+      id: "EPIC-1",
+      kind: "epic",
+      phase: "FRAMING",
+      summary: "One issue, so there is no spec set to be incoherent with.",
+    });
+    await session.tick("EPIC-1");
+    await review(spec.number, "alice", "APPROVED", spec.head);
+    await expect(session.tick("EPIC-1")).rejects.toThrow(/the process died/);
+    expect(first.actionsRun()).toEqual(["draftSpec"]);
+
+    const second = fakeDispatcher({ isolation: "remote" });
+    const resumed = await open(second);
+    const ticked = await resumed.tick("EPIC-1");
+
+    // Nothing observable can move this epic: its spec PR is unchanged and its
+    // reviews are not even read in the phase it woke up in. If the entry is
+    // suppressed here the epic sits in a finished phase for good — which is the
+    // failure the whole predicate exists to prevent, reached through the clause
+    // no existing world could reach it through.
+    expect(ticked.entity.phase).toBe("ISSUES");
+    expect(ticked.ledger.map((row) => row.actionKind)).toEqual([
+      "draftSpec",
+      "recordApproval",
+      "enterPhase",
+      "enterPhase",
+    ]);
+    expect(ledgerFailures(ticked.ledger, "FRAMING", ticked.entity.phase)).toEqual([]);
+    expect(replayFailures(ticked.ledger)).toEqual([]);
+
+    // And the recovery is a re-derived *entry*, not a re-bought dispatch: the
+    // one on record settled, and it was for the phase before.
+    expect(second.briefs).toHaveLength(0);
+    expect(ticked.dispatchCount).toBe(1);
+  });
+
   it("does not re-run entry work that settled, however it settled", async () => {
     repo = await createTestRepo();
     await freshState();
@@ -995,9 +1097,18 @@ describe("the goal check, from the dispatch that proves it to SETTLED", () => {
    * A harness that pushes a branch, opens its own submission, and reports a goal
    * verdict — the single-PR shape, where the goal is proved at implementation
    * completion, *before* the submission exists.
+   *
+   * One verdict per dispatch, in order. Past the end of the list a dispatch
+   * reports none, which is what every shipped dispatcher does today — so a test
+   * that wants a *second* dispatch to re-prove the goal has to say so.
    */
-  function agentProvingItsGoal(verdict: "passed" | "failed"): AgentDispatcher {
-    const inner = fakeDispatcher({ isolation: "remote", results: [{ goalCheck: verdict }] });
+  function agentProvingItsGoal(
+    ...verdicts: readonly ("passed" | "failed")[]
+  ): AgentDispatcher {
+    const inner = fakeDispatcher({
+      isolation: "remote",
+      results: verdicts.map((goalCheck) => ({ goalCheck })),
+    });
     let opened: { number: number; head: string } | null = null;
     return {
       ...inner,
@@ -1116,56 +1227,223 @@ describe("the goal check, from the dispatch that proves it to SETTLED", () => {
     expect(replayFailures(ticked.ledger)).toEqual([]);
   });
 
-  it("clears a passing verdict when a revision replaces the code it was taken against", async () => {
+  it("runs the post-merge check against what landed, not the branch still sitting there", async () => {
     repo = await createTestRepo();
     await freshState();
+    const submission = await submit(`fix/${ENTITY}`);
 
-    const dispatcher = agentProvingItsGoal("passed");
+    // `awaiting_goal_check` applies only once the PR has merged, and it applies
+    // while the entity is still in `IMPLEMENTATION` — so the *phase* answers
+    // `fix/<id>`, the feature branch, which still exists and still passes. It is
+    // not what landed whenever the merge squashed, resolved a conflict, or the
+    // base moved on, and a proof taken there settles the issue on code that
+    // never reached the base.
+    const dispatcher = fakeDispatcher({
+      isolation: "remote",
+      results: [{ produced: { pullNumber: submission.number } }, { goalCheck: "passed" }],
+    });
     const session = await open(dispatcher);
+
     await manageIssue(session);
     await session.tick(ENTITY);
     await session.tick(ENTITY);
-
-    // Feedback arrives while the PR is still under review, and the revision that
-    // answers it is new code — the proof was taken against the code it replaces.
-    const submission = dispatcher.submission()!;
-    await comment(submission.number, "alice.1.md", "This needs a test.\n");
-    const revised = await session.tick(ENTITY);
-    expect(revised.ledger.at(-1)?.actionKind).toBe("addressFeedback");
-
-    // The approval that follows is the moment it would cost something: with the
-    // stale proof standing, this gate is `awaiting_merge` and a human is invited
-    // to merge on a proof that no longer describes the change.
     await review(submission.number, "alice", "APPROVED", submission.head);
-    const approved = await session.tick(ENTITY);
+    await session.tick(ENTITY);
+    await mergeIntoMain(`fix/${ENTITY}`);
+    await session.tick(ENTITY);
 
-    expect(approved.gate).toBeNull();
-    expect((await session.read(ENTITY)).gate).toBeNull();
+    const brief = dispatcher.briefs.find((b) => b.action === "runGoalCheck");
+    expect(brief).toBeDefined();
+    expect(brief?.branch).not.toBe(`fix/${ENTITY}`);
+
+    // The name is the mechanism, not decoration: `dispatch/branch` cuts a branch
+    // the remote does not have from `<remote>/<base>` and resets it there every
+    // time (`branchPlan`'s creation plan, covered in `test/dispatch/branch`), so
+    // "a branch conductor never pushes" is how this file says *the base, at the
+    // revision that is on it now* with today's policy. What this test does not
+    // prove is the git: the checkout has no remote to fetch from, so the
+    // composition is asserted in two halves rather than one.
+    expect(brief?.branch).toBe(`goal-check/${ENTITY}`);
   });
 
-  it("leaves the verdict standing when a dispatch makes no claim about it", async () => {
-    repo = await createTestRepo();
-    await freshState();
+  describe("a dispatch that lands on the code the proof was taken against", () => {
+    /**
+     * **A merge gate never opens on unproved work.** `awaiting_merge` refuses to
+     * apply until `goalCheck` is `"passed"`, so a verdict that outlives the code
+     * it was taken against is conductor inviting a human to merge a change it
+     * never proved — while its ledger says it did.
+     *
+     * Every case below asserts **the gate** rather than the stored field. The
+     * field is an implementation of the rule and the gate is the rule; a test
+     * reading the field would pass on a clear that never reached storage. The
+     * read-back is the second half — a verdict cleared only in the tick's own
+     * snapshot is one the next process finds standing.
+     *
+     * The cases split by where their dispatch is actually reachable, which is
+     * not a detail: feedback reduces to nothing under `awaiting_merge` (the gate
+     * is a human's, and conductor waits), so a revision can only arrive while
+     * the PR is still under review, and it is the *approval afterwards* that
+     * would open the merge gate on the stale proof.
+     */
+    async function proved(
+      dispatcher: AgentDispatcher = agentProvingItsGoal("passed"),
+      overrides: OpenOverrides = {},
+    ): Promise<{
+      session: ConductorSession;
+      dispatcher: AgentDispatcher;
+      submission: { number: number; head: string };
+      /** A human approves, which is what opens `awaiting_merge` on a passing proof. */
+      approve(): Promise<void>;
+    }> {
+      repo = await createTestRepo();
+      await freshState();
 
-    // Absent is not "failed" and not "unknown" — it is *the vendor did not
-    // say*, which is the same rule the rest of the seam holds. A conflict
-    // resolution reports nothing about the goal, and a verdict already proved
-    // has to survive it.
-    const dispatcher = agentProvingItsGoal("passed");
-    const session = await open(dispatcher);
-    await manageIssue(session);
-    await session.tick(ENTITY);
-    await session.tick(ENTITY);
+      const session = await open(dispatcher, overrides);
+      await manageIssue(session);
+      await session.tick(ENTITY);
+      expect((await session.tick(ENTITY)).gate).toBe("awaiting_review");
 
-    const submission = dispatcher.submission()!;
-    await review(submission.number, "alice", "APPROVED", submission.head);
-    expect((await session.tick(ENTITY)).gate).toBe("awaiting_merge");
+      const submission = dispatcher.submission()!;
+      return {
+        session,
+        dispatcher,
+        submission,
+        approve: async () => {
+          await review(submission.number, "alice", "APPROVED", submission.head);
+          await session.tick(ENTITY);
+        },
+      };
+    }
 
-    // The base moves under the branch and touches the same file.
-    await repo.commit("operations.ts", "// main side\n", "main edit", "2026-08-03T00:00:00Z");
-    const conflicted = await session.tick(ENTITY);
+    /** Drive to the open merge gate: the proof stands and a human has approved. */
+    async function atTheMergeGate(
+      dispatcher: AgentDispatcher = agentProvingItsGoal("passed"),
+      overrides: OpenOverrides = {},
+    ) {
+      const driven = await proved(dispatcher, overrides);
+      await driven.approve();
+      expect((await driven.session.read(ENTITY)).gate).toBe("awaiting_merge");
+      return driven;
+    }
 
-    expect(conflicted.ledger.at(-1)?.actionKind).toBe("resolveConflict");
-    expect(conflicted.gate).toBe("awaiting_merge");
+    it("shuts it after a conflict resolution wrote different code", async () => {
+      const { session, dispatcher } = await atTheMergeGate();
+
+      // The base moves under the branch and touches the same file, so the
+      // submission conflicts and an agent is sent to resolve it.
+      await repo.commit("operations.ts", "// main side\n", "main edit", "2026-08-03T00:00:00Z");
+      const resolved = await session.tick(ENTITY);
+
+      expect(dispatcher.actionsRun()).toEqual(["implement", "resolveConflict"]);
+      expect(resolved.gate).not.toBe("awaiting_merge");
+      expect((await session.read(ENTITY)).gate).not.toBe("awaiting_merge");
+    });
+
+    it("shuts it after a rebase wrote different code", async () => {
+      const { session, dispatcher } = await atTheMergeGate();
+      const base = await repo.sha("main");
+
+      // A red base is someone else's breakage and conductor waits rather than
+      // dispatching. Its *recovery* is what sends an agent to rebase — which
+      // replays the branch onto commits the proof never saw.
+      await writeCheck(repo.root, base, { conclusion: "failure", at: T1 });
+      expect((await session.tick(ENTITY)).gate).toBe("awaiting_merge");
+
+      await writeCheck(repo.root, base, { conclusion: "success", at: T1 });
+      const rebased = await session.tick(ENTITY);
+
+      expect(dispatcher.actionsRun()).toEqual(["implement", "rebaseOnBase"]);
+      expect(rebased.gate).not.toBe("awaiting_merge");
+      expect((await session.read(ENTITY)).gate).not.toBe("awaiting_merge");
+    });
+
+    it("shuts it after a guidance re-examination wrote different code", async () => {
+      const injected = signalInjector();
+      const { session, dispatcher } = await atTheMergeGate(agentProvingItsGoal("passed"), {
+        policy: { ...DEFAULT_POLICY, onGuidanceChanged: "reExamineOpenPrs" },
+        observer: injected.wrap,
+      });
+
+      injected.send({
+        kind: "guidance_changed",
+        entityId: ENTITY,
+        at: "2026-08-03T00:00:00Z",
+        path: "docs/philosophy.md",
+      });
+      const reExamined = await session.tick(ENTITY);
+
+      expect(dispatcher.actionsRun()).toEqual(["implement", "reExamineOpenPrs"]);
+      expect(reExamined.gate).not.toBe("awaiting_merge");
+      expect((await session.read(ENTITY)).gate).not.toBe("awaiting_merge");
+    });
+
+    it("never opens it after a revision wrote different code", async () => {
+      const { session, dispatcher, submission, approve } = await proved();
+
+      // Feedback arrives while the PR is still under review, and the revision
+      // that answers it is new code — the proof was taken against the code it
+      // replaces.
+      await comment(submission.number, "alice.1.md", "This needs a test.\n");
+      const revised = await session.tick(ENTITY);
+      expect(revised.ledger.at(-1)?.actionKind).toBe("addressFeedback");
+
+      // The approval is the moment it costs something: with the stale proof
+      // standing, this gate is `awaiting_merge` and a human is invited to merge
+      // on a proof that no longer describes the change.
+      await approve();
+
+      expect(dispatcher.actionsRun()).toEqual(["implement", "addressFeedback"]);
+      expect((await session.read(ENTITY)).gate).not.toBe("awaiting_merge");
+    });
+
+    it("opens it when the dispatch re-proved the goal itself", async () => {
+      // The one exception, and it is not an exception to the rule so much as the
+      // rule read properly: a dispatch that ran the check on the code it just
+      // wrote is a *fresh* proof, not a stale one. Clearing that would send the
+      // work back for a check it had already passed.
+      const { session, dispatcher, submission, approve } = await proved(
+        agentProvingItsGoal("passed", "passed"),
+      );
+
+      await comment(submission.number, "alice.1.md", "This needs a test.\n");
+      await session.tick(ENTITY);
+      await approve();
+
+      expect(dispatcher.actionsRun()).toEqual(["implement", "addressFeedback"]);
+      expect((await session.read(ENTITY)).gate).toBe("awaiting_merge");
+    });
+
+    it("keeps the verdict standing when a dispatch that changed nothing makes no claim", async () => {
+      repo = await createTestRepo();
+      await freshState();
+
+      // Absent is not "failed" and not "unknown" — it is *the vendor did not
+      // say*, which is the rule the whole seam holds. What narrows it is that a
+      // dispatch which only replied to a human has nothing to say: the code the
+      // proof describes is still the code on the branch, so the merge gate is
+      // still reachable. Without this the rule collapses into "every dispatch
+      // clears", which throws away proofs and buys goal checks nobody needed.
+      const injected = signalInjector();
+      const dispatcher = agentProvingItsGoal("passed");
+      const session = await open(dispatcher, { observer: injected.wrap });
+      await manageIssue(session);
+      await session.tick(ENTITY);
+      expect((await session.tick(ENTITY)).gate).toBe("awaiting_review");
+
+      const submission = dispatcher.submission()!;
+      injected.send({
+        kind: "question_asked",
+        entityId: ENTITY,
+        at: "2026-08-03T00:00:00Z",
+        author: "alice",
+        commentId: "q1",
+        pullNumber: submission.number,
+      });
+      await session.tick(ENTITY);
+      expect(dispatcher.actionsRun()).toEqual(["implement", "answerQuestion"]);
+
+      await review(submission.number, "alice", "APPROVED", submission.head);
+      expect((await session.tick(ENTITY)).gate).toBe("awaiting_merge");
+    });
   });
 });

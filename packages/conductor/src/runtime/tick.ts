@@ -649,35 +649,86 @@ async function recordProduced(
 }
 
 /**
- * What a settled dispatch said about the goal, or `undefined` when it said
- * nothing.
+ * Can a dispatch of this kind leave the entity's code different from the code a
+ * stored goal verdict was taken against?
  *
- * Two actions can leave a verdict behind, and they are the two the process
- * defines rather than an arbitrary pair. `runGoalCheck` is the obvious one — it
- * exists to produce this and nothing else. `implement` is the one that is easy
- * to miss and load-bearing: in the single-PR shape the goal is proved at
- * implementation completion, *before* the PR opens, which is the only reason
- * `awaiting_merge` — a gate that refuses to apply until the goal has passed — is
- * ever reachable at all. Both report it through the same field, so neither needs
- * a path of its own.
+ * **The one place that question is answered, and it is answered for every kind
+ * rather than for the few that bite today.** `awaiting_merge` refuses to apply
+ * until the verdict is `"passed"`, so a verdict that outlives its code is
+ * conductor inviting a human to merge a change it never proved — while its
+ * ledger says it did. The rule was previously a single `if` naming
+ * `addressFeedback`, which left `resolveConflict`, `rebaseOnBase` and
+ * `reExamineOpenPrs` — three dispatches that commit different code — silently on
+ * the "keeps the proof" side.
  *
- * **`addressFeedback` clears it.** A revision is new code, and a proof taken
- * against the code it replaced says nothing about it. Left standing, an
- * approved-then-revised PR would carry a "passed" into `awaiting_merge` and
- * invite a human to merge on a proof that had expired. The clear is the
- * *default* for a revision rather than an override: a revision that re-ran the
- * check and reported the result is telling us something better than "unknown",
- * and it wins.
+ * A `Record` keyed on the action union rather than a list, because the failure
+ * this keeps having is *an action nobody thought about*, not an action somebody
+ * classified wrongly: adding a kind to {@link DispatchAction} is a **type
+ * error** until its author answers this question here. The alternative
+ * considered was inverting the default — clear unless the kind is on a
+ * known-harmless list — which fails safe and *silently*, and silence is the
+ * whole defect. It would make a new mutating action correct by accident and a
+ * new inert one quietly throw away a valid proof, and neither makes anyone look
+ * at this table. Failing loudly at compile time is the stronger of the two in
+ * the direction that costs a false merge, and it also catches the other
+ * direction, which failing safe cannot.
  *
- * Every other action returns whatever the dispatcher reported, which is almost
- * always nothing — and nothing means **no claim**, not a failure. A vendor that
- * is silent has not said the goal is unmet, so the stored verdict stands.
+ * `true` for every kind that can put a commit on a branch, including the ones
+ * that cannot be holding a verdict when they run: `draftSpec`/`reviseSpec` run
+ * in `SPEC`, before an issue has one, and `retrospect`/`polishDocs` belong to an
+ * epic, which has no verdict at all (see {@link readGoalCheck}). Classifying
+ * them by what they *do* rather than by where they happen to sit keeps this
+ * readable as one rule, and costs a write of `null` over `null`.
+ *
+ * `false` is for the two that change nothing. `answerQuestion` replies to a
+ * human and its brief says in as many words not to touch the work;
+ * `runGoalCheck` measures rather than edits.
+ *
+ * **This is not the whole rule** — a dispatch that reports its own verdict has
+ * re-proved whatever it just wrote, and that fresh proof wins over the clear.
+ * See {@link claimedGoalCheck}, which is where the two combine.
+ */
+const INVALIDATES_GOAL_CHECK: Record<DispatchAction["kind"], boolean> = {
+  draftSpec: true,
+  reviseSpec: true,
+  answerQuestion: false,
+  implement: true,
+  addressFeedback: true,
+  resolveConflict: true,
+  rebaseOnBase: true,
+  runGoalCheck: false,
+  retrospect: true,
+  polishDocs: true,
+  reExamineOpenPrs: true,
+};
+
+/**
+ * What a settled dispatch leaves the stored goal verdict at, or `undefined` when
+ * it leaves it alone.
+ *
+ * Two rules, in this order:
+ *
+ * - **A verdict the dispatch reported wins, always.** `runGoalCheck` is the
+ *   obvious source — it exists to produce this and nothing else. `implement` is
+ *   the one that is easy to miss and load-bearing: in the single-PR shape the
+ *   goal is proved at implementation completion, *before* the PR opens, which is
+ *   the only reason `awaiting_merge` is ever reachable at all. And a revision
+ *   that re-ran the check is telling us something better than "unknown" — that
+ *   is a fresh proof, not a stale one, so it is not cleared.
+ * - **A dispatch that could have changed the code and reported nothing clears
+ *   it.** See {@link INVALIDATES_GOAL_CHECK} for the enumeration and for why it
+ *   is a total map rather than a list.
+ *
+ * Everything else returns whatever the dispatcher reported, which is almost
+ * always nothing — and for a dispatch that changed nothing, nothing means **no
+ * claim**, not a failure. A vendor that is silent has not said the goal is
+ * unmet, so the stored verdict stands.
  */
 function claimedGoalCheck(
   action: DispatchAction,
   result: DispatchResult,
 ): GoalCheckVerdict | undefined {
-  if (action.kind === "addressFeedback") return result.goalCheck ?? null;
+  if (INVALIDATES_GOAL_CHECK[action.kind]) return result.goalCheck ?? null;
   return result.goalCheck;
 }
 
@@ -766,6 +817,50 @@ async function adoptSubmissionForBranch(
 }
 
 /**
+ * The branch a dispatch's workspace and brief are pointed at.
+ *
+ * {@link branchNameFor} answers this from the *phase*, which is right for every
+ * action that produces work and wrong for the one that grades it.
+ * `runGoalCheck` is dispatched from `awaiting_goal_check`, a gate that applies
+ * only once the PR has **merged**, and the entity is still in `IMPLEMENTATION`
+ * while it runs — so the phase answers `fix/<id>`: the feature branch, which
+ * still exists and still passes, and which is not what landed whenever the merge
+ * squashed, resolved a conflict, or the base moved on in between. A proof taken
+ * there is a proof of code that never reached the base, and it settles the issue
+ * on it. The proof has to be taken against what a reader of the base branch
+ * would actually get.
+ *
+ * **How a base revision is named with today's branch policy, and what that
+ * assumes.** `dispatch/branch` has two plans and no third: re-entry checks out a
+ * branch the remote already has, and creation cuts one the remote does *not*
+ * have from `<remote>/<base>` — resetting it there every time, which is exactly
+ * the semantics a goal check wants. So a branch conductor never pushes is how
+ * this file says "the base, at the revision on it now". The assumptions are
+ * stated rather than buried: the base is `ConductorConfig.baseBranch`, the
+ * remote's copy of it is authoritative, and `goal-check/<id>` stays absent from
+ * the remote. Naming `baseBranch` itself instead would provision `checkout -B
+ * <base> <remote>/<base>`, which occupies the shared base ref in a worktree —
+ * the one thing that module's policy exists to prevent — and resets a
+ * developer's local base under `cwd`. Passing `null` is worse than either: it
+ * skips the branch plan, so a worktree left on `fix/<id>` by an earlier dispatch
+ * is reused as-is, and the false proof comes back with nothing recording it.
+ *
+ * **The honest home for this is `dispatch/branch`**, as a third plan that
+ * provisions *detached* at `<remote>/<base>` (`fetch <remote> <base>` then
+ * `checkout --detach <remote>/<base>`). That needs no branch name at all and
+ * cannot go stale if somebody pushes one. Until it exists, this keeps the goal
+ * check off the superseded branch.
+ */
+function workspaceBranchFor(
+  entity: ConductorEntity,
+  action: DispatchAction,
+): string | null {
+  return action.kind === "runGoalCheck"
+    ? `goal-check/${entity.id}`
+    : branchNameFor(entity);
+}
+
+/**
  * Run one dispatch action: provision the workspace its dispatcher's isolation
  * calls for, hand over the brief, and record what came back.
  *
@@ -785,7 +880,7 @@ async function runDispatch(
   const { config, dispatcher, git, now } = context.deps;
   const startedAt = now().toISOString();
   const dispatchId = `${context.entityId}#${(await countDispatches(context)) + 1}`;
-  const branch = branchNameFor(entity);
+  const branch = workspaceBranchFor(entity, action);
 
   // The record goes down before the run, not after it: a dispatch that is in
   // flight when the process dies has to be visible to whoever looks next.
