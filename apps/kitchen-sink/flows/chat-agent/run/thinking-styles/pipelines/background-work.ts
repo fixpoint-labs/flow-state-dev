@@ -116,6 +116,62 @@ function renderOutput(output: unknown): string {
  * stamps onto `board.drain` reach the flow through this pipeline being a route
  * — a board nobody composes declares nothing.
  */
+/**
+ * Session state this pipeline persists: which finished ledger rows it has
+ * already announced.
+ *
+ * Exported, with {@link alreadyReportedTaskIds}, so a test can exercise the
+ * REAL schema and the REAL read rule. The first version of that test mirrored
+ * both locally, which meant dropping the legacy key from production left every
+ * assertion passing — a test that cannot fail when the logic changes (CLAUDE.md
+ * rule 5), pinning a duplicate-announcement bug it could not have caught.
+ */
+export const reportAcknowledgementSchema = z.object({
+  reportedSideChainTaskIds: z.array(z.string()).default([]),
+  /**
+   * The pre-rename spelling of the key above, read-only.
+   *
+   * FIX-766 renamed the middle execution tier from `work` to `sideChain`,
+   * and this key travelled with it as an ordinary identifier — which it is
+   * NOT: it is a persisted session-state key, so a conversation that
+   * started before the deploy holds its acknowledgements under the old
+   * name. Reading only the new one would default to `[]` and re-announce
+   * every job the user has already been told about.
+   *
+   * That is a third persisted surface. FIX-766 decision 2 accepted "no
+   * shim" for exactly two — `provenance.phase` (a value nothing reads to
+   * decide anything) and the block path (an identifier, where the alias
+   * would have to land in every prefix comparison in the path grammar).
+   * Neither argument covers this one: it IS read to decide something, and
+   * dual-reading a flat state key is four lines. So it gets the shim
+   * BP-030 asks for rather than an exemption argued from the other two.
+   *
+   * Never written. The union below is persisted under the new name on the
+   * next acknowledgement, so a session converges after one report and this
+   * key can be deleted once no live session predates the deploy.
+   */
+  reportedBackgroundTaskIds: z.array(z.string()).default([]),
+});
+
+/**
+ * The rows this conversation has already told the user about, in EITHER
+ * spelling.
+ *
+ * The union is the whole shim: a session that started before FIX-766 holds its
+ * acknowledgements under `reportedBackgroundTaskIds`, and reading only the
+ * current key would default to `[]` and re-announce every finished job. Never
+ * written — the merged set is persisted under the current name on the next
+ * acknowledgement, so a session converges after one report.
+ */
+export function alreadyReportedTaskIds(
+  state: Partial<z.infer<typeof reportAcknowledgementSchema>> | undefined
+): Set<string> {
+  return new Set([
+    ...(state?.reportedSideChainTaskIds ?? []),
+    ...(state?.reportedBackgroundTaskIds ?? []),
+  ]);
+}
+
 export function createBackgroundWorkPipeline(config: PipelineConfig) {
   const { modelId } = config;
 
@@ -228,48 +284,14 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
     // exists to argue against. Nothing about a delivery belongs to the task,
     // and once it is held here the board publishes no completed row at all —
     // the settle happens in the child, whose stream is its own.
-    sessionStateSchema: z.object({
-      reportedSideChainTaskIds: z.array(z.string()).default([]),
-      /**
-       * The pre-rename spelling of the key above, read-only.
-       *
-       * FIX-766 renamed the middle execution tier from `work` to `sideChain`,
-       * and this key travelled with it as an ordinary identifier — which it is
-       * NOT: it is a persisted session-state key, so a conversation that
-       * started before the deploy holds its acknowledgements under the old
-       * name. Reading only the new one would default to `[]` and re-announce
-       * every job the user has already been told about.
-       *
-       * That is a third persisted surface. FIX-766 decision 2 accepted "no
-       * shim" for exactly two — `provenance.phase` (a value nothing reads to
-       * decide anything) and the block path (an identifier, where the alias
-       * would have to land in every prefix comparison in the path grammar).
-       * Neither argument covers this one: it IS read to decide something, and
-       * dual-reading a flat state key is four lines. So it gets the shim
-       * BP-030 asks for rather than an exemption argued from the other two.
-       *
-       * Never written. The union below is persisted under the new name on the
-       * next acknowledgement, so a session converges after one report and this
-       * key can be deleted once no live session predates the deploy.
-       */
-      reportedBackgroundTaskIds: z.array(z.string()).default([]),
-    }),
+    sessionStateSchema: reportAcknowledgementSchema,
     uses: [board.capability],
     execute: async (input, ctx) => {
       // One ref for several reads — the accessor sugar re-hydrates the durable
       // collection per call, so `tasks()` once is the documented shape.
       const ledger = await ctx.cap["background-work"].tasks();
       const handles = await ledger.list();
-      const alreadyReported = new Set([
-        // `?? []` and not a truthiness check: a session that predates this key
-        // has no value at all (BP-030).
-        ...(ctx.session.state.reportedSideChainTaskIds ?? []),
-        // …and one that predates the FIX-766 rename has its acknowledgements
-        // under the retired spelling. Dropping these re-reports every job the
-        // user was already told about. See the schema for why this one is
-        // shimmed when two other persisted surfaces deliberately were not.
-        ...(ctx.session.state.reportedBackgroundTaskIds ?? []),
-      ]);
+      const alreadyReported = alreadyReportedTaskIds(ctx.session.state);
       const rows = handles.map(
         (task): ReportedTask => ({
           id: task.id,

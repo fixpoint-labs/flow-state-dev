@@ -46,6 +46,16 @@ declared resources registered and was then never called. They are removed rather
 than renamed, so the canonical name does not inherit a contract that does
 nothing. If you want per-side-chain lifecycle hooks, they need building.
 
+**Passing `work` now throws rather than being ignored.** TypeScript rejects it
+at compile time, and `defineFlow` also rejects it at runtime — on the definition
+and on instance options — so plain JavaScript callers, and TypeScript callers
+passing a non-fresh object, fail loudly instead of watching the config vanish.
+No lifecycle behaviour is lost, because those hooks never ran. What a silent
+drop would have taken with it is the resources they declared: the hooks *were*
+walked for declaration discovery, so a resource declared only on one of them
+was registered before and is not now. Move those declarations onto a block that
+actually runs.
+
 **One change is not just naming: this moves replay-log keys.** The tier's name
 is a segment of a block's structural path (`…/work[3]` becomes
 `…/sideChain[3]`), and that path is the key the replay log memoizes completed

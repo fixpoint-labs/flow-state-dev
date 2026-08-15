@@ -10,65 +10,68 @@
  * acknowledgements under the old name, and a reader that knows only the new one
  * defaults to `[]` and announces every finished job a second time.
  *
- * FIX-766's decision 2 accepted "no shim" for two persisted surfaces — the
- * `provenance.phase` value and the block path — on arguments that do not reach
- * this one: it *is* read to decide something, and dual-reading a flat state key
- * costs four lines rather than an alias in every path comparison. So this key
- * is shimmed, and this pins it.
+ * ## Why this file imports rather than mirrors
  *
- * The pipeline's block is not exported, so these assertions run against the
- * schema and the merge rule the block applies, which is where the bug was.
+ * The first version of it declared its own copy of the schema and reimplemented
+ * the union locally, and was candid in its docblock about doing so. That made
+ * every assertion here pass against the test file's own code: deleting the
+ * legacy key from the production schema, or dropping the legacy read, left all
+ * five green. A test that cannot fail when the logic changes is not a test
+ * (CLAUDE.md rule 5) — and the thing it claimed to pin is a duplicate-
+ * announcement bug for every pre-upgrade session.
+ *
+ * So the pipeline exports `reportAcknowledgementSchema` and
+ * `alreadyReportedTaskIds`, and this file imports both. Removing the legacy key
+ * from either now fails these tests, which is the only reason they are worth
+ * running.
  */
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
-
-/**
- * The session-state shape the pipeline declares, mirrored here so the test
- * fails if the legacy key is dropped from the schema — a schema without it
- * silently strips the value before any reader sees it.
- */
-const sessionStateSchema = z.object({
-  reportedSideChainTaskIds: z.array(z.string()).default([]),
-  reportedBackgroundTaskIds: z.array(z.string()).default([]),
-});
-
-/** The pipeline's read rule: the union of both spellings. */
-function alreadyReported(state: z.infer<typeof sessionStateSchema>): Set<string> {
-  return new Set([
-    ...(state.reportedSideChainTaskIds ?? []),
-    ...(state.reportedBackgroundTaskIds ?? []),
-  ]);
-}
+import {
+  alreadyReportedTaskIds,
+  reportAcknowledgementSchema,
+} from "../flows/chat-agent/run/thinking-styles/pipelines/background-work";
 
 describe("the report-acknowledgement key across the side-chain rename", () => {
   it("keeps the legacy spelling in the schema, so it survives parsing", () => {
-    const parsed = sessionStateSchema.parse({ reportedBackgroundTaskIds: ["task-1"] });
+    const parsed = reportAcknowledgementSchema.parse({
+      reportedBackgroundTaskIds: ["task-1"],
+    });
     expect(parsed.reportedBackgroundTaskIds).toEqual(["task-1"]);
   });
 
   it("treats a pre-rename acknowledgement as already reported", () => {
     // The exact shape a session written before the deploy holds.
-    const legacy = sessionStateSchema.parse({ reportedBackgroundTaskIds: ["task-1", "task-2"] });
-    const seen = alreadyReported(legacy);
+    const legacy = reportAcknowledgementSchema.parse({
+      reportedBackgroundTaskIds: ["task-1", "task-2"],
+    });
+    const seen = alreadyReportedTaskIds(legacy);
 
     expect(seen.has("task-1")).toBe(true);
     expect(seen.has("task-2")).toBe(true);
   });
 
   it("unions both spellings during the overlap, without dropping either", () => {
-    const mixed = sessionStateSchema.parse({
+    const mixed = reportAcknowledgementSchema.parse({
       reportedSideChainTaskIds: ["new-1"],
       reportedBackgroundTaskIds: ["old-1"],
     });
-    expect([...alreadyReported(mixed)].sort()).toEqual(["new-1", "old-1"]);
+    expect([...alreadyReportedTaskIds(mixed)].sort()).toEqual(["new-1", "old-1"]);
   });
 
   it("still reports a job neither spelling has acknowledged", () => {
-    const legacy = sessionStateSchema.parse({ reportedBackgroundTaskIds: ["task-1"] });
-    expect(alreadyReported(legacy).has("task-99")).toBe(false);
+    const legacy = reportAcknowledgementSchema.parse({
+      reportedBackgroundTaskIds: ["task-1"],
+    });
+    expect(alreadyReportedTaskIds(legacy).has("task-99")).toBe(false);
   });
 
   it("handles a session predating the key entirely", () => {
-    expect(alreadyReported(sessionStateSchema.parse({})).size).toBe(0);
+    expect(alreadyReportedTaskIds(reportAcknowledgementSchema.parse({})).size).toBe(0);
+  });
+
+  it("handles absent state without throwing", () => {
+    // `sessionStateSchema` defaults both keys, but the read rule is called with
+    // whatever the runtime hands it; an undefined state must not throw.
+    expect(alreadyReportedTaskIds(undefined).size).toBe(0);
   });
 });

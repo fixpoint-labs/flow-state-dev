@@ -26,6 +26,42 @@ describe("defineFlow", () => {
     );
   });
 
+  /**
+   * The flow-level `work` config was REMOVED by FIX-766, not renamed. Its four
+   * hooks were never invoked, so nothing about lifecycle behaviour changes —
+   * but they were walked for resource declaration, so silently dropping the key
+   * would unregister any resource declared only there. Both call sites, matching
+   * how the removed `middleware` option is rejected.
+   */
+  it("fails closed when the removed work option is passed to a flow", () => {
+    const onStarted = vi.fn();
+
+    expect(() =>
+      defineFlow({
+        kind: "legacy-work",
+        actions: {},
+        work: { onStarted }
+      } as any)
+    ).toThrow(/removed "work" option/);
+    expect(onStarted).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the removed work option is passed to flow instance options", () => {
+    const flow = defineFlow({ kind: "legacy-instance-work", actions: {} });
+
+    expect(() => flow({ work: { onCompleted: vi.fn() } } as any)).toThrow(
+      /removed "work" option/
+    );
+  });
+
+  it("names the resource-declaration consequence, not a lifecycle one", () => {
+    // The message is the only place a consumer learns WHY this throws when the
+    // hooks never ran. Asserting the substance stops it decaying into "removed".
+    expect(() =>
+      defineFlow({ kind: "legacy-work-msg", actions: {}, work: {} } as any)
+    ).toThrow(/no longer registered/);
+  });
+
   // Definition-only instance options (FIX-1048); see `rejectDefinitionOnlyOptions`.
   //
   // Runtime assertions rather than `@ts-expect-error` on purpose: this package's
