@@ -204,16 +204,31 @@ export function freshHumanApprovals(
 }
 
 /**
- * True when a human approves the PR **at its current head, right now**.
+ * True when a human approves the PR **at its current head, right now**, and no
+ * human is asking for changes.
  *
- * Two ways an approval fails to count, and both matter. A stale approval
- * against an older SHA is not an approval — this is the check that keeps
- * "approved" from meaning "was approved once, before the last push". And a
- * reviewer who has since requested changes on the same head no longer approves,
- * whatever GitHub's retained history still says.
+ * Three ways an approval fails to count, and all three matter:
+ *
+ * - **Stale.** An approval against an older SHA is not an approval — the check
+ *   that keeps "approved" from meaning "was approved once, before the push".
+ * - **Withdrawn.** A reviewer who has since requested changes on the same head
+ *   no longer approves, whatever GitHub's retained history still says.
+ * - **Outvoted by an outstanding change request.** `orchestration.md` → "What
+ *   counts as approval" gates on the latest review per human reviewer being
+ *   `APPROVED` **and no** reviewer's latest being `CHANGES_REQUESTED`, because
+ *   a human `CHANGES_REQUESTED` "outranks all three channels": it is the one
+ *   signal that withholds a gate no matter how approval arrived. Without this
+ *   clause, Alice objecting while Bob approves opens the gate.
+ *
+ * Deliberately **not** `freshHumanApprovals(pr).length > 0`. Bob's approval is
+ * still a standing fact about Bob — it stays in {@link freshHumanApprovals},
+ * and it is still who the ledger credits when the gate does open. What it does
+ * not do is release the gate over Alice's head.
  */
 export function hasFreshHumanApproval(pr: PullRequestFacts | undefined): boolean {
-  return freshHumanApprovals(pr).length > 0;
+  const positions = effectiveHumanReviewsAtHead(pr);
+  if (positions.some((r) => r.state === "CHANGES_REQUESTED")) return false;
+  return positions.some((r) => r.state === "APPROVED");
 }
 
 /**

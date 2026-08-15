@@ -89,6 +89,21 @@ describe("the decide table", () => {
     expect(kinds(actions)).toEqual(["runGoalCheck"]);
   });
 
+  it("does not settle an issue on its own PR opening, goal already proved or not", () => {
+    // A single-PR issue proves its goal at implementation completion, *before*
+    // the PR opens, so `goalCheck` is `passed` while the PR sits open and
+    // unreviewed. Completing the phase on the goal check alone reduced this
+    // exact signal to `enterPhase SETTLED`: the issue finished before CI ran,
+    // before anyone reviewed it, and before anyone merged it.
+    const w = worldWith(
+      "implementation",
+      pr({ checks: "success" }),
+      {},
+      { goalCheck: "passed" },
+    );
+    expect(decide(issue("IMPLEMENTATION"), signal("pr_opened"), w)).toEqual([]);
+  });
+
   it("settles the issue only when the goal check passes on the real path", () => {
     const w = worldWith(
       "implementation",

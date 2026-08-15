@@ -13,7 +13,7 @@ import type { Action } from "../../src/model/actions";
 import { fakeDispatcher } from "../../src/testing/fake";
 import { replay } from "../../src/testing/replay";
 import { issue } from "../fixtures";
-import { EMPTY_WORLD, LIFECYCLE_STEPS } from "./fixtures";
+import { EMPTY_WORLD, LIFECYCLE_STEPS, UNPROVED_MERGE_STEPS } from "./fixtures";
 
 const script = (overrides: Partial<Parameters<typeof replay>[0]> = {}) => ({
   entity: issue("SPEC"),
@@ -42,14 +42,17 @@ describe("one issue, end to end", () => {
       "reviseSpec", // a feedback round on the spec PR
       "implement", // entering IMPLEMENTATION on approval
       "addressFeedback", // CI went red
-      "runGoalCheck", // the human merged
+      // No `runGoalCheck`: this is the single-PR shape, where the goal was
+      // proved at implementation completion before the PR opened. Conductor
+      // re-running it after the merge is the multi-PR ordering, and applying it
+      // here is what let a human merge work conductor had never proved.
     ]);
   });
 
   it("records every human gate release, so each transition a human drove is reproducible", async () => {
     // Both approvals are gate releases: one lets the spec through, one opens
     // the merge gate. The second does not complete its phase — IMPLEMENTATION
-    // ends on the goal check — and a ledger that only recorded phase-completing
+    // ends on the merge — and a ledger that only recorded phase-completing
     // approvals would have no trace of the human who released `awaiting_review`.
     const result = await replay(script());
     const approvals = result.actions.filter((a) => a.kind === "recordApproval");
@@ -112,10 +115,49 @@ describe("one issue, end to end", () => {
       "awaiting_review",
       "awaiting_ci", // CI reported red
       "awaiting_review", // CI green, no fresh approval yet
-      "awaiting_merge", // approved; conductor waits for a human
-      "awaiting_goal_check", // merged
-      null, // the goal check passed — IMPLEMENTATION is complete
+      "awaiting_merge", // approved *and* proved; conductor waits for a human
+      null, // merged — the goal was already proved, so IMPLEMENTATION is complete
     ]);
+  });
+});
+
+describe("one issue whose goal was never proved before the merge", () => {
+  const unproved = () =>
+    replay({
+      entity: issue("IMPLEMENTATION"),
+      world: EMPTY_WORLD,
+      steps: UNPROVED_MERGE_STEPS,
+    });
+
+  it("never invites the merge, because it has nothing proving the work", async () => {
+    // The whole point of the merge gate holding back. An approved, green PR
+    // used to derive `awaiting_merge` on the approval alone — conductor
+    // announcing "ready to merge" for a change nothing had verified.
+    const result = await unproved();
+    expect(result.records.filter((r) => r.gate === "awaiting_merge")).toEqual([]);
+  });
+
+  it("still runs the goal check when a human merges anyway, and settles only on its pass", async () => {
+    // `awaiting_goal_check` stays reachable and load-bearing: it is the path
+    // for a human merging ahead of the gate, and for the assembled multi-PR
+    // goal once sub-PRs become nested tasks.
+    const dispatcher = fakeDispatcher();
+    const result = await replay({
+      entity: issue("IMPLEMENTATION"),
+      world: EMPTY_WORLD,
+      steps: UNPROVED_MERGE_STEPS,
+      dispatcher,
+    });
+
+    expect(dispatcher.actionsRun()).toEqual(["runGoalCheck"]);
+    expect(result.records.map((r) => r.gate)).toContain("awaiting_goal_check");
+    expect(result.entity.phase).toBe("SETTLED");
+  });
+
+  it("does not settle on the merge itself — merging is not proof", async () => {
+    const result = await unproved();
+    const merged = result.records.find((r) => r.signal === "merged");
+    expect(merged?.phaseAfter).toBe("IMPLEMENTATION");
   });
 });
 
@@ -181,8 +223,10 @@ describe("the fake dispatcher", () => {
   it("records every brief it was handed, which is what makes the loop assertable", async () => {
     const dispatcher = fakeDispatcher();
     await replay(script({ dispatcher }));
-    expect(dispatcher.briefs).toHaveLength(5);
-    expect(dispatcher.results).toHaveLength(5);
+    // Four, matching the lifecycle's dispatches above: the single-PR path has
+    // no post-merge `runGoalCheck` to make a fifth.
+    expect(dispatcher.briefs).toHaveLength(4);
+    expect(dispatcher.results).toHaveLength(4);
     expect(dispatcher.results.map((r) => r.dispatchId)).toEqual(
       dispatcher.briefs.map((b) => b.dispatchId),
     );

@@ -173,6 +173,47 @@ const SPEC: PhaseDefinition = {
   next: "IMPLEMENTATION",
 };
 
+/**
+ * `IMPLEMENTATION` — and the invariant a multi-PR issue must not break.
+ *
+ * Two rules, stated once so the four gates below read as consequences rather
+ * than as four independent choices:
+ *
+ * > **A merge gate never opens on unproved work, and an issue is not done until
+ * > its goal passes.**
+ *
+ * Neither half mentions how many PRs the issue has, and that is the point: the
+ * same predicates describe both shapes `orchestration.md` defines (the
+ * paragraph after the lifecycle diagram, "For a **single-PR** issue…").
+ *
+ * - **Single-PR.** `issue-implement` proves the goal on the real path at
+ *   completion, *before* the PR opens, so `goalCheck` is already `passed` by
+ *   the time `awaiting_merge` is reached. The gate applies, a human merges,
+ *   done. Conductor never invites a merge it has not proved.
+ * - **Multi-PR.** The sub-PRs are nested tasks carrying gates of their own; the
+ *   issue's own goal is the *assembled* one, which runs only once they settle.
+ *   Its `goalCheck` is `null` until then, so `awaiting_merge` never applies at
+ *   this level — correctly, because the issue-level merge gate was never about
+ *   a sub-PR's merge.
+ *
+ * **Why `completedWhen` reads `pr.state` and not `goalCheck` alone.** Because
+ * the single-PR shape makes `goalCheck === "passed"` true while the PR is still
+ * open, and completing on that alone settles an issue on its own `pr_opened` —
+ * before CI, before review, before anyone merged. The condition is *goal
+ * proved, and the work no longer sitting in an open PR*. It is `!== "open"`
+ * rather than `=== "merged"` deliberately: an issue holding no implementation
+ * PR of its own — the nested multi-PR shape — has no merge of its own to wait
+ * for, and demanding one would strand it forever.
+ *
+ * **`awaiting_goal_check` is not redundant.** It is the path for work that
+ * reached the base *without* a proof: a human merging ahead of the gate, and
+ * the assembled multi-PR goal. It is what dispatches `runGoalCheck`, and it is
+ * the only gate that does.
+ *
+ * Adding multi-PR therefore needs no PR-plan fact in `World` and no second gate
+ * table. If it starts to look like it does, the nesting is being modelled in
+ * the wrong place.
+ */
 const IMPLEMENTATION: PhaseDefinition = {
   name: "IMPLEMENTATION",
   entity: "issue",
@@ -203,12 +244,15 @@ const IMPLEMENTATION: PhaseDefinition = {
       satisfiedBy: (w) => hasFreshHumanApproval(implPr(w)),
     },
     {
-      // Conductor never merges. This gate is released by a human, always.
+      // Conductor never merges. This gate is released by a human, always — and
+      // it does not open until the goal has passed, so a human is never invited
+      // to merge work conductor has not proved. See the phase note above.
       // `artifact.reviews`: it only applies once the PR carries a fresh human
-      // approval, which is a read of the PR's reviews.
+      // approval, which is a read of the PR's reviews. `goalCheck`: the proof
+      // requirement itself.
       name: "awaiting_merge",
-      reads: ["pr.state", "pr.mergeable", "artifact.reviews"],
-      appliesWhen: (w) => hasFreshHumanApproval(implPr(w)),
+      reads: ["pr.state", "pr.mergeable", "artifact.reviews", "goalCheck"],
+      appliesWhen: (w) => hasFreshHumanApproval(implPr(w)) && w.goalCheck === "passed",
       satisfiedBy: (w) => implPr(w)?.state === "merged",
     },
     {
@@ -218,7 +262,7 @@ const IMPLEMENTATION: PhaseDefinition = {
       satisfiedBy: (w) => w.goalCheck !== null,
     },
   ],
-  completedWhen: (w) => w.goalCheck === "passed",
+  completedWhen: (w) => w.goalCheck === "passed" && implPr(w)?.state !== "open",
   next: "SETTLED",
 };
 

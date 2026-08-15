@@ -3,9 +3,20 @@
  *
  * Written as the world actually moves — a spec PR that gets a feedback round
  * before approval, an implementation PR that goes red before it goes green, the
- * spec PR closing *after* implementation has started, a human merge, and a goal
- * check on the real path. Every world here is the snapshot as it stood when that
- * signal arrived, which is what the tick's read-world step would have produced.
+ * spec PR closing *after* implementation has started, and a human merge. Every
+ * world here is the snapshot as it stood when that signal arrived, which is what
+ * the tick's read-world step would have produced.
+ *
+ * **This is the single-PR shape**, which is what makes it the realistic one:
+ * `issue-implement` proves the goal on the real path at implementation
+ * completion, *before* the PR opens (`issue-lifecycle` → Boundaries, "Goal
+ * verification is part of done, not a gate"). So every implementation world
+ * below carries `goalCheck: "passed"` from the moment the PR exists, and the
+ * merge is what finishes the issue — see the contract note on `IMPLEMENTATION`
+ * in `model/phases`.
+ *
+ * The other shape — work that reaches the base *unproved* — is
+ * {@link UNPROVED_MERGE_STEPS}.
  */
 
 import type { ReplayStep } from "../../src/testing/replay";
@@ -67,15 +78,24 @@ const implWorld = (
     ...rest,
   });
 
-const IMPL_OPEN = implWorld(pr({ number: IMPL_PR, headSha: IMPL_HEAD_1 }));
-const IMPL_CI_RED = implWorld(
+/**
+ * The same, with the goal already proved — the single-PR shape, where the proof
+ * lands at implementation completion and therefore predates the PR.
+ */
+const provedImplWorld = (
+  implPr: ReturnType<typeof pr>,
+  rounds = 0,
+): World => implWorld(implPr, rounds, { goalCheck: "passed" });
+
+const IMPL_OPEN = provedImplWorld(pr({ number: IMPL_PR, headSha: IMPL_HEAD_1 }));
+const IMPL_CI_RED = provedImplWorld(
   pr({ number: IMPL_PR, headSha: IMPL_HEAD_1, checks: "failure" }),
 );
-const IMPL_CI_GREEN = implWorld(
+const IMPL_CI_GREEN = provedImplWorld(
   pr({ number: IMPL_PR, headSha: IMPL_HEAD_2, checks: "success" }),
   1,
 );
-const IMPL_APPROVED = implWorld(
+const IMPL_APPROVED = provedImplWorld(
   pr({
     number: IMPL_PR,
     headSha: IMPL_HEAD_2,
@@ -84,7 +104,7 @@ const IMPL_APPROVED = implWorld(
   }),
   1,
 );
-const IMPL_MERGED = implWorld(
+const IMPL_MERGED = provedImplWorld(
   pr({
     number: IMPL_PR,
     state: "merged",
@@ -93,22 +113,14 @@ const IMPL_MERGED = implWorld(
     reviews: [freshApproval(IMPL_HEAD_2)],
   }),
   1,
-);
-const GOAL_PASSED = implWorld(
-  pr({
-    number: IMPL_PR,
-    state: "merged",
-    headSha: IMPL_HEAD_2,
-    checks: "success",
-    reviews: [freshApproval(IMPL_HEAD_2)],
-  }),
-  1,
-  { goalCheck: "passed" },
 );
 
 /**
  * The full path: SPEC → spec PR → feedback round → approval → IMPLEMENTATION →
- * CI red → fix → CI green → approval → merge → goal check → SETTLED.
+ * CI red → fix → CI green → approval → merge → SETTLED.
+ *
+ * No goal-check step, and that is the shape rather than an omission: the goal
+ * was proved before the implementation PR opened, so the merge is completion.
  */
 export const LIFECYCLE_STEPS: readonly ReplayStep[] = [
   // Picked up: the phase's entry work is dispatched.
@@ -184,14 +196,85 @@ export const LIFECYCLE_STEPS: readonly ReplayStep[] = [
     },
     world: IMPL_APPROVED,
   },
-  // A human merges. Conductor never does.
+  // A human merges. Conductor never does — and it only invited this merge
+  // because the goal was already proved.
   {
     signal: { kind: "merged", entityId: ID, at: AT, pullNumber: IMPL_PR },
     world: IMPL_MERGED,
   },
-  // The goal check passes on the real path.
+];
+
+/**
+ * The other shape: work that reached the base **unproved**.
+ *
+ * A human merging ahead of the gate, and — once sub-PRs become nested tasks —
+ * the assembled multi-PR goal that only runs after the last one lands. Both
+ * arrive here, at `awaiting_goal_check`, which is the only gate that dispatches
+ * `runGoalCheck`. Starts in `IMPLEMENTATION`, since the spec half is already
+ * covered by {@link LIFECYCLE_STEPS}.
+ */
+export const UNPROVED_MERGE_STEPS: readonly ReplayStep[] = [
+  {
+    signal: { kind: "pr_opened", entityId: ID, at: AT, pullNumber: IMPL_PR },
+    world: implWorld(pr({ number: IMPL_PR, headSha: IMPL_HEAD_2 })),
+  },
+  {
+    signal: {
+      kind: "ci_concluded",
+      entityId: ID,
+      at: AT,
+      conclusion: "success",
+      sha: IMPL_HEAD_2,
+    },
+    world: implWorld(pr({ number: IMPL_PR, headSha: IMPL_HEAD_2, checks: "success" })),
+  },
+  // Approved, but nothing has proved the goal — so conductor does not invite
+  // the merge. It holds no merge gate here at all.
+  {
+    signal: {
+      kind: "approved",
+      entityId: ID,
+      at: AT,
+      reviewer: "alice",
+      sha: IMPL_HEAD_2,
+      pullNumber: IMPL_PR,
+    },
+    world: implWorld(
+      pr({
+        number: IMPL_PR,
+        headSha: IMPL_HEAD_2,
+        checks: "success",
+        reviews: [freshApproval(IMPL_HEAD_2)],
+      }),
+    ),
+  },
+  // A human merges it anyway. That is allowed — conductor gates itself, not the
+  // human — and it is exactly what `awaiting_goal_check` exists to catch.
+  {
+    signal: { kind: "merged", entityId: ID, at: AT, pullNumber: IMPL_PR },
+    world: implWorld(
+      pr({
+        number: IMPL_PR,
+        state: "merged",
+        headSha: IMPL_HEAD_2,
+        checks: "success",
+        reviews: [freshApproval(IMPL_HEAD_2)],
+      }),
+    ),
+  },
+  // The goal check runs on the real path and passes. Only now is it done.
   {
     signal: { kind: "goal_check_passed", entityId: ID, at: AT },
-    world: GOAL_PASSED,
+    world: implWorld(
+      pr({
+        number: IMPL_PR,
+        state: "merged",
+        headSha: IMPL_HEAD_2,
+        checks: "success",
+        reviews: [freshApproval(IMPL_HEAD_2)],
+      }),
+      0,
+      { goalCheck: "passed" },
+    ),
   },
 ];

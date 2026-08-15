@@ -102,20 +102,53 @@ describe("whether a human approves this right now", () => {
     expect(hasFreshHumanApproval(botApproved)).toBe(false);
   });
 
-  it("collapses per reviewer, so one human cannot withdraw another's approval", () => {
-    // The scope of the collapse, stated as a test: it answers "has this human
-    // changed their mind", not "is anyone unhappy". Whether an outstanding
-    // change request from a *different* reviewer should withhold the gate is a
-    // separate process question, and this predicate deliberately does not
-    // answer it.
+  it("withholds the gate while a different human's change request stands", () => {
+    // The scope of the *collapse* is unchanged: it answers "has this human
+    // changed their mind", not "is anyone unhappy". What governs here is the
+    // other half of `orchestration.md` → "What counts as approval" — an
+    // approval counts only if the latest review per human reviewer is
+    // `APPROVED` **and no** reviewer's latest is `CHANGES_REQUESTED`. A human
+    // change request "outranks all three channels", so Bob cannot carry the
+    // gate over Alice's objection.
+    //
+    // Bob's approval is still a standing fact about Bob — hence the second
+    // assertion, which is what proves the rule is the change-request clause and
+    // not the per-reviewer collapse quietly eating his review.
     const split = pr({
       reviews: [
         review({ id: "r1", reviewer: "alice", state: "CHANGES_REQUESTED", at: at("10") }),
         review({ id: "r2", reviewer: "bob", state: "APPROVED", at: at("11") }),
       ],
     });
-    expect(hasFreshHumanApproval(split)).toBe(true);
+    expect(hasFreshHumanApproval(split)).toBe(false);
     expect(freshHumanApprovals(split).map((r) => r.reviewer)).toEqual(["bob"]);
+  });
+
+  it("opens the gate again once the objecting reviewer approves", () => {
+    // The withholding has to lift, or a change request would be permanent and
+    // no amount of addressing it could re-open the gate.
+    const resolved = pr({
+      reviews: [
+        review({ id: "r1", reviewer: "alice", state: "CHANGES_REQUESTED", at: at("10") }),
+        review({ id: "r2", reviewer: "bob", state: "APPROVED", at: at("11") }),
+        review({ id: "r3", reviewer: "alice", state: "APPROVED", at: at("12") }),
+      ],
+    });
+    expect(hasFreshHumanApproval(resolved)).toBe(true);
+    expect(freshHumanApprovals(resolved).map((r) => r.reviewer)).toEqual(["bob", "alice"]);
+  });
+
+  it("keeps 'has a human looked at this' answering yes under a split verdict", () => {
+    // `hasHumanReviewAtHead` must stay uncollapsed for the same reason it does
+    // after a withdrawal: the gate it feeds asks whether a review has happened,
+    // and withholding approval is not the same as nobody having looked.
+    const split = pr({
+      reviews: [
+        review({ id: "r1", reviewer: "alice", state: "CHANGES_REQUESTED", at: at("10") }),
+        review({ id: "r2", reviewer: "bob", state: "APPROVED", at: at("11") }),
+      ],
+    });
+    expect(hasHumanReviewAtHead(split)).toBe(true);
   });
 
   it("keeps 'has a human looked at this' answering yes after a withdrawal", () => {

@@ -266,6 +266,13 @@ modification time and git's commit times together say which head they were
 looking at, so an approval written before a push keeps pointing at the head it
 saw — the staleness rule holds without anyone cooperating with it.
 
+Changing your mind means editing the same file. Save `alice.json` again with
+`APPROVED` where it said `CHANGES_REQUESTED` and the next observation reports the
+new verdict, because a review is identified by the file, what it says, and when
+it was saved. Re-saving an unchanged verdict counts too: that is how you say you
+looked at the new head and still stand behind it. Nothing here asks a reviewer to
+write down a version of their own.
+
 Submission numbers are claimed on the write side (`openSubmission`), from what is
 already on disk, exactly as GitHub assigns a PR number when you open one. An
 observer that minted identity while reading would be inventing the thing it is

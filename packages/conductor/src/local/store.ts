@@ -152,6 +152,39 @@ export async function readSubmission(
 }
 
 /**
+ * A review's identity: the file it lives in, when it was saved, and the verdict
+ * it carried at that moment.
+ *
+ * **The file name alone is not identity.** A reviewer changing their mind edits
+ * `alice.json` in place — GitHub would call that a second review with a second
+ * id, and `reconcile` skips any review whose id conductor has already reduced
+ * over. Keyed on the name alone, the edit from `CHANGES_REQUESTED` to
+ * `APPROVED` produces no signal and the entity waits on a gate the world has
+ * already satisfied.
+ *
+ * The two extra components are values this reader already derives, so the
+ * reviewer still writes nothing but their verdict — no id, no revision counter,
+ * nothing to keep in step with a file they edit by hand:
+ *
+ * - **When it was saved** (`at`) is the act itself. Re-filing the same verdict
+ *   against a new head is a real second review — the author pushed a fix and
+ *   the reviewer looked again — and only the timestamp separates them. It also
+ *   means a bare `touch` reads as a re-review, which is the same rule the head
+ *   resolution below already applies: touching the file moves the commit the
+ *   verdict points at, so it *is* a claim about a different head, and the signal
+ *   agrees with the world rather than contradicting it.
+ * - **The verdict** (`state`) covers what the timestamp cannot: a reviewer who
+ *   pins `at` by hand, or two saves inside the one second `at` resolves to.
+ *
+ * The resolved SHA is deliberately not part of it. A submission's reviews are
+ * re-resolved against the last known head once it merges, which would flip every
+ * id at merge time and synthesize approvals nobody filed.
+ */
+function reviewId(name: string, at: string, state: string): string {
+  return `${name}@${at}#${state}`;
+}
+
+/**
  * Every review filed against a submission, as `ReviewFacts`.
  *
  * `sha` may be omitted by the reviewer, and usually is — asking a human to paste
@@ -203,7 +236,7 @@ export async function readReviews(
     const sha = payload.sha ?? (await resolveSha(at)) ?? "";
 
     out.push({
-      id: name,
+      id: reviewId(name, at, state),
       reviewer: payload.reviewer ?? name.replace(/\.json$/, ""),
       isHuman: true,
       state,

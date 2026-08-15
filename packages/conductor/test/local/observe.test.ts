@@ -173,7 +173,17 @@ describe("a review a human wrote as a file", () => {
     const pr = observation.world.pullRequests[number]!;
 
     expect(pr.reviews).toEqual([
-      { id: "alice.json", reviewer: "alice", isHuman: true, state: "APPROVED", sha: head, at: T2 },
+      {
+        // Not the file name: a reviewer editing this file in place files a
+        // second review, and an id that ignored the edit would be reduced over
+        // once and never again. See "changing their mind" below.
+        id: `alice.json@${T2}#APPROVED`,
+        reviewer: "alice",
+        isHuman: true,
+        state: "APPROVED",
+        sha: head,
+        at: T2,
+      },
     ]);
     expect(hasFreshHumanApproval(pr)).toBe(true);
   });
@@ -244,6 +254,62 @@ describe("a review a human wrote as a file", () => {
     // The first observation replays the opening and the review that was already
     // on it; the review's own signal is what a later tick would receive live.
     expect(first.signals.map((s) => s.kind)).toEqual(["pr_opened", "approved"]);
+  });
+});
+
+describe("a reviewer changing their mind in the same file", () => {
+  it("fires the new verdict as a signal, which a name-keyed identity would swallow", async () => {
+    repo = await createTestRepo();
+    const { number } = await submitBranch("spec/FIX-1");
+    const artifacts = [artifactAt(number)];
+
+    await fileReview(number, "alice.json", { reviewer: "alice", state: "CHANGES_REQUESTED" }, T2);
+    const first = await observeWith(artifacts);
+    expect(first.signals.map((s) => s.kind)).toEqual(["pr_opened", "changes_requested"]);
+
+    // The author addresses it and alice edits her verdict in place — the same
+    // two fields she wrote the first time, with one of them changed. Nothing in
+    // this file tells conductor it is a new review; the observer works that out.
+    await fileReview(number, "alice.json", { reviewer: "alice", state: "APPROVED" }, T3);
+
+    const second = await observeWith(artifacts, first.cursor);
+
+    expect(second.signals.map((s) => s.kind)).toEqual(["approved"]);
+    expect(second.world.pullRequests[number]!.reviews.map((r) => r.state)).toEqual(["APPROVED"]);
+    expect(hasFreshHumanApproval(second.world.pullRequests[number]!)).toBe(true);
+
+    // And it settles: the approval is reduced over once, not on every tick.
+    const third = await observeWith(artifacts, second.cursor);
+    expect(third.signals).toEqual([]);
+  });
+
+  it("re-fires the same verdict when it was re-filed against a newer head", async () => {
+    repo = await createTestRepo();
+    const { number } = await submitBranch("spec/FIX-1");
+    const artifacts = [artifactAt(number)];
+
+    await fileReview(number, "alice.json", { reviewer: "alice", state: "APPROVED" }, T2);
+    const first = await observeWith(artifacts);
+    expect(first.signals.map((s) => s.kind)).toContain("approved");
+
+    // A commit lands, which makes the approval stale.
+    await repo.run("checkout", "-q", "spec/FIX-1");
+    await repo.commit("spec.md", "revised\n", "revision", T3);
+    await repo.run("checkout", "-q", "main");
+
+    const stale = await observeWith(artifacts, first.cursor);
+    expect(hasFreshHumanApproval(stale.world.pullRequests[number]!)).toBe(false);
+
+    // Alice re-reads and saves the same verdict. Her file's content has not
+    // changed, but a save is how she says "I looked at this head too" — it is
+    // already what decides which commit the approval points at, so it is a
+    // review the driver has to hear about.
+    await repo.touch(inbox(number, "reviews", "alice.json"), "2026-08-08T00:00:00Z");
+
+    const refreshed = await observeWith(artifacts, stale.cursor);
+
+    expect(refreshed.signals.map((s) => s.kind)).toEqual(["approved"]);
+    expect(hasFreshHumanApproval(refreshed.world.pullRequests[number]!)).toBe(true);
   });
 });
 

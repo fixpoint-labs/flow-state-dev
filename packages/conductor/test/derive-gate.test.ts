@@ -45,12 +45,84 @@ describe("issue gates", () => {
     expect(deriveGate(issue("IMPLEMENTATION"), w)).toBe("awaiting_review");
   });
 
-  it("waits on a human to merge once the PR is approved", () => {
+  it("withholds the review gate while one human objects and another approves", () => {
+    // The helper-level rule (see `world.test.ts`) reaching the table: Bob's
+    // approval must not carry the PR past review while Alice's change request
+    // stands. Before the fix this derived `awaiting_merge` — conductor called a
+    // PR ready to merge with an unanswered objection on it.
+    const w = worldWith(
+      "implementation",
+      pr({
+        checks: "success",
+        reviews: [
+          review({
+            id: "r1",
+            reviewer: "alice",
+            state: "CHANGES_REQUESTED",
+            at: "2026-08-14T10:00:00Z",
+          }),
+          review({
+            id: "r2",
+            reviewer: "bob",
+            state: "APPROVED",
+            at: "2026-08-14T11:00:00Z",
+          }),
+        ],
+      }),
+      {},
+      { goalCheck: "passed" },
+    );
+    expect(deriveGate(issue("IMPLEMENTATION"), w)).toBe("awaiting_review");
+  });
+
+  it("waits on a human to merge once the PR is approved and the goal is proved", () => {
     const w = worldWith(
       "implementation",
       pr({ checks: "success", reviews: [freshApproval()] }),
+      {},
+      { goalCheck: "passed" },
     );
     expect(deriveGate(issue("IMPLEMENTATION"), w)).toBe("awaiting_merge");
+  });
+
+  it("never opens the merge gate on work whose goal has not passed", () => {
+    // The old table applied `awaiting_merge` on the approval alone, so
+    // conductor announced "ready to merge" for a change it had never proved.
+    // That is the multi-PR ordering (ci → review → merge → goal) applied to a
+    // single-PR issue, which proves its goal before its PR ever opens.
+    const unproved = worldWith(
+      "implementation",
+      pr({ checks: "success", reviews: [freshApproval()] }),
+    );
+    expect(deriveGate(issue("IMPLEMENTATION"), unproved)).toBeNull();
+    expect(isPhaseComplete(issue("IMPLEMENTATION"), unproved)).toBe(false);
+  });
+
+  it("does not settle an issue whose PR is still open, however the goal passed", () => {
+    // A single-PR issue proves its goal at implementation completion, *before*
+    // the PR opens — so `goalCheck === "passed"` holds the whole time the PR is
+    // under review. Completing on the goal check alone made the phase complete
+    // the moment the PR existed, so the very first signal settled an issue
+    // nobody had reviewed or merged.
+    const openButProved = worldWith(
+      "implementation",
+      pr({ checks: "success" }),
+      {},
+      { goalCheck: "passed" },
+    );
+    expect(isPhaseComplete(issue("IMPLEMENTATION"), openButProved)).toBe(false);
+    expect(deriveGate(issue("IMPLEMENTATION"), openButProved)).toBe("awaiting_review");
+  });
+
+  it("still dispatches the goal check for work that reached the base unproved", () => {
+    // `awaiting_goal_check` stays reachable and is not redundant: it is the
+    // path for a human merging ahead of the gate, and for the assembled
+    // multi-PR goal. It is the only gate that dispatches `runGoalCheck`.
+    const merged = worldWith(
+      "implementation",
+      pr({ state: "merged", checks: "success", reviews: [freshApproval()] }),
+    );
+    expect(deriveGate(issue("IMPLEMENTATION"), merged)).toBe("awaiting_goal_check");
   });
 
   it("waits on the goal check after merge, because merging is not proof", () => {
