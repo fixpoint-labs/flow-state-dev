@@ -43,6 +43,7 @@ export type SignalKind =
   | "phase_entered"
   | "dispatch_completed"
   | "dispatch_failed"
+  | "progress_stalled"
   // — the goal harness —
   | "goal_check_passed"
   | "goal_check_failed"
@@ -135,12 +136,24 @@ export interface IssueSettledSignal extends SignalBase {
   readonly childId: string;
 }
 
-/** Signals that carry no payload beyond the base fields. */
+/**
+ * Signals that carry no payload beyond the base fields.
+ *
+ * `progress_stalled` is the one worth a word. It reports that the entity has
+ * **nothing left that could move it** — no gate of its phase applies, the phase
+ * cannot complete, and its entry work has settled — which is a statement about
+ * durable state rather than about an event, and is therefore derived on every
+ * tick rather than remembered (`runtime/tick`'s `stalled`). It carries no
+ * payload because it names nothing: the situation it reports is read back out of
+ * the world the row already stores, which is what keeps one row from holding two
+ * sources of truth about the same fact.
+ */
 export interface PlainSignal extends SignalBase {
   readonly kind:
     | "phase_entered"
     | "goal_check_passed"
     | "goal_check_failed"
+    | "progress_stalled"
     | "external_status_changed"
     | "objective_approved";
 }
@@ -230,6 +243,7 @@ export const signalSchema: z.ZodType<Signal> = z.discriminatedUnion("kind", [
       "phase_entered",
       "goal_check_passed",
       "goal_check_failed",
+      "progress_stalled",
       "external_status_changed",
       "objective_approved",
     ]),

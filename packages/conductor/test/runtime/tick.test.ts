@@ -1035,6 +1035,323 @@ describe("a dispatch that could not be run", () => {
   });
 });
 
+/**
+ * A dispatch that ran, settled `completed`, and left nothing behind.
+ *
+ * The shape is not a vendor failure and not a crash: the harness authenticated,
+ * ran, hit ambiguity — or decided the task was underspecified, or asked its
+ * question into a final message nobody reads — and exited cleanly having
+ * produced nothing conductor can observe. `outcome` is `"completed"`.
+ *
+ * What that leaves behind is an entity **no gate describes**. Every gate in the
+ * phase turns on a submission, so with no submission not one of them *applies*;
+ * `completedWhen` is false; the entry work has settled, so nothing re-dispatches;
+ * and nothing failed, so nothing escalates. The entity sits there forever and
+ * every tick is a no-op. From outside it looks healthy — which is the whole
+ * defect, and the general form of the bug where conductor opened a PR it could
+ * not see and idled beside it.
+ *
+ * **The dispatcher below is the shipped one's shape, not a scripted convenience.**
+ * `claudeCodeDispatcher` reports `{ branch }` and nothing else, on purpose, and
+ * the default `fakeDispatcher` reports exactly that. Scripting a `pullNumber` is
+ * what no real vendor here says, and it is what hid this class: every tick test
+ * once handed conductor a submission the vendor had announced, so the world in
+ * which the vendor announces nothing was never reached.
+ */
+describe("a dispatch that completed and produced nothing", () => {
+  /** Manage an issue at IMPLEMENTATION and run the entry dispatch. Nothing opens a PR. */
+  async function ranAndProducedNothing(dispatcher: FakeDispatcher) {
+    repo = await createTestRepo();
+    await freshState();
+    const session = await open(dispatcher);
+    await manageIssue(session);
+
+    const dispatched = await session.tick(ENTITY);
+    expect(dispatcher.actionsRun()).toEqual(["implement"]);
+    expect(dispatcher.results[0]?.outcome).toBe("completed");
+    return { session, dispatched };
+  }
+
+  it("escalates on the tick that first observes the nothing, and says what to look at", async () => {
+    // The shipped report: a branch name, and no claim at all about a submission.
+    const dispatcher = fakeDispatcher({ isolation: "remote" });
+    const { session, dispatched } = await ranAndProducedNothing(dispatcher);
+    expect(dispatcher.results[0]?.produced).toEqual({ branch: `fix/${ENTITY}` });
+
+    // Not on the tick that ran it. The dispatch record is read once, at the top
+    // of a tick, so the tick that buys the work never judges it — which is what
+    // leaves room for the *next* one to go looking for a submission on the
+    // branch the agent pushed, the recovery an agent-opened PR depends on.
+    expect(dispatched.ledger.map((row) => row.actionKind)).toEqual(["implement"]);
+
+    const stalled = await session.tick(ENTITY);
+
+    expect(stalled.ledger.map((row) => row.actionKind)).toEqual(["implement", "escalate"]);
+    const row = stalled.ledger.at(-1)!;
+    expect(row).toMatchObject({
+      signalKind: "progress_stalled",
+      phaseBefore: "IMPLEMENTATION",
+      phaseAfter: "IMPLEMENTATION",
+      gate: null,
+    });
+
+    // Actionable, not "entity is stuck": the reason names the phase, what the
+    // phase was supposed to leave behind, and where to go looking.
+    const reason = decide(
+      { id: ENTITY, kind: "issue", phase: "IMPLEMENTATION" },
+      row.signal!,
+      row.world!,
+    ).flatMap((action) => (action.kind === "escalate" ? [action.reason] : []));
+    expect(reason).toHaveLength(1);
+    expect(reason[0]).toContain("IMPLEMENTATION");
+    expect(reason[0]).toContain("no implementation artifact");
+    expect(reason[0]).toContain(ENTITY);
+
+    // And it is a real transition, replayable like any other.
+    expect(replayFailures(stalled.ledger)).toEqual([]);
+    expect(ledgerFailures(stalled.ledger, "IMPLEMENTATION", stalled.entity.phase)).toEqual([]);
+  });
+
+  it("asks once, not once per tick", async () => {
+    const dispatcher = fakeDispatcher({ isolation: "remote" });
+    const { session } = await ranAndProducedNothing(dispatcher);
+
+    const stalled = await session.tick(ENTITY);
+    expect(stalled.ledger.map((row) => row.actionKind)).toEqual(["implement", "escalate"]);
+
+    // The row the escalation wrote is what stops it — the same convergence the
+    // `dispatch_failed` recovery uses. A stuck entity that also spams is worse
+    // than a stuck entity.
+    const again = await session.tick(ENTITY);
+    const andAgain = await session.tick(ENTITY);
+
+    expect(again.ledger).toHaveLength(stalled.ledger.length);
+    expect(andAgain.ledger).toHaveLength(stalled.ledger.length);
+    expect(dispatcher.actionsRun()).toEqual(["implement"]);
+  });
+
+  it("does not retry the work that produced nothing", async () => {
+    // Escalate, never retry. The agent has already demonstrated it cannot make
+    // progress here, so another turn is unbounded paid work in exactly the
+    // situation that earned the escalation.
+    const dispatcher = fakeDispatcher({ isolation: "remote" });
+    const { session } = await ranAndProducedNothing(dispatcher);
+
+    const stalled = await session.tick(ENTITY);
+
+    expect(stalled.dispatchCount).toBe(1);
+    expect(dispatcher.briefs).toHaveLength(1);
+  });
+
+  it("reads a vendor that reported nothing at all the same way", async () => {
+    // `{}` and `{ branch }` are one situation to conductor: neither names a host
+    // an artifact could be recorded at, so neither is progress. The distinction
+    // that matters is structural — is there something a gate can read — not what
+    // the vendor chose to mention.
+    const dispatcher = fakeDispatcher({ isolation: "remote", results: [{ produced: {} }] });
+    const { session } = await ranAndProducedNothing(dispatcher);
+
+    const stalled = await session.tick(ENTITY);
+    expect(stalled.ledger.map((row) => row.actionKind)).toEqual(["implement", "escalate"]);
+  });
+
+  it("escalates a spec dispatch that wrote a file instead of opening a submission", async () => {
+    // The other shape of the same nothing, and the one an artifact-existence
+    // test would call progress: the vendor really did produce something, and it
+    // is somewhere no gate can read. A spec lives on its spec PR (BP-037); a
+    // spec artifact sitting at a path has no reviews, no approval, and no way to
+    // complete the phase.
+    repo = await createTestRepo();
+    await freshState();
+
+    const dispatcher = fakeDispatcher({
+      isolation: "remote",
+      results: [{ produced: { artifactPath: `spec/${ENTITY}.md` } }],
+    });
+    const session = await open(dispatcher);
+    await manageFeature(session);
+    await session.tick(ENTITY);
+
+    const stalled = await session.tick(ENTITY);
+
+    expect(stalled.ledger.map((row) => row.actionKind)).toEqual(["draftSpec", "escalate"]);
+    expect(stalled.ledger.at(-1)?.signalKind).toBe("progress_stalled");
+    expect(replayFailures(stalled.ledger)).toEqual([]);
+  });
+
+  describe("the states that must not read as stuck", () => {
+    it("stays quiet while an entity waits at a gate somebody else releases", async () => {
+      // The positive control that keeps the predicate honest. This entity is
+      // just as idle — tick after tick appends nothing — and it is waiting on a
+      // human, which is the process working. A predicate that fired on "nothing
+      // happened" rather than on "nothing *can* happen" reports it.
+      const dispatcher = harness();
+      const { session, observed } = await drive(dispatcher);
+      expect(observed.gate).toBe("awaiting_review");
+
+      for (let n = 0; n < 3; n += 1) await session.tick(ENTITY);
+      const quiet = await session.tick(ENTITY);
+
+      expect(quiet.ledger.map((row) => row.actionKind)).toEqual(["implement"]);
+      expect(quiet.gate).toBe("awaiting_review");
+    });
+
+    it("stays quiet at a gate that applies and is already released", async () => {
+      // The sharper control, and the reason the predicate reads `appliesWhen`
+      // rather than the derived gate. An approved implementation PR whose goal
+      // was never proved derives **no** gate — `awaiting_merge` refuses to apply
+      // on unproved work — so a predicate keyed on "the derived gate is null"
+      // escalates the ordinary end of a review. The gate table still describes
+      // this entity: `awaiting_review` applies to it, and is satisfied.
+      const { session, submission } = await drive(harness());
+      await review(submission.number, "alice", "APPROVED", submission.head);
+
+      const approved = await session.tick(ENTITY);
+      expect(approved.gate).toBeNull();
+      expect(approved.ledger.map((row) => row.actionKind)).toEqual([
+        "implement",
+        "recordApproval",
+      ]);
+
+      const again = await session.tick(ENTITY);
+      expect(again.ledger).toHaveLength(approved.ledger.length);
+    });
+
+    it("stays quiet once the issue has settled", async () => {
+      // A terminal entity has nowhere to go, so "nothing will move it" is what
+      // being finished *means*. Its phase holds no gates and completes nothing,
+      // which is the exact shape of the stuck world one phase earlier.
+      repo = await createTestRepo();
+      await freshState();
+      const submission = await submit(`fix/${ENTITY}`);
+
+      const dispatcher = fakeDispatcher({
+        isolation: "remote",
+        results: [{ produced: { pullNumber: submission.number } }, { goalCheck: "passed" }],
+      });
+      const session = await open(dispatcher);
+
+      await manageIssue(session);
+      await session.tick(ENTITY);
+      await session.tick(ENTITY);
+      await review(submission.number, "alice", "APPROVED", submission.head);
+      await session.tick(ENTITY);
+      await repo.run("merge", "--no-ff", "-m", `merge fix/${ENTITY}`, `fix/${ENTITY}`);
+      const settled = await session.tick(ENTITY);
+      expect(settled.entity.phase).toBe("SETTLED");
+
+      const after = await session.tick(ENTITY);
+      const later = await session.tick(ENTITY);
+
+      expect(after.ledger).toHaveLength(settled.ledger.length);
+      expect(later.ledger).toHaveLength(settled.ledger.length);
+      expect(later.ledger.filter((row) => row.actionKind === "escalate")).toEqual([]);
+    });
+
+    it("stays quiet while the entry dispatch is still unsettled", async () => {
+      // Mid-dispatch looks identical to stuck from the world's side — no
+      // submission, no gate — and the two must not be confused: the recovery for
+      // an unsettled entry is to run it, not to file a report. The store stops
+      // accepting writes the instant the dispatch record lands, which
+      // `runDispatch` writes *before* the run, so what is left is a dispatch that
+      // started and never settled.
+      repo = await createTestRepo();
+      await freshState();
+
+      const first = fakeDispatcher({ isolation: "remote" });
+      const session = await open(first, {
+        store: storeDyingAfter(fileStateStore(statePath), (key) =>
+          key.startsWith("dispatches/"),
+        ),
+      });
+      await manageIssue(session);
+      await expect(session.tick(ENTITY)).rejects.toThrow(/the process died/);
+
+      const second = fakeDispatcher({ isolation: "remote" });
+      const resumed = await open(second);
+      const ticked = await resumed.tick(ENTITY);
+
+      // The entry is re-derived and re-run; nothing is escalated on the tick
+      // that runs it.
+      expect(second.actionsRun()).toEqual(["implement"]);
+      expect(ticked.ledger.filter((row) => row.actionKind === "escalate")).toEqual([]);
+    });
+
+    it("still reports a stall in the phase after the one that was escalated", async () => {
+      // The ask is scoped to the phase it was made in, and this is the world
+      // that proves it has to be. An escalation the *spec* earned is answered —
+      // the human approved the spec anyway — and the issue moved on. Reading
+      // "this entity has been escalated at some point" as "somebody is already
+      // looking" silences the implementation stall permanently, which is the
+      // original defect with an extra step in front of it.
+      repo = await createTestRepo();
+      await freshState();
+      const spec = await submit(`spec/${ENTITY}`);
+
+      const dispatcher = fakeDispatcher({
+        isolation: "remote",
+        results: [{ produced: { pullNumber: spec.number } }],
+      });
+      const session = await open(dispatcher, {
+        policy: { ...DEFAULT_POLICY, specReviewRoundBudget: 1 },
+      });
+
+      await manageFeature(session);
+      await session.tick(ENTITY);
+      await session.tick(ENTITY);
+
+      // One pass spends the budget; the next is escalated, in SPEC.
+      await comment(spec.number, "alice.1.md", "This needs a decision record.\n");
+      await session.tick(ENTITY);
+      await comment(spec.number, "alice.2.md", "And a rollback plan.\n");
+      const escalated = await session.tick(ENTITY);
+      expect(escalated.ledger.at(-1)).toMatchObject({
+        actionKind: "escalate",
+        phaseBefore: "SPEC",
+      });
+
+      // The human answers it by approving anyway, and the issue moves on. The
+      // implementation then produces nothing — no submission on its branch.
+      await review(spec.number, "alice", "APPROVED", spec.head);
+      const implementing = await session.tick(ENTITY);
+      expect(implementing.entity.phase).toBe("IMPLEMENTATION");
+      expect(dispatcher.actionsRun()).toEqual(["draftSpec", "reviseSpec", "implement"]);
+
+      const stalled = await session.tick(ENTITY);
+
+      expect(stalled.ledger.at(-1)).toMatchObject({
+        actionKind: "escalate",
+        signalKind: "progress_stalled",
+        phaseBefore: "IMPLEMENTATION",
+      });
+      expect(replayFailures(stalled.ledger)).toEqual([]);
+      expect(ledgerFailures(stalled.ledger, "SPEC", stalled.entity.phase)).toEqual([]);
+    });
+
+    it("does not file a second report beside the one a failed dispatch already earned", async () => {
+      // A failed harness and a harness that produced nothing are the same idle
+      // entity, and only one of them is news. `decide` has already escalated the
+      // failure, so the stall must read the ask as outstanding rather than
+      // stacking a second report on it.
+      repo = await createTestRepo();
+      await freshState();
+
+      // `cwd` isolation provisions for real against a checkout with no `origin`,
+      // so the dispatch settles as a failure without a vendor being involved.
+      const dispatcher = fakeDispatcher({ isolation: "cwd" });
+      const session = await open(dispatcher);
+      await manageIssue(session);
+
+      const failed = await session.tick(ENTITY);
+      expect(failed.ledger.map((row) => row.actionKind)).toEqual(["implement", "escalate"]);
+      expect(failed.ledger.at(-1)?.signalKind).toBe("dispatch_failed");
+
+      const again = await session.tick(ENTITY);
+      expect(again.ledger).toHaveLength(failed.ledger.length);
+    });
+  });
+});
+
 describe("one review pass's worth of comments", () => {
   it("dispatches one revision for the batch, and still records every comment", async () => {
     const dispatcher = harness();

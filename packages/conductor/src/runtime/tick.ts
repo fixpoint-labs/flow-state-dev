@@ -57,8 +57,9 @@
  *   makes re-observable. A signal this tick derives exists only in its own
  *   queue, so it needs a durable source to be re-derived from and a written
  *   consequence to stop. `phase_entered` has {@link entryCompleted};
- *   `dispatch_failed` has {@link unreducedFailures}. One rule, one instance per
- *   derived signal — not one predicate stretched across both.
+ *   `dispatch_failed` has {@link unreducedFailures}; `progress_stalled` has
+ *   {@link stalled}. One rule, one instance per derived signal — not one
+ *   predicate stretched across the three.
  *
  * One assumption this file makes and does not enforce: **one tick at a time per
  * entity.** Nothing here is atomic across its read-modify-write, so overlapping
@@ -105,7 +106,11 @@ import {
 } from "../model/world";
 import type { EpicState, IssueState, LedgerEntryState } from "../model/entities";
 import { decide } from "../driver/decide";
-import { deriveGate, type ConductorEntity } from "../driver/derive-gate";
+import {
+  deriveGate,
+  isPhaseStranded,
+  type ConductorEntity,
+} from "../driver/derive-gate";
 import {
   branchNameFor,
   provisionWorkspace,
@@ -442,6 +447,82 @@ function unreducedFailures(
   return dispatches
     .filter((row) => row.outcome === "failed" && !escalated.has(row.id))
     .map((row) => row.id);
+}
+
+/**
+ * Has the entity been left with **nothing that could move it**?
+ *
+ * The failure this exists for is the quiet one. A dispatch settles `completed`
+ * and produces nothing observable — the agent hit ambiguity, decided the task
+ * was underspecified, or asked its question into a final message nobody reads.
+ * Now no gate of the phase applies, because every gate turns on a submission and
+ * there is none; `completedWhen` is false; {@link entryCompleted} says the entry
+ * work ran, so nothing re-dispatches; and nothing failed, so nothing escalates.
+ * The entity sits there forever and every tick is a no-op. From outside it looks
+ * healthy, which is what makes it expensive: the bug it generalizes cost most of
+ * a day, and the fix that time (discovering submissions by branch) closed the
+ * instance and not the class.
+ *
+ * **Derived, never stored** — the same rule a gate is held to, for the same
+ * reason. Being stuck is a statement about durable state, so it must survive a
+ * restart without being remembered, and a stored flag is one a killed process
+ * loses or a repaired entity keeps.
+ *
+ * ---------------------------------------------------------------------------
+ * THE THREE CONJUNCTS, AND WHY EACH IS THE ONE IT IS
+ * ---------------------------------------------------------------------------
+ *
+ * - **The world leaves the phase nowhere to go** ({@link isPhaseStranded}) — no
+ *   gate of the phase *applies*, it has not completed, and it is not terminal.
+ *   All three are pure over the snapshot, so they live with the other world
+ *   predicates and are argued there. The one worth repeating here: *applies* is
+ *   not *outstanding*, and reading the derived gate instead would file a report
+ *   at the ordinary end of a review.
+ * - **The entry work has settled** ({@link entryCompleted}). This is what
+ *   separates *stuck* from *in flight*, and it does it exactly: from the world's
+ *   side a dispatch still running and a dispatch that produced nothing are
+ *   identical — no submission, no gate — and the recovery for the first is to run
+ *   it, not to file a report. It also covers the transient between an
+ *   `enterPhase` and the observation that first sees what the new phase produced:
+ *   entry is not complete until its dispatch settles, and the tick that enters a
+ *   phase drains that dispatch in the same pass.
+ * - **Nobody has been asked yet.** An outstanding escalation *is* something to
+ *   wait for — a human — so an entity already escalated in this phase is waiting
+ *   rather than unnoticed. One clause, three jobs: it converges this signal on
+ *   the row its own escalation writes (the convergence `unreducedFailures` uses),
+ *   it stops a second report stacking on the one a `dispatch_failed` already
+ *   earned for the same idle entity, and it keeps a closed PR's escalation from
+ *   being followed by a stall report about the same closure. Scoped to the
+ *   current phase, because an ask answered two phases ago is not an ask.
+ *
+ * **What it deliberately does not report.** A phase whose entry reduces to no
+ * action leaves no `phase_entered` row, so {@link entryCompleted} is permanently
+ * false for it and it is never reported here — epic `ISSUES` is the instance.
+ * That is under-reporting rather than a miss: an epic holds no registered
+ * children today at all, so a report there would fire on every epic and say
+ * nothing an operator could act on. And a gate that *applies* but that nothing
+ * will ever release — `awaiting_goal_check` after a check that returned no
+ * verdict is the live one — is a different shape needing a fact the phase table
+ * does not carry: which gates the world releases and which conductor's own
+ * dispatch does. Neither is guessed at here.
+ *
+ * @param dispatches The dispatch record **as it stood at the top of the tick**.
+ *   Not re-read, and that is the point: a tick never judges the work it has just
+ *   bought, so the earliest a stall can be reported is the following tick — which
+ *   is the tick that first goes looking for a submission on the branch the agent
+ *   pushed. Judging in-tick would escalate every agent that opens its own PR.
+ */
+function stalled(
+  entity: ConductorEntity,
+  world: World,
+  ledger: readonly LedgerEntryState[],
+  dispatches: readonly DispatchRow[],
+): boolean {
+  if (!isPhaseStranded(entity, world)) return false;
+  if (!entryCompleted(ledger, dispatches, entity)) return false;
+  return !ledger.some(
+    (row) => row.actionKind === "escalate" && row.phaseBefore === entity.phase,
+  );
 }
 
 /**
@@ -1256,7 +1337,35 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
 
   let newestSignalAt: string | null = null;
 
-  while (queue.length > 0) {
+  /**
+   * Whether the stall check has been made. Made **once, when the queue first
+   * empties**, and not at seeding time with the other derived signals.
+   *
+   * "Nothing left that could move it" is only knowable once everything the tick
+   * had has been reduced. Seeded early it is answered against a world holding
+   * signals nobody has acted on yet — a `merge_conflict` that is about to
+   * dispatch a resolution, a `base_recovered` about to dispatch a rebase — and
+   * it would file a report saying nothing will happen in the same pass that
+   * makes something happen. Draining first is also what puts this tick's own
+   * escalations on the ledger the check reads, so a stall never stacks on an ask
+   * that was written moments earlier.
+   */
+  let stallChecked = false;
+
+  for (;;) {
+    if (queue.length === 0) {
+      if (stallChecked) break;
+      stallChecked = true;
+      // Re-read, because the rows this tick wrote are the ones that matter: an
+      // escalation appended a moment ago is an ask already outstanding.
+      ledger = await readLedger(context);
+      if (!stalled(entity, world, ledger, dispatches)) break;
+      queue.push({
+        signal: { kind: "progress_stalled", entityId: context.entityId, at },
+        derived: true,
+      });
+    }
+
     const next = queue.shift();
     if (!next) break;
     const { signal } = next;

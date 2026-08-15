@@ -40,6 +40,47 @@ export function deriveGate(entity: ConductorEntity, world: World): Gate | null {
   return null;
 }
 
+/**
+ * True when this world leaves the phase **nowhere to go**: no gate of it applies,
+ * and it has not completed.
+ *
+ * The world half of *stuck* (`runtime/tick`'s `stalled` is the whole of it, and
+ * adds what only durable state can say — whether the phase's entry work has
+ * settled, and whether a human has already been asked). Kept here because it is
+ * a pure predicate over a snapshot, which is what this file is for, and because
+ * that is what makes its three clauses testable against literals rather than
+ * only through a drive that can reach them.
+ *
+ * **"No gate applies" is not "`deriveGate` returned `null`."** The difference is
+ * the whole reason this reads `appliesWhen` directly. `deriveGate` answers *what
+ * is outstanding*, and it returns `null` for two states that mean opposite
+ * things: a phase whose gates all applied and were satisfied — the table
+ * describes exactly where the entity is, it just is not waiting on that gate —
+ * and a phase **no gate applies to at all**, where the table has nothing to say
+ * about the entity's situation.
+ *
+ * `IMPLEMENTATION` is where they come apart, and not rarely. An approved
+ * implementation PR whose goal was never proved derives no gate: `awaiting_ci`
+ * and `awaiting_review` are satisfied, `awaiting_merge` refuses to *apply* on
+ * unproved work, and `awaiting_goal_check` is waiting for a merge. It is an open
+ * submission with a human's approval standing on it — a thing anyone can act on
+ * — and reading it as stuck would file a report at the ordinary end of a review.
+ * A phase holding no submission at all is the opposite: nobody has anything to
+ * act on.
+ *
+ * **A terminal phase is excluded rather than falling out of the predicate.**
+ * `SETTLED` holds no gates and completes nothing, which is the exact shape of a
+ * stranded phase one step earlier — and for a terminal phase that shape is what
+ * being finished *means*. The phase table already says so with `next === null`,
+ * so this reads it rather than inferring anything from the absence.
+ */
+export function isPhaseStranded(entity: ConductorEntity, world: World): boolean {
+  const def = phaseDefinition(entity.kind, entity.phase);
+  if (!def || def.next === null) return false;
+  if (def.gates.some((gate) => gate.appliesWhen(world))) return false;
+  return !def.completedWhen(world);
+}
+
 /** True when the entity's current phase has met its completion condition. */
 export function isPhaseComplete(entity: ConductorEntity, world: World): boolean {
   const def = phaseDefinition(entity.kind, entity.phase);

@@ -7,7 +7,12 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { deriveGate, isPhaseComplete, nextPhase } from "../src/driver/derive-gate";
+import {
+  deriveGate,
+  isPhaseComplete,
+  isPhaseStranded,
+  nextPhase,
+} from "../src/driver/derive-gate";
 import { factsReadBy, ISSUE_PHASES } from "../src/model/phases";
 import {
   artifact,
@@ -363,6 +368,119 @@ describe("derivation is stateless", () => {
     const w = worldWith("implementation", pr({ state: "merged" }), {}, proved("passed"));
     expect(deriveGate(issue("SETTLED"), w)).toBeNull();
     expect(nextPhase(issue("SETTLED"))).toBeNull();
+  });
+});
+
+/**
+ * A phase left with nowhere to go — the world half of *stuck*.
+ *
+ * Three clauses, and each has to be checked against the real tables rather than
+ * argued for: a phase no gate **applies** to, that has not completed, and that is
+ * not terminal. The runtime adds what only the ledger and the dispatch record can
+ * say (`runtime/tick`'s `stalled`); everything here is a literal in and a boolean
+ * out, which is what keeps the three separable.
+ */
+describe("a phase the world leaves nowhere to go", () => {
+  it("says so when the implementation produced nothing at all", () => {
+    // The shape the whole thing exists for: a dispatch settled `completed` and
+    // left nothing. Every IMPLEMENTATION gate turns on a submission, so not one
+    // of them applies; `completedWhen` requires an artifact, so the phase cannot
+    // finish. Nothing observable will ever arrive, because there is nothing for
+    // an observation to be about.
+    expect(isPhaseStranded(issue("IMPLEMENTATION"), world())).toBe(true);
+    expect(isPhaseStranded(issue("SPEC"), world())).toBe(true);
+  });
+
+  it("says so when the phase's artifact is somewhere no gate can read", () => {
+    // The vendor really did produce something, and it is at a path rather than a
+    // pull request — so it has no reviews, no approval, and no way to complete
+    // the phase. A test for "does an artifact exist" calls this progress.
+    const atAPath = world({
+      artifacts: [
+        artifact("spec", 10, { hostedAt: { type: "file", path: "spec/FIX-1.md" } }),
+      ],
+    });
+    expect(isPhaseStranded(issue("SPEC"), atAPath)).toBe(true);
+  });
+
+  it("does not say so while a gate applies, released or not", () => {
+    // Waiting is not being stuck. Both halves matter: an outstanding gate is the
+    // obvious one, and a *satisfied* one is the case that separates this
+    // predicate from `deriveGate(...) === null`.
+    const underReview = worldWith("implementation", pr({ checks: "failure" }));
+    expect(deriveGate(issue("IMPLEMENTATION"), underReview)).toBe("awaiting_ci");
+    expect(isPhaseStranded(issue("IMPLEMENTATION"), underReview)).toBe(false);
+
+    // Approved, green, and never proved. `awaiting_merge` refuses to apply on
+    // unproved work and every other gate is satisfied, so the derived gate is
+    // `null` — and this is the ordinary end of a review, on an open submission a
+    // human can act on. Reading the derived gate here files a report on the
+    // happy path of every issue whose harness reports no verdict.
+    const approvedUnproved = worldWith(
+      "implementation",
+      pr({ checks: "success", reviews: [freshApproval()] }),
+    );
+    expect(deriveGate(issue("IMPLEMENTATION"), approvedUnproved)).toBeNull();
+    expect(isPhaseStranded(issue("IMPLEMENTATION"), approvedUnproved)).toBe(false);
+  });
+
+  it("does not say so about a phase that has completed", () => {
+    // A phase with somewhere to go is not stranded, whatever its gates say. The
+    // shapes that reach this are the ones whose gates stop applying at exactly
+    // the moment the phase finishes: a spec PR closed unmerged with an approval
+    // standing, and an implementation hosted at no PR of its own.
+    const specClosedApproved = worldWith(
+      "spec",
+      pr({ state: "closed", reviews: [freshApproval()] }),
+    );
+    expect(isPhaseComplete(issue("SPEC"), specClosedApproved)).toBe(true);
+    expect(isPhaseStranded(issue("SPEC"), specClosedApproved)).toBe(false);
+
+    const assembled = world({
+      artifacts: [
+        artifact("implementation", 10, {
+          hostedAt: { type: "file", path: "docs/internal/assembled.md" },
+        }),
+      ],
+      goalCheck: "passed",
+      goalCheckSha: null,
+    });
+    expect(isPhaseComplete(issue("IMPLEMENTATION"), assembled)).toBe(true);
+    expect(isPhaseStranded(issue("IMPLEMENTATION"), assembled)).toBe(false);
+  });
+
+  it("never says so about a terminal phase, which is what being finished means", () => {
+    // `SETTLED` holds no gates and completes nothing — the exact shape of a
+    // stranded phase one step earlier. The phase table says `next === null`, so
+    // nothing has to be inferred from the absence.
+    const settledWorld = worldWith(
+      "implementation",
+      pr({ state: "merged" }),
+      {},
+      proved("passed"),
+    );
+    expect(isPhaseStranded(issue("SETTLED"), settledWorld)).toBe(false);
+    expect(isPhaseStranded(issue("SETTLED"), world())).toBe(false);
+    expect(isPhaseStranded(epic("SETTLED"), world())).toBe(false);
+  });
+
+  it("does not say so about the spec PR a human merged, which a gate is holding", () => {
+    // The forbidden shape has its own gate (`awaiting_spec_unmerge`), and a gate
+    // that applies is the phase table still describing where the entity is. That
+    // hold has its own missing ask — a `decide` branch — and this must not become
+    // a second, vaguer report standing in for it.
+    const merged = worldWith("spec", pr({ state: "merged" }));
+    expect(isPhaseStranded(issue("SPEC"), merged)).toBe(false);
+  });
+
+  it("says so about an epic wrap whose retrospective never appeared", () => {
+    // `WRAP` declares no gates at all, so "no gate applies" is trivially true
+    // and its completion is the only thing standing between the epic and a
+    // permanent stall.
+    expect(isPhaseStranded(epic("WRAP"), world())).toBe(true);
+    expect(
+      isPhaseStranded(epic("WRAP"), world({ artifacts: [artifact("retrospective")] })),
+    ).toBe(false);
   });
 });
 

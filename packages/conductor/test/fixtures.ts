@@ -164,6 +164,7 @@ export const SIGNAL_KINDS: readonly SignalKind[] = [
   "phase_entered",
   "dispatch_completed",
   "dispatch_failed",
+  "progress_stalled",
   "goal_check_passed",
   "goal_check_failed",
   "guidance_changed",

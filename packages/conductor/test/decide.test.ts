@@ -519,7 +519,7 @@ describe("the full phase × gate × signal matrix is total", () => {
         }
       }
     }
-    // 8 phases × 8 worlds × 21 signals — the matrix M0 claims to cover.
+    // 8 phases × 8 worlds × 22 signals — the matrix M0 claims to cover.
     expect(cells).toBe(phases.length * worlds.length * ISSUE_SIGNAL_KINDS.length);
   });
 

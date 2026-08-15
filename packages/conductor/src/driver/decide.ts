@@ -180,6 +180,50 @@ function reviseOrEscalate(
 }
 
 /**
+ * Why an entity has nothing left that could move it, in terms somebody can act
+ * on.
+ *
+ * "Entity is stuck" is useless. What an operator needs is the phase, what that
+ * phase was supposed to leave behind, and whether it left it — so the three
+ * branches below are the three answers to *is there anything a gate could read*,
+ * and each ends by naming where to go looking.
+ *
+ * **Read entirely from the world, never from the signal.** `progress_stalled`
+ * carries no payload precisely so this is derivable from the row alone: the same
+ * reason `approvalRecordFromWorld` reads the snapshot rather than the `approved`
+ * in hand. A reason baked into the signal would be a second source of truth
+ * about a fact the row already stores, and the two disagree the moment a row is
+ * replayed.
+ *
+ * It also touches nothing a gate declares — the artifact's kind and where it is
+ * hosted are scaffolding, present in every snapshot — so an escalation that is
+ * emphatically *not* a gate reads no gate's facts.
+ */
+function stalledReason(entity: ConductorEntity, world: World): string {
+  const kind = artifactKindForPhase(entity.phase);
+  const artifact = kind ? activeArtifact(entity, world) : undefined;
+
+  const holding =
+    kind === null
+      ? "produces no artifact of its own, and no gate applies to it"
+      : artifact === undefined
+        ? `produced no ${kind} artifact — there is no pull request for a gate to read`
+        : artifact.hostedAt.type === "pr"
+          ? `holds its ${kind} artifact at pull request #${artifact.hostedAt.number}, which no gate applies to`
+          : `holds its ${kind} artifact at ${artifact.hostedAt.path}, which is not a pull request, so no review gate applies`;
+
+  const lookAt =
+    artifact === undefined
+      ? "Read what the last dispatch actually did: it settled without leaving anything conductor can observe."
+      : "Check that the artifact above is where the work really is.";
+
+  return (
+    `${entity.phase} finished its entry work and ${holding}. ` +
+    `The phase cannot complete, so nothing will move ${entity.id} again. ${lookAt}`
+  );
+}
+
+/**
  * Signals that mean the same thing in any phase. Returns `undefined` when the
  * signal is not universal, so the caller falls through to the phase table.
  */
@@ -207,6 +251,33 @@ function decideUniversal(
           entityId: entity.id,
           reason: `Dispatch ${signal.dispatchId} exhausted its attempts.`,
         },
+      ];
+
+    // **Escalate, never retry.** The two are not close calls here. A retry is
+    // unbounded paid work in the exact situation where the harness has already
+    // demonstrated it cannot make progress — it ran, settled `completed`, and
+    // left nothing — and conductor's posture is to stop for a human rather than
+    // to guess. Nor is there anything to retry *into*: the phase's entry work is
+    // what would run again, and it is the thing that just produced nothing.
+    //
+    // **It is its own signal kind rather than a `dispatch_failed`**, because the
+    // two are different asks and the ledger is where an operator tells them
+    // apart. `dispatch_failed` means the harness broke — a crash, a timeout, a
+    // workspace it was never given — and the fix is usually to the harness.
+    // This means the harness *worked* and the work did not happen, and the fix
+    // is to the task: the issue was underspecified, or the agent asked a
+    // question into a final message nobody reads. Folding it into
+    // `dispatch_failed` would report a working vendor as a broken one, which is
+    // the same mistake `DispatchResult.goalCheck` refuses to make with
+    // `outcome`.
+    //
+    // The condition itself is derived by the tick, which holds the ledger and
+    // the dispatch record this cannot see; this branch is the same shape as
+    // `dispatch_failed`'s — the signal asserts the fact, `decide` turns it into
+    // the ask.
+    case "progress_stalled":
+      return [
+        { kind: "escalate", entityId: entity.id, reason: stalledReason(entity, world) },
       ];
 
     case "pr_closed":
