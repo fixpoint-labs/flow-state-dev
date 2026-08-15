@@ -124,6 +124,9 @@ export function reasonsForProvenance(report: {
   /** The stored `dataHonestyContractVersion`; `undefined` on a legacy record. */
   contractVersion: unknown;
 }): readonly string[] {
+  // `?? 0` covers the unbound session only: `memos` declares a non-external
+  // `client`, so a bound session's snapshot always carries a numeric count —
+  // pinned by "the memo count reaches the client" in this file's spec.
   if ((report.memoCount ?? 0) === 0) return [];
   return isPreDataHonestyFix(report.contractVersion)
     ? [PRE_DATA_HONESTY_FIX_REASON]

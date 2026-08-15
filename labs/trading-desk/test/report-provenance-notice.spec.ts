@@ -26,7 +26,9 @@ import {
   createFlowRegistry,
   createInMemoryStores,
 } from "@flow-state-dev/engine";
+import { isExternalResourceCollection } from "@flow-state-dev/core";
 import analysisFlow from "../flows/analysis/flow";
+import { memosCollection } from "../flows/analysis/resources";
 import { DATA_HONESTY_CONTRACT_VERSION } from "../flows/analysis/data-honesty-contract";
 import {
   PROVENANCE_NOTICE_BODY,
@@ -407,6 +409,38 @@ describe("what the client actually reads off a session that never ran", () => {
         contractVersion: state.dataHonestyContractVersion,
       }),
     ).toEqual([PRE_DATA_HONESTY_FIX_REASON]);
+  });
+});
+
+/**
+ * THE PRECONDITION BEHIND `?? 0` — pinned, not argued.
+ *
+ * `reasonsForProvenance` cannot do anything safe with an undefined count.
+ * Undefined genuinely does not distinguish the empty state from a legacy
+ * report, and treating it as "a report exists" would resurrect the orphaned-
+ * session warning this fix removes. So the fallback is not made safe — it is
+ * made UNREACHABLE for a bound session, and this is what keeps it that way.
+ *
+ * `buildResourceSnapshot` emits `count` for a collection iff it declares a
+ * `client` config and is not external — an external collection omits `count`
+ * deliberately (honest unknown cardinality, never a false 0). Both are
+ * properties of the collection definition, so both are asserted from it.
+ *
+ * That `count` then actually reaches the browser is proved end to end, in both
+ * the empty and non-empty case, by the block above: `count: 0` on a session
+ * that never ran and `count: 1` on the legacy record.
+ *
+ * A failure here means the banner has gone SILENT on legacy reports — the one
+ * direction this file's header forbids, and the one an argument about
+ * reachability was previously all that stood in front of.
+ */
+describe("the memo count reaches the client", () => {
+  it("memos declares a client config — what makes the engine emit `count` at all", () => {
+    expect(memosCollection.client).toBeDefined();
+  });
+
+  it("memos is not an external collection, which would omit `count` by design", () => {
+    expect(isExternalResourceCollection(memosCollection)).toBe(false);
   });
 });
 
