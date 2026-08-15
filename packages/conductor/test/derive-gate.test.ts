@@ -9,7 +9,16 @@
 import { describe, expect, it } from "vitest";
 import { deriveGate, isPhaseComplete, nextPhase } from "../src/driver/derive-gate";
 import { factsReadBy, ISSUE_PHASES } from "../src/model/phases";
-import { epic, freshApproval, issue, pr, review, world, worldWith } from "./fixtures";
+import {
+  artifact,
+  epic,
+  freshApproval,
+  issue,
+  pr,
+  review,
+  world,
+  worldWith,
+} from "./fixtures";
 
 describe("issue gates", () => {
   it("waits on nothing while the spec is still being drafted", () => {
@@ -33,6 +42,53 @@ describe("issue gates", () => {
     const w = worldWith("spec", pr({ reviews: [freshApproval()] }));
     expect(deriveGate(issue("SPEC"), w)).toBeNull();
     expect(isPhaseComplete(issue("SPEC"), w)).toBe(true);
+  });
+
+  it("holds the spec phase when its PR was merged, which the process forbids", () => {
+    // A spec must never land on the base branch (BP-037). Both spec gates read
+    // `state === "open"`, so a merged spec PR used to make every gate stop
+    // applying: no gate, no completion, and nothing left that could move the
+    // issue — a silent, permanent stall with no record that anything is wrong.
+    const merged = worldWith("spec", pr({ state: "merged" }));
+    expect(deriveGate(issue("SPEC"), merged)).toBe("awaiting_spec_unmerge");
+    expect(isPhaseComplete(issue("SPEC"), merged)).toBe(false);
+  });
+
+  it("does not read an approval on a merged spec PR as permission to implement", () => {
+    // The other half, and the dangerous one: with an approval standing, the old
+    // `completedWhen` advanced the issue to IMPLEMENTATION — conductor carrying
+    // on as normal while the forbidden artifact sits on the base branch.
+    const approved = worldWith(
+      "spec",
+      pr({ state: "merged", reviews: [freshApproval()] }),
+    );
+    expect(isPhaseComplete(issue("SPEC"), approved)).toBe(false);
+    expect(deriveGate(issue("SPEC"), approved)).toBe("awaiting_spec_unmerge");
+  });
+
+  it("still completes SPEC on the ordinary close-unmerged, approval standing", () => {
+    // The hold must catch the forbidden shape only. Closing the spec PR
+    // unmerged *is* the process (BP-037), and it is also the state conductor
+    // finds when it first observes an issue whose spec was approved before it
+    // was watching — holding there would strand every one of them.
+    const closed = worldWith("spec", pr({ state: "closed", reviews: [freshApproval()] }));
+    expect(isPhaseComplete(issue("SPEC"), closed)).toBe(true);
+    expect(deriveGate(issue("SPEC"), closed)).toBeNull();
+  });
+
+  it("releases the hold when a replacement spec supersedes the merged one", () => {
+    // Conductor cannot observe a human undoing the merge, so the release is the
+    // recovery a human actually performs: a fresh spec artifact. `artifacts` is
+    // newest-last, so the phase's active spec becomes the open replacement and
+    // the hold stops applying — the gate is a wait, not a dead end.
+    const replaced = world({
+      artifacts: [artifact("spec", 10), artifact("spec", 11)],
+      pullRequests: {
+        10: pr({ number: 10, state: "merged" }),
+        11: pr({ number: 11 }),
+      },
+    });
+    expect(deriveGate(issue("SPEC"), replaced)).toBe("awaiting_spec_review");
   });
 
   it("waits on CI before review, so nobody is asked to review a red PR", () => {
@@ -169,6 +225,30 @@ describe("epic gates", () => {
   it("holds no gate when it has no children yet", () => {
     expect(deriveGate(epic("ISSUES"), world())).toBeNull();
     expect(isPhaseComplete(epic("ISSUES"), world())).toBe(false);
+  });
+
+  it("does not pass a set of issues through cross-spec review on its own", () => {
+    // The pass is a human step conductor cannot run or observe
+    // (`orchestration.md` → "Cross-spec coherence"): it is gated on the user
+    // approving it, and it clears only once every alignment has landed and been
+    // re-approved. The phase used to be unconditionally complete, so every
+    // multi-issue epic went straight to ISSUES with the gate never asked for.
+    const set = world({
+      childIssues: [
+        { id: "FIX-2", settled: false },
+        { id: "FIX-3", settled: false },
+      ],
+    });
+    expect(isPhaseComplete(epic("CROSS_SPEC_REVIEW"), set)).toBe(false);
+    expect(deriveGate(epic("CROSS_SPEC_REVIEW"), set)).toBe("awaiting_cross_spec_review");
+  });
+
+  it("passes cross-spec review straight through for an epic holding one issue", () => {
+    // One spec has nothing to be incoherent with, so there is no pass to run
+    // and holding would be a stall with no work behind it.
+    const single = world({ childIssues: [{ id: "FIX-2", settled: false }] });
+    expect(isPhaseComplete(epic("CROSS_SPEC_REVIEW"), single)).toBe(true);
+    expect(deriveGate(epic("CROSS_SPEC_REVIEW"), single)).toBeNull();
   });
 });
 

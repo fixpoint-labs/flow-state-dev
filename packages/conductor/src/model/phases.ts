@@ -57,13 +57,17 @@ export type Phase = IssuePhase | EpicPhase;
 export type IssueGate =
   | "awaiting_spec_review"
   | "awaiting_spec_approval"
+  | "awaiting_spec_unmerge"
   | "awaiting_ci"
   | "awaiting_review"
   | "awaiting_merge"
   | "awaiting_goal_check";
 
 /** What an epic can be waiting on. */
-export type EpicGate = "awaiting_objective_approval" | "awaiting_issues";
+export type EpicGate =
+  | "awaiting_objective_approval"
+  | "awaiting_cross_spec_review"
+  | "awaiting_issues";
 
 export type Gate = IssueGate | EpicGate;
 
@@ -155,6 +159,39 @@ const SPEC: PhaseDefinition = {
   onEnter: ["draftSpec"],
   gates: [
     {
+      /**
+       * A spec PR that was *merged* is a human doing something the process
+       * forbids — a spec lives on its spec PR and in Linear, never on the base
+       * branch (BP-037, which CI enforces). So it is not a state to route
+       * around quietly, and this gate is declared first because the two gates
+       * below apply only while the PR is open.
+       *
+       * Without it a merged spec PR made every gate stop applying, and the two
+       * ways out were both wrong: with no standing approval the phase held no
+       * gate and met no completion condition, so nothing could ever move it
+       * again; with one, `completedWhen` advanced the issue to
+       * `IMPLEMENTATION` as though the spec had been closed normally, leaving
+       * the forbidden artifact on the base branch and saying nothing.
+       *
+       * `satisfiedBy` is `false` rather than a predicate because conductor
+       * cannot observe the repair: a merged PR stays merged in GitHub's model
+       * even after the merge is reverted. The release is `appliesWhen` going
+       * false, which is what a human's actual recovery produces — a
+       * replacement spec artifact, which {@link artifactOfKind} resolves as the
+       * active one, being newest.
+       *
+       * **The ask that belongs beside it is missing.** Phase-scoped human
+       * intervention is escalated (`decide`'s `pr_closed` branch is the
+       * neighbouring case), and this gate has no branch in `decide`, so today
+       * it holds visibly but silently. Adding that `case` is a `driver/decide`
+       * change, not a table one.
+       */
+      name: "awaiting_spec_unmerge",
+      reads: ["pr.state"],
+      appliesWhen: (w) => specPr(w)?.state === "merged",
+      satisfiedBy: () => false,
+    },
+    {
       // `artifact.rounds`: feedback here is revised or escalated on the
       // spec-review budget, and that comparison reads the artifact's rounds.
       name: "awaiting_spec_review",
@@ -169,7 +206,13 @@ const SPEC: PhaseDefinition = {
       satisfiedBy: (w) => hasFreshHumanApproval(specPr(w)),
     },
   ],
-  completedWhen: (w) => hasFreshHumanApproval(specPr(w)),
+  // A merged spec PR completes nothing, however the reviews read. Stated as
+  // `!== "merged"` rather than `=== "open"` deliberately: closing the spec PR
+  // unmerged *is* the process, and it is also the state conductor finds when it
+  // first observes an issue whose spec was approved before it was watching —
+  // demanding an open PR would strand every one of those.
+  completedWhen: (w) =>
+    specPr(w)?.state !== "merged" && hasFreshHumanApproval(specPr(w)),
   next: "IMPLEMENTATION",
 };
 
@@ -292,12 +335,63 @@ const FRAMING: PhaseDefinition = {
   next: "CROSS_SPEC_REVIEW",
 };
 
+/**
+ * `CROSS_SPEC_REVIEW` — held, because conductor cannot run this pass yet.
+ *
+ * The process (`docs/contributing/orchestration.md` → "Cross-spec coherence",
+ * and the `cross-spec-review` skill) puts three things between an epic's specs
+ * and its implementations, and **not one of them is a fact this snapshot
+ * carries**:
+ *
+ * 1. Every child spec is open and has cleared its own approval gate.
+ * 2. The user has approved *running* the pass. It never runs automatically.
+ * 3. Every alignment the pass produced has landed in its spec and every spec it
+ *    changed has cleared approval again — the coordinator's `crossSpecCleared`,
+ *    which exists precisely so a mechanical edit cannot clear a human gate.
+ *
+ * The phase used to be unconditionally complete with no entry dispatch, so
+ * every multi-issue epic passed straight to `ISSUES` with none of the three
+ * asked for. Read-only is what the *pass* is; it is not what this *phase* is,
+ * and conflating the two is how the gate went missing.
+ *
+ * So the phase fails closed on the one thing it can read: an epic holding more
+ * than one child has a spec set, and conductor holds it rather than reporting a
+ * pass it never ran. One child or none has nothing to be incoherent with, so
+ * there is no pass to wait for. `satisfiedBy` is `false` because no world fact
+ * reports (2) or (3) — the release is a human's, and conductor has no way to
+ * hear it today.
+ *
+ * **Two defects this does not fix, both needing more than this table:**
+ *
+ * - **The phase is sequenced before the artifacts it examines.** Child specs
+ *   are produced inside `ISSUES` (its gate waits on children *settling*, which
+ *   is the far end of their whole lifecycle), so a phase between `FRAMING` and
+ *   `ISSUES` runs before a single spec exists. Putting it where it belongs
+ *   means splitting `ISSUES` into a spec fan-out and an implementation fan-out,
+ *   which needs per-child phase facts. `ChildIssueFacts` is `{ id, settled }`:
+ *   it carries neither a child's spec state nor its route, so it cannot say
+ *   "the children have specs and those specs are approved", and it cannot
+ *   exclude the bug rows the pass explicitly does not cover.
+ * - **A late child still slips past.** The hold reads `childIssues` at the
+ *   moment `FRAMING` completes; an epic that registers its children afterwards
+ *   passes this phase while empty. That is the ordering defect above, seen from
+ *   the other side.
+ *
+ * Nothing here dispatches the pass either: `onEnter` may only name an action
+ * `decide` can emit, and there is no `crossSpecReview` action kind.
+ */
 const CROSS_SPEC_REVIEW: PhaseDefinition = {
   name: "CROSS_SPEC_REVIEW",
   entity: "epic",
-  gates: [],
-  // Read-only: it reports conflicts to the coordinator and never blocks on a gate.
-  completedWhen: () => true,
+  gates: [
+    {
+      name: "awaiting_cross_spec_review",
+      reads: ["childIssues"],
+      appliesWhen: (w) => w.childIssues.length > 1,
+      satisfiedBy: () => false,
+    },
+  ],
+  completedWhen: (w) => w.childIssues.length <= 1,
   next: "ISSUES",
 };
 
