@@ -1445,65 +1445,67 @@ describe("the goal check, from the dispatch that proves it to SETTLED", () => {
     expect(await inWorkspace("show", "HEAD:later.ts")).toBe("// landed after");
   });
 
+  /**
+   * **A merge gate never opens on unproved work.** `awaiting_merge` refuses to
+   * apply until the goal has passed, so a verdict that outlives the code it was
+   * taken against is conductor inviting a human to merge a change it never
+   * proved — while its ledger says it did.
+   *
+   * Every case below asserts **the gate** rather than the stored field. The
+   * field is an implementation of the rule and the gate is the rule; a test
+   * reading the field would pass on a clear that never reached storage. The
+   * read-back is the second half — a verdict invalidated only in the tick's own
+   * snapshot is one the next process finds standing.
+   */
+  async function proved(
+    dispatcher: AgentDispatcher = agentProvingItsGoal("passed"),
+    overrides: OpenOverrides = {},
+  ): Promise<{
+    session: ConductorSession;
+    dispatcher: AgentDispatcher;
+    submission: { number: number; head: string };
+    /** A human approves, which is what opens `awaiting_merge` on a passing proof. */
+    approve(): Promise<void>;
+  }> {
+    repo = await createTestRepo();
+    await freshState();
+
+    const session = await open(dispatcher, overrides);
+    await manageIssue(session);
+    await session.tick(ENTITY);
+    expect((await session.tick(ENTITY)).gate).toBe("awaiting_review");
+
+    const submission = dispatcher.submission()!;
+    return {
+      session,
+      dispatcher,
+      submission,
+      approve: async () => {
+        await review(submission.number, "alice", "APPROVED", submission.head);
+        await session.tick(ENTITY);
+      },
+    };
+  }
+
+  /** Drive to the open merge gate: the proof stands and a human has approved. */
+  async function atTheMergeGate(
+    dispatcher: AgentDispatcher = agentProvingItsGoal("passed"),
+    overrides: OpenOverrides = {},
+  ) {
+    const driven = await proved(dispatcher, overrides);
+    await driven.approve();
+    expect((await driven.session.read(ENTITY)).gate).toBe("awaiting_merge");
+    return driven;
+  }
+
   describe("a dispatch that lands on the code the proof was taken against", () => {
     /**
-     * **A merge gate never opens on unproved work.** `awaiting_merge` refuses to
-     * apply until `goalCheck` is `"passed"`, so a verdict that outlives the code
-     * it was taken against is conductor inviting a human to merge a change it
-     * never proved — while its ledger says it did.
-     *
-     * Every case below asserts **the gate** rather than the stored field. The
-     * field is an implementation of the rule and the gate is the rule; a test
-     * reading the field would pass on a clear that never reached storage. The
-     * read-back is the second half — a verdict cleared only in the tick's own
-     * snapshot is one the next process finds standing.
-     *
      * The cases split by where their dispatch is actually reachable, which is
      * not a detail: feedback reduces to nothing under `awaiting_merge` (the gate
      * is a human's, and conductor waits), so a revision can only arrive while
      * the PR is still under review, and it is the *approval afterwards* that
      * would open the merge gate on the stale proof.
      */
-    async function proved(
-      dispatcher: AgentDispatcher = agentProvingItsGoal("passed"),
-      overrides: OpenOverrides = {},
-    ): Promise<{
-      session: ConductorSession;
-      dispatcher: AgentDispatcher;
-      submission: { number: number; head: string };
-      /** A human approves, which is what opens `awaiting_merge` on a passing proof. */
-      approve(): Promise<void>;
-    }> {
-      repo = await createTestRepo();
-      await freshState();
-
-      const session = await open(dispatcher, overrides);
-      await manageIssue(session);
-      await session.tick(ENTITY);
-      expect((await session.tick(ENTITY)).gate).toBe("awaiting_review");
-
-      const submission = dispatcher.submission()!;
-      return {
-        session,
-        dispatcher,
-        submission,
-        approve: async () => {
-          await review(submission.number, "alice", "APPROVED", submission.head);
-          await session.tick(ENTITY);
-        },
-      };
-    }
-
-    /** Drive to the open merge gate: the proof stands and a human has approved. */
-    async function atTheMergeGate(
-      dispatcher: AgentDispatcher = agentProvingItsGoal("passed"),
-      overrides: OpenOverrides = {},
-    ) {
-      const driven = await proved(dispatcher, overrides);
-      await driven.approve();
-      expect((await driven.session.read(ENTITY)).gate).toBe("awaiting_merge");
-      return driven;
-    }
 
     it("shuts it after a conflict resolution wrote different code", async () => {
       const { session, dispatcher } = await atTheMergeGate();
@@ -1575,6 +1577,67 @@ describe("the goal check, from the dispatch that proves it to SETTLED", () => {
       expect((await session.read(ENTITY)).gate).not.toBe("awaiting_merge");
     });
 
+    /**
+     * The same harness, except that its revisions really write code: every
+     * dispatch after the first commits to the branch before it reports.
+     *
+     * The other cases in this block are named for code a dispatch wrote and are
+     * driven by fakes that write none — which is exactly right for them, since
+     * what they pin is conductor's own handling of a dispatch it ran. The case
+     * below is about the *revision* a dispatch left behind, so the head has to
+     * actually move for it to be pinning anything.
+     */
+    function agentThatPushes(
+      ...verdicts: readonly ("passed" | "failed")[]
+    ): AgentDispatcher {
+      const inner = agentProvingItsGoal(...verdicts);
+      let revisions = 0;
+      return {
+        ...inner,
+        async run(brief) {
+          const result = await inner.run(brief);
+          if (brief.action !== "implement") {
+            revisions += 1;
+            await repo.run("checkout", "-q", brief.branch!);
+            await repo.commit(
+              "operations.ts",
+              `// revision ${revisions}\n`,
+              `revision ${revisions}`,
+              "2026-08-03T00:00:00Z",
+            );
+            await repo.run("checkout", "-q", "main");
+          }
+          return result;
+        },
+      };
+    }
+
+    it("binds a re-proof to the code the dispatch wrote, not the head it started from", async () => {
+      // A tick's snapshot was read *before* its dispatch ran, so the head in it
+      // predates whatever the agent has just pushed. Recording a fresh verdict
+      // against that head would name a revision the check never saw — and the
+      // next observation, finding a different head, would throw the live proof
+      // away and send the work back for a check it had already passed. So the
+      // revision is recorded as unknown and resolved by the observation that can
+      // actually answer it.
+      const { session, dispatcher, submission } = await proved(
+        agentThatPushes("passed", "passed"),
+      );
+
+      await comment(submission.number, "alice.1.md", "This needs a test.\n");
+      await session.tick(ENTITY);
+
+      const rewritten = await repo.sha(`fix/${ENTITY}`);
+      expect(rewritten).not.toBe(submission.head);
+
+      await review(submission.number, "alice", "APPROVED", rewritten);
+      const approved = await session.tick(ENTITY);
+
+      expect(dispatcher.actionsRun()).toEqual(["implement", "addressFeedback"]);
+      expect(approved.gate).toBe("awaiting_merge");
+      expect((await session.read(ENTITY)).gate).toBe("awaiting_merge");
+    });
+
     it("opens it when the dispatch re-proved the goal itself", async () => {
       // The one exception, and it is not an exception to the rule so much as the
       // rule read properly: a dispatch that ran the check on the code it just
@@ -1623,6 +1686,77 @@ describe("the goal check, from the dispatch that proves it to SETTLED", () => {
 
       await review(submission.number, "alice", "APPROVED", submission.head);
       expect((await session.tick(ENTITY)).gate).toBe("awaiting_merge");
+    });
+  });
+
+  describe("a head that moved with no dispatch behind it", () => {
+    /**
+     * **The list of dispatch kinds cannot be the guarantee, because a head can
+     * change with no dispatch at all.** A human — or any automation conductor is
+     * not driving — pushes another commit to the implementation PR. The next
+     * observation reads the new head and records it as a divergence, which is
+     * the correct handling of a fact the source owns; no action is produced, so
+     * nothing ever consults the dispatch table, and the stored verdict stands.
+     * Green CI and a fresh approval on that new head then open `awaiting_merge`
+     * on proof of code that is no longer there.
+     *
+     * What closes it is not a longer list of causes but binding the verdict to
+     * the revision it proved. A push nobody dispatched then fails the gate's
+     * question — *does this verdict describe the current head?* — by the same
+     * mechanism a revision does, and so does a cause nobody has thought of yet.
+     */
+
+    /** A human pushing another commit to the PR, with conductor nowhere in the loop. */
+    async function pushToBranch(branch: string): Promise<string> {
+      await repo.run("checkout", "-q", branch);
+      const head = await repo.commit(
+        "operations.ts",
+        "// a human's own edit\n",
+        "a human pushes to the open PR",
+        "2026-08-03T00:00:00Z",
+      );
+      await repo.run("checkout", "-q", "main");
+      return head;
+    }
+
+    it("never opens the merge gate on a proof the push left behind", async () => {
+      const { session, dispatcher, submission } = await proved();
+
+      // Nothing conductor did is in this sequence. A human pushes, CI goes
+      // green on the commit they pushed, and they approve it.
+      const pushed = await pushToBranch(`fix/${ENTITY}`);
+      expect(pushed).not.toBe(submission.head);
+      await writeCheck(repo.root, pushed, { conclusion: "success", at: T1 });
+      await review(submission.number, "alice", "APPROVED", pushed);
+
+      const ticked = await session.tick(ENTITY);
+
+      // No dispatch ran, which is the whole point: the invalidation cannot have
+      // come from the dispatch table.
+      expect(dispatcher.actionsRun()).toEqual(["implement"]);
+      expect(ticked.gate).not.toBe("awaiting_merge");
+      expect((await session.read(ENTITY)).gate).not.toBe("awaiting_merge");
+      // And it does not settle either — completion rests on the same proof, so
+      // a gate that merely stopped being *derived* would still finish the issue.
+      expect(ticked.entity.phase).toBe("IMPLEMENTATION");
+      expect(replayFailures(ticked.ledger)).toEqual([]);
+    });
+
+    it("opens it when the head the proof describes is still the head", async () => {
+      const { session, dispatcher, submission } = await proved();
+
+      // The same green CI and the same fresh approval as above. The only
+      // difference is that nobody pushed — so a fix that simply never opened the
+      // gate passes the case above and fails here.
+      await writeCheck(repo.root, submission.head, { conclusion: "success", at: T1 });
+      await review(submission.number, "alice", "APPROVED", submission.head);
+
+      const ticked = await session.tick(ENTITY);
+
+      expect(dispatcher.actionsRun()).toEqual(["implement"]);
+      expect(ticked.gate).toBe("awaiting_merge");
+      expect((await session.read(ENTITY)).gate).toBe("awaiting_merge");
+      expect(replayFailures(ticked.ledger)).toEqual([]);
     });
   });
 });

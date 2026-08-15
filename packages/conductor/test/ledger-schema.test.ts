@@ -24,6 +24,7 @@ import {
   HEAD,
   freshApproval,
   pr,
+  proved,
   review,
   signal,
   SIGNAL_KINDS,
@@ -118,7 +119,7 @@ describe("a ledger row carries `decide`'s three arguments", () => {
         reviews: [review({ state: "CHANGES_REQUESTED" }), freshApproval("older-sha")],
       }),
       { reviewRounds: 3 },
-      { goalCheck: "failed", guidanceHashes: { "docs/philosophy.md": "h1" } },
+      { ...proved("failed"), guidanceHashes: { "docs/philosophy.md": "h1" } },
     );
 
     expect(roundTrip(row({ world })).world).toEqual(world);

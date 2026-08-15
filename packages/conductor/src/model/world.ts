@@ -127,6 +127,13 @@ export interface World {
   readonly pullRequests: Readonly<Record<number, PullRequestFacts>>;
   /** Result of the goal check on the real path; `null` when it has not run. */
   readonly goalCheck: "passed" | "failed" | null;
+  /**
+   * The revision {@link World.goalCheck} was taken against, and the half that
+   * makes the verdict mean something. `null` when no check has run, or when the
+   * revision it proved is not yet known — see {@link goalCheckAtHead}, which is
+   * the only thing that should read this field.
+   */
+  readonly goalCheckSha: string | null;
   /** Children, for an epic. Empty for an issue. */
   readonly childIssues: readonly ChildIssueFacts[];
   /** Content hash per guidance path, as last read from the repo. */
@@ -232,6 +239,65 @@ export function hasFreshHumanApproval(pr: PullRequestFacts | undefined): boolean
 }
 
 /**
+ * The goal verdict **as it applies to the work in front of us** — the stored
+ * verdict when it describes the revision that work is sitting at, and `null`
+ * when it describes some other revision or none.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE VERDICT IS BOUND TO A REVISION RATHER THAN GUARDED BY A LIST
+ * ---------------------------------------------------------------------------
+ *
+ * A merge gate never opens on unproved work, and `awaiting_merge` used to hold
+ * that by turning on `goalCheck === "passed"` alone. That reads as *this change
+ * was proved*, and it is only ever true of the revision the check actually ran
+ * on. Everything that could put a different revision under the same verdict then
+ * had to be enumerated somewhere — and the enumeration lived over conductor's own
+ * dispatch kinds (`runtime/tick`'s `INVALIDATES_GOAL_CHECK`), which cannot be
+ * complete, because **a head can change with no dispatch at all**. A human or an
+ * external automation pushing another commit to the implementation PR is
+ * observed, recorded as a divergence, and produces no action; nothing consults
+ * the dispatch table, the verdict stands, and green CI plus a fresh approval on
+ * the new head open the merge gate on proof of code that is no longer there.
+ *
+ * Storing the revision the proof describes closes that as a property instead of
+ * as a list. The question the gate asks — *does this verdict describe the head
+ * in front of me?* — is answered the same way for a dispatch conductor ran, for
+ * a push it never saw, and for a cause nobody has thought of yet.
+ *
+ * **A verdict with no revision reads as unproved, never as proved-at-unknown.**
+ * That is the direction a record written before the field existed falls (BP-030,
+ * see `model/entities`), and it is also the direction a verdict whose revision is
+ * not yet knowable falls — see `runtime/tick`, where a dispatch that may have
+ * pushed leaves the proof unbound until the next observation reveals what it
+ * pushed. Falling the other way opens a merge gate.
+ *
+ * **Work that is not hosted at a submission has no head to go stale**, and the
+ * verdict stands for it. That is not a loophole, it is the other shape the
+ * `IMPLEMENTATION` contract already describes: a multi-PR issue's assembled goal
+ * belongs to the issue and to none of its pull requests, and its artifact is
+ * file-hosted. Nothing can push a commit to a proof that names no submission.
+ * The one gate this could otherwise loosen cannot be reached without a PR —
+ * `awaiting_merge` turns on a fresh human approval *on the implementation PR*,
+ * and `awaiting_goal_check` on that PR having merged — so the only thing it
+ * releases is the completion the multi-PR shape needs.
+ *
+ * An artifact recorded at a PR whose facts are missing from the snapshot lands
+ * in that same branch. It is a failed read rather than a state of the work, and
+ * `./phases` already states why the honest fix is for the observer not to hand
+ * back a snapshot missing a PR it was asked for.
+ */
+export function goalCheckFor(
+  world: World,
+  artifact: ArtifactFacts | undefined,
+): World["goalCheck"] {
+  if (world.goalCheck === null) return null;
+  const pr = prForArtifact(world, artifact);
+  if (!pr) return world.goalCheck;
+  if (world.goalCheckSha === null) return null;
+  return world.goalCheckSha === pr.headSha ? world.goalCheck : null;
+}
+
+/**
  * True when any human has reviewed the PR at its current head, in any state.
  *
  * Deliberately *not* collapsed to current positions the way
@@ -302,11 +368,19 @@ const conductorPolicySchema: z.ZodType<ConductorPolicy> = z.object({
  * `pullRequests` is keyed by PR number, and JSON has no numeric object keys —
  * hence the coercion, so a snapshot survives a round trip through a store
  * without the keys quietly becoming strings.
+ *
+ * The input type is `unknown` rather than `World`, which the other schemas here
+ * do not need. `goalCheckSha` carries a default so that a ledger row written
+ * before the field existed parses back with the proof unbound (BP-030), and a
+ * default is precisely a field the *input* may omit. Only the output is pinned
+ * to {@link World}, which is the direction the annotation exists for: a field
+ * added to the type and forgotten here still fails to compile.
  */
-export const worldSchema: z.ZodType<World> = z.object({
+export const worldSchema: z.ZodType<World, z.ZodTypeDef, unknown> = z.object({
   artifacts: z.array(artifactFactsSchema),
   pullRequests: z.record(z.coerce.number().int(), pullRequestFactsSchema),
   goalCheck: z.enum(["passed", "failed"]).nullable(),
+  goalCheckSha: z.string().nullable().default(null),
   childIssues: z.array(z.object({ id: z.string(), settled: z.boolean() })),
   guidanceHashes: z.record(z.string(), z.string()),
   policy: conductorPolicySchema,

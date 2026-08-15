@@ -201,6 +201,28 @@ describe("a record written before a field existed (BP-030)", () => {
     expect(row).toMatchObject({ goalCheck: null });
   });
 
+  it("reads a verdict stored before its revision as a proof of nothing", async () => {
+    const store = await openState();
+
+    // The half-migrated record, and the one whose default direction costs a
+    // false merge. Between the verdict shipping and the revision beside it
+    // shipping, an issue could be stored as proved with nothing saying *what*
+    // was proved. Reading that back as a standing proof would let the very next
+    // approval open the merge gate on code no check ever saw, so it has to read
+    // as a verdict that describes no revision — which every gate treats as
+    // unproved (`model/world`'s `goalCheckFor`).
+    await store.write(addressFor(conductorIssues, IDS), "issues/FIX-1", {
+      id: "FIX-1",
+      kind: "issue",
+      phase: "IMPLEMENTATION",
+      issueType: "Bug",
+      goalCheck: "passed",
+    });
+
+    const row = await conductorCollections(store, IDS).issues.read("FIX-1");
+    expect(row).toMatchObject({ goalCheck: "passed", goalCheckSha: null });
+  });
+
   it("is loud about a record that does not match the schema at all", async () => {
     const store = await openState();
     await store.write(addressFor(conductorIssues, IDS), "issues/FIX-1", {

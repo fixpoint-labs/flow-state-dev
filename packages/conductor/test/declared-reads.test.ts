@@ -51,6 +51,7 @@ import {
   freshApproval,
   issue,
   pr,
+  proved,
   review,
   signal,
   world,
@@ -85,6 +86,11 @@ const ARTIFACT_FIELD_FACT: Record<keyof ArtifactFacts, WorldFact | null> = {
 
 const WORLD_FIELD_FACT: Partial<Record<keyof World, WorldFact>> = {
   goalCheck: "goalCheck",
+  // The verdict and the revision it proved are one conductor-owned fact,
+  // materialized from one input — so the revision is declared under `goalCheck`
+  // rather than earning a `WorldFact` of its own. The head it is compared
+  // against is a PR field, and maps to `pr.state` above.
+  goalCheckSha: "goalCheck",
   childIssues: "childIssues",
   guidanceHashes: "guidance",
 };
@@ -183,15 +189,11 @@ const WORLDS: readonly (readonly [string, World])[] = [
   ],
   [
     "impl PR merged, goal check failed",
-    worldWith("implementation", pr({ state: "merged", checks: "success" }), {}, {
-      goalCheck: "failed",
-    }),
+    worldWith("implementation", pr({ state: "merged", checks: "success" }), {}, proved("failed")),
   ],
   [
     "impl PR merged, goal check passed",
-    worldWith("implementation", pr({ state: "merged", checks: "success" }), {}, {
-      goalCheck: "passed",
-    }),
+    worldWith("implementation", pr({ state: "merged", checks: "success" }), {}, proved("passed")),
   ],
   ["epic spec PR reviewed", worldWith("epic_spec", pr({ reviews: [review()] }))],
   ["epic spec PR approved", worldWith("epic_spec", pr({ reviews: [freshApproval()] }))],

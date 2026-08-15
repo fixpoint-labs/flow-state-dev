@@ -45,6 +45,8 @@ export interface ReadWorldInput {
   readonly artifacts: readonly ArtifactFacts[];
   /** Conductor-owned. `null` when the goal check has not run. */
   readonly goalCheck?: "passed" | "failed" | null;
+  /** Conductor-owned. The revision `goalCheck` was taken against, or `null`. */
+  readonly goalCheckSha?: string | null;
   /** Conductor-owned. Empty for an issue. */
   readonly childIssues?: readonly ChildIssueFacts[];
   /** Repo-relative guidance paths to hash. Only read when a gate declares `guidance`. */
@@ -449,6 +451,7 @@ export async function readWorld(
       artifacts: input.artifacts,
       pullRequests,
       goalCheck: input.goalCheck ?? null,
+      goalCheckSha: input.goalCheckSha ?? null,
       childIssues: input.childIssues ?? [],
       guidanceHashes,
       policy: input.policy ?? DEFAULT_POLICY,

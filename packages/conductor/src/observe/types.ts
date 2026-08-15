@@ -93,6 +93,13 @@ export interface ObservationRequest {
   readonly artifacts: readonly ArtifactFacts[];
   /** Conductor-owned. `null` when the goal check has not run. */
   readonly goalCheck?: "passed" | "failed" | null;
+  /**
+   * Conductor-owned, and the other half of {@link ObservationRequest.goalCheck}:
+   * the revision that verdict was taken against. `null` when none has run or
+   * when the revision is not known yet. Passed through verbatim — an observer
+   * has no opinion on it, and dropping it makes every verdict read as unproved.
+   */
+  readonly goalCheckSha?: string | null;
   /** Conductor-owned. Empty for an issue. */
   readonly childIssues?: readonly ChildIssueFacts[];
   /** Repo-relative guidance paths to hash. Only read when a gate declares `guidance`. */

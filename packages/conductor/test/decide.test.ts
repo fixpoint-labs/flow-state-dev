@@ -25,6 +25,7 @@ import {
   freshApproval,
   issue,
   pr,
+  proved,
   review,
   signal,
   world,
@@ -101,7 +102,7 @@ describe("the decide table", () => {
       "implementation",
       pr({ checks: "success" }),
       {},
-      { goalCheck: "passed" },
+      proved("passed"),
     );
     expect(decide(issue("IMPLEMENTATION"), signal("pr_opened"), w)).toEqual([]);
   });
@@ -111,7 +112,7 @@ describe("the decide table", () => {
       "implementation",
       pr({ state: "merged", checks: "success" }),
       {},
-      { goalCheck: "passed" },
+      proved("passed"),
     );
     const actions = decide(issue("IMPLEMENTATION"), signal("goal_check_passed"), w);
     expect(actions).toEqual([
@@ -558,7 +559,7 @@ describe("the five edge paths the current harness drops", () => {
       "implementation",
       pr({ state: "merged", checks: "success" }),
       {},
-      { goalCheck: "passed" },
+      proved("passed"),
     );
     // The issue has settled; CI reporting late must not reopen it.
     expect(decide(issue("SETTLED"), signal("ci_concluded"), w)).toEqual([]);
@@ -779,7 +780,11 @@ describe("a signal queued from the phase the entity has just left", () => {
           hostedAt: { type: "file", path: "docs/internal/assembled.md" },
         }),
       ],
+      // Deliberately no revision beside the verdict: an assembled goal is a
+      // proof about an issue, not about a submission, and there is no head that
+      // could move under it. `goalCheckFor` is what says so.
       goalCheck: "passed",
+      goalCheckSha: null,
     });
     expect(decide(issue("IMPLEMENTATION"), signal("pr_opened"), w)).toEqual([
       { kind: "enterPhase", entityId: ENTITY_ID, phase: "SETTLED" },
@@ -998,7 +1003,7 @@ describe("an approval that landed before conductor was watching", () => {
       "implementation",
       pr({ state: "merged", checks: "success" }),
       {},
-      { goalCheck: "passed" },
+      proved("passed"),
     );
     expect(decide(issue("IMPLEMENTATION"), signal("goal_check_passed"), w)).toEqual([
       { kind: "enterPhase", entityId: ENTITY_ID, phase: "SETTLED" },
@@ -1024,7 +1029,7 @@ describe("escalation", () => {
       "implementation",
       pr({ state: "merged", checks: "success" }),
       {},
-      { goalCheck: "failed" },
+      proved("failed"),
     );
     const actions = decide(issue("IMPLEMENTATION"), signal("goal_check_failed"), w);
     expect(kinds(actions)).toEqual(["escalate"]);
@@ -1043,7 +1048,7 @@ describe("a goal check that fails before the merge", () => {
       "implementation",
       pr({ state: "open", checks: "success" }),
       {},
-      { goalCheck: "failed" },
+      proved("failed"),
     );
     const actions = decide(issue("IMPLEMENTATION"), signal("goal_check_failed"), w);
     expect(kinds(actions)).toEqual(["addressFeedback"]);
@@ -1066,7 +1071,7 @@ describe("a goal check that fails before the merge", () => {
       "implementation",
       pr({ state: "open", checks: "success" }),
       { reviewRounds: DEFAULT_POLICY.implementationReviewRoundBudget },
-      { goalCheck: "failed" },
+      proved("failed"),
     );
     const actions = decide(issue("IMPLEMENTATION"), signal("goal_check_failed"), w);
     expect(kinds(actions)).toEqual(["escalate"]);

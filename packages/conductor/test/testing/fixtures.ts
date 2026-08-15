@@ -81,11 +81,17 @@ const implWorld = (
 /**
  * The same, with the goal already proved — the single-PR shape, where the proof
  * lands at implementation completion and therefore predates the PR.
+ *
+ * The verdict is bound to the head each snapshot is at, which is what a proof
+ * *is*: a statement about one revision. A script that carried `"passed"` across
+ * a head change would be describing a world the tick cannot produce — the push
+ * that moved the head either invalidated the proof or came with a fresh one.
  */
 const provedImplWorld = (
   implPr: ReturnType<typeof pr>,
   rounds = 0,
-): World => implWorld(implPr, rounds, { goalCheck: "passed" });
+): World =>
+  implWorld(implPr, rounds, { goalCheck: "passed", goalCheckSha: implPr.headSha });
 
 const IMPL_OPEN = provedImplWorld(pr({ number: IMPL_PR, headSha: IMPL_HEAD_1 }));
 const IMPL_CI_RED = provedImplWorld(
@@ -274,7 +280,7 @@ export const UNPROVED_MERGE_STEPS: readonly ReplayStep[] = [
         reviews: [freshApproval(IMPL_HEAD_2)],
       }),
       0,
-      { goalCheck: "passed" },
+      { goalCheck: "passed", goalCheckSha: IMPL_HEAD_2 },
     ),
   },
 ];

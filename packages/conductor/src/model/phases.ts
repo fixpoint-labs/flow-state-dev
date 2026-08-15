@@ -30,6 +30,7 @@
 
 import {
   artifactOfKind,
+  goalCheckFor,
   hasFreshHumanApproval,
   hasHumanReviewAtHead,
   prForArtifact,
@@ -150,6 +151,13 @@ export interface PhaseDefinition {
 const specPr = (world: World) => prForArtifact(world, artifactOfKind(world, "spec"));
 const implArtifact = (world: World) => artifactOfKind(world, "implementation");
 const implPr = (world: World) => prForArtifact(world, implArtifact(world));
+/**
+ * The goal verdict, but only where it still describes the code the issue's
+ * implementation is sitting at. Every predicate below reads this rather than
+ * `world.goalCheck` — see `./world`'s {@link goalCheckFor} for why a bare
+ * verdict cannot hold the invariant this phase is built around.
+ */
+const implGoalCheck = (world: World) => goalCheckFor(world, implArtifact(world));
 const epicSpecPr = (world: World) =>
   prForArtifact(world, artifactOfKind(world, "epic_spec"));
 
@@ -239,6 +247,15 @@ const SPEC: PhaseDefinition = {
  *   this level — correctly, because the issue-level merge gate was never about
  *   a sub-PR's merge.
  *
+ * **"Proved" means proved *at the revision that is there now*.** A verdict is a
+ * statement about the code the check ran on, so every predicate below reads
+ * {@link goalCheckFor} rather than `world.goalCheck` — the verdict, kept only
+ * where it still describes the head. Without that, holding the invariant meant
+ * enumerating the ways a proof could be outrun, and no enumeration over
+ * conductor's own dispatches can be complete: a human pushing another commit to
+ * the implementation PR changes the code with no dispatch to enumerate. The
+ * argument in full is on `goalCheckFor`.
+ *
  * **Why `completedWhen` reads the artifact and its PR, and not `goalCheck`
  * alone.** Because the single-PR shape makes `goalCheck === "passed"` true while
  * the PR is still open, and completing on that alone settles an issue on its own
@@ -323,25 +340,36 @@ const IMPLEMENTATION: PhaseDefinition = {
     },
     {
       // Conductor never merges. This gate is released by a human, always — and
-      // it does not open until the goal has passed, so a human is never invited
-      // to merge work conductor has not proved. See the phase note above.
+      // it does not open until the goal has passed **against the code that is
+      // there now**, so a human is never invited to merge work conductor has not
+      // proved. See the phase note above and `./world`'s `goalCheckFor`.
       // `artifact.reviews`: it only applies once the PR carries a fresh human
       // approval, which is a read of the PR's reviews. `goalCheck`: the proof
-      // requirement itself.
+      // requirement itself, verdict and proved revision together — they are one
+      // conductor-owned fact materialized from one input, so the revision needs
+      // no declaration of its own. The head it is compared against arrives with
+      // `pr.state`: state and head come out of the one pull request record every
+      // reader fetches, which is the mapping `test/declared-reads` asserts.
       name: "awaiting_merge",
       reads: ["pr.state", "pr.mergeable", "artifact.reviews", "goalCheck"],
-      appliesWhen: (w) => hasFreshHumanApproval(implPr(w)) && w.goalCheck === "passed",
+      appliesWhen: (w) => hasFreshHumanApproval(implPr(w)) && implGoalCheck(w) === "passed",
       satisfiedBy: (w) => implPr(w)?.state === "merged",
     },
     {
+      // Released by a proof of *what merged*, not by any proof at all. A human
+      // who pushes past a standing verdict and then merges leaves a merged head
+      // no proof describes, and reading the bare field here would call that
+      // satisfied and let `completedWhen` settle the issue on it — the merge
+      // gate held, and the phase finished anyway one gate further down. Asking
+      // the same question both places is what makes the two agree.
       name: "awaiting_goal_check",
       reads: ["pr.state", "goalCheck"],
       appliesWhen: (w) => implPr(w)?.state === "merged",
-      satisfiedBy: (w) => w.goalCheck !== null,
+      satisfiedBy: (w) => implGoalCheck(w) !== null,
     },
   ],
   completedWhen: (w) =>
-    w.goalCheck === "passed" &&
+    implGoalCheck(w) === "passed" &&
     implArtifact(w) !== undefined &&
     implPr(w)?.state !== "open",
   next: "SETTLED",

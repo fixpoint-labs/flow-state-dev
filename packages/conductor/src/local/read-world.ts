@@ -231,6 +231,7 @@ export async function readLocalWorld(
       artifacts: request.artifacts,
       pullRequests,
       goalCheck: request.goalCheck ?? null,
+      goalCheckSha: request.goalCheckSha ?? null,
       childIssues: request.childIssues ?? [],
       guidanceHashes,
       policy: request.policy ?? DEFAULT_POLICY,

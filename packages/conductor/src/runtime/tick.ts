@@ -97,6 +97,7 @@ import {
 import type { Signal } from "../model/signals";
 import {
   artifactOfKind,
+  prForArtifact,
   type ArtifactFacts,
   type ArtifactKind,
   type ChildIssueFacts,
@@ -202,34 +203,72 @@ async function persistEntity(
 type GoalCheckVerdict = "passed" | "failed" | null;
 
 /**
- * The stored goal verdict for this entity.
+ * A verdict and the revision it was taken against — the pair every gate reads
+ * through `model/world`'s `goalCheckFor`. A `sha` of `null` means the revision
+ * is not known, which reads as *not proved* everywhere it matters.
+ */
+interface GoalProof {
+  readonly verdict: GoalCheckVerdict;
+  readonly sha: string | null;
+}
+
+/** No verdict, and therefore no revision. */
+const UNPROVED: GoalProof = { verdict: null, sha: null };
+
+/**
+ * The stored goal proof for this entity.
  *
  * An epic has none: the goal check proves that *a change did what an issue
  * asked*, and an epic's own phases gate on its children rather than on a proof
  * of their own. `null` is what the epic branch of the phase table already reads.
  */
-async function readGoalCheck(context: TickContext): Promise<GoalCheckVerdict> {
-  if (context.entityKind === "epic") return null;
-  return (await context.collections.issues.read(context.entityId))?.goalCheck ?? null;
+async function readGoalCheck(context: TickContext): Promise<GoalProof> {
+  if (context.entityKind === "epic") return UNPROVED;
+  const stored = await context.collections.issues.read(context.entityId);
+  return { verdict: stored?.goalCheck ?? null, sha: stored?.goalCheckSha ?? null };
 }
 
 /**
- * Write the goal verdict a dispatch reported.
+ * Write the goal verdict and the revision it describes.
  *
- * The only writer of the field, and the counterpart to {@link readGoalCheck}:
- * conductor owns the verdict, so if it is not written down here it does not
- * exist anywhere. It is written *before* it is read back into a world, which is
- * what makes the value survive the restart the whole tick is built around — a
- * verdict held only in this tick's snapshot would be lost with the process.
+ * The only writer of either field, and the counterpart to {@link readGoalCheck}:
+ * conductor owns the proof, so if it is not written down here it does not exist
+ * anywhere. It is written *before* it is read back into a world, which is what
+ * makes the value survive the restart the whole tick is built around — a verdict
+ * held only in this tick's snapshot would be lost with the process.
+ *
+ * **The two move together, always.** They are one fact in two columns (see
+ * `model/entities` for why they are not one nested column), and a write of the
+ * verdict that left the old revision standing would claim the new proof was
+ * taken against code it never saw.
  */
 async function persistGoalCheck(
   context: TickContext,
-  verdict: GoalCheckVerdict,
+  proof: GoalProof,
 ): Promise<void> {
   if (context.entityKind === "epic") return;
   const stored = await context.collections.issues.read(context.entityId);
   if (!stored) return;
-  await context.collections.issues.write(context.entityId, { ...stored, goalCheck: verdict });
+  await context.collections.issues.write(context.entityId, {
+    ...stored,
+    goalCheck: proof.verdict,
+    goalCheckSha: proof.sha,
+  });
+}
+
+/**
+ * The head of the submission the entity's current phase is working on, or `null`
+ * when the phase holds no submission — nothing yet, or an artifact that is not
+ * hosted at one.
+ *
+ * Empty is `null` too: the local reader answers with an empty head for a
+ * submission whose branch is gone and whose last head is unreachable, and that
+ * is an absent revision rather than a revision named `""`.
+ */
+function activeHead(entity: ConductorEntity, world: World): string | null {
+  const kind = artifactKindForPhase(entity.phase);
+  if (!kind) return null;
+  return prForArtifact(world, artifactOfKind(world, kind))?.headSha || null;
 }
 
 /**
@@ -682,44 +721,63 @@ async function recordProduced(
 }
 
 /**
- * Can a dispatch of this kind leave the entity's code different from the code a
- * stored goal verdict was taken against?
+ * Can a dispatch of this kind put a commit on the branch it ran against?
  *
  * **The one place that question is answered, and it is answered for every kind
- * rather than for the few that bite today.** `awaiting_merge` refuses to apply
- * until the verdict is `"passed"`, so a verdict that outlives its code is
- * conductor inviting a human to merge a change it never proved — while its
- * ledger says it did. The rule was previously a single `if` naming
- * `addressFeedback`, which left `resolveConflict`, `rebaseOnBase` and
- * `reExamineOpenPrs` — three dispatches that commit different code — silently on
- * the "keeps the proof" side.
+ * rather than for the few that bite today.** A `Record` keyed on the action
+ * union rather than a list, because the failure this keeps having is *an action
+ * nobody thought about*: adding a kind to {@link DispatchAction} is a **type
+ * error** until its author answers here. The alternative considered was
+ * inverting the default — assume harmless unless listed — which fails safe and
+ * *silently*, and silence is the whole defect: it would make a new mutating
+ * action correct by accident and make nobody look at this table.
  *
- * A `Record` keyed on the action union rather than a list, because the failure
- * this keeps having is *an action nobody thought about*, not an action somebody
- * classified wrongly: adding a kind to {@link DispatchAction} is a **type
- * error** until its author answers this question here. The alternative
- * considered was inverting the default — clear unless the kind is on a
- * known-harmless list — which fails safe and *silently*, and silence is the
- * whole defect. It would make a new mutating action correct by accident and a
- * new inert one quietly throw away a valid proof, and neither makes anyone look
- * at this table. Failing loudly at compile time is the stronger of the two in
- * the direction that costs a false merge, and it also catches the other
- * direction, which failing safe cannot.
+ * `true` for every kind that can push, including the ones that cannot be holding
+ * a verdict when they run: `draftSpec`/`reviseSpec` run in `SPEC`, before an
+ * issue has one, and `retrospect`/`polishDocs` belong to an epic, which has no
+ * verdict at all (see {@link readGoalCheck}). Classifying them by what they *do*
+ * rather than by where they happen to sit keeps this readable as one rule, and
+ * costs a write of `null` over `null`. `false` is for the two that change
+ * nothing: `answerQuestion` replies to a human and its brief says in as many
+ * words not to touch the work; `runGoalCheck` measures rather than edits.
  *
- * `true` for every kind that can put a commit on a branch, including the ones
- * that cannot be holding a verdict when they run: `draftSpec`/`reviseSpec` run
- * in `SPEC`, before an issue has one, and `retrospect`/`polishDocs` belong to an
- * epic, which has no verdict at all (see {@link readGoalCheck}). Classifying
- * them by what they *do* rather than by where they happen to sit keeps this
- * readable as one rule, and costs a write of `null` over `null`.
+ * ---------------------------------------------------------------------------
+ * WHAT THIS TABLE IS, NOW THAT THE PROOF IS BOUND TO A REVISION
+ * ---------------------------------------------------------------------------
  *
- * `false` is for the two that change nothing. `answerQuestion` replies to a
- * human and its brief says in as many words not to touch the work;
- * `runGoalCheck` measures rather than edits.
+ * It used to be the *guarantee* behind "a merge gate never opens on unproved
+ * work": a stored verdict survived unless a kind listed here cleared it. It
+ * cannot be that, and could never have been — an enumeration over conductor's
+ * own dispatches has nothing to say about a head a human moved. The guarantee is
+ * now the revision stored beside the verdict (`model/world`'s `goalCheckFor`),
+ * which a push nobody dispatched fails exactly as a revision does.
  *
- * **This is not the whole rule** — a dispatch that reports its own verdict has
- * re-proved whatever it just wrote, and that fresh proof wins over the clear.
- * See {@link claimedGoalCheck}, which is where the two combine.
+ * **The table stays, and it answers a sharper question than it used to.** Both
+ * consequences below fall out of the one question in the heading, which is why
+ * this is one table and not two:
+ *
+ * - **A verdict from before is stale.** The gate would catch it at the next
+ *   observation anyway, but not until then — the snapshot this tick holds was
+ *   read *before* the dispatch pushed, so for the rest of this pass the old head
+ *   and the old proof still agree with each other. Clearing here closes that
+ *   window, and it is conductor's to close because conductor is the only thing
+ *   that knows a dispatch it just ran may have moved the head. The visible cost
+ *   of leaving it open is a tick reporting `awaiting_merge` to a human on work
+ *   its own agent has just rewritten.
+ * - **A verdict this dispatch reports names a revision nobody has read yet.**
+ *   The check ran on what the agent wrote; the head in the snapshot predates it.
+ *   So the proof is recorded *unbound* and resolved by the next observation —
+ *   see {@link claimedGoalCheck} and {@link bindUnresolvedProof}. A kind that
+ *   cannot push has no such gap: the head in the snapshot is the head the check
+ *   ran on, and the proof is bound on the spot.
+ *
+ * **Its failure mode is bounded now, which is the reason keeping it is cheap.**
+ * A kind wrongly marked `false` is caught by the revision at the next
+ * observation, so it costs a stale gate for one tick rather than a false merge.
+ * A kind wrongly marked `true` throws away a live proof and buys a goal check
+ * nobody needed. Neither direction can open a merge gate on unproved work, so
+ * this is an optimization guarding a window, and the compile-time prompt it puts
+ * in front of the next action's author is worth more than the line count.
  */
 const INVALIDATES_GOAL_CHECK: Record<DispatchAction["kind"], boolean> = {
   draftSpec: true,
@@ -736,7 +794,7 @@ const INVALIDATES_GOAL_CHECK: Record<DispatchAction["kind"], boolean> = {
 };
 
 /**
- * What a settled dispatch leaves the stored goal verdict at, or `undefined` when
+ * What a settled dispatch leaves the stored goal proof at, or `undefined` when
  * it leaves it alone.
  *
  * Two rules, in this order:
@@ -748,21 +806,84 @@ const INVALIDATES_GOAL_CHECK: Record<DispatchAction["kind"], boolean> = {
  *   the only reason `awaiting_merge` is ever reachable at all. And a revision
  *   that re-ran the check is telling us something better than "unknown" — that
  *   is a fresh proof, not a stale one, so it is not cleared.
- * - **A dispatch that could have changed the code and reported nothing clears
- *   it.** See {@link INVALIDATES_GOAL_CHECK} for the enumeration and for why it
- *   is a total map rather than a list.
+ * - **A dispatch that could have pushed and reported nothing clears it.** See
+ *   {@link INVALIDATES_GOAL_CHECK}, and for why that is a window this closes
+ *   rather than the guarantee it used to be.
  *
  * Everything else returns whatever the dispatcher reported, which is almost
  * always nothing — and for a dispatch that changed nothing, nothing means **no
  * claim**, not a failure. A vendor that is silent has not said the goal is
- * unmet, so the stored verdict stands.
+ * unmet, so the stored proof stands.
+ *
+ * **Which revision a fresh verdict is recorded against splits on the same
+ * question.** A dispatch that cannot push proved the head that is already in
+ * `head` — `runGoalCheck` is the case that matters, and it is the whole reason
+ * this takes a head at all: it runs after the merge, detached at the base, and
+ * the merged submission's head is the revision that *put* the proved code there.
+ * Nothing can move a merged head afterwards, so that binding never goes stale;
+ * a base that moves on later is somebody else's change, not this issue's to
+ * re-prove. A dispatch that *could* push proved whatever it wrote, and the head
+ * in hand was read before it ran — so the revision is left `null` for
+ * {@link bindUnresolvedProof} to resolve, and reads as unproved until it does.
  */
 function claimedGoalCheck(
   action: DispatchAction,
   result: DispatchResult,
-): GoalCheckVerdict | undefined {
-  if (INVALIDATES_GOAL_CHECK[action.kind]) return result.goalCheck ?? null;
-  return result.goalCheck;
+  head: string | null,
+): GoalProof | undefined {
+  const mayHavePushed = INVALIDATES_GOAL_CHECK[action.kind];
+  const verdict = mayHavePushed ? (result.goalCheck ?? null) : result.goalCheck;
+  if (verdict === undefined) return undefined;
+  if (verdict === null) return UNPROVED;
+  return { verdict, sha: mayHavePushed ? null : head };
+}
+
+/**
+ * Give a proof whose revision is not known yet the head this observation just
+ * read, once.
+ *
+ * **A dispatch proves code conductor has not seen.** The agent commits, the
+ * check runs on what it committed, and the tick that receives the verdict is
+ * holding a snapshot read before any of that happened — so the revision the
+ * proof describes is genuinely unknown at the moment it is recorded, and it is
+ * recorded as unknown rather than guessed. The single-PR shape is the sharpest
+ * instance: the goal is proved *before the submission exists at all*, so there
+ * is not even a submission to take a head from.
+ *
+ * The next observation is where it becomes knowable. The dispatch pushed a
+ * branch; the submission conductor then reads on that branch is that push, so
+ * its head is the revision the proof was taken against. Written down once — a
+ * resolution of an unknown, not a re-proof — and never rewritten, because from
+ * then on the stored revision is what a later head is compared *to*.
+ *
+ * **Only a tick resolves, never a read.** A read materializes a world and writes
+ * nothing (see {@link observeWorld}), and that is not merely a rule being
+ * respected here: adopting the current head on every read would mean an unbound
+ * proof matched whatever head happened to be there, every time it was asked —
+ * which is the defect this whole change removes, reintroduced through the read
+ * path. Leaving it unbound reads as unproved, which is the safe direction.
+ *
+ * **The window this leaves, stated rather than papered over.** Between a
+ * dispatch settling and the next observation, a commit conductor never saw would
+ * be adopted as the revision the proof describes. That is bounded by how soon
+ * the next tick runs rather than by anything structural, and it is strictly
+ * narrower than what it replaces — a proof that outlived its code for as long as
+ * the issue lived. Closing it needs the revision to come from the thing that ran
+ * the check, and {@link DispatchResult} has nowhere to report one: a dispatcher
+ * that produces a verdict from something with an exit status knows the commit it
+ * ran against, and `produced` is where it would say so. That is a change to the
+ * dispatcher seam, not to this file.
+ */
+async function bindUnresolvedProof(
+  context: TickContext,
+  entity: ConductorEntity,
+  world: World,
+): Promise<World> {
+  if (world.goalCheck === null || world.goalCheckSha !== null) return world;
+  const head = activeHead(entity, world);
+  if (head === null) return world;
+  await persistGoalCheck(context, { verdict: world.goalCheck, sha: head });
+  return { ...world, goalCheckSha: head };
 }
 
 /**
@@ -1007,14 +1128,17 @@ export async function observeWorld(
   context: TickContext,
   entity: ConductorEntity,
 ): Promise<World> {
+  const proof = await readGoalCheck(context);
   const observation = await context.deps.observer.observe({
     entity: { kind: entity.kind, phase: entity.phase },
     entityId: context.entityId,
     artifacts: await readArtifacts(context),
-    // Conductor-owned, and the reader has no other source for it — a request
-    // that omits it hands every gate `null`, which reads as "the goal check has
-    // never run" and holds `awaiting_merge` shut however many times it passed.
-    goalCheck: await readGoalCheck(context),
+    // Conductor-owned, and the reader has no other source for either half — a
+    // request that omits them hands every gate `null`, which reads as "the goal
+    // check has never run" and holds `awaiting_merge` shut however many times it
+    // passed.
+    goalCheck: proof.verdict,
+    goalCheckSha: proof.sha,
     childIssues: await readChildIssues(context),
     guidancePaths: context.deps.config.guidance,
     policy: context.deps.config.policy,
@@ -1069,23 +1193,31 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
   // adoptSubmissionForBranch}.
   await adoptSubmissionForBranch(context, entity);
 
+  const proof = await readGoalCheck(context);
   const observation = await context.deps.observer.observe({
     entity: { kind: entity.kind, phase: entity.phase },
     entityId: context.entityId,
     artifacts: await readArtifacts(context),
     // See `observeWorld` for why an omission here is silent and total.
-    goalCheck: await readGoalCheck(context),
+    goalCheck: proof.verdict,
+    goalCheckSha: proof.sha,
     childIssues: await readChildIssues(context),
     guidancePaths: context.deps.config.guidance,
     policy: context.deps.config.policy,
     cursor: await readCursor(context),
     now: at,
   });
-  // `let`, for one fact and one only: a goal verdict a dispatch reports partway
-  // through this tick is conductor's own, not the source's, so the reductions
-  // after it read a snapshot that carries it. Nothing else here rebinds the
-  // world — an observed fact that moved mid-tick is the *next* tick's read.
-  let world = observation.world;
+  // `let`, for one fact and one only: the goal proof is conductor's own rather
+  // than the source's, so the reductions after it read a snapshot carrying what
+  // conductor now knows — a verdict a dispatch reports partway through this
+  // tick, and the revision an earlier dispatch's verdict turns out to describe.
+  // Nothing else here rebinds the world — an observed fact that moved mid-tick
+  // is the *next* tick's read.
+  //
+  // Ahead of every reduction, because a proof whose revision this observation
+  // has just made knowable reads as *unproved* until it is bound, and a gate
+  // derived before that would be answering with a stale `null`.
+  let world = await bindUnresolvedProof(context, entity, observation.world);
 
   const queue: Queued[] = [];
   const dispatches = await dispatchRows(context);
@@ -1202,9 +1334,14 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
 
       // The one thing a dispatch reports that conductor has to store rather than
       // re-read: no source has an opinion on whether the change did what the
-      // issue asked. Persisted first, so the verdict survives the process; then
+      // issue asked. Persisted first, so the proof survives the process; then
       // folded into the snapshot and announced as a signal, which is what
       // actually moves the gate.
+      //
+      // The head handed over is the one this tick observed, which the dispatch
+      // may already have moved past — `claimedGoalCheck` is where that is sorted
+      // out, and it is why a fresh verdict is sometimes recorded with no
+      // revision at all.
       //
       // Folded unconditionally. A pass reported before the phase's submission is
       // in the snapshot used to be held back here, because `IMPLEMENTATION`
@@ -1212,14 +1349,14 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
       // in the phase table now, where the artifact it turns on is required
       // positively. A verdict this tick cannot act on is one the phase table
       // declines, not one this tick withholds.
-      const claim = claimedGoalCheck(action, result);
+      const claim = claimedGoalCheck(action, result, activeHead(entity, world));
       if (claim !== undefined) {
         await persistGoalCheck(context, claim);
-        world = { ...world, goalCheck: claim };
-        if (claim !== null) {
+        world = { ...world, goalCheck: claim.verdict, goalCheckSha: claim.sha };
+        if (claim.verdict !== null) {
           queue.unshift({
             signal: {
-              kind: claim === "passed" ? "goal_check_passed" : "goal_check_failed",
+              kind: claim.verdict === "passed" ? "goal_check_passed" : "goal_check_failed",
               entityId: context.entityId,
               at: signal.at,
             },

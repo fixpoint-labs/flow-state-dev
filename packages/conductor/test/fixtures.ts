@@ -77,6 +77,7 @@ export function world(overrides: Partial<World> = {}): World {
     artifacts: [],
     pullRequests: {},
     goalCheck: null,
+    goalCheckSha: null,
     childIssues: [],
     guidanceHashes: {},
     policy: DEFAULT_POLICY,
@@ -96,6 +97,23 @@ export function worldWith(
     pullRequests: { [prFacts.number]: prFacts },
     ...rest,
   });
+}
+
+/**
+ * A goal verdict together with the revision it was taken against — the pair
+ * every gate actually reads (`model/world`'s `goalCheckFor`).
+ *
+ * Spelled as one helper because the two halves are one fact: a world carrying a
+ * verdict and no revision is not "proved", it is a proof of code nobody can
+ * point at, and the gates treat it as unproved. A test that means *this work has
+ * been proved* has to say which revision, and {@link HEAD} is what the default
+ * {@link pr} sits at.
+ */
+export function proved(
+  verdict: "passed" | "failed",
+  sha: string | null = HEAD,
+): Pick<World, "goalCheck" | "goalCheckSha"> {
+  return { goalCheck: verdict, goalCheckSha: sha };
 }
 
 /** An approving human review at the PR's current head. */

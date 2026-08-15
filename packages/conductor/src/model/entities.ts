@@ -74,6 +74,30 @@ export const issueStateSchema = z.object({
    * no merge gate.
    */
   goalCheck: z.enum(["passed", "failed"]).nullable().default(null),
+  /**
+   * The revision {@link issueStateSchema.goalCheck} was taken against — the half
+   * that makes the verdict mean something, and the reason a merge gate can be a
+   * property rather than a list of ways to invalidate a proof. See
+   * `model/world`'s `goalCheckAtHead` for the rule, and `runtime/tick` for what
+   * is recorded on each of the two routes to a verdict.
+   *
+   * `null` in three situations, and **all three must read as *not proved*, never
+   * as proved-at-unknown-revision**: no check has run; a record written before
+   * this field existed (BP-030 — the field defaults rather than the record
+   * failing to parse); or a verdict whose revision is not yet knowable, because
+   * the dispatch that reported it may have pushed a commit conductor has not
+   * observed. The direction is the whole point — falling the other way opens a
+   * merge gate on work nothing proved.
+   *
+   * Kept beside the verdict rather than folded into it so that a stored issue
+   * written before this change still parses. A nested `{ verdict, sha }` would
+   * make the pair inseparable, which is tempting, but it would also fail to read
+   * back every record whose `goalCheck` is a bare string — and it buys no real
+   * inseparability, since the revision has to stay nullable for the three cases
+   * above. `runtime/tick`'s `persistGoalCheck` is the single writer of both, so
+   * they move together where it counts.
+   */
+  goalCheckSha: z.string().nullable().default(null),
   /** ISO timestamp of the newest signal reduced against this entity. */
   lastSignalAt: z.string().nullable().default(null),
 });

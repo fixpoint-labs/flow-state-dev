@@ -15,6 +15,7 @@ import {
   freshApproval,
   issue,
   pr,
+  proved,
   review,
   world,
   worldWith,
@@ -126,7 +127,7 @@ describe("issue gates", () => {
         ],
       }),
       {},
-      { goalCheck: "passed" },
+      proved("passed"),
     );
     expect(deriveGate(issue("IMPLEMENTATION"), w)).toBe("awaiting_review");
   });
@@ -136,7 +137,7 @@ describe("issue gates", () => {
       "implementation",
       pr({ checks: "success", reviews: [freshApproval()] }),
       {},
-      { goalCheck: "passed" },
+      proved("passed"),
     );
     expect(deriveGate(issue("IMPLEMENTATION"), w)).toBe("awaiting_merge");
   });
@@ -164,7 +165,7 @@ describe("issue gates", () => {
       "implementation",
       pr({ checks: "success" }),
       {},
-      { goalCheck: "passed" },
+      proved("passed"),
     );
     expect(isPhaseComplete(issue("IMPLEMENTATION"), openButProved)).toBe(false);
     expect(deriveGate(issue("IMPLEMENTATION"), openButProved)).toBe("awaiting_review");
@@ -178,9 +179,9 @@ describe("issue gates", () => {
     // that way, a passing verdict settles an issue seconds after the agent
     // finished: no CI, no review, no merge. Absence of an artifact is not
     // evidence that there is nothing left to wait for.
-    const proved = world({ goalCheck: "passed" });
-    expect(isPhaseComplete(issue("IMPLEMENTATION"), proved)).toBe(false);
-    expect(deriveGate(issue("IMPLEMENTATION"), proved)).toBeNull();
+    const nothingProduced = world(proved("passed"));
+    expect(isPhaseComplete(issue("IMPLEMENTATION"), nothingProduced)).toBe(false);
+    expect(deriveGate(issue("IMPLEMENTATION"), nothingProduced)).toBeNull();
   });
 
   it("still settles an issue whose implementation is at no PR of its own", () => {
@@ -195,9 +196,76 @@ describe("issue gates", () => {
           hostedAt: { type: "file", path: "docs/internal/assembled.md" },
         }),
       ],
+      // And the proof names no revision, because there is no submission whose
+      // head could move under it. That is the one shape where a bare verdict
+      // still stands — see `goalCheckFor`.
       goalCheck: "passed",
+      goalCheckSha: null,
     });
     expect(isPhaseComplete(issue("IMPLEMENTATION"), noPrOfItsOwn)).toBe(true);
+  });
+
+  it("never opens the merge gate on a proof taken against a head that has moved", () => {
+    // The same approved, green, proved PR as the merge-gate case above — except
+    // that the proof describes an earlier commit. Nothing about *how* the head
+    // moved appears here, which is the point: the gate asks whether the verdict
+    // describes what is in front of it, so a push conductor never dispatched and
+    // a revision it did are the same answer.
+    const movedOn = worldWith(
+      "implementation",
+      pr({ checks: "success", reviews: [freshApproval()] }),
+      {},
+      proved("passed", "an-earlier-commit"),
+    );
+    expect(deriveGate(issue("IMPLEMENTATION"), movedOn)).toBeNull();
+    expect(isPhaseComplete(issue("IMPLEMENTATION"), movedOn)).toBe(false);
+  });
+
+  it("never opens the merge gate on a verdict that names no revision", () => {
+    // The direction BP-030 chooses, said as a gate rather than as a default. A
+    // record written before the revision was stored reads back with the verdict
+    // standing and the revision `null`, and so does a verdict conductor has
+    // recorded but cannot yet place — a dispatch proves code the snapshot in
+    // hand predates. Both are proofs nobody can point at, and reading either as
+    // a standing proof invites a merge of code no check ever saw.
+    const unbound = { goalCheck: "passed", goalCheckSha: null } as const;
+
+    const open = worldWith(
+      "implementation",
+      pr({ checks: "success", reviews: [freshApproval()] }),
+      {},
+      unbound,
+    );
+    expect(deriveGate(issue("IMPLEMENTATION"), open)).toBeNull();
+    expect(isPhaseComplete(issue("IMPLEMENTATION"), open)).toBe(false);
+
+    // And it does not slip through one gate lower either: `awaiting_goal_check`
+    // holds the merged PR open until something proves what actually landed.
+    const merged = worldWith(
+      "implementation",
+      pr({ state: "merged", checks: "success" }),
+      {},
+      unbound,
+    );
+    expect(deriveGate(issue("IMPLEMENTATION"), merged)).toBe("awaiting_goal_check");
+    expect(isPhaseComplete(issue("IMPLEMENTATION"), merged)).toBe(false);
+  });
+
+  it("does not settle a merged PR on a proof of the code before the last push", () => {
+    // The gate below `awaiting_merge`, and the one that would finish the issue
+    // anyway if only the merge gate learned to ask. A human pushes past the
+    // proof and merges: `awaiting_goal_check` must hold that open so the check
+    // is re-run against what actually landed.
+    const mergedPastTheProof = worldWith(
+      "implementation",
+      pr({ state: "merged", checks: "success" }),
+      {},
+      proved("passed", "an-earlier-commit"),
+    );
+    expect(deriveGate(issue("IMPLEMENTATION"), mergedPastTheProof)).toBe(
+      "awaiting_goal_check",
+    );
+    expect(isPhaseComplete(issue("IMPLEMENTATION"), mergedPastTheProof)).toBe(false);
   });
 
   it("still dispatches the goal check for work that reached the base unproved", () => {
@@ -227,7 +295,7 @@ describe("issue gates", () => {
       "implementation",
       pr({ state: "merged", checks: "success" }),
       {},
-      { goalCheck: "failed" },
+      proved("failed"),
     );
     expect(isPhaseComplete(issue("IMPLEMENTATION"), failed)).toBe(false);
 
@@ -235,7 +303,7 @@ describe("issue gates", () => {
       "implementation",
       pr({ state: "merged", checks: "success" }),
       {},
-      { goalCheck: "passed" },
+      proved("passed"),
     );
     expect(isPhaseComplete(issue("IMPLEMENTATION"), passed)).toBe(true);
   });
@@ -292,9 +360,7 @@ describe("derivation is stateless", () => {
   });
 
   it("never returns a gate for a terminal phase", () => {
-    const w = worldWith("implementation", pr({ state: "merged" }), {}, {
-      goalCheck: "passed",
-    });
+    const w = worldWith("implementation", pr({ state: "merged" }), {}, proved("passed"));
     expect(deriveGate(issue("SETTLED"), w)).toBeNull();
     expect(nextPhase(issue("SETTLED"))).toBeNull();
   });
