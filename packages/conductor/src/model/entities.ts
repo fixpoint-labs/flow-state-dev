@@ -58,6 +58,22 @@ export const issueStateSchema = z.object({
   epicId: z.string().nullable().default(null),
   /** Linear identifier, when a Linear connector is configured. Conductor runs without one. */
   externalKey: z.string().nullable().default(null),
+  /**
+   * What the goal check has proved about this issue, `null` until one has run.
+   *
+   * **Conductor-owned and issue-scoped.** No source reports it — GitHub has no
+   * opinion on whether a change did what the issue asked — so it has nowhere
+   * else to live, and it is on the issue rather than on an artifact because a
+   * multi-PR issue's assembled goal belongs to the issue and to no one of its
+   * pull requests.
+   *
+   * `.nullable().default(null)` is BP-030 doing its job rather than a style
+   * choice: every record written before this field existed parses back with the
+   * verdict `null`, which reads as *the check has not run* — the honest answer
+   * for a record that predates the check, and the safe one, since `null` opens
+   * no merge gate.
+   */
+  goalCheck: z.enum(["passed", "failed"]).nullable().default(null),
   /** ISO timestamp of the newest signal reduced against this entity. */
   lastSignalAt: z.string().nullable().default(null),
 });

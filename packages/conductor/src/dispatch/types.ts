@@ -113,6 +113,25 @@ export interface DispatchResult {
   readonly vendorRunId: string | null;
   /** Why it failed, in plain terms. `null` when it completed. */
   readonly error: string | null;
+  /**
+   * What the dispatch proved about the work item's goal, when it ran the check.
+   *
+   * **Absent means the dispatch made no claim** — the same rule
+   * {@link DispatchProduced} holds, and here it is the whole point. `outcome`
+   * cannot answer this question in either direction: `"completed"` means the
+   * harness settled, so an agent that ran the check, found the goal unmet and
+   * said so still reports a completion, and reading that as a pass would rubber
+   * stamp the one gate whose entire job is proving the work. `"failed"` means
+   * the harness crashed, timed out, or was never given a workspace, and reading
+   * *that* as a failed goal reports a broken vendor as "the change did not do
+   * what the issue asked". So the verdict is its own field, and a dispatcher
+   * that cannot produce one structurally omits it rather than guessing.
+   *
+   * **It must come from something with an exit status, never from the agent's
+   * prose.** A model may produce a signal and may never produce an action; a
+   * verdict read out of a final message is a model deciding a merge gate.
+   */
+  readonly goalCheck?: "passed" | "failed";
   readonly startedAt: string;
   readonly settledAt: string;
 }

@@ -373,6 +373,7 @@ export async function openConductor(input: OpenConductorInput): Promise<Conducto
       issueType: item.issueType,
       epicId: null,
       externalKey: item.externalKey ?? null,
+      goalCheck: null,
       lastSignalAt: null,
     });
     if (item.summary !== undefined) {

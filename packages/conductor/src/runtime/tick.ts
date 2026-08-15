@@ -90,6 +90,7 @@ import {
 import type { Signal } from "../model/signals";
 import {
   artifactOfKind,
+  prForArtifact,
   type ArtifactFacts,
   type ArtifactKind,
   type ChildIssueFacts,
@@ -131,7 +132,10 @@ export interface TickContext {
 /** One signal waiting to be reduced, and whether the tick produced it itself. */
 interface Queued {
   readonly signal: Signal;
-  /** True for a signal the tick derived — a phase entry, a dispatch settling. */
+  /**
+   * True for a signal the tick derived — a phase entry, a dispatch settling, a
+   * goal verdict a dispatch reported.
+   */
   readonly derived: boolean;
 }
 
@@ -181,6 +185,40 @@ async function persistEntity(
     phase: phase as IssueState["phase"],
     lastSignalAt: lastSignalAt ?? stored.lastSignalAt,
   });
+}
+
+/** The verdict a goal check can leave behind. `null` means it has not run. */
+type GoalCheckVerdict = "passed" | "failed" | null;
+
+/**
+ * The stored goal verdict for this entity.
+ *
+ * An epic has none: the goal check proves that *a change did what an issue
+ * asked*, and an epic's own phases gate on its children rather than on a proof
+ * of their own. `null` is what the epic branch of the phase table already reads.
+ */
+async function readGoalCheck(context: TickContext): Promise<GoalCheckVerdict> {
+  if (context.entityKind === "epic") return null;
+  return (await context.collections.issues.read(context.entityId))?.goalCheck ?? null;
+}
+
+/**
+ * Write the goal verdict a dispatch reported.
+ *
+ * The only writer of the field, and the counterpart to {@link readGoalCheck}:
+ * conductor owns the verdict, so if it is not written down here it does not
+ * exist anywhere. It is written *before* it is read back into a world, which is
+ * what makes the value survive the restart the whole tick is built around — a
+ * verdict held only in this tick's snapshot would be lost with the process.
+ */
+async function persistGoalCheck(
+  context: TickContext,
+  verdict: GoalCheckVerdict,
+): Promise<void> {
+  if (context.entityKind === "epic") return;
+  const stored = await context.collections.issues.read(context.entityId);
+  if (!stored) return;
+  await context.collections.issues.write(context.entityId, { ...stored, goalCheck: verdict });
 }
 
 /**
@@ -532,6 +570,74 @@ async function recordProduced(
 }
 
 /**
+ * What a settled dispatch said about the goal, or `undefined` when it said
+ * nothing.
+ *
+ * Two actions can leave a verdict behind, and they are the two the process
+ * defines rather than an arbitrary pair. `runGoalCheck` is the obvious one — it
+ * exists to produce this and nothing else. `implement` is the one that is easy
+ * to miss and load-bearing: in the single-PR shape the goal is proved at
+ * implementation completion, *before* the PR opens, which is the only reason
+ * `awaiting_merge` — a gate that refuses to apply until the goal has passed — is
+ * ever reachable at all. Both report it through the same field, so neither needs
+ * a path of its own.
+ *
+ * **`addressFeedback` clears it.** A revision is new code, and a proof taken
+ * against the code it replaced says nothing about it. Left standing, an
+ * approved-then-revised PR would carry a "passed" into `awaiting_merge` and
+ * invite a human to merge on a proof that had expired. The clear is the
+ * *default* for a revision rather than an override: a revision that re-ran the
+ * check and reported the result is telling us something better than "unknown",
+ * and it wins.
+ *
+ * Every other action returns whatever the dispatcher reported, which is almost
+ * always nothing — and nothing means **no claim**, not a failure. A vendor that
+ * is silent has not said the goal is unmet, so the stored verdict stands.
+ */
+function claimedGoalCheck(
+  action: DispatchAction,
+  result: DispatchResult,
+): GoalCheckVerdict | undefined {
+  if (action.kind === "addressFeedback") return result.goalCheck ?? null;
+  return result.goalCheck;
+}
+
+/**
+ * May a verdict this tick produced be reduced against this tick's snapshot?
+ *
+ * A verdict is conductor's own fact, so folding it into the world the rest of
+ * the tick reduces against is the honest thing to do — and it is what lets an
+ * issue settle *on the tick that proved it* rather than waiting for a signal
+ * that may never come: a merged PR whose goal check has just passed produces no
+ * further observation of its own, so a verdict nothing reduces strands the issue
+ * one step from `SETTLED` forever.
+ *
+ * The exception is a **pass reported before the phase's submission is in the
+ * snapshot**, and it is the ordinary path rather than a corner case.
+ * `IMPLEMENTATION` completes on *goal proved, and the work no longer sitting in
+ * an open PR*, and an entity holding no pull request satisfies the second half
+ * vacuously — correct for the nested multi-PR shape, catastrophic here, because
+ * `implement` proves the goal seconds before the submission exists. Reducing
+ * that pass now would settle an issue that has had no CI, no review and no
+ * merge. So it is persisted and left for the next tick, which adopts the
+ * submission before it observes ({@link adoptSubmissionForBranch}) and reduces
+ * the verdict against a world that holds it.
+ *
+ * Nothing else needs the guard: a failing verdict cannot complete a phase, and
+ * clearing one can only close a gate that was open.
+ */
+function verdictReducibleNow(
+  entity: ConductorEntity,
+  world: World,
+  verdict: GoalCheckVerdict,
+): boolean {
+  if (verdict !== "passed") return true;
+  const kind = artifactKindForPhase(entity.phase);
+  if (!kind) return true;
+  return prForArtifact(world, artifactOfKind(world, kind)) !== undefined;
+}
+
+/**
  * Write down that the entity holds an artifact of `kind` hosted at `hostedAt`,
  * unless it already does.
  *
@@ -732,6 +838,10 @@ export async function observeWorld(
     entity: { kind: entity.kind, phase: entity.phase },
     entityId: context.entityId,
     artifacts: await readArtifacts(context),
+    // Conductor-owned, and the reader has no other source for it — a request
+    // that omits it hands every gate `null`, which reads as "the goal check has
+    // never run" and holds `awaiting_merge` shut however many times it passed.
+    goalCheck: await readGoalCheck(context),
     childIssues: await readChildIssues(context),
     guidancePaths: context.deps.config.guidance,
     policy: context.deps.config.policy,
@@ -790,13 +900,19 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
     entity: { kind: entity.kind, phase: entity.phase },
     entityId: context.entityId,
     artifacts: await readArtifacts(context),
+    // See `observeWorld` for why an omission here is silent and total.
+    goalCheck: await readGoalCheck(context),
     childIssues: await readChildIssues(context),
     guidancePaths: context.deps.config.guidance,
     policy: context.deps.config.policy,
     cursor: await readCursor(context),
     now: at,
   });
-  const world = observation.world;
+  // `let`, for one fact and one only: a goal verdict a dispatch reports partway
+  // through this tick is conductor's own, not the source's, so the reductions
+  // after it read a snapshot that carries it. Nothing else here rebinds the
+  // world — an observed fact that moved mid-tick is the *next* tick's read.
+  let world = observation.world;
 
   const queue: Queued[] = [];
 
@@ -898,6 +1014,31 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
         },
         derived: true,
       });
+
+      // The one thing a dispatch reports that conductor has to store rather than
+      // re-read: no source has an opinion on whether the change did what the
+      // issue asked. Persisted first and unconditionally, so the verdict
+      // survives the process whether or not this tick can act on it; then folded
+      // into the snapshot and announced as a signal, which is what actually
+      // moves the gate. See {@link verdictReducibleNow} for the pass that has to
+      // wait a tick.
+      const claim = claimedGoalCheck(action, result);
+      if (claim !== undefined) {
+        await persistGoalCheck(context, claim);
+        if (verdictReducibleNow(entity, world, claim)) {
+          world = { ...world, goalCheck: claim };
+          if (claim !== null) {
+            queue.unshift({
+              signal: {
+                kind: claim === "passed" ? "goal_check_passed" : "goal_check_failed",
+                entityId: context.entityId,
+                at: signal.at,
+              },
+              derived: true,
+            });
+          }
+        }
+      }
     }
   }
 

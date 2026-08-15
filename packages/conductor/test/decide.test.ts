@@ -1018,3 +1018,46 @@ describe("escalation", () => {
     expect(kinds(actions)).toEqual(["escalate"]);
   });
 });
+
+describe("a goal check that fails before the merge", () => {
+  it("sends the work back, because an unmet goal on an open PR is ordinary", () => {
+    // The escalation above used to fire on *every* failed goal check in
+    // IMPLEMENTATION, with no predicate reading the PR state — so a check that
+    // failed on an open PR filed a human-intervention report whose reason said
+    // the change was already on the base branch. It was not: there is an open PR
+    // sitting right there to push the fix to, which is what makes this feedback
+    // rather than an intervention.
+    const w = worldWith(
+      "implementation",
+      pr({ state: "open", checks: "success" }),
+      {},
+      { goalCheck: "failed" },
+    );
+    const actions = decide(issue("IMPLEMENTATION"), signal("goal_check_failed"), w);
+    expect(kinds(actions)).toEqual(["addressFeedback"]);
+  });
+
+  it("sends it back before any PR exists, which is where a single-PR issue proves its goal", () => {
+    // `implement` proves the goal at completion, before the submission is
+    // opened, so the first failed verdict an issue ever sees arrives with no PR
+    // in the world at all. Not merged is not merged: the work goes back.
+    const w = world({ goalCheck: "failed" });
+    const actions = decide(issue("IMPLEMENTATION"), signal("goal_check_failed"), w);
+    expect(kinds(actions)).toEqual(["addressFeedback"]);
+  });
+
+  it("stops buying revisions on the same budget every other feedback path uses", () => {
+    // A goal nobody can meet is the same loop as a thread nobody can settle, and
+    // the cap is a loop detector. Spending the budget here rather than in a
+    // comparison of its own is what keeps the three paths from drifting apart.
+    const w = worldWith(
+      "implementation",
+      pr({ state: "open", checks: "success" }),
+      { reviewRounds: DEFAULT_POLICY.implementationReviewRoundBudget },
+      { goalCheck: "failed" },
+    );
+    const actions = decide(issue("IMPLEMENTATION"), signal("goal_check_failed"), w);
+    expect(kinds(actions)).toEqual(["escalate"]);
+    expect(actions[0]).toMatchObject({ reason: expect.stringContaining("budget") });
+  });
+});

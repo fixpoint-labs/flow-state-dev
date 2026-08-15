@@ -24,6 +24,11 @@ export interface ScriptedDispatch {
   readonly costUsd?: number | null;
   readonly vendorRunId?: string | null;
   readonly error?: string | null;
+  /**
+   * A goal verdict to claim, omitted by default so a scripted run claims
+   * nothing — which is what every shipped dispatcher does today.
+   */
+  readonly goalCheck?: "passed" | "failed";
 }
 
 export interface FakeDispatcherOptions {
@@ -80,6 +85,10 @@ export function fakeDispatcher(options: FakeDispatcherOptions = {}): FakeDispatc
         costUsd: scripted.costUsd ?? null,
         vendorRunId: scripted.vendorRunId ?? null,
         error: scripted.error ?? null,
+        // Spread rather than defaulted: the field's absence is the claim
+        // ("nothing was proved"), so a fake that always carried a key would be
+        // scripting a shape no dispatcher produces.
+        ...(scripted.goalCheck ? { goalCheck: scripted.goalCheck } : {}),
         startedAt: at,
         settledAt: at,
       };

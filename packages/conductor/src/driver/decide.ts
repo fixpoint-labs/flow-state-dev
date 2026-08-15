@@ -428,17 +428,39 @@ export function decide(
         },
       ];
     }
-    // A goal check that fails after the PR merged needs a human: there is no
-    // open PR left to push a fix to, and the change is already on the base.
+    // A failed goal check means two different things either side of the merge,
+    // and the merge is the only thing that tells them apart — so the predicate
+    // has to be read rather than assumed. **After** the merge it needs a human:
+    // there is no open PR left to push a fix to, and the change is already on
+    // the base. **Before** it, this is the ordinary shape of work in progress —
+    // the change does not do what the issue asked yet — and it sends the work
+    // back exactly as review feedback and a red build do. Escalating that
+    // instead filed a human-intervention report against the happy path, with a
+    // reason claiming the change was on the base branch when it was sitting in
+    // an open PR nobody had merged.
+    //
+    // Through `reviseOrEscalate` rather than a bare revision, because the cap is
+    // a loop detector and a goal nobody can meet is the same loop as a thread
+    // nobody can settle. A third hand-written budget comparison beside the two
+    // this function already routes through here is how one of them stops
+    // matching the process doc.
     if (signal.kind === "goal_check_failed") {
-      return [
-        {
-          kind: "escalate",
-          entityId: entity.id,
-          reason:
-            "The goal check failed after merge — the change is on the base branch and did not do what the issue asked.",
-        },
-      ];
+      if (activePr(entity, world)?.state === "merged") {
+        return [
+          {
+            kind: "escalate",
+            entityId: entity.id,
+            reason:
+              "The goal check failed after merge — the change is on the base branch and did not do what the issue asked.",
+          },
+        ];
+      }
+      return reviseOrEscalate(
+        entity,
+        world,
+        "addressFeedback",
+        "The goal check failed: the change does not do what the issue asked yet.",
+      );
     }
   }
 

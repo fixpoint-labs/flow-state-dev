@@ -184,6 +184,23 @@ describe("a record written before a field existed (BP-030)", () => {
     });
   });
 
+  it("reads an issue stored before the goal check as one that has not run", async () => {
+    const store = await openState();
+
+    // The verdict gates the merge, so the direction the default falls matters:
+    // `null` means *the check has not run*, which opens nothing. A row from
+    // before the field existed must not read as a proof nobody took.
+    await store.write(addressFor(conductorIssues, IDS), "issues/FIX-1", {
+      id: "FIX-1",
+      kind: "issue",
+      phase: "IMPLEMENTATION",
+      issueType: "Bug",
+    });
+
+    const row = await conductorCollections(store, IDS).issues.read("FIX-1");
+    expect(row).toMatchObject({ goalCheck: null });
+  });
+
   it("is loud about a record that does not match the schema at all", async () => {
     const store = await openState();
     await store.write(addressFor(conductorIssues, IDS), "issues/FIX-1", {
