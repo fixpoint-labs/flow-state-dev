@@ -154,8 +154,20 @@ else console.error(run.error, run.subtype);
 It **settles rather than throws**. An uninstalled SDK, a timeout, a crash
 mid-run, and a run that ends on an error subtype all come back as `ok: false`
 with a reason — so if you keep a ledger or a retry budget off the return value,
-you never lose a record to an exception. `costUsd` and `usage` are populated on
-failed runs too; the tokens were spent either way.
+you never lose a record to an exception.
+
+`costUsd` and `usage` come from the run's terminal result. A run that ends on an
+error subtype still reports them — the tokens were spent either way — but a
+timeout or a mid-run crash never gets that result, so both come back `null`. The
+spend was real; the SDK just never said how much. Total those runs as unknown,
+not as free.
+
+`timeoutMs` bounds *the call*, not the agent. On the deadline the run is aborted
+and, where the SDK exposes a way to, closed — then the call returns whether or
+not the run acknowledged. An agent that ignores both is left running, and
+`error` says so ("…was abandoned before it acknowledged the stop, so the agent
+may still be running") rather than claiming it was killed. If you cannot afford
+a stray agent process, treat that wording as an alert.
 
 `subtype` is the run's own account of how it ended, so you can tell a ceiling you
 set (`error_max_turns`, `error_max_budget_usd`) from a failure you cannot raise

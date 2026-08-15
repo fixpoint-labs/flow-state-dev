@@ -200,14 +200,30 @@ export interface ResolvedClaudeAgent {
 }
 
 /**
+ * What `query()` hands back: the run's message stream, plus the SDK's own
+ * teardown if this version has one.
+ *
+ * The SDK's `Query` is an `AsyncGenerator` carrying control methods, of which
+ * `close()` is the one a caller that stops reading needs — aborting the signal
+ * asks the run to stop, `close()` tears the underlying agent down. It is
+ * declared optional and structural for the same reason the rest of this file
+ * is: the package never type-depends on the optional SDK, a scripted fake
+ * satisfies the shape without it, and an older SDK that lacks it still type-checks.
+ */
+export interface ClaudeAgentStream extends AsyncIterable<SdkMessageLike> {
+  /** Stop the underlying run and release its process. Absent on a bare iterable. */
+  close?: () => void;
+}
+
+/**
  * The SDK `query()` function shape this package calls. Structural so a scripted
- * fake satisfies it in tests without importing the SDK. Returns an async
- * iterable of {@link SdkMessageLike}.
+ * fake satisfies it in tests without importing the SDK. Returns a
+ * {@link ClaudeAgentStream}.
  */
 export type ClaudeAgentQuery = (args: {
   prompt: string | AsyncIterable<unknown>;
   options?: ClaudeAgentQueryOptions;
-}) => AsyncIterable<SdkMessageLike>;
+}) => ClaudeAgentStream;
 
 /**
  * Where the SDK may load filesystem settings from — the SDK's `SettingSource`.

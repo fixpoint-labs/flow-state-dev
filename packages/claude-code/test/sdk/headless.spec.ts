@@ -46,6 +46,18 @@ function scriptedAgent(messages: readonly SdkMessageLike[]) {
   return { query, resolveAgent };
 }
 
+/**
+ * A stream that never yields and never rejects — the wedged SDK iterator, or an
+ * injected one that ignores `abortController`.
+ *
+ * Deliberately hand-rolled rather than an `async function*` awaiting a timer:
+ * fake timers would fire that one, and the test would prove nothing. Its `next()`
+ * promise genuinely never settles.
+ */
+const wedgedStream = (): AsyncIterable<SdkMessageLike> => ({
+  [Symbol.asyncIterator]: () => ({ next: () => new Promise<never>(() => {}) }),
+});
+
 /** The options the scripted `query` was called with. */
 const optionsOf = (query: ReturnType<typeof scriptedAgent>["query"]): ClaudeAgentQueryOptions =>
   vi.mocked(query).mock.calls[0]![0].options!;
@@ -255,6 +267,83 @@ describe("runClaudeHeadless", () => {
       // "the run overran its budget" send a human to different places.
       expect(run.error).toMatch(/did not finish loading/);
       expect(run.error).not.toMatch(/run exceeded/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("settles as failed when the agent ignores the abort, rather than hanging past its budget", async () => {
+    vi.useFakeTimers();
+    try {
+      // The case `abortController` cannot reach: an iterator that took the
+      // signal and does nothing with it. Aborting and *waiting* for this one to
+      // reject waits forever, so the call has to leave without it.
+      const resolveAgent: ResolveClaudeAgentQuery = () => ({
+        query: () => wedgedStream(),
+      });
+      const pending = runClaudeHeadless({ prompt: "p", timeoutMs: 30_000, resolveAgent });
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      const run = await pending;
+      expect(run.ok).toBe(false);
+      expect(run.error).toContain("30000 ms");
+      // Named as the *run* overrunning, not as the harness failing to load.
+      expect(run.error).toMatch(/exceeded/);
+      // And honestly: nothing here could stop it, so it may still be spending.
+      expect(run.error).toMatch(/may still be running/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not report a run that ignored the abort and succeeded late as a success", async () => {
+    vi.useFakeTimers();
+    try {
+      // Yields nothing until released, then reports a clean success — the run
+      // that blew its budget by an hour and then finished. Reported as `ok`, a
+      // caller's ledger records a normal completion and the overrun vanishes.
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const messages: SdkMessageLike[] = [result()];
+      const resolveAgent: ResolveClaudeAgentQuery = () => ({
+        query: async function* (): AsyncGenerator<SdkMessageLike> {
+          await gate;
+          for (const message of messages) yield message;
+        },
+      });
+      const pending = runClaudeHeadless({ prompt: "p", timeoutMs: 30_000, resolveAgent });
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      release();
+      const run = await pending;
+      expect(run.ok).toBe(false);
+      expect(run.error).toContain("30000 ms");
+      expect(run.finalMessage).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("closes the stream on the deadline when the SDK offers a way to, and says so", async () => {
+    vi.useFakeTimers();
+    try {
+      // The real `query()` handle is an async generator with a `close()` that
+      // tears the agent process down. Given one, the deadline is a real stop
+      // rather than an abandonment — and the reason says the run was stopped.
+      const close = vi.fn();
+      const resolveAgent: ResolveClaudeAgentQuery = () => ({
+        query: () => Object.assign(wedgedStream(), { close }),
+      });
+      const pending = runClaudeHeadless({ prompt: "p", timeoutMs: 30_000, resolveAgent });
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      const run = await pending;
+      expect(run.ok).toBe(false);
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(run.error).toContain("30000 ms");
+      expect(run.error).not.toMatch(/may still be running/);
     } finally {
       vi.useRealTimers();
     }

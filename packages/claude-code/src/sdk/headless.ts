@@ -19,8 +19,14 @@
  * mid-stream, and an error-subtype result all come back as `ok: false` with a
  * reason. Callers whose bookkeeping runs off the returned value (a ledger, a
  * retry budget) would lose the record to a thrown error, so there is nothing to
- * catch. The mirror of that rule: cost and usage are reported on failed runs
- * too, because the tokens were still spent.
+ * catch.
+ *
+ * **Cost and usage come from the terminal result, so a run that never reached
+ * one reports neither.** An error-subtype result still carries what it spent,
+ * and that is reported like any other — the failure does not suppress it. But a
+ * timeout or a mid-stream throw leaves `costUsd` and `usage` `null`: the tokens
+ * were real and the SDK simply never told us how many. A caller totalling spend
+ * has to treat those runs as unknown rather than as free.
  */
 import { ClaudeAgentSdkNotInstalledError, describeThrown } from "./errors";
 import { readTerminalResult, type SdkTokenUsage } from "./result";
@@ -28,6 +34,7 @@ import { defaultResolveClaudeAgentQuery } from "./sdk-client";
 import type {
   ClaudeAgentQuery,
   ClaudeAgentQueryOptions,
+  ClaudeAgentStream,
   ClaudeSettingSource,
   ClaudeSystemPrompt,
   ResolveClaudeAgentQuery,
@@ -73,8 +80,10 @@ export interface ClaudeHeadlessResult {
   /** The session id, for a human to resume or open. `null` when unreported. */
   readonly sessionId: string | null;
   /**
-   * Vendor-reported cost in USD, `null` when unreported. Populated on a failed
-   * run too — the tokens were still spent.
+   * Vendor-reported cost in USD, `null` when unreported. Read from the terminal
+   * result, so a *failed* run reports it — the tokens were still spent — but a
+   * run that never reached a terminal result (a timeout, a mid-stream throw)
+   * has nothing to read and reports `null` despite having spent.
    */
   readonly costUsd: number | null;
   /**
@@ -87,8 +96,10 @@ export interface ClaudeHeadlessResult {
    */
   readonly subtype: SdkResultSubtype | null;
   /**
-   * Tokens spent, `null` when unreported. Reported on failed runs too, and the
-   * only spend signal at all when the credentials in play bill no dollar cost.
+   * Tokens spent, `null` when unreported — and, like {@link costUsd}, `null`
+   * for a run that ended before its terminal result. Reported on error-subtype
+   * runs, and the only spend signal at all when the credentials in play bill no
+   * dollar cost.
    */
   readonly usage: ClaudeHeadlessUsage | null;
 }
@@ -114,8 +125,13 @@ export interface RunClaudeHeadlessOptions {
   readonly maxBudgetUsd?: number;
   /**
    * Wall-clock ceiling on the whole call, **loading the SDK included** — the
-   * clock starts before `resolveAgent` is called, so a harness that never
-   * loads settles as a failure instead of hanging. No ceiling when unset.
+   * clock starts before `resolveAgent` is called, so a harness that never loads
+   * settles as a failure instead of hanging. No ceiling when unset.
+   *
+   * It bounds *this call*, not the agent. The deadline aborts the run and
+   * closes the stream where the SDK allows it, then returns whether or not the
+   * run acknowledged; an agent that ignores both is left running, and the
+   * failure reason says so rather than implying it was killed.
    */
   readonly timeoutMs?: number;
   /**
@@ -158,6 +174,65 @@ function failed(error: string, partial: Partial<ClaudeHeadlessResult> = {}): Cla
     usage: null,
     ...partial,
   };
+}
+
+/**
+ * Best-effort stop of a run whose deadline fired, and an honest answer about
+ * whether it worked.
+ *
+ * The signal has already been aborted by the timer; that is a *request*, and
+ * this is the follow-up for a run that has not acted on it yet. `close()` is
+ * the SDK's own teardown — it releases the agent process rather than asking it
+ * to finish — so a stream that has one is stopped for certain. Anything else
+ * gets the iterator protocol's `return()`, which runs a cooperative generator's
+ * `finally` blocks and does nothing at all for one that is wedged.
+ *
+ * Nothing here is awaited. Both terminators can hang on exactly the run this
+ * exists to escape, and waiting on them would give the budget back the hole it
+ * just closed. `return()`'s eventual rejection is swallowed so an abandoned
+ * teardown cannot resurface as an unhandled rejection.
+ *
+ * @returns `true` only when the stop is **confirmed**. `false` covers both a
+ *   run that ignored the abort and one that would have honoured it a moment
+ *   later — reaching here means the deadline settled first, which is not
+ *   evidence either way, so the reason must not claim to know which.
+ */
+function stopAgent(
+  stream: ClaudeAgentStream,
+  iterator: AsyncIterator<SdkMessageLike>,
+): boolean {
+  if (typeof stream.close === "function") {
+    try {
+      stream.close();
+    } catch {
+      // A teardown that throws has still had its chance; the caller is leaving
+      // either way, and a failure to close must not replace the timeout reason.
+      return false;
+    }
+    return true;
+  }
+  void iterator.return?.().catch(() => {});
+  return false;
+}
+
+/**
+ * The plain-text reason for a run that outlived `timeoutMs`.
+ *
+ * Both halves name the budget, so a caller reading the ledger sees the same
+ * failure class either way. What differs is the part only this function knows:
+ * whether the agent is accounted for, or was left behind and may still be
+ * spending. Naming a possible leak is the difference between a cost a human can
+ * go and kill and one that vanishes.
+ *
+ * The unconfirmed half says *abandoned before it acknowledged the stop* rather
+ * than "it ignored the abort", because that is all that is known: the deadline
+ * settled first, which does not distinguish a wedged run from one that was
+ * about to comply.
+ */
+function overranBudget(timeoutMs: number, stopped: boolean): string {
+  return stopped
+    ? `The Claude Code run exceeded its ${timeoutMs} ms budget and was stopped.`
+    : `The Claude Code run exceeded its ${timeoutMs} ms budget and was abandoned before it acknowledged the stop, so the agent may still be running.`;
 }
 
 /**
@@ -206,6 +281,13 @@ function reduceResult(msg: Extract<SdkMessageLike, { type: "result" }>): ClaudeH
  * mid-run, and a run that ends without a terminal result all settle as failures
  * naming what happened — and the two timeouts name themselves apart, since
  * "the harness never loaded" and "the work overran" are different diagnoses.
+ *
+ * The ceiling binds the call, not the agent: neither phase can be cancelled
+ * outright, so on the deadline this abandons what it cannot stop rather than
+ * waiting on it. A resolution left pending is inert, but an abandoned *run* may
+ * still be executing, and the failure reason distinguishes a run that was
+ * stopped from one that was left behind. Callers that must not leak agent
+ * processes should treat that reason as an alert, not as a clean failure.
  */
 export async function runClaudeHeadless(
   options: RunClaudeHeadlessOptions,
@@ -315,7 +397,30 @@ export async function runClaudeHeadless(
     let sessionId: string | null = null;
     try {
       let result: Extract<SdkMessageLike, { type: "result" }> | null = null;
-      for await (const message of query({ prompt, options: queryOptions })) {
+      // Stepped by hand rather than with `for await`, so each step can be raced
+      // against the deadline. `for await` can only *wait* for the iterator, and
+      // the abort it waits on is a request the iterator is free to ignore: an
+      // injected one that never yields, or an SDK wedged on a subprocess that
+      // stopped reading its signal, hangs this call exactly as an unbounded
+      // resolution used to. The budget has to be able to end the call without
+      // the iterator's cooperation.
+      const stream = query({ prompt, options: queryOptions });
+      const iterator = stream[Symbol.asyncIterator]();
+      for (;;) {
+        const step =
+          deadline === null ? await iterator.next() : await Promise.race([iterator.next(), deadline]);
+        if (step === DEADLINE_EXPIRED) {
+          // Abandoning a live iterator is the cost of keeping the ceiling, and
+          // it is the lesser one: a hang produces no ledger row at all, and a
+          // late `ok: true` records the overrun as a normal completion. What is
+          // owed in exchange is an honest reason — `stopAgent` says whether the
+          // agent was actually stopped or merely left behind.
+          return failed(overranBudget(timeoutMs as number, stopAgent(stream, iterator)), {
+            sessionId,
+          });
+        }
+        if (step.done === true) break;
+        const message = step.value;
         sessionId ??= message.session_id ?? null;
         if (message.type === "result") result = message;
       }
@@ -328,9 +433,10 @@ export async function runClaudeHeadless(
       // behind a rejected iterator. Aborting an already-finished run is a no-op.
       abortController.abort();
       if (timedOut) {
-        return failed(`The Claude Code run exceeded its ${timeoutMs} ms budget and was stopped.`, {
-          sessionId,
-        });
+        // The iterator rejected on the abort, so it did stop — the honest
+        // reading of `stopAgent`'s `true`, reached by cooperation rather than
+        // by `close()`.
+        return failed(overranBudget(timeoutMs as number, true), { sessionId });
       }
       return failed(`The Claude Code run failed: ${describeThrown(error)}`, { sessionId });
     }
