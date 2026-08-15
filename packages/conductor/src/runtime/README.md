@@ -33,7 +33,18 @@ way a property survives a change nobody remembers to re-verify.
   it: **the ledger row is written before the action it records takes effect**, and
   **the phase moves after its row, with the ledger winning if the two disagree**
   (`loadEntity` adopts the ledger's phase, because the ledger is the authority for a
-  transition and the entity row is a projection of it).
+  transition and the entity row is a projection of it). The entry a phase move
+  queues is covered by the same authority: **a phase's entry work runs once, and
+  runs at least once**, because it is re-derived until a ledger row shows a
+  `phase_entered` reduced against *that* phase. Resuming into a phase whose entry
+  never ran is what a nonempty-ledger test misses, and it is unrecoverable — an
+  artifact-free world produces no signal that could start the work later.
+- **This holds for one tick at a time, per entity.** A tick is a read-modify-write
+  and none of it is atomic; two overlapping ones read the same cursor and ledger
+  sequence and run the same paid dispatch twice, with the atomic rename hiding it.
+  `session.ts` queues ticks per entity **within a process**, and says there what
+  that leaves unprotected — two processes over one `statePath` still race, so one
+  process per `statePath` is a deployment requirement.
 - **Every transition is reproducible from the ledger.** A row carries `decide`'s three
   arguments whole, so re-running it from the row alone produces that row's action
   again. Anything the tick does that `decide` did not produce therefore has no place

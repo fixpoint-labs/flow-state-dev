@@ -45,6 +45,17 @@
  *   leaves the entity one transition behind, which {@link loadEntity} repairs by
  *   adopting the ledger's phase — the ledger is the authority for a transition,
  *   and the entity is a projection of it.
+ * - **A phase's entry work runs once, and runs at least once.** Adopting the
+ *   ledger's phase moves the entity without moving the *entry* that dispatches
+ *   that phase's opening work, so "resumes" has to cover the entry too: it is
+ *   re-derived from the ledger until a row proves it was reduced against this
+ *   phase, and never after. See {@link entrySeeded} for why "the ledger is
+ *   nonempty" is not that proof.
+ *
+ * One assumption this file makes and does not enforce: **one tick at a time per
+ * entity.** Nothing here is atomic across its read-modify-write, so overlapping
+ * ticks duplicate a paid dispatch. `./session` serializes them, and states there
+ * what that does and does not cover.
  *
  * The window this does *not* close is stated rather than papered over: the
  * observation cursor is persisted at the end of a tick, so a process killed
@@ -75,7 +86,12 @@ import {
   type Phase,
 } from "../model/phases";
 import type { Signal } from "../model/signals";
-import type { ArtifactFacts, ChildIssueFacts, World } from "../model/world";
+import {
+  artifactOfKind,
+  type ArtifactFacts,
+  type ChildIssueFacts,
+  type World,
+} from "../model/world";
 import type { EpicState, IssueState, LedgerEntryState } from "../model/entities";
 import { decide } from "../driver/decide";
 import { deriveGate, type ConductorEntity } from "../driver/derive-gate";
@@ -183,6 +199,63 @@ async function readLedger(context: TickContext): Promise<LedgerEntryState[]> {
   return rows
     .filter((row) => row.entityId === context.entityId)
     .sort((a, b) => a.seq - b.seq);
+}
+
+/**
+ * Has the entity's **current** phase already had its entry reduced?
+ *
+ * Entry is what dispatches a phase's opening work, and the tick that enters a
+ * phase drains it in the same pass — so the record that it ran is the row that
+ * entry produced: a `phase_entered` signal reduced *against the phase being
+ * entered*. A row carrying both is proof for that phase and for no other, which
+ * is the whole correction. An empty ledger is only the first instance of "the
+ * current phase has not been entered"; a nonempty one says nothing about it, and
+ * reading it as proof strands an entity that advanced a phase durably and died
+ * before the entry it had queued — in IMPLEMENTATION with no PR, no dispatch,
+ * and no signal an artifact-free world could ever produce to start one.
+ *
+ * Matching on the phase *name* is enough because neither phase table cycles: a
+ * phase is entered at most once per entity, so there is no earlier visit's row
+ * to mistake for this one's.
+ *
+ * A phase whose entry reduces to no action at all (`ISSUES` waits on its
+ * children) leaves no row and is therefore re-seeded on every tick. That is
+ * deliberate and free — re-reducing an entry that produced nothing appends zero
+ * rows and dispatches nothing — and the alternative, reading "no row" as
+ * "already done", is the bug this predicate exists to close.
+ */
+function entrySeeded(ledger: readonly LedgerEntryState[], phase: Phase): boolean {
+  return ledger.some(
+    (row) => row.signalKind === "phase_entered" && row.phaseBefore === phase,
+  );
+}
+
+/**
+ * What a dispatch action would run against, so a tick can tell one piece of work
+ * from the same piece of work asked for twice.
+ *
+ * The phase's active artifact is the identity: a revision dispatch is a pass
+ * over everything outstanding on that artifact, so two of them produced by one
+ * tick are one job. The head is not part of the key because it cannot vary
+ * within a tick — every signal is reduced against one immutable snapshot, in
+ * which an artifact's PR has exactly one head — and the tick is the whole
+ * coalescing window. Across ticks the observation cursor is what stops a comment
+ * being reduced twice.
+ */
+function dispatchKey(
+  entity: ConductorEntity,
+  action: DispatchAction,
+  world: World,
+): string {
+  const kind = artifactKindForPhase(entity.phase);
+  const hostedAt = kind ? artifactOfKind(world, kind)?.hostedAt : undefined;
+  const host =
+    hostedAt === undefined
+      ? "none"
+      : hostedAt.type === "pr"
+        ? `pr/${hostedAt.number}`
+        : `file/${hostedAt.path}`;
+  return `${action.kind}@${host}`;
 }
 
 /** A work item nothing has put under management. */
@@ -597,13 +670,14 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
 
   const queue: Queued[] = [];
 
-  // An entity with no recorded transition has never been *entered*, whatever
-  // phase it was managed into. Entry is what dispatches a phase's opening work,
-  // so without this the first tick of a fresh item reduces nothing and the item
-  // sits still forever. Derived from the ledger rather than stored on the
-  // entity, which is what makes it restart-safe: the moment the entry produces
-  // a row, it stops being re-derived.
-  if (ledger.length === 0) {
+  // A phase whose entry has not been reduced has never been *entered*, whatever
+  // its row says it advanced into. Entry is what dispatches a phase's opening
+  // work, so without this a fresh item sits still forever and a restart taken
+  // mid-transition loses that phase's opening work permanently. Derived from the
+  // ledger rather than stored on the entity, which is what makes it restart-safe
+  // in both directions — see {@link entrySeeded}. The property is exact: a
+  // phase's entry work runs once, and runs at least once.
+  if (!entrySeeded(ledger, entity.phase)) {
     queue.push({
       signal: { kind: "phase_entered", entityId: context.entityId, at },
       derived: true,
@@ -612,6 +686,9 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
   for (const signal of observation.signals) queue.push({ signal, derived: false });
 
   const summary = await readEntitySummary(context);
+
+  /** Dispatches this tick has already run, keyed by {@link dispatchKey}. */
+  const dispatched = new Set<string>();
 
   let newestSignalAt: string | null = null;
 
@@ -662,6 +739,19 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
       }
 
       if (!isDispatch(action)) continue;
+
+      // One paid run per artifact per tick. A human leaving five comments in one
+      // review pass is the ordinary shape of a review: it produces five signals,
+      // five reductions and five rows — every comment reaches the ledger, which
+      // is what the replay invariant needs — but the brief the first one hands
+      // over already asks the agent to address everything outstanding, so the
+      // other four buy the same work again and land as sequential edits on top of
+      // each other. `countReviewRound` already counts the batch as one round;
+      // this is the dispatcher agreeing with the round accounting. Coalescing
+      // suppresses the *run* only, never the record.
+      const key = dispatchKey(entity, action, world);
+      if (dispatched.has(key)) continue;
+      dispatched.add(key);
 
       if (action.kind === "reviseSpec" || action.kind === "addressFeedback") {
         await countReviewRound(context, entity, world);

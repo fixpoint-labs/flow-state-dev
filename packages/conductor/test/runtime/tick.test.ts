@@ -42,7 +42,13 @@ import { openSubmission, submissionDir } from "../../src/local/store";
 import type { LedgerEntryState } from "../../src/model/entities";
 import type { Phase } from "../../src/model/phases";
 import { DEFAULT_POLICY, type ConductorPolicy } from "../../src/model/world";
+import type { Observer } from "../../src/observe/types";
 import { openConductor, type ConductorSession } from "../../src/runtime/session";
+import {
+  fileStateStore,
+  type StateRecord,
+  type StateStore,
+} from "../../src/runtime/store";
 import { fakeDispatcher, type FakeDispatcher } from "../../src/testing/fake";
 import { createTestRepo, type TestRepo } from "../local/repo";
 
@@ -85,15 +91,62 @@ function testClock(): () => Date {
   return () => new Date((millis += 1000));
 }
 
+/** Seams a test wants to substitute when it opens a session. */
+interface OpenOverrides {
+  readonly policy?: ConductorPolicy;
+  /** The durable store. Defaults to a real directory under `statePath`. */
+  readonly store?: StateStore;
+  /** Wraps the local observer, for a test that needs the read to take time. */
+  readonly observer?: (inner: Observer) => Observer;
+}
+
 /** Open a session over the shared state directory, reading the test checkout. */
-async function open(dispatcher: Dispatcher, policy?: ConductorPolicy): Promise<ConductorSession> {
+async function open(
+  dispatcher: Dispatcher,
+  overrides: OpenOverrides = {},
+): Promise<ConductorSession> {
+  const observer = localObserver({ repoRoot: repo.root, baseBranch: "main", git: repo.git });
   return openConductor({
-    config: configFor(dispatcher, policy),
+    config: configFor(dispatcher, overrides.policy),
     statePath,
-    observer: localObserver({ repoRoot: repo.root, baseBranch: "main", git: repo.git }),
+    observer: overrides.observer ? overrides.observer(observer) : observer,
+    store: overrides.store,
     git: repo.git,
     now: testClock(),
   });
+}
+
+/**
+ * A store that stops accepting writes the instant one of them matches.
+ *
+ * The process dying at a chosen point in a tick, rather than a crash the code
+ * under test is told about: everything written before the match is on disk, and
+ * nothing after it is.
+ */
+function storeDyingAfter(
+  inner: StateStore,
+  matches: (key: string, state: StateRecord) => boolean,
+): StateStore {
+  let dead = false;
+  return {
+    ...inner,
+    async write(address, key, state) {
+      if (dead) throw new Error(`the process died before it could write ${key}`);
+      await inner.write(address, key, state);
+      if (matches(key, state)) dead = true;
+    },
+  };
+}
+
+/** The observer with a yield in it, so two overlapping ticks really do overlap. */
+function slowObserver(inner: Observer): Observer {
+  return {
+    source: inner.source,
+    async observe(request) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return inner.observe(request);
+    },
+  };
 }
 
 /** A branch with a commit on it, submitted for review the way a human would. */
@@ -203,6 +256,17 @@ async function manageIssue(session: ConductorSession) {
     kind: "issue",
     issueType: "Bug",
     phase: "IMPLEMENTATION",
+    summary: SUMMARY,
+  });
+}
+
+/** Put the one work item under management at spec, as a feature would enter. */
+async function manageFeature(session: ConductorSession) {
+  return session.manage({
+    id: ENTITY,
+    kind: "issue",
+    issueType: "Feature",
+    phase: "SPEC",
     summary: SUMMARY,
   });
 }
@@ -392,6 +456,105 @@ describe("property 2: a restart resumes, it does not redo", () => {
     expect(ticked.dispatchCount).toBe(1);
     expect(ticked.ledger.filter((row) => row.actionKind === "implement")).toHaveLength(1);
   });
+
+  it("dispatches the entry work of a phase it advanced into but never entered", async () => {
+    repo = await createTestRepo();
+    await freshState();
+    const spec = await submit(`spec/${ENTITY}`);
+
+    // The interleaving, constructed rather than asserted about: the store stops
+    // accepting writes the instant the `enterPhase` row is on disk. The phase
+    // has durably advanced to IMPLEMENTATION, and the `phase_entered` that
+    // dispatches its opening work was still in the tick's own in-memory queue.
+    const first = fakeDispatcher({
+      isolation: "remote",
+      results: [{ produced: { pullNumber: spec.number } }],
+    });
+    const session = await open(first, {
+      store: storeDyingAfter(
+        fileStateStore(statePath),
+        (key, state) => key.startsWith("ledger/") && state.actionKind === "enterPhase",
+      ),
+    });
+
+    await manageFeature(session);
+    await session.tick(ENTITY);
+    await review(spec.number, "alice", "APPROVED", spec.head);
+    await expect(session.tick(ENTITY)).rejects.toThrow(/the process died/);
+    expect(first.actionsRun()).toEqual(["draftSpec"]);
+
+    // The restart, over a healthy store and a dispatcher that has run nothing.
+    // Nothing in the world can produce a signal that starts an implementation:
+    // there is no implementation PR, and there never will be until the phase's
+    // entry is dispatched. If it is lost here, it is lost permanently.
+    const second = fakeDispatcher({ isolation: "remote" });
+    const resumed = await open(second);
+    const ticked = await resumed.tick(ENTITY);
+
+    expect(ticked.entity.phase).toBe("IMPLEMENTATION");
+    expect(second.actionsRun()).toEqual(["implement"]);
+    expect(ticked.ledger.filter((row) => row.actionKind === "implement")).toHaveLength(1);
+    expect(replayFailures(ticked.ledger)).toEqual([]);
+
+    // And once, not once per tick: the row the recovery wrote is what stops it.
+    await resumed.tick(ENTITY);
+    expect(second.actionsRun()).toEqual(["implement"]);
+  });
+
+  it("does not re-enter a phase whose entry work already ran", async () => {
+    repo = await createTestRepo();
+    await freshState();
+    const spec = await submit(`spec/${ENTITY}`);
+
+    const first = fakeDispatcher({
+      isolation: "remote",
+      results: [{ produced: { pullNumber: spec.number } }],
+    });
+    const session = await open(first);
+    await manageFeature(session);
+    await session.tick(ENTITY);
+    await review(spec.number, "alice", "APPROVED", spec.head);
+    const advanced = await session.tick(ENTITY);
+
+    expect(advanced.entity.phase).toBe("IMPLEMENTATION");
+    expect(first.actionsRun()).toEqual(["draftSpec", "implement"]);
+
+    // The other half of the property, and the failure a recovery gets wrong by
+    // re-seeding unconditionally: an entry that completed must never run twice.
+    const second = fakeDispatcher({ isolation: "remote" });
+    const resumed = await open(second);
+    const ticked = await resumed.tick(ENTITY);
+
+    expect(second.briefs).toHaveLength(0);
+    expect(ticked.dispatchCount).toBe(advanced.dispatchCount);
+    expect(ticked.ledger.filter((row) => row.actionKind === "implement")).toHaveLength(1);
+  });
+});
+
+describe("two ticks that overlap", () => {
+  it("runs the paid dispatch once, not once per tick", async () => {
+    repo = await createTestRepo();
+    await freshState();
+    await submit(`fix/${ENTITY}`);
+
+    // A cron sweep and a webhook arriving at the same entity at the same time,
+    // which is how conductor is meant to be driven. The observer takes a moment
+    // so the overlap is the test's rather than the scheduler's: both ticks are
+    // past their ledger and cursor reads before either has written anything.
+    const dispatcher = harness();
+    const session = await open(dispatcher, { observer: slowObserver });
+    await manageIssue(session);
+
+    const [cron] = await Promise.all([session.tick(ENTITY), session.tick(ENTITY)]);
+
+    // The dispatcher is the only witness that matters. Both ticks derived the
+    // same ledger key and the same dispatch id, so the last atomic rename wrote
+    // one record over the other — the counts below agree whether the work ran
+    // once or twice, which is exactly why they are not the assertion.
+    expect(dispatcher.actionsRun()).toEqual(["implement"]);
+    expect(cron.dispatchCount).toBe(1);
+    expect(cron.ledger.filter((row) => row.actionKind === "implement")).toHaveLength(1);
+  });
 });
 
 describe("property 3: every transition is reproducible from the ledger", () => {
@@ -486,6 +649,36 @@ describe("a dispatch that could not be run", () => {
   });
 });
 
+describe("one review pass's worth of comments", () => {
+  it("dispatches one revision for the batch, and still records every comment", async () => {
+    const dispatcher = harness();
+    const { session, submission } = await drive(dispatcher);
+
+    // A human leaving several comments in one pass — the ordinary shape of a
+    // review, not an edge case. One poll discovers all three.
+    await comment(submission.number, "alice.1.md", "This needs a test.\n");
+    await comment(submission.number, "alice.2.md", "And a doc line.\n");
+    await comment(submission.number, "alice.3.md", "Rename the helper.\n");
+
+    const ticked = await session.tick(ENTITY);
+
+    // One pass over the outstanding batch: the brief the first comment produces
+    // already asks the agent to address everything outstanding, so the other two
+    // are the same work bought again. `countReviewRound` already counts them as
+    // one round — this is the dispatcher agreeing with the round accounting.
+    expect(dispatcher.actionsRun()).toEqual(["implement", "addressFeedback"]);
+    expect(ticked.dispatchCount).toBe(2);
+
+    // And the saving is a saving on *dispatch* only. Every comment still reduced
+    // and every reduction still has its row, or the replay invariant has been
+    // traded away for the money.
+    expect(ticked.ledger.filter((row) => row.signalKind === "feedback_received")).toHaveLength(3);
+    expect(ticked.ledger.filter((row) => row.actionKind === "addressFeedback")).toHaveLength(3);
+    expect(replayFailures(ticked.ledger)).toEqual([]);
+    expect(ledgerFailures(ticked.ledger, "IMPLEMENTATION", ticked.entity.phase)).toEqual([]);
+  });
+});
+
 describe("the review-round budget", () => {
   it("counts a round per head, so feedback past the budget escalates", async () => {
     repo = await createTestRepo();
@@ -496,7 +689,9 @@ describe("the review-round budget", () => {
       isolation: "remote",
       results: [{ produced: { pullNumber: submission.number } }],
     });
-    const session = await open(dispatcher, { ...DEFAULT_POLICY, implementationReviewRoundBudget: 1 });
+    const session = await open(dispatcher, {
+      policy: { ...DEFAULT_POLICY, implementationReviewRoundBudget: 1 },
+    });
 
     await manageIssue(session);
     await session.tick(ENTITY);

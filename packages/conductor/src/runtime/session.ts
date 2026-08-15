@@ -106,7 +106,14 @@ export interface ConductorSession {
    * second call with an earlier phase must not un-do a running item.
    */
   manage(item: WorkItem): Promise<ManagedWork>;
-  /** One tick: read the world, reduce, execute the actions, append the ledger. */
+  /**
+   * One tick: read the world, reduce, execute the actions, append the ledger.
+   *
+   * **Ticks for one entity run one at a time within a process**, so a cron
+   * sweep and a webhook arriving together produce one dispatch rather than two.
+   * The boundary of that guarantee — and what is left unprotected — is on
+   * `serializeTick` in this file.
+   */
   tick(entityId: string): Promise<ManagedWork>;
   /** Read the item back without ticking — reduces nothing, persists nothing. */
   read(entityId: string): Promise<ManagedWork>;
@@ -142,6 +149,57 @@ export interface OpenConductorInput {
 /** The org a standalone conductor addresses its registry under. */
 function defaultOrgId(config: ResolvedConductor): string {
   return `${config.repo.host}/${config.repo.owner}/${config.repo.repo}`;
+}
+
+/**
+ * Ticks in flight, keyed by the state directory and entity they run against.
+ *
+ * Module-level rather than per-session because the thing being serialized is the
+ * durable state, not the handle: two handles over one `statePath` in one process
+ * is the ordinary shape — a cron sweep and a webhook route both open conductor.
+ */
+const ticksInFlight = new Map<string, Promise<void>>();
+
+/**
+ * Run one tick with every other tick for the same entity queued behind it.
+ *
+ * A tick is a read-modify-write and no part of it is atomic: it reads the
+ * ledger's last `seq`, the observation cursor and the dispatch count, reduces,
+ * hands work to a vendor, then writes. Two overlapping ticks — the cron sweep and
+ * the webhook conductor is *meant* to be driven by, arriving together — read the
+ * same three values, mint the same ledger key and the same dispatch id, and
+ * independently run the same paid dispatch. The atomic rename that follows makes
+ * the records agree, so the store looks correct while the money has been spent
+ * twice, and no count read back from storage can tell you it happened.
+ * Serializing the whole cycle is what makes the second tick observe the first
+ * one's rows and reduce to nothing.
+ *
+ * **What this does not cover, stated rather than implied: a second process.**
+ * The queue is a promise chain in one process's memory. A cron job and a webhook
+ * handler deployed as *separate processes* over the same `statePath` race exactly
+ * as they did before, so **one process per `statePath` is a deployment
+ * requirement**. A durable lock is the fix for that and is not a drop-in: it has
+ * to be held across a dispatch that can run for many minutes, so a lease short
+ * enough to recover from a holder that crashed is also short enough to expire
+ * under one that is merely working — and an expiry there re-opens this exact
+ * duplicate. Conductor has no answer to that yet, which is a real gap rather
+ * than a decision.
+ */
+async function serializeTick<T>(key: string, run: () => Promise<T>): Promise<T> {
+  const previous = ticksInFlight.get(key) ?? Promise.resolve();
+  // Queued behind the predecessor whether it resolved or threw: a tick that
+  // failed still leaves the state it wrote, and the next one must read it.
+  const mine = previous.then(run, run);
+  const settled = mine.then(
+    () => undefined,
+    () => undefined,
+  );
+  ticksInFlight.set(key, settled);
+  try {
+    return await mine;
+  } finally {
+    if (ticksInFlight.get(key) === settled) ticksInFlight.delete(key);
+  }
 }
 
 /**
@@ -275,7 +333,13 @@ export async function openConductor(input: OpenConductorInput): Promise<Conducto
     },
 
     async tick(entityId) {
-      return runTick(await contextFor(entityId));
+      // The registry read is inside the queue with the rest of the cycle: it is
+      // where the entity's session — and so every address the tick writes to —
+      // comes from. NUL joins the two halves because it occurs in neither a path
+      // nor an id, so no two pairs can collide on one key.
+      return serializeTick(`${statePath}\u0000${entityId}`, async () =>
+        runTick(await contextFor(entityId)),
+      );
     },
 
     read,
