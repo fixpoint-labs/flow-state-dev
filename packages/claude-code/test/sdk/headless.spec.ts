@@ -236,6 +236,44 @@ describe("runClaudeHeadless", () => {
     expect(abortedSignal?.aborted).toBe(true);
   });
 
+  it("settles as failed when the SDK never finishes loading, rather than hanging past its budget", async () => {
+    vi.useFakeTimers();
+    try {
+      // A promise that genuinely never settles — the stalled `import()` or the
+      // wedged custom resolver. Deliberately NOT a promise resolved on a timer:
+      // fake timers would fire that one and the test would prove nothing.
+      const resolveAgent: ResolveClaudeAgentQuery = () => new Promise<never>(() => {});
+      const pending = runClaudeHeadless({ prompt: "p", timeoutMs: 30_000, resolveAgent });
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      // A hang here is the failure this pins: no result means no dispatch_failed
+      // signal, no ledger row, and an entity parked at a gate with no evidence.
+      const run = await pending;
+      expect(run.ok).toBe(false);
+      expect(run.error).toContain("30000 ms");
+      // The diagnosis has to name *resolution*: "the harness never loaded" and
+      // "the run overran its budget" send a human to different places.
+      expect(run.error).toMatch(/did not finish loading/);
+      expect(run.error).not.toMatch(/run exceeded/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("leaves no timer armed after a run that finished inside its budget", async () => {
+    vi.useFakeTimers();
+    try {
+      const { resolveAgent } = scriptedAgent([result()]);
+      const run = await runClaudeHeadless({ prompt: "p", timeoutMs: 30_000, resolveAgent });
+      expect(run.ok).toBe(true);
+      // A deadline timer left armed holds the event loop open for its full
+      // budget — a 30-minute dispatch would keep a finished process alive.
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("settles as failed when the SDK seam rejects with a non-Error, rather than throwing out of its own catch", async () => {
     // `null` and `undefined` are what a badly-behaved seam or a rejected
     // `Promise.reject()` actually carries. Reading `.message` off one throws a

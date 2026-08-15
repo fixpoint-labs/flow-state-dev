@@ -112,7 +112,11 @@ export interface RunClaudeHeadlessOptions {
   readonly maxTurns?: number;
   /** Vendor-side spend ceiling in USD. No ceiling when unset. */
   readonly maxBudgetUsd?: number;
-  /** Wall-clock ceiling on the run. No ceiling when unset. */
+  /**
+   * Wall-clock ceiling on the whole call, **loading the SDK included** — the
+   * clock starts before `resolveAgent` is called, so a harness that never
+   * loads settles as a failure instead of hanging. No ceiling when unset.
+   */
   readonly timeoutMs?: number;
   /**
    * Extra environment for the agent process, **merged over** the host's rather
@@ -134,6 +138,13 @@ export interface RunClaudeHeadlessOptions {
   /** How to load the SDK. Default: the real one; injected so tests run nothing. */
   readonly resolveAgent?: ResolveClaudeAgentQuery;
 }
+
+/**
+ * Sentinel for "the wall-clock deadline fired before this settled", raced
+ * against the SDK resolution. A unique symbol, so no value a resolver could
+ * legitimately return can be mistaken for it.
+ */
+const DEADLINE_EXPIRED = Symbol("claude-headless-deadline-expired");
 
 /** Build a failure with nothing the SDK never told us invented. */
 function failed(error: string, partial: Partial<ClaudeHeadlessResult> = {}): ClaudeHeadlessResult {
@@ -190,9 +201,11 @@ function reduceResult(msg: Extract<SdkMessageLike, { type: "result" }>): ClaudeH
  * Run the Claude Code agent to completion and reduce it to a
  * {@link ClaudeHeadlessResult}.
  *
- * Never throws. The SDK being absent, the run exceeding `timeoutMs`, the stream
- * throwing mid-run, and a run that ends without a terminal result all settle as
- * failures naming what happened.
+ * Never throws, and never hangs when given a `timeoutMs`. The SDK being absent,
+ * the SDK never *loading*, the run exceeding `timeoutMs`, the stream throwing
+ * mid-run, and a run that ends without a terminal result all settle as failures
+ * naming what happened — and the two timeouts name themselves apart, since
+ * "the harness never loaded" and "the work overran" are different diagnoses.
  */
 export async function runClaudeHeadless(
   options: RunClaudeHeadlessOptions,
@@ -211,73 +224,116 @@ export async function runClaudeHeadless(
     resolveAgent = defaultResolveClaudeAgentQuery,
   } = options;
 
-  let query: ClaudeAgentQuery;
-  try {
-    ({ query } = await resolveAgent());
-  } catch (error) {
-    const message =
-      error instanceof ClaudeAgentSdkNotInstalledError
-        ? error.message
-        : `Could not load the Claude Agent SDK: ${describeThrown(error)}`;
-    return failed(message);
-  }
-
+  // The deadline is armed before anything is awaited, and covers loading the SDK
+  // as well as running the agent. `timeoutMs` is documented as a ceiling on the
+  // run, and resolution is part of getting a run done: a `resolveAgent` that
+  // never settles — a stalled dynamic `import()`, a wedged caller-supplied
+  // resolver — would otherwise hang this call forever, which is worse than any
+  // failure it could report. A settled failure becomes a `dispatch_failed`
+  // signal and an escalation; a hang produces no result, no ledger row, and no
+  // evidence that anything went wrong.
+  //
+  // One budget, not two. A separate (shorter) resolution bound would fail
+  // runs on a slow cold `import()` for no gain: the *common* absent-SDK case
+  // rejects immediately rather than hanging, so a second knob would buy speed
+  // only in the pathological case while making every caller reason about two
+  // ceilings. What the two phases do get is two different diagnoses.
   const abortController = new AbortController();
   let timedOut = false;
+  let expireDeadline: () => void = () => {};
+  const deadline =
+    timeoutMs === undefined
+      ? null
+      : new Promise<typeof DEADLINE_EXPIRED>((resolve) => {
+          expireDeadline = () => resolve(DEADLINE_EXPIRED);
+        });
   const timer =
     timeoutMs === undefined
       ? undefined
       : setTimeout(() => {
           timedOut = true;
           abortController.abort();
+          expireDeadline();
         }, timeoutMs);
 
-  const queryOptions: ClaudeAgentQueryOptions = {
-    cwd,
-    systemPrompt,
-    settingSources,
-    abortController,
-    ...(model ? { model } : {}),
-    ...(permissionMode
-      ? {
-          permissionMode,
-          // The SDK requires this alongside `bypassPermissions` as a
-          // did-you-mean-it check. A caller who named that mode did mean it, so
-          // it is derived rather than asked for again.
-          ...(permissionMode === "bypassPermissions"
-            ? { allowDangerouslySkipPermissions: true }
-            : {}),
-        }
-      : {}),
-    ...(maxTurns === undefined ? {} : { maxTurns }),
-    ...(maxBudgetUsd === undefined ? {} : { maxBudgetUsd }),
-    // Merged, not passed through: the SDK treats `env` as the whole environment.
-    ...(env ? { env: { ...process.env, ...env } } : {}),
-  };
-
-  // Hoisted out of the try so a run that times out or throws mid-stream still
-  // reports the session a human can open.
-  let sessionId: string | null = null;
+  // One try, so the timer is cleared on every path out — including the two
+  // early returns below. An armed timer holds the event loop open for the rest
+  // of its budget after a run that already finished.
   try {
-    let result: Extract<SdkMessageLike, { type: "result" }> | null = null;
-    for await (const message of query({ prompt, options: queryOptions })) {
-      sessionId ??= message.session_id ?? null;
-      if (message.type === "result") result = message;
+    let query: ClaudeAgentQuery;
+    try {
+      // Raced, not awaited. Nothing can *cancel* a resolution — the seam takes
+      // no signal, and a dynamic `import()` is not abortable — so a resolver
+      // that never settles is abandoned here: its promise stays pending until
+      // the process exits, and whatever it eventually yields is dropped.
+      // `race` has already attached handlers to it, so a late rejection cannot
+      // resurface as an unhandled one.
+      const resolved =
+        deadline === null ? await resolveAgent() : await Promise.race([resolveAgent(), deadline]);
+      if (resolved === DEADLINE_EXPIRED) {
+        // Named as a *resolution* failure. A human reading the ledger needs to
+        // tell "the harness never loaded" from "the work overran its budget" —
+        // one points at the install or the seam, the other at the task.
+        return failed(
+          `The Claude Agent SDK did not finish loading within the ${timeoutMs} ms budget, so the Claude Code run never started.`,
+        );
+      }
+      ({ query } = resolved);
+    } catch (error) {
+      const message =
+        error instanceof ClaudeAgentSdkNotInstalledError
+          ? error.message
+          : `Could not load the Claude Agent SDK: ${describeThrown(error)}`;
+      return failed(message);
     }
-    if (result === null) {
-      return failed("The Claude Code run ended without a terminal result.", { sessionId });
+
+    const queryOptions: ClaudeAgentQueryOptions = {
+      cwd,
+      systemPrompt,
+      settingSources,
+      abortController,
+      ...(model ? { model } : {}),
+      ...(permissionMode
+        ? {
+            permissionMode,
+            // The SDK requires this alongside `bypassPermissions` as a
+            // did-you-mean-it check. A caller who named that mode did mean it,
+            // so it is derived rather than asked for again.
+            ...(permissionMode === "bypassPermissions"
+              ? { allowDangerouslySkipPermissions: true }
+              : {}),
+          }
+        : {}),
+      ...(maxTurns === undefined ? {} : { maxTurns }),
+      ...(maxBudgetUsd === undefined ? {} : { maxBudgetUsd }),
+      // Merged, not passed through: the SDK treats `env` as the whole environment.
+      ...(env ? { env: { ...process.env, ...env } } : {}),
+    };
+
+    // Hoisted out of the try so a run that times out or throws mid-stream still
+    // reports the session a human can open.
+    let sessionId: string | null = null;
+    try {
+      let result: Extract<SdkMessageLike, { type: "result" }> | null = null;
+      for await (const message of query({ prompt, options: queryOptions })) {
+        sessionId ??= message.session_id ?? null;
+        if (message.type === "result") result = message;
+      }
+      if (result === null) {
+        return failed("The Claude Code run ended without a terminal result.", { sessionId });
+      }
+      return { ...reduceResult(result), sessionId: result.session_id ?? sessionId };
+    } catch (error) {
+      // Whatever went wrong, stop the agent rather than leaving it running
+      // behind a rejected iterator. Aborting an already-finished run is a no-op.
+      abortController.abort();
+      if (timedOut) {
+        return failed(`The Claude Code run exceeded its ${timeoutMs} ms budget and was stopped.`, {
+          sessionId,
+        });
+      }
+      return failed(`The Claude Code run failed: ${describeThrown(error)}`, { sessionId });
     }
-    return { ...reduceResult(result), sessionId: result.session_id ?? sessionId };
-  } catch (error) {
-    // Whatever went wrong, stop the agent rather than leaving it running behind
-    // a rejected iterator. Aborting an already-finished run is a no-op.
-    abortController.abort();
-    if (timedOut) {
-      return failed(`The Claude Code run exceeded its ${timeoutMs} ms budget and was stopped.`, {
-        sessionId,
-      });
-    }
-    return failed(`The Claude Code run failed: ${describeThrown(error)}`, { sessionId });
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
