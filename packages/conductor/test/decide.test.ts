@@ -20,6 +20,7 @@ import {
   HEAD,
   SIGNAL_AT as AT,
   SIGNAL_KINDS as ISSUE_SIGNAL_KINDS,
+  artifact,
   epic,
   freshApproval,
   issue,
@@ -767,8 +768,19 @@ describe("a signal queued from the phase the entity has just left", () => {
     // nothing of its own: the most it does is re-derive completion against the
     // snapshot, which only moves the phase if the world already says it is
     // done. Here that is the nested multi-PR shape — the assembled goal passed
-    // and the issue holds no implementation PR of its own.
-    const w = world({ goalCheck: "passed" });
+    // and the issue holds no implementation PR of its own. Its implementation
+    // artifact is not PR-hosted, which is what makes that a *finished* phase
+    // rather than one whose submission has not appeared yet: `IMPLEMENTATION`
+    // requires the artifact positively, so an issue holding none has produced
+    // nothing and completes nothing (see `model/phases`).
+    const w = world({
+      artifacts: [
+        artifact("implementation", 10, {
+          hostedAt: { type: "file", path: "docs/internal/assembled.md" },
+        }),
+      ],
+      goalCheck: "passed",
+    });
     expect(decide(issue("IMPLEMENTATION"), signal("pr_opened"), w)).toEqual([
       { kind: "enterPhase", entityId: ENTITY_ID, phase: "SETTLED" },
     ]);

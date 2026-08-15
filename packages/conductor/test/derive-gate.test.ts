@@ -170,6 +170,36 @@ describe("issue gates", () => {
     expect(deriveGate(issue("IMPLEMENTATION"), openButProved)).toBe("awaiting_review");
   });
 
+  it("does not settle an issue whose implementation has produced nothing yet", () => {
+    // The other half of the same rule, and the one absence gets wrong.
+    // `implement` proves the goal *before* the submission exists, so there is a
+    // window where the verdict has passed and the phase holds no artifact at
+    // all — and `implPr(w)?.state !== "open"` is vacuously true for it. Read
+    // that way, a passing verdict settles an issue seconds after the agent
+    // finished: no CI, no review, no merge. Absence of an artifact is not
+    // evidence that there is nothing left to wait for.
+    const proved = world({ goalCheck: "passed" });
+    expect(isPhaseComplete(issue("IMPLEMENTATION"), proved)).toBe(false);
+    expect(deriveGate(issue("IMPLEMENTATION"), proved)).toBeNull();
+  });
+
+  it("still settles an issue whose implementation is at no PR of its own", () => {
+    // What the vacuous read was standing in for, said as a fact the snapshot
+    // carries: the phase produced an implementation and it is not hosted at a
+    // pull request, so there is no merge of its own to wait for. This is why
+    // the PR test is `!== "open"` rather than `=== "merged"`, and requiring the
+    // artifact positively is what keeps it from also covering "nothing yet".
+    const noPrOfItsOwn = world({
+      artifacts: [
+        artifact("implementation", 10, {
+          hostedAt: { type: "file", path: "docs/internal/assembled.md" },
+        }),
+      ],
+      goalCheck: "passed",
+    });
+    expect(isPhaseComplete(issue("IMPLEMENTATION"), noPrOfItsOwn)).toBe(true);
+  });
+
   it("still dispatches the goal check for work that reached the base unproved", () => {
     // `awaiting_goal_check` stays reachable and is not redundant: it is the
     // path for a human merging ahead of the gate, and for the assembled

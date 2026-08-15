@@ -669,6 +669,54 @@ describe("property 2: a restart resumes, it does not redo", () => {
     expect(second.actionsRun()).toEqual(["implement"]);
   });
 
+  it("escalates a failure it recorded and never got to reduce", async () => {
+    repo = await createTestRepo();
+    await freshState();
+
+    // The third window on the same seam, and the one no predicate over the
+    // dispatch record can see: `runDispatch` persists the *failed* outcome, and
+    // the process dies before the `dispatch_failed` that outcome produces has
+    // been reduced into the escalation. The store stops accepting writes the
+    // instant the settling write lands — the record says "failed", the ledger
+    // says nothing, and no observer can help, because the failure was
+    // conductor's own fact and no source ever knew it.
+    //
+    // `cwd` isolation provisions for real and this checkout has no `origin`, so
+    // the dispatch settles as a failure without a vendor being involved.
+    const first = fakeDispatcher({ isolation: "cwd" });
+    const session = await open(first, {
+      store: storeDyingAfter(
+        fileStateStore(statePath),
+        (key, state) => key.startsWith("dispatches/") && state.outcome !== null,
+      ),
+    });
+
+    await manageIssue(session);
+    await expect(session.tick(ENTITY)).rejects.toThrow(/the process died/);
+
+    // The restart, over a healthy store and a dispatcher that has run nothing.
+    // `remote` isolation so a re-dispatch would actually reach it — with `cwd`
+    // the provisioning failure would hide one.
+    const second = fakeDispatcher({ isolation: "remote" });
+    const resumed = await open(second);
+    const ticked = await resumed.tick(ENTITY);
+
+    // The lost thing was the *signal*, not the run, so the recovery is to
+    // reduce it — not to buy the dispatch a second time.
+    expect(second.briefs).toHaveLength(0);
+    expect(ticked.dispatchCount).toBe(1);
+    expect(ticked.ledger.map((row) => row.actionKind)).toEqual(["implement", "escalate"]);
+    expect(ticked.ledger.at(-1)).toMatchObject({ signalKind: "dispatch_failed" });
+    expect(replayFailures(ticked.ledger)).toEqual([]);
+    expect(ledgerFailures(ticked.ledger, "IMPLEMENTATION", ticked.entity.phase)).toEqual([]);
+
+    // And once. The escalation the recovery wrote is the consequence that
+    // stops it; the failed dispatch record is still sitting there beside it.
+    const again = await resumed.tick(ENTITY);
+    expect(again.ledger).toHaveLength(ticked.ledger.length);
+    expect(second.briefs).toHaveLength(0);
+  });
+
   it("still enters a phase that dispatches nothing on entry", async () => {
     repo = await createTestRepo();
     await freshState();

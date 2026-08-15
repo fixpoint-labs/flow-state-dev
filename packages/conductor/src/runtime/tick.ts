@@ -52,6 +52,13 @@
  *   See {@link entryCompleted} for why neither "the ledger is nonempty" nor "a
  *   row was written" is that proof — a row records what was decided, and the
  *   dispatch record is what records that it finished.
+ * - **A signal the tick derived is re-derived until its consequence is on
+ *   disk.** The two orderings above cover *observed* signals, which the cursor
+ *   makes re-observable. A signal this tick derives exists only in its own
+ *   queue, so it needs a durable source to be re-derived from and a written
+ *   consequence to stop. `phase_entered` has {@link entryCompleted};
+ *   `dispatch_failed` has {@link unreducedFailures}. One rule, one instance per
+ *   derived signal — not one predicate stretched across both.
  *
  * One assumption this file makes and does not enforce: **one tick at a time per
  * entity.** Nothing here is atomic across its read-modify-write, so overlapping
@@ -90,7 +97,6 @@ import {
 import type { Signal } from "../model/signals";
 import {
   artifactOfKind,
-  prForArtifact,
   type ArtifactFacts,
   type ArtifactKind,
   type ChildIssueFacts,
@@ -292,6 +298,16 @@ type DispatchRow = Awaited<ReturnType<ConductorCollections["dispatches"]["list"]
  * a second commit on a branch the branch policy already re-enters, while the
  * alternative strands the entity permanently with nothing able to release it.
  *
+ * **What this predicate is not, and must not become.** A settled dispatch proves
+ * the *dispatch* finished; it does not prove its outcome was ever acted on. The
+ * process can die between the settling write and the ledger row that outcome
+ * reduces to, and that gap is not entry's to close: entry ran, and re-deriving
+ * it would buy the same dispatch again to recover a signal, not a run. It
+ * belongs to the signal that went missing, and {@link unreducedFailures} is
+ * where it lives. Each successive attempt to make this one predicate cover one
+ * more moment is how it grew a step behind the thing it stands for three times
+ * running.
+ *
  * Matching on the phase *name* is enough because neither phase table cycles: a
  * phase is entered at most once per entity, so there is no earlier visit's row
  * to mistake for this one's.
@@ -319,6 +335,69 @@ function entryCompleted(
         row.phase === entity.phase && row.action === action && row.outcome !== null,
     ),
   );
+}
+
+/**
+ * Failures conductor recorded and never got to act on.
+ *
+ * **A derived signal has no cursor, so each one needs a durable source of its
+ * own.** An *observed* signal survives a killed process because the observation
+ * cursor is persisted last: whatever was not finished is re-observed and reduced
+ * again. Signals the tick derives itself get none of that — they exist only in
+ * the in-memory queue — so each derived kind needs somewhere durable to be
+ * re-derived from, and needs to keep being re-derived until its consequence is
+ * on disk. {@link entryCompleted} is that rule for `phase_entered`. This is the
+ * same rule for `dispatch_failed`, which had none.
+ *
+ * The window it closes: `runDispatch` persists a failed outcome, the tick queues
+ * the `dispatch_failed` for it, and `decide` answers with an escalation the
+ * ledger records. A process that dies between the first and the last leaves a
+ * dispatch that is durably failed and a human nobody told. {@link entryCompleted}
+ * reads that dispatch as settled — correctly, it *is* settled — so the phase's
+ * entry is not re-derived either, and an artifact-free issue sits idle with
+ * nothing left that could move it. No observer can recover it: the failure was
+ * conductor's own fact and no source ever knew it.
+ *
+ * The durable source is the dispatch record's own persisted outcome; the
+ * consequence that stops the re-derivation is the ledger row `decide` writes for
+ * the escalation. **Resuming the signal rather than re-deriving the phase's
+ * entry is what makes this free** — the dispatch is not bought a second time,
+ * because the dispatch is not what was lost.
+ *
+ * **Failures only, and that is the whole scope.** A `dispatch_completed` reduces
+ * to no action at all (`decide`: "a dispatch settling changes the world, not the
+ * phase"), so it leaves no ledger row — there is no consequence to wait for, and
+ * requiring one would re-derive it on every tick forever, which is the
+ * always-re-seed failure from the other side. Nothing is lost when it does go
+ * missing: whatever that dispatch produced comes back as a structural fact the
+ * next observation reads.
+ *
+ * **Not scoped to the entity's current phase, deliberately.** It looks like it
+ * should be — {@link entryCompleted} is — but the resume is queued from the phase
+ * loaded at the *start* of a tick, ahead of anything that could move it, so a
+ * failure is always re-derived while the entity is still in the phase that ran
+ * it. A phase filter would be a guard against an ordering this file does not
+ * have.
+ *
+ * A ledger row written before rows carried their signal payload (BP-030) cannot
+ * name a dispatch, so it does not count as the escalation for one. The cost is
+ * at most one duplicate escalation against such a ledger, after which the row
+ * this tick writes carries the id and the re-derivation converges.
+ */
+function unreducedFailures(
+  ledger: readonly LedgerEntryState[],
+  dispatches: readonly DispatchRow[],
+): readonly string[] {
+  const escalated = new Set<string>();
+  for (const row of ledger) {
+    const signal = row.signal;
+    if (signal !== null && signal.kind === "dispatch_failed") {
+      escalated.add(signal.dispatchId);
+    }
+  }
+  return dispatches
+    .filter((row) => row.outcome === "failed" && !escalated.has(row.id))
+    .map((row) => row.id);
 }
 
 /**
@@ -603,41 +682,6 @@ function claimedGoalCheck(
 }
 
 /**
- * May a verdict this tick produced be reduced against this tick's snapshot?
- *
- * A verdict is conductor's own fact, so folding it into the world the rest of
- * the tick reduces against is the honest thing to do — and it is what lets an
- * issue settle *on the tick that proved it* rather than waiting for a signal
- * that may never come: a merged PR whose goal check has just passed produces no
- * further observation of its own, so a verdict nothing reduces strands the issue
- * one step from `SETTLED` forever.
- *
- * The exception is a **pass reported before the phase's submission is in the
- * snapshot**, and it is the ordinary path rather than a corner case.
- * `IMPLEMENTATION` completes on *goal proved, and the work no longer sitting in
- * an open PR*, and an entity holding no pull request satisfies the second half
- * vacuously — correct for the nested multi-PR shape, catastrophic here, because
- * `implement` proves the goal seconds before the submission exists. Reducing
- * that pass now would settle an issue that has had no CI, no review and no
- * merge. So it is persisted and left for the next tick, which adopts the
- * submission before it observes ({@link adoptSubmissionForBranch}) and reduces
- * the verdict against a world that holds it.
- *
- * Nothing else needs the guard: a failing verdict cannot complete a phase, and
- * clearing one can only close a gate that was open.
- */
-function verdictReducibleNow(
-  entity: ConductorEntity,
-  world: World,
-  verdict: GoalCheckVerdict,
-): boolean {
-  if (verdict !== "passed") return true;
-  const kind = artifactKindForPhase(entity.phase);
-  if (!kind) return true;
-  return prForArtifact(world, artifactOfKind(world, kind)) !== undefined;
-}
-
-/**
  * Write down that the entity holds an artifact of `kind` hosted at `hostedAt`,
  * unless it already does.
  *
@@ -915,6 +959,7 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
   let world = observation.world;
 
   const queue: Queued[] = [];
+  const dispatches = await dispatchRows(context);
 
   // A phase whose entry work has not *finished* has not really been entered,
   // whatever its row says it advanced into. Entry is what dispatches a phase's
@@ -924,9 +969,20 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
   // stored on the entity, which is what makes it restart-safe in both
   // directions — see {@link entryCompleted}. The property is exact: a phase's
   // entry work runs once, and runs at least once.
-  if (!entryCompleted(ledger, await dispatchRows(context), entity)) {
+  if (!entryCompleted(ledger, dispatches, entity)) {
     queue.push({
       signal: { kind: "phase_entered", entityId: context.entityId, at },
+      derived: true,
+    });
+  }
+  // The same rule for the other signal this tick derives: a failure that reached
+  // the dispatch record and never reached the ledger is resumed, not re-run.
+  // See {@link unreducedFailures} — a derived signal has no cursor to be
+  // re-observed from, so it is re-derived from its own durable source until its
+  // consequence is written down.
+  for (const dispatchId of unreducedFailures(ledger, dispatches)) {
+    queue.push({
+      signal: { kind: "dispatch_failed", entityId: context.entityId, at, dispatchId },
       derived: true,
     });
   }
@@ -1017,26 +1073,29 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
 
       // The one thing a dispatch reports that conductor has to store rather than
       // re-read: no source has an opinion on whether the change did what the
-      // issue asked. Persisted first and unconditionally, so the verdict
-      // survives the process whether or not this tick can act on it; then folded
-      // into the snapshot and announced as a signal, which is what actually
-      // moves the gate. See {@link verdictReducibleNow} for the pass that has to
-      // wait a tick.
+      // issue asked. Persisted first, so the verdict survives the process; then
+      // folded into the snapshot and announced as a signal, which is what
+      // actually moves the gate.
+      //
+      // Folded unconditionally. A pass reported before the phase's submission is
+      // in the snapshot used to be held back here, because `IMPLEMENTATION`
+      // completed on an absent PR — that is a phase-completion rule and it lives
+      // in the phase table now, where the artifact it turns on is required
+      // positively. A verdict this tick cannot act on is one the phase table
+      // declines, not one this tick withholds.
       const claim = claimedGoalCheck(action, result);
       if (claim !== undefined) {
         await persistGoalCheck(context, claim);
-        if (verdictReducibleNow(entity, world, claim)) {
-          world = { ...world, goalCheck: claim };
-          if (claim !== null) {
-            queue.unshift({
-              signal: {
-                kind: claim === "passed" ? "goal_check_passed" : "goal_check_failed",
-                entityId: context.entityId,
-                at: signal.at,
-              },
-              derived: true,
-            });
-          }
+        world = { ...world, goalCheck: claim };
+        if (claim !== null) {
+          queue.unshift({
+            signal: {
+              kind: claim === "passed" ? "goal_check_passed" : "goal_check_failed",
+              entityId: context.entityId,
+              at: signal.at,
+            },
+            derived: true,
+          });
         }
       }
     }

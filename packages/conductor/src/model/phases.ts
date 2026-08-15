@@ -148,8 +148,8 @@ export interface PhaseDefinition {
 }
 
 const specPr = (world: World) => prForArtifact(world, artifactOfKind(world, "spec"));
-const implPr = (world: World) =>
-  prForArtifact(world, artifactOfKind(world, "implementation"));
+const implArtifact = (world: World) => artifactOfKind(world, "implementation");
+const implPr = (world: World) => prForArtifact(world, implArtifact(world));
 const epicSpecPr = (world: World) =>
   prForArtifact(world, artifactOfKind(world, "epic_spec"));
 
@@ -239,14 +239,42 @@ const SPEC: PhaseDefinition = {
  *   this level — correctly, because the issue-level merge gate was never about
  *   a sub-PR's merge.
  *
- * **Why `completedWhen` reads `pr.state` and not `goalCheck` alone.** Because
- * the single-PR shape makes `goalCheck === "passed"` true while the PR is still
- * open, and completing on that alone settles an issue on its own `pr_opened` —
- * before CI, before review, before anyone merged. The condition is *goal
- * proved, and the work no longer sitting in an open PR*. It is `!== "open"`
- * rather than `=== "merged"` deliberately: an issue holding no implementation
- * PR of its own — the nested multi-PR shape — has no merge of its own to wait
- * for, and demanding one would strand it forever.
+ * **Why `completedWhen` reads the artifact and its PR, and not `goalCheck`
+ * alone.** Because the single-PR shape makes `goalCheck === "passed"` true while
+ * the PR is still open, and completing on that alone settles an issue on its own
+ * `pr_opened` — before CI, before review, before anyone merged. The condition is
+ * *goal proved, and the work no longer sitting in an open PR*.
+ *
+ * The PR test alone cannot express that, because `implPr(w)` is `undefined` in
+ * two states that mean opposite things, and `!== "open"` is vacuously true for
+ * both:
+ *
+ * - **No PR of its own, ever** — the nested multi-PR shape. There is no merge at
+ *   this level to wait for, and demanding one (`=== "merged"`) would strand the
+ *   issue forever. This is why the PR test is `!== "open"`.
+ * - **No PR yet.** `issue-implement` proves the goal *before* the submission
+ *   exists, so for one tick the issue holds a passing verdict and no artifact at
+ *   all. Completing here settles an issue seconds after the agent finished.
+ *
+ * They are told apart by **the artifact, not the PR**: the artifact is the
+ * durable record that this phase produced something, and conductor mints it
+ * itself (`runtime/tick`, from a vendor's report or from the branch). A phase
+ * holding one has finished producing, whether or not that output is hosted at a
+ * pull request; a phase holding none has not started. So the artifact is
+ * required positively and the PR test keeps the `!== "open"` the multi-PR shape
+ * needs — **absence of a trace is not evidence that there is nothing to wait
+ * for.**
+ *
+ * One narrower absence is still read as "nothing to wait for" and is left that
+ * way: an artifact recorded at a PR whose facts are missing from the snapshot.
+ * That is a failed read rather than a state of the work, and the honest fix is
+ * for the observer not to hand back a snapshot missing a PR it was asked for —
+ * not for this predicate to guess which kind of silence it is looking at.
+ *
+ * **This is the rule's only home.** It lived for a while in `runtime/tick`, as a
+ * guard that deferred a *passing* verdict to the next tick whenever the phase's
+ * submission was not in the snapshot yet. That worked, and it put a phase
+ * completion rule where the next person editing this table could not see it.
  *
  * **`awaiting_goal_check` is not redundant.** It is the path for work that
  * reached the base *without* a proof: a human merging ahead of the gate, and
@@ -312,7 +340,10 @@ const IMPLEMENTATION: PhaseDefinition = {
       satisfiedBy: (w) => w.goalCheck !== null,
     },
   ],
-  completedWhen: (w) => w.goalCheck === "passed" && implPr(w)?.state !== "open",
+  completedWhen: (w) =>
+    w.goalCheck === "passed" &&
+    implArtifact(w) !== undefined &&
+    implPr(w)?.state !== "open",
   next: "SETTLED",
 };
 
