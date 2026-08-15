@@ -1857,6 +1857,43 @@ describe("the goal check, from the dispatch that proves it to SETTLED", () => {
     return driven;
   }
 
+  it("hands an abandoned submission to a human, and settles nothing behind that", async () => {
+    const { session, submission } = await atTheMergeGate();
+
+    // The one thing this drive had never been asked: what happens when the
+    // human at the merge gate closes the submission instead of merging it. The
+    // branch is gone and its last head never landed on the base — an abandoned
+    // change, not a finished one.
+    await repo.run("branch", "-D", `fix/${ENTITY}`);
+
+    const closed = await session.tick(ENTITY);
+
+    expect(closed.entity.phase).toBe("IMPLEMENTATION");
+    expect(closed.ledger.map((row) => row.actionKind)).toEqual([
+      "implement",
+      "recordApproval",
+      "escalate",
+    ]);
+    // Not `awaiting_merge`. The approval is still standing, and a merge gate
+    // that ignored the PR's state kept applying to a submission nobody can
+    // merge — reporting a wait on a human who has already answered, and
+    // suppressing the stall report that is the only other way this reaches
+    // anyone.
+    expect(closed.gate).toBeNull();
+
+    // And the escalation is not the end of it. A check that concludes after the
+    // PR was closed is an ordinary late arrival, and reducing it against a
+    // phase that reads as complete advances the issue to SETTLED — a human told
+    // the work was abandoned, and the same issue recorded as done behind them.
+    await writeCheck(repo.root, submission.head, { conclusion: "failure", at: T1 });
+    const late = await session.tick(ENTITY);
+
+    expect(late.entity.phase).toBe("IMPLEMENTATION");
+    expect(late.ledger.map((row) => row.actionKind)).not.toContain("enterPhase");
+    expect(replayFailures(late.ledger)).toEqual([]);
+    expect(ledgerFailures(late.ledger, "IMPLEMENTATION", late.entity.phase)).toEqual([]);
+  });
+
   describe("a dispatch that lands on the code the proof was taken against", () => {
     /**
      * The cases split by where their dispatch is actually reachable, which is

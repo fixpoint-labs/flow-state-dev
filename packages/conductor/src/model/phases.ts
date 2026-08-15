@@ -301,12 +301,12 @@ const SPEC: PhaseDefinition = {
  * issue is always a check of what landed.
  *
  * The PR test alone cannot express that, because `implPr(w)` is `undefined` in
- * two states that mean opposite things, and `!== "open"` is vacuously true for
- * both:
+ * two states that mean opposite things, and an absent PR passes any test written
+ * about the PR's state:
  *
  * - **No PR of its own, ever** — the nested multi-PR shape. There is no merge at
  *   this level to wait for, and demanding one (`=== "merged"`) would strand the
- *   issue forever. This is why the PR test is `!== "open"`.
+ *   issue forever. This is why `undefined` completes.
  * - **No PR yet.** `issue-implement` proves the goal *before* the submission
  *   exists, so for one tick the issue holds a passing verdict and no artifact at
  *   all. Completing here settles an issue seconds after the agent finished.
@@ -316,9 +316,15 @@ const SPEC: PhaseDefinition = {
  * itself (`runtime/tick`, from a vendor's report or from the branch). A phase
  * holding one has finished producing, whether or not that output is hosted at a
  * pull request; a phase holding none has not started. So the artifact is
- * required positively and the PR test keeps the `!== "open"` the multi-PR shape
- * needs — **absence of a trace is not evidence that there is nothing to wait
- * for.**
+ * required positively and `undefined` still completes, which is what the
+ * multi-PR shape needs — **absence of a trace is not evidence that there is
+ * nothing to wait for.**
+ *
+ * A PR that is *present* is then read for what it says. Only `merged` completes:
+ * `open` is work still in review, and `closed` is a change somebody abandoned,
+ * which escalates rather than settling. That last one is not a third case so
+ * much as the same rule said plainly — an issue is done when what **landed**
+ * passes its goal, and nothing landed.
  *
  * One narrower absence is still read as "nothing to wait for" and is left that
  * way: an artifact recorded at a PR whose facts are missing from the snapshot.
@@ -383,9 +389,22 @@ const IMPLEMENTATION: PhaseDefinition = {
       // no declaration of its own. The head it is compared against arrives with
       // `pr.state`: state and head come out of the one pull request record every
       // reader fetches, which is the mapping `test/declared-reads` asserts.
+      //
+      // **A closed submission is excluded, and that exclusion is what makes the
+      // closure reach anyone.** An approval does not expire when a PR is closed,
+      // so the approval-and-proof test alone kept this gate *applying* to a
+      // change somebody abandoned — inviting a merge nobody can perform, and,
+      // worse, telling `isPhaseStranded` that the table still had something to
+      // say about the entity. No `progress_stalled` was derived and nothing
+      // escalated: the issue waited forever on an answer it had already been
+      // given. `awaiting_goal_check` below carries the same exclusion for the
+      // same reason.
       name: "awaiting_merge",
       reads: ["pr.state", "pr.mergeable", "artifact.reviews", "goalCheck"],
-      appliesWhen: (w) => hasFreshHumanApproval(implPr(w)) && implProof(w) === "passed",
+      appliesWhen: (w) =>
+        implPr(w)?.state !== "closed" &&
+        hasFreshHumanApproval(implPr(w)) &&
+        implProof(w) === "passed",
       satisfiedBy: (w) => implPr(w)?.state === "merged",
     },
     {
@@ -435,10 +454,31 @@ const IMPLEMENTATION: PhaseDefinition = {
       satisfiedBy: (w) => implProof(w) === "passed",
     },
   ],
-  completedWhen: (w) =>
-    implProof(w) === "passed" &&
-    implArtifact(w) !== undefined &&
-    implPr(w)?.state !== "open",
+  // `closed` is excluded alongside `open`, and only `undefined` and `merged`
+  // complete. A PR closed unmerged is somebody abandoning the change, and
+  // `!== "open"` was true of it — while `requiredGround` asks a closed
+  // submission for a *branch* proof, which the verdict `implement` reported
+  // before the PR existed already is. So an abandoned issue met every conjunct
+  // and settled: nothing landed, and conductor recorded the work as done.
+  //
+  // The pair with `SPEC` is deliberate and must stay unequal. There, closing the
+  // PR unmerged *is* the process — a spec lives on its spec PR and in Linear and
+  // never on the base branch (BP-037) — so `SPEC` completes on `!== "merged"`.
+  // Here the base branch is exactly where the work was supposed to land, so the
+  // same shape means the opposite thing.
+  //
+  // `undefined` still completes, and it has to: the nested multi-PR shape hosts
+  // its implementation at a file rather than a pull request, and there is no
+  // merge at this level to wait for. It is told apart from *no PR yet* by the
+  // artifact, which is required positively — see the phase note above.
+  completedWhen: (w) => {
+    const state = implPr(w)?.state;
+    return (
+      implProof(w) === "passed" &&
+      implArtifact(w) !== undefined &&
+      (state === undefined || state === "merged")
+    );
+  },
   next: "SETTLED",
 };
 

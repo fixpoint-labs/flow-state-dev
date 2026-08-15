@@ -798,6 +798,43 @@ describe("a signal queued from the phase the entity has just left", () => {
     expect(entity.phase).toBe("IMPLEMENTATION");
   });
 
+  it("escalates the implementation PR closure that is somebody abandoning the work", () => {
+    // The sibling of the case above, and the pair is deliberate: at SPEC a
+    // closed-unmerged PR *is* the process (BP-037 — a spec never lands on the
+    // base branch), and at IMPLEMENTATION the same batch means the opposite,
+    // because an implementation that never landed is a change nobody took
+    // forward. Same signals, same order, opposite answers — so the guard that
+    // silences the spec closure must not silence this one.
+    //
+    // Only visible as a batch, for the same reason: `pr_opened` is synthesized
+    // ahead of the closure because conductor's cursor never held the PR (the
+    // agent opened it after the tick's observation was taken), and reduced
+    // first it used to complete the phase into SETTLED — where the closure
+    // behind it was absorbed and the human who abandoned the change was never
+    // told.
+    const closed = pr({ state: "closed" });
+    const w = worldWith("implementation", closed, {}, proved("passed"));
+    const signals = reconcile({
+      entityId: ENTITY_ID,
+      observed: [],
+      fresh: [closed],
+      now: AT,
+    });
+    expect(signals.map((s) => s.kind)).toEqual(["pr_opened", "pr_closed"]);
+
+    let entity = issue("IMPLEMENTATION");
+    const actions = signals.flatMap((s) => {
+      const produced = decide(entity, s, w);
+      for (const action of produced) {
+        if (action.kind === "enterPhase") entity = issue(action.phase);
+      }
+      return produced;
+    });
+
+    expect(kinds(actions)).toEqual(["escalate"]);
+    expect(entity.phase).toBe("IMPLEMENTATION");
+  });
+
   it("does not aim a conflict on the old spec PR at the implementation branch", () => {
     // The same hole, one signal along: an issue that has moved to
     // IMPLEMENTATION but has no PR of its own yet still owns a spec PR, and a

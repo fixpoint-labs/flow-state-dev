@@ -379,6 +379,44 @@ describe("issue gates", () => {
     expect(deriveGate(issue("IMPLEMENTATION"), abandoned)).toBeNull();
     expect(isPhaseStranded(issue("IMPLEMENTATION"), abandoned)).toBe(true);
   });
+
+  it("settles no issue whose implementation PR was closed without merging", () => {
+    // The abandoned branch, one tick later than the case above: the agent proved
+    // the branch before the PR opened, so a *passing* proof is standing when a
+    // human closes the PR unmerged. `!== "open"` is true of a closed PR, and
+    // `requiredGround` asks a closed submission for a **branch** proof — which
+    // this is — so the phase read as complete and the issue settled on a change
+    // that never landed. Nothing landed, so nothing can have passed its goal.
+    const closedUnmerged = worldWith(
+      "implementation",
+      pr({ state: "closed", checks: "success" }),
+      {},
+      proved("passed"),
+    );
+    expect(isPhaseComplete(issue("IMPLEMENTATION"), closedUnmerged)).toBe(false);
+    expect(isPhaseStranded(issue("IMPLEMENTATION"), closedUnmerged)).toBe(true);
+  });
+
+  it("invites no merge of a PR that has been closed, so the closure reaches a human", () => {
+    // The trap in the fix above. `awaiting_merge` tested the approval and the
+    // proof and never the PR's state, so an approval standing on an abandoned PR
+    // kept the merge gate *applying* — and an applicable gate is what
+    // `isPhaseStranded` reads to mean "the table has something to say about this
+    // entity". Refusing to complete without that would have traded a loud wrong
+    // answer (SETTLED) for a silent one: an issue waiting forever on a merge
+    // nobody can perform, with no `progress_stalled` derived and no human told.
+    const closedWithApprovalStanding = worldWith(
+      "implementation",
+      pr({ state: "closed", checks: "success", reviews: [freshApproval()] }),
+      {},
+      proved("passed"),
+    );
+    expect(deriveGate(issue("IMPLEMENTATION"), closedWithApprovalStanding)).toBeNull();
+    expect(isPhaseComplete(issue("IMPLEMENTATION"), closedWithApprovalStanding)).toBe(
+      false,
+    );
+    expect(isPhaseStranded(issue("IMPLEMENTATION"), closedWithApprovalStanding)).toBe(true);
+  });
 });
 
 describe("epic gates", () => {
