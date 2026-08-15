@@ -2,7 +2,7 @@
 "@flow-state-dev/conductor": minor
 ---
 
-Conductor runs the goal check itself, so a merged issue can actually finish.
+Conductor runs the goal check itself, so a merged issue can actually finish (LAB-66).
 
 `DispatchResult.goalCheck` has always required a verdict to come from something
 with an exit status, and nothing could supply one: a coding harness reports how
