@@ -78,7 +78,7 @@ export const issueStateSchema = z.object({
    * The revision {@link issueStateSchema.goalCheck} was taken against — the half
    * that makes the verdict mean something, and the reason a merge gate can be a
    * property rather than a list of ways to invalidate a proof. See
-   * `model/world`'s `goalCheckAtHead` for the rule, and `runtime/tick` for what
+   * `model/world`'s `goalCheckFor` for the rule, and `runtime/tick` for what
    * is recorded on each of the two routes to a verdict.
    *
    * `null` in three situations, and **all three must read as *not proved*, never
@@ -166,7 +166,7 @@ export const dispatchStateSchema = z.object({
    * here, so "the goal passed" and "there was no goal to run" are told apart by
    * a reader of the record rather than being one indistinguishable `passed`.
    * For a failure it is the reason itself — the one place a dispatcher's
-   * `error` becomes durable, which it previously never did.
+   * `error` becomes durable.
    */
   detail: z.string().nullable().default(null),
 });
@@ -491,9 +491,9 @@ export const conductorArtifacts = defineResourceCollection({
  * — and the tick already materializes them fresh into
  * `World.pullRequests[].reviews` on every pass, which is where every gate reads
  * them from. Persisting a second copy of each review would create a second
- * authority for data GitHub has already been designated the winner of: the exact
- * mistake that made the earlier attempt loop forever after a cold restart, and
- * one that grows a row per review for the life of the repo.
+ * authority for data GitHub has already been designated the winner of — which
+ * is how a stored copy that disagrees with the fresh read loops forever after a
+ * cold restart — and it grows a row per review for the life of the repo.
  *
  * The only review bookkeeping conductor needs is *which reviews it has already
  * reduced over*, and that is `observedPrStateSchema.knownReviewIds` — a list of
@@ -504,11 +504,11 @@ export const conductorArtifacts = defineResourceCollection({
  * Agent runs, keyed `dispatches/<id>`.
  *
  * Issue-level, and **uncapped**. One row per phase execution of one entity, so
- * roughly 5–20 rows over that entity's whole lifetime. The 2,000-row LRU cap
- * this carried previously was sized against every issue the repo would ever
- * run, because org scope pooled them; a work unit's own dispatch history does
- * not need a capacity policy, and shipping one would imply a growth problem
- * that no longer exists.
+ * roughly 5–20 rows over that entity's whole lifetime. A capacity policy here
+ * would be sized against every issue the repo will ever run, which is what org
+ * scope pooling this collection would require; at issue level a work unit's own
+ * dispatch history needs none, and carrying one would imply a growth problem
+ * this shape does not have.
  */
 export const conductorDispatches = defineResourceCollection({
   ...ISSUE_LEVEL,

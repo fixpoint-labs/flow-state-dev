@@ -89,10 +89,10 @@ pnpm --filter @flow-state-dev/example-conductor-self-drive exec tsx src/cli.ts l
 
 ## Putting a work item under management
 
-There isn't a command for that yet. Conductor currently ships the entity model, the
-deterministic driver, the GitHub reader, the dispatcher seam, and this config layer; the tick
-that assembles them and the CLI that fronts it are the remaining work.
+There isn't a command for that yet — the CLI is the remaining work. There is an API:
+`openConductor` assembles the entity model, the deterministic driver, the GitHub reader, the
+dispatcher seam, and this config layer into a tick, and `manage` puts a work item under it.
 
-The check that says so is `goals/conductor/drives-one-issue-to-a-merge-ready-branch` — a goal
-that drives this example end to end and asserts what came out. It resolves this config for
-real, then fails with a list of what is still missing. That list is the definition of done.
+The check that drives it is `goals/conductor/drives-one-issue-to-a-merge-ready-branch` — a
+goal that runs this example end to end and asserts what came out: it resolves this config for
+real, opens conductor over durable state, and grades the branch that appears on `origin`.

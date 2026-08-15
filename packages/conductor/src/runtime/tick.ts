@@ -366,9 +366,8 @@ type DispatchRow = Awaited<ReturnType<ConductorCollections["dispatches"]["list"]
  * reduces to, and that gap is not entry's to close: entry ran, and re-deriving
  * it would buy the same dispatch again to recover a signal, not a run. It
  * belongs to the signal that went missing, and {@link unreducedFailures} is
- * where it lives. Each successive attempt to make this one predicate cover one
- * more moment is how it grew a step behind the thing it stands for three times
- * running.
+ * where it lives. Widening this predicate to cover that moment too is the
+ * change to refuse: it would stand for something other than dispatch entry.
  *
  * Matching on the phase *name* is enough because neither phase table cycles: a
  * phase is entered at most once per entity, so there is no earlier visit's row
@@ -479,9 +478,10 @@ function unreducedFailures(
  * there is none; `completedWhen` is false; {@link entryCompleted} says the entry
  * work ran, so nothing re-dispatches; and nothing failed, so nothing escalates.
  * The entity sits there forever and every tick is a no-op. From outside it looks
- * healthy, which is what makes it expensive: the bug it generalizes cost most of
- * a day, and the fix that time (discovering submissions by branch) closed the
- * instance and not the class.
+ * healthy, which is what makes it expensive to find. This predicate is
+ * deliberately the *class* and not any one instance of it: a narrower fix, such
+ * as discovering submissions by branch, closes one route into the state and
+ * leaves the rest open.
  *
  * **Derived, never stored** — the same rule a gate is held to, for the same
  * reason. Being stuck is a statement about durable state, so it must survive a
@@ -821,14 +821,13 @@ async function appendLedger(
  *   dispatch answering feedback the first one did not settle, so it costs a
  *   second round.
  *
- * The head is what this used to key on, and keying on it collapsed the second
- * case into the first. A pass that pushes no commit leaves the head where it
- * was, so every later pass on that head counted **zero**: the counter could sit
- * at one while pass after pass was handled and paid for, and the cap meant to
- * park a stuck loop at twelve rounds never fired. Distinct heads are not
- * distinct attempts — distinct *dispatches* are, and a pass that changed nothing
- * is an attempt that failed to change anything rather than an attempt that never
- * happened.
+ * **Do not key this on the artifact head**, which collapses the second case into
+ * the first. A pass that pushes no commit leaves the head where it was, so every
+ * later pass on that head would count **zero**: the counter sits at one while
+ * pass after pass is handled and paid for, and the cap meant to park a stuck
+ * loop at twelve rounds never fires. Distinct heads are not distinct attempts —
+ * distinct *dispatches* are, and a pass that changed nothing is an attempt that
+ * failed to change anything rather than an attempt that never happened.
  *
  * **And an attempt that never happened is exactly what a failed dispatch is**,
  * which is why {@link runTick} calls this *after* the run and only on one that
@@ -907,13 +906,12 @@ async function recordProduced(
  * branch it ran against?* Two of this file's rules are consequences of it, which
  * is why they read it rather than each keeping a list.
  *
- * It used to be the *guarantee* behind "a merge gate never opens on unproved
- * work": a stored verdict survived unless a kind cleared it. It cannot be that,
- * and could never have been — an enumeration over conductor's own dispatches has
- * nothing to say about a head a human moved. The guarantee is now the revision
- * stored beside the verdict (`model/world`'s `goalCheckFor`), which a push
- * nobody dispatched fails exactly as a revision does. What the table answers now
- * is sharper:
+ * **It is not the guarantee behind "a merge gate never opens on unproved
+ * work", and must not be made one** — a stored verdict surviving unless some
+ * kind clears it. An enumeration over conductor's own dispatches has nothing to
+ * say about a head a human moved. That guarantee is the revision stored beside
+ * the verdict (`model/world`'s `goalCheckFor`), which a push nobody dispatched
+ * fails exactly as a dispatched one does. What the table answers is narrower:
  *
  * - **A verdict from before is stale.** The gate would catch it at the next
  *   observation anyway, but not until then — the snapshot this tick holds was
@@ -951,8 +949,10 @@ async function recordProduced(
  *   that re-ran the check is telling us something better than "unknown" — that
  *   is a fresh proof, not a stale one, so it is not cleared.
  * - **A dispatch that could have pushed and reported nothing clears it.** See
- *   {@link INVALIDATES_GOAL_CHECK}, and for why that is a window this closes
- *   rather than the guarantee it used to be.
+ *   {@link MUTATES_WORK} for which kinds those are, and
+ *   `model/world`'s `goalCheckFor` for why this is a window rather than a
+ *   guarantee: a head can change with no dispatch at all, so the stored
+ *   revision — not this table — is what makes a proof safe to trust.
  *
  * Everything else returns whatever the dispatcher reported, which is almost
  * always nothing — and for a dispatch that changed nothing, nothing means **no
@@ -1191,12 +1191,12 @@ const GOAL_CHECK_VENDOR = "conductor";
  *   base, and it settles the issue on it. `dispatch/branch`'s third plan says
  *   exactly what is wanted instead: fetch the base, put HEAD on
  *   `<remote>/<base>`, own no ref.
- * - **Before the merge — the phase's branch.** This provisioning used to be
- *   unconditional, which was right while a check could only be dispatched after a
- *   merge. Now that a proof is re-earnable on an open submission, standing at the
- *   base would prove the base — code *without* the change — and pass. That is
- *   worse than not running: it would open a merge gate having proved nothing
- *   about the work, which is the one thing this lifecycle exists to prevent.
+ * - **Before the merge — the phase's branch.** The ground has to be chosen here
+ *   rather than fixed, because a proof is re-earnable on an open submission:
+ *   standing at the base would prove the base — code *without* the change — and
+ *   pass. That is worse than not running, because it opens a merge gate having
+ *   proved nothing about the work, which is the one thing this lifecycle exists
+ *   to prevent.
  *
  * Both plans are run in conductor's own worktree, and the branch plan's re-entry
  * rule means the check stands on the branch's remote tip. What that tip contains
@@ -1783,12 +1783,12 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
       // out, and it is why a fresh verdict is sometimes recorded with no
       // revision at all.
       //
-      // Folded unconditionally. A pass reported before the phase's submission is
-      // in the snapshot used to be held back here, because `IMPLEMENTATION`
-      // completed on an absent PR — that is a phase-completion rule and it lives
-      // in the phase table now, where the artifact it turns on is required
-      // positively. A verdict this tick cannot act on is one the phase table
-      // declines, not one this tick withholds.
+      // Folded unconditionally, including a pass reported before the phase's
+      // submission is in the snapshot. Whether such a verdict may complete a
+      // phase is a phase-completion rule, and it lives in the phase table, where
+      // the artifact it turns on is required positively. A verdict this tick
+      // cannot act on is one the phase table declines, not one this tick
+      // withholds.
       const claim = claimedGoalCheck(
         action,
         result,

@@ -25,9 +25,7 @@
 
 **The runner drives the real API.** It imports `openConductor` from `@flow-state-dev/conductor` and states its work item as the package's own `IssueWorkItem`; the session, and the entity/gate/ledger/dispatch-count shape every call answers with, are inferred from the export rather than restated here. There is no locally declared copy of the tick surface and no export probe, so a drift between what this goal expects and what conductor ships is a compile error rather than something a run discovers at three in the morning. `pnpm --filter @flow-state-dev/goals typecheck` is where that check lives — the conductor package's own typecheck covers `src` only, and reads this file not at all.
 
-**Two seams this goal could not close, reported rather than papered over:**
-
-- **A goal check's result has no producer.** `World.goalCheck` is an input to an observation and nothing supplies one: `runTick` builds its `ObservationRequest` without it, both world readers default it to `null`, and neither an entity field nor a `DispatchResult` carries a result back for one to be built from. So `IMPLEMENTATION.completedWhen` — which requires `goalCheck === "passed"` — can never hold, and **an issue cannot reach `SETTLED` on its own.** The drive ends by quiescing instead, which the loop below accepts as a stop, so this does not by itself make the check red; what it does mean is that everything downstream of a settled issue is ungraded here, and a green run is a run that produced a merge-ready branch, not one that finished a work item.
+**One seam this goal could not close, reported rather than papered over:**
 
 - **An issue's start phase is not derived from its type.** `ISSUE_PHASES` begins at `SPEC` for everything, and nothing reads `issueType`. This goal manages its item as a `Bug` starting at `IMPLEMENTATION`, which is the routing `docs/contributing/orchestration.md` describes (a bug skips the spec and enters at implementation) — but conductor does not do that routing itself, the caller does. It also has to: `SPEC`'s exit is a human approval gate, so a spec-first run cannot complete unattended, correctly.
 

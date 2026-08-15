@@ -18,12 +18,12 @@ The process it encodes is not new — it is the one already written down in
 > checkout behind the second; the config surface (`defineConductor` /
 > `resolveConductor` and its discovery); and the **tick** — `openConductor`,
 > which assembles observe → decide → execute → ledger over durable state,
-> registers the collections below against it, and provisions and runs a phase.
+> registers the collections below against it, and provisions and runs a phase,
+> including the goal check whose verdict settles an issue.
 >
-> **Not in the tree:** the **CLI board**. Two seams the model does not close are
-> reported rather than papered over: nothing records a goal check's result, so
-> an issue cannot reach `SETTLED` on its own; and an issue running *under* an
-> epic has no place to record its workstream session.
+> **Not in the tree:** the **CLI board**. One seam the model does not close is
+> reported rather than papered over: an issue running *under* an epic has no
+> place to record its workstream session.
 >
 > The GitHub layer is tested against recorded payloads; the local source and the
 > tick are tested against real repositories they create and commit to. What has

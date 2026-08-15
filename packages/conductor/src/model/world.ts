@@ -153,7 +153,7 @@ export interface World {
   /**
    * The revision {@link World.goalCheck} was taken against, and the half that
    * makes the verdict mean something. `null` when no check has run, or when the
-   * revision it proved is not yet known — see {@link goalCheckAtHead}, which is
+   * revision it proved is not yet known — see {@link goalCheckFor}, which is
    * the only thing that should read this field.
    */
   readonly goalCheckSha: string | null;
@@ -282,7 +282,7 @@ export function hasFreshHumanApproval(pr: PullRequestFacts | undefined): boolean
  * was proved*, and it is only ever true of the revision the check actually ran
  * on. Everything that could put a different revision under the same verdict then
  * had to be enumerated somewhere — and the enumeration lived over conductor's own
- * dispatch kinds (`runtime/tick`'s `INVALIDATES_GOAL_CHECK`), which cannot be
+ * dispatch kinds (`model/actions`' `MUTATES_WORK`), which cannot be
  * complete, because **a head can change with no dispatch at all**. A human or an
  * external automation pushing another commit to the implementation PR is
  * observed, recorded as a divergence, and produces no action; nothing consults
