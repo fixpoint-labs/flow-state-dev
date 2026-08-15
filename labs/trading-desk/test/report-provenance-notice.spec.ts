@@ -22,9 +22,17 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  createFlowApiRouter,
+  createFlowRegistry,
+  createInMemoryStores,
+} from "@flow-state-dev/engine";
+import analysisFlow from "../flows/analysis/flow";
+import { DATA_HONESTY_CONTRACT_VERSION } from "../flows/analysis/data-honesty-contract";
+import {
   PROVENANCE_NOTICE_BODY,
   PROVENANCE_NOTICE_HEADING,
   PRE_DATA_HONESTY_FIX_REASON,
+  reasonsForProvenance,
 } from "../components/summary/report-provenance-notice";
 
 /**
@@ -136,42 +144,296 @@ describe("the provenance notice is not gated behind a tab", () => {
 });
 
 /**
- * The banner needs a stored report to disclose anything about.
+ * THE STATE TABLE. Every state a bound session can be in, and what the banner
+ * owes a reader in each.
  *
- * `app/page.tsx` binds `useSession(flow.activeSessionId)`, which on a fresh
- * install is `undefined`. `useClientData` then reads off a null snapshot and
- * every exposed field comes back `undefined` — which the pre-fix predicate,
- * correctly, treats as pre-fix. So a first-time user with no reports at all was
- * told their report "was generated before a correction".
+ * This gate has been wrong three times, and each fix was derived from the one
+ * state its author happened to name — so each was correct there and wrong two
+ * rows away. The table is the fix for that: a change to the gate has to make
+ * every row pass, not the row that prompted it. Add a row before you touch
+ * `reasonsForProvenance`; if a new signal makes two rows collapse into one,
+ * that is a finding worth stating, not a row to quietly drop.
  *
- * The fix has one shape and one anti-shape, and both are asserted here because
- * the anti-shape is the tempting one: gate on a report EXISTING, never on
- * defaulting the absent stamp to present. Defaulting the stamp would silence
- * the legacy case the notice exists for — a real stored report with no stamp
- * must keep reading pre-fix. Under-claim on the empty state, not on the legacy
- * one.
- *
- * Structural for the same reason as the block above: this package has no React
- * render harness, and adding one is a larger change than the fix. It is a
- * SOURCE-GREP PIN too — a rename can fail it without a regression, so read a
- * failure as "check whether the gate moved", not as proof that it did.
+ * The two columns are everything the predicate sees. `memoCount` is the
+ * snapshot's `memos` count; `contractVersion` is the stored stamp, which is
+ * `undefined` on a record written before the field existed and `null` on a
+ * session that has one but never ran. The empirical basis for both is the
+ * describe block below — it is what makes this table a description of the
+ * system rather than a description of our beliefs about it.
  */
-describe("the provenance notice does not fire on an empty state", () => {
+describe("the state table", () => {
+  const CURRENT = DATA_HONESTY_CONTRACT_VERSION;
+  const SILENT: readonly string[] = [];
+  const BANNER: readonly string[] = [PRE_DATA_HONESTY_FIX_REASON];
+
+  const ROWS: ReadonlyArray<{
+    state: string;
+    memoCount: number | undefined;
+    contractVersion: unknown;
+    expect: readonly string[];
+    why: string;
+  }> = [
+    {
+      state: "no session bound (fresh install)",
+      memoCount: undefined,
+      contractVersion: undefined,
+      expect: SILENT,
+      why: "nothing on screen to disclose anything about",
+    },
+    {
+      state: "session created but never seeded (the orphaned session)",
+      memoCount: 0,
+      contractVersion: null,
+      expect: SILENT,
+      why:
+        "`createSession` succeeded and the dispatch never happened, so the " +
+        "session carries schema defaults and no report. The pane under this " +
+        "banner shows EmptySelection; a warning above it describes nothing.",
+    },
+    {
+      state: "seed in flight (before the stamp is patched)",
+      memoCount: 0,
+      contractVersion: null,
+      expect: SILENT,
+      why:
+        "the seed clears memos and patches the stamp ~30 awaits later, so this " +
+        "window is long and every fresh run passes through it. Same shape as " +
+        "the orphan row above — deliberately, since both mean 'no report yet'.",
+    },
+    {
+      state: "run in flight, past the seed",
+      memoCount: 4,
+      contractVersion: CURRENT,
+      expect: SILENT,
+      why: "produced by current producers; the stamp settles it",
+    },
+    {
+      state: "run complete, current",
+      memoCount: 20,
+      contractVersion: CURRENT,
+      expect: SILENT,
+      why: "nothing to disclose — and no 'verified' chip either",
+    },
+    {
+      state: "run errored mid-way leaving partial memos, current",
+      memoCount: 7,
+      contractVersion: CURRENT,
+      expect: SILENT,
+      why:
+        "the stamp is written at seed, so a run that dies later still carries " +
+        "it. Partial output from current producers is not pre-fix output.",
+    },
+    {
+      state: "legacy stored report, complete",
+      memoCount: 20,
+      contractVersion: undefined,
+      expect: BANNER,
+      why: "the case the notice exists for",
+    },
+    {
+      state: "legacy stored report, errored mid-way leaving partial memos",
+      memoCount: 7,
+      contractVersion: undefined,
+      expect: BANNER,
+      why:
+        "the row that kills `runComplete === true` as a gate. Partial memos " +
+        "built on fabricated zeros are still on screen and still unvouchable.",
+    },
+    {
+      state: "current stored report, re-opened",
+      memoCount: 20,
+      contractVersion: CURRENT,
+      expect: SILENT,
+      why: "re-opening runs zero models and changes nothing about provenance",
+    },
+    {
+      state: "legacy run stopped at a guard before any memo was created",
+      memoCount: 0,
+      contractVersion: undefined,
+      expect: SILENT,
+      why:
+        "an under-claim we accept: the stop banner is the whole surface and " +
+        "there are no figures to mislabel. A gate on `stoppedReason` would " +
+        "paint 'this report predates a correction' over a report that does " +
+        "not exist — defect 2 again, one axis over.",
+    },
+    {
+      state: "stamp from a LATER contract version than this build knows",
+      memoCount: 20,
+      contractVersion: CURRENT + 1,
+      expect: BANNER,
+      why:
+        "owned by `isPreDataHonestyFix`, not by this gate: anything that is " +
+        "not exactly the current version reads pre-fix, which under-claims " +
+        "rather than vouching for a report this build cannot assess.",
+    },
+  ];
+
+  for (const row of ROWS) {
+    const verdict = row.expect.length > 0 ? "shows the banner" : "stays silent";
+    it(`${row.state} → ${verdict} (${row.why})`, () => {
+      expect(
+        reasonsForProvenance({
+          memoCount: row.memoCount,
+          contractVersion: row.contractVersion,
+        }),
+      ).toEqual(row.expect);
+    });
+  }
+
+  it("covers both verdicts, so a gate stuck one way cannot pass the table", () => {
+    expect(ROWS.some((r) => r.expect.length > 0)).toBe(true);
+    expect(ROWS.some((r) => r.expect.length === 0)).toBe(true);
+  });
+});
+
+/**
+ * WHAT A NEVER-RUN SESSION ACTUALLY PROJECTS — the measurement the table rests
+ * on, taken rather than reasoned out.
+ *
+ * The question that decides this gate: does a session that exists but was never
+ * patched surface schema DEFAULTS to the client, or `undefined`? It is not
+ * answerable by reading `state.ts` — `createSession` is what decides whether the
+ * schema's `.default()`s are ever applied, and `computeClientData` is what
+ * decides what reaches the browser. So this drives the real routes.
+ *
+ * The answer is DEFAULTS, and it is why the obvious gates are wrong: `ticker` on
+ * a session that never ran is the string `"NVDA"`, not `undefined`, so
+ * `ticker != null` reads "a report exists" on the orphaned session. It also
+ * pins the null-vs-undefined split the table's two "no stamp" spellings rely on.
+ */
+describe("what the client actually reads off a session that never ran", () => {
+  async function router() {
+    const registry = createFlowRegistry();
+    registry.register(analysisFlow);
+    const stores = createInMemoryStores();
+    return { router: createFlowApiRouter({ registry, stores }), stores };
+  }
+
+  async function readState(r: Awaited<ReturnType<typeof router>>, id: string) {
+    const res = await r.router.GET(
+      new Request(`http://localhost/api/flows/sessions/${id}/state`),
+      { params: { path: ["sessions", id, "state"] } },
+    );
+    expect(res.status).toBe(200);
+    return (await res.json()) as {
+      clientData: { session: Record<string, unknown> };
+      resources?: { session?: { memos?: { count?: number } } };
+    };
+  }
+
+  it("projects schema DEFAULTS, not undefined — so `ticker != null` is not a report", async () => {
+    const r = await router();
+    const created = await r.router.POST(
+      new Request("http://localhost/api/flows/analysis/sessions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userId: "u1", sessionId: "never_ran" }),
+      }),
+      { params: { path: ["analysis", "sessions"] } },
+    );
+    expect(created.status).toBe(201);
+
+    const body = await readState(r, "never_ran");
+    const state = body.clientData.session;
+
+    // The trap, stated as an assertion: every one of these is a plausible-
+    // looking value on a session where nothing ever ran.
+    expect(state.ticker).toBe("NVDA");
+    expect(state.runComplete).toBe(false);
+    expect(state.activePhase).toBe("idle");
+    expect(state.stoppedReason).toBeNull();
+
+    // A session that HAS the stamp field but never ran carries the `.default(null)`
+    // — which reads pre-fix, exactly as a legacy report does. That collision is
+    // the whole defect, and no session field resolves it.
+    expect(state.dataHonestyContractVersion).toBeNull();
+
+    // What does resolve it.
+    expect(body.resources?.session?.memos?.count).toBe(0);
+  });
+
+  it("a legacy record has NO stamp key at all, and a non-zero memo count", async () => {
+    const r = await router();
+    const now = Date.now();
+    // Written straight to the store: a record from a build that predates the
+    // field. Going through `createSession` would backfill the schema default
+    // and destroy the very shape under test.
+    await r.stores.session.set(
+      "legacy",
+      {
+        id: "legacy",
+        flowKind: "analysis",
+        userId: "u1",
+        state: {
+          ticker: "AMD",
+          date: "2026-05-06",
+          costPreset: "fast",
+          dataSource: "fixture",
+          activePhase: "phase-5",
+          maxDebateRounds: 1,
+          runComplete: true,
+        },
+        lineageId: "lin_legacy",
+        version: 0,
+        createdAt: now,
+        updatedAt: now,
+        journal: [],
+      } as never,
+      "any",
+    );
+    await r.stores.resourceState.set(
+      "session",
+      "legacy",
+      "memos/p1/fundamentals",
+      { status: "published" } as never,
+      "any",
+    );
+
+    const body = await readState(r, "legacy");
+    const state = body.clientData.session;
+
+    // Absent, not null — the key never reaches the wire.
+    expect(
+      Object.prototype.hasOwnProperty.call(state, "dataHonestyContractVersion"),
+    ).toBe(false);
+    expect(state.dataHonestyContractVersion).toBeUndefined();
+    expect(body.resources?.session?.memos?.count).toBe(1);
+
+    // End to end: this is the row the notice exists for.
+    expect(
+      reasonsForProvenance({
+        memoCount: body.resources?.session?.memos?.count,
+        contractVersion: state.dataHonestyContractVersion,
+      }),
+    ).toEqual([PRE_DATA_HONESTY_FIX_REASON]);
+  });
+});
+
+/**
+ * The gate reaches the render, and the stamp is never defaulted to present.
+ *
+ * Two shapes a green table could still hide. The first is the FIX-1060 drop
+ * point — a predicate computed and then not read. The second is the tempting
+ * anti-shape: `?? DATA_HONESTY_CONTRACT_VERSION` would make a legacy report read
+ * as current, which is the unfixable direction, since nothing distinguishes
+ * those runs afterwards.
+ *
+ * A SOURCE-GREP PIN. It matches source text, so a rename can fail it with
+ * nothing regressed — read a failure as "check the gate", not as proof it moved.
+ */
+describe("the gate is wired to the render", () => {
   const source = readFileSync(
     path.resolve(__dirname, "..", "components/summary/report-provenance-notice.tsx"),
     "utf8",
   );
 
-  it("gates the reasons on a stored report existing", () => {
-    expect(source).toContain("session.snapshot !== null");
-    // The gate has to reach the reasons — a computed-but-unread flag is the
-    // FIX-1060 drop point one more time.
-    expect(source).toMatch(/hasStoredReport && isPreDataHonestyFix\(/);
+  it("the banner renders the pure predicate's result, not its own re-derivation", () => {
+    expect(source).toMatch(/reasons\s*=\s*useMemo\(\s*\(\)\s*=>\s*reasonsForProvenance\(/);
+    expect(source).toContain("<ReportProvenanceNotice reasons={reasons} />");
   });
 
   it("does NOT default the absent stamp to present", () => {
-    // The anti-shape. Any of these would make a legacy report read as current,
-    // which is the unfixable direction: nothing distinguishes those runs later.
     expect(source).not.toMatch(/dataHonestyContractVersion\s*\?\?/);
     expect(source).not.toMatch(
       /isPreDataHonestyFix\([^)]*\?\?\s*DATA_HONESTY_CONTRACT_VERSION/,

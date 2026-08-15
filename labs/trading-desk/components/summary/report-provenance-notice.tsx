@@ -38,7 +38,7 @@
  */
 import { useMemo, type ReactElement } from "react";
 import type { SessionView } from "@flow-state-dev/react";
-import { useClientData } from "@flow-state-dev/react";
+import { useClientData, useResourceCollection } from "@flow-state-dev/react";
 import { isPreDataHonestyFix } from "@/flows/analysis/data-honesty-contract";
 import { cn } from "@/lib/utils";
 
@@ -102,6 +102,35 @@ export const PRE_DATA_HONESTY_FIX_REASON =
   "unavailable, so a number shown in this report may never have been measured.";
 
 /**
+ * Which corrections the report on screen predates — `[]` when there is no
+ * report. Pure, so the whole state space is enumerated in one table
+ * (`test/report-provenance-notice.spec.ts`) instead of one case at a time.
+ *
+ * THE GATE IS THE MEMO COUNT, never a session field. Every field in
+ * `sessionStateSchema` has a `.default()` and `createSession` stores the parsed
+ * result, so a session that exists but never ran already projects a complete,
+ * plausible state — a real `ticker`, `runComplete: false`, no stamp — which no
+ * single field tells apart from a legacy report. The memos ARE the report, so
+ * their count is what separates "nothing ran here" from "a report we cannot
+ * vouch for".
+ *
+ * Direction to be wrong in, unchanged: under-claim when no report is on screen,
+ * never on a legacy one. A stored report with an absent stamp still reads
+ * pre-fix.
+ */
+export function reasonsForProvenance(report: {
+  /** The `memos` count off the session snapshot; `undefined` when nothing is bound. */
+  memoCount: number | undefined;
+  /** The stored `dataHonestyContractVersion`; `undefined` on a legacy record. */
+  contractVersion: unknown;
+}): readonly string[] {
+  if ((report.memoCount ?? 0) === 0) return [];
+  return isPreDataHonestyFix(report.contractVersion)
+    ? [PRE_DATA_HONESTY_FIX_REASON]
+    : [];
+}
+
+/**
  * The mounted banner — reads the stored stamp itself and renders the notice.
  *
  * MOUNT THIS ABOVE THE TAB SWITCH, never inside a tab. The disclosure is about
@@ -129,29 +158,19 @@ export function ReportProvenanceBanner({
     session: ["dataHonestyContractVersion"],
   });
 
-  // A disclosure about a stored report needs a stored report to exist. On a
-  // fresh install nothing is bound (`page.tsx` calls `useSession(undefined)`),
-  // so the snapshot is null and every exposed field reads `undefined` —
-  // indistinguishable, at the stamp alone, from a legacy report whose stamp is
-  // absent. That told a first-time user their report was generated before a
-  // correction before they had generated anything.
-  //
-  // The gate is the SNAPSHOT, never the stamp. Treating an absent stamp as
-  // present would silence the legacy case this notice exists for, so the
-  // under-claiming default is untouched: on a real stored report an absent
-  // stamp still reads pre-fix. Only the empty state renders nothing, which is
-  // the direction to be wrong in — under-claim on the empty state, never on
-  // the legacy one.
-  const hasStoredReport = session.snapshot !== null;
+  // `count` is snapshot-derived, so it arrives with the stamp rather than after
+  // a second fetch — no window where a legacy report renders unmarked.
+  const { count: memoCount } = useResourceCollection(session, "memos");
 
   // Which data-honesty fixes this stored report predates. One list feeding one
   // marker, so a later fix adds an entry rather than a second banner.
   const reasons = useMemo(
     () =>
-      hasStoredReport && isPreDataHonestyFix(stamp?.dataHonestyContractVersion)
-        ? [PRE_DATA_HONESTY_FIX_REASON]
-        : [],
-    [hasStoredReport, stamp?.dataHonestyContractVersion],
+      reasonsForProvenance({
+        memoCount,
+        contractVersion: stamp?.dataHonestyContractVersion,
+      }),
+    [memoCount, stamp?.dataHonestyContractVersion],
   );
 
   return <ReportProvenanceNotice reasons={reasons} />;
