@@ -22,6 +22,7 @@ import {
   finalizeOpenItems,
 } from "./emit";
 import { createTranslateState, translateSdkMessage } from "./translate";
+import { isErroredSubtype } from "./result";
 import { defaultResolveClaudeAgent } from "./sdk-client";
 import { createClaudeAgentSessionProvider, type ClaudeAgentSession } from "./session";
 import { ClaudeAgentRunError } from "./errors";
@@ -88,16 +89,6 @@ export interface ClaudeCodeAgentOptions {
   ) => ToolApprovalDecision | Promise<ToolApprovalDecision>;
   /** Block name. Default `"claude-code-agent"`. */
   name?: string;
-}
-
-/**
- * A terminal subtype counts as an errored outcome unless it is exactly
- * `"success"`. `null` here means the SDK reported a subtype this version does
- * not recognize (`normalizeSubtype` only nulls unknown values — `"success"` is
- * always recognized), so it is a failure, not a silent success.
- */
-function isErroredSubtype(subtype: SdkResultSubtype | null): boolean {
-  return subtype !== "success";
 }
 
 /**
