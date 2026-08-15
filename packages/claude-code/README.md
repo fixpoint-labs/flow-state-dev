@@ -169,6 +169,16 @@ not the run acknowledged. An agent that ignores both is left running, and
 may still be running") rather than claiming it was killed. If you cannot afford
 a stray agent process, treat that wording as an alert.
 
+It has to be a positive number of milliseconds no greater than `2147483647`
+(about 24.8 days) — the longest delay a timer can hold. Pass anything else and
+the call settles immediately as a failure naming the option and the value, and
+starts no agent. This matters most if you compute the budget: a 30-day ceiling
+is `2592000000`, past the limit, and a timer given that quietly resets itself to
+1 ms rather than failing. Left unchecked the run would die instantly and blame
+the agent for an overrun. Nothing is clamped, so a budget you cannot have is
+told to you instead of being swapped for a shorter one. Omit the option for no
+ceiling; `0` is not a second way to spell that.
+
 `subtype` is the run's own account of how it ended, so you can tell a ceiling you
 set (`error_max_turns`, `error_max_budget_usd`) from a failure you cannot raise
 your way out of (`error_during_execution`). A subtype this package does not

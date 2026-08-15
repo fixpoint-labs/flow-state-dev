@@ -398,4 +398,105 @@ describe("runClaudeHeadless", () => {
     expect(run.error).toContain("without a terminal result");
     expect(run.sessionId).toBe("sess-truncated");
   });
+
+  /**
+   * A `timeoutMs` no timer can hold.
+   *
+   * `setTimeout` does not reject a delay it cannot represent — it coerces `NaN`,
+   * a negative, and anything past 2^31-1 to **1 ms**. Left unchecked that turns
+   * the ceiling this module spent two fixes getting right into an instant
+   * failure, reported in the caller's ledger as *the run overran its budget*:
+   * the one reading of it that sends a human to look at the agent instead of at
+   * the number they passed.
+   *
+   * So each case below asserts the two things a ledger reader needs, and both
+   * are observable from the returned value alone:
+   *
+   * - the reason names the **option and the value**, and does *not* read as an
+   *   overrun — otherwise the diagnosis points at the wrong half of the system;
+   * - `query` was **never called** — so the failure is honest that no agent was
+   *   started, meaning nothing was spent and nothing was left running.
+   */
+  describe("rejects a timeoutMs no timer can hold", () => {
+    /** The largest delay a timer can actually hold, and the boundary asserted below. */
+    const MAX = 2_147_483_647;
+
+    const cases: readonly (readonly [string, number])[] = [
+      // Silent: Node emits no warning for these two, so nothing marks the coercion.
+      ["NaN", NaN],
+      ["a negative budget", -1],
+      // Warn on stderr only — lost in an unattended dispatch that logs a result.
+      ["Infinity", Infinity],
+      // The finding's case: a 30-day ceiling computed arithmetically, which is
+      // 2_592_000_000 ms and comfortably past the ~24.8-day limit.
+      ["a 30-day budget past the 32-bit timer range", 2_592_000_000],
+      // `undefined` is already how a caller says "no ceiling"; reading `0` as a
+      // second spelling of that would fail *open* on an exhausted computed
+      // budget — an unbounded run where an instant refusal was wanted.
+      ["zero", 0],
+    ];
+
+    for (const [label, timeoutMs] of cases) {
+      it(`settles as caller misuse on ${label}, without starting an agent`, async () => {
+        const { query, resolveAgent } = scriptedAgent([result()]);
+        const run = await runClaudeHeadless({ prompt: "p", timeoutMs, resolveAgent });
+
+        expect(run.ok).toBe(false);
+        // Names the option and the value, so the ledger says "you passed a bad
+        // number" rather than "the harness is broken".
+        expect(run.error).toContain("timeoutMs");
+        expect(run.error).toContain(String(timeoutMs));
+        // And must NOT be dressed as the run overrunning — that is the exact
+        // misdiagnosis the ~1 ms coercion produces today.
+        expect(run.error).not.toMatch(/exceeded/);
+        expect(run.error).not.toMatch(/may still be running/);
+        // Nothing was started, so there is no spend and no agent to go kill.
+        expect(query).not.toHaveBeenCalled();
+        expect(run.costUsd).toBeNull();
+        expect(run.sessionId).toBeNull();
+      });
+    }
+
+    it("does not blame a working run for an overrun when the budget was the thing at fault", async () => {
+      // The regression in its natural habitat. The cases above use an instant
+      // agent, where a 1 ms deadline never gets to bite; a run doing real work
+      // is where it does. Measured before the guard: this settled in 3 ms with
+      // "exceeded its 2592000000 ms budget ... may still be running" — a run
+      // that was fine, reported as the agent's fault, pointing whoever read the
+      // ledger at the harness instead of at the number.
+      const resolveAgent: ResolveClaudeAgentQuery = () => ({
+        query: async function* (): AsyncGenerator<SdkMessageLike> {
+          await new Promise<void>((r) => setTimeout(r, 60));
+          yield result();
+        },
+      });
+      const run = await runClaudeHeadless({ prompt: "p", timeoutMs: 2_592_000_000, resolveAgent });
+      expect(run.ok).toBe(false);
+      expect(run.error).toContain("timeoutMs");
+      expect(run.error).not.toMatch(/exceeded/);
+      expect(run.error).not.toMatch(/may still be running/);
+    });
+
+    it("accepts the largest budget a timer can hold, so the ceiling is rejected only past the real limit", async () => {
+      // Guards the boundary in the useful direction: a validator that is off by
+      // one here refuses a legitimate budget, which is its own silent failure.
+      const { query, resolveAgent } = scriptedAgent([result()]);
+      const run = await runClaudeHeadless({ prompt: "p", timeoutMs: MAX, resolveAgent });
+      expect(run.ok).toBe(true);
+      expect(query).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not fail a run whose budget is merely generous", async () => {
+      // The regression the over-range rejection must not cause: a large but
+      // representable ceiling has to still be a ceiling, not an instant refusal.
+      const resolveAgent: ResolveClaudeAgentQuery = () => ({
+        query: async function* (): AsyncGenerator<SdkMessageLike> {
+          await new Promise<void>((r) => setTimeout(r, 25));
+          yield result();
+        },
+      });
+      const run = await runClaudeHeadless({ prompt: "p", timeoutMs: 60_000, resolveAgent });
+      expect(run.ok).toBe(true);
+    });
+  });
 });

@@ -19,7 +19,11 @@
  * mid-stream, and an error-subtype result all come back as `ok: false` with a
  * reason. Callers whose bookkeeping runs off the returned value (a ledger, a
  * retry budget) would lose the record to a thrown error, so there is nothing to
- * catch.
+ * catch. A `timeoutMs` no timer can hold settles the same way, and it is the
+ * one failure that is the caller's own mistake rather than the run's — the
+ * contract holds anyway, because the value of a settled failure is the reason
+ * it carries into the ledger, and "you passed a bad number" is precisely the
+ * diagnosis a throw would delete rather than deliver.
  *
  * **Cost and usage come from the terminal result, so a run that never reached
  * one reports neither.** An error-subtype result still carries what it spent,
@@ -132,6 +136,12 @@ export interface RunClaudeHeadlessOptions {
    * closes the stream where the SDK allows it, then returns whether or not the
    * run acknowledged; an agent that ignores both is left running, and the
    * failure reason says so rather than implying it was killed.
+   *
+   * Must be a positive number of milliseconds no greater than
+   * {@link MAX_TIMEOUT_MS} (about 24.8 days), the longest delay a timer can
+   * hold. Anything else — `NaN`, a negative, `0`, or a computed budget past
+   * that limit — settles immediately as a failure naming this option, rather
+   * than being quietly clamped to a ceiling the caller did not ask for.
    */
   readonly timeoutMs?: number;
   /**
@@ -161,6 +171,60 @@ export interface RunClaudeHeadlessOptions {
  * legitimately return can be mistaken for it.
  */
 const DEADLINE_EXPIRED = Symbol("claude-headless-deadline-expired");
+
+/**
+ * The longest delay a timer can actually hold: 2^31-1 ms, about 24.8 days.
+ *
+ * Node stores a timer's delay in a 32-bit signed integer. Past this it does not
+ * overflow into a longer wait and does not fail — it silently resets the delay
+ * to **1 ms**, so the more generous the budget a caller asks for, the sooner
+ * their run dies. Hence a validated ceiling rather than a number worked around.
+ */
+const MAX_TIMEOUT_MS = 2_147_483_647;
+
+/**
+ * Reject a `timeoutMs` no timer can honour, before anything is armed.
+ *
+ * `setTimeout` does not refuse a delay it cannot represent. `NaN`, a negative,
+ * and anything above {@link MAX_TIMEOUT_MS} all become **1 ms** — the first two
+ * silently, the rest behind a stderr warning that an unattended dispatch never
+ * shows anyone. The run then fails almost instantly *as a timeout*, which is
+ * the one reading that sends a human to inspect the agent instead of the number
+ * they passed. A caller computing a budget arithmetically hits this with no
+ * signal at all: a 30-day ceiling is 2_592_000_000 ms, comfortably over.
+ *
+ * **Out of range is rejected, not clamped.** Clamping would hand back a quieter
+ * version of the same bug — a ceiling shorter than the one asked for, with
+ * nothing said about it — and this surface's whole job is to be honest about
+ * what its bound does and does not stop. A deadline past 24.8 days needs
+ * chained timers this does not have, and a caller who wants one should be told
+ * that rather than silently given something else.
+ *
+ * **`0` is invalid, not "no ceiling".** Omitting the option is already how a
+ * caller says unbounded; reading `0` as a second spelling of it would fail
+ * *open* on an exhausted computed budget, granting an unlimited run on exactly
+ * the input that should refuse fastest.
+ *
+ * @returns the reason the value is unusable, or `null` when it is fine.
+ */
+function unusableTimeout(timeoutMs: number): string | null {
+  // Two comparisons cover every `number`, non-finite ones included: `NaN` fails
+  // both (every relational comparison against it is false) and `Infinity` fails
+  // the upper bound. An explicit finiteness check would read well and never be
+  // reachable, so the range is stated once and left to do the whole job.
+  if (timeoutMs > 0 && timeoutMs <= MAX_TIMEOUT_MS) return null;
+
+  // The reason has one job: let whoever reads the ledger tell "you passed a bad
+  // value" from "the agent misbehaved". So it names the option, echoes the
+  // value, states the rule, and says plainly that no run was started — which is
+  // also the answer to the question a timeout reason would have raised, namely
+  // whether an agent is still out there spending.
+  return (
+    `runClaudeHeadless was given timeoutMs=${String(timeoutMs)}, which is not a usable wall-clock ` +
+    `budget: it must be a positive number of milliseconds no greater than ${MAX_TIMEOUT_MS} ` +
+    `(about 24.8 days), the longest delay a timer can hold. No Claude Code run was started.`
+  );
+}
 
 /** Build a failure with nothing the SDK never told us invented. */
 function failed(error: string, partial: Partial<ClaudeHeadlessResult> = {}): ClaudeHeadlessResult {
@@ -278,9 +342,10 @@ function reduceResult(msg: Extract<SdkMessageLike, { type: "result" }>): ClaudeH
  *
  * Never throws, and never hangs when given a `timeoutMs`. The SDK being absent,
  * the SDK never *loading*, the run exceeding `timeoutMs`, the stream throwing
- * mid-run, and a run that ends without a terminal result all settle as failures
- * naming what happened — and the two timeouts name themselves apart, since
- * "the harness never loaded" and "the work overran" are different diagnoses.
+ * mid-run, a `timeoutMs` no timer can hold, and a run that ends without a
+ * terminal result all settle as failures naming what happened — and the
+ * timeouts name themselves apart, since "the harness never loaded", "the work
+ * overran" and "that budget was never valid" are three different diagnoses.
  *
  * The ceiling binds the call, not the agent: neither phase can be cancelled
  * outright, so on the deadline this abandons what it cannot stop rather than
@@ -305,6 +370,16 @@ export async function runClaudeHeadless(
     systemPrompt = CLAUDE_CODE_SYSTEM_PROMPT,
     resolveAgent = defaultResolveClaudeAgentQuery,
   } = options;
+
+  // Checked before anything is armed, resolved or awaited, so the failure can
+  // say truthfully that no run was started: nothing was spent, and there is no
+  // agent anyone needs to go and find. See `unusableTimeout` for why a value
+  // out of range is rejected rather than clamped, and why `0` is not a spelling
+  // of "unbounded".
+  if (timeoutMs !== undefined) {
+    const unusable = unusableTimeout(timeoutMs);
+    if (unusable !== null) return failed(unusable);
+  }
 
   // The deadline is armed before anything is awaited, and covers loading the SDK
   // as well as running the agent. `timeoutMs` is documented as a ceiling on the
