@@ -1,5 +1,4 @@
 ---
-"@flow-state-dev/conductor": patch
 ---
 
 Internal: `@flow-state-dev/conductor` (private, unpublished) now escalates a

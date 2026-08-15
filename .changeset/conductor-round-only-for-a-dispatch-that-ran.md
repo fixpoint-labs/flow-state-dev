@@ -1,6 +1,8 @@
 ---
-"@flow-state-dev/conductor": patch
 ---
+
+Internal: `@flow-state-dev/conductor` (private, unpublished) now counts a review
+round only for a dispatch that actually ran (LAB-111).
 
 A review round is now counted **after** the revision dispatch settles, and only
 when it settled `completed`. It was counted before the run, so anything that
@@ -19,5 +21,4 @@ though twelve passes had been made over the same comments. A dispatch that
 completed and pushed nothing still counts — that is an attempt that changed
 nothing, not an attempt that never happened.
 
-LAB-111. The escalation a failed dispatch produces still reports a retry
-exhaustion that never happened, which is LAB-112.
+The escalation a failed dispatch produces is corrected separately, in LAB-112.

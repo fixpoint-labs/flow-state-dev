@@ -1,5 +1,4 @@
 ---
-"@flow-state-dev/conductor": minor
 ---
 
 Conductor runs the goal check itself, so a merged issue can actually finish (LAB-66).
