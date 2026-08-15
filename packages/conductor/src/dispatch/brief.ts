@@ -10,6 +10,7 @@
 
 import { MUTATES_WORK, type DispatchAction } from "../model/actions";
 import type { ConductorEntity } from "../driver/derive-gate";
+import { renderCommand } from "../util/command";
 import type { PhaseBrief } from "./types";
 
 /** Everything about a dispatch that does not come from the entity or the action. */
@@ -134,7 +135,10 @@ export function renderBrief(brief: PhaseBrief): string {
       "Conductor runs this itself and reads its exit status — nothing you write about",
       "the outcome is read. Run it before you stop:",
       "",
-      `    ${[...brief.goalCommand, brief.entityId].join(" ")}`,
+      // Quoted rather than joined: the agent is told to run this, and conductor
+      // spawns the same argv with no shell at all. A line a shell splits
+      // differently is a pre-flight check grading a different program.
+      `    ${renderCommand([...brief.goalCommand, brief.entityId])}`,
       "",
     );
   }

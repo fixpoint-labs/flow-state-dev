@@ -48,6 +48,7 @@
 import { spawn } from "node:child_process";
 
 import type { ResolvedGoalCheck } from "../config/define";
+import { renderCommand } from "../util/command";
 
 /**
  * How much of a failing runner's output to keep for the reason.
@@ -91,11 +92,6 @@ export type GoalCheckOutcome =
 function tail(text: string): string {
   const trimmed = text.trim();
   return trimmed.length > REASON_TAIL ? `…${trimmed.slice(-REASON_TAIL)}` : trimmed;
-}
-
-/** The command as a human would type it, for a reason string. */
-function display(argv: readonly string[]): string {
-  return argv.join(" ");
 }
 
 /**
@@ -142,7 +138,7 @@ export async function runGoalCheckCommand(
       return resolve({
         kind: "not-run",
         reason:
-          `The goal command \`${display(goalCheck.command)}\` could not be started: ` +
+          `The goal command \`${renderCommand(goalCheck.command)}\` could not be started: ` +
           `${cause instanceof Error ? cause.message : String(cause)}`,
       });
     }
@@ -161,7 +157,7 @@ export async function runGoalCheckCommand(
       settle({
         kind: "not-run",
         reason:
-          `The goal command \`${display(goalCheck.command)}\` did not finish within ` +
+          `The goal command \`${renderCommand(goalCheck.command)}\` did not finish within ` +
           `${goalCheck.timeoutMs}ms and was killed, so it proved nothing either way.`,
       });
     }, goalCheck.timeoutMs);
@@ -174,7 +170,7 @@ export async function runGoalCheckCommand(
       settle({
         kind: "not-run",
         reason:
-          `The goal command \`${display(goalCheck.command)}\` could not be executed in ` +
+          `The goal command \`${renderCommand(goalCheck.command)}\` could not be executed in ` +
           `${cwd}: ${cause.message}`,
       });
     });
@@ -187,7 +183,7 @@ export async function runGoalCheckCommand(
         settle({
           kind: "not-run",
           reason:
-            `The goal command \`${display(goalCheck.command)}\` was killed by ${signal} ` +
+            `The goal command \`${renderCommand(goalCheck.command)}\` was killed by ${signal} ` +
             `before it could report a verdict.${stderr ? ` stderr: ${tail(stderr)}` : ""}`,
         });
         return;

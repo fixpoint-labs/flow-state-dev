@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { briefFor, renderBrief } from "../../src/dispatch/brief";
 import { issue } from "../fixtures";
+import { shellWords } from "../shell";
 
 describe("briefFor", () => {
   it("takes who and where from the entity and what and why from the action", () => {
@@ -103,6 +104,29 @@ describe("renderBrief", () => {
     const rendered = renderBrief({ ...base, goalCommand: ["pnpm", "goal"] });
     expect(rendered).toContain("pnpm goal FIX-1");
     expect(rendered).toContain("reads its exit status");
+  });
+
+  /**
+   * **The command an agent is shown must be the command conductor runs.**
+   *
+   * The brief tells the agent to run the check before it stops, and conductor
+   * spawns the same argv itself with `shell: false` — so an element carrying a
+   * space, a quote or a metacharacter means the agent's pre-flight check grades
+   * a *different program* than conductor grades. The executed example:
+   * `["bash", "-lc", "pnpm tsx goals/run-for-issue.mts"]` joined on spaces is a
+   * line a shell reads as `bash -lc pnpm` with the rest positional, which runs
+   * `pnpm`. The cheapest outcome is a wasted revision round.
+   */
+  it("renders a goal command a shell splits back into the argv conductor spawns", async () => {
+    const goalCommand = ["bash", "-lc", "pnpm tsx goals/run-for-issue.mts --report 'all cases'"];
+    const rendered = renderBrief({ ...base, goalCommand });
+
+    const line = rendered
+      .split("\n")
+      .map((row) => row.trim())
+      .find((row) => row.includes("run-for-issue.mts"));
+    expect(line).toBeDefined();
+    await expect(shellWords(line!)).resolves.toEqual([...goalCommand, "FIX-1"]);
   });
 
   it("does not hand a goal command to a dispatch that writes nothing", () => {
