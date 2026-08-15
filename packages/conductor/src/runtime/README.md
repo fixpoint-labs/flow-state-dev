@@ -42,9 +42,10 @@ way a property survives a change nobody remembers to re-verify.
 - **This holds for one tick at a time, per entity.** A tick is a read-modify-write
   and none of it is atomic; two overlapping ones read the same cursor and ledger
   sequence and run the same paid dispatch twice, with the atomic rename hiding it.
-  `session.ts` queues ticks per entity **within a process**, and says there what
-  that leaves unprotected — two processes over one `statePath` still race, so one
-  process per `statePath` is a deployment requirement.
+  `session.ts` queues ticks per entity **within a process**, keyed on the
+  *resolved* state path so any spelling of one directory is one queue, and says
+  there what that leaves unprotected — two processes over one `statePath` still
+  race, so one process per `statePath` is a deployment requirement.
 - **Every transition is reproducible from the ledger.** A row carries `decide`'s three
   arguments whole, so re-running it from the row alone produces that row's action
   again. Anything the tick does that `decide` did not produce therefore has no place

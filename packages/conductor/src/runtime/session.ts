@@ -31,14 +31,22 @@
  * second id, so the address exists in `./collections` and nothing mints it yet.
  */
 
+import path from "node:path";
+
 import { createGitHubClient } from "../github/client";
 import { githubObserver } from "../github/observe";
 import { defaultGitRunner } from "../config/discover";
 import type { ResolvedConductor } from "../config/define";
 import type { GitRunner } from "../dispatch/branch";
 import type { Observer } from "../observe/types";
-import type { EntityKind, Phase } from "../model/phases";
-import type { IssueType, RegistryEntryState } from "../model/entities";
+import type { z } from "zod";
+import type { EntityKind, EpicPhase, IssuePhase, Phase } from "../model/phases";
+import type {
+  epicStateSchema,
+  issueStateSchema,
+  IssueType,
+  RegistryEntryState,
+} from "../model/entities";
 import { conductorRegistry } from "../model/entities";
 import {
   collectionHandle,
@@ -67,15 +75,16 @@ import type { RuntimeDeps } from "./deps";
  */
 export type WorkItem = IssueWorkItem | EpicWorkItem;
 
-/** Fields both kinds of work item carry. */
+/**
+ * Fields both kinds of work item carry.
+ *
+ * `phase` is deliberately **not** among them: an issue's phases and an epic's
+ * are disjoint tables, so a shared `Phase` here would be a public type that
+ * type-checks `{ kind: "issue", phase: "FRAMING" }` and fails at the write.
+ * Each member narrows it to its own kind's table instead.
+ */
 interface WorkItemBase {
   readonly id: string;
-  /**
-   * The phase the item enters at. Stated by the caller, not derived: a bug
-   * enters at implementation and a feature at spec, and conductor does not do
-   * that routing today — see `goals/conductor/…/goal.md`.
-   */
-  readonly phase: Phase;
   /**
    * What the work item asks for, in plain language. Stored as the entity's
    * resource **content** and carried into every phase brief. `decide` never
@@ -89,6 +98,12 @@ interface WorkItemBase {
 /** One unit of work moving through the issue phases. */
 export interface IssueWorkItem extends WorkItemBase {
   readonly kind: "issue";
+  /**
+   * The phase the item enters at. Stated by the caller, not derived: a bug
+   * enters at implementation and a feature at spec, and conductor does not do
+   * that routing today — see `goals/conductor/…/goal.md`.
+   */
+  readonly phase: IssuePhase;
   /** Selects discipline and review lenses. Not a state machine. */
   readonly issueType: IssueType;
 }
@@ -96,7 +111,41 @@ export interface IssueWorkItem extends WorkItemBase {
 /** A set of related issues under a shared objective. */
 export interface EpicWorkItem extends WorkItemBase {
   readonly kind: "epic";
+  /** The phase the item enters at. Stated by the caller, not derived. */
+  readonly phase: EpicPhase;
 }
+
+/**
+ * The public work-item types accept exactly the phases their collection can
+ * store — checked here rather than trusted.
+ *
+ * `CollectionHandle.write` cannot check it: `defineResourceCollection` widens
+ * `stateSchema` to `z.ZodTypeAny`, so the handle's state parameter degrades to
+ * `any` and every phase string passes the compiler on its way to a runtime
+ * rejection. That blind seam is what let `WorkItem.phase` sit at the union of
+ * both tables. Asserting against the schemas directly — which *are* precisely
+ * typed — puts the check back, and pins it to the persisted shape rather than
+ * to a second hand-written list that can drift from it.
+ */
+// `false` rather than `never` on a mismatch: `never` satisfies every
+// constraint, so an assertion encoded against it passes on exactly the drift it
+// was written to catch.
+type PhaseMatchesSchema<TDeclared, TStored> = [TDeclared] extends [TStored]
+  ? [TStored] extends [TDeclared]
+    ? true
+    : false
+  : false;
+
+/** Fails to compile on anything but an exact match. */
+type Assert<T extends true> = T;
+
+type _IssuePhasesArePersistable = Assert<
+  PhaseMatchesSchema<IssueWorkItem["phase"], z.infer<typeof issueStateSchema>["phase"]>
+>;
+
+type _EpicPhasesArePersistable = Assert<
+  PhaseMatchesSchema<EpicWorkItem["phase"], z.infer<typeof epicStateSchema>["phase"]>
+>;
 
 /** One conductor process's handle on durable state. Re-opening it is a restart. */
 export interface ConductorSession {
@@ -123,7 +172,11 @@ export interface ConductorSession {
 export interface OpenConductorInput {
   /** Everything resolved from the config file and the machine. */
   readonly config: ResolvedConductor;
-  /** Durable location the ledger, entities, and observations live in. */
+  /**
+   * Durable location the ledger, entities, and observations live in. Resolved
+   * against the process cwd, so any spelling of one directory is one state —
+   * and, per `ticksInFlight`, one tick lock.
+   */
   readonly statePath: string;
   /**
    * How the world is read. Defaults to GitHub, built from the config's repo and
@@ -157,6 +210,12 @@ function defaultOrgId(config: ResolvedConductor): string {
  * Module-level rather than per-session because the thing being serialized is the
  * durable state, not the handle: two handles over one `statePath` in one process
  * is the ordinary shape — a cron sweep and a webhook route both open conductor.
+ *
+ * **The directory half of the key is the resolved path, the same value the store
+ * was opened on.** Two spellings of one directory (`state` and `./state`) are one
+ * durable state and must be one lock; keyed on the caller's spelling they are
+ * two, and the serialization below silently stops holding for the pair of
+ * processes it exists to protect.
  */
 const ticksInFlight = new Map<string, Promise<void>>();
 
@@ -209,7 +268,13 @@ async function serializeTick<T>(key: string, run: () => Promise<T>): Promise<T> 
  * @returns A session whose every answer is read back from the store.
  */
 export async function openConductor(input: OpenConductorInput): Promise<ConductorSession> {
-  const { config, statePath } = input;
+  const { config } = input;
+  // Resolved once, here, and used for both the store and the tick lock key.
+  // `fileStateStore` resolves whatever it is handed, so a lock keyed on the raw
+  // argument would let two spellings of one directory write the same files under
+  // different locks — see `ticksInFlight`. One binding is what stops the two
+  // from drifting apart again.
+  const statePath = path.resolve(input.statePath);
   const store = input.store ?? fileStateStore(statePath);
   const orgId = input.orgId ?? defaultOrgId(config);
   const now = input.now ?? (() => new Date());
@@ -290,9 +355,7 @@ export async function openConductor(input: OpenConductorInput): Promise<Conducto
       await collections.epics.write(item.id, {
         id: item.id,
         kind: "epic",
-        // Safe by construction: an epic is managed into an epic phase, and a
-        // phase outside its kind's table reduces to no transition anyway.
-        phase: item.phase as "FRAMING",
+        phase: item.phase,
         externalKey: item.externalKey ?? null,
         lastSignalAt: null,
       });
@@ -306,7 +369,7 @@ export async function openConductor(input: OpenConductorInput): Promise<Conducto
     await collections.issues.write(item.id, {
       id: item.id,
       kind: "issue",
-      phase: item.phase as "SPEC",
+      phase: item.phase,
       issueType: item.issueType,
       epicId: null,
       externalKey: item.externalKey ?? null,

@@ -18,6 +18,7 @@
 export {
   defineConductor,
   resolveConductor,
+  type BaseBranchOrigin,
   type ConductorConfig,
   type ConductorOrigins,
   type FieldOrigin,
@@ -36,6 +37,7 @@ export {
   discoverRepoRoot,
   KNOWN_HARNESSES,
   parseRepoRef,
+  type DiscoveredDefaultBranch,
   type HarnessProbe,
   type KnownHarness,
   type RepoRef,

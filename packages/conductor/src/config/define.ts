@@ -84,6 +84,19 @@ export interface ConductorConfig {
 export type FieldOrigin = "discovered" | "configured";
 
 /**
+ * Where `baseBranch` came from — {@link FieldOrigin} plus the one discovery
+ * that can answer from something other than the source of truth.
+ *
+ * `"discovered"` means the remote itself was asked. `"discovered-cached"` means
+ * it could not be reached and the clone-time `refs/remotes/<remote>/HEAD` was
+ * read instead — a value git never refreshes, so it is the branch this clone
+ * was made against rather than the branch the repository has now. Reporting the
+ * two as one would make `origins` say the field was looked up while hiding that
+ * the lookup missed, which is the half of the answer an operator needs.
+ */
+export type BaseBranchOrigin = FieldOrigin | "discovered-cached";
+
+/**
  * Where each resolved field came from.
  *
  * Kept as data rather than logged, because it is the answer to the question a
@@ -100,7 +113,7 @@ export type FieldOrigin = "discovered" | "configured";
 export interface ConductorOrigins {
   readonly repoRoot: FieldOrigin;
   readonly repo: FieldOrigin;
-  readonly baseBranch: FieldOrigin;
+  readonly baseBranch: BaseBranchOrigin;
   readonly dispatcher: FieldOrigin;
 }
 
@@ -194,7 +207,10 @@ export async function resolveConductor(
     repo = parsed;
   }
 
-  const baseBranch = config.baseBranch ?? (await discoverDefaultBranch(git, repoRoot, remote));
+  const discoveredBranch = config.baseBranch
+    ? null
+    : await discoverDefaultBranch(git, repoRoot, remote);
+  const baseBranch = config.baseBranch ?? discoveredBranch!.branch;
   const dispatcher = config.dispatcher ?? (await discoverDispatcher(probe));
 
   return {
@@ -210,7 +226,11 @@ export async function resolveConductor(
     origins: {
       repoRoot: config.repoRoot ? "configured" : "discovered",
       repo: config.repo ? "configured" : "discovered",
-      baseBranch: config.baseBranch ? "configured" : "discovered",
+      baseBranch: discoveredBranch
+        ? discoveredBranch.from === "remote"
+          ? "discovered"
+          : "discovered-cached"
+        : "configured",
       dispatcher: config.dispatcher ? "configured" : "discovered",
     },
   };

@@ -8,12 +8,18 @@
  * choice fails twenty minutes later as something else.
  */
 
-import { describe, expect, it } from "vitest";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import { afterEach, describe, expect, it } from "vitest";
 import { defaultResolveClaudeAgentQuery } from "@flow-state-dev/claude-code/sdk";
 import {
   ConductorConfigError,
+  defaultGitRunner,
   defaultHarnessProbe,
   defineConductor,
+  discoverDefaultBranch,
   discoverDispatcher,
   KNOWN_HARNESSES,
   parseRepoRef,
@@ -44,6 +50,7 @@ function fakeGit(answers: Record<string, string>): GitRunner {
 const HAPPY = {
   "rev-parse --show-toplevel": "/repo\n",
   "remote get-url origin": "git@github.com:fixpoint-labs/flow-state-dev.git\n",
+  "ls-remote --symref origin HEAD": "ref: refs/heads/main\tHEAD\nsha1\tHEAD\n",
   "symbolic-ref --quiet refs/remotes/origin/HEAD": "refs/remotes/origin/main\n",
 };
 
@@ -91,17 +98,37 @@ describe("resolveConductor at level 1", () => {
     });
   });
 
-  it("falls back to the remote's own HEAD when the local ref is unset", async () => {
+  it("reads the base branch off the remote even when a local ref disagrees", async () => {
+    // The clone-time ref still says `main`; the repository has since moved to
+    // `trunk`. Git never refreshes that ref, so preferring it would cut every
+    // branch from an obsolete base — and silently, because `main` still exists.
     const resolved = await resolveConductor(defineConductor(), {
       env: ENV,
       git: fakeGit({
-        "rev-parse --show-toplevel": "/repo\n",
-        "remote get-url origin": "https://github.com/acme/thing.git\n",
+        ...HAPPY,
         "ls-remote --symref origin HEAD": "ref: refs/heads/trunk\tHEAD\nsha\tHEAD\n",
       }),
       probe: () => true,
     });
     expect(resolved.baseBranch).toBe("trunk");
+    expect(resolved.origins.baseBranch).toBe("discovered");
+  });
+
+  it("falls back to the local ref when the remote cannot be reached, and says so", async () => {
+    // Offline, or no credentials for a private remote. Taking the cached ref is
+    // better than refusing to run, but it is a different answer to a different
+    // question — so `origins` reports which one was actually asked.
+    const resolved = await resolveConductor(defineConductor(), {
+      env: ENV,
+      git: fakeGit({
+        "rev-parse --show-toplevel": "/repo\n",
+        "remote get-url origin": "https://github.com/acme/thing.git\n",
+        "symbolic-ref --quiet refs/remotes/origin/HEAD": "refs/remotes/origin/legacy\n",
+      }),
+      probe: () => true,
+    });
+    expect(resolved.baseBranch).toBe("legacy");
+    expect(resolved.origins.baseBranch).toBe("discovered-cached");
   });
 
   it("reads GH_TOKEN as well as GITHUB_TOKEN", async () => {
@@ -354,5 +381,91 @@ describe("the overrides discovery cannot cover", () => {
     });
     expect(resolved.dispatcher).toBe(mine);
     expect(resolved.origins.dispatcher).toBe("configured");
+  });
+});
+
+/**
+ * The default branch, against a repository that actually exists.
+ *
+ * Everything above answers from a table, which is the right shape for the
+ * branching but cannot establish the premise the branching rests on: that a
+ * clone's `refs/remotes/<remote>/HEAD` does **not** follow the remote when the
+ * remote's default branch moves. That is a claim about git's behaviour, so it
+ * is checked against git.
+ */
+describe("the default branch, read from a real remote that moved", () => {
+  let scratch: string;
+
+  afterEach(async () => {
+    if (scratch) await fs.rm(scratch, { recursive: true, force: true });
+  });
+
+  /** A bare remote with `main` and `trunk`, and a clone of it made at `main`. */
+  async function cloneWithTwoBranches(): Promise<{ remote: string; clone: string }> {
+    scratch = await fs.mkdtemp(path.join(os.tmpdir(), "conductor-head-"));
+    const remote = path.join(scratch, "remote.git");
+    const seed = path.join(scratch, "seed");
+    const clone = path.join(scratch, "clone");
+
+    const run = async (cwd: string, ...argv: string[]) => {
+      const result = await defaultGitRunner(argv, cwd);
+      if (result.code !== 0) {
+        throw new Error(`git ${argv.join(" ")} failed (${result.code}): ${result.stderr}`);
+      }
+      return result.stdout.trim();
+    };
+
+    await run(scratch, "init", "-q", "--bare", "-b", "main", remote);
+    await run(scratch, "init", "-q", "-b", "main", seed);
+    await run(seed, "config", "user.email", "test@example.com");
+    await run(seed, "config", "user.name", "Test");
+    await fs.writeFile(path.join(seed, "README.md"), "start\n");
+    await run(seed, "add", "--", "README.md");
+    await run(seed, "commit", "-q", "-m", "initial");
+    await run(seed, "remote", "add", "origin", remote);
+    await run(seed, "push", "-q", "origin", "main");
+    await run(seed, "branch", "trunk");
+    await run(seed, "push", "-q", "origin", "trunk");
+    await run(scratch, "clone", "-q", remote, clone);
+
+    return { remote, clone };
+  }
+
+  it("follows the remote's new default, which the clone's own ref does not", async () => {
+    const { remote, clone } = await cloneWithTwoBranches();
+
+    expect(await discoverDefaultBranch(defaultGitRunner, clone, "origin")).toEqual({
+      branch: "main",
+      from: "remote",
+    });
+
+    // The repository renames its default branch, keeping the old one — the case
+    // that makes this silent rather than loud.
+    await defaultGitRunner(["symbolic-ref", "HEAD", "refs/heads/trunk"], remote);
+    // Everything a well-behaved clone does to stay current. None of it touches
+    // refs/remotes/origin/HEAD, which is the whole problem.
+    await defaultGitRunner(["fetch", "--all", "--prune"], clone);
+    await defaultGitRunner(["remote", "update"], clone);
+
+    const cachedRef = await defaultGitRunner(
+      ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"],
+      clone,
+    );
+    expect(cachedRef.stdout.trim()).toBe("refs/remotes/origin/main");
+
+    expect(await discoverDefaultBranch(defaultGitRunner, clone, "origin")).toEqual({
+      branch: "trunk",
+      from: "remote",
+    });
+  });
+
+  it("reports the cached ref as cached when the remote is gone", async () => {
+    const { remote, clone } = await cloneWithTwoBranches();
+    await fs.rm(remote, { recursive: true, force: true });
+
+    expect(await discoverDefaultBranch(defaultGitRunner, clone, "origin")).toEqual({
+      branch: "main",
+      from: "cached",
+    });
   });
 });

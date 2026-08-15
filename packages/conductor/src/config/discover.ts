@@ -136,33 +136,62 @@ export async function discoverRemoteUrl(
   return url;
 }
 
+/** The default branch, and which of the two reads answered for it. */
+export interface DiscoveredDefaultBranch {
+  readonly branch: string;
+  /**
+   * `"remote"` — the remote itself answered, so the value is current.
+   * `"cached"` — only the local ref answered, so the value may be stale.
+   */
+  readonly from: "remote" | "cached";
+}
+
 /**
  * The remote's default branch — the branch every new issue branch is cut from.
  *
- * Read from the local `refs/remotes/<remote>/HEAD` first, and from the remote
- * itself when the local ref is unset (a shallow or single-branch clone). A
- * hardcoded `main` fallback is deliberately absent: basing work on the wrong
+ * **Asked of the remote, not of the local ref.** `refs/remotes/<remote>/HEAD`
+ * is written at clone time and then left alone: neither `git fetch` nor `git
+ * remote update` refreshes it, so a repository that renames its default branch
+ * while the old one still exists leaves every existing clone pointing at the
+ * old name indefinitely. Reading it would provision every new workspace from an
+ * obsolete base — silently, since the old branch still resolves.
+ *
+ * The local ref is therefore the **fallback**, taken only when `ls-remote`
+ * cannot answer at all: no network, no credentials for a private remote, a
+ * remote that has gone away. That case is reported rather than smoothed over —
+ * see {@link DiscoveredDefaultBranch.from}, which `resolveConductor` carries
+ * into `origins.baseBranch` as `"discovered-cached"`. A stale base branch is
+ * worth knowing about at the moment it is chosen; discovering it from a pile of
+ * pull requests cut from the wrong branch is not.
+ *
+ * **What this costs.** One network round-trip per config resolution, on a path
+ * that was previously all-local. Resolution happens once per process, so the
+ * cost is per process rather than per tick — but a project that resolves in a
+ * hot loop, or one that runs offline by design, sets `baseBranch` in
+ * `conductor.config.ts` and skips this function entirely.
+ *
+ * A hardcoded `main` fallback is deliberately absent: basing work on the wrong
  * branch is silent and expensive to unwind.
  */
 export async function discoverDefaultBranch(
   git: GitRunner,
   repoRoot: string,
   remote: string,
-): Promise<string> {
+): Promise<DiscoveredDefaultBranch> {
+  const remoteHead = await git(["ls-remote", "--symref", remote, "HEAD"], repoRoot);
+  const match = /^ref:\s+refs\/heads\/(\S+)\s+HEAD$/m.exec(remoteHead.stdout);
+  if (remoteHead.code === 0 && match) return { branch: match[1]!, from: "remote" };
+
   const local = await git(["symbolic-ref", "--quiet", `refs/remotes/${remote}/HEAD`], repoRoot);
   const localRef = local.stdout.trim();
   if (local.code === 0 && localRef !== "") {
     const branch = localRef.replace(`refs/remotes/${remote}/`, "");
-    if (branch !== "" && branch !== localRef) return branch;
+    if (branch !== "" && branch !== localRef) return { branch, from: "cached" };
   }
-
-  const remoteHead = await git(["ls-remote", "--symref", remote, "HEAD"], repoRoot);
-  const match = /^ref:\s+refs\/heads\/(\S+)\s+HEAD$/m.exec(remoteHead.stdout);
-  if (remoteHead.code === 0 && match) return match[1]!;
 
   throw new ConductorConfigError(
     `Could not read the default branch of \`${remote}\` — neither ` +
-      `refs/remotes/${remote}/HEAD nor \`git ls-remote --symref\` answered. ` +
+      `\`git ls-remote --symref\` nor refs/remotes/${remote}/HEAD answered. ` +
       `Set it in conductor.config.ts.`,
     "baseBranch",
   );
