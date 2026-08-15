@@ -1,0 +1,10 @@
+{
+  "name": "flow-state-dev",
+  "description": "Authoring skills for building apps with the FSD framework.",
+  "version": "0.0.0-poc",
+  "author": { "name": "Fixpoint Labs", "url": "https://flow-state.dev" },
+  "homepage": "https://flow-state.dev/docs",
+  "repository": "https://github.com/fixpoint-labs/flow-state-dev",
+  "license": "MIT",
+  "keywords": ["flow-state-dev", "fsdev", "ai-workflows"]
+}

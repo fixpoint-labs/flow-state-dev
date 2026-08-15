@@ -1,0 +1,20 @@
+{
+  "name": "flow-state-dev",
+  "description": "Authoring skills for building apps with the FSD framework.",
+  "owner": {
+    "name": "Fixpoint Labs",
+    "url": "https://flow-state.dev"
+  },
+  "plugins": [
+    {
+      "name": "flow-state-dev",
+      "source": "./plugins/flow-state-dev",
+      "displayName": "Flow State Dev",
+      "description": "Scaffold blocks, flows and tests in an FSD project, and verify them with the fsdev CLI.",
+      "license": "MIT",
+      "homepage": "https://flow-state.dev/docs",
+      "repository": "https://github.com/fixpoint-labs/flow-state-dev",
+      "keywords": ["flow-state-dev", "fsdev", "ai-workflows"]
+    }
+  ]
+}
