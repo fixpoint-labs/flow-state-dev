@@ -105,7 +105,7 @@ Before this change, every sequencer auto-awaited its own background work before 
 
 ## waitForSideChain — convergence points
 
-`.waitForSideChain()` waits for the calling sequencer's `.sideChain()` tasks. By default, it does not throw on work failures:
+`.waitForSideChain()` waits for the calling sequencer's `.sideChain()` tasks. By default, it does not throw on side-chain failures:
 
 ```ts
 pipeline
@@ -115,7 +115,7 @@ pipeline
   .step(nextStep);
 ```
 
-`nextStep` runs after both tasks finish. If either failed, the pipeline still continues. Set `failOnError: true` to promote work failures:
+`nextStep` runs after both tasks finish. If either failed, the pipeline still continues. Set `failOnError: true` to promote side-chain failures:
 
 ```ts
 .waitForSideChain({ failOnError: true })

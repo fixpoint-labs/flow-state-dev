@@ -176,7 +176,7 @@ pipeline
 **Semantics:**
 - `.sideChain(block)` — queues side-chain execution, non-aborting by default
 - `.waitForSideChain({ failOnError: false })` — waits for work, failures are non-terminal
-- `.waitForSideChain({ failOnError: true })` — promotes any work failure to terminal request error
+- `.waitForSideChain({ failOnError: true })` — promotes any side-chain failure to terminal request error
 - Work failures are logged and the failed `block_trace` reaches the DevTool's trace channel; `onStepErrored` observers still fire
 
 ### Work queue signal lifecycle
@@ -280,7 +280,7 @@ The full request execution sequence:
 - `onCompleted` fires only on terminal success
 - `onErrored` fires only on terminal failure
 - `onFinished` fires always
-- `onStepErrored` fires for non-terminal step/work failures (visibility hook)
+- `onStepErrored` fires for non-terminal step/side-chain failures (visibility hook)
 
 ## Error-to-Item Mapping
 

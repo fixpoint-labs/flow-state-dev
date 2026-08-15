@@ -50,6 +50,29 @@
  *     without type information "a `"work"` argument" and "the tier" are the
  *     same shape, and the wider rule flags correct code.
  *   - `.js` / `.jsx` sources. Every first-party source is TypeScript.
+ * **And one gap that runs the other way — over-reach, deliberate and unescapable:**
+ * a `phase:` or `scope:` field valued `"work"` is denied REPOSITORY-WIDE,
+ * whatever that field means locally. Nothing here consults the declaring type,
+ * so an unrelated `{ scope: "work" }` in some future module would be refused
+ * even though it has nothing to do with the execution tier.
+ *
+ * That is the intended trade, not an oversight. The rule has to fire inside
+ * files the compiler never sees — several packages typecheck only `src/**`
+ * (devtool's tsconfig is `include: ["src/**\/*"]`), so a test fixture's
+ * `{ phase: "work" }` is invisible to `tsc` and this check is the only thing
+ * standing between a renamed fixture and a stale one. Keying the rule to
+ * declared carriers would need exactly the type information that is missing at
+ * those positions, and would go green on precisely the files it exists for.
+ *
+ * The cost is worth stating plainly because there is no escape hatch:
+ * `EXEMPT_FILES` is pinned by assertion to the two rename-boundary tests, so a
+ * legitimate future `{ scope: "work" }` is a hard CI block. Resolving it means
+ * renaming that value or editing this rule — a deliberate, visible act, which
+ * is the point. No first-party site collides today: `phase` and `scope` are
+ * dense framework field names (`session`, `request`, `main`, `block`, `user`,
+ * `org`, …) and `"work"` is not a legitimate value of either under any current
+ * meaning.
+ *
  *   - UNTRACKED files. The walk is `git ls-files`, so a new file is not checked
  *     until it is staged. Deliberate — it is what keeps `.claude/worktrees/**`
  *     copies from multiplying every count — but it means a local run can be

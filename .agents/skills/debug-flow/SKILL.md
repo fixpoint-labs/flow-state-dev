@@ -250,7 +250,7 @@ Summarize for the user:
 | `context` | LLM only | Hidden context injection |
 | `state_change` | Client (transient) | State mutation record |
 | `error` | Client | Terminal request failure |
-| `step_error` | Client | Recoverable step/work failure |
+| `step_error` | Client | Recoverable step/side-chain failure |
 
 ### Error Taxonomy
 

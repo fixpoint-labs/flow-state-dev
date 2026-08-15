@@ -341,7 +341,7 @@ handlers always emit `inline` (they are leaves).
 ### Work Semantics
 
 - `.sideChain(block)` is **non-aborting** — failures don't stop the main chain
-- `.waitForSideChain({ failOnError: true })` promotes work failures to terminal errors
+- `.waitForSideChain({ failOnError: true })` promotes side-chain failures to terminal errors
 - Use for background tasks like logging, analytics, or async notifications
 
 ### Inline Block Definitions
