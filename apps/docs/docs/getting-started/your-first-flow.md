@@ -131,7 +131,7 @@ export const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema })
 
 `.tap(bumpCounter)` runs the handler for its effect and forwards the upstream value to the next step. Compare to `.step`, which would replace the value with whatever the handler returned.
 
-Sequencers have more methods — `.parallel`, `.work`, `.doUntil`, `.rescue` — but you only need `.step` and `.tap` to get this far. See [Sequencers](/docs/sequencers/overview) when you want the rest.
+Sequencers have more methods — `.parallel`, `.sideChain`, `.doUntil`, `.rescue` — but you only need `.step` and `.tap` to get this far. See [Sequencers](/docs/sequencers/overview) when you want the rest.
 
 ## Step 4. Wrap it as a flow
 
@@ -265,5 +265,5 @@ The shape of every flow you write will be the same. You'll add more blocks, some
 - **[Blocks](/docs/fundamentals/blocks)** — All four kinds in detail, including the rules for tool emission and sub-agents.
 - **[Flows](/docs/fundamentals/flows)** — Actions, lifecycle hooks, authentication, resources.
 - **[State and Scopes](/docs/fundamentals/state-and-scopes)** — When to put data in `session` versus `user` versus a resource.
-- **[Sequencers](/docs/sequencers/overview)** — `parallel`, `work`, loops, `rescue`, and conditional steps.
+- **[Sequencers](/docs/sequencers/overview)** — `parallel`, `sideChain`, loops, `rescue`, and conditional steps.
 - **[Streaming](/docs/streaming/overview)** — How items, deltas, and the SSE wire format fit together.

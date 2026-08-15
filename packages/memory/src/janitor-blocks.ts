@@ -49,7 +49,7 @@ export interface ResolvedHygieneConfig {
  * operators can inspect the most recent run.
  *
  * No `outputSchema` and no return value — pure state mutation. Composed
- * downstream via `.tap()` or `.work()`.
+ * downstream via `.tap()` or `.sideChain()`.
  */
 export function memorySystemJanitor(
   config: MemorySystemBlocksConfig & { hygiene: ResolvedHygieneConfig },

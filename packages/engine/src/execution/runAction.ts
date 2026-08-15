@@ -18,7 +18,7 @@ import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 import type { ResumeContext } from "@flow-state-dev/core/types";
 import { createExecutionContext } from "../context/createExecutionContext";
 import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
-import { canSpeak, canSpeakStream, getRequestWorkPool } from "@flow-state-dev/core";
+import { canSpeak, canSpeakStream, getRequestSideChainPool } from "@flow-state-dev/core";
 import {
   createExecutionLogContext,
   DEFAULT_RUNTIME_LOGGER,
@@ -87,10 +87,10 @@ function serializeAbortReason(reason: unknown): string {
 }
 
 /**
- * Drains the request-scoped background work pool to quiescence. Emits
- * `backgroundTasks: N` status updates as tasks settle (parity with the legacy
+ * Drains the request-scoped side-chain pool to quiescence. Emits
+ * `sideChainTasks: N` status updates as tasks settle (parity with the legacy
  * per-sequencer auto-await), logs failures via console.error, and emits a
- * final `backgroundTasks: 0` status before the caller proceeds to terminal
+ * final `sideChainTasks: 0` status before the caller proceeds to terminal
  * status.
  *
  * Best-effort: emit failures must never throw out of this helper, since the
@@ -98,15 +98,15 @@ function serializeAbortReason(reason: unknown): string {
  * — success and the abort/disconnect/error paths alike — see callers in
  * runActionInternal.
  */
-async function drainRequestWorkPool(ctx: ExecutionContext): Promise<void> {
-  const pool = getRequestWorkPool(ctx);
+async function drainRequestSideChainPool(ctx: ExecutionContext): Promise<void> {
+  const pool = getRequestSideChainPool(ctx);
   if (pool === undefined) {
     return;
   }
 
   const safeEmit = (count: number): void => {
     try {
-      ctx.emit.status(undefined, { blocked: false, backgroundTasks: count });
+      ctx.emit.status(undefined, { blocked: false, sideChainTasks: count });
     } catch {
       // Emitter teardown race; non-fatal.
     }
@@ -117,9 +117,9 @@ async function drainRequestWorkPool(ctx: ExecutionContext): Promise<void> {
   // pool's own contract, since the need to repeat comes from `drainAll`
   // awaiting a single spliced snapshot. This helper is only the
   // request-level decoration around it: failure logging and the
-  // `backgroundTasks` status.
+  // `sideChainTasks` status.
   //
-  // Takes no signal, deliberately (FIX-663 / Decision 3): background work is
+  // Takes no signal, deliberately (FIX-663 / Decision 3): side-chain work is
   // decoupled from the request signal and this wait is not cancellable, so a
   // parameter offering to short-circuit it would advertise a capability the
   // design rejects.
@@ -132,7 +132,7 @@ async function drainRequestWorkPool(ctx: ExecutionContext): Promise<void> {
     );
   }
 
-  // Emit terminal `backgroundTasks: 0` only when we actually drained
+  // Emit terminal `sideChainTasks: 0` only when we actually drained
   // something, so requests that never queued work don't emit a spurious
   // status item.
   if (result.completed.length + result.failed.length > 0) {
@@ -1075,19 +1075,19 @@ export async function runActionInternal<
     }
   }
 
-  // FIX-663: a separate controller for fire-and-forget `.work()` tasks. It
+  // FIX-663: a separate controller for fire-and-forget `.sideChain()` tasks. It
   // fires ONLY when the abort-registry controller fires (the explicit
   // `/abort` endpoint / `session.abortRequest()`). Transport-level signals
   // composed into `composedSignal` via `AbortSignal.any` do NOT propagate
   // here because we listen on `abortController.signal` directly — so a client
-  // disconnect or SSE close leaves background work to settle.
-  const backgroundController = new AbortController();
-  const fireBackground = (): void => {
+  // disconnect or SSE close leaves side-chain work to settle.
+  const sideChainController = new AbortController();
+  const fireSideChain = (): void => {
     // Guard against the TOCTOU window where both the abort listener and the
     // defensive already-aborted branch below call this: the abort is
     // idempotent, but skipping here avoids a duplicate diagnostic log.
-    if (backgroundController.signal.aborted) return;
-    backgroundController.abort(abortController.signal.reason);
+    if (sideChainController.signal.aborted) return;
+    sideChainController.abort(abortController.signal.reason);
     logRuntimeEvent(logger, "warn", "[flow-state] [abort] background signal fired", {
       requestId,
       reason: serializeAbortReason(abortController.signal.reason)
@@ -1103,7 +1103,7 @@ export async function runActionInternal<
       reason: serializeAbortReason(abortController.signal.reason),
       stack: new Error("abort fire site").stack
     });
-    fireBackground();
+    fireSideChain();
   }, { once: true });
   // Defensive: addEventListener does NOT fire for an already-aborted signal.
   // Covers the (microsecond) TOCTOU window between registerAbortController
@@ -1111,7 +1111,7 @@ export async function runActionInternal<
   // the /abort endpoint (a network round-trip), so this branch is exercised
   // only if registration races abort — but the guard is free.
   if (abortController.signal.aborted) {
-    fireBackground();
+    fireSideChain();
   }
 
   // Same-request continuation (FIX-811): `isReplayMode` / `resumeContextRaw` /
@@ -1224,7 +1224,7 @@ export async function runActionInternal<
       metadata: effectiveMetadata,
       input: options.input,
       signal: composedSignal,
-      backgroundSignal: backgroundController.signal,
+      sideChainSignal: sideChainController.signal,
       modelResolver: options.runtimeConfig.modelResolver,
       settings: options.runtimeConfig.settings,
       response,
@@ -1590,21 +1590,21 @@ export async function runActionInternal<
       }
     }
 
-    // Drain the request-scoped background work pool before terminal status.
-    // Inner sequencers no longer auto-await their `.work()` tasks (FIX-554) —
+    // Drain the request-scoped side-chain pool before terminal status.
+    // Inner sequencers no longer auto-await their `.sideChain()` tasks (FIX-554) —
     // the pool consolidates them and we wait here. The catch paths below run
     // the same drain before their own terminal write, so a request never
-    // reports itself finished while its background work is still writing.
+    // reports itself finished while its side-chain work is still writing.
     // FIX-663: drain unconditionally on the success path. Background work is
     // decoupled from the request signal now, so the drain must not early-abort
     // on a transport-level `composedSignal` fire. If an explicit `/abort`
     // arrives mid-drain, in-flight tasks self-cancel via their own
     // `ctx.signal` (the background signal) and settle as rejections — drain
     // still resolves.
-    await drainRequestWorkPool(ctx);
+    await drainRequestSideChainPool(ctx);
 
     // A cancel accepted during that drain is a cancellation, not a completion.
-    // The drain resolves normally on an abort BY DESIGN — in-flight `.work()`
+    // The drain resolves normally on an abort BY DESIGN — in-flight `.sideChain()`
     // tasks self-cancel and `drainAll` collects their rejections into
     // `failed[]` rather than rethrowing — so nothing below would otherwise
     // learn that the wait it just finished was work being stopped. The success
@@ -1615,7 +1615,7 @@ export async function runActionInternal<
     // background signal that cancelled those tasks. Both delivery paths
     // converge on it (the local endpoint and the heartbeat poll's
     // `abortRequest`), while a transport-level disconnect never reaches it —
-    // FIX-663 deliberately lets background work settle through one, and that
+    // FIX-663 deliberately lets side-chain work settle through one, and that
     // stays true. Throwing hands the run to the single classification in the
     // catch below, which already distinguishes abort from disconnect, rather
     // than growing a second copy of it here.
@@ -1660,19 +1660,19 @@ export async function runActionInternal<
 
     // Second barrier, for work the completion hooks themselves queued. Moving
     // the hooks below the drain above took them out from under it: an
-    // `onCompleted` that is a sequencer dispatching `.work()` now enqueues into
+    // `onCompleted` that is a sequencer dispatching `.sideChain()` now enqueues into
     // a pool nothing is waiting on, so the request would emit `completed` and
     // return while a notification or state write was still running — and the
     // flushes below could miss its items. Cheap when the hooks queued nothing:
     // `drainAll` is a no-op on an empty pool and the helper only emits a
-    // `backgroundTasks` status when it actually drained something.
+    // `sideChainTasks` status when it actually drained something.
     //
     // Deliberately NOT paired with a second abort check. The first one guards a
     // wait that precedes every success hook; by here `onCompleted` has run and
     // may have committed side effects, so flipping the request to `aborted`
     // would report a cancellation for work that demonstrably succeeded. A
     // cancel arriving this late is the teardown window, which §9 covers.
-    await drainRequestWorkPool(ctx);
+    await drainRequestSideChainPool(ctx);
 
     // Clear heartbeat
     if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
@@ -1857,7 +1857,7 @@ export async function runActionInternal<
 
     // The failure path's normalized error is needed for the client-visible
     // error item, which is emitted before the drain so a caller hears the
-    // failure immediately rather than after the background work settles.
+    // failure immediately rather than after the side-chain work settles.
     const normalizedError = signalAborted
       ? undefined
       : applyNormalizedErrorSeam(
@@ -1896,7 +1896,7 @@ export async function runActionInternal<
       // rejection here — a custom streaming provider whose iterator `return()`
       // throws synchronously, escaping the pipeline's `.catch()` — would skip
       // the drain AND the record patch and leave the request `in_progress`
-      // with its background work still running: this issue's own defect,
+      // with its side-chain work still running: this issue's own defect,
       // re-entering through the teardown path. Tearing down synthesis nobody
       // will receive must never decide whether the request terminalizes.
       if (ttsHook !== undefined) {
@@ -1908,17 +1908,17 @@ export async function runActionInternal<
         });
       }
 
-      // --- The fix: wait for this request's own background work ---
+      // --- The fix: wait for this request's own side-chain work ---
       // Deliberately passed no signal (FIX-663). Background work is decoupled
       // from the request signal: tasks that opted into cancellation self-cancel
       // via their own `ctx.signal` and settle as rejections, and tasks that did
       // not are precisely the fire-and-forget writes this drain exists to wait
       // for. Handing `drainAll` a signal would abandon them again.
-      await drainRequestWorkPool(ctx);
+      await drainRequestSideChainPool(ctx);
 
       // --- An abort accepted during the drain wins over the branch already
       //     chosen. The branch was selected before a wait that can now last as
-      //     long as the background work does, and `/abort` keeps being accepted
+      //     long as the side-chain work does, and `/abort` keeps being accepted
       //     for the whole of it: the record is still `in_progress`, so the
       //     endpoint's status-checked write applies and the user is told 204.
       //     Reporting `failed`/`interrupted` for a stop we accepted and acted

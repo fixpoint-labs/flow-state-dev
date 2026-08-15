@@ -36,7 +36,7 @@ describe("error model", () => {
       retryable: false,
       blockName: "block-a",
       blockInstanceId: "inst-a",
-      scope: "work",
+      scope: "sideChain",
       cause: new Error("cause"),
       details: {
         a: 1
@@ -45,7 +45,7 @@ describe("error model", () => {
 
     expect(error.blockName).toBe("block-a");
     expect(error.blockInstanceId).toBe("inst-a");
-    expect(error.scope).toBe("work");
+    expect(error.scope).toBe("sideChain");
     expect(error.cause).toBeInstanceOf(Error);
     expect(error.details).toEqual({ a: 1 });
   });

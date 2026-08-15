@@ -325,7 +325,7 @@ export async function selectRequestsByLimit(
  *
  * Optionally includes items from the current in-flight request via
  * `readLiveItems` so that blocks like `sessionTitleGenerator` running as
- * background work can see the current request's output.
+ * side-chain work can see the current request's output.
  */
 export async function loadLLMHistory(
   priorRequests: RequestRecord[],

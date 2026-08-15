@@ -144,7 +144,7 @@ export interface PerspectiveSystem {
  *
  * // Or use the bundled capture sequencer to analyze + record observations
  * const pipeline = sequencer({ name: 'review' })
- *   .work((input) => ({ content: input.proposal }), sec.capture)
+ *   .sideChain((input) => ({ content: input.proposal }), sec.capture)
  *   .step(nextBlock)
  *
  * // Read accumulated state directly
@@ -219,7 +219,7 @@ export function system(
   //
   // The outer schema is intentionally looser than `perspectiveInputSchema`
   // (which requires non-empty content) — capture is commonly wired into
-  // `.work()` background slots that receive whatever a generator produced,
+  // `.sideChain()` background slots that receive whatever a generator produced,
   // including empty strings when an upstream call short-circuits. Treating
   // empty content as a no-op here keeps a transient upstream issue from
   // surfacing as a background-work failure.

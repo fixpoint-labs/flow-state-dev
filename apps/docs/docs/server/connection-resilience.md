@@ -112,7 +112,7 @@ If you raise `defaultSseHeartbeatMs` on the server, raise `stuckThresholdMs` on 
 
 `session.abortRequest()` and the `POST /api/flows/:flowKind/requests/:requestId/abort` endpoint stop a request on whichever server is running it. That matters for background work: a request dispatched to a worker has no browser attached and no SSE connection to close, so closing a connection is not available as a way to stop it.
 
-The cancellation is recorded on the request record, which is durable. Separately, every running request wakes on a timer to write a **heartbeat** — a periodic note that says the run is still alive. On that same tick, the process running the work checks whether a cancellation has been recorded for it. When it finds one, it stops the run exactly as a same-process cancel would: background `.work()` tasks cancel, and the request settles with status `aborted`.
+The cancellation is recorded on the request record, which is durable. Separately, every running request wakes on a timer to write a **heartbeat** — a periodic note that says the run is still alive. On that same tick, the process running the work checks whether a cancellation has been recorded for it. When it finds one, it stops the run exactly as a same-process cancel would: background `.sideChain()` tasks cancel, and the request settles with status `aborted`.
 
 So the wait is bounded by the heartbeat cadence, which is a per-flow setting:
 

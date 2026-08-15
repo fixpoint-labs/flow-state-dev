@@ -1,9 +1,9 @@
 /**
- * FIX-554 — request-scoped background work pool.
+ * FIX-554 — request-scoped side-chain pool.
  *
- * Verifies that `.work()` tasks dispatched inside an inner sequencer no
+ * Verifies that `.sideChain()` tasks dispatched inside an inner sequencer no
  * longer block the parent's next step. Two parallel branches each call
- * `.work()` on a slow handler; total wall time should approximate the
+ * `.sideChain()` on a slow handler; total wall time should approximate the
  * single-branch duration, not the sum.
  *
  * Also covers:
@@ -33,15 +33,15 @@ const sleepHandler = (name: string, ms: number, marker: { done: boolean }) =>
     }
   });
 
-describe("FIX-554: request-scoped work pool", () => {
-  it("sibling sequencers' .work() tasks run concurrently — wall time ≈ max, not sum", async () => {
+describe("FIX-554: request-scoped side-chain pool", () => {
+  it("sibling sequencers' .sideChain() tasks run concurrently — wall time ≈ max, not sum", async () => {
     const aDone = { done: false };
     const bDone = { done: false };
 
     const branchA = sequencer({ name: "branch-a", inputSchema: z.unknown() })
-      .work(sleepHandler("slow-a", SLEEP_MS, aDone));
+      .sideChain(sleepHandler("slow-a", SLEEP_MS, aDone));
     const branchB = sequencer({ name: "branch-b", inputSchema: z.unknown() })
-      .work(sleepHandler("slow-b", SLEEP_MS, bDone));
+      .sideChain(sleepHandler("slow-b", SLEEP_MS, bDone));
 
     const root = sequencer({ name: "root", inputSchema: z.unknown() })
       .step(branchA)
@@ -71,21 +71,21 @@ describe("FIX-554: request-scoped work pool", () => {
     expect(elapsed).toBeLessThan(SLEEP_MS * 2 - 10);
   });
 
-  it("SSE stream stays open until background work completes — slow .work() still surfaces", async () => {
-    let workCompletedAt = 0;
+  it("SSE stream stays open until background work completes — slow .sideChain() still surfaces", async () => {
+    let sideChainCompletedAt = 0;
     const slow = handler({
       name: "slow-bg",
       inputSchema: z.unknown(),
       outputSchema: z.number(),
       execute: async () => {
         await new Promise((r) => setTimeout(r, SLEEP_MS));
-        workCompletedAt = Date.now();
+        sideChainCompletedAt = Date.now();
         return SLEEP_MS;
       }
     });
 
     const inner = sequencer({ name: "inner", inputSchema: z.unknown() })
-      .work(slow);
+      .sideChain(slow);
 
     const root = sequencer({ name: "root", inputSchema: z.unknown() })
       .step(inner);
@@ -108,13 +108,13 @@ describe("FIX-554: request-scoped work pool", () => {
     expect(result.status).toBe("completed");
     // Background work finished before the request returned (drain is the
     // gate). If the main chain had returned without waiting for the pool,
-    // workCompletedAt would be 0 or > completed.
-    expect(workCompletedAt).toBeGreaterThan(0);
-    expect(workCompletedAt).toBeLessThanOrEqual(completed);
+    // sideChainCompletedAt would be 0 or > completed.
+    expect(sideChainCompletedAt).toBeGreaterThan(0);
+    expect(sideChainCompletedAt).toBeLessThanOrEqual(completed);
     expect(completed - start).toBeGreaterThanOrEqual(SLEEP_MS - 5);
   });
 
-  it("waitForWork drains only the calling sequencer's scope", async () => {
+  it("waitForSideChain drains only the calling sequencer's scope", async () => {
     const orderLog: string[] = [];
     const fast = (name: string, ms: number) =>
       handler({
@@ -130,16 +130,16 @@ describe("FIX-554: request-scoped work pool", () => {
 
     // Inner sequencer dispatches a slow task and waits for *its own* work.
     // A separate sibling dispatches an even slower task; the inner's
-    // waitForWork must NOT block on the sibling.
+    // waitForSideChain must NOT block on the sibling.
     const inner = sequencer({ name: "inner", inputSchema: z.unknown() })
-      .work(fast("inner-fast", 20))
-      .waitForWork()
+      .sideChain(fast("inner-fast", 20))
+      .waitForSideChain()
       .tap(() => {
         orderLog.push("inner-after-wait");
       });
 
     const sibling = sequencer({ name: "sibling", inputSchema: z.unknown() })
-      .work(fast("sibling-slow", 100));
+      .sideChain(fast("sibling-slow", 100));
 
     const root = sequencer({ name: "root", inputSchema: z.unknown() })
       .step(sibling)
@@ -160,7 +160,7 @@ describe("FIX-554: request-scoped work pool", () => {
     expect(result.status).toBe("completed");
 
     // inner-fast settles before inner-after-wait; sibling-slow lands later
-    // (drained by the request executor, not by inner's waitForWork).
+    // (drained by the request executor, not by inner's waitForSideChain).
     const innerFastIdx = orderLog.indexOf("inner-fast");
     const innerAfterIdx = orderLog.indexOf("inner-after-wait");
     const siblingIdx = orderLog.indexOf("sibling-slow");

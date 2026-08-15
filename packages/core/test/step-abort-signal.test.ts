@@ -6,7 +6,7 @@
  * signal is its primitive to own. A caller that needs this has a signal only
  * the *runtime* knows about — which claim this iteration holds, which lease it
  * is renewing — so the block itself cannot carry it and there was no seam to
- * hand it through: `.work()` takes no signal either.
+ * hand it through: `.sideChain()` takes no signal either.
  *
  * The composition is the contract. The extra signal is added to the request's,
  * never substituted for it, so a caller cannot accidentally build a step that

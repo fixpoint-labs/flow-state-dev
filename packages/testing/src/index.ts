@@ -23,7 +23,7 @@ export type {
   TestSequencerSeed,
   TestStateSeed,
   TestTargetSeed,
-  WorkTrace
+  SideChainTrace
 } from "./test-utilities/types";
 
 export { snapshotTrace, type SnapshotTrace } from "./snapshot/snapshotTrace";

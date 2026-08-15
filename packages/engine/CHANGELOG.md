@@ -77,9 +77,9 @@ New `item.updated` event with `{ itemId, patch }` shallow-merge semantics. New `
 
 New `FilesystemTraceStore` and `createFilesystemTraceStore`. Registry factories now pick `traceStore.maxRequests` from environment — 1000 when `NODE_ENV=development`, 50 otherwise; explicit config wins. New `createTraceStoreConformanceTests` helper exposed at `@flow-state-dev/engine/testing`. Trace events now survive `fsdev dev` and kitchen-sink `STORE_TYPE=filesystem` restarts.
 
-### 2026-05-07 — Lift `.work()` background tasks (FIX-554) [BREAKING]
+### 2026-05-07 — Lift `.sideChain()` background tasks (FIX-554) [BREAKING]
 
-The request executor now drains a single per-request background-task pool exactly once before terminal status. Inner sequencers no longer auto-await their own list. The SSE stream stays open until the drain completes; `backgroundTasks: N` status emissions reflect the request-level pool count.
+The request executor now drains a single per-request background-task pool exactly once before terminal status. Inner sequencers no longer auto-await their own list. The SSE stream stays open until the drain completes; `sideChainTasks: N` status emissions reflect the request-level pool count.
 
 ### 2026-05-06 — `clientData` privacy fix + rename (FIX-505) [BREAKING]
 

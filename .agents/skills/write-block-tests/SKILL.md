@@ -216,7 +216,7 @@ it("is composable inside sequencers", async () => {
 
 #### E2. Sequencer DSL Method Tests
 
-Test DSL methods like `exitIf()`, `stepAll()`, and `workIf()`:
+Test DSL methods like `exitIf()`, `stepAll()`, and `sideChainIf()`:
 
 ```typescript
 it("exits early when exitIf condition is met", async () => {
@@ -242,7 +242,7 @@ it("runs parallel branches with stepAll", async () => {
 
 it("conditionally runs background work", async () => {
   const chain = seq({ name: "conditional-bg", inputSchema: z.any() })
-    .workIf((input) => input.needsCleanup, cleanupBlock)
+    .sideChainIf((input) => input.needsCleanup, cleanupBlock)
     .step(mainBlock);
 
   const result = await testSequencer(chain, { input: { needsCleanup: false } });

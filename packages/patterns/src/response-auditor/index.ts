@@ -2,12 +2,12 @@
  * Response Auditor Pattern
  *
  * A generic, composable post-generation analysis sidechain that attaches to
- * any generator via `.work()`, runs pluggable analyzers against the completed
+ * any generator via `.sideChain()`, runs pluggable analyzers against the completed
  * response + original input, and produces structured annotations.
  *
  * Pipeline: [captureContext] → [map to tasks] → [forEach analyzer] → [aggregateResults] → [applyThreshold]
  *
- * Because it runs via `.work()`, the primary response streams unblocked. Audit
+ * Because it runs via `.sideChain()`, the primary response streams unblocked. Audit
  * results appear after the response completes as a "second pass" annotation.
  */
 import { sequencer, handler } from "@flow-state-dev/core";
@@ -40,11 +40,11 @@ export type {
 // ---------------------------------------------------------------------------
 
 /**
- * Extracts userInput and response from the `.work()` input.
+ * Extracts userInput and response from the `.sideChain()` input.
  *
- * When the auditor is composed via `.work()`, it receives the preceding step's
+ * When the auditor is composed via `.sideChain()`, it receives the preceding step's
  * output. The auditor expects `{ userInput, response }` — the connector on
- * `.work()` should map the pipeline value to this shape.
+ * `.sideChain()` should map the pipeline value to this shape.
  *
  * Stores the captured context in sequencer state for downstream blocks.
  */
@@ -165,14 +165,14 @@ export { createApplyThreshold as applyThreshold };
 // ---------------------------------------------------------------------------
 
 /**
- * Creates a response auditor sequencer — a `.work()`-compatible block that
+ * Creates a response auditor sequencer — a `.sideChain()`-compatible block that
  * runs pluggable analyzers against a completed AI response and produces
  * structured annotations.
  *
  * ```ts
  * mainSequencer
  *   .step(primaryGenerator)
- *   .work(
+ *   .sideChain(
  *     (output) => ({ userInput: output.userInput, response: output.text }),
  *     responseAuditor({
  *       analyzers: [biasAnalyzer, toneAnalyzer],

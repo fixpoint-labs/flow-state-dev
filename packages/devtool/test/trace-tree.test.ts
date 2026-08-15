@@ -351,10 +351,10 @@ describe("buildTraceTree", () => {
 
 
   it("captures phase from provenance onto the block node", () => {
-    // Blocks dispatched via `.work()` / `.workIf()` / `.forEachBackground()`
-    // (and any descendants) carry `phase: "work"` in their provenance. The
-    // trace tree surfaces this on the block node so the trace view can
-    // render a sidechain badge.
+    // Blocks dispatched via `.sideChain()` / `.sideChainIf()` /
+    // `.forEachSideChain()` (and any descendants) carry `phase: "sideChain"` in
+    // their provenance. The trace tree surfaces this on the block node so the
+    // trace view can render a side-chain badge.
     const items = [
       makeItem({
         id: "i1",
@@ -371,7 +371,7 @@ describe("buildTraceTree", () => {
         provenance: {
           blockName: "bg-block",
           blockInstanceId: "bg-inst",
-          phase: "work",
+          phase: "sideChain",
         },
       }),
     ];
@@ -382,7 +382,7 @@ describe("buildTraceTree", () => {
     const bgBlock = requestNode.children.find((n) => n.blockName === "bg-block");
 
     expect(mainBlock?.phase).toBe("main");
-    expect(bgBlock?.phase).toBe("work");
+    expect(bgBlock?.phase).toBe("sideChain");
   });
 
   it("handles nested sequencer state snapshots independently", () => {
@@ -481,7 +481,7 @@ describe("buildTraceTree", () => {
           id: "bg-before-1",
           type: "message",
           itemIndex: 1,
-          provenance: { blockName: "bg-before", blockInstanceId: "bg-before-inst", phase: "work" as const },
+          provenance: { blockName: "bg-before", blockInstanceId: "bg-before-inst", phase: "sideChain" as const },
         }),
         {
           id: "cont-1",
@@ -505,7 +505,7 @@ describe("buildTraceTree", () => {
           id: "bg-after-1",
           type: "message",
           itemIndex: 4,
-          provenance: { blockName: "bg-after", blockInstanceId: "bg-after-inst", phase: "work" as const },
+          provenance: { blockName: "bg-after", blockInstanceId: "bg-after-inst", phase: "sideChain" as const },
         }),
       ];
 
@@ -527,11 +527,11 @@ describe("buildTraceTree", () => {
       expect(beforeNames).toEqual(["before-block", "bg-before"]);
       expect(afterNames).toEqual(["after-block", "bg-after"]);
 
-      // Regression: BG phase survives on both sides of the divider.
+      // Regression: side-chain phase survives on both sides of the divider.
       const bgBefore = before.find((n) => n.blockName === "bg-before");
       const bgAfter = after.find((n) => n.blockName === "bg-after");
-      expect(bgBefore?.phase).toBe("work");
-      expect(bgAfter?.phase).toBe("work");
+      expect(bgBefore?.phase).toBe("sideChain");
+      expect(bgAfter?.phase).toBe("sideChain");
     });
 
     it("splits a block that spans the boundary so re-run rows land below the divider", () => {

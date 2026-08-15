@@ -13,7 +13,7 @@
 /**
  * Conceptual location of a failure for downstream classification.
  */
-export type FlowErrorScope = "request" | "work" | "resource" | "block";
+export type FlowErrorScope = "request" | "sideChain" | "resource" | "block";
 
 /**
  * Options accepted by `FlowError`. The author-facing surface is the narrow

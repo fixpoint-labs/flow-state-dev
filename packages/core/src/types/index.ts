@@ -75,8 +75,7 @@ export type {
   SessionConfig,
   ToolLifecycleEvent,
   ToolsConfig,
-  UserConfig,
-  WorkConfig
+  UserConfig
 } from "./flow";
 
 export type {

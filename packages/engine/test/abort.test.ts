@@ -1666,7 +1666,7 @@ describe("cross-process abort delivered during the background drain", () => {
   }
 
   /**
-   * The success path drains the request-scoped `.work()` pool before it writes
+   * The success path drains the request-scoped `.sideChain()` pool before it writes
    * the terminal status. A cancel accepted during that drain IS delivered — the
    * poll fires the controller and the in-flight tasks self-cancel — but the
    * drain collects their rejections into `failed[]`, logs them, and resolves
@@ -1705,7 +1705,7 @@ describe("cross-process abort delivered during the background drain", () => {
       outputSchema: z.string(),
       execute: async (_input, ctx) =>
         new Promise<string>((_resolve, reject) => {
-          // `.work()` tasks run on the background signal (FIX-663), which fires
+          // `.sideChain()` tasks run on the background signal (FIX-663), which fires
           // only on an explicit cancel — exactly the delivery under test.
           if (ctx.signal.aborted) {
             reject(new DOMException("Aborted", "AbortError"));
@@ -1735,7 +1735,7 @@ describe("cross-process abort delivered during the background drain", () => {
       actions: {
         run: {
           inputSchema: z.object({}).passthrough(),
-          block: sequencer({ name: "seq" }).work(background).step(finish)
+          block: sequencer({ name: "seq" }).sideChain(background).step(finish)
         }
       }
     })();
@@ -1818,7 +1818,7 @@ describe("cross-process abort delivered during the background drain", () => {
       actions: {
         run: {
           inputSchema: z.object({}).passthrough(),
-          block: sequencer({ name: "seq" }).work(background).step(finish)
+          block: sequencer({ name: "seq" }).sideChain(background).step(finish)
         }
       }
     })();
@@ -1917,7 +1917,7 @@ describe("cross-process abort delivered during the background drain", () => {
         run: {
           inputSchema: z.object({}).passthrough(),
           block: sequencer({ name: "seq" })
-            .work(drainHolder("bg-holds-the-drain-hooks"))
+            .sideChain(drainHolder("bg-holds-the-drain-hooks"))
             .step(handler({
               name: "body-done-hooks",
               inputSchema: z.object({}).passthrough(),
@@ -1964,7 +1964,7 @@ describe("cross-process abort delivered during the background drain", () => {
     const stores = createInMemoryStores();
     const requestId = "req_drain_window_hooks_completed";
     const bodyDone = createGate();
-    const releaseWork = createGate();
+    const releaseSideChain = createGate();
     const events: string[] = [];
 
     const flow = defineFlow({
@@ -1978,7 +1978,7 @@ describe("cross-process abort delivered during the background drain", () => {
         run: {
           inputSchema: z.object({}).passthrough(),
           block: sequencer({ name: "seq" })
-            .work(drainHolder("bg-settles-normally", releaseWork.wait))
+            .sideChain(drainHolder("bg-settles-normally", releaseSideChain.wait))
             .step(handler({
               name: "body-done-hooks-ok",
               inputSchema: z.object({}).passthrough(),
@@ -2006,7 +2006,7 @@ describe("cross-process abort delivered during the background drain", () => {
     // Same interleave as the abort case — the task is still pending when the
     // drain starts — but released rather than cancelled.
     await bodyDone.wait;
-    releaseWork.open();
+    releaseSideChain.open();
 
     const result = await resultPromise;
     expect(result.error).toBeUndefined();
@@ -2026,7 +2026,7 @@ describe("cross-process abort delivered during the background drain", () => {
    * The check sits immediately before `action.onCompleted` — there is no
    * statement between them — so it is already the last instant at which
    * `aborted` is a true statement about what the request did. A cancel that
-   * lands after it stops nothing: the body's output exists, the work pool has
+   * lands after it stops nothing: the body's output exists, the side-chain pool has
    * drained, and the only things left are the success hooks and the record
    * write that reports them.
    *
@@ -2129,7 +2129,7 @@ describe("cross-process abort delivered during the background drain", () => {
 
   /**
    * Moving the completion hooks below the work-pool drain took them out from
-   * under the barrier. A hook that is a sequencer dispatching `.work()` enqueues
+   * under the barrier. A hook that is a sequencer dispatching `.sideChain()` enqueues
    * into the request pool AFTER the only drain, and an inner sequencer does not
    * auto-await its own work while a request pool exists (FIX-554) — so the
    * request would emit `completed` and return with a notification or state
@@ -2139,19 +2139,19 @@ describe("cross-process abort delivered during the background drain", () => {
   it("drains work queued by the completion hooks before it settles", async () => {
     const stores = createInMemoryStores();
     const requestId = "req_hook_queued_work";
-    let workFinished = false;
-    const workStarted = createGate();
+    let sideChainFinished = false;
+    const sideChainStarted = createGate();
 
-    const hookWork = handler({
+    const hookSideChain = handler({
       name: "hook-background",
       inputSchema: z.object({}).passthrough(),
       outputSchema: z.string(),
       execute: async () => {
-        workStarted.open();
+        sideChainStarted.open();
         // Long enough that a request which does not wait provably returns
         // first; a request that does wait simply takes this long.
         await new Promise((r) => setTimeout(r, 60));
-        workFinished = true;
+        sideChainFinished = true;
         return "hook work done";
       }
     });
@@ -2160,10 +2160,10 @@ describe("cross-process abort delivered during the background drain", () => {
       kind: "hook-queued-work",
       request: {
         heartbeatIntervalMs: 0,
-        // A sequencer, because `.work()` is what a hook uses to fan out — the
+        // A sequencer, because `.sideChain()` is what a hook uses to fan out — the
         // shape the drain has to cover.
         onCompleted: sequencer({ name: "on-completed-seq" })
-          .work(hookWork)
+          .sideChain(hookSideChain)
           .step(handler({
             name: "hook-body",
             inputSchema: z.object({}).passthrough(),
@@ -2197,10 +2197,10 @@ describe("cross-process abort delivered during the background drain", () => {
     expect(result.error).toBeUndefined();
     // Precondition: the hook really did dispatch background work, so the
     // barrier below has something to be about.
-    await workStarted.wait;
+    await sideChainStarted.wait;
     // The barrier itself — `runAction` returned only after the hook's work had
     // finished, not while it was still running in the void.
-    expect(workFinished).toBe(true);
+    expect(sideChainFinished).toBe(true);
     expect((await stores.request.get(requestId))?.status).toBe("completed");
   });
 });

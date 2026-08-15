@@ -90,7 +90,7 @@ export interface RuntimeConfig {
    * Largest `limit` the workstream listing route accepts (FIX-1012). Absent →
    * {@link DEFAULT_MAX_WORKSTREAM_LIST_LIMIT}.
    *
-   * The list a client reads is all-time history — finished background work
+   * The list a client reads is all-time history — finished workstreams
    * stays listed — so a deployment running large orchestrations outgrows the
    * default. Raising it is a deliberate act because the cost is per row and
    * per read: each row resolves its status from the request store, and clients

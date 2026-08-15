@@ -6,7 +6,7 @@
  * to `runAction`'s terminal handling). The engine-tier tests in
  * `packages/engine/test/terminal-drain.test.ts` pin the internal ordering;
  * this pins the contract a flow author depends on, through the whole stack:
- * **work queued with `.work()` has finished, and everything it wrote is in the
+ * **work queued with `.sideChain()` has finished, and everything it wrote is in the
  * persisted record, by the time the request reports a terminal status — on a
  * non-success outcome, not just on success.**
  *
@@ -50,7 +50,7 @@ async function ticks(n = 4): Promise<void> {
  * A background task parked on a gate. Once released it emits an item — the
  * durable artifact the assertions look for.
  */
-function backgroundWriter(gate: Promise<void>, text: string) {
+function sideChainWriter(gate: Promise<void>, text: string) {
   return handler({
     name: "background-writer",
     inputSchema: z.unknown(),
@@ -85,7 +85,7 @@ function buildFlow(kind: string, gate: Promise<void>, outcome: "fail" | "succeed
     actions: {
       run: {
         block: sequencer({ name: "root" })
-          .work(backgroundWriter(gate, `background-wrote:${outcome}`))
+          .sideChain(sideChainWriter(gate, `background-wrote:${outcome}`))
           .step(outcome === "fail" ? failingStep : succeedingStep)
       }
     }

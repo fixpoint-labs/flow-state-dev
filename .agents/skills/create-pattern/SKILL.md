@@ -30,7 +30,7 @@ Before writing, read at least two existing patterns in `packages/patterns/src/`:
 | `routedSpecialists/index.ts` | Session resources, router dispatch, controller loop, specialist composition |
 | `task-board/index.ts` | TaskCollection substrate, dispatcher + worker registry, concurrent drain, mid-run enqueue |
 | `response-auditor/index.ts` | Simpler pattern: linear chain, tap for side effects, evaluation criteria |
-| `supervisor/index.ts` | forEachBackground for concurrent work, resource-based coordination |
+| `supervisor/index.ts` | forEachSideChain for concurrent work, resource-based coordination |
 | `eventActors/index.ts` | Stigmergic multi-agent coordination, actor dispatch, event-driven drain |
 
 Also read:
@@ -244,13 +244,13 @@ Beyond the basics (`.step()`, `.doUntil()`, `.tap()`, `.loopBack()`), the sequen
 
 | Method | Behavior |
 |--------|----------|
-| `workIf(condition, block)` | Conditional background work dispatch. No-op when falsy. |
+| `sideChainIf(condition, block)` | Conditional background work dispatch. No-op when falsy. |
 | `stepAll(blocks)` | Parallel execution of multiple blocks with the same input. Collects all results (like `Promise.all`). |
 | `stepAny(blocks)` | Sequential attempt through blocks in order. Returns the first success, skips the rest. Throws `AggregateError` if all fail. |
 | `race(blocks)` | Parallel execution, returns the first success, aborts the rest. Throws `AggregateError` if all fail. |
 | `exitIf(condition)` | Early exit from the sequencer chain. Current value becomes the sequencer output. |
 | `stepIf(condition, block)` | Conditional step execution. Passthrough when condition is false. |
-| `work(block)` / `background(block)` | Fire-and-forget sidechain. Main chain continues immediately. |
+| `sideChain(block)` | Fire-and-forget side chain. Main chain continues immediately. |
 | `rescue(handlers)` | Error recovery. Matches thrown errors to handler blocks. |
 | `branch(branches)` | Multi-way conditional dispatch with connectors. |
 

@@ -36,7 +36,7 @@ export type ExecutionMetadata = {
   scope?: FlowErrorScope;
   attempt?: number;
   stepIndex?: number;
-  workGroupId?: string;
+  sideChainGroupId?: string;
   tags?: Record<string, unknown>;
 };
 
@@ -209,7 +209,7 @@ export function createExecutionMetadata(
     scope: overrides.scope,
     attempt: overrides.attempt,
     stepIndex: overrides.stepIndex,
-    workGroupId: overrides.workGroupId,
+    sideChainGroupId: overrides.sideChainGroupId,
     tags: overrides.tags
   };
 }

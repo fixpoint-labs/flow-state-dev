@@ -247,7 +247,7 @@ const observe = handler({
 
 // Or use the bundled capture sequencer (analyze → observe)
 const pipeline = sequencer({ name: 'review' })
-  .work((input) => ({ content: input.proposal }), sec.capture)
+  .sideChain((input) => ({ content: input.proposal }), sec.capture)
   .step(nextBlock)
 
 // Wire resources in the flow

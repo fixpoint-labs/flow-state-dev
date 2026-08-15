@@ -85,7 +85,7 @@ export default supportFlow({ id: "default" });
 
 Every instance of a type serves the same transports. Pass one of the four to the instance call and TypeScript rejects it; a plain-JavaScript caller gets a thrown error naming the option.
 
-Everything else is settable per instance: `id`, `kind`, `actions`, `session`, `request`, `user`, `org`, `work`, `resources`, `tools`, `voice`, `authentication`, `requireUser`, `tokenCounter`, `costEstimator`, `isolateUserState`, and `isolateOrgState`.
+Everything else is settable per instance: `id`, `kind`, `actions`, `session`, `request`, `user`, `org`, `resources`, `tools`, `voice`, `authentication`, `requireUser`, `tokenCounter`, `costEstimator`, `isolateUserState`, and `isolateOrgState`.
 
 `voice` sits on both sides. Unlike the four transports above, you can set it on `defineFlow()` as the default for every instance of the type, then override it on any single instance.
 

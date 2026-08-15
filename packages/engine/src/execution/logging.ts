@@ -86,7 +86,7 @@ export function createExecutionLogContext(
     scope: metadata.scope,
     attempt: metadata.attempt,
     stepIndex: metadata.stepIndex,
-    workGroupId: metadata.workGroupId
+    sideChainGroupId: metadata.sideChainGroupId
   };
 
   const filtered: Record<string, unknown> = {};

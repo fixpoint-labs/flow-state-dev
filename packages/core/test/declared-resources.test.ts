@@ -513,13 +513,13 @@ describe("sequencer resource collection", () => {
     expect(seq.declaredResources).toEqual({ observations: observationsResource });
   });
 
-  it("collects resources from .work()", () => {
+  it("collects resources from .sideChain()", () => {
     const block = handler({
       name: "bg",
       resources: { observations: observationsResource },
       execute: (v) => v
     });
-    const seq = sequencer({ name: "work" }).work(block);
+    const seq = sequencer({ name: "work" }).sideChain(block);
     expect(seq.declaredResources).toEqual({ observations: observationsResource });
   });
 

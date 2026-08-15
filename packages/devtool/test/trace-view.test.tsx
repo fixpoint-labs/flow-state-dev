@@ -24,7 +24,7 @@ function renderTraceView(requestGroups: RequestGroup[]) {
   );
 }
 
-function makeProvenance(blockName: string, blockInstanceId: string, phase: "main" | "work" = "main") {
+function makeProvenance(blockName: string, blockInstanceId: string, phase: "main" | "sideChain" = "main") {
   return { blockName, blockInstanceId, phase };
 }
 
@@ -34,7 +34,7 @@ describe("TraceView — continuation/suspension_resume boundary", () => {
       {
         id: "bg-before-1", type: "message", status: "completed", requestId: "req-1",
         itemIndex: 0, ts: 1000, role: "assistant", content: [{ type: "output_text", text: "before" }],
-        provenance: makeProvenance("bg-before-block", "bg-before-inst", "work"),
+        provenance: makeProvenance("bg-before-block", "bg-before-inst", "sideChain"),
       } as unknown as OutputItem,
       {
         id: "cont-1", type: "continuation", status: "completed", requestId: "req-1",
@@ -43,7 +43,7 @@ describe("TraceView — continuation/suspension_resume boundary", () => {
       {
         id: "bg-after-1", type: "message", status: "completed", requestId: "req-1",
         itemIndex: 2, ts: 3000, role: "assistant", content: [{ type: "output_text", text: "after" }],
-        provenance: makeProvenance("bg-after-block", "bg-after-inst", "work"),
+        provenance: makeProvenance("bg-after-block", "bg-after-inst", "sideChain"),
       } as unknown as OutputItem,
     ];
 
@@ -66,9 +66,12 @@ describe("TraceView — continuation/suspension_resume boundary", () => {
     expect(screen.getByText(/1 prior item/i)).toBeInTheDocument();
 
     // Both the restored (pre-crash) and re-dispatched background blocks keep
-    // their BG badge — the divider must not clobber the existing badge logic.
-    const bgBadges = screen.getAllByTitle(/Background sidechain/i);
-    expect(bgBadges).toHaveLength(2);
+    // their SC badge — the divider must not clobber the existing badge logic.
+    const sideChainBadges = screen.getAllByTitle(/Side chain/i);
+    expect(sideChainBadges).toHaveLength(2);
+    // The visible label is the operator's whole cue at a glance, so pin the
+    // text itself and not just the tooltip behind it.
+    expect(sideChainBadges.map((b) => b.textContent)).toEqual(["SC", "SC"]);
 
     // Prior block sits above the divider, re-dispatched block below it.
     const allText = document.body.textContent ?? "";

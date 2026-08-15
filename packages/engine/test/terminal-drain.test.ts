@@ -2,14 +2,14 @@
  * FIX-1001 — a request must not report itself finished while its own
  * background work is still writing.
  *
- * The success path already drains the request work pool before writing its
+ * The success path already drains the request side-chain pool before writing its
  * terminal record. The three failure paths (`failed` / `interrupted` /
  * `aborted`) wrote their record and returned with the pool still running, so
  * on an ephemeral host (Vercel `waitUntil`, Next `after()`, Lambda) the
  * container could freeze with a memory write in flight.
  *
  * The load-bearing assertion in every path test below is that `runAction` has
- * **not settled** while a `.work()` task is still parked on a test-controlled
+ * **not settled** while a `.sideChain()` task is still parked on a test-controlled
  * gate. Asserting only "the record says failed" or "the task eventually ran"
  * passes with or without the drain — the task would finish on its own a
  * microsecond later. Parking the task and proving the run is still pending is
@@ -70,8 +70,8 @@ function buildFlow(options: {
   kind: string;
   outcome: "throw" | "park" | "succeed";
   gate: Promise<void>;
-  onBackgroundDone: () => void;
-  onBackgroundStart?: () => void;
+  onSideChainDone: () => void;
+  onSideChainStart?: () => void;
   heartbeatIntervalMs?: number;
 }) {
   const background = handler({
@@ -79,9 +79,9 @@ function buildFlow(options: {
     inputSchema: z.any(),
     outputSchema: z.any(),
     execute: async () => {
-      options.onBackgroundStart?.();
+      options.onSideChainStart?.();
       await options.gate;
-      options.onBackgroundDone();
+      options.onSideChainDone();
       return { ok: true };
     }
   });
@@ -113,7 +113,7 @@ function buildFlow(options: {
     actions: {
       run: {
         inputSchema: z.any(),
-        block: sequencer({ name: "seq" }).work(background).step(main)
+        block: sequencer({ name: "seq" }).sideChain(background).step(main)
       }
     }
   })();
@@ -122,15 +122,15 @@ function buildFlow(options: {
 describe("FIX-1001 — terminal paths drain background work before writing the record", () => {
   it("failure path: runAction stays pending while a background task is parked", async () => {
     const gate = deferred();
-    let backgroundDone = false;
+    let sideChainDone = false;
     const stores = createInMemoryStores();
 
     const flow = buildFlow({
       kind: "drain-failed",
       outcome: "throw",
       gate: gate.promise,
-      onBackgroundDone: () => {
-        backgroundDone = true;
+      onSideChainDone: () => {
+        sideChainDone = true;
       }
     });
 
@@ -152,7 +152,7 @@ describe("FIX-1001 — terminal paths drain background work before writing the r
     // settle the run before we assert it has not.
     await new Promise((r) => setTimeout(r, 10));
 
-    expect(backgroundDone).toBe(false);
+    expect(sideChainDone).toBe(false);
     // THE assertion: without the drain, runAction has already written `failed`
     // and returned while this task is still running.
     expect(hasSettled()).toBe(false);
@@ -162,13 +162,13 @@ describe("FIX-1001 — terminal paths drain background work before writing the r
     gate.resolve();
     await runPromise;
 
-    expect(backgroundDone).toBe(true);
+    expect(sideChainDone).toBe(true);
     expect((await stores.request.get("req_drain_failed"))?.status).toBe("failed");
   });
 
   it("disconnect path: runAction stays pending while a background task is parked", async () => {
     const gate = deferred();
-    let backgroundDone = false;
+    let sideChainDone = false;
     const stores = createInMemoryStores();
     const transport = new AbortController();
 
@@ -176,8 +176,8 @@ describe("FIX-1001 — terminal paths drain background work before writing the r
       kind: "drain-interrupted",
       outcome: "park",
       gate: gate.promise,
-      onBackgroundDone: () => {
-        backgroundDone = true;
+      onSideChainDone: () => {
+        sideChainDone = true;
       }
     });
 
@@ -201,20 +201,20 @@ describe("FIX-1001 — terminal paths drain background work before writing the r
     await flush();
     await new Promise((r) => setTimeout(r, 10));
 
-    expect(backgroundDone).toBe(false);
+    expect(sideChainDone).toBe(false);
     expect(hasSettled()).toBe(false);
     expect((await stores.request.get("req_drain_interrupted"))?.status).toBe("in_progress");
 
     gate.resolve();
     await runPromise;
 
-    expect(backgroundDone).toBe(true);
+    expect(sideChainDone).toBe(true);
     expect((await stores.request.get("req_drain_interrupted"))?.status).toBe("interrupted");
   });
 
   it("abort path: runAction stays pending while a background task is parked", async () => {
     const gate = deferred();
-    let backgroundDone = false;
+    let sideChainDone = false;
     const stores = createInMemoryStores();
     const transport = new AbortController();
 
@@ -222,8 +222,8 @@ describe("FIX-1001 — terminal paths drain background work before writing the r
       kind: "drain-aborted",
       outcome: "park",
       gate: gate.promise,
-      onBackgroundDone: () => {
-        backgroundDone = true;
+      onSideChainDone: () => {
+        sideChainDone = true;
       }
     });
 
@@ -252,13 +252,13 @@ describe("FIX-1001 — terminal paths drain background work before writing the r
     await flush();
     await new Promise((r) => setTimeout(r, 10));
 
-    expect(backgroundDone).toBe(false);
+    expect(sideChainDone).toBe(false);
     expect(hasSettled()).toBe(false);
 
     gate.resolve();
     await runPromise;
 
-    expect(backgroundDone).toBe(true);
+    expect(sideChainDone).toBe(true);
     expect((await stores.request.get("req_drain_aborted"))?.status).toBe("aborted");
   });
 
@@ -269,7 +269,7 @@ describe("FIX-1001 — terminal paths drain background work before writing the r
     // This is the variant the background signal never covered, so it is the
     // one that justifies draining the abort branch at all.
     const gate = deferred();
-    let backgroundDone = false;
+    let sideChainDone = false;
     const stores = createInMemoryStores();
 
     const flow = buildFlow({
@@ -277,8 +277,8 @@ describe("FIX-1001 — terminal paths drain background work before writing the r
       outcome: "park",
       gate: gate.promise,
       heartbeatIntervalMs: 20,
-      onBackgroundDone: () => {
-        backgroundDone = true;
+      onSideChainDone: () => {
+        sideChainDone = true;
       }
     });
 
@@ -306,27 +306,27 @@ describe("FIX-1001 — terminal paths drain background work before writing the r
     // Let the heartbeat poll pick the intent up and fire the controller.
     await new Promise((r) => setTimeout(r, 80));
 
-    expect(backgroundDone).toBe(false);
+    expect(sideChainDone).toBe(false);
     expect(hasSettled()).toBe(false);
 
     gate.resolve();
     await runPromise;
 
-    expect(backgroundDone).toBe(true);
+    expect(sideChainDone).toBe(true);
     expect((await stores.request.get("req_drain_remote"))?.status).toBe("aborted");
   });
 
   it("success path is unchanged (control)", async () => {
     const gate = deferred();
-    let backgroundDone = false;
+    let sideChainDone = false;
     const stores = createInMemoryStores();
 
     const flow = buildFlow({
       kind: "drain-completed",
       outcome: "succeed",
       gate: gate.promise,
-      onBackgroundDone: () => {
-        backgroundDone = true;
+      onSideChainDone: () => {
+        sideChainDone = true;
       }
     });
 
@@ -350,7 +350,7 @@ describe("FIX-1001 — terminal paths drain background work before writing the r
     gate.resolve();
     await runPromise;
 
-    expect(backgroundDone).toBe(true);
+    expect(sideChainDone).toBe(true);
     expect((await stores.request.get("req_drain_completed"))?.status).toBe("completed");
   });
 });
@@ -359,7 +359,7 @@ describe("FIX-1001 — the drain runs to quiescence, not one pass", () => {
   it("awaits work queued by a task that is itself being drained", async () => {
     // The only test that separates a quiescence loop from a single
     // `drainAll()` — and it only separates them if the nested task is queued
-    // AFTER the drain's first splice. A nested `.work()` dispatched before the
+    // AFTER the drain's first splice. A nested `.sideChain()` dispatched before the
     // terminal drain begins is already in `entries` and a single pass catches
     // it, which makes the obvious version of this test pass either way.
     //
@@ -394,9 +394,9 @@ describe("FIX-1001 — the drain runs to quiescence, not one pass", () => {
     });
 
     // The background task is itself a sequencer: it parks on its first step,
-    // and dispatches `.work(grandchild)` into the same request-scoped pool
+    // and dispatches `.sideChain(grandchild)` into the same request-scoped pool
     // only once released — i.e. while the terminal drain is already running.
-    const nesting = sequencer({ name: "nesting" }).step(waitForOuterGate).work(grandchild);
+    const nesting = sequencer({ name: "nesting" }).step(waitForOuterGate).sideChain(grandchild);
 
     const boom = handler({
       name: "boom",
@@ -412,7 +412,7 @@ describe("FIX-1001 — the drain runs to quiescence, not one pass", () => {
       actions: {
         run: {
           inputSchema: z.any(),
-          block: sequencer({ name: "seq" }).work(nesting).step(boom)
+          block: sequencer({ name: "seq" }).sideChain(nesting).step(boom)
         }
       }
     })();
@@ -487,7 +487,7 @@ describe("FIX-1001 — the drain runs to quiescence, not one pass", () => {
         actions: {
           run: {
             inputSchema: z.any(),
-            block: sequencer({ name: "seq" }).work(failing).step(slowFail)
+            block: sequencer({ name: "seq" }).sideChain(failing).step(slowFail)
           }
         }
       })();
@@ -528,7 +528,7 @@ describe("FIX-1001 — orderings the drain forces", () => {
       outcome: "throw",
       gate: gate.promise,
       heartbeatIntervalMs: 10,
-      onBackgroundDone: () => {}
+      onSideChainDone: () => {}
     });
 
     const runPromise = runAction({
@@ -589,7 +589,7 @@ describe("FIX-1001 — orderings the drain forces", () => {
       kind: "drain-record-first",
       outcome: "throw",
       gate: gate.promise,
-      onBackgroundDone: () => {}
+      onSideChainDone: () => {}
     });
 
     const runPromise = runAction({
@@ -641,7 +641,7 @@ describe("FIX-1001 — orderings the drain forces", () => {
       kind: "drain-late-abort",
       outcome: "throw",
       gate: gate.promise,
-      onBackgroundDone: () => {}
+      onSideChainDone: () => {}
     });
 
     const runPromise = runAction({

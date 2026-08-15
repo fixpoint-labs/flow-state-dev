@@ -219,7 +219,7 @@ const agentNoTools = generator({
 
 - **BP-011**: Handlers must NOT call `block.run()` inside `execute`. Compose with a sequencer instead: `.step(generator).step(handler)`.
 - **Sequencer DSL methods** beyond `.step()`:
-  - `workIf(condition, block)` — conditional background work
+  - `sideChainIf(condition, block)` — conditional background work
   - `stepAll(blocks)` — parallel execution, collect all results
   - `stepAny(blocks)` — try each in order, first success wins
   - `race(blocks)` — parallel execution, first to finish wins

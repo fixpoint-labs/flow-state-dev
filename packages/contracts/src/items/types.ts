@@ -27,9 +27,9 @@ export type ItemProvenance = {
   blockDefinitionId?: string;
   blockInstanceId: string;
   parentBlockInstanceId?: string;
-  phase: "main" | "work";
+  phase: "main" | "sideChain";
   stepIndex?: number;
-  workGroupId?: string;
+  sideChainGroupId?: string;
   attempt?: number;
 };
 
@@ -97,7 +97,7 @@ export type OutputItemBase = {
  * - `inline` — the block produced novel content. Leaves (generators, handlers)
  *   and explicit transforms (`.map`, `connectOutput`) use this kind.
  * - `ref` — the block's output is reference-identical to another item's content.
- *   Pass-through composers (`.step`, `.work`, `.tap`, routers, `.rescue`) use this
+ *   Pass-through composers (`.step`, `.sideChain`, `.tap`, routers, `.rescue`) use this
  *   kind to avoid duplicating content at every nesting level.
  * - `structure` — the block produced a novel container whose slots are refs or
  *   inlines. Aggregators (`.stepAll`, `.parallel`, `.forEach`) use this kind.
@@ -117,7 +117,7 @@ export type BlockValue<T = unknown> =
 
 /**
  * Internal-only BlockValue. Adds the `ref` case used by pass-through
- * composers (`.step`, `.work`, `.tap`, routers, `.rescue`) to avoid
+ * composers (`.step`, `.sideChain`, `.tap`, routers, `.rescue`) to avoid
  * duplicating content. Public consumers see only `inline | structure`
  * via {@link BlockValue}; the executor and persistence layers thread
  * `BlockValueInternal` through.
@@ -450,7 +450,7 @@ export type StatusItem = OutputItemBase & {
   /** When false, the client may send new actions even though the stream is still open. */
   blocked?: boolean;
   /** Number of background work tasks still running. */
-  backgroundTasks?: number;
+  sideChainTasks?: number;
 };
 
 /**

@@ -124,7 +124,7 @@ const titleScript: MockGeneratorScriptEntry[] = [
  * filed it, so this text is the only thing that distinguishes "the background
  * work ran" from "the row was created and nothing happened".
  */
-const backgroundBriefScript: MockGeneratorScriptEntry[] = [
+const sideChainBriefScript: MockGeneratorScriptEntry[] = [
   { when: alwaysTrue, then: { text: "Background brief complete." } },
 ];
 
@@ -143,7 +143,7 @@ export const autoTitleMock = mockGenerator({
   script: titleScript,
 });
 
-export const backgroundBriefMock = mockGenerator({
+export const sideChainBriefMock = mockGenerator({
   name: "background-brief",
-  script: backgroundBriefScript,
+  script: sideChainBriefScript,
 });

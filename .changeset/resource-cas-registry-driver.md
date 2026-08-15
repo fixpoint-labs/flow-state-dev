@@ -76,10 +76,12 @@ terminal here, it suppresses a no-op before checking any version, it routes
 single-field literal patches down a commutative path that writes without a
 version check at all, and it has no cancellation. Resource writes stop on an
 explicit abort of the request rather than persisting after it — but not on a
-client disconnect, since background `.work()` tasks keep running past that and
+client disconnect, since background `.sideChain()` tasks keep running past that and
 their writes still have to land.
 
 Task boards backed by a durable resource collection inherit this: a claim written
 against a stale read is refused and re-applied rather than overwriting the worker
 that won. The filesystem store remains the exception — it compares within a
 single process, so a board fanned across replicas wants SQLite or Postgres.
+
+(FIX-992)

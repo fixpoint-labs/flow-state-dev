@@ -4,17 +4,17 @@ sidebar_position: 3
 
 # Control Flow Reference
 
-This is the reference for everything in the sequencer DSL beyond the day-one set. If you haven't read [Composing Blocks](/docs/sequencers/composing-blocks) yet, start there — `step`, `map`, `tap`, `stepIf`, `work`, and `rescue` cover most pipelines.
+This is the reference for everything in the sequencer DSL beyond the day-one set. If you haven't read [Composing Blocks](/docs/sequencers/composing-blocks) yet, start there — `step`, `map`, `tap`, `stepIf`, `sideChain`, and `rescue` cover most pipelines.
 
 The methods below are grouped by what you're trying to do, not alphabetically. Reach for them when the day-one set isn't enough.
 
 | Group | Methods |
 |-------|---------|
-| [Parallelism](#parallelism) | `parallel`, `forEach`, `forEachBackground`, `stepAll` |
+| [Parallelism](#parallelism) | `parallel`, `forEach`, `forEachSideChain`, `stepAll` |
 | [Looping](#looping) | `doUntil`, `doWhile`, `loopBack` |
-| [Conditional sub-cases](#conditional-sub-cases) | `tapIf`, `workIf`, `exitIf` |
+| [Conditional sub-cases](#conditional-sub-cases) | `tapIf`, `sideChainIf`, `exitIf` |
 | [Specialization](#specialization) | `stepAny`, `race`, `branch` |
-| [Side-chain coordination](#side-chain-coordination) | `waitForWork`, `waitForCondition` |
+| [Side-chain coordination](#side-chain-coordination) | `waitForSideChain`, `waitForCondition` |
 | [Connector adaptation](#connector-adaptation) | `connectInput` |
 
 Each entry has a signature, one example, and a "when to reach for this" note.
@@ -106,9 +106,9 @@ pipeline.forEach(
 );
 ```
 
-### `forEachBackground(connector?, block, options?)`
+### `forEachSideChain(connector?, block, options?)`
 
-Like `forEach`, but the chain doesn't wait. Each item is dispatched as a `.work()` task.
+Like `forEach`, but the chain doesn't wait. Each item is dispatched as a `.sideChain()` task.
 
 **When to reach for this**: per-item side effects (per-row analytics, per-document indexing) that shouldn't block. See [Side Chains](/docs/advanced/sequencer-side-chains) for the broader picture on background work.
 
@@ -160,7 +160,7 @@ pipeline
 
 ## Conditional sub-cases
 
-Variants of `tap`, `work`, and an early-exit primitive. Use these when you'd otherwise wrap a step in a wrapper sequencer just to gate it.
+Variants of `tap`, `sideChain`, and an early-exit primitive. Use these when you'd otherwise wrap a step in a wrapper sequencer just to gate it.
 
 ### `tapIf(condition, block)`
 
@@ -175,23 +175,23 @@ pipeline.tapIf(
 
 **When to reach for this**: log or notify only on certain values. Don't write a gating handler that conditionally calls a block — use this.
 
-### `workIf(condition, block)`
+### `sideChainIf(condition, block)`
 
-A `work` that only fires when the condition is true. When false, it's a complete no-op — no block, no items emitted.
+A `sideChain` that only fires when the condition is true. When false, it's a complete no-op — no block, no items emitted.
 
 The condition function receives `(value, ctx)` — the running step value first, then the `BlockContext` — matching `.stepIf` and `.tapIf`.
 
 ```ts
-pipeline.workIf(
+pipeline.sideChainIf(
   (_value, ctx) => ctx.session.state.features.memory,
   memoryObserveBlock
 );
 
 // Gate on the upstream value too — e.g. don't capture an empty response:
-pipeline.workIf((response) => response.length > 0, captureBlock);
+pipeline.sideChainIf((response) => response.length > 0, captureBlock);
 
 // Or with a static boolean:
-pipeline.workIf(ENABLE_ANALYTICS, analyticsBlock);
+pipeline.sideChainIf(ENABLE_ANALYTICS, analyticsBlock);
 ```
 
 **When to reach for this**: feature-flag a background side effect, or skip dispatch when the upstream value isn't worth processing.
@@ -211,7 +211,7 @@ pipeline
 
 The condition can be async. You can place multiple `exitIf` calls in a chain — each acts as a checkpoint.
 
-Outstanding `.work()` tasks are still awaited before the sequencer returns. The exit skips remaining chain steps but does not skip background-work cleanup.
+Outstanding `.sideChain()` tasks are still awaited before the sequencer returns. The exit skips remaining chain steps but does not skip background-work cleanup.
 
 **When to reach for this**: bail out of a refinement chain when the value is already good enough, or take a fast path for trivial inputs.
 
@@ -282,21 +282,21 @@ pipeline.branch({
 
 ## Side-chain coordination
 
-### `waitForWork(options?)`
+### `waitForSideChain(options?)`
 
-Wait for outstanding `.work()` tasks to settle.
+Wait for outstanding `.sideChain()` tasks to settle.
 
 ```ts
 pipeline
-  .work(taskA)
-  .work(taskB)
-  .waitForWork({ failOnError: false })
+  .sideChain(taskA)
+  .sideChain(taskB)
+  .waitForSideChain({ failOnError: false })
   .step(nextStep);
 ```
 
-By default, the sequencer auto-awaits work tasks before it returns, so you only need `.waitForWork()` if you need to wait *mid-chain* (because a later step depends on side-effects the work tasks produced) or if you want to surface work errors as a step error rather than letting them be recorded silently.
+By default, the sequencer auto-awaits work tasks before it returns, so you only need `.waitForSideChain()` if you need to wait *mid-chain* (because a later step depends on side-effects the work tasks produced) or if you want to surface work errors as a step error rather than letting them be recorded silently.
 
-**When to reach for this**: a later step needs to read state that a `.work()` task wrote, or you want explicit failure semantics on background work. See [Side Chains](/docs/advanced/sequencer-side-chains) for the full story.
+**When to reach for this**: a later step needs to read state that a `.sideChain()` task wrote, or you want explicit failure semantics on background work. See [Side Chains](/docs/advanced/sequencer-side-chains) for the full story.
 
 ### `waitForCondition(predicate, { timeoutMs })`
 
@@ -337,4 +337,4 @@ A matching `connectOutput` exists on blocks for output shaping.
 
 - **[Composing Blocks](/docs/sequencers/composing-blocks)** — the day-one set
 - **[Connectors](/docs/sequencers/connectors)** — shaping data between steps
-- **[Side Chains](/docs/advanced/sequencer-side-chains)** — the full picture on `.work()` and friends
+- **[Side Chains](/docs/advanced/sequencer-side-chains)** — the full picture on `.sideChain()` and friends

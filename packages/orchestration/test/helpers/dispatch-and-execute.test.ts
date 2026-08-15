@@ -388,7 +388,7 @@ describe("losing the claim stops a COMPOSITE worker, not just its outermost step
 
 /**
  * A background task's context, faithful in the one respect these tests turn on:
- * `.work()` / `.workIf()` / `.forEachBackground()` all resolve their child
+ * `.sideChain()` / `.sideChainIf()` / `.forEachSideChain()` all resolve their child
  * scope through an EXPLICIT `signalOverride` — the request's background signal
  * — rather than through the parent context's own signal.
  *
@@ -398,12 +398,12 @@ describe("losing the claim stops a COMPOSITE worker, not just its outermost step
  * completion: if the lease-loss signal is *replaced* by the override instead of
  * composed with it, nothing aborts them.
  */
-function withBackgroundSignal(ctx: BlockContext, bg: AbortSignal): BlockContext {
+function withSideChainSignal(ctx: BlockContext, bg: AbortSignal): BlockContext {
   return {
     ...ctx,
-    _requestBackgroundSignal: bg,
-    // With no request-scoped work pool, the sequencer awaits its own background
-    // tasks and reports progress through `emit.status`. Nothing here asserts on
+    _requestSideChainSignal: bg,
+    // With no request-scoped side-chain pool, the sequencer awaits its own
+    // side-chain tasks and reports progress through `emit.status`. Nothing here asserts on
     // items, so a no-op emitter is enough to let that path run.
     emit: new Proxy({}, { get: () => () => undefined }),
   } as unknown as BlockContext;
@@ -418,7 +418,7 @@ interface Probe {
  * closed-over marker rather than the sequencer's work slot, because what is
  * under test is the signal the task RAN under, not how its value is collected.
  */
-function backgroundProbe(name: string, probe: Probe) {
+function sideChainProbe(name: string, probe: Probe) {
   return handler({
     name,
     inputSchema: z.any(),
@@ -470,7 +470,7 @@ describe("losing the claim stops BACKGROUND work too, not just nested steps", ()
         workers: compositeWorker as never,
       }),
       undefined,
-      withBackgroundSignal(
+      withSideChainSignal(
         installExecutionScope({
           signal: request.signal,
           request: { identity: { id: "test-request" } },
@@ -483,29 +483,29 @@ describe("losing the claim stops BACKGROUND work too, not just nested steps", ()
     return probe;
   }
 
-  it("aborts a .work() task when the claim is lost", async () => {
+  it("aborts a .sideChain() task when the claim is lost", async () => {
     const probe: Probe = { ended: "never-ran" };
     const worker = sequencer({ name: "work-worker", inputSchema: z.any() })
-      .work(backgroundProbe("bg-work", probe))
+      .sideChain(sideChainProbe("bg-work", probe))
       .map(() => ({ done: true }));
 
     expect((await runBackgroundWorker(worker, probe)).ended).toBe("aborted");
   }, 20_000);
 
-  it("aborts a .workIf() task when the claim is lost", async () => {
+  it("aborts a .sideChainIf() task when the claim is lost", async () => {
     const probe: Probe = { ended: "never-ran" };
     const worker = sequencer({ name: "workif-worker", inputSchema: z.any() })
-      .workIf(() => true, backgroundProbe("bg-workif", probe))
+      .sideChainIf(() => true, sideChainProbe("bg-workif", probe))
       .map(() => ({ done: true }));
 
     expect((await runBackgroundWorker(worker, probe)).ended).toBe("aborted");
   }, 20_000);
 
-  it("aborts a .forEachBackground() task when the claim is lost", async () => {
+  it("aborts a .forEachSideChain() task when the claim is lost", async () => {
     const probe: Probe = { ended: "never-ran" };
     const worker = sequencer({ name: "feb-worker", inputSchema: z.any() })
       .map(() => [1])
-      .forEachBackground(backgroundProbe("bg-feb", probe))
+      .forEachSideChain(sideChainProbe("bg-feb", probe))
       .map(() => ({ done: true }));
 
     expect((await runBackgroundWorker(worker, probe)).ended).toBe("aborted");
@@ -633,7 +633,7 @@ describe("a worker's background work survives transport teardown", () => {
   // this one, because the transport signal rides along. So the raw lease signal
   // is what the background channel gets.
 
-  it("does NOT abort a .work() task when only the request signal fires", async () => {
+  it("does NOT abort a .sideChain() task when only the request signal fires", async () => {
     const c = buildCollection();
     await c.addTask({ id: "t", goal: "work" });
 
@@ -642,7 +642,7 @@ describe("a worker's background work survives transport teardown", () => {
     const probe: Probe = { ended: "never-ran" };
 
     const worker = sequencer({ name: "bg-survives", inputSchema: z.any() })
-      .work(backgroundProbe("bg-survives-task", probe))
+      .sideChain(sideChainProbe("bg-survives-task", probe))
       .map(() => ({ done: true }));
 
     // Transport teardown while the worker runs. The claim is untouched.
@@ -655,7 +655,7 @@ describe("a worker's background work survives transport teardown", () => {
         workers: worker as never,
       }),
       undefined,
-      withBackgroundSignal(
+      withSideChainSignal(
         installExecutionScope({
           signal: request.signal,
           request: { identity: { id: "test-request" } },
@@ -680,7 +680,7 @@ describe("a worker's background work survives transport teardown", () => {
     const probe: Probe = { ended: "never-ran" };
 
     const worker = sequencer({ name: "bg-stops", inputSchema: z.any() })
-      .work(backgroundProbe("bg-stops-task", probe))
+      .sideChain(sideChainProbe("bg-stops-task", probe))
       .map(() => ({ done: true }));
 
     setTimeout(() => void c.fail("t", "settled by someone else"), 50);
@@ -692,7 +692,7 @@ describe("a worker's background work survives transport teardown", () => {
         workers: worker as never,
       }),
       undefined,
-      withBackgroundSignal(
+      withSideChainSignal(
         installExecutionScope({
           signal: request.signal,
           request: { identity: { id: "test-request" } },

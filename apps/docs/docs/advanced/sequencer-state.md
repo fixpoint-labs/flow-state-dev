@@ -114,7 +114,7 @@ const research = pipeline
   );
 ```
 
-DSL callbacks — `.map`, `.tap`, `.tapIf`, `.stepIf`, `.workIf`, `.forEach`, `.doUntil`, `.exitIf`, `.throwIf`, `.branch`, and inline connector functions — all receive a `ctx` where `ctx.sequencer.state` is typed from the sequencer's `stateSchema`. If the sequencer has no `stateSchema`, `ctx.sequencer` is `undefined` as before.
+DSL callbacks — `.map`, `.tap`, `.tapIf`, `.stepIf`, `.sideChainIf`, `.forEach`, `.doUntil`, `.exitIf`, `.throwIf`, `.branch`, and inline connector functions — all receive a `ctx` where `ctx.sequencer.state` is typed from the sequencer's `stateSchema`. If the sequencer has no `stateSchema`, `ctx.sequencer` is `undefined` as before.
 
 ## The durability boundary
 

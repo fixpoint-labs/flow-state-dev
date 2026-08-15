@@ -2,7 +2,7 @@
  * Attached durable background-work recovery (investigation for FIX-815 follow-up).
  *
  * FIX-815's spec waved off "attached durable background work" (in-process
- * `.work()` / `.forEachBackground()` that survives a crash WITH a `durable: true`
+ * `.sideChain()` / `.forEachSideChain()` that survives a crash WITH a `durable: true`
  * parent) as "already served by FIX-811". FIX-811's own non-goals push durable
  * background work back to FIX-815. FIX-865 flags the open question directly:
  * "does a mid-drain background pool actually continue faithfully today, or get
@@ -80,7 +80,7 @@ async function flush(ticks = 3): Promise<void> {
 }
 
 describe("attached durable background-work recovery", () => {
-  it("replays a completed `.work()` background block instead of re-running it on crash recovery", async () => {
+  it("replays a completed `.sideChain()` background block instead of re-running it on crash recovery", async () => {
     let bgRuns = 0;
     const bg = handler({
       name: "reindex",
@@ -91,7 +91,7 @@ describe("attached durable background-work recovery", () => {
         return { done: true };
       }
     });
-    // The gate reads the drained `.work()` result via getBlockOutput and stashes
+    // The gate reads the drained `.sideChain()` result via getBlockOutput and stashes
     // it in the suspension data, so we can assert the value survives recovery.
     const gate = handler({
       name: "gate",
@@ -110,8 +110,8 @@ describe("attached durable background-work recovery", () => {
       actions: {
         run: {
           block: sequencer({ name: "seq", durable: true })
-            .work(bg)
-            .waitForWork()
+            .sideChain(bg)
+            .waitForSideChain()
             .step(gate),
           inputSchema: z.any()
         }
@@ -128,7 +128,7 @@ describe("attached durable background-work recovery", () => {
       runtimeConfig: { durabilityProvider: provider }
     });
     const requestId = initial.requestId!;
-    // Background work completed (drained by waitForWork) before the gate suspended,
+    // Background work completed (drained by waitForSideChain) before the gate suspended,
     // and the gate observed its result.
     expect(bgRuns).toBe(1);
     expect((await stores.request.get(requestId))?.status).toBe("suspended");
@@ -164,7 +164,7 @@ describe("attached durable background-work recovery", () => {
     expect((reSusp!.data as { observed?: unknown }).observed).toEqual({ done: true });
   });
 
-  it("replays completed `.forEachBackground()` iterations instead of re-running them on crash recovery", async () => {
+  it("replays completed `.forEachSideChain()` iterations instead of re-running them on crash recovery", async () => {
     const elemRuns: Record<string, number> = {};
     const elem = handler({
       name: "reindexOne",
@@ -195,8 +195,8 @@ describe("attached durable background-work recovery", () => {
       actions: {
         run: {
           block: sequencer({ name: "seq", durable: true })
-            .forEachBackground((v: { items: string[] }) => v.items, elem)
-            .waitForWork()
+            .forEachSideChain((v: { items: string[] }) => v.items, elem)
+            .waitForSideChain()
             .step(gate),
           inputSchema: z.object({ items: z.array(z.string()) })
         }
@@ -244,9 +244,9 @@ describe("attached durable background-work recovery", () => {
 });
 
 /**
- * The two tests above drain via `.waitForWork()` before the gate, so every
+ * The two tests above drain via `.waitForSideChain()` before the gate, so every
  * iteration is COMPLETE at crash time — they never exercise a fan-out caught
- * genuinely mid-drain. This suite removes the barrier: `.forEachBackground` is
+ * genuinely mid-drain. This suite removes the barrier: `.forEachSideChain` is
  * dispatched fire-and-forget and the gate suspends while some iterations are
  * still in flight. That pins **Contract A** (FIX-866 §4.2): completed-and-
  * retained iterations are injected on recovery (handler stays at 1 execution);
@@ -285,7 +285,7 @@ describe("attached durable background-work recovery — mid-drain fan-out", () =
     // `completed` traces pre-crash); c,d are NEVER released, so their first-run
     // promises stay parked and cannot advance a counter or emit a completed
     // trace AFTER the simulated crash. This is the harness half of §4.3: the
-    // suspend path neither drains nor aborts the work pool, so a live first-run
+    // suspend path neither drains nor aborts the side-chain pool, so a live first-run
     // promise that later resolved would contaminate the post-crash assertions.
     // Second-run gates release c,d on the continued run so the terminal drain
     // can settle the re-dispatched work.
@@ -309,7 +309,7 @@ describe("attached durable background-work recovery — mid-drain fan-out", () =
       }
     });
 
-    // No `.waitForWork()` before the gate — the fan-out is genuinely mid-drain
+    // No `.waitForSideChain()` before the gate — the fan-out is genuinely mid-drain
     // when the gate suspends. The gate parks on `readyToSuspend` so the TEST
     // controls the exact crash instant (after a,b's traces flush, while c,d are
     // still parked), removing the flush race a self-timing gate would carry.
@@ -329,7 +329,7 @@ describe("attached durable background-work recovery — mid-drain fan-out", () =
       actions: {
         run: {
           block: sequencer({ name: "seq", durable: true })
-            .forEachBackground((v: { items: string[] }) => v.items, elem)
+            .forEachSideChain((v: { items: string[] }) => v.items, elem)
             .step(gate),
           inputSchema: z.object({ items: z.array(z.string()) })
         }
@@ -370,7 +370,7 @@ describe("attached durable background-work recovery — mid-drain fan-out", () =
       (items as BlockTraceItem[])
         .filter((i) => i.type === "block_trace" && i.status === "completed")
         .map((t) => parseBlockInstanceId(t.blockInstanceId)?.path ?? "")
-        .map((p) => /\/forEachBackground\[\d+\]\/iter\[(\d+)\]$/.exec(p)?.[1])
+        .map((p) => /\/forEachSideChain\[\d+\]\/iter\[(\d+)\]$/.exec(p)?.[1])
         .filter((m): m is string => m !== undefined && m !== null)
         .map((m) => Number(m));
     const preItems = (await stores.request.get(requestId))?.items ?? [];
@@ -422,7 +422,7 @@ describe("attached durable background-work recovery — mid-drain fan-out", () =
         .filter((i) => i.type === "block_trace" && i.status === "completed")
         .find((t) => {
           const path = parseBlockInstanceId(t.blockInstanceId)?.path ?? "";
-          return new RegExp(`/forEachBackground\\[\\d+\\]/iter\\[${index}\\]$`).test(path);
+          return new RegExp(`/forEachSideChain\\[\\d+\\]/iter\\[${index}\\]$`).test(path);
         });
       return trace === undefined ? undefined : resolveBlockValue(trace.output as never, lookup);
     };
@@ -440,7 +440,7 @@ describe("attached durable background-work recovery — mid-drain fan-out", () =
  * parent is *drop-and-log* — it emits a `failed` `block_trace`, is never
  * retried, and does NOT drive the request's terminal status (the foreground
  * result does). Correctness-critical background work opts into
- * `.waitForWork({ failOnError: true })`, which surfaces the failure into the
+ * `.waitForSideChain({ failOnError: true })`, which surfaces the failure into the
  * parent (parent → `failed`) — but *drain-then-throw*, not fail-fast: the
  * scope's queued work all settles before the first failure re-throws. A
  * `failed` request is not continuable on the same id; that guard lives in the
@@ -458,7 +458,7 @@ describe("attached durable background-work recovery — failed background task u
     process.env = { ...originalEnv };
   });
 
-  it("drops-and-logs a failed `.work()` under a completed parent — request completes, one `failed` trace, no retry", async () => {
+  it("drops-and-logs a failed `.sideChain()` under a completed parent — request completes, one `failed` trace, no retry", async () => {
     // The failing background handler throws. It must be isolated: its failure
     // is logged and traced, but the foreground result (not the background
     // outcome) drives the request's terminal status.
@@ -484,9 +484,9 @@ describe("attached durable background-work recovery — failed background task u
       kind: "bgwork-fail-drop-and-log",
       actions: {
         run: {
-          // No `.waitForWork()` — the failed task is fire-and-forget and is
+          // No `.waitForSideChain()` — the failed task is fire-and-forget and is
           // only awaited by the terminal drain, which isolates its failure.
-          block: sequencer({ name: "seq", durable: true }).work(failing).step(done),
+          block: sequencer({ name: "seq", durable: true }).sideChain(failing).step(done),
           inputSchema: z.any()
         }
       }
@@ -508,25 +508,25 @@ describe("attached durable background-work recovery — failed background task u
     // finished, so the request is terminal-`completed`.
     expect((await stores.request.get(requestId))?.status).toBe("completed");
 
-    // Exactly one `failed` `block_trace` for the failing work block, at its
-    // logical path `…/work[<step>]`. The enum is
+    // Exactly one `failed` `block_trace` for the failing side-chain block, at
+    // its logical path `…/sideChain[<step>]`. The enum is
     // `in_progress | completed | failed | planned` — there is no `errored`.
     const items = (await stores.request.get(requestId))?.items ?? [];
-    const failedWorkTraces = (items as BlockTraceItem[]).filter(
+    const failedSideChainTraces = (items as BlockTraceItem[]).filter(
       (i) =>
         i.type === "block_trace" &&
         i.status === "failed" &&
-        /\/work\[\d+\]$/.test(parseBlockInstanceId(i.blockInstanceId)?.path ?? "")
+        /\/sideChain\[\d+\]$/.test(parseBlockInstanceId(i.blockInstanceId)?.path ?? "")
     );
-    expect(failedWorkTraces).toHaveLength(1);
-    expect(failedWorkTraces[0]!.status).toBe("failed");
+    expect(failedSideChainTraces).toHaveLength(1);
+    expect(failedSideChainTraces[0]!.status).toBe("failed");
 
     // Not retried: a completed request has no `interrupted` record to continue,
     // so nothing re-runs the failing handler.
     expect(failingRuns).toBe(1);
   });
 
-  it("`.waitForWork({ failOnError: true })` drains-then-throws into the parent (→ failed), and the failed request is not continuable at the route", async () => {
+  it("`.waitForSideChain({ failOnError: true })` drains-then-throws into the parent (→ failed), and the failed request is not continuable at the route", async () => {
     // Two tasks in one scope: `failing` throws immediately; `slow` blocks on a
     // test-controlled deferred. drain-then-throw means `drainScope` awaits ALL
     // matching entries (Promise.all) before re-throwing the first failure, so
@@ -564,9 +564,9 @@ describe("attached durable background-work recovery — failed background task u
       actions: {
         run: {
           block: sequencer({ name: "seq", durable: true })
-            .work(failing)
-            .work(slow)
-            .waitForWork({ failOnError: true }),
+            .sideChain(failing)
+            .sideChain(slow)
+            .waitForSideChain({ failOnError: true }),
           inputSchema: z.any()
         }
       }
@@ -574,7 +574,7 @@ describe("attached durable background-work recovery — failed background task u
 
     const { stores, provider } = createDurableStores();
 
-    // Don't await: `waitForWork` parks on `slow` inside `drainScope`.
+    // Don't await: `waitForSideChain` parks on `slow` inside `drainScope`.
     const runPromise = runAction({
       flow,
       actionName: "run",

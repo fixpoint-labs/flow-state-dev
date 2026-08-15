@@ -369,10 +369,10 @@ Queue non-blocking tasks that run alongside the main pipeline. The main chain co
 ```ts
 pipeline
   .step(coreLogic)
-  .work(logAnalytics)                          // fire and forget
-  .work((output) => output.metrics, reportMetrics)  // with connector
+  .sideChain(logAnalytics)                          // fire and forget
+  .sideChain((output) => output.metrics, reportMetrics)  // with connector
   .step(moreWork)
-  .waitForWork({ timeoutMs: 5000 });           // optionally converge later
+  .waitForSideChain({ timeoutMs: 5000 });           // optionally converge later
 ```
 
 #### Branching
@@ -438,7 +438,7 @@ const researchAgent = sequencer({ name: "research-agent" })
   })
   .step(mergeAndRank)
   .doUntil((r) => r.confidence > 0.9, refineResults)
-  .work(logAnalytics)
+  .sideChain(logAnalytics)
   .step(synthesize)
   .tapIf((r) => r.citations.length > 5, notifyReviewer)
   .rescue([{ when: [SearchError], block: fallbackSearch }]);

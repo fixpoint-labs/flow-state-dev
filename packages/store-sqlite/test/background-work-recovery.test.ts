@@ -1,5 +1,5 @@
 /**
- * FIX-866 Contract C — a completed `.work()` background block that finished
+ * FIX-866 Contract C — a completed `.sideChain()` background block that finished
  * BEFORE a crash must be REPLAYED (its recorded output injected), not re-run,
  * on `continueRequest` against a REAL persistent store.
  *
@@ -7,11 +7,11 @@
  * (`packages/engine/test/background-work-recovery.test.ts`). Background
  * `block_trace` items ride the SAME request-store persistence path as
  * foreground traces, so this confirms FIX-839's content-diff persistence fix
- * (`request-store.ts`) covers `phase:"work"` traces too.
+ * (`request-store.ts`) covers `phase:"sideChain"` traces too.
  *
  * The scenario deliberately satisfies four preconditions, each of which the
  * test would otherwise pass vacuously:
- *   1. `.waitForWork()` barrier BEFORE the suspending gate, so the `.work()`
+ *   1. `.waitForSideChain()` barrier BEFORE the suspending gate, so the `.sideChain()`
  *      actually completes pre-crash. Without it the fire-and-forget task could
  *      still be in flight when the gate suspends — that is an in-flight task
  *      that correctly re-runs (Contract A), NOT completed-trace replay.
@@ -55,21 +55,21 @@ function providerFor(stores: StoreRegistry): DurabilityProvider {
   });
 }
 
-/** The background `.work()` block_trace: keyed by its unique block name and its
- *  `phase:"work"` provenance, so it can't be confused with the gate/sequencer
+/** The background `.sideChain()` block_trace: keyed by its unique block name and its
+ *  `phase:"sideChain"` provenance, so it can't be confused with the gate/sequencer
  *  traces. */
-function backgroundTrace(
+function sideChainTrace(
   items: readonly { type: string }[]
 ): BlockTraceItem | undefined {
   return (items as BlockTraceItem[]).find(
     (i) =>
       i.type === "block_trace" &&
       i.blockName === "reindex" &&
-      i.provenance?.phase === "work"
+      i.provenance?.phase === "sideChain"
   );
 }
 
-describe("completed background `.work()` trace replays across a cold restart (Contract C)", () => {
+describe("completed background `.sideChain()` trace replays across a cold restart (Contract C)", () => {
   let dir: string | undefined;
   const originalEnv = { ...process.env };
 
@@ -88,7 +88,7 @@ describe("completed background `.work()` trace replays across a cold restart (Co
     }
   });
 
-  it("injects the completed `.work()` result instead of re-running the handler", async () => {
+  it("injects the completed `.sideChain()` result instead of re-running the handler", async () => {
     dir = mkdtempSync(join(tmpdir(), "fsd-bgwork-recovery-"));
     const filename = join(dir, "request.db");
 
@@ -104,7 +104,7 @@ describe("completed background `.work()` trace replays across a cold restart (Co
         ctx.emit.message("reindexing...");
         // Drain the coalesced persistItems microtask so the in_progress trace
         // reference is recorded prior to this block's completion mutation —
-        // exactly the FIX-839 content-diff trigger, now for a phase:"work" trace.
+        // exactly the FIX-839 content-diff trigger, now for a phase:"sideChain" trace.
         await new Promise((resolve) => setTimeout(resolve, 0));
         return { done: true, runs };
       }
@@ -121,11 +121,11 @@ describe("completed background `.work()` trace replays across a cold restart (Co
       kind: "bgwork-recovery",
       actions: {
         run: {
-          // `.waitForWork()` drains the pool before the gate, so `.work()` is
+          // `.waitForSideChain()` drains the pool before the gate, so `.sideChain()` is
           // guaranteed COMPLETE (Contract C), not in-flight (Contract A).
           block: sequencer({ name: "seq", durable: true })
-            .work(bg)
-            .waitForWork()
+            .sideChain(bg)
+            .waitForSideChain()
             .step(gate),
           inputSchema: z.any()
         }
@@ -155,7 +155,7 @@ describe("completed background `.work()` trace replays across a cold restart (Co
     // persisted as `completed` — NOT stuck at `in_progress` (the FIX-839 bug).
     const items = recordA?.items ?? [];
     expect(items.some((i) => i.type === "message")).toBe(true);
-    const bgTraceA = backgroundTrace(items);
+    const bgTraceA = sideChainTrace(items);
     expect(bgTraceA).toBeDefined();
     expect(bgTraceA!.status).toBe("completed");
 
@@ -168,7 +168,7 @@ describe("completed background `.work()` trace replays across a cold restart (Co
     const providerB = providerFor(storesB);
     const recordB = await storesB.request.get(requestId);
     expect(recordB?.status).toBe("suspended");
-    expect(backgroundTrace(recordB?.items ?? [])!.status).toBe("completed");
+    expect(sideChainTrace(recordB?.items ?? [])!.status).toBe("completed");
 
     // Recover via the reachable /resume path: pre-resolve the gate suspension,
     // continue WITH a resumeContext (the shape the resume route drives).
@@ -199,7 +199,7 @@ describe("completed background `.work()` trace replays across a cold restart (Co
     // (b) The recorded output survived recovery: the persisted completed trace
     // still carries the pre-crash result (runs: 1).
     const finalItems = (await storesB.request.get(requestId))?.items ?? [];
-    const finalBg = backgroundTrace(finalItems);
+    const finalBg = sideChainTrace(finalItems);
     expect(finalBg?.status).toBe("completed");
     const lookup = buildItemLookup(finalItems as never);
     expect(resolveBlockValue(finalBg!.output as never, lookup)).toEqual({

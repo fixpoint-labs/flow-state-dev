@@ -4,7 +4,7 @@
  *
  * `mem` is the unified memory system (working / episodic / semantic / digest);
  * its `capability` is installed on the assistant + pattern generators, its
- * `captureFromItems` runs as a background `.work()` after each turn, and its
+ * `captureFromItems` runs as a background `.sideChain()` after each turn, and its
  * `userResources` register on the flow. `analystPerspective` contributes
  * perspective framing to every mode but only accumulates state in ask mode
  * (capture is gated in run.ts).

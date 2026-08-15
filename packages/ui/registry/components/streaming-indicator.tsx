@@ -8,7 +8,7 @@ import { Shimmer } from "./shimmer";
  * with a "Working..." fallback when the slot is empty.
  *
  * When `isFinishing` is true (the main response has completed and only
- * background `.work()` tasks are still settling on the open SSE stream),
+ * background `.sideChain()` tasks are still settling on the open SSE stream),
  * renders a muted "Tidying up..." label instead so the user is not misled
  * into thinking the assistant is still producing their answer.
  *
