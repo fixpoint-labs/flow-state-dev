@@ -259,6 +259,40 @@ describe("the state table", () => {
         "paint 'this report predates a correction' over a report that does " +
         "not exist — defect 2 again, one axis over.",
     },
+    // ACCEPTED OVER-CLAIM, not an oversight. `defineMemoSetup` pre-creates every
+    // memo `pending` before any generator runs, so a nonzero count proves slots
+    // exist, not content. Kept because:
+    //
+    //   1. The claim is TRUE, just vacuous. "This report predates a correction"
+    //      is correct for a legacy session, and the reason says a number shown
+    //      "may never have been measured" — there are no numbers shown. We fix
+    //      what makes a FALSE claim, not what makes a pointless one. Both defects
+    //      this file's gate was rewritten for were false: one fired on every new
+    //      run forever, the other sat permanently above "Click New Analysis".
+    //   2. The population is frozen. Under current code this exact situation is
+    //      row 4 — the stamp is patched at seed, strictly before the phase-1
+    //      setup tap creates the first memo — so it renders silent. Only runs
+    //      already interrupted under pre-fix code can land here, and that set
+    //      stops growing the moment this ships.
+    //   3. The fix costs more than the bug. Gating on a non-pending memo means
+    //      reading each memo's STATUS, not the count — a list read, which
+    //      re-introduces the live-overlay lag noted on FIX-1141. That trades a
+    //      narrow noise case on a shrinking population for a coarser signal on
+    //      the main path.
+    //
+    // Reversible: if the interrupted-legacy population turns out larger than we
+    // think, flip this row and gate on a published memo. Tracked on FIX-1141.
+    {
+      state:
+        "legacy run interrupted after memo setup, before any writer published",
+      memoCount: 9,
+      contractVersion: undefined,
+      expect: BANNER,
+      why:
+        "accepted over-claim — the placeholders are empty, so the notice is " +
+        "vacuous rather than false; under current code this same shape is the " +
+        "silent in-flight row, so the affected population cannot grow",
+    },
     {
       state: "stamp from a LATER contract version than this build knows",
       memoCount: 20,
