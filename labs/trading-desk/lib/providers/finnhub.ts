@@ -431,7 +431,6 @@ export async function fetchFinnhubInsiderTransactions(
     to,
   });
   const transactions = (data.data ?? [])
-    .slice(0, INSIDER_ROW_CAP)
     .map((r) => {
       // Finnhub returns `change` as a signed delta (negative on sells); fall
       // back to `share` if `change` is missing. A row carrying NEITHER has no
@@ -457,7 +456,11 @@ export async function fetchFinnhubInsiderTransactions(
         isDerivative: Boolean(r.isDerivative),
       };
     })
-    .filter((t): t is NonNullable<typeof t> => t !== null);
+    .filter((t): t is NonNullable<typeof t> => t !== null)
+    // Cap LAST, same reason as the Alpha Vantage path: the budget's 50 slots
+    // must go to rows that will actually be published, not to rows the
+    // no-share-count drop above is about to discard.
+    .slice(0, INSIDER_ROW_CAP);
   return {
     source: "finnhub" as const,
     ticker: input.ticker,

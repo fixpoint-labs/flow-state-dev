@@ -188,6 +188,36 @@ describe("fetchFinnhubInsiderTransactions", () => {
     expect(out.transactions).toHaveLength(50);
   });
 
+  it("spends the 50-row cap on PUBLISHABLE rows, not on rows it is about to drop", async () => {
+    // Same ordering defect as the Alpha Vantage sibling, and on this path it is
+    // entirely FIX-1063's own: before this issue `shares` defaulted to `0`, so
+    // the map dropped nothing and capping first was harmless. Adding the
+    // no-share-count drop downstream of the cap made rejected rows consume
+    // budget slots and hide usable filings behind them.
+    const unreadable = Array.from({ length: 50 }, (_, i) => ({
+      name: `Unreadable ${i}`,
+      position: "Officer",
+      filingDate: "2026-04-01",
+      transactionDate: "2026-04-01",
+      transactionCode: "S",
+      // neither `change` nor `share` — no share count, no direction
+      transactionPrice: 10,
+    }));
+    const readable = Array.from({ length: 5 }, (_, i) => ({
+      name: `Real Insider ${i}`,
+      position: "Officer",
+      filingDate: "2026-04-02",
+      transactionDate: "2026-04-02",
+      transactionCode: "S",
+      change: -700,
+      transactionPrice: 10,
+    }));
+    mockFetch({ data: [...unreadable, ...readable] });
+    const out = await fetchFinnhubInsiderTransactions({ ticker: "X", date: "2026-05-06" });
+    expect(out.transactions).toHaveLength(5);
+    expect(out.transactions.every((t) => t.shares === -700)).toBe(true);
+  });
+
   it("throws on HTTP error so the tool falls through to emptyPayload", async () => {
     mockFetch({ error: "rate limited" }, 429);
     await expect(

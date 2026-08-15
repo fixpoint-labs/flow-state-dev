@@ -311,7 +311,6 @@ export async function fetchAlphaVantageInsiderTransactions(
       const d = r.transaction_date;
       return typeof d === "string" && d >= from && d <= input.date;
     })
-    .slice(0, INSIDER_ROW_CAP)
     .map((r) => {
       const magnitude = num(r.shares);
       if (magnitude === null) return null; // a fully unparseable row is dropped
@@ -343,7 +342,12 @@ export async function fetchAlphaVantageInsiderTransactions(
         isDerivative,
       };
     })
-    .filter((t): t is NonNullable<typeof t> => t !== null);
+    .filter((t): t is NonNullable<typeof t> => t !== null)
+    // Cap LAST. It is a prompt-budget control, so its 50 slots must be spent on
+    // rows that will actually be published — capping first let dropped rows
+    // (no share count, no readable direction) consume slots and hide usable
+    // filings behind them, up to an empty set on an all-invalid first 50.
+    .slice(0, INSIDER_ROW_CAP);
   return {
     source: "alphavantage" as const,
     ticker: input.ticker,

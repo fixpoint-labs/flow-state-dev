@@ -472,6 +472,43 @@ describe("fetchAlphaVantageInsiderTransactions", () => {
     });
     expect(out.transactions).toHaveLength(50);
   });
+
+  it("spends the 50-row cap on PUBLISHABLE rows, not on rows it is about to drop", async () => {
+    // The cap is a prompt-budget control, so it has to be applied AFTER the
+    // validity drops. Capping first let rejected rows eat budget slots and hide
+    // usable filings behind them: with the first 50 in-window rows unreadable,
+    // the live path published an EMPTY alphavantage set while genuine filings
+    // sat just past the cut — a provider miss asserted from rows we discarded.
+    // The two drops reach this differently: the no-share-count drop predates
+    // FIX-1063 (so the interaction is inherited), the direction drop is ours.
+    const unreadable = Array.from({ length: 50 }, () => ({
+      transaction_date: "2026-04-15",
+      ticker: "X",
+      executive: "Insider",
+      executive_title: "Officer",
+      security_type: "Common Stock",
+      acquisition_or_disposal: "", // no readable direction — dropped
+      shares: "100",
+      share_price: "10",
+    }));
+    const readable = Array.from({ length: 5 }, (_, i) => ({
+      transaction_date: "2026-04-16",
+      ticker: "X",
+      executive: `Real Insider ${i}`,
+      executive_title: "Officer",
+      security_type: "Common Stock",
+      acquisition_or_disposal: "A",
+      shares: "700",
+      share_price: "10",
+    }));
+    mockFetchOnce({ data: [...unreadable, ...readable] });
+    const out = await fetchAlphaVantageInsiderTransactions({
+      ticker: "X",
+      date: "2026-05-06",
+    });
+    expect(out.transactions).toHaveLength(5);
+    expect(out.transactions.every((t) => t.shares === 700)).toBe(true);
+  });
 });
 
 describe("fetchAlphaVantageEarningsTranscript", () => {
