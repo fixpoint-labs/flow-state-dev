@@ -3,7 +3,7 @@
 ---
 
 `runClaudeHeadless`'s `timeoutMs` is now the wall-clock ceiling it is documented
-to be: the clock starts before the Agent SDK is resolved, not after. Previously
+to be (LAB-66): the clock starts before the Agent SDK is resolved, not after. Previously
 the timer was armed only once `resolveAgent` had settled, so a stalled dynamic
 `import()` or a caller-supplied resolver that never settles hung the call
 forever — no result, and so nothing for a caller whose bookkeeping runs off the
