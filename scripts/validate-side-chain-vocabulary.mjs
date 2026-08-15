@@ -55,31 +55,27 @@
  *     copies from multiplying every count — but it means a local run can be
  *     greener than CI.
  *
- * ## The allowlists, and why they are concept rules rather than name lists
+ * ## Deny by name, allow by concept
  *
- * Some names legitimately keep a `work` or `background` token. An earlier
- * version of this rule set hard-coded six `RequestWork*` names and reported
- * green while `WorkConfig` survived — a name list cannot express *why* a name
- * is allowed, so it silently rots. These are predicates instead:
+ * The rules are a CLOSED denylist of the retired names, not a token rule. The
+ * first version banned any identifier whose camel-split contained `work`, which
+ * taxed an ordinary English word forever inside `pnpm typecheck` — `scheduleWork`
+ * and `workQueue` failed CI, and the only exits were to rename correct code or
+ * grow an allowlist. See {@link RETIRED_NAMES} for why the asymmetry works: the
+ * set of legitimate names containing these words grows, so it can only be judged
+ * by concept; the set of RETIRED names is frozen, so it can safely be listed.
  *
- *   - **`background` + `work` together is the UMBRELLA**, which is exactly what
- *     this rename frees the word to mean. `onBackgroundWork` (the serverless
- *     keep-alive hook, which covers all three tiers) and the kitchen-sink
- *     Workstream panel are correct as they stand.
- *   - **`prior` + `work` is a task's previously-completed output** in
- *     `orchestration`. Unrelated concept, same substring.
- *   - **CSS properties** carry `background` and are not tiers.
- *   - **A small set of generic "is there anything to do" predicates**, listed
- *     by name because there is no shape that distinguishes them.
+ * Names that are also ordinary English (`work`, `backgroundTasks`) are refused
+ * only in MEMBER position, where they are unambiguously the API rather than
+ * somebody's variable.
  *
  * ## This file obeys its own rule
  *
- * The exported predicates are `carriesRetiredTierToken` /
- * `carriesRetiredUmbrellaToken`, not `…WorkToken` / `…BackgroundToken`. The
- * obvious names would make this check and its test the last two files in the
- * repo carrying the vocabulary it retires, and a check that has to exempt
- * itself teaches the next person that exemptions are routine. It cost two
- * words to avoid.
+ * `RETIRED_NAMES` holds the retired spellings as data, which is unavoidable —
+ * they are the subject. Everything else here is named for the CONCEPT
+ * (`isRetiredName`, `TIER_VALUE_HOLDERS`), so the check does not have to exempt
+ * its own source to pass, and a reader is never taught the old word by the file
+ * that retires it.
  *
  * Run: `node scripts/validate-side-chain-vocabulary.mjs [--json]`
  */
@@ -93,88 +89,116 @@ import { Project, Node } from "ts-morph";
 const rootDir = process.cwd();
 
 /**
- * Split an identifier on camel/Pascal/underscore boundaries and lowercase it.
+ * The retired names, in full. This is a DENYLIST, and it is closed.
  *
- * Tokenising rather than substring-matching is what keeps `framework`,
- * `network`, `teamwork` and `Workstream` out: each tokenises to a single word
- * that is not `work`. A substring rule flags all four, and a check that
- * red-lights correct code gets deleted by the first person it blocks.
+ * An earlier version of this check banned the *token* — any identifier whose
+ * camel-split contained `work`, minus a few allowlisted concepts. That rule was
+ * wrong in the direction this file spends its header warning about: it taxed an
+ * ordinary English word forever. `scheduleWork`, `workQueue` and a `"idle" |
+ * "work"` status union all failed CI, in a check wired into `pnpm typecheck`,
+ * and the only ways out were to rename correct code misleadingly or to grow the
+ * allowlist. The PR that introduced this check argued in its own description
+ * that "a false positive tells someone to rename correct code to get green,
+ * which is the dangerous direction for a gate" — and then shipped exactly that.
+ *
+ * Denying a closed set by name and allowing by concept is the resolution, and
+ * the asymmetry is the point:
+ *
+ *   - The set of names that legitimately CONTAIN these words is open-ended and
+ *     grows with the codebase, so it must be judged by concept, never listed.
+ *   - The set of RETIRED names is finite and frozen. Nothing will ever be added
+ *     to a vocabulary we have just retired, so a list of them cannot rot.
+ *
+ * The property to preserve, and the one the fixtures pin: adding `scheduleWork`
+ * to this repo tomorrow must not fail CI, and reintroducing `.work()` must.
  */
-export function identTokens(id) {
-  return id
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
-    .split(/[\s_-]+/)
-    .filter(Boolean)
-    .map((t) => t.toLowerCase());
+const RETIRED_NAMES = new Set([
+  // The three DSL verbs distinctive enough to ban in any position.
+  "workIf",
+  "waitForWork",
+  "forEachBackground",
+  // The request-scoped pool — published `core` and `engine` surface.
+  "RequestWorkPool",
+  "RequestWorkPoolResult",
+  "RequestWorkPoolDrainOptions",
+  "RequestWorkPoolDrainAllOptions",
+  "RequestWorkPoolDrainToQuiescenceOptions",
+  "RequestWorkPoolImpl",
+  "RequestWorkTaskMeta",
+  "getRequestWorkPool",
+  "createRequestWorkPool",
+  "drainRequestWorkPool",
+  "_requestWorkPool",
+  "requestWorkPool",
+  // The tier-2 abort signal — a top-level `core` export.
+  "composeBackgroundSignal",
+  "_requestBackgroundSignal",
+  "withBackgroundSignal",
+  // The test harness — published `testing` surface.
+  "WorkTrace",
+  // The flow-level config this rename DELETED. Listed so it cannot return by
+  // the back door under its old name.
+  "WorkConfig",
+  // Internal types that named the tier.
+  "SequencerWorkTask",
+  "WaitForWorkOptions",
+  "BackgroundCallShape",
+]);
+
+/**
+ * Retired names that are also ordinary English, so they are banned only where
+ * they are unambiguously the API: in MEMBER position.
+ *
+ * `pipeline.work(x)` is the retired DSL verb; `const work = 3` is a variable
+ * and none of this check's business. The same split covers the contract fields
+ * — `item.provenance.workGroupId` is the retired field, while a local named
+ * `backgroundTasks` in someone's dashboard code is not ours to police.
+ */
+const RETIRED_MEMBER_NAMES = new Set([
+  "work",
+  "workGroupId",
+  "workResults",
+  "backgroundTasks",
+]);
+
+/** E1/E3: is this one of the retired names, in any position? */
+export function isRetiredName(id) {
+  return RETIRED_NAMES.has(id);
 }
 
-/** CSS longhand/shorthand properties that carry the `background` token. */
-const CSS_BACKGROUND_PROPERTIES = new Set([
-  "background",
-  "backgroundColor",
-  "backgroundImage",
-  "backgroundPosition",
-  "backgroundSize",
-  "backgroundRepeat",
-  "backgroundClip",
-  "backgroundBlendMode",
-  "backgroundAttachment",
-  "backgroundOrigin",
-]);
+/** E1/E3: is this a retired name that only counts as a member? */
+export function isRetiredMemberName(id) {
+  return RETIRED_MEMBER_NAMES.has(id);
+}
 
 /**
- * Generic "is there anything left to do" predicates. Listed by name because
- * nothing in their shape separates them from a tier name — they are simply
- * about a queue being non-empty, in three unrelated packages.
- */
-const GENERIC_WORK_PREDICATES = new Set([
-  "hasEdgeWork",
-  "hasInlineWork",
-  "hasExecutableWork",
-]);
-
-/**
- * Does this name mean the umbrella over all three tiers, rather than tier 2?
+ * Is this identifier being used as a MEMBER — a property being accessed, a
+ * method or property being declared, or a key in an object literal?
  *
- * `background` + `work` adjacent is the umbrella by construction: it is the
- * phrase the guides already use for all three tiers at once, and freeing it to
- * mean that again is the point of this rename. `backgroundWorker` is included —
- * a detached worker is tier 3.
+ * This is what separates `pipeline.work(x)` (the retired DSL verb) from
+ * `const work = 3` (a variable, and none of this check's business). Note it
+ * deliberately does NOT match the OBJECT of an access: in `work.id`, `work` is
+ * the object, so a local named `work` holding something unrelated stays legal.
  */
-function isUmbrellaName(tokens) {
-  for (let i = 0; i < tokens.length - 1; i += 1) {
-    if (tokens[i] === "background" && tokens[i + 1].startsWith("work")) return true;
+function isMemberPosition(node) {
+  const parent = node.getParent();
+  if (parent === undefined) return false;
+  if (Node.isPropertyAccessExpression(parent)) return parent.getNameNode() === node;
+  if (
+    Node.isMethodDeclaration(parent) ||
+    Node.isMethodSignature(parent) ||
+    Node.isPropertySignature(parent) ||
+    Node.isPropertyAssignment(parent) ||
+    Node.isPropertyDeclaration(parent) ||
+    Node.isShorthandPropertyAssignment(parent)
+  ) {
+    return typeof parent.getNameNode === "function" && parent.getNameNode() === node;
   }
   return false;
 }
 
-/** Is this the `orchestration` "previously-completed output" concept? */
-function isPriorWorkName(tokens) {
-  for (let i = 0; i < tokens.length - 1; i += 1) {
-    if (tokens[i] === "prior" && tokens[i + 1] === "work") return true;
-  }
-  return false;
-}
-
-/** E1: an identifier carrying the retired tier-2 `work` token. */
-export function carriesRetiredTierToken(id) {
-  if (GENERIC_WORK_PREDICATES.has(id)) return false;
-  const tokens = identTokens(id);
-  if (!tokens.includes("work")) return false;
-  if (isUmbrellaName(tokens)) return false;
-  if (isPriorWorkName(tokens)) return false;
-  return true;
-}
-
-/** E3: an identifier using `background` for tier 2. */
-export function carriesRetiredUmbrellaToken(id) {
-  if (CSS_BACKGROUND_PROPERTIES.has(id)) return false;
-  const tokens = identTokens(id);
-  if (!tokens.includes("background")) return false;
-  if (isUmbrellaName(tokens)) return false;
-  return true;
-}
+/** Every retired name, exported so a test can pin the closed set. */
+export const retiredNames = [...RETIRED_NAMES, ...RETIRED_MEMBER_NAMES];
 
 /**
  * The single audited exception: the test whose SUBJECT is the retired spelling.
@@ -218,6 +242,15 @@ const PATH_OP_ARG_INDEX = 2;
 const SEQUENCER_SRC = /packages[/\\]core[/\\]src[/\\]blocks[/\\]sequencer\.ts$/;
 
 /**
+ * The declarations that carry a tier value, by name. Closed, for the same
+ * reason `RETIRED_NAMES` is: these are the two public unions the rename moved
+ * (`ItemProvenance.phase`, `FlowErrorScope`) plus the value positions feeding
+ * them. Anything else that happens to union a `"work"` string is someone's
+ * status enum, not this check's business.
+ */
+const TIER_VALUE_HOLDERS = new Set(["phase", "scope", "FlowErrorScope"]);
+
+/**
  * Step out through type-only wrappers — `x as const`, `x as T`, `x satisfies T`,
  * `x!`, `(x)`. These change no value, and they are exactly what sits between a
  * literal and its property in fixture code (`phase: "work" as const`), so a rule
@@ -237,7 +270,14 @@ function effectiveParent(node) {
     current = parent;
     parent = current.getParent();
   }
-  return parent;
+  // `node` is the outermost wrapper — the node the parent actually holds. A
+  // caller matching against `parent.getArguments()` MUST compare against this
+  // and not against the bare literal: for `makeProvenance(id, "work" as const)`
+  // the argument list holds the AsExpression, so an identity check on the
+  // literal silently misses. That bug shipped, in the rule written to close a
+  // gap in exactly this situation — a wrapped literal inside a fixture the
+  // compiler never typechecks.
+  return { parent, node: current };
 }
 
 /**
@@ -260,7 +300,7 @@ function effectiveParent(node) {
  */
 function isRetiredTierLiteral(literal) {
   if (literal.getLiteralValue() !== "work") return false;
-  const parent = effectiveParent(literal);
+  const { parent, node: held } = effectiveParent(literal);
   if (parent === undefined) return false;
 
   // An assertion naming the field: `expect(node.phase).toBe("work")`. The
@@ -278,12 +318,27 @@ function isRetiredTierLiteral(literal) {
   // fixture the compiler never sees the argument at all and this check is the
   // only thing standing between a renamed fixture and a stale one. Keyed to the
   // callee name so an unrelated `"work"` argument elsewhere is not swept up.
-  if (Node.isCallExpression(parent) && parent.getArguments().includes(literal)) {
+  if (Node.isCallExpression(parent) && parent.getArguments().includes(held)) {
     if (/phase|provenance/i.test(parent.getExpression().getText())) return true;
   }
 
   // `phase: "main" | "work"` / `FlowErrorScope = … | "work" | …`
-  if (Node.isLiteralTypeNode(parent)) return true;
+  //
+  // Keyed to the DECLARATION the union belongs to, not to "any union with a
+  // `\"work\"` member". The broad form banned an ordinary status union —
+  // `type Status = "idle" | "work"` — which is the same over-reach the token
+  // denylist had, one encoding along.
+  if (Node.isLiteralTypeNode(parent)) {
+    const holder = parent.getFirstAncestor(
+      (a) =>
+        Node.isPropertySignature(a) ||
+        Node.isPropertyDeclaration(a) ||
+        Node.isParameterDeclaration(a) ||
+        Node.isTypeAliasDeclaration(a)
+    );
+    if (holder === undefined) return false;
+    return typeof holder.getName === "function" && TIER_VALUE_HOLDERS.has(holder.getName());
+  }
 
   // `{ phase: "work" }` / `{ scope: "work" }`
   if (Node.isPropertyAssignment(parent)) {
@@ -359,11 +414,14 @@ function collectFindings(project, relativePath) {
     const inSequencerSrc = SEQUENCER_SRC.test(sourceFile.getFilePath());
 
     sourceFile.forEachDescendant((node) => {
-      // E1 / E3 — identifiers.
+      // E1 / E3 — identifiers, against the closed denylist.
       if (Node.isIdentifier(node)) {
         const text = node.getText();
-        if (carriesRetiredTierToken(text)) record(node, "E1", text);
-        if (carriesRetiredUmbrellaToken(text)) record(node, "E3", text);
+        if (isRetiredName(text)) {
+          record(node, text.toLowerCase().includes("background") ? "E3" : "E1", text);
+        } else if (isRetiredMemberName(text) && isMemberPosition(node)) {
+          record(node, text.toLowerCase().includes("background") ? "E3" : "E1", text);
+        }
         return;
       }
 
@@ -467,9 +525,9 @@ export function analyzeRepository() {
 }
 
 const ENCODING_LABEL = {
-  E1: "identifier carrying the retired `work` token",
+  E1: "retired `work` name",
   E2: "`\"work\"` standing for the tier in a union or value position",
-  E3: "`background` naming tier 2",
+  E3: "retired `background` name for tier 2",
   E4: "runtime literal that becomes a block-path segment",
 };
 

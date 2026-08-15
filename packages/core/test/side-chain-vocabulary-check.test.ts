@@ -2,9 +2,8 @@ import { describe, expect, it } from "vitest";
 // @ts-expect-error — root check script, plain .mjs with no type declarations.
 import {
   analyzeSources,
-  carriesRetiredUmbrellaToken,
-  carriesRetiredTierToken,
-  identTokens,
+  exemptFiles,
+  retiredNames,
 } from "../../../scripts/validate-side-chain-vocabulary.mjs";
 
 type Finding = { file: string; line: number; encoding: string; detail: string };
@@ -78,6 +77,24 @@ describe("E2 reaches a literal behind a conditional", () => {
   it("does NOT reach past the nearest property — `{ phase: f({ other: \"work\" }) }`", () => {
     expect(encodings(`const s = { phase: f({ other: "work" }) };`)).not.toContain("E2");
   });
+
+  /**
+   * The seventh hole, found in the rule written to close the second one.
+   *
+   * `getArguments()` returns the nodes the call actually holds, so for
+   * `makeProvenance(id, "work" as const)` that is the AsExpression — an
+   * identity check against the bare literal misses. It defeated the rule in
+   * exactly the case the rule exists for: a wrapped literal in a fixture that
+   * `pnpm typecheck` never looks at, because several packages compile only
+   * `src/**`.
+   */
+  it("reaches a builder argument wrapped in `as const`", () => {
+    expect(encodings(`const p = makeProvenance("b", "i", "work" as const);`)).toContain("E2");
+  });
+
+  it("reaches the same argument unwrapped", () => {
+    expect(encodings(`const p = makeProvenance("b", "i", "work");`)).toContain("E2");
+  });
 });
 
 /**
@@ -134,27 +151,93 @@ describe("the deliberate non-renames report nothing", () => {
 });
 
 /**
- * The tokenizer is the reason the non-renames survive, so it is tested
- * directly: `Workstream` must not tokenize to a `work` token, or every rule
- * above inherits a false positive.
+ * The half of this check that decides whether it is safe to leave wired into
+ * `pnpm typecheck` forever.
+ *
+ * An earlier version banned the `work` TOKEN, so any future identifier
+ * containing the ordinary English word failed CI. These pin the property that
+ * replaced it: the denylist is a closed set of retired names, so new code using
+ * the word is fine and only the retired API is refused.
  */
-describe("tokenisation is what separates a token from a substring", () => {
-  it("splits camelCase and PascalCase", () => {
-    expect(identTokens("RequestWorkPool")).toEqual(["request", "work", "pool"]);
-    expect(identTokens("waitForWork")).toEqual(["wait", "for", "work"]);
+describe("the denylist is closed, so ordinary use of the word stays legal", () => {
+  it("allows a NEW identifier containing `work` — the thing the token rule taxed", () => {
+    expect(
+      scan(`
+        const scheduleWork = () => {};
+        const workQueue: string[] = [];
+        function doWork(unitOfWork: string) { return unitOfWork; }
+      `)
+    ).toEqual([]);
   });
 
-  it("does not split `workstream`, `framework` or `network` into a `work` token", () => {
-    expect(identTokens("Workstream")).toEqual(["workstream"]);
-    expect(identTokens("framework")).toEqual(["framework"]);
-    expect(identTokens("network")).toEqual(["network"]);
+  it("allows an ordinary status union with a `\"work\"` member", () => {
+    expect(scan(`export type Status = "idle" | "work" | "done";`)).toEqual([]);
   });
 
-  it("`background` + `work` adjacent is the umbrella, not tier 2", () => {
-    expect(carriesRetiredTierToken("onBackgroundWork")).toBe(false);
-    expect(carriesRetiredUmbrellaToken("onBackgroundWork")).toBe(false);
-    expect(carriesRetiredUmbrellaToken("backgroundWorkLedger")).toBe(false);
-    // …but `background` alone, naming the middle tier, is retired.
-    expect(carriesRetiredUmbrellaToken("forEachBackground")).toBe(true);
+  it("still refuses the retired DSL verb in member position", () => {
+    expect(encodings(`pipeline.work(block);`)).toContain("E1");
+    expect(encodings(`pipeline.workIf(cond, block);`)).toContain("E1");
+  });
+
+  it("still refuses the retired published types anywhere", () => {
+    expect(encodings(`import type { RequestWorkPool } from "x";`)).toContain("E1");
+    expect(encodings(`export function composeBackgroundSignal() {}`)).toContain("E3");
+  });
+
+  it("allows a plain variable named `work` — a variable is not the DSL verb", () => {
+    expect(scan(`const work = 3; return work + 1;`)).toEqual([]);
+  });
+
+  /**
+   * `work.id` reads a property OFF something called `work`; `pipeline.work(b)`
+   * calls a property NAMED work. Only the second is the retired verb, and a
+   * member rule that does not check which side of the dot it is on flags every
+   * local holding a row — which is how the kitchen-sink Workstream panel got
+   * caught by an earlier sweep.
+   */
+  it("allows `work` as the OBJECT of an access, not just as a bare variable", () => {
+    expect(scan(`const id = work.id; const t = work.topic ?? "";`)).toEqual([]);
+  });
+
+  it("allows a `\"work\"` union with no named declaration holding it", () => {
+    expect(scan(`const s: "idle" | "work" = "idle";`)).toEqual([]);
+    expect(scan(`function f(): "idle" | "work" { return "idle"; }`)).toEqual([]);
+  });
+
+  it("refuses `work` as a declared member, which IS the DSL verb", () => {
+    expect(encodings(`interface Seq { work(b: B): Seq; }`)).toContain("E1");
+  });
+
+  it("keeps sparing the deliberate non-renames", () => {
+    expect(
+      scan(`
+        export type WorkstreamSummary = { id: string };
+        export function formatPriorWork(priorWork: TaskPriorWork): string { return ""; }
+        export type RuntimeConfig = { onBackgroundWork?: () => void };
+        const style = { backgroundColor: "red" };
+        const framework = 1, network = 2, teamwork = 3;
+      `)
+    ).toEqual([]);
+  });
+
+  it("pins the closed set, so a name cannot be dropped from it unnoticed", () => {
+    expect(retiredNames).toContain("waitForWork");
+    expect(retiredNames).toContain("WorkConfig");
+    expect(retiredNames).toContain("composeBackgroundSignal");
+    expect(retiredNames).toContain("work");
+    expect(retiredNames).not.toContain("scheduleWork");
+  });
+});
+
+/**
+ * The exemption is the one place the retired spelling may still appear, so the
+ * thing that has to stay true is its SIZE. A second entry turns an audited
+ * exception into a general escape hatch, and the script's own load-time
+ * assertion would still pass a two-entry list into every future reader's
+ * mental model. Same pin the sibling guard puts on its own exemption.
+ */
+describe("side-chain vocabulary check — the exemption", () => {
+  it("holds exactly one entry, so it cannot be broadened into a no-op", () => {
+    expect(exemptFiles).toEqual(["packages/devtool/test/legacy-phase-record.test.ts"]);
   });
 });

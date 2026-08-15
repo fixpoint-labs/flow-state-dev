@@ -2514,7 +2514,7 @@ export async function createExecutionContext<
   // Duck-type the response: if it has emitItemAdded/emitItemDone, use those;
   // otherwise fall back to the generic emit() method via a thin adapter.
 
-  // Per-request background work pool. Sequencer DSL pushes `.sideChain()` /
+  // Per-request side-chain pool. Sequencer DSL pushes `.sideChain()` /
   // `.sideChainIf()` / `.forEachSideChain()` tasks here; runActionInternal
   // drains the pool exactly once on the success path. Replaces the legacy
   // per-sequencer auto-await scoping.
@@ -3397,7 +3397,7 @@ export async function createExecutionContext<
           transient: resolvedParent.transient
         };
 
-        // Propagate the request-scoped work pool through every nested scope
+        // Propagate the request-scoped side-chain pool through every nested scope
         // so `.sideChain()` calls in inner sequencers reach the same pool the
         // request executor drains. See `request-side-chain-pool.ts`.
         (childContext as { _requestSideChainPool?: unknown })._requestSideChainPool = requestSideChainPool;
@@ -3755,7 +3755,7 @@ export async function createExecutionContext<
   };
 
   const rootContext = createContext(undefined, undefined, undefined);
-  // Attach the per-request background work pool so sequencer DSL can push
+  // Attach the per-request side-chain pool so sequencer DSL can push
   // `.sideChain()` / `.sideChainIf()` / `.forEachSideChain()` tasks. Each child
   // context constructed by `_withExecutionScope` re-attaches the same pool
   // explicitly (see the assignment alongside `_blockIdentity` there) — pool
@@ -3766,7 +3766,7 @@ export async function createExecutionContext<
   // (wired into the registries above) close over `reactiveCtxRef`.
   reactiveCtxRef.current = rootContext as unknown as ExecutionContext;
   // FIX-663: attach the background signal to the root context. Child scopes
-  // re-attach it in `_withExecutionScope` (alongside the work pool).
+  // re-attach it in `_withExecutionScope` (alongside the side-chain pool).
   (rootContext as { _requestSideChainSignal?: AbortSignal })._requestSideChainSignal = options.sideChainSignal;
   // FIX-406 6H: stamp the tracing level on the root context too, for symmetry
   // with child scopes — keeps observability gating correct if a sequencer ever

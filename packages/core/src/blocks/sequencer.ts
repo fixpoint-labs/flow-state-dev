@@ -701,15 +701,6 @@ function createRuntimeState(): SequencerRuntimeState {
 }
 
 /**
- * Build the context for a background `.sideChain()` / `.sideChainIf()` /
- * `.forEachSideChain()` task. FIX-663: when the request executor supplied a
- * `_requestSideChainSignal`, substitute it for `ctx.signal` so the task tree
- * survives transport teardown and aborts only on explicit user cancellation.
- * Returns the parent ctx unchanged in unit-test contexts (no background
- * signal), preserving pre-FIX-663 behavior. The returned `signalOverride` is
- * threaded into `executeBlock` so descendant scopes inherit the same signal.
- */
-/**
  * The background signal a subtree's `.sideChain()` dispatches should read, once
  * `extra` has been composed into it (FIX-1005).
  *
@@ -734,12 +725,20 @@ export function composeSideChainSignal(
   ctx: BlockContext,
   extra: AbortSignal
 ): AbortSignal | undefined {
-  const background = (ctx as { _requestSideChainSignal?: AbortSignal })
-    ._requestSideChainSignal;
+  const background = ctx._requestSideChainSignal;
   if (background === undefined) return undefined;
   return AbortSignal.any([background, extra]);
 }
 
+/**
+ * Build the context for a background `.sideChain()` / `.sideChainIf()` /
+ * `.forEachSideChain()` task. FIX-663: when the request executor supplied a
+ * `_requestSideChainSignal`, substitute it for `ctx.signal` so the task tree
+ * survives transport teardown and aborts only on explicit user cancellation.
+ * Returns the parent ctx unchanged in unit-test contexts (no background
+ * signal), preserving pre-FIX-663 behavior. The returned `signalOverride` is
+ * threaded into `executeBlock` so descendant scopes inherit the same signal.
+ */
 export function sideChainTaskCtx(ctx: BlockContext): {
   taskCtx: BlockContext;
   signalOverride: AbortSignal | undefined;
@@ -809,7 +808,7 @@ function runOnSettled(
 }
 
 /**
- * Dispatch a background work task. When the request-scoped pool is present
+ * Dispatch a side-chain task. When the request-scoped pool is present
  * (server runtime), push to it tagged with the sequencer's scopeId. When
  * absent (unit-test contexts), fall back to the per-sequencer work list so
  * the inner-sequencer auto-await path keeps working unchanged. Consumed by the
@@ -948,7 +947,7 @@ function runSequencerOperations(
         // Per-sequencer auto-await fallback. Runs only when the request
         // executor's `_requestSideChainPool` is absent (unit-test contexts). Under
         // the request-scoped pool model, inner sequencers do not block on
-        // their own background work — the request executor drains the pool to
+        // their own side-chain work — the request executor drains the pool to
         // quiescence before terminal status. See FIX-554, FIX-1001.
         const hasRequestPool = getRequestSideChainPool(ctx) !== undefined;
         if (!hasRequestPool && runtime.pendingSideChainTasks.length > 0) {
@@ -1591,7 +1590,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
             // on transport teardown — consistent with `.sideChain()`.
             const { taskCtx, signalOverride } = sideChainTaskCtx(ctx);
 
-            // Dispatch all iterations as background work with concurrency limiting.
+            // Dispatch all iterations as side-chain work with concurrency limiting.
             // Each iteration's failure is isolated — one failing doesn't stop others
             // or propagate to the parent sequencer.
             let nextIndex = 0;
@@ -1630,7 +1629,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
               workers.push(worker());
             }
 
-            // Wrap the whole batch as a single work task. Pushed to the
+            // Wrap the whole batch as a single side-chain task. Pushed to the
             // request-scoped pool when present, otherwise the per-sequencer
             // fallback list (see dispatchSideChainTask).
             const batchName = `forEachSideChain[${items.length}]`;
@@ -1789,7 +1788,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
     ): SequencerDefinition<TInput, TOutput, TStateSchema> {
       // Shapes: work(block) | work(connector, block) | work(block, options) |
       // work(connector, block, options).
-      const shape = resolveCallShape([arg1, arg2, arg3], "background");
+      const shape = resolveCallShape([arg1, arg2, arg3], "sideChain");
       const block = shape.block;
       const connector = shape.connector as ConnectorFn<TOutput, TStepIn> | undefined;
       const options = shape.options as SideChainOptions | undefined;
@@ -1799,7 +1798,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
           name: options?.name ?? `sideChain:${block.name}`,
           run: async (value, ctx, runtime, stepIndex) => {
             // Dispatched in the "work" phase so nested generators apply the
-            // trace default; the work block's input is the parent step's
+            // trace default; the side-chain block's input is the parent step's
             // output (FIX-573 §5). runSideChain passes the value through.
             const path = childBlockPath(ctx, runtime, "sideChain", stepIndex);
             return runSideChain(ctx, runtime, { block, connector }, path, value, options?.name ?? block.name);
@@ -1820,7 +1819,7 @@ function createSequencer<TInput, TOutput, TStateSchema extends ZodTypeAny | unde
       arg4?: SideChainOptions
     ): SequencerDefinition<TInput, TOutput, TStateSchema> {
       // Shapes mirror work(), prefixed by a boolean/predicate condition.
-      const shape = resolveCallShape([arg2, arg3, arg4], "background");
+      const shape = resolveCallShape([arg2, arg3, arg4], "sideChain");
       const block = shape.block;
       const connector = shape.connector as ConnectorFn<TOutput, TStepIn> | undefined;
       const options = shape.options as SideChainOptions | undefined;

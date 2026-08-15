@@ -208,14 +208,14 @@ export interface SequencerDefinition<
     options?: { maxConcurrency?: number }
   ): SequencerDefinition<TInput, z.infer<TOutSchema>[], TStateSchema>;
 
-  // forEachSideChain(block) — fire-and-forget fan-out, dispatches each iteration as background work
+  // forEachSideChain(block) — fire-and-forget fan-out, dispatches each iteration as side-chain work
   forEachSideChain(
     blockOrFactory:
       | BlockDefinition<any, any>
       | ((item: TOutput extends readonly (infer TItem)[] ? TItem : unknown, index: number, ctx: SequencerCtx<TStateSchema>) => BlockDefinition<any, any>),
     options?: { concurrency?: number }
   ): SequencerDefinition<TInput, TOutput, TStateSchema>;
-  // forEachSideChain(connector, block) — connector provides items, each dispatched as background work
+  // forEachSideChain(connector, block) — connector provides items, each dispatched as side-chain work
   forEachSideChain<TStepIn>(
     connector: ConnectorFn<TOutput, TStepIn[]>,
     blockOrFactory:
@@ -468,7 +468,7 @@ export type SequencerRuntimeState = {
   loopCounts: Map<string, number>;
   /**
    * Per-sequencer fallback work list. Populated only when the request-scoped
-   * work pool is absent (unit-test contexts without `_requestSideChainPool`). When
+   * side-chain pool is absent (unit-test contexts without `_requestSideChainPool`). When
    * a pool is present, sequencer DSL pushes tasks onto the pool tagged with
    * `scopeId`, and this list stays empty.
    */

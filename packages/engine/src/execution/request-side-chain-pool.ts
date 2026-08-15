@@ -1,5 +1,5 @@
 /**
- * Per-request background work pool implementation. Sequencer DSL pushes
+ * Per-request side-chain pool implementation. Sequencer DSL pushes
  * `.sideChain()` / `.sideChainIf()` / `.forEachSideChain()` tasks here; the request
  * executor in `runAction.ts` drains the pool to quiescence before terminal
  * status, on every terminal path.
@@ -160,7 +160,7 @@ class RequestSideChainPoolImpl implements RequestSideChainPool {
       settled = entries.map((entry) => ({
         status: "rejected" as const,
         meta: entry.meta,
-        reason: signal.reason ?? new Error("work pool drain aborted")
+        reason: signal.reason ?? new Error("side-chain pool drain aborted")
       }));
     } else {
       settled = await new Promise((resolve) => {
@@ -170,7 +170,7 @@ class RequestSideChainPoolImpl implements RequestSideChainPool {
             entries.map((entry) => ({
               status: "rejected" as const,
               meta: entry.meta,
-              reason: signal.reason ?? new Error("work pool drain aborted")
+              reason: signal.reason ?? new Error("side-chain pool drain aborted")
             }))
           );
         };
@@ -201,7 +201,7 @@ class RequestSideChainPoolImpl implements RequestSideChainPool {
 }
 
 /**
- * Construct a fresh per-request work pool.
+ * Construct a fresh per-request side-chain pool.
  */
 export function createRequestSideChainPool(): RequestSideChainPool {
   return new RequestSideChainPoolImpl();

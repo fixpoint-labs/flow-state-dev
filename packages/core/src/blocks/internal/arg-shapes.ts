@@ -218,7 +218,7 @@ export type IteratingCallShape = {
  *   A leading function that is not a block, paired with an inline-config object,
  *   is the factory form; otherwise the presence of a second argument promotes
  *   the first to a connector.
- * - `"background"`: `(block)` | `(connector, block)` | `(block, options)` |
+ * - `"sideChain"`: `(block)` | `(connector, block)` | `(block, options)` |
  *   `(connector, block, options)`. A block in the second slot signals a leading
  *   connector; otherwise the first argument is the block and the second is
  *   options.
@@ -228,11 +228,11 @@ export type IteratingCallShape = {
  *   object.
  */
 export function resolveCallShape(args: unknown[], pattern: "child"): ChildCallShape;
-export function resolveCallShape(args: unknown[], pattern: "background"): SideChainCallShape;
+export function resolveCallShape(args: unknown[], pattern: "sideChain"): SideChainCallShape;
 export function resolveCallShape(args: unknown[], pattern: "iterating"): IteratingCallShape;
 export function resolveCallShape(
   args: unknown[],
-  pattern: "child" | "background" | "iterating"
+  pattern: "child" | "sideChain" | "iterating"
 ): ChildCallShape | SideChainCallShape | IteratingCallShape {
   const [arg1, arg2, arg3] = args;
 
@@ -255,7 +255,7 @@ export function resolveCallShape(
     return { block, connector, stepOptions };
   }
 
-  if (pattern === "background") {
+  if (pattern === "sideChain") {
     const hasConnector = isBlockDefinition(arg2);
     const connector = hasConnector ? (arg1 as ConnectorFn<any, any>) : undefined;
     const block = (hasConnector ? arg2 : arg1) as BlockDefinition<any, any>;

@@ -88,9 +88,9 @@ describe("resolveCallShape — child", () => {
   });
 });
 
-describe("resolveCallShape — background", () => {
+describe("resolveCallShape — sideChain", () => {
   it("(block)", () => {
-    expect(resolveCallShape([block], "background")).toEqual({
+    expect(resolveCallShape([block], "sideChain")).toEqual({
       block,
       connector: undefined,
       options: undefined
@@ -98,7 +98,7 @@ describe("resolveCallShape — background", () => {
   });
 
   it("(connector, block)", () => {
-    expect(resolveCallShape([connector, block], "background")).toEqual({
+    expect(resolveCallShape([connector, block], "sideChain")).toEqual({
       block,
       connector,
       options: undefined
@@ -107,7 +107,7 @@ describe("resolveCallShape — background", () => {
 
   it("(block, options) — second arg is options, not a connector", () => {
     const options = { name: "task" };
-    expect(resolveCallShape([block, options], "background")).toEqual({
+    expect(resolveCallShape([block, options], "sideChain")).toEqual({
       block,
       connector: undefined,
       options
@@ -116,7 +116,7 @@ describe("resolveCallShape — background", () => {
 
   it("(connector, block, options)", () => {
     const options = { name: "task" };
-    expect(resolveCallShape([connector, block, options], "background")).toEqual({
+    expect(resolveCallShape([connector, block, options], "sideChain")).toEqual({
       block,
       connector,
       options

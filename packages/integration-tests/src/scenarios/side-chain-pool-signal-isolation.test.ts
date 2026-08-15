@@ -112,7 +112,7 @@ async function runWith(rootBlock: ReturnType<typeof sequencer>, signal?: AbortSi
   });
 }
 
-describe("FIX-663: background work signal isolation", () => {
+describe("FIX-663: side-chain signal isolation", () => {
   it("transport-level abort (options.signal) does NOT abort background .sideChain()", async () => {
     const marker: TaskMarker = { ran: false, abortedWhenDone: false };
     const transport = new AbortController();

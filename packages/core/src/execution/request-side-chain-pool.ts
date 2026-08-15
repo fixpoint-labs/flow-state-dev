@@ -1,5 +1,5 @@
 /**
- * Request-scoped pool for background work tasks dispatched by sequencer DSL
+ * Request-scoped pool for side-chain tasks dispatched by sequencer DSL
  * (`.sideChain()`, `.sideChainIf()`, `.forEachSideChain()`). The interface is defined in
  * core so sequencer code can push tasks; the implementation lives in
  * `@flow-state-dev/engine`. The server's request executor constructs one pool
@@ -8,7 +8,7 @@
  * request succeeds, fails, is aborted, or the client disconnects.
  *
  * This replaces the old per-sequencer auto-await — inner sequencers no longer
- * block their parent on their own background work. See
+ * block their parent on their own side-chain work. See
  * `apps/docs/docs/advanced/sequencer-side-chains.md` for the user-facing model.
  */
 
@@ -53,7 +53,7 @@ export interface RequestSideChainPoolDrainAllOptions {
  * Options for {@link RequestSideChainPool.drainToQuiescence}.
  *
  * Deliberately has no `signal`. A quiescence drain is the wait a request makes
- * before reporting itself finished, and background work is decoupled from the
+ * before reporting itself finished, and side-chain work is decoupled from the
  * request signal — a task that opted into cancellation self-cancels through
  * its own `ctx.signal`, and one that did not is exactly the fire-and-forget
  * write the wait exists for. Offering a signal here would advertise a
@@ -67,7 +67,7 @@ export interface RequestSideChainPoolDrainToQuiescenceOptions {
 }
 
 /**
- * Per-request background work pool. Tasks are already running when registered;
+ * Per-request side-chain pool. Tasks are already running when registered;
  * the pool tracks settlement and exposes scope-bounded and full drains.
  */
 export interface RequestSideChainPool {
@@ -123,7 +123,7 @@ export interface RequestSideChainPool {
 }
 
 /**
- * Read the per-request work pool off a `BlockContext`. Centralised so the
+ * Read the per-request side-chain pool off a `BlockContext`. Centralised so the
  * field name and the underscore-prefixed cast pattern live in one spot.
  * Returns `undefined` in unit-test contexts where no pool was constructed
  * (sequencer DSL falls back to per-sequencer auto-await in that case).

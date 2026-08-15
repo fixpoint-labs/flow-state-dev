@@ -545,7 +545,7 @@ export interface BlockContext<
    * subtree's BACKGROUND dispatches read. It needs its own channel rather than
    * being derived from `signalOverride`, because the two carry deliberately
    * different things: `signalOverride` includes the transport signal, and
-   * background work exists precisely to outlive that. It also cannot be passed
+   * side-chain work exists precisely to outlive that. It also cannot be passed
    * by spreading `_requestSideChainSignal` onto a copy of the context — this
    * function is a closure bound to the context it was built for, so it reads
    * that context's field and never the copy's.
@@ -649,7 +649,7 @@ export interface BlockContext<
   _didRescue?: boolean;
 
   /**
-   * @internal Per-request background work pool. Set by the server's request
+   * @internal Per-request side-chain pool. Set by the server's request
    * executor; absent in unit-test contexts. Sequencer DSL pushes here from
    * `.sideChain()` / `.sideChainIf()` / `.forEachSideChain()`. The request executor
    * drains the pool to quiescence before terminal status, on every terminal

@@ -33,7 +33,7 @@ const sleepHandler = (name: string, ms: number, marker: { done: boolean }) =>
     }
   });
 
-describe("FIX-554: request-scoped work pool", () => {
+describe("FIX-554: request-scoped side-chain pool", () => {
   it("sibling sequencers' .sideChain() tasks run concurrently — wall time ≈ max, not sum", async () => {
     const aDone = { done: false };
     const bDone = { done: false };
