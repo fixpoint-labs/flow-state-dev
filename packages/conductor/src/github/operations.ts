@@ -33,7 +33,7 @@
  */
 
 import type { GitHubClient } from "./client";
-import { isPendingReviewConflict } from "./client";
+import { GitHubApiError, isPendingReviewConflict } from "./client";
 
 /** A newly opened pull request. */
 export interface OpenedPullRequest {
@@ -228,7 +228,15 @@ export async function submitReview(
  * delete. A label that is not present deletes as a 404, which is not an error
  * here — the requested end state is what matters.
  *
+ * **Only the 404 is tolerated.** A 401, 403, 429, or 5xx means the removal did
+ * not happen and conductor does not know the end state; the label read that
+ * follows would still succeed, so swallowing those would return normally with
+ * the requested removal unapplied and let the caller record a mutation that
+ * never landed.
+ *
  * @returns The labels present after the change.
+ * @throws {GitHubApiError} when a removal fails for any reason other than the
+ *   label already being absent, or when the add or the read fails.
  */
 export async function setLabels(
   client: GitHubClient,
@@ -239,12 +247,16 @@ export async function setLabels(
   },
 ): Promise<{ readonly labels: readonly string[] }> {
   for (const label of input.remove ?? []) {
-    await client
-      .request(
+    try {
+      await client.request(
         "DELETE",
         client.path("issues", input.pullNumber, "labels", encodeURIComponent(label)),
-      )
-      .catch(() => undefined);
+      );
+    } catch (error) {
+      // The label was already gone — the end state the caller asked for.
+      if (error instanceof GitHubApiError && error.status === 404) continue;
+      throw error;
+    }
   }
 
   if ((input.add ?? []).length > 0) {

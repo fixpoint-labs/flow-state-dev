@@ -11,11 +11,16 @@
  * | the repository   | `git remote get-url origin` in the checkout conductor is in  |
  * | GitHub auth      | `GITHUB_TOKEN` / `GH_TOKEN` — the variables `gh` already uses |
  * | the base branch  | the remote's HEAD                                            |
- * | the dispatcher   | the coding harness that is actually installed (`claude`)     |
+ * | the dispatcher   | the harness whose SDK resolves (`@anthropic-ai/claude-agent-sdk`) |
+ *
+ * The dispatcher probe loads the Agent SDK through the same resolver the
+ * dispatcher itself runs on. The SDK brings its own executable, so a `claude`
+ * binary on `PATH` is neither necessary nor sufficient, and looking for one
+ * would answer a different question than the one being asked.
  *
  * A discovery that cannot answer raises an error naming the field that
  * overrides it. There is no silent default anywhere — basing work on the wrong
- * branch, or dispatching to a harness that is not installed, is the kind of
+ * branch, or dispatching to a harness whose SDK cannot load, is the kind of
  * mistake that only shows up twenty minutes later.
  *
  * Fields do exist for the cases inference genuinely cannot cover — a fork whose

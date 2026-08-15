@@ -26,12 +26,17 @@ Four things conductor needs before it can start, none of them configured here:
 | the repository  | `git remote get-url origin`, in the checkout conductor runs in  |
 | GitHub auth     | `GITHUB_TOKEN` / `GH_TOKEN`, the variables `gh` already uses    |
 | the base branch | the remote's HEAD                                              |
-| the dispatcher  | the coding harness that is installed (the `claude` CLI, today)  |
+| the dispatcher  | the harness whose SDK resolves (`@anthropic-ai/claude-agent-sdk`, today) |
+
+The dispatcher row is worth spelling out, because the obvious guess is wrong: conductor does
+not look for a `claude` binary on your `PATH`. It loads the Agent SDK through the same
+resolver the dispatcher runs on, and the SDK ships its own executable — so the binary is
+neither necessary nor sufficient, and probing for it would answer a different question.
 
 The reasoning is worth stating, because it is what keeps the surface from growing: conductor
-is already sitting in a git checkout with a remote and an installed CLI, so asking for any of
-that would be a knob that shouldn't exist. Worse than redundant — a second place for one fact
-to live, which is how the config and the machine end up disagreeing.
+is already sitting in a git checkout with a remote and a harness SDK it can load, so asking
+for any of that would be a knob that shouldn't exist. Worse than redundant — a second place
+for one fact to live, which is how the config and the machine end up disagreeing.
 
 A field earns its place only when it encodes an intent the environment cannot reveal. Fields
 do exist for the cases inference genuinely can't cover — a fork whose pull requests belong

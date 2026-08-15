@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   branchNameFor,
   branchPlan,
+  LS_REMOTE_NO_MATCHING_REFS,
   provisionWorkspace,
   WorkspaceProvisionError,
   worktreePath,
@@ -20,6 +21,24 @@ import { epic, issue } from "../fixtures";
 
 const ok = (stdout = ""): GitResult => ({ code: 0, stdout, stderr: "" });
 const fail = (stderr = "boom"): GitResult => ({ code: 1, stdout: "", stderr });
+
+/**
+ * What `git ls-remote --exit-code` returns when the remote answered and has no
+ * matching ref. The ONLY non-zero code that means "the branch is not there";
+ * every other one means the probe failed, which is a different thing entirely.
+ */
+const noSuchBranch = (): GitResult => ({
+  code: LS_REMOTE_NO_MATCHING_REFS,
+  stdout: "",
+  stderr: "",
+});
+
+/** A probe that never reached an answer — auth, transport, or a server error. */
+const probeFailed = (code: number, stderr = "fatal: could not read from remote"): GitResult => ({
+  code,
+  stdout: "",
+  stderr,
+});
 
 /** A git runner scripted by the first matching argv fragment. */
 function scriptedGit(
@@ -92,10 +111,37 @@ describe("the checkout plan", () => {
     }
   });
 
+  it("keeps that same rule under a non-origin remote — configurable must not mean unprotected", () => {
+    const everyCommand = [
+      ...branchPlan("spec/FIX-1", false, "main", "upstream").commands,
+      ...branchPlan("spec/FIX-1", true, "main", "upstream").commands,
+      ...branchPlan("fix/FIX-2", false, "trunk", "fork").commands,
+    ];
+    for (const argv of everyCommand) {
+      if (argv[0] !== "checkout") continue;
+      expect(argv[1]).toBe("-B");
+      // Still a remote-tracking ref, still never a bare local branch name.
+      expect(argv).not.toContain("main");
+      expect(argv).not.toContain("trunk");
+      expect(argv.at(-1)).toMatch(/^(upstream|fork)\//);
+    }
+  });
+
   it("honours a repo whose default branch is not main", () => {
     expect(branchPlan("fix/FIX-1", false, "master").commands).toEqual([
       ["fetch", "origin", "master"],
       ["checkout", "-B", "fix/FIX-1", "origin/master"],
+    ]);
+  });
+
+  it("fetches and tracks the CONFIGURED remote — an `upstream` repo must not be provisioned from `origin`", () => {
+    expect(branchPlan("fix/FIX-1", false, "main", "upstream").commands).toEqual([
+      ["fetch", "upstream", "main"],
+      ["checkout", "-B", "fix/FIX-1", "upstream/main"],
+    ]);
+    expect(branchPlan("fix/FIX-1", true, "main", "upstream").commands).toEqual([
+      ["fetch", "upstream", "fix/FIX-1"],
+      ["checkout", "-B", "fix/FIX-1", "upstream/fix/FIX-1"],
     ]);
   });
 });
@@ -128,7 +174,7 @@ describe("provisioning to the declared isolation model", () => {
   it("adds a detached worktree and puts it on the branch, so adding it never occupies a branch ref", async () => {
     const git = scriptedGit([
       ["worktree list", ok("worktree /repo\n")],
-      ["ls-remote", fail()], // branch not on origin yet → creation
+      ["ls-remote", noSuchBranch()], // branch not on the remote yet → creation
     ]);
     const provisioned = await provisionWorkspace({
       isolation: "worktree",
@@ -185,7 +231,7 @@ describe("provisioning to the declared isolation model", () => {
   });
 
   it("runs a cwd dispatcher's checkout in the repo root and cuts no worktree", async () => {
-    const git = scriptedGit([["ls-remote", fail()]]);
+    const git = scriptedGit([["ls-remote", noSuchBranch()]]);
     const provisioned = await provisionWorkspace({
       isolation: "cwd",
       repoRoot: "/repo",
@@ -213,7 +259,7 @@ describe("provisioning to the declared isolation model", () => {
   it("fails loudly when git fails, rather than handing a dispatcher a workspace on the wrong branch", async () => {
     const git = scriptedGit([
       ["worktree list", ok("worktree /repo\n")],
-      ["ls-remote", fail()],
+      ["ls-remote", noSuchBranch()],
       ["fetch", fail("could not read from remote")],
     ]);
     await expect(
@@ -241,5 +287,154 @@ describe("provisioning to the declared isolation model", () => {
       }),
     ).rejects.toThrow(/worktree add/);
     expect(git).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("the branch-existence probe", () => {
+  /** Everything the provisioner did after the probe. */
+  const afterProbe = (calls: readonly { argv: readonly string[] }[]) =>
+    calls.map((c) => c.argv.join(" ")).filter((argv) => argv.startsWith("checkout"));
+
+  it("reads exit 2 — and only exit 2 — as 'the remote has no such branch'", async () => {
+    const git = scriptedGit([
+      ["worktree list", ok("worktree /repo\n")],
+      ["ls-remote", noSuchBranch()],
+    ]);
+    await provisionWorkspace({
+      isolation: "worktree",
+      repoRoot: "/repo",
+      entityId: "FIX-1",
+      branch: "fix/FIX-1",
+      git,
+    });
+    expect(afterProbe(git.calls)).toEqual(["checkout -B fix/FIX-1 origin/main"]);
+  });
+
+  // The one that costs commits. A 128 is git's code for "could not talk to the
+  // remote" — auth, DNS, a GitHub 5xx. Reading it as absence picks the creation
+  // plan, whose `checkout -B <branch> <remote>/<base>` RESETS a branch that may
+  // already carry a round of review fixes.
+  it.each([
+    [1, "a generic failure"],
+    [128, "an unreachable remote or bad credentials"],
+    [129, "a usage error"],
+  ])("refuses to provision when the probe exits %i (%s)", async (code) => {
+    const git = scriptedGit([
+      ["worktree list", ok("worktree /repo\n")],
+      ["ls-remote", probeFailed(code)],
+    ]);
+    await expect(
+      provisionWorkspace({
+        isolation: "worktree",
+        repoRoot: "/repo",
+        entityId: "FIX-1",
+        branch: "fix/FIX-1",
+        git,
+      }),
+    ).rejects.toBeInstanceOf(WorkspaceProvisionError);
+
+    // The precise regression: nothing was checked out, so no commit was reset.
+    expect(afterProbe(git.calls)).toEqual([]);
+    expect(git.calls.some((c) => c.argv[0] === "fetch")).toBe(false);
+  });
+
+  it("names the branch it could not resolve, so the failure is not mistaken for a missing branch", async () => {
+    const git = scriptedGit([
+      ["worktree list", ok("worktree /repo\n")],
+      ["ls-remote", probeFailed(128, "fatal: Authentication failed")],
+    ]);
+    const error = await provisionWorkspace({
+      isolation: "worktree",
+      repoRoot: "/repo",
+      entityId: "FIX-1",
+      branch: "fix/FIX-1",
+      git,
+    }).catch((thrown: unknown) => thrown as WorkspaceProvisionError);
+
+    expect(error).toBeInstanceOf(WorkspaceProvisionError);
+    expect(error.message).toContain("fix/FIX-1");
+    expect(error.stderr).toBe("fatal: Authentication failed");
+    expect(error.argv).toEqual(["ls-remote", "--exit-code", "--heads", "origin", "fix/FIX-1"]);
+  });
+
+  it("records the probe on the audit trail whether or not it answered", async () => {
+    const git = scriptedGit([
+      ["worktree list", ok("worktree /repo\n")],
+      ["ls-remote", noSuchBranch()],
+    ]);
+    const provisioned = await provisionWorkspace({
+      isolation: "worktree",
+      repoRoot: "/repo",
+      entityId: "FIX-1",
+      branch: "fix/FIX-1",
+      git,
+    });
+    expect(provisioned.ran.map((argv) => argv.join(" "))).toContain(
+      "ls-remote --exit-code --heads origin fix/FIX-1",
+    );
+  });
+});
+
+describe("provisioning against a non-origin remote", () => {
+  it("probes, fetches, and tracks the configured remote end to end", async () => {
+    const git = scriptedGit([
+      ["worktree list", ok("worktree /repo\n")],
+      ["ls-remote", noSuchBranch()],
+    ]);
+    await provisionWorkspace({
+      isolation: "worktree",
+      repoRoot: "/repo",
+      entityId: "FIX-1",
+      branch: "fix/FIX-1",
+      git,
+      remote: "upstream",
+    });
+
+    const argvs = git.calls.map((c) => c.argv.join(" "));
+    expect(argvs).toEqual([
+      "worktree list --porcelain",
+      "worktree add --detach /repo/.conductor/worktrees/FIX-1",
+      "ls-remote --exit-code --heads upstream fix/FIX-1",
+      "fetch upstream main",
+      "checkout -B fix/FIX-1 upstream/main",
+    ]);
+    // The regression: a checkout whose repo is `upstream` must never touch
+    // `origin`, which may be a fork or may not exist at all.
+    expect(argvs.some((argv) => argv.includes("origin"))).toBe(false);
+  });
+
+  it("re-enters an existing branch on the configured remote, not on origin", async () => {
+    const git = scriptedGit([
+      ["worktree list", ok("worktree /repo\n")],
+      ["ls-remote", ok("abc refs/heads/fix/FIX-1")],
+    ]);
+    await provisionWorkspace({
+      isolation: "worktree",
+      repoRoot: "/repo",
+      entityId: "FIX-1",
+      branch: "fix/FIX-1",
+      git,
+      remote: "upstream",
+    });
+    expect(git.calls.map((c) => c.argv.join(" "))).toContain(
+      "checkout -B fix/FIX-1 upstream/fix/FIX-1",
+    );
+  });
+
+  it("defaults to origin when the config names no remote", async () => {
+    const git = scriptedGit([
+      ["worktree list", ok("worktree /repo\n")],
+      ["ls-remote", noSuchBranch()],
+    ]);
+    await provisionWorkspace({
+      isolation: "worktree",
+      repoRoot: "/repo",
+      entityId: "FIX-1",
+      branch: "fix/FIX-1",
+      git,
+    });
+    expect(git.calls.map((c) => c.argv.join(" "))).toContain(
+      "ls-remote --exit-code --heads origin fix/FIX-1",
+    );
   });
 });

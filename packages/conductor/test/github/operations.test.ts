@@ -20,7 +20,12 @@ import {
 } from "../../src/github/operations";
 import { BASE_URL, OWNER, REPO, SELF_LOGIN, createFakeGitHub } from "./fixtures";
 
-function setup(options: { readonly labels?: readonly string[] } = {}) {
+function setup(
+  options: {
+    readonly labels?: readonly string[];
+    readonly labelDeleteStatus?: number;
+  } = {},
+) {
   const github = createFakeGitHub(options);
   const client = createGitHubClient({
     owner: OWNER,
@@ -154,6 +159,53 @@ describe("ordinary operations", () => {
       remove: ["conductor:spec", "never-applied"],
     });
     expect(result.labels).toEqual(["conductor:implementation"]);
+  });
+
+  // A label removal that fails for any reason OTHER than the label already
+  // being gone leaves the PR in a state conductor did not ask for. The read
+  // that follows still succeeds, so resolving normally here would hand the
+  // caller a "labels are now X" answer while the label is still on the PR —
+  // and conductor's labels are how a phase's state is published.
+  it.each([401, 403, 429, 500, 502])(
+    "surfaces a %i on label removal instead of reporting a mutation that never landed",
+    async (status) => {
+      const { client } = setup({
+        labels: ["conductor:spec"],
+        labelDeleteStatus: status,
+      });
+
+      await expect(
+        setLabels(client, {
+          pullNumber: 7,
+          add: ["conductor:implementation"],
+          remove: ["conductor:spec"],
+        }),
+      ).rejects.toBeInstanceOf(GitHubApiError);
+    },
+  );
+
+  it("still treats a 404 as the requested end state — the label was already gone", async () => {
+    const { client } = setup({ labels: ["conductor:spec"], labelDeleteStatus: 404 });
+    const result = await setLabels(client, {
+      pullNumber: 7,
+      remove: ["never-applied"],
+    });
+    // No throw, and the read still answers.
+    expect(result.labels).toEqual(["conductor:spec"]);
+  });
+
+  it("does not apply the adds after a failed removal — a half-applied label set is worse than none", async () => {
+    const { github, client } = setup({ labels: ["conductor:spec"], labelDeleteStatus: 403 });
+
+    await expect(
+      setLabels(client, {
+        pullNumber: 7,
+        add: ["conductor:implementation"],
+        remove: ["conductor:spec"],
+      }),
+    ).rejects.toBeInstanceOf(GitHubApiError);
+
+    expect(github.labels()).toEqual(["conductor:spec"]);
   });
 });
 

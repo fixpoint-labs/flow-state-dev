@@ -147,7 +147,16 @@ export interface FakeGitHub {
  * responding to feedback, so the double has to be able to produce it.
  */
 export function createFakeGitHub(
-  options: { readonly labels?: readonly string[] } = {},
+  options: {
+    readonly labels?: readonly string[];
+    /**
+     * Answer every label DELETE with this status instead of removing it — the
+     * 401 / 403 / 429 / 5xx a real GitHub returns when a removal does not
+     * happen. The subsequent label read still succeeds, which is exactly what
+     * makes a swallowed failure look like a completed mutation.
+     */
+    readonly labelDeleteStatus?: number;
+  } = {},
 ): FakeGitHub {
   const calls: string[] = [];
   const reviews: FakeReview[] = [];
@@ -233,6 +242,9 @@ export function createFakeGitHub(
 
     const labelMatch = /\/issues\/\d+\/labels\/(.+)$/.exec(path);
     if (method === "DELETE" && labelMatch) {
+      if (options.labelDeleteStatus !== undefined) {
+        return jsonResponse(options.labelDeleteStatus, { message: "label removal refused" });
+      }
       const name = decodeURIComponent(labelMatch[1]!);
       if (!labels.includes(name)) return jsonResponse(404, { message: "Label does not exist" });
       labels = labels.filter((label) => label !== name);
