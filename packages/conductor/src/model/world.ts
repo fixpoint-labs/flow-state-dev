@@ -100,7 +100,17 @@ export const DEFAULT_POLICY: ConductorPolicy = {
  * and in some gate's `reads`.
  */
 export interface World {
-  /** Artifacts belonging to the entity being decided, newest last. */
+  /**
+   * Artifacts belonging to the entity being decided, **newest last**.
+   *
+   * The ordering is load-bearing, not documentation: an issue can hold more
+   * than one artifact of a kind — a replacement PR after the first was closed,
+   * a multi-PR build plan — and {@link artifactOfKind} resolves "the one this
+   * phase is working on" as the last of its kind. The producer appends in
+   * ledger order, which is that order. Reversing it silently points every gate,
+   * every PR-signal scope check, and every review-round count at a dead
+   * artifact.
+   */
   readonly artifacts: readonly ArtifactFacts[];
   /** PR facts keyed by PR number, for every PR any artifact is hosted at. */
   readonly pullRequests: Readonly<Record<number, PullRequestFacts>>;
@@ -113,12 +123,22 @@ export interface World {
   readonly policy: ConductorPolicy;
 }
 
-/** The artifact of a given kind for this entity, or `undefined`. */
+/**
+ * The **active** artifact of a given kind for this entity, or `undefined`.
+ *
+ * Active means newest, because `World.artifacts` is newest-last and a second
+ * artifact of a kind supersedes the first. Taking the oldest instead would gate
+ * an issue on a PR that has already been closed or merged, scope incoming PR
+ * signals to it, and count review rounds against it — and, worst of the three,
+ * an already-merged first implementation would satisfy `awaiting_goal_check`
+ * while the work that replaced it was still open.
+ */
 export function artifactOfKind(
   world: World,
   kind: ArtifactKind,
 ): ArtifactFacts | undefined {
-  return world.artifacts.find((a) => a.kind === kind);
+  const matching = world.artifacts.filter((a) => a.kind === kind);
+  return matching.at(-1);
 }
 
 /** The PR an artifact is hosted at, or `undefined` when it is file-hosted or absent. */
@@ -131,18 +151,70 @@ export function prForArtifact(
 }
 
 /**
- * True when a human approved the PR **at its current head**. A stale approval
- * against an older SHA does not satisfy a gate — this is the one check that
- * keeps "approved" from meaning "was approved once, before the last push".
+ * Each human's **current position** on the PR at its head, one review per
+ * reviewer, oldest position first.
+ *
+ * GitHub keeps every review ever submitted, so a reviewer who approves and then
+ * submits `CHANGES_REQUESTED` against the same head SHA leaves both records
+ * standing. Asking "is there an approval in this list?" therefore answers a
+ * question nobody asked: it reports that someone approved *at some point*, not
+ * that anyone approves *now*. Collapsing to the latest review per reviewer is
+ * what makes a withdrawn approval actually withdraw.
+ *
+ * `COMMENTED` is skipped rather than counted as a position, matching GitHub's
+ * own model: leaving a comment does not retract an approval or a change
+ * request. Only the two stateful verdicts move a reviewer's position.
  */
-export function hasFreshHumanApproval(pr: PullRequestFacts | undefined): boolean {
-  if (!pr) return false;
-  return pr.reviews.some(
-    (r) => r.isHuman && r.state === "APPROVED" && r.sha === pr.headSha,
-  );
+export function effectiveHumanReviewsAtHead(
+  pr: PullRequestFacts | undefined,
+): readonly ReviewFacts[] {
+  if (!pr) return [];
+  const latest = new Map<string, ReviewFacts>();
+  for (const r of pr.reviews) {
+    if (!r.isHuman || r.sha !== pr.headSha) continue;
+    if (r.state !== "APPROVED" && r.state !== "CHANGES_REQUESTED") continue;
+    const prior = latest.get(r.reviewer);
+    // `<=` so equal timestamps fall back to GitHub's own ordering of the list.
+    if (!prior || prior.at <= r.at) latest.set(r.reviewer, r);
+  }
+  return [...latest.values()]
+    .slice()
+    .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
 }
 
-/** True when any human has reviewed the PR at its current head, in any state. */
+/**
+ * The approvals that **stand right now** at the PR's head, oldest first. Empty
+ * when every approval has been superseded by its own author or is stale.
+ */
+export function freshHumanApprovals(
+  pr: PullRequestFacts | undefined,
+): readonly ReviewFacts[] {
+  return effectiveHumanReviewsAtHead(pr).filter((r) => r.state === "APPROVED");
+}
+
+/**
+ * True when a human approves the PR **at its current head, right now**.
+ *
+ * Two ways an approval fails to count, and both matter. A stale approval
+ * against an older SHA is not an approval — this is the check that keeps
+ * "approved" from meaning "was approved once, before the last push". And a
+ * reviewer who has since requested changes on the same head no longer approves,
+ * whatever GitHub's retained history still says.
+ */
+export function hasFreshHumanApproval(pr: PullRequestFacts | undefined): boolean {
+  return freshHumanApprovals(pr).length > 0;
+}
+
+/**
+ * True when any human has reviewed the PR at its current head, in any state.
+ *
+ * Deliberately *not* collapsed to current positions the way
+ * {@link hasFreshHumanApproval} is. This answers "has a human looked at it
+ * yet?", and a `COMMENTED` review — or an approval a reviewer later withdrew —
+ * is proof that one did. Collapsing here would send an issue back to
+ * `awaiting_spec_review` after a change request, asking for a review that has
+ * already happened.
+ */
 export function hasHumanReviewAtHead(pr: PullRequestFacts | undefined): boolean {
   if (!pr) return false;
   return pr.reviews.some((r) => r.isHuman && r.sha === pr.headSha);

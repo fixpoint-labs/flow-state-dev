@@ -166,6 +166,10 @@ export function reconcile(input: ReconcileInput): Signal[] {
         synthesized: true,
         conclusion: pr.checks,
         sha: pr.headSha,
+        // Which PR the checks ran on. `readWorld` reads every PR the entity
+        // owns, spec included, so an unscoped conclusion from the spec PR would
+        // reduce as a failure of the implementation branch.
+        pullNumber: pr.number,
       });
     }
 

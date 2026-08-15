@@ -34,6 +34,7 @@ import { artifactKindForPhase, phaseDefinition } from "../model/phases";
 import type { ReviewStateSignal, Signal } from "../model/signals";
 import {
   artifactOfKind,
+  freshHumanApprovals,
   type ArtifactFacts,
   type PullRequestFacts,
   type World,
@@ -55,25 +56,43 @@ function activeArtifact(
 }
 
 /**
- * Drop a PR-bound signal that belongs to a different PR than the one this phase
- * is working on — a late approval on a spec PR must not advance an
- * implementation.
+ * Drop a signal that is about something other than the artifact this phase is
+ * working on — a late approval on a spec PR must not advance an implementation,
+ * and neither must a check that failed on it.
  *
- * Deliberately lenient when the artifact is not in the snapshot yet: a
- * backdated `pr_opened` synthesized by reconciliation arrives precisely because
- * conductor had no record of that PR, and dropping it would defeat the recovery
- * it exists for.
+ * Two scopes, because a signal can miss in two ways:
+ *
+ * - **By PR.** The signal names a pull request the phase does not own.
+ * - **By SHA**, for `ci_concluded` specifically. Its `pullNumber` is optional
+ *   (a check-run webhook does not always name a PR), so the PR test alone would
+ *   let every unscoped conclusion through — the hole that let a spec PR's red
+ *   check dispatch `addressFeedback` against the implementation. A conclusion
+ *   for a commit that is not the active PR's head is stale whatever produced it:
+ *   it grades code that has already been superseded.
+ *
+ * Deliberately lenient when the artifact or its PR is not in the snapshot yet:
+ * a backdated `pr_opened` synthesized by reconciliation arrives precisely
+ * because conductor had no record of that PR, and dropping it would defeat the
+ * recovery it exists for.
  */
 function belongsToThisPhase(
   entity: ConductorEntity,
   signal: Signal,
   world: World,
 ): boolean {
-  const signalPr = signalPullNumber(signal);
-  if (signalPr === undefined) return true;
   const artifact = activeArtifact(entity, world);
-  if (!artifact || artifact.hostedAt.type !== "pr") return true;
-  return artifact.hostedAt.number === signalPr;
+  const hostPr =
+    artifact && artifact.hostedAt.type === "pr" ? artifact.hostedAt.number : undefined;
+
+  const signalPr = signalPullNumber(signal);
+  if (signalPr !== undefined && hostPr !== undefined && hostPr !== signalPr) return false;
+
+  if (signal.kind === "ci_concluded" && hostPr !== undefined) {
+    const pr = world.pullRequests[hostPr];
+    if (pr && signal.sha !== pr.headSha) return false;
+  }
+
+  return true;
 }
 
 /** The PR facts behind the entity's active artifact, when it is hosted on one. */
@@ -210,28 +229,44 @@ function withoutFreshHumanApproval(world: World): World {
 }
 
 /**
- * The ledger entry for a human approval that released a gate, or `undefined`
- * when this approval released nothing — a stale one against an older head, a
- * bot's, or a duplicate arriving after the gate had already moved on.
+ * The gate a standing human approval released in this world, or `undefined`
+ * when no gate turns on one — a stale approval against an older head, a bot's,
+ * one its own author has since withdrawn, or a duplicate arriving after the
+ * gate had already moved on.
  *
- * The released gate is **derived, not named**: it is the gate that is satisfied
- * in this world and would not be without the approval. Naming it would get
+ * The gate is **derived, not named**: it is the gate that is satisfied in this
+ * world and would not be without the approval. Naming it would get
  * `IMPLEMENTATION` wrong, whose approval releases `awaiting_review` in the
  * middle of the table rather than its last gate, and a phase added later could
  * forget to name one at all — which is exactly how the record goes missing.
+ *
+ * Only gates that declare `artifact.reviews` are candidates. That is not an
+ * optimization: the tick materializes exactly what a phase declares, so a phase
+ * whose gates never asked for reviews is handed an empty list, and normalizing
+ * its snapshot would be reading a fact that was never fetched.
  */
+function gateReleasedByApproval(
+  entity: ConductorEntity,
+  world: World,
+): RecordApprovalAction["gate"] | undefined {
+  const def = phaseDefinition(entity.kind, entity.phase);
+  if (!def) return undefined;
+  const candidates = def.gates.filter((g) => g.reads.includes("artifact.reviews"));
+  if (candidates.length === 0) return undefined;
+  const before = withoutFreshHumanApproval(world);
+  const released = candidates.filter(
+    (g) => g.appliesWhen(world) && g.satisfiedBy(world) && !g.satisfiedBy(before),
+  );
+  return released.at(-1)?.name;
+}
+
+/** The ledger entry for the approval this signal reports, when it released a gate. */
 function approvalRecordFor(
   entity: ConductorEntity,
   signal: ReviewStateSignal,
   world: World,
 ): RecordApprovalAction | undefined {
-  const def = phaseDefinition(entity.kind, entity.phase);
-  if (!def) return undefined;
-  const before = withoutFreshHumanApproval(world);
-  const released = def.gates.filter(
-    (g) => g.appliesWhen(world) && g.satisfiedBy(world) && !g.satisfiedBy(before),
-  );
-  const gate = released.at(-1)?.name;
+  const gate = gateReleasedByApproval(entity, world);
   if (!gate) return undefined;
   return {
     kind: "recordApproval",
@@ -239,6 +274,36 @@ function approvalRecordFor(
     gate,
     reviewer: signal.reviewer,
     sha: signal.sha,
+  };
+}
+
+/**
+ * The same entry, reconstructed from the snapshot when the signal in hand is
+ * *not* the approval — because the approval was already in the world by the
+ * time conductor reduced anything.
+ *
+ * That is the ordinary shape of a first poll: reconciliation replays the missed
+ * `pr_opened` ahead of the approval that revealed it, and the snapshot both are
+ * reduced against already carries the approval. Completing the phase on the
+ * `pr_opened` and leaving the record to the later `approved` loses it outright
+ * — by then the entity is in the next phase, where the approval releases
+ * nothing and cannot be credited. The release is a fact about the world, so it
+ * is recoverable from the world.
+ */
+function approvalRecordFromWorld(
+  entity: ConductorEntity,
+  world: World,
+): RecordApprovalAction | undefined {
+  const gate = gateReleasedByApproval(entity, world);
+  if (!gate) return undefined;
+  const approval = freshHumanApprovals(activePr(entity, world)).at(-1);
+  if (!approval) return undefined;
+  return {
+    kind: "recordApproval",
+    entityId: entity.id,
+    gate,
+    reviewer: approval.reviewer,
+    sha: approval.sha,
   };
 }
 

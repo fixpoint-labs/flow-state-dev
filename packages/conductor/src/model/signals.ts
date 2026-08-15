@@ -67,11 +67,25 @@ export interface SignalBase {
   readonly synthesized?: boolean;
 }
 
-/** CI concluded on a head SHA. */
+/**
+ * CI concluded on a head SHA.
+ *
+ * `pullNumber` scopes the conclusion to the PR it ran on, for the same reason
+ * {@link ReviewStateSignal} carries it: an issue in `IMPLEMENTATION` still has
+ * its spec PR sitting there, and conductor reads both. Without the scope, a
+ * check failing on the spec PR reduces as a failure of the implementation and
+ * dispatches an agent to fix code that is fine.
+ *
+ * Optional, because a check-run webhook does not always name a PR and because
+ * ledger rows written before this field existed must still parse. When it is
+ * absent the `sha` still scopes the signal — `decide` rejects a conclusion
+ * whose SHA is not the active artifact's head.
+ */
 export interface CiConcludedSignal extends SignalBase {
   readonly kind: "ci_concluded";
   readonly conclusion: "success" | "failure";
   readonly sha: string;
+  readonly pullNumber?: number;
 }
 
 /**
@@ -181,6 +195,8 @@ export const signalSchema: z.ZodType<Signal> = z.discriminatedUnion("kind", [
     kind: z.literal("ci_concluded"),
     conclusion: z.enum(["success", "failure"]),
     sha: z.string(),
+    // Optional so a row written before the field existed still parses (BP-030).
+    pullNumber: z.number().int().optional(),
   }),
   z.object({
     ...base,
