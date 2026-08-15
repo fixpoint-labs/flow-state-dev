@@ -22,7 +22,7 @@
  * catch. The mirror of that rule: cost and usage are reported on failed runs
  * too, because the tokens were still spent.
  */
-import { ClaudeAgentSdkNotInstalledError } from "./errors";
+import { ClaudeAgentSdkNotInstalledError, describeThrown } from "./errors";
 import { readTerminalResult, type SdkTokenUsage } from "./result";
 import { defaultResolveClaudeAgentQuery } from "./sdk-client";
 import type {
@@ -218,7 +218,7 @@ export async function runClaudeHeadless(
     const message =
       error instanceof ClaudeAgentSdkNotInstalledError
         ? error.message
-        : `Could not load the Claude Agent SDK: ${(error as Error).message}`;
+        : `Could not load the Claude Agent SDK: ${describeThrown(error)}`;
     return failed(message);
   }
 
@@ -277,7 +277,7 @@ export async function runClaudeHeadless(
         sessionId,
       });
     }
-    return failed(`The Claude Code run failed: ${(error as Error).message}`, { sessionId });
+    return failed(`The Claude Code run failed: ${describeThrown(error)}`, { sessionId });
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }

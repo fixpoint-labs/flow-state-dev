@@ -336,6 +336,37 @@ describe("recording the gate releases a human owns", () => {
     expect(kinds(first)).toEqual(["recordApproval"]);
     expect(second).toEqual(first);
   });
+
+  it("credits the approval that actually released the gate, not the signal that happened to arrive", () => {
+    // Alice approved at the head and that is what opened `awaiting_review`. Bob's
+    // approval against an older SHA arrives late and releases nothing — it is
+    // already stale by the time it is reduced. Taking the gate from the world and
+    // the reviewer from the signal is two sources of truth for one fact, and the
+    // ledger would name Bob at a SHA nobody approved: a row asserting a human
+    // release that never happened, on the one transition a human actually
+    // authorized.
+    const w = worldWith(
+      "implementation",
+      pr({
+        checks: "success",
+        reviews: [
+          freshApproval(),
+          review({ id: "rev-bob", reviewer: "bob", state: "APPROVED", sha: "sha-old" }),
+        ],
+      }),
+    );
+    expect(
+      decide(issue("IMPLEMENTATION"), signal("approved", { reviewer: "bob", sha: "sha-old" }), w),
+    ).toEqual([
+      {
+        kind: "recordApproval",
+        entityId: ENTITY_ID,
+        gate: "awaiting_review",
+        reviewer: "alice",
+        sha: HEAD,
+      },
+    ]);
+  });
 });
 
 describe("review-round budgets", () => {

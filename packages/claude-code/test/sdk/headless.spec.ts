@@ -236,6 +236,32 @@ describe("runClaudeHeadless", () => {
     expect(abortedSignal?.aborted).toBe(true);
   });
 
+  it("settles as failed when the SDK seam rejects with a non-Error, rather than throwing out of its own catch", async () => {
+    // `null` and `undefined` are what a badly-behaved seam or a rejected
+    // `Promise.reject()` actually carries. Reading `.message` off one throws a
+    // fresh TypeError *from the handler that exists to settle the failure*, so
+    // the caller's ledger loses the dispatch entirely instead of recording it.
+    const resolveAgent: ResolveClaudeAgentQuery = () => Promise.reject(null);
+    const run = await runClaudeHeadless({ prompt: "p", resolveAgent });
+    expect(run.ok).toBe(false);
+    expect(run.error).toContain("null");
+    expect(run.error).toContain("Claude Agent SDK");
+  });
+
+  it("settles as failed when the run rejects mid-stream with a non-Error", async () => {
+    const resolveAgent: ResolveClaudeAgentQuery = () => ({
+      query: async function* (): AsyncGenerator<SdkMessageLike> {
+        yield { type: "system", subtype: "init", session_id: "sess-partial" };
+        // Not `new Error(...)` — a string is the case the `.message` read misses.
+        throw "the harness rejected with a string";
+      },
+    });
+    const run = await runClaudeHeadless({ prompt: "p", resolveAgent });
+    expect(run.ok).toBe(false);
+    expect(run.error).toContain("the harness rejected with a string");
+    expect(run.sessionId).toBe("sess-partial");
+  });
+
   it("settles as failed when the stream ends without a terminal result", async () => {
     const { resolveAgent } = scriptedAgent([
       { type: "system", subtype: "init", session_id: "sess-truncated" },

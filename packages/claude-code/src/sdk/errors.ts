@@ -1,8 +1,26 @@
 /**
- * Typed errors for the in-process Agent SDK path (`./sdk`). Both carry a stable
- * `code` so hosts and the orchestrator can branch on the failure class without
- * string-matching messages, mirroring the CLI path's error-class style.
+ * The error vocabulary of the in-process Agent SDK path (`./sdk`): the two typed
+ * errors this path throws, and the one reader that turns something *else* threw
+ * into text. Both classes carry a stable `code` so hosts and the orchestrator can
+ * branch on the failure class without string-matching messages, mirroring the CLI
+ * path's error-class style.
  */
+
+/**
+ * A thrown value as text a human can act on.
+ *
+ * `catch` binds `unknown`, and a rejected promise carries whatever it was
+ * rejected with — `null`, `undefined`, and a bare string are all real. Reading
+ * `.message` off one of those throws a fresh `TypeError` out of the handler that
+ * exists to *contain* the failure, or quietly yields `undefined` and loses what
+ * happened. Both matter here because this path backs surfaces whose contract is
+ * to settle rather than throw (`runClaudeHeadless`, and conductor's `Dispatcher`
+ * behind it): a thrown exception skips the caller's ledger and loses the
+ * transition, where a settled failure is recorded and escalated.
+ */
+export function describeThrown(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
 
 /**
  * The optional `@anthropic-ai/claude-agent-sdk` peer dependency is not

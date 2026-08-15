@@ -31,7 +31,7 @@
 
 import type { Action, ActionBase, RecordApprovalAction } from "../model/actions";
 import { artifactKindForPhase, phaseDefinition } from "../model/phases";
-import type { ReviewStateSignal, Signal } from "../model/signals";
+import type { Signal } from "../model/signals";
 import {
   artifactOfKind,
   freshHumanApprovals,
@@ -263,35 +263,33 @@ function gateReleasedByApproval(
   return released.at(-1)?.name;
 }
 
-/** The ledger entry for the approval this signal reports, when it released a gate. */
-function approvalRecordFor(
-  entity: ConductorEntity,
-  signal: ReviewStateSignal,
-  world: World,
-): RecordApprovalAction | undefined {
-  const gate = gateReleasedByApproval(entity, world);
-  if (!gate) return undefined;
-  return {
-    kind: "recordApproval",
-    entityId: entity.id,
-    gate,
-    reviewer: signal.reviewer,
-    sha: signal.sha,
-  };
-}
-
 /**
- * The same entry, reconstructed from the snapshot when the signal in hand is
- * *not* the approval — because the approval was already in the world by the
- * time conductor reduced anything.
+ * The ledger entry for the approval that released a gate in this world.
  *
- * That is the ordinary shape of a first poll: reconciliation replays the missed
- * `pr_opened` ahead of the approval that revealed it, and the snapshot both are
- * reduced against already carries the approval. Completing the phase on the
- * `pr_opened` and leaving the record to the later `approved` loses it outright
- * — by then the entity is in the next phase, where the approval releases
- * nothing and cannot be credited. The release is a fact about the world, so it
- * is recoverable from the world.
+ * **Read entirely from the snapshot, never from the signal in hand** — including
+ * when that signal *is* an `approved`. The gate is derived from the world (see
+ * {@link gateReleasedByApproval}), so taking the reviewer and SHA from the
+ * signal would make one ledger row out of two sources of truth, and they
+ * disagree the moment a signal arrives late: Alice's approval at the head opens
+ * the gate, Bob's delayed approval against an older SHA arrives and releases
+ * nothing, and the row credits Bob at a SHA nobody approved. Signals are
+ * explicitly allowed to arrive out of order and be replayed, so that is an
+ * ordinary arrival, not a corner case. One source for the gate and the reviewer
+ * both, and the two can never disagree.
+ *
+ * Reading from the world is also what makes the record survive an approval that
+ * landed before conductor was watching. That is the ordinary shape of a first
+ * poll: reconciliation replays the missed `pr_opened` ahead of the approval that
+ * revealed it, and the snapshot both are reduced against already carries the
+ * approval. Completing the phase on the `pr_opened` and leaving the record to
+ * the later `approved` loses it outright — by then the entity is in the next
+ * phase, where the approval releases nothing and cannot be credited.
+ *
+ * The credited approval is the newest one standing at the head, taken from the
+ * same `freshHumanApprovals` list `hasFreshHumanApproval` gates on: an approval
+ * that has been withdrawn or outranked by its author's own change request is not
+ * in the list at all, and when several stand it is the last to land that turned
+ * the gate.
  */
 function approvalRecordFromWorld(
   entity: ConductorEntity,
@@ -359,15 +357,15 @@ export function decide(
   // only on the completing path loses the approval that opened `awaiting_merge`
   // entirely, and with it the ledger's ability to replay that release.
   const approval =
-    signal.kind === "approved" ? approvalRecordFor(entity, signal, world) : undefined;
+    signal.kind === "approved" ? approvalRecordFromWorld(entity, world) : undefined;
 
   // Advance before consulting the gate table, so the signal that *completes* a
   // phase advances it rather than being absorbed by the gate it just released.
   //
-  // The record comes from the snapshot when this signal is not itself the
-  // approval, because the approval may have landed before conductor was
-  // watching — see `approvalRecordFromWorld`. Whatever completes the phase, the
-  // human release that got it there is written down exactly once.
+  // The record always comes from the snapshot, whatever signal is in hand — the
+  // approval may even have landed before conductor was watching. See
+  // `approvalRecordFromWorld`. Whatever completes the phase, the human release
+  // that got it there is written down exactly once.
   if (isPhaseComplete(entity, world) && def.next) {
     const record = approval ?? approvalRecordFromWorld(entity, world);
     const actions: Action[] = [];
