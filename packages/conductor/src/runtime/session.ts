@@ -33,7 +33,7 @@
 
 import path from "node:path";
 
-import { createGitHubClient } from "../github/client";
+import { createGitHubClient, restBaseUrlForHost } from "../github/client";
 import { githubObserver } from "../github/observe";
 import { defaultGitRunner } from "../config/discover";
 import type { ResolvedConductor } from "../config/define";
@@ -287,6 +287,11 @@ export async function openConductor(input: OpenConductorInput): Promise<Conducto
         owner: config.repo.owner,
         repo: config.repo.repo,
         token: config.token,
+        // The host is discovered alongside the owner and the repo, and dropping
+        // it here aimed every read at public GitHub — which 404s for a private
+        // Enterprise repo, or answers with an unrelated public one of the same
+        // name.
+        baseUrl: restBaseUrlForHost(config.repo.host),
       }),
     );
 

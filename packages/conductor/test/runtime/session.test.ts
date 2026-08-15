@@ -16,6 +16,11 @@
  * atomic rename writes one record over the other and the stored counts agree
  * whether the paid work ran once or twice. The dispatcher is the only witness
  * that cannot be overwritten.
+ *
+ * The other property the handle owns is **which GitHub the default observer
+ * talks to**, which no caller can see either: the client is built inside
+ * `openConductor` and never handed back, so only a test that watches `fetch`
+ * can tell whether the configured host reached the wire.
  */
 
 import fs from "node:fs/promises";
@@ -139,5 +144,76 @@ describe("two sessions that spell the same state directory differently", () => {
     // here is the duplicate the per-entity lock exists to prevent, arrived at
     // by spelling rather than by racing.
     expect(dispatcher.actionsRun()).toEqual(["implement"]);
+  });
+});
+
+/**
+ * Every URL the default observer asked for, opening on a repo at `host`.
+ *
+ * The client is built inside `openConductor` and never handed back, so `fetch`
+ * is the only place the host it settled on becomes visible. Every call is
+ * refused, which is enough: the URL is chosen before the response, and both
+ * reads are caught so what is asserted is where they were addressed.
+ */
+async function urlsPolledForHost(host: string): Promise<string[]> {
+  repo = await createTestRepo();
+  statePath = await fs.mkdtemp(path.join(os.tmpdir(), "conductor-session-"));
+
+  const requested: string[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = ((input: string) => {
+    requested.push(String(input));
+    return Promise.resolve(new Response("{}", { status: 404 }));
+  }) as typeof globalThis.fetch;
+
+  try {
+    const session = await openConductor({
+      config: {
+        ...configFor(fakeDispatcher({ isolation: "remote", results: [] })),
+        repo: { host, owner: "fixpoint-labs", repo: "flow-state-dev" },
+        token: "t",
+      },
+      statePath,
+      git: repo.git,
+      now: testClock(),
+    });
+
+    await session
+      .manage({
+        id: ENTITY,
+        kind: "issue",
+        issueType: "Bug",
+        phase: "IMPLEMENTATION",
+        summary: "Add a `reverse` operation to the registry.",
+      })
+      .catch(() => undefined);
+    await session.tick(ENTITY).catch(() => undefined);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+
+  expect(requested.length).toBeGreaterThan(0);
+  return requested;
+}
+
+describe("which GitHub the default observer polls", () => {
+  it("addresses the Enterprise host's REST API when the repo lives on one", async () => {
+    const requested = await urlsPolledForHost("ghe.example.com");
+
+    // Reading an unrelated *public* repo of the same owner and name is the
+    // worse half of this bug — a 404 at least stops — so public GitHub is
+    // asserted absent rather than left implied by the prefix check.
+    expect(requested.filter((url) => url.includes("api.github.com"))).toEqual([]);
+    for (const url of requested) {
+      expect(url.startsWith("https://ghe.example.com/api/v3/")).toBe(true);
+    }
+  });
+
+  it("still addresses api.github.com for a repo on public github.com", async () => {
+    // Public GitHub serves its API from a host the remote never names, so the
+    // `github.com` case cannot be derived by the same rule as the rest.
+    for (const url of await urlsPolledForHost("github.com")) {
+      expect(url.startsWith("https://api.github.com/")).toBe(true);
+    }
   });
 });

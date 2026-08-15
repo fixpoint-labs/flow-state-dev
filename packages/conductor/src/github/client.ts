@@ -99,6 +99,36 @@ const BODY_LIMIT = 1000;
 /** Default GitHub REST base. Overridable for GitHub Enterprise and for tests. */
 const DEFAULT_BASE_URL = "https://api.github.com";
 
+/** The host public GitHub is served from, as a git remote spells it. */
+const PUBLIC_GITHUB_HOST = "github.com";
+
+/**
+ * The REST base a repository's host is reached at.
+ *
+ * Public GitHub serves its API from a *different* host than its remotes
+ * (`api.github.com` against `github.com`); GitHub Enterprise Server serves it
+ * from the same host under a path, `https://<host>/api/v3`, which is what
+ * GitHub's own docs say to substitute for `https://api.github.com`. Both forms
+ * satisfy the one thing {@link createGitHubClient} needs of a `baseUrl`: every
+ * path it builds — `/repos/{owner}/{repo}/…` and `/user` — is appended to it
+ * whole.
+ *
+ * Called with the host conductor discovered from the git remote, so **an
+ * unrecognized host is an Enterprise host** rather than an error. Guessing wrong
+ * here fails loudly on the first request against a host that is genuinely
+ * conductor's repository; refusing to guess would strand every Enterprise
+ * install on the default, which fails *silently* by reading an unrelated public
+ * repository of the same name.
+ *
+ * Not covered: a GitHub Enterprise Cloud data-residency tenant, whose API lives
+ * at `https://api.<tenant>.ghe.com` rather than under `/api/v3`. Conductor's
+ * config carries a host and no REST base to override it with, so that case
+ * needs a config field it does not have yet.
+ */
+export function restBaseUrlForHost(host: string): string {
+  return host === PUBLIC_GITHUB_HOST ? DEFAULT_BASE_URL : `https://${host}/api/v3`;
+}
+
 export interface GitHubClientOptions extends IdentityOptions {
   readonly owner: string;
   readonly repo: string;
