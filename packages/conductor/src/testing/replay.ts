@@ -190,6 +190,10 @@ export async function replay(script: ReplayScript): Promise<ReplayResult> {
             entityId: entity.id,
             at: signal.at,
             dispatchId: brief.dispatchId,
+            // Carried for the same reason the tick carries it: an escalation
+            // names the cause, so a replay that dropped it would produce a
+            // different transition from the runtime it stands in for.
+            detail: result.error,
           },
           derived: true,
         });

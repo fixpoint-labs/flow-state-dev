@@ -984,8 +984,8 @@ describe("a phase that finishes without waiting on anything", () => {
 
   it("does not let a completed phase swallow an escalation", () => {
     // The other half of the ordering. A universal signal that answers keeps its
-    // answer — a dispatch that exhausted its attempts is a human's problem
-    // whether or not the phase it was working for has since completed.
+    // answer — a dispatch that failed is a human's problem whether or not the
+    // phase it was working for has since completed.
     const w = worldWith("spec", pr({ reviews: [freshApproval()] }));
     expect(kinds(decide(issue("SPEC"), signal("dispatch_failed"), w))).toEqual([
       "escalate",
@@ -1057,9 +1057,76 @@ describe("an approval that landed before conductor was watching", () => {
 });
 
 describe("escalation", () => {
-  it("escalates when a dispatch exhausts its attempts", () => {
+  /** The reason an escalation carries, or `null` when it produced none. */
+  const reasonOf = (actions: Action[]): string | null => {
+    const escalation = actions.find((a) => a.kind === "escalate");
+    return escalation && "reason" in escalation ? escalation.reason : null;
+  };
+
+  it("escalates a dispatch that failed — conductor never retries, so a human is the only next step", () => {
     const actions = decide(issue("SPEC"), signal("dispatch_failed"), worldWith("spec", pr()));
     expect(kinds(actions)).toEqual(["escalate"]);
+  });
+
+  // The escalation used to read `Dispatch <id> exhausted its attempts.` for
+  // every failure. Conductor deliberately never retries, so that sentence was
+  // false in every case it was ever written — it describes a mechanism that does
+  // not exist, and it describes it to the one person being asked to intervene.
+  it("names what actually failed, instead of reporting a retry exhaustion that never happened", () => {
+    const actions = decide(
+      issue("SPEC"),
+      signal("dispatch_failed", { detail: "spawn claude ENOENT" }),
+      worldWith("spec", pr()),
+    );
+    expect(actions).toEqual([
+      {
+        kind: "escalate",
+        entityId: ENTITY_ID,
+        reason: "Dispatch d1 failed: spawn claude ENOENT",
+      },
+    ]);
+    expect(reasonOf(actions)).not.toMatch(/attempt|exhaust|retr/i);
+  });
+
+  // The distinction the ledger could not make. A credential that never reached
+  // the agent process and an agent that could not do the work want opposite
+  // responses from an operator, and both used to arrive as the same sentence.
+  it("tells a harness that never ran apart from an agent that could not do the work", () => {
+    const brokenHarness = decide(
+      issue("SPEC"),
+      signal("dispatch_failed", {
+        detail: 'git fetch origin main failed in /repo (exit 128).',
+      }),
+      worldWith("spec", pr()),
+    );
+    const brokenWork = decide(
+      issue("SPEC"),
+      signal("dispatch_failed", {
+        detail: "the agent stopped after 40 turns without opening a pull request",
+      }),
+      worldWith("spec", pr()),
+    );
+    expect(reasonOf(brokenHarness)).toContain("exit 128");
+    expect(reasonOf(brokenWork)).toContain("40 turns");
+    expect(reasonOf(brokenHarness)).not.toBe(reasonOf(brokenWork));
+  });
+
+  // BP-030, from the reading side: a row written before the signal carried a
+  // reason is a row the ledger still has to replay. Absent and explicitly null
+  // are the same fact — the dispatch said nothing — and neither may be rendered
+  // as the string "undefined" at a human.
+  it.each([
+    ["absent", {}],
+    ["null", { detail: null }],
+    ["undefined", { detail: undefined }],
+  ])("says the record holds no reason when the detail is %s, rather than inventing one", (_label, overrides) => {
+    const actions = decide(
+      issue("SPEC"),
+      signal("dispatch_failed", overrides),
+      worldWith("spec", pr()),
+    );
+    expect(kinds(actions)).toEqual(["escalate"]);
+    expect(reasonOf(actions)).toBe("Dispatch d1 failed, and the record holds no reason.");
   });
 
   it("escalates when a PR is closed without merging — that is a human's decision", () => {

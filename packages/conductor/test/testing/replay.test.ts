@@ -199,7 +199,7 @@ describe("the briefs a dispatch carries", () => {
 });
 
 describe("when a dispatch fails", () => {
-  it("escalates instead of retrying — a harness that exhausted its attempts needs a human, not another turn", async () => {
+  it("escalates instead of retrying — a harness that broke needs a human, not another turn", async () => {
     const dispatcher = fakeDispatcher({
       results: [{ outcome: "failed", error: "context window exceeded" }],
     });

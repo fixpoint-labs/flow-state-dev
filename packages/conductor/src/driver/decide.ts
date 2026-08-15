@@ -278,12 +278,42 @@ function decideUniversal(
           ]
         : [];
 
+    // **Conductor never retries**, so the reason this used to carry — `Dispatch
+    // <id> exhausted its attempts.` — was false for every failure it was ever
+    // written about. It described a mechanism that does not exist, to the one
+    // person being asked to intervene, while the real cause reached the dispatch
+    // record and stopped there.
+    //
+    // The cause matters because the responses diverge: a credential that never
+    // reached the agent process is fixed in the harness and the work re-run
+    // untouched, and an agent that could not do the work is a task to
+    // re-specify. Both used to arrive as the same sentence, so the ledger — the
+    // thing that is supposed to make every transition reproducible — could not
+    // tell an operator which of the two they were looking at.
+    //
+    // A **failure class** was the other shape considered, and rejected: nothing
+    // upstream can produce one honestly. The only structural distinction
+    // available is *where* the throw happened, which conflates a dispatcher that
+    // broke its settle-don't-throw contract with a workspace that could not be
+    // cut; anything finer would be a guess read out of an error string, and a
+    // guess in a reducer is exactly what this file refuses. No branch here reads
+    // it either — conductor escalates every dispatch failure identically, and
+    // the class would be a coarser second copy of what `detail` already says.
+    // Adopt one the day a dispatcher reports one structurally.
+    //
+    // `== null` covers both the absent and the explicitly-null field, which are
+    // the same fact (BP-030). Saying so is the point: a reason rendered as
+    // `failed: null` reads as a bug in conductor rather than as silence from
+    // the vendor.
     case "dispatch_failed":
       return [
         {
           kind: "escalate",
           entityId: entity.id,
-          reason: `Dispatch ${signal.dispatchId} exhausted its attempts.`,
+          reason:
+            signal.detail == null
+              ? `Dispatch ${signal.dispatchId} failed, and the record holds no reason.`
+              : `Dispatch ${signal.dispatchId} failed: ${signal.detail}`,
         },
       ];
 

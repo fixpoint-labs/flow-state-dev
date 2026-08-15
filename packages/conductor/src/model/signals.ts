@@ -119,10 +119,31 @@ export interface ProseSignal extends SignalBase {
   readonly pullNumber: number;
 }
 
-/** A dispatched phase execution settled. */
+/**
+ * A dispatched phase execution settled.
+ *
+ * `detail` is why it failed, in the dispatcher's own words — `null` when it
+ * completed, and `null` when it failed and said nothing.
+ *
+ * **It rides on the signal rather than being read back off the dispatch
+ * record**, and that is forced rather than convenient. A ledger row stores an
+ * action's kind and not its text, so the only thing that reproduces an
+ * escalation's *reason* is re-running `decide` from the row's own signal —
+ * and `decide` is pure over the signal and the world, with no collection to
+ * fetch a reason from. A cause that lived only in the dispatch record would be
+ * a transition the ledger cannot replay, which is the one invariant the ledger
+ * exists to hold. It is not a second source of truth either: the record's
+ * `detail` and this field are written from the same `DispatchResult.error` in
+ * the same pass.
+ *
+ * Optional, so a row written before the field existed still parses (BP-030).
+ * Absent and `null` mean the same thing — the dispatch named no cause — and
+ * `decide` says so rather than rendering the gap at a human.
+ */
 export interface DispatchSignal extends SignalBase {
   readonly kind: "dispatch_completed" | "dispatch_failed";
   readonly dispatchId: string;
+  readonly detail?: string | null;
 }
 
 /** A guidance document's content hash moved. */
@@ -251,6 +272,8 @@ export const signalSchema: z.ZodType<Signal> = z.discriminatedUnion("kind", [
     ...base,
     kind: z.enum(["dispatch_completed", "dispatch_failed"]),
     dispatchId: z.string(),
+    // Optional so a row written before the field existed still parses (BP-030).
+    detail: z.string().nullable().optional(),
   }),
   z.object({ ...base, kind: z.literal("guidance_changed"), path: z.string() }),
   z.object({ ...base, kind: z.literal("issue_settled"), childId: z.string() }),

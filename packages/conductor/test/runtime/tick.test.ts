@@ -322,6 +322,23 @@ function replayFailures(ledger: readonly LedgerEntryState[]): string[] {
   return failures;
 }
 
+/**
+ * The reason a row's escalation carries.
+ *
+ * A ledger row stores an action's *kind* and nothing else about it, so the only
+ * way to read back what an operator was told is to re-run `decide` from the
+ * row's own signal and world — which is the invariant, not a workaround.
+ */
+function replayedReason(row: LedgerEntryState): string | null {
+  if (row.signal === null || row.world === null || row.entityKind === null) return null;
+  const escalation = decide(
+    { id: row.entityId, kind: row.entityKind, phase: row.phaseBefore as Phase },
+    row.signal,
+    row.world,
+  ).find((action) => action.kind === "escalate");
+  return escalation && "reason" in escalation ? escalation.reason : null;
+}
+
 /** Put the one work item under management, at implementation, as a bug would enter. */
 async function manageIssue(session: ConductorSession) {
   return session.manage({
@@ -789,11 +806,46 @@ describe("property 2: a restart resumes, it does not redo", () => {
     expect(replayFailures(ticked.ledger)).toEqual([]);
     expect(ledgerFailures(ticked.ledger, "IMPLEMENTATION", ticked.entity.phase)).toEqual([]);
 
+    // The resumed failure carries the reason forward too. This is the second of
+    // the two producers — the live one reads the dispatcher's result, this one
+    // re-derives from the dispatch record it left behind — and a reason wired
+    // into only one of them means an operator's report depends on whether the
+    // process happened to survive.
+    const reason = replayedReason(ticked.ledger.at(-1)!);
+    expect(reason).toContain("ls-remote");
+    expect(reason).not.toMatch(/attempt|exhaust|retr/i);
+
     // And once. The escalation the recovery wrote is the consequence that
     // stops it; the failed dispatch record is still sitting there beside it.
     const again = await resumed.tick(ENTITY);
     expect(again.ledger).toHaveLength(ticked.ledger.length);
     expect(second.briefs).toHaveLength(0);
+  });
+
+  it("tells the human what the dispatcher actually reported, not a retry it never made", async () => {
+    // The live producer. Conductor never retries, so `exhausted its attempts`
+    // was false for every failure it was ever written about — and the real
+    // cause reached the dispatch record and stopped there, which left the one
+    // person being asked to intervene reading about a mechanism that does not
+    // exist.
+    repo = await createTestRepo();
+    await freshState();
+
+    const dispatcher = fakeDispatcher({
+      isolation: "remote",
+      results: [{ outcome: "failed", error: "ANTHROPIC_API_KEY was not set in the agent's environment" }],
+    });
+    const session = await open(dispatcher);
+    await manageIssue(session);
+
+    const ticked = await session.tick(ENTITY);
+    const escalation = ticked.ledger.at(-1)!;
+    expect(escalation).toMatchObject({ actionKind: "escalate", signalKind: "dispatch_failed" });
+
+    const reason = replayedReason(escalation);
+    expect(reason).toContain("ANTHROPIC_API_KEY was not set in the agent's environment");
+    expect(reason).not.toMatch(/attempt|exhaust|retr/i);
+    expect(replayFailures(ticked.ledger)).toEqual([]);
   });
 
   it("still enters a phase that dispatches nothing on entry", async () => {

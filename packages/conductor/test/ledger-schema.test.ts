@@ -106,6 +106,40 @@ describe("a ledger row carries `decide`'s three arguments", () => {
     expect(entered).toMatchObject({ phase: stored.phaseAfter });
   });
 
+  // A row records an action's *kind* and nothing else about it, so the only
+  // thing that reproduces an escalation's reason is re-running `decide` from the
+  // row's own signal. That is why the failure reason lives on the signal rather
+  // than being read out of the dispatch record: `decide` is pure over the signal
+  // and the world, and a reason it fetched from a collection would be a
+  // transition the ledger cannot replay.
+  it("replays a dispatch failure to the reason it escalated with, not to a generic one", () => {
+    const detail = "git fetch origin main failed in /repo (exit 128).";
+    const stored = roundTrip(
+      row({
+        signalKind: "dispatch_failed",
+        signal: signal("dispatch_failed", { detail }),
+        world: worldWith("spec", pr()),
+        actionKind: "escalate",
+        phaseBefore: "SPEC",
+        phaseAfter: "SPEC",
+        gate: null,
+      }),
+    );
+
+    const replayed = decide(
+      {
+        id: stored.entityId,
+        kind: stored.entityKind as EntityKind,
+        phase: stored.phaseBefore as Phase,
+      },
+      stored.signal as Signal,
+      stored.world as World,
+    );
+
+    expect(replayed).toHaveLength(1);
+    expect(replayed[0]).toMatchObject({ kind: "escalate", reason: `Dispatch d1 failed: ${detail}` });
+  });
+
   it("preserves the world exactly, so a replay reduces against what the tick saw", () => {
     // The mutation guard: drop a field from `worldSchema` — or from any facts
     // schema under it — and the stored world stops equalling the one handed in.

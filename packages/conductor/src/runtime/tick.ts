@@ -451,7 +451,7 @@ function entryCompleted(
 function unreducedFailures(
   ledger: readonly LedgerEntryState[],
   dispatches: readonly DispatchRow[],
-): readonly string[] {
+): readonly { dispatchId: string; detail: string | null }[] {
   const escalated = new Set<string>();
   for (const row of ledger) {
     const signal = row.signal;
@@ -459,9 +459,16 @@ function unreducedFailures(
       escalated.add(signal.dispatchId);
     }
   }
-  return dispatches
-    .filter((row) => row.outcome === "failed" && !escalated.has(row.id))
-    .map((row) => row.id);
+  return (
+    dispatches
+      .filter((row) => row.outcome === "failed" && !escalated.has(row.id))
+      // The reason travels with the id. The dispatch record is the durable
+      // source this whole function re-derives from, and the escalation `decide`
+      // answers with names the cause — so resuming the id alone would report a
+      // failure a live tick would have reported in full, and an operator's
+      // report would depend on whether the process happened to survive.
+      .map((row) => ({ dispatchId: row.id, detail: row.detail }))
+  );
 }
 
 /**
@@ -1585,9 +1592,9 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
   // See {@link unreducedFailures} — a derived signal has no cursor to be
   // re-observed from, so it is re-derived from its own durable source until its
   // consequence is written down.
-  for (const dispatchId of unreducedFailures(ledger, dispatches)) {
+  for (const { dispatchId, detail } of unreducedFailures(ledger, dispatches)) {
     queue.push({
-      signal: { kind: "dispatch_failed", entityId: context.entityId, at, dispatchId },
+      signal: { kind: "dispatch_failed", entityId: context.entityId, at, dispatchId, detail },
       derived: true,
     });
   }
@@ -1762,6 +1769,12 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
           entityId: context.entityId,
           at: signal.at,
           dispatchId: result.dispatchId,
+          // The same value `runDispatch` persists as the record's `detail`, from
+          // the same result. `decide` escalates a failure by naming its cause,
+          // and a ledger row stores no reason of its own — so the cause has to
+          // ride on the signal or the row cannot replay to the escalation it
+          // recorded. `null` on a completion, which claims nothing.
+          detail: result.error,
         },
         derived: true,
       });
