@@ -378,3 +378,46 @@ describe("the pre-filter never hides a file the rules would flag", () => {
     expect(check("// homework and paperwork are not tiers")).toBe(false);
   });
 });
+
+/**
+ * A backtick string with no `${}` is a `NoSubstitutionTemplateLiteral`, not a
+ * `StringLiteral` and not a `TemplateExpression` — so it fell through both of
+ * the guard's literal branches and every rule underneath them. The guard
+ * accepted `` { phase: `work` } `` while rejecting `{ phase: "work" }`.
+ *
+ * It landed on E4, where `blockPathSegment` takes any string, so `tsc` would
+ * not have caught it either. Latent rather than exploited when found, which is
+ * exactly the regression this check exists to stop.
+ *
+ * The controls are the half that makes these mean anything: the quoted forms
+ * must still fire (no regression), and an unrelated backtick string must NOT —
+ * this PR has undone a widening over-reach twice, and the template-literal
+ * door is a new way to reintroduce it.
+ */
+describe("a backtick literal is a string too", () => {
+  const seq = "packages/core/src/blocks/sequencer.ts";
+
+  it("E2 — fires on a backtick tier value", () => {
+    expect(encodings("const s = { phase: `work` };")).toContain("E2");
+  });
+
+  it("E4 — fires on a backtick op passed to the direct path builder", () => {
+    expect(encodings("const x = blockPathSegment(`work`, i);", seq)).toContain("E4");
+  });
+
+  it("E4 — fires on a backtick already-built segment", () => {
+    expect(encodings("const x = extendBlockPath(p, `work[0]`);", seq)).toContain("E4");
+  });
+
+  it("CONTROL — the double-quoted equivalents still fire", () => {
+    expect(encodings(`const s = { phase: "work" };`)).toContain("E2");
+    expect(encodings(`const x = blockPathSegment("work", i);`, seq)).toContain("E4");
+    expect(encodings(`const x = extendBlockPath(p, "work[0]");`, seq)).toContain("E4");
+  });
+
+  it("CONTROL — an unrelated backtick string does not fire", () => {
+    expect(scan("const m = `hello work`;", seq)).toEqual([]);
+    expect(scan("const m = `workflow`;", seq)).toEqual([]);
+    expect(scan("const x = extendBlockPath(p, `step[0]`);", seq)).toEqual([]);
+  });
+});

@@ -419,6 +419,35 @@ function effectiveParent(node) {
 }
 
 /**
+ * Does this node carry a COMPLETE string literal value?
+ *
+ * TypeScript spells a complete string two ways, and the set is closed by the
+ * language, not by whatever this check has been shown to miss:
+ *
+ *   StringLiteral                    "work"   'work'
+ *   NoSubstitutionTemplateLiteral    `work`
+ *
+ * A backtick string with no `${}` is the SECOND kind — it is not a
+ * `TemplateExpression`, which by definition has substitutions and gets its own
+ * rule below. So a rule filtering on `Node.isStringLiteral` alone accepts
+ * `` { phase: `work` } `` and `` blockPathSegment(`work`, i) `` while rejecting
+ * their double-quoted equivalents, and `blockPathSegment` takes any string, so
+ * the compiler does not catch it either.
+ *
+ * That hole shipped, and it is the third time in this change's history that the
+ * guard CLAIMED coverage it did not have — after `PATH_OP_ARG_INDEX` assuming
+ * one arity for two builders, and the member rule matching any property. The
+ * pattern is what matters: a reader auditing coverage sees a literal branch and
+ * stops, and the branch is only as wide as the node kinds it names.
+ *
+ * `getLiteralValue()` is defined on both kinds, so every downstream rule works
+ * unchanged once the filter admits both.
+ */
+function isCompleteStringLiteral(node) {
+  return Node.isStringLiteral(node) || Node.isNoSubstitutionTemplateLiteral(node);
+}
+
+/**
  * E2: a `"work"` string literal standing for the tier.
  *
  * Five accepted positions, which between them cover both public unions that
@@ -569,7 +598,7 @@ function collectFindings(project, relativePath) {
         return;
       }
 
-      if (Node.isStringLiteral(node)) {
+      if (isCompleteStringLiteral(node)) {
         // E2 — the tier as a string-literal union member or value.
         if (isRetiredTierLiteral(node)) record(node, "E2", node.getLiteralValue());
 
