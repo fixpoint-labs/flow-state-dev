@@ -499,4 +499,101 @@ describe("runClaudeHeadless", () => {
       expect(run.ok).toBe(true);
     });
   });
+
+  /**
+   * A `maxTurns` or `maxBudgetUsd` that is not a ceiling.
+   *
+   * The same class as the `timeoutMs` block above, on this surface's other two
+   * numbers, and the reason it is worth its own guard is that here the failure
+   * is **open** rather than fast — a ceiling that is not one lets a paid run go
+   * further, not less far.
+   *
+   * Checked against the pinned Agent SDK (0.1.77). Its transport forwards
+   * `maxBudgetUsd` as `--max-budget-usd` whenever the value is not `undefined`,
+   * and the bundled CLI parses that flag as
+   * `let x = Number(s); if (isNaN(x) || x <= 0) throw`. `Infinity` clears both
+   * tests, so a computed `Infinity` reaches a paid run **as no ceiling at all**
+   * — the caller believes they capped their spend and did not. `NaN` and a
+   * negative are rejected, but only by the agent process after it has been
+   * spawned, so they arrive in the ledger as a run that failed rather than as
+   * the number that was wrong.
+   *
+   * `maxTurns` fails open in two directions: the transport gates it on
+   * truthiness (`if (maxTurns)`), so `0` and `NaN` are dropped and the run is
+   * unbounded; and the CLI parses `--max-turns` with a bare `Number`, no
+   * validation at all, so `Infinity` and a negative are accepted as written.
+   *
+   * The assertions are the ones a ledger reader needs, and each is observable
+   * from the returned value alone: the reason names the **option and the
+   * value**, it does not read as an overrun, and `query` was **never called**,
+   * so the failure is honest that nothing was spent.
+   */
+  describe("rejects a spend or turn ceiling that is not a ceiling", () => {
+    const cases: readonly (readonly [string, "maxTurns" | "maxBudgetUsd", number])[] = [
+      // The finding, and the only one that costs money: accepted by the SDK all
+      // the way through, and it means unbounded spending on a paid run.
+      ["an unbounded spend ceiling", "maxBudgetUsd", Infinity],
+      // Rejected downstream, but only after an agent process exists, and
+      // diagnosed there as the run failing rather than as caller misuse.
+      ["a spend ceiling that is not a number", "maxBudgetUsd", NaN],
+      ["a negative spend ceiling", "maxBudgetUsd", -1],
+      // `undefined` is already how a caller says "no ceiling"; reading `0` as a
+      // second spelling of it would fail open on an exhausted computed budget.
+      ["a spent-out spend ceiling", "maxBudgetUsd", 0],
+      // The twin. Unbounded turns is unbounded spend by another route.
+      ["an unbounded turn ceiling", "maxTurns", Infinity],
+      // Dropped by the transport's truthiness gate, so the run has no ceiling.
+      ["a turn ceiling that is not a number", "maxTurns", NaN],
+      ["a spent-out turn ceiling", "maxTurns", 0],
+      ["a negative turn ceiling", "maxTurns", -1],
+    ];
+
+    for (const [label, option, value] of cases) {
+      it(`settles as caller misuse on ${label}, without starting an agent`, async () => {
+        const { query, resolveAgent } = scriptedAgent([result()]);
+        const run = await runClaudeHeadless({ prompt: "p", [option]: value, resolveAgent });
+
+        expect(run.ok).toBe(false);
+        // Names the option and the value, so the ledger says "you passed a bad
+        // number" rather than "the agent misbehaved".
+        expect(run.error).toContain(option);
+        expect(run.error).toContain(String(value));
+        // And must not be dressed as the run overrunning a ceiling it was
+        // never given — the misdiagnosis that sends a human to the agent.
+        expect(run.error).not.toMatch(/exceeded/);
+        expect(run.error).not.toMatch(/may still be running/);
+        // Nothing was started, so there is no spend and no agent to go kill.
+        expect(query).not.toHaveBeenCalled();
+        expect(run.costUsd).toBeNull();
+        expect(run.sessionId).toBeNull();
+      });
+    }
+
+    it("still accepts a spend ceiling smaller than a dollar", async () => {
+      // The regression the guard must not cause. `maxBudgetUsd` is dollars, so
+      // sub-unit and fractional ceilings are ordinary; a validator that reached
+      // for an integer check would refuse the most cautious budgets there are.
+      const { query, resolveAgent } = scriptedAgent([result()]);
+      const run = await runClaudeHeadless({ prompt: "p", maxBudgetUsd: 0.25, resolveAgent });
+
+      expect(run.ok).toBe(true);
+      expect(optionsOf(query).maxBudgetUsd).toBe(0.25);
+    });
+
+    it("still accepts ceilings that are merely large, since neither has a real upper bound", async () => {
+      // Unlike `timeoutMs`, nothing downstream caps these, so a big budget is a
+      // budget. Only the values that mean "no ceiling" are refused.
+      const { query, resolveAgent } = scriptedAgent([result()]);
+      const run = await runClaudeHeadless({
+        prompt: "p",
+        maxTurns: 10_000,
+        maxBudgetUsd: 5_000,
+        resolveAgent,
+      });
+
+      expect(run.ok).toBe(true);
+      expect(optionsOf(query).maxTurns).toBe(10_000);
+      expect(optionsOf(query).maxBudgetUsd).toBe(5_000);
+    });
+  });
 });

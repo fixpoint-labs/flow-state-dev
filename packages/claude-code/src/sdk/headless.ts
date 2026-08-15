@@ -123,9 +123,24 @@ export interface RunClaudeHeadlessOptions {
    * `"bypassPermissions"` carries the SDK's explicit-intent flag automatically.
    */
   readonly permissionMode?: string;
-  /** Ceiling on conversation turns. No ceiling when unset. */
+  /**
+   * Ceiling on conversation turns. No ceiling when unset.
+   *
+   * Must be a positive, finite number. Anything else — `Infinity`, `NaN`, `0`,
+   * a negative — settles immediately as a failure naming this option rather
+   * than being forwarded, because downstream every one of them means *no
+   * ceiling*: see {@link unusableCeiling}.
+   */
   readonly maxTurns?: number;
-  /** Vendor-side spend ceiling in USD. No ceiling when unset. */
+  /**
+   * Vendor-side spend ceiling in USD. No ceiling when unset. Fractional
+   * budgets are ordinary — the unit is dollars, not cents.
+   *
+   * Must be a positive, finite number, and for the same reason as
+   * {@link maxTurns}, with one extra edge to it: this is the ceiling on real
+   * money, and `Infinity` is accepted all the way down to the vendor as
+   * unbounded spending.
+   */
   readonly maxBudgetUsd?: number;
   /**
    * Wall-clock ceiling on the whole call, **loading the SDK included** — the
@@ -223,6 +238,57 @@ function unusableTimeout(timeoutMs: number): string | null {
     `runClaudeHeadless was given timeoutMs=${String(timeoutMs)}, which is not a usable wall-clock ` +
     `budget: it must be a positive number of milliseconds no greater than ${MAX_TIMEOUT_MS} ` +
     `(about 24.8 days), the longest delay a timer can hold. No Claude Code run was started.`
+  );
+}
+
+/**
+ * Reject a `maxTurns` or `maxBudgetUsd` that is not a ceiling, before the run
+ * starts.
+ *
+ * Same class as {@link unusableTimeout}, opposite direction of failure. A
+ * `timeoutMs` no timer can hold fails *fast* — the run dies early and someone
+ * notices. A ceiling that is not a ceiling fails **open**: the run goes
+ * further than the caller allowed, and on `maxBudgetUsd` that is real money.
+ *
+ * What the pinned Agent SDK (0.1.77) actually does with each value, since the
+ * whole reason to check here is that nothing downstream does it usefully:
+ *
+ * - **`maxBudgetUsd`** is forwarded as `--max-budget-usd` whenever it is not
+ *   `undefined`, and the bundled CLI parses it with
+ *   `let x = Number(s); if (isNaN(x) || x <= 0) throw`. `Infinity` passes both
+ *   tests, so it reaches a **paid run as no ceiling at all** — the one case
+ *   here that silently spends. `NaN` and a negative are refused, but by the
+ *   agent process after it has been spawned, which reports them as the run
+ *   failing rather than as the number being wrong.
+ * - **`maxTurns`** is gated on truthiness (`if (maxTurns)`), so `0` and `NaN`
+ *   are dropped and the run is *unbounded*; and `--max-turns` is parsed with a
+ *   bare `Number` and no validation, so `Infinity` and a negative are taken as
+ *   written. Unbounded turns is unbounded spend by a longer route.
+ *
+ * **Rejected, not clamped, and `0` is not "no ceiling".** Both for the reasons
+ * spelled out on {@link unusableTimeout}: a ceiling quietly swapped for one the
+ * caller did not ask for is the same bug in a quieter coat, and reading `0` as
+ * a second spelling of unbounded would fail open on an exhausted computed
+ * budget — the input that should refuse fastest. Unlike a timeout there is no
+ * upper bound to enforce: nothing downstream caps either number, so a large
+ * budget is simply a large budget.
+ *
+ * @returns the reason the value is unusable, or `null` when it is fine.
+ */
+function unusableCeiling(option: "maxTurns" | "maxBudgetUsd", value: number): string | null {
+  // Two comparisons cover every `number`, non-finite ones included: `NaN` fails
+  // both (every relational comparison against it is false) and `Infinity` fails
+  // the second. Stated once, the same way the timeout range is.
+  if (value > 0 && value < Infinity) return null;
+
+  // The reason has the same job as the timeout one: let whoever reads the
+  // ledger tell "you passed a bad value" from "the agent misbehaved". So it
+  // names the option, echoes the value, states the rule, and says plainly that
+  // no run was started — which is also the answer to the question this failure
+  // would otherwise raise, namely whether anything was spent.
+  return (
+    `runClaudeHeadless was given ${option}=${String(value)}, which is not a usable ceiling: ` +
+    `it must be a positive, finite number. No Claude Code run was started.`
   );
 }
 
@@ -339,10 +405,17 @@ function reduceResult(msg: Extract<SdkMessageLike, { type: "result" }>): ClaudeH
  *
  * Never throws, and never hangs when given a `timeoutMs`. The SDK being absent,
  * the SDK never *loading*, the run exceeding `timeoutMs`, the stream throwing
- * mid-run, a `timeoutMs` no timer can hold, and a run that ends without a
- * terminal result all settle as failures naming what happened — and the
- * timeouts name themselves apart, since "the harness never loaded", "the work
- * overran" and "that budget was never valid" are three different diagnoses.
+ * mid-run, a `timeoutMs` no timer can hold, a `maxTurns` or `maxBudgetUsd` that
+ * is not a ceiling, and a run that ends without a terminal result all settle as
+ * failures naming what happened — and the timeouts name themselves apart, since
+ * "the harness never loaded", "the work overran" and "that budget was never
+ * valid" are three different diagnoses.
+ *
+ * All three ceilings are validated before an agent is started, so a bad number
+ * costs nothing and leaves nothing running. They fail in opposite directions
+ * and so are worth telling apart: an unusable `timeoutMs` would end a run far
+ * too early, while an unusable `maxTurns` or `maxBudgetUsd` would not end it at
+ * all — the vendor reads `Infinity` as unbounded spending.
  *
  * The ceiling binds the call, not the agent: neither phase can be cancelled
  * outright, so on the deadline this abandons what it cannot stop rather than
@@ -375,6 +448,20 @@ export async function runClaudeHeadless(
   // of "unbounded".
   if (timeoutMs !== undefined) {
     const unusable = unusableTimeout(timeoutMs);
+    if (unusable !== null) return failed(unusable);
+  }
+
+  // The other two ceilings, checked in the same place and for the same reason,
+  // but against the opposite failure: these fail *open*. A `maxBudgetUsd` of
+  // `Infinity` is accepted by the vendor as unbounded spending on a paid run,
+  // and a `maxTurns` of `0` or `NaN` is dropped entirely. See
+  // `unusableCeiling` for what the pinned SDK does with each value.
+  for (const [option, value] of [
+    ["maxTurns", maxTurns],
+    ["maxBudgetUsd", maxBudgetUsd],
+  ] as const) {
+    if (value === undefined) continue;
+    const unusable = unusableCeiling(option, value);
     if (unusable !== null) return failed(unusable);
   }
 
