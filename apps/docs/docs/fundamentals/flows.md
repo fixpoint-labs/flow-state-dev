@@ -64,7 +64,30 @@ const chatFlow = defineFlow({ kind: "my-chat", ... });
 export default chatFlow({ id: "default" });
 ```
 
-This separation lets you create multiple instances of the same flow type with different configurations if needed.
+This separation lets you run several instances of one flow type, each with its own session, resource, or tool configuration.
+
+**Instances that clients address need distinct `kind`s, not just distinct `id`s.** Every external entry point — HTTP action routes, chat, webhooks, schedules, MCP — resolves a flow by `kind` alone, and none of them carry an instance id. When two instances share a `kind`, those paths reach the one whose `id` matches the `kind`, or else the first registered, and the other instance's configuration is never used. `id` distinguishes instances for in-process code holding the registry, which can look up a specific one; it is not an addressing surface over the wire.
+
+### What the definition owns
+
+Inbound transports belong to the flow type. Declare `chat`, `webhooks`, `schedules`, and `mcp` on `defineFlow()`:
+
+```ts
+const supportFlow = defineFlow({
+  kind: "support",
+  chat: { /* ... */ },
+  webhooks: { /* ... */ },
+  actions: { /* ... */ },
+});
+
+export default supportFlow({ id: "default" });
+```
+
+Every instance of a type serves the same transports. Pass one of the four to the instance call and TypeScript rejects it; a plain-JavaScript caller gets a thrown error naming the option.
+
+Everything else is settable per instance: `id`, `kind`, `actions`, `session`, `request`, `user`, `org`, `resources`, `tools`, `voice`, `authentication`, `requireUser`, `tokenCounter`, `costEstimator`, `isolateUserState`, and `isolateOrgState`.
+
+`voice` sits on both sides. Unlike the four transports above, you can set it on `defineFlow()` as the default for every instance of the type, then override it on any single instance.
 
 ## Actions — the flow's public API
 

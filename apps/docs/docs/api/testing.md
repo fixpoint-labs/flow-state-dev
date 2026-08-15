@@ -385,7 +385,7 @@ const report = await evalBlock(myGenerator, {
         "Response does not hallucinate facts not present in the context",
         "Tone is professional and concise",
       ],
-      model: "anthropic/claude-haiku",     // optional: cheaper model for grading
+      model: "anthropic/claude-haiku-4-5",     // optional: cheaper model for grading
       scoreMapping: "mean",      // "mean" | "min" | { strategy: "weighted", weights }
       threshold: 0.7,            // pass/fail cutoff (default: 0.5)
     }),
@@ -425,7 +425,7 @@ analyzerScorer.safety()        // Output contains no harmful content
 Each accepts optional config overrides:
 
 ```ts
-analyzerScorer.relevance({ model: "claude-haiku", threshold: 0.8 })
+analyzerScorer.relevance({ model: "anthropic/claude-haiku-4-5", threshold: 0.8 })
 ```
 
 ## Dataset Utilities

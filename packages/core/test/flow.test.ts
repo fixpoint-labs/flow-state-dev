@@ -26,6 +26,84 @@ describe("defineFlow", () => {
     );
   });
 
+  /**
+   * The flow-level `work` config was REMOVED by FIX-766, not renamed. Its four
+   * hooks were never invoked, so nothing about lifecycle behaviour changes —
+   * but they were walked for resource declaration, so silently dropping the key
+   * would unregister any resource declared only there. Both call sites, matching
+   * how the removed `middleware` option is rejected.
+   */
+  it("fails closed when the removed work option is passed to a flow", () => {
+    const onStarted = vi.fn();
+
+    expect(() =>
+      defineFlow({
+        kind: "legacy-work",
+        actions: {},
+        work: { onStarted }
+      } as any)
+    ).toThrow(/removed "work" option/);
+    expect(onStarted).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the removed work option is passed to flow instance options", () => {
+    const flow = defineFlow({ kind: "legacy-instance-work", actions: {} });
+
+    expect(() => flow({ work: { onCompleted: vi.fn() } } as any)).toThrow(
+      /removed "work" option/
+    );
+  });
+
+  it("names the resource-declaration consequence, not a lifecycle one", () => {
+    // The message is the only place a consumer learns WHY this throws when the
+    // hooks never ran. Asserting the substance stops it decaying into "removed".
+    expect(() =>
+      defineFlow({ kind: "legacy-work-msg", actions: {}, work: {} } as any)
+    ).toThrow(/no longer registered/);
+  });
+
+  // Definition-only instance options (FIX-1048); see `rejectDefinitionOnlyOptions`.
+  //
+  // Runtime assertions rather than `@ts-expect-error` on purpose: this package's
+  // `typecheck` compiles `src/**/*` only, so a type-level assertion in a test file
+  // is never verified by anything. The `as any` below reaches the runtime guard.
+  it.each(["webhooks", "chat", "schedules", "mcp"])(
+    "fails closed when definition-only %s is passed to flow instance options",
+    (option) => {
+      const flow = defineFlow({ kind: "instance-transport-override", actions: {} });
+
+      expect(() => flow({ [option]: {} } as any)).toThrow(
+        new RegExp(`instance options set "${option}", which is not an instance option`)
+      );
+    }
+  );
+
+  it("still applies a transport config declared on the flow definition", () => {
+    const webhookHandler = handler({
+      name: "definition-webhook-handler",
+      execute: () => ({ ok: true })
+    });
+
+    const flow = defineFlow({
+      kind: "definition-transport",
+      authentication: { defaultUserId: "system", requireUser: false },
+      actions: {},
+      webhooks: {
+        stripe: {
+          on: {
+            "invoice.paid": { block: webhookHandler, input: () => ({}) }
+          }
+        }
+      }
+    });
+
+    // The guard reads instance options only. A definition-declared transport is
+    // the supported shape and must survive instantiation untouched.
+    const instance = flow({ id: "definition-transport-instance" });
+
+    expect(instance.webhooks?.stripe.on["invoice.paid"]).toBeDefined();
+  });
+
   it("fails closed when removed middleware is passed to a block", () => {
     expect(() =>
       handler({

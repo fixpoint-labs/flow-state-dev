@@ -42,7 +42,7 @@ import { z } from "zod";
 
 const agent = generator({
   name: "agent",
-  model: "preset/fast",
+  model: "openai/gpt-5.4-mini",
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
   history: true,
@@ -95,7 +95,7 @@ const memoryObserver = generator({ itemVisibility: { client: false, history: fal
 // Pure structured-output transformer. Feeds its typed output to the next
 // block via graph edges. No session items at all.
 const classifier = generator({
-  model: "preset/fast",
+  model: "openai/gpt-5.4-mini",
   prompt: "Classify input as A, B, or C.",
   outputSchema: z.enum(["A", "B", "C"]),
   // itemVisibility omitted — no auto-emission.
@@ -182,7 +182,7 @@ Generators have built-in support for *generator-native web search*: web search t
 ```ts
 const agent = generator({
   name: "research-agent",
-  model: "claude-sonnet-4-20250514",
+  model: "anthropic/claude-sonnet-4-6",
   prompt: "You are a research assistant. Search the web when needed.",
   search: true,
   tools: [readDoc, updateDoc],
@@ -197,7 +197,7 @@ For fine-grained control, pass a config object instead of `true`:
 ```ts
 const agent = generator({
   name: "docs-agent",
-  model: "claude-sonnet-4-20250514",
+  model: "anthropic/claude-sonnet-4-6",
   search: {
     maxUses: 3,
     allowedDomains: ["docs.anthropic.com", "developer.mozilla.org"],
@@ -251,7 +251,7 @@ import { anthropic } from "@ai-sdk/anthropic";
 
 const agent = generator({
   name: "code-agent",
-  model: "claude-sonnet-4-20250514",
+  model: "anthropic/claude-sonnet-4-6",
   providerTools: [
     providerTool("code_execution", anthropic.tools.codeExecution()),
   ],
@@ -267,7 +267,7 @@ You can combine `search`, `providerTools`, and block `tools` freely. They all me
 ```ts
 const agent = generator({
   name: "full-agent",
-  model: "claude-sonnet-4-20250514",
+  model: "anthropic/claude-sonnet-4-6",
   search: true,                                    // provider-native search
   providerTools: [                                  // raw provider tools
     providerTool("code_exec", anthropic.tools.codeExecution()),
@@ -369,10 +369,10 @@ Queue non-blocking tasks that run alongside the main pipeline. The main chain co
 ```ts
 pipeline
   .step(coreLogic)
-  .work(logAnalytics)                          // fire and forget
-  .work((output) => output.metrics, reportMetrics)  // with connector
+  .sideChain(logAnalytics)                          // fire and forget
+  .sideChain((output) => output.metrics, reportMetrics)  // with connector
   .step(moreWork)
-  .waitForWork({ timeoutMs: 5000 });           // optionally converge later
+  .waitForSideChain({ timeoutMs: 5000 });           // optionally converge later
 ```
 
 #### Branching
@@ -438,7 +438,7 @@ const researchAgent = sequencer({ name: "research-agent" })
   })
   .step(mergeAndRank)
   .doUntil((r) => r.confidence > 0.9, refineResults)
-  .work(logAnalytics)
+  .sideChain(logAnalytics)
   .step(synthesize)
   .tapIf((r) => r.citations.length > 5, notifyReviewer)
   .rescue([{ when: [SearchError], block: fallbackSearch }]);
@@ -470,7 +470,7 @@ const modeRouter = router({
 
 If the chosen branch suspends for a human, resume keeps that same branch — the selector re-runs and is validated against the recorded decision. See [Generator and router suspend/resume](/docs/advanced/generator-and-router-suspend-resume).
 
-#### `utility.keyedRouter` — dispatch by string key
+#### `utility.keyedRouter` — dispatch by string key {#keyedrouter}
 
 When the choice is just "pick a block from a `Record` by string key", reach for `utility.keyedRouter`. It wraps the full router with the common case so you don't hand-roll the lookup and the not-found error.
 
@@ -514,7 +514,7 @@ execute: async (input, ctx) => {
   await ctx.emit.component("progress-bar", { percent: 50 });
 
   // Resolve AI models
-  const model = ctx.resolveModel("preset/fast");
+  const model = ctx.resolveModel("openai/gpt-5.4-mini");
 
   // Access typed targets — named ancestor blocks declared in config
   const research = ctx.targets.research;  // StateRef<{ progress: number }> | undefined
@@ -686,7 +686,7 @@ const classify = utility.intentClassifier({ name: "triage", categories: { ... } 
 const decompose = utility.decomposer({ name: "plan" });
 ```
 
-Each utility returns a standard block — composable in sequencers, routers, and flows like any block you build yourself. Nine utilities produce generator blocks (LLM-powered), and one (`combiner`) produces a handler block (deterministic, no LLM).
+Each utility returns a standard block — composable in sequencers, routers, and flows like any block you build yourself. Most are generators that call a model; `combiner`, `upsertResource`, and `keyedRouter` are deterministic and make no LLM call.
 
 See the [Core Utilities guide](/docs/patterns/utility-blocks/core) for the full catalog with examples and output schemas, or [Extension Utilities](/docs/patterns/utility-blocks/extensions) for adapter-driven utilities.
 

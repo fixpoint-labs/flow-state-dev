@@ -321,22 +321,6 @@ describe("the flow collects bindings from every block it declares", () => {
       slot: "request.onStepErrored",
       build: (b) => ({ actions: { run: { block: plainRoot() } }, request: { onStepErrored: b } }),
     },
-    {
-      slot: "work.onStarted",
-      build: (b) => ({ actions: { run: { block: plainRoot() } }, work: { onStarted: b } }),
-    },
-    {
-      slot: "work.onCompleted",
-      build: (b) => ({ actions: { run: { block: plainRoot() } }, work: { onCompleted: b } }),
-    },
-    {
-      slot: "work.onErrored",
-      build: (b) => ({ actions: { run: { block: plainRoot() } }, work: { onErrored: b } }),
-    },
-    {
-      slot: "work.onFinished",
-      build: (b) => ({ actions: { run: { block: plainRoot() } }, work: { onFinished: b } }),
-    },
   ];
 
   it.each(LIFECYCLE_SLOTS)("routes to a board mounted at $slot", ({ build }) => {
@@ -377,20 +361,6 @@ describe("the flow collects bindings from every block it declares", () => {
     } as never);
 
     expect(boundWorkers(flow as { workstreamBindings?: WorkstreamBindings })).toEqual(["override"]);
-  });
-
-  it("routes to a board supplied by a work override", () => {
-    const flow = defineFlow({
-      kind: "board",
-      actions: { run: { block: plainRoot() } },
-    } as never)({
-      id: "board",
-      work: { onCompleted: stampedDrain("worker-override") },
-    } as never);
-
-    expect(boundWorkers(flow as { workstreamBindings?: WorkstreamBindings })).toEqual([
-      "worker-override",
-    ]);
   });
 
   it("drops the authored board's binding when an override replaces it", () => {

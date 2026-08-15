@@ -405,20 +405,12 @@ export type OrgConfig = {
   clientData?: Record<string, ClientDataComputeFn<JsonObject>>;
 };
 
-export type WorkConfig = {
-  onStarted?: BlockDefinition<any, any>;
-  onCompleted?: BlockDefinition<any, any>;
-  onErrored?: BlockDefinition<any, any>;
-  onFinished?: BlockDefinition<any, any>;
-};
-
 export type FlowDefinition<
   TActions extends Record<string, ActionConfig> = Record<string, ActionConfig>,
   TSession extends SessionConfig | undefined = SessionConfig | undefined,
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
   TOrg extends OrgConfig | undefined = OrgConfig | undefined,
-  TWork extends WorkConfig | undefined = WorkConfig | undefined,
   TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 > = {
   kind: string;
@@ -441,7 +433,6 @@ export type FlowDefinition<
   request?: TRequest;
   user?: TUser;
   org?: TOrg;
-  work?: TWork;
   /**
    * Flow-level resource declarations. Single flat map, accessor key →
    * resource definition. Resources are routed to the right storage layer
@@ -514,7 +505,6 @@ export type FlowInstanceOptions<
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
   TOrg extends OrgConfig | undefined = OrgConfig | undefined,
-  TWork extends WorkConfig | undefined = WorkConfig | undefined,
   TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 > = {
   id?: string;
@@ -526,14 +516,11 @@ export type FlowInstanceOptions<
   request?: TRequest;
   user?: TUser;
   org?: TOrg;
-  work?: TWork;
   resources?: TResources;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
-  mcp?: McpConfig;
-  chat?: ChatConfig;
-  webhooks?: WebhookConfig;
-  schedules?: SchedulesConfig;
+  // `mcp`, `chat`, `webhooks` and `schedules` are deliberately ABSENT — they are
+  // definition-only; see `rejectDefinitionOnlyOptions` in `flow/defineFlow.ts` (FIX-1048).
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
   isolateUserState?: boolean;
@@ -546,7 +533,6 @@ export type FlowInstance<
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
   TOrg extends OrgConfig | undefined = OrgConfig | undefined,
-  TWork extends WorkConfig | undefined = WorkConfig | undefined,
   TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 > = {
   id: string;
@@ -599,7 +585,6 @@ export type FlowInstance<
   request?: TRequest;
   user?: TUser;
   org?: TOrg;
-  work?: TWork;
   resources?: TResources;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
@@ -627,7 +612,6 @@ export type FlowType<
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
   TOrg extends OrgConfig | undefined = OrgConfig | undefined,
-  TWork extends WorkConfig | undefined = WorkConfig | undefined,
   TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 > = {
   kind: string;
@@ -656,7 +640,6 @@ export type FlowType<
   request?: TRequest;
   user?: TUser;
   org?: TOrg;
-  work?: TWork;
   resources?: TResources;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
@@ -669,13 +652,12 @@ export type FlowType<
   /** Mirror of `FlowInstance.flowLevelResourceKeys` (FIX-688). */
   flowLevelResourceKeys: ReadonlySet<string>;
 
-  (options?: FlowInstanceOptions<TActions, TSession, TRequest, TUser, TOrg, TWork, TResources>): FlowInstance<
+  (options?: FlowInstanceOptions<TActions, TSession, TRequest, TUser, TOrg, TResources>): FlowInstance<
     TActions,
     TSession,
     TRequest,
     TUser,
     TOrg,
-    TWork,
     TResources
   >;
 };

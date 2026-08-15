@@ -24,7 +24,7 @@
  * helper compatible with both the uniform-worker and registry shapes
  * without forcing patterns to pre-declare every worker.
  */
-import { composeBackgroundSignal, handler } from "@flow-state-dev/core";
+import { composeSideChainSignal, handler } from "@flow-state-dev/core";
 import { asRuntime, type BlockContext, type BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { ticketForClaim } from "../claim-ticket";
@@ -162,7 +162,7 @@ function packWorkerInput(
  * becomes the composed one, and the engine propagates from there.
  *
  * **An explicit override is composed with, never deferred to.** The background
- * forms — `.work()`, `.workIf()`, `.forEachBackground()` — each pass the
+ * forms — `.sideChain()`, `.sideChainIf()`, `.forEachSideChain()` — each pass the
  * request's background signal as an explicit `signalOverride`, and that signal
  * is deliberately decoupled from transport teardown (FIX-663) so background
  * work outlives a disconnected client. Taking the override *instead of* this
@@ -173,11 +173,11 @@ function packWorkerInput(
  * survives transport teardown, and it still stops when the claim is gone.
  *
  * **The background signal is composed at its source too**, not only at this
- * closure. Composing here alone reaches a `.work()` dispatched by the worker
+ * closure. Composing here alone reaches a `.sideChain()` dispatched by the worker
  * itself and nothing deeper: the scope this closure builds hands descendants
  * the engine's own `_withExecutionScope`, and a background dispatch two levels
  * down substitutes the request's background signal again with this one nowhere
- * in it. Setting `_requestBackgroundSignal` on the worker's context is what
+ * in it. Setting `_requestSideChainSignal` on the worker's context is what
  * makes it hold at any depth, because every scope now inherits that field from
  * its parent.
  *
@@ -198,7 +198,7 @@ function workerCtx(
   foreground: AbortSignal,
   leaseLost: AbortSignal
 ): BlockContext {
-  const background = composeBackgroundSignal(ctx, leaseLost);
+  const background = composeSideChainSignal(ctx, leaseLost);
   const withScope = ctx._withExecutionScope;
   const base: BlockContext =
     withScope === undefined
@@ -206,16 +206,16 @@ function workerCtx(
       : {
           ...ctx,
           signal: foreground,
-          _withExecutionScope: (parent, execute, signalOverride, backgroundOverride) => {
+          _withExecutionScope: (parent, execute, signalOverride, sideChainOverride) => {
             // Which signal this scope must carry depends on what KIND of scope
             // it is, and `parent.phase` is the only thing that says so. A
             // background dispatch arrives here with the request's background
             // signal as its `signalOverride`; composing the foreground into
             // that would put the transport signal back into work that exists
-            // to outlive transport teardown. So a `"work"` scope is composed
+            // to outlive transport teardown. So a `"sideChain"` scope is composed
             // with the raw lease signal and a main scope with the foreground.
-            const isBackground = parent.phase === "work";
-            const extra = isBackground ? leaseLost : foreground;
+            const isSideChain = parent.phase === "sideChain";
+            const extra = isSideChain ? leaseLost : foreground;
             return withScope.call(
               ctx,
               parent,
@@ -223,14 +223,14 @@ function workerCtx(
               signalOverride === undefined
                 ? extra
                 : AbortSignal.any([signalOverride, extra]),
-              backgroundOverride === undefined
+              sideChainOverride === undefined
                 ? background
-                : AbortSignal.any([backgroundOverride, leaseLost])
+                : AbortSignal.any([sideChainOverride, leaseLost])
             );
           },
         };
   if (background !== undefined) {
-    (base as { _requestBackgroundSignal?: AbortSignal })._requestBackgroundSignal =
+    (base as { _requestSideChainSignal?: AbortSignal })._requestSideChainSignal =
       background;
   }
   return base;

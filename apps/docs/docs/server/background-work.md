@@ -1,9 +1,9 @@
 ---
 sidebar_position: 6
-sidebar_label: Background work
+sidebar_label: Detached work
 ---
 
-# Background work
+# Detached work
 
 Some work outlives the turn that asked for it: a long research pass, a document
 being drafted, an implementation running for an hour. That work runs in its own

@@ -112,13 +112,6 @@ defineFlow({
     resources: { /* ... */ },
     clientData: { /* ... */ },
   },
-
-  work: {
-    onStarted: workStartedBlock,
-    onCompleted: workCompletedBlock,
-    onErrored: workErroredBlock,
-    onFinished: workFinishedBlock,
-  },
 });
 ```
 
@@ -132,7 +125,7 @@ Observational hooks fire at specific points in the request lifecycle:
 | `onCompleted` | Terminal success only |
 | `onErrored` | Terminal failure only |
 | `onFinished` | Always (success or failure) |
-| `onStepErrored` | Non-terminal step/work failure (for visibility) |
+| `onStepErrored` | Non-terminal step/side-chain failure (for visibility) |
 
 Hooks use **past tense** naming — this is canonical. Present-tense names are reserved for future pre-execution hooks (not Phase 1).
 

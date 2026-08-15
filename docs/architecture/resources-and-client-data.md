@@ -140,7 +140,7 @@ Where each wave fires:
 - **Wave 2 (action-tree, dispatch)** — also in `createExecutionContext`. A context is always bound to exactly one action, so the context loads that action's declared resources in one parallel burst at creation time. This lives in `createExecutionContext`, not in `runAction`, precisely because the binding is one-context-per-action — there's no separate point where the action "starts" that the context doesn't already know about. Sibling actions' resources never load.
 - **Wave 3 (per-block dispatch)** — the block runtime's `run` loads a block's `prefetchMode: 'lazy'` single resources when that block dispatches, through `_loadDeclaredResources`. Lazy collections defer further: they load per access through the on-demand accessor (below) rather than at block dispatch.
 
-**Per-scope cache and dedupe.** Each scope (session / user / org) keeps an in-memory state and content cache that the waves fill. A `loadedCollectionPrefixes` set per scope records which collection pattern-prefixes have already been bulk-loaded, seeded with the flow-level prefixes from Wave 1, so a re-dispatch never re-scans. Single resources are tracked implicitly by presence in the state cache. An `inflightLoads` single-flight map collapses concurrent loads of the same key or prefix across parallel block dispatch (for example a sequencer's `.work()` fan-out), and clears its entry in `finally` so a failed load retries on the next attempt instead of poisoning the map.
+**Per-scope cache and dedupe.** Each scope (session / user / org) keeps an in-memory state and content cache that the waves fill. A `loadedCollectionPrefixes` set per scope records which collection pattern-prefixes have already been bulk-loaded, seeded with the flow-level prefixes from Wave 1, so a re-dispatch never re-scans. Single resources are tracked implicitly by presence in the state cache. An `inflightLoads` single-flight map collapses concurrent loads of the same key or prefix across parallel block dispatch (for example a sequencer's `.sideChain()` fan-out), and clears its entry in `finally` so a failed load retries on the next attempt instead of poisoning the map.
 
 **Concurrent writes to the cache.** Every write commits one key to the per-key store and then mutates the live per-scope cache in place at that key (`cache[key] = value`) rather than replacing the whole map (FIX-744). Because `.parallel`/`.forEach` branches share one execution context, this is what lets distinct-key collection writes from a fan-out coexist in the cache: a convergence read (`.list()`/`.count()`) after the fan-out sees every instance, not just the last branch's. Same-key concurrent writes are last-writer-wins. See [State and Scopes — concurrency guidance](./state-and-scopes.md).
 
@@ -336,7 +336,7 @@ defineFlow({
     clientData: {
       preferences: (ctx) => ({
         displayName: ctx.state.displayName ?? "User",
-        preferredModel: ctx.state.preferredModel ?? "preset/fast",
+        preferredModel: ctx.state.preferredModel ?? "openai/gpt-5.4-mini",
       }),
     },
   },
@@ -366,7 +366,7 @@ const myContext = contextFn({
 
 const chatGenerator = generator({
   name: "chat",
-  model: "preset/fast",
+  model: "openai/gpt-5.4-mini",
   prompt: "You are a helpful assistant.",
   context: [myContext],
   history: true,

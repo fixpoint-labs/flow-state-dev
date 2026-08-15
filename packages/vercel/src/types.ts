@@ -45,7 +45,7 @@ export type VercelHandlerOptions = {
 
   /**
    * Vercel `waitUntil` function for keeping the serverless function alive
-   * after the response has been sent. Pass this when background `.work()`
+   * after the response has been sent. Pass this when background `.sideChain()`
    * tasks need to outlive the response stream.
    *
    * Typically obtained from `@vercel/functions` or Next.js `after()`.

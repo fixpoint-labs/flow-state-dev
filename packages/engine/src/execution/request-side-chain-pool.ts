@@ -1,34 +1,36 @@
 /**
- * Per-request background work pool implementation. Sequencer DSL pushes
- * `.work()` / `.workIf()` / `.forEachBackground()` tasks here; the request
- * executor in `runAction.ts` drains the pool once before terminal status.
+ * Per-request side-chain pool implementation. Sequencer DSL pushes
+ * `.sideChain()` / `.sideChainIf()` / `.forEachSideChain()` tasks here; the request
+ * executor in `runAction.ts` drains the pool to quiescence before terminal
+ * status, on every terminal path.
  *
  * The interface lives in `@flow-state-dev/core` so sequencer code can push
  * without a `core → server` dependency violation; the implementation lives
  * here.
  */
 import type {
-  RequestWorkPool,
-  RequestWorkPoolDrainAllOptions,
-  RequestWorkPoolDrainOptions,
-  RequestWorkPoolResult,
-  RequestWorkTaskMeta
+  RequestSideChainPool,
+  RequestSideChainPoolDrainAllOptions,
+  RequestSideChainPoolDrainOptions,
+  RequestSideChainPoolDrainToQuiescenceOptions,
+  RequestSideChainPoolResult,
+  RequestSideChainTaskMeta
 } from "@flow-state-dev/core";
 
 interface PoolEntry {
-  meta: RequestWorkTaskMeta;
+  meta: RequestSideChainTaskMeta;
   promise: Promise<unknown>;
   /** Settles to true the moment the underlying promise resolves or rejects. */
   settled: boolean;
 }
 
-class RequestWorkPoolImpl implements RequestWorkPool {
+class RequestSideChainPoolImpl implements RequestSideChainPool {
   private readonly entries: PoolEntry[] = [];
   private pending = 0;
   /** Listener installed by an active `drainAll` for status emission. */
   private drainListener: ((count: number) => void) | undefined;
 
-  addTask(task: { promise: Promise<unknown>; meta: RequestWorkTaskMeta }): void {
+  addTask(task: { promise: Promise<unknown>; meta: RequestSideChainTaskMeta }): void {
     const entry: PoolEntry = {
       meta: task.meta,
       promise: task.promise,
@@ -60,8 +62,8 @@ class RequestWorkPoolImpl implements RequestWorkPool {
 
   async drainScope(
     scopeId: string,
-    options?: RequestWorkPoolDrainOptions
-  ): Promise<RequestWorkPoolResult> {
+    options?: RequestSideChainPoolDrainOptions
+  ): Promise<RequestSideChainPoolResult> {
     const matching: PoolEntry[] = [];
     // Keep entries with other scope IDs; remove the matching ones from the
     // pool so a subsequent drainAll does not re-await them.
@@ -85,7 +87,7 @@ class RequestWorkPoolImpl implements RequestWorkPool {
     return result;
   }
 
-  async drainAll(options?: RequestWorkPoolDrainAllOptions): Promise<RequestWorkPoolResult> {
+  async drainAll(options?: RequestSideChainPoolDrainAllOptions): Promise<RequestSideChainPoolResult> {
     if (this.entries.length === 0) {
       return { completed: [], failed: [] };
     }
@@ -99,6 +101,26 @@ class RequestWorkPoolImpl implements RequestWorkPool {
       return await this.awaitEntries(matching, options?.signal);
     } finally {
       this.drainListener = undefined;
+    }
+  }
+
+  async drainToQuiescence(
+    options?: RequestSideChainPoolDrainToQuiescenceOptions
+  ): Promise<RequestSideChainPoolResult> {
+    const completed: RequestSideChainPoolResult["completed"] = [];
+    const failed: RequestSideChainPoolResult["failed"] = [];
+
+    // Unconditional first pass, then repeat until one consumes nothing.
+    // `drainAll` returns an empty result the moment `entries` is empty, so
+    // that is both the termination condition and a cheap no-op for a request
+    // that never queued anything.
+    for (;;) {
+      const pass = await this.drainAll({ onPendingChange: options?.onPendingChange });
+      if (pass.completed.length + pass.failed.length === 0) {
+        return { completed, failed };
+      }
+      completed.push(...pass.completed);
+      failed.push(...pass.failed);
     }
   }
 
@@ -119,7 +141,7 @@ class RequestWorkPoolImpl implements RequestWorkPool {
   private async awaitEntries(
     entries: PoolEntry[],
     signal?: AbortSignal
-  ): Promise<RequestWorkPoolResult> {
+  ): Promise<RequestSideChainPoolResult> {
     const settle = entries.map((entry) =>
       entry.promise.then(
         (value) => ({ status: "fulfilled" as const, meta: entry.meta, value }),
@@ -128,8 +150,8 @@ class RequestWorkPoolImpl implements RequestWorkPool {
     );
 
     let settled: Array<
-      | { status: "fulfilled"; meta: RequestWorkTaskMeta; value: unknown }
-      | { status: "rejected"; meta: RequestWorkTaskMeta; reason: unknown }
+      | { status: "fulfilled"; meta: RequestSideChainTaskMeta; value: unknown }
+      | { status: "rejected"; meta: RequestSideChainTaskMeta; reason: unknown }
     >;
 
     if (signal === undefined) {
@@ -138,7 +160,7 @@ class RequestWorkPoolImpl implements RequestWorkPool {
       settled = entries.map((entry) => ({
         status: "rejected" as const,
         meta: entry.meta,
-        reason: signal.reason ?? new Error("work pool drain aborted")
+        reason: signal.reason ?? new Error("side-chain pool drain aborted")
       }));
     } else {
       settled = await new Promise((resolve) => {
@@ -148,7 +170,7 @@ class RequestWorkPoolImpl implements RequestWorkPool {
             entries.map((entry) => ({
               status: "rejected" as const,
               meta: entry.meta,
-              reason: signal.reason ?? new Error("work pool drain aborted")
+              reason: signal.reason ?? new Error("side-chain pool drain aborted")
             }))
           );
         };
@@ -167,8 +189,8 @@ class RequestWorkPoolImpl implements RequestWorkPool {
       });
     }
 
-    const completed: RequestWorkPoolResult["completed"] = [];
-    const failed: RequestWorkPoolResult["failed"] = [];
+    const completed: RequestSideChainPoolResult["completed"] = [];
+    const failed: RequestSideChainPoolResult["failed"] = [];
     for (const r of settled) {
       if (r.status === "fulfilled") completed.push({ meta: r.meta, value: r.value });
       else failed.push({ meta: r.meta, reason: r.reason });
@@ -179,8 +201,8 @@ class RequestWorkPoolImpl implements RequestWorkPool {
 }
 
 /**
- * Construct a fresh per-request work pool.
+ * Construct a fresh per-request side-chain pool.
  */
-export function createRequestWorkPool(): RequestWorkPool {
-  return new RequestWorkPoolImpl();
+export function createRequestSideChainPool(): RequestSideChainPool {
+  return new RequestSideChainPoolImpl();
 }

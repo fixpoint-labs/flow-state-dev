@@ -56,8 +56,8 @@ export function testItems(items: OutputItem[]) {
         }
       );
     },
-    work(): OutputItem[] {
-      return allItems.filter((item) => item.provenance.phase === "work");
+    sideChain(): OutputItem[] {
+      return allItems.filter((item) => item.provenance.phase === "sideChain");
     },
     main(): OutputItem[] {
       return allItems.filter((item) => item.provenance.phase === "main");

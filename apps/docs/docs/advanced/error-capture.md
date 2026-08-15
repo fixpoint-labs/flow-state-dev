@@ -51,7 +51,7 @@ The callback is read-only. Its return value is ignored, and the runtime calls it
 | `blockInstanceId` | `string?` | Deterministic per block instance. Useful for correlating retries. |
 | `blockPath` | `string?` | Structural path in the execution tree, e.g. `root/step[0]`. |
 | `attempt` | `number?` | 0-indexed retry attempt, set only under a retry policy. |
-| `scope` | `"block" \| "request" \| "work" \| "resource"?` | Where the error originated. |
+| `scope` | `"block" \| "request" \| "sideChain" \| "resource"?` | Where the error originated. |
 | `transient` | `boolean?` | `true` for high-frequency transient blocks (poll loops). |
 
 The runtime fires the callback once per failed block, identified by the leaf block where the failure actually happened. A failure deep in a nested sequencer reports the inner block, not the outer container. When a block runs under a retry policy, each failed attempt fires once, distinguished by `attempt`; a block that recovers on a later attempt still reports the attempts that failed. Filter these out in your adapter if you only want terminal failures (see below).

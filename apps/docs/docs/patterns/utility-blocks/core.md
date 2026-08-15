@@ -6,7 +6,7 @@ sidebar_position: 2
 
 Core utility blocks are pre-built factories that wrap the core block primitives into specialized, high-level capabilities. Instead of configuring a generator from scratch every time you need summarization or task decomposition, you call a utility that returns a fully configured block — composable in sequencers, routers, and flows like any other block.
 
-This guide covers all core utilities with realistic examples showing how they solve real problems in AI workflows. For adapter-driven extension utilities (searcher, retriever, networker, claimChecker), see [Extension Utilities](./extensions).
+This guide covers the core utilities with realistic examples showing how they solve real problems in AI workflows. The table below lists all of them; a couple are thin enough to be documented with the block primitives, and link out. For adapter-driven extension utilities (searcher, retriever, networker, claimChecker), see [Extension Utilities](./extensions).
 
 ## Quick overview
 
@@ -29,9 +29,24 @@ const block = utility.summarizer({ name: "my-summarizer", granularity: "brief" }
 | [`upsertResource`](#upsertresource) | handler | Get-or-create + patch a resource collection instance (no LLM call) |
 | [`intentClassifier`](#intentclassifier) | generator | Classify input into a bounded category set for routing |
 | [`intentRouter`](#intentrouter) | sequencer | Pre-wired classifier + router for classification-driven branching |
+| [`keyedRouter`](/docs/fundamentals/blocks#keyedrouter) | router | Pick a block from a `Record` by string key (no LLM call) |
 | [`sessionTitleGenerator`](#sessiontitlegenerator) | sequencer | Auto-generate a session title from conversation messages |
 
-Every generator-based utility defaults to `"gpt-5-mini"` and accepts a `model` override. All utilities accept an optional `outputSchema` to replace the default output shape with full type inference.
+### Default models
+
+Every utility that calls a model accepts a `model` override. Left alone, most ask for the `utility` intent, a name you map to real models once in your resolver instead of naming a model in each block. The rest name a model directly:
+
+| Utility | Default model |
+|---------|---------------|
+| `contextReducer`, `memoryExtractor`, `summarizer`, `analyzer`, `intentClassifier`, `intentRouter` | `"intent/utility"` |
+| `decomposer` | `"openai/gpt-5.4-mini"` |
+| `sessionTitleGenerator` | `"openai/gpt-5-nano"` |
+
+`combiner`, `upsertResource`, and `keyedRouter` take no `model` — they run deterministic logic. `intentRouter` has no model of its own either; it passes `model` straight through to the classifier it wraps, which is where that default comes from.
+
+If you haven't declared a `utility` intent, the resolver falls back to your `defaultModel`, so set one. See [Models](/docs/fundamentals/models) for how intents map to providers.
+
+All utilities accept an optional `outputSchema` to replace the default output shape with full type inference.
 
 ### `itemVisibility` — control output visibility
 
@@ -286,7 +301,7 @@ Each `SubTask` has:
 | `deps` | `string[]` | IDs of tasks this depends on |
 | `priority` | `"high" \| "medium" \| "low"` | Execution priority hint |
 
-`title` and `context` are `nullable`, not optional (BP-016: generator outputs must be OpenAI strict-mode compatible). Consumers treat `null` as "absent". Plan-shaped patterns read `context` to give each worker the data its task needs — see [Plan & Execute per-task context](../plan-and-execute).
+`title` and `context` are `nullable`, not optional (OpenAI strict structured-output compatibility). Consumers treat `null` as "absent". Plan-shaped patterns read `context` to give each worker the data its task needs — see [Plan & Execute per-task context](../plan-and-execute).
 
 **Example output:**
 
@@ -1121,10 +1136,10 @@ const autoTitle = utility.sessionTitleGenerator({
 
 const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
   .step(mainGenerator)
-  .work(autoTitle);      // runs in background after main generator
+  .sideChain(autoTitle);      // runs in background after main generator
 ```
 
-The block is designed for `.work()`. It fires after the main generator completes, runs concurrently with any other background work, and does not block the response or add latency visible to the user.
+The block is designed for `.sideChain()`. It fires after the main generator completes, runs concurrently with any other background work, and does not block the response or add latency visible to the user.
 
 **What it does internally:**
 
@@ -1145,7 +1160,7 @@ The whole block is `transient: true`, so it produces no visible items in the str
 ```ts
 utility.sessionTitleGenerator({
   name: string,           // required — used as block name and for sub-block names
-  model?: string,         // model ID (default: "gpt-5-mini")
+  model?: string,         // model ID (default: "openai/gpt-5-nano")
   messageLimit?: number,  // recent LLM messages to include (default: 4)
 });
 ```

@@ -260,7 +260,7 @@ request: {
   onStarted: logRequestStart,       // Fire when request begins
   onCompleted: logRequestComplete,   // Terminal success only
   onErrored: handleRequestError,     // Terminal failure only
-  onStepErrored: logStepError,       // Non-terminal step/work failure (observational)
+  onStepErrored: logStepError,       // Non-terminal step/side-chain failure (observational)
   onFinished: cleanupRequest,        // Always (success or failure)
   heartbeatIntervalMs: 10000,        // Active request registry heartbeat (default 10s, 0 to disable). Relevant for serverless.
 },

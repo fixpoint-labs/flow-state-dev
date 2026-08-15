@@ -475,7 +475,7 @@ describe("useSession workstreams — every interaction path is classified (FIX-1
    * method to the view fails this suite until someone decides which bucket it
    * belongs in.
    */
-  const WORK_STARTING = [
+  const SIDE_CHAIN_STARTING = [
     "sendAction",
     "resumeLatestRequest",
     "resumeSuspension",
@@ -483,7 +483,7 @@ describe("useSession workstreams — every interaction path is classified (FIX-1
   ];
 
   // Each entry states why it does not need to discover background work.
-  const NON_WORK_STARTING: Record<string, string> = {
+  const NON_SIDE_CHAIN_STARTING: Record<string, string> = {
     refresh: "is itself the read",
     abortRequest: "stops work, never starts it",
     dismissRequest: "drops a stuck request locally",
@@ -526,14 +526,14 @@ describe("useSession workstreams — every interaction path is classified (FIX-1
 
     const unclassified = callables.filter(
       (name) =>
-        !WORK_STARTING.includes(name) &&
-        !Object.hasOwn(NON_WORK_STARTING, name)
+        !SIDE_CHAIN_STARTING.includes(name) &&
+        !Object.hasOwn(NON_SIDE_CHAIN_STARTING, name)
     );
 
     expect(unclassified).toEqual([]);
     // Guard against the lists rotting the other way — a method that was
     // classified but has since been removed.
-    for (const name of WORK_STARTING) {
+    for (const name of SIDE_CHAIN_STARTING) {
       expect(callables).toContain(name);
     }
   });
@@ -553,7 +553,7 @@ describe("useSession workstreams — every interaction path is classified (FIX-1
       continueRequest: () => result.current.continueRequest("req1")
     };
 
-    for (const name of WORK_STARTING) {
+    for (const name of SIDE_CHAIN_STARTING) {
       sessionClientMock.listWorkstreams.mockClear();
       await act(async () => {
         await drive[name]!().catch(() => {

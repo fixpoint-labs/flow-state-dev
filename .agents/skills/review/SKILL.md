@@ -27,10 +27,16 @@ set together and merges the results.
 | **Correctness** | Bugs, logic errors, and the second-path checklist (BP-035)? | code-reviewer sub-agent (below) | change |
 | **Completeness** | All of the spec built, nothing extra, red shown, goal proven? | spec-compliance sub-agent (below) | change **with a spec** |
 | **Depth** *(optional)* | Shallow modules introduced or nearby? | `improve-codebase-architecture` | change + codebase; **non-blocking follow-ups** |
+| **Alternatives** *(triggered)* | Is this the right *shape*, or did we stop at the first workable one? | `adhd` | change + codebase; **notes only, never must-fix** |
 
-Coherence, Restraint, and Depth are standalone skills — **dispatch them; don't
+Coherence, Restraint, Depth, and Alternatives are standalone skills — **dispatch them; don't
 re-derive their criteria here.** Correctness and Completeness have no standalone skill,
 so their prompts live below.
+
+**Restraint and Alternatives are opposite postures on purpose.** Restraint hunts surface to
+remove; Alternatives generates shapes the change could have taken instead. Kept in one lens
+they blunt each other — `second-look` explicitly drops any "could be more flexible" candidate,
+which is most of what divergence produces. They compose; they don't merge.
 
 ## Resolve target & select lenses
 
@@ -41,6 +47,24 @@ so their prompts live below.
 
 Give every lens the same target framing, `docs/philosophy.md`, and — for a change — the
 spec.
+
+**Alternatives is triggered, never standing.** It costs 8 sub-agent calls, and once the
+code exists most alternatives are expensive regret — the spec is where they pay for
+themselves. There are two ways in, and they are not the same:
+
+- **An explicit request always runs it.** If the caller asked for the alternatives lens,
+  run it. No exclusion below applies — the caller opted in, which is the same rule as
+  `adhd`'s own pre-flight Step 1.
+- **Automatic triggering** happens only when the change is genuinely shape-open: **new
+  public API surface**, a **new pattern / capability / block kind**, a **schema or scope
+  decision**, or a **spec whose §3 weighed no real alternative**.
+
+**The exclusions below govern automatic triggering only.** Don't auto-add the lens to a bug
+fix or a mechanical refactor. And an **approved spec that weighed a real alternative in §3**
+suppresses every automatic trigger, including new public API surface: the divergence already
+happened at the altitude where it was cheap and a human signed the result off, so re-running
+it against shipped code pays twice to relitigate a settled decision. If someone asks for it
+anyway, they get it.
 
 ## Run
 
@@ -56,10 +80,19 @@ spec.
    - **Completeness** (change with a spec) → the prompt below.
    - **Depth** (if selected) → run `improve-codebase-architecture` on the touched
      area; its output is *candidate follow-ups*, non-blocking.
+   - **Alternatives** (if triggered) → run `adhd` in its **review context**, scoped to
+     *other shapes this change could have taken*. Its switch test (materially different ·
+     concretely describable · wins on a named axis · switch cost stated) does the pruning —
+     don't re-derive it here. Its **alternatives rows** are always **notes** and never
+     block. Its **routed findings** are not — those are correctness / restraint / coherence
+     defects that divergence happened to walk into, returned tagged for you to classify;
+     severity them as that lens would, up to and including must-fix. Note-only applies to
+     the shapes, not to everything the lens hands back.
    - **Model tiering** (AGENTS.md): dispatch **Correctness** and **Completeness** on
      **Sonnet** — they check *decided* work against the spec/checklist, not open design.
-     **Coherence** and **Restraint** keep the judgment tier (Opus, the default); **Depth**
-     inherits its skill's tier.
+     **Coherence**, **Restraint** and **Alternatives** keep the judgment tier (Opus, the
+     default) — for Alternatives that covers its own fan-out too, which its skill states;
+     **Depth** inherits its skill's tier.
 2. **Dedupe across lenses.** They overlap at the edges (a redundant capability is both a
    coherence conflict and bloat). Merge duplicate findings into one, attributed to the
    sharpest framing. Never double-count.
@@ -112,7 +145,9 @@ to its summary.
 ## Guardrails
 
 - **Dispatch the standalone lenses; don't reimplement them.** Coherence = `audit-coherence`,
-  Restraint = `second-look`, Depth = `improve-codebase-architecture`.
+  Restraint = `second-look`, Depth = `improve-codebase-architecture`, Alternatives = `adhd`.
+- **Don't run Alternatives by reflex.** It is the one lens with a cost gate on it; a review
+  that adds it to every change has stopped reading the trigger list.
 - **Dedupe.** Overlapping lenses produce one merged finding, never repeats.
 - **Don't pad.** A lens that finds nothing says so in one line; "appropriately scoped /
   coherent" is a valid, common verdict.

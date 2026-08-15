@@ -21,7 +21,7 @@ export interface SessionTitleGeneratorConfig {
  * Factory that returns a sequencer block for auto-generating a session title
  * from recent conversation messages.
  *
- * Designed for use as a `.work()` background block in a sequencer. It runs a
+ * Designed for use as a `.sideChain()` background block in a sequencer. It runs a
  * generator to produce a title from recent session messages, then a handler
  * that persists the title via `ctx.session.setMetadata({ title })` if it
  * changed. The metadata update emits a `session.metadata.changed` SSE event
@@ -38,7 +38,7 @@ export interface SessionTitleGeneratorConfig {
  *
  * const pipeline = sequencer({ name: "chat", inputSchema })
  *   .step(mainGenerator)
- *   .work(titleBlock)
+ *   .sideChain(titleBlock)
  * ```
  */
 export function sessionTitleGenerator(config: SessionTitleGeneratorConfig) {

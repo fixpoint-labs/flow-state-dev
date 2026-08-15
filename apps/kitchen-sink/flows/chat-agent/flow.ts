@@ -43,7 +43,7 @@ const chatAgentFlow = defineFlow({
       userMessage: (input) => input.message,
       // A second `run` on the same session queues behind the first (FIFO)
       // instead of being dropped. The first turn holds the session key until its
-      // background `.work()` tasks (memory capture, auto-title) drain — the
+      // background `.sideChain()` tasks (memory capture, auto-title) drain — the
       // "Tidying up…" phase — so a fast follow-up would otherwise 409 under a
       // `reject` policy even though the user-facing answer is already done.
       concurrency: "queue",

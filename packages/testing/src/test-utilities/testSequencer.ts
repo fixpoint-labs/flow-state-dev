@@ -7,13 +7,13 @@ import type {
   StepTrace,
   TestBlockOptions,
   TestSequencerResult,
-  WorkTrace
+  SideChainTrace
 } from "./types";
 
 type StepAccumulator = {
   stepName: string;
   blockName: string;
-  phase: "main" | "work";
+  phase: "main" | "sideChain";
   items: Array<OutputItem | BlockTraceItem>;
   output: unknown;
   error: Error | null;
@@ -68,9 +68,9 @@ function buildStepTraces(items: Array<OutputItem | BlockTraceItem>): StepTrace[]
   return traces;
 }
 
-function buildWorkTraces(steps: StepTrace[]): WorkTrace[] {
+function buildSideChainTraces(steps: StepTrace[]): SideChainTrace[] {
   return steps
-    .filter((step) => step.phase === "work")
+    .filter((step) => step.phase === "sideChain")
     .map((step) => ({
       blockName: step.blockName,
       output: step.output,
@@ -105,7 +105,7 @@ export async function testSequencer<TBlock extends BlockDefinition<any, any>>(
   return {
     ...base,
     steps,
-    workResults: buildWorkTraces(steps),
+    sideChainResults: buildSideChainTraces(steps),
     loopIterations: inferLoopIterations(items)
   };
 }

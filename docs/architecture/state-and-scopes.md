@@ -118,7 +118,7 @@ Deliberately unconditional, each for a stated reason rather than because it was 
 
 The collection-item HTTP routes write this store directly, outside the registry and its queue, so they carry their own versions and surface a conflict to the client rather than retrying it. Their request/response contract — including when a caller sees a 409 — is [the resource client reference](./resources-and-client-data.md)'s, not this document's.
 
-Cancellation uses the request's **background** abort signal, not the transport signal. The transport signal fires on client disconnect, which must not abandon the writes of a `.work()` task the request is still running; and there is no per-scope signal available at this seam anyway, since persisters and `ResourceRef`s are built once per context while `ctx.signal` is per execution scope.
+Cancellation uses the request's **background** abort signal, not the transport signal. The transport signal fires on client disconnect, which must not abandon the writes of a `.sideChain()` task the request is still running; and there is no per-scope signal available at this seam anyway, since persisters and `ResourceRef`s are built once per context while `ctx.signal` is per execution scope.
 
 Two orderings are load-bearing and quiet when regressed. `create()` defers its `maxInstances` eviction until **after** the CAS write commits — evicting first lets a create that loses its race still tombstone an unrelated instance, so the caller gets an exception *and* a net loss. And the first-touch APIs translate a terminal already-exists into their own contract rather than surfacing it: `getOrCreate` returns the winner's instance, `upsert` applies its update as a patch.
 
@@ -297,7 +297,7 @@ Fields are merged (last-write-wins). Only the fields you include in the body are
 
 ### Auto-generating session titles
 
-The `sessionTitleGenerator` utility block reads recent conversation messages and asks the LLM for a short title. It is designed for use as a `.work()` background block:
+The `sessionTitleGenerator` utility block reads recent conversation messages and asks the LLM for a short title. It is designed for use as a `.sideChain()` background block:
 
 ```ts
 import { utility, sequencer } from "@flow-state-dev/core";
@@ -309,7 +309,7 @@ const autoTitle = utility.sessionTitleGenerator({
 
 const pipeline = sequencer({ name: "chat", inputSchema })
   .step(mainGenerator)
-  .work(autoTitle);     // runs in background, sets session title
+  .sideChain(autoTitle);     // runs in background, sets session title
 ```
 
 Internally it is a sequencer with two steps: a generator that produces the title, and a handler that calls `setMetadata` only if the title has changed. The whole block is marked `transient: true` so it produces no visible items in the stream.

@@ -55,7 +55,7 @@ Each analyzer is wrapped in a mini-sequencer with `.rescue()`, so individual fai
 
 ## Basic usage
 
-Wire the auditor as a `.work()` sidechain so the primary response streams unblocked:
+Wire the auditor as a `.sideChain()` sidechain so the primary response streams unblocked:
 
 ```ts
 import { defineFlow, sequencer, generator } from "@flow-state-dev/core";
@@ -64,7 +64,7 @@ import { z } from "zod";
 
 const chat = generator({
   name: "chat",
-  model: "preset/default",
+  model: "openai/gpt-5.5",
   prompt: "You are a helpful assistant.",
   user: (input) => input.message,
 });
@@ -79,7 +79,7 @@ const pipeline = sequencer({
   inputSchema: z.object({ message: z.string() }),
 })
   .step(chat)
-  .work(
+  .sideChain(
     (chatOutput, ctx) => ({
       userInput: String(ctx.parent?.input?.message ?? ""),
       response: typeof chatOutput === "string" ? chatOutput : JSON.stringify(chatOutput),
@@ -144,7 +144,7 @@ const biasAdapter = sequencer({
     userInput: input.userInput,
     aiResponse: input.response,   // biasAnalyzer expects "aiResponse", not "response"
   }))
-  .step(biasAnalyzer({ model: "preset/fast" }))
+  .step(biasAnalyzer({ model: "openai/gpt-5.4-mini" }))
   .map((output: Record<string, unknown>) => {
     const annotations = (output.annotations as Array<Record<string, unknown>>) ?? [];
     const severity = output.severity as string;
@@ -190,7 +190,7 @@ import { z } from "zod";
 
 const detect = generator({
   name: "tone/detect",
-  model: "preset/fast",
+  model: "openai/gpt-5.4-mini",
   inputSchema: auditorInputSchema,
   outputSchema: z.object({
     tone: z.string(),
@@ -259,12 +259,12 @@ import { responseAuditor } from "@flow-state-dev/patterns/response-auditor";
 const auditor = responseAuditor({ analyzers: [biasAdapter, toneAnalyzer] });
 
 // Background sidechain — audit while user sees the response
-pipeline.work(auditor);
+pipeline.sideChain(auditor);
 
 // Chain audit into a conditional revision
 const selfCorrectingChat = sequencer({ name: "self-correct", inputSchema: chatInput })
   .step(chat)
-  .work(
+  .sideChain(
     (output, ctx) => ({ userInput: ctx.parent?.input?.message, response: output }),
     auditor,
   )

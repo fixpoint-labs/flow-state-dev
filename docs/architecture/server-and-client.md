@@ -287,7 +287,7 @@ const {
 } = useSession(sessionId);
 
 await sendAction("chat", { message: "Hello!" });
-// isFinishing: true when main chain is done but background .work() tasks are still running.
+// isFinishing: true when main chain is done but background .sideChain() tasks are still running.
 // Use (isStreaming && !isFinishing) to block UI only during main chain execution.
 ```
 

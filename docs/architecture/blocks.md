@@ -54,7 +54,7 @@ interface BlockContext {
   emit: {
     message(text: string, options?: { itemVisibility?: ItemVisibility; agentName?: string }): void;
     component(component: string, data: Record<string, unknown>, options?: { key?: string; itemVisibility?: ItemVisibility; agentName?: string }): void;
-    status(message: string, options?: { blocked?: boolean; backgroundTasks?: number }): void;
+    status(message: string, options?: { blocked?: boolean; sideChainTasks?: number }): void;
   };
 }
 ```
@@ -186,7 +186,7 @@ import { z } from "zod";
 
 const chatGenerator = generator({
   name: "chat-generator",
-  model: "preset/fast",
+  model: "openai/gpt-5.4-mini",
   prompt: "You are a helpful, concise assistant.",
   inputSchema: z.object({ message: z.string().min(1) }),
   // Default outputSchema is z.string() — enables text streaming
@@ -317,12 +317,12 @@ definition and resolution semantics.
 | `map(fn)` | Transform current value without a block | `inline` (novel content) |
 | `parallel(steps)` | Execute named steps concurrently | `structure` (object of refs) |
 | `forEach(block)` | Execute block for each array element | `structure` (array of refs) |
-| `forEachBackground(block)` | Fire-and-forget fan-out per element | passthrough (value unchanged) |
+| `forEachSideChain(block)` | Fire-and-forget fan-out per element | passthrough (value unchanged) |
 | `doUntil(condition, block)` | Loop until condition is true | `ref` → final iteration's item |
 | `doWhile(condition, block)` | Loop while condition is true | `ref` → final iteration's item |
 | `loopBack(stepName, opts)` | Jump back to a named step (bounded) | passthrough |
-| `work(block)` | Queue non-aborting side-chain execution | passthrough |
-| `waitForWork(opts)` | Wait for queued work to complete | passthrough |
+| `sideChain(block)` | Queue non-aborting side-chain execution | passthrough |
+| `waitForSideChain(opts)` | Wait for queued side chains to complete | passthrough |
 | `tap(block)` | Side effect without changing payload | passthrough |
 | `tapIf(condition, block)` | Conditional side effect | passthrough |
 | `rescue(handlers)` | Error recovery by error type | `ref` → rescue branch's item (when taken) |
@@ -340,8 +340,8 @@ handlers always emit `inline` (they are leaves).
 
 ### Work Semantics
 
-- `.work(block)` is **non-aborting** — failures don't stop the main chain
-- `.waitForWork({ failOnError: true })` promotes work failures to terminal errors
+- `.sideChain(block)` is **non-aborting** — failures don't stop the main chain
+- `.waitForSideChain({ failOnError: true })` promotes side-chain failures to terminal errors
 - Use for background tasks like logging, analytics, or async notifications
 
 ### Inline Block Definitions
@@ -432,7 +432,7 @@ const researcher = generator({
   itemVisibility: { client: true, history: false },  // visible to the user for observability,
   agentName: "researcher",                            // not inherited by the orchestrator's history.
   prompt: "Analyze and summarize.",
-  model: "anthropic:claude-sonnet-4-6",
+  model: "anthropic/claude-sonnet-4-6",
 });
 ```
 

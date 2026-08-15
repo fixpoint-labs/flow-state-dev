@@ -373,8 +373,8 @@ seam`, `the persisted log`), not functions you think exist.
 author gets to try the design, the reviewer gets something to run, and the implementer gets a
 starting point, all without the doc carrying API-shaped claims. **Point at it from here in one
 line and say what it showed** — including when the premise held. Link **the spec PR**, not the
-branch: closing the PR deletes the branch (BP-037) but leaves the PR's diff viewable. Never
-merged, either way — the implementation branch is cut from `origin/main`, so a POC can't ride
+branch: its diff renders the POC with no checkout, and it stays viewable after the PR closes
+(BP-037). Never merged, either way — the implementation branch is cut from `origin/main`, so a POC can't ride
 along.
 
 **Include one when** the composition is novel, the ergonomics only become visible in code,

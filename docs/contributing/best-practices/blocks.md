@@ -79,7 +79,7 @@ See [`../best-practices.md`](../best-practices.md) for the index and universal r
 - Date: 2026-06-27
 - Scope: Blocks — conditional composition.
 - Rule:
-  - Use `.workIf(condition, connector, block)` — not a wrapper sequencer with `.stepIf` inside `.work()`.
+  - Use `.sideChainIf(condition, connector, block)` — not a wrapper sequencer with `.stepIf` inside `.sideChain()`.
   - Use `.tapIf(condition, block)` — not a gating handler that conditionally calls a block.
   - Use `.stepIf(condition, block)` — not a wrapper sequencer with a `.map` + `.step`.
   - All conditional variants accept an inline connector as a second argument for input adaptation; don't create an intermediate sequencer just to `.map()` before a block.

@@ -175,7 +175,7 @@ describe("FIX-1005: step abortSignal through nested scopes", () => {
 });
 
 describe("FIX-1005: step abortSignal reaches BACKGROUND work", () => {
-  // `.work()` / `.workIf()` / `.forEachBackground()` do not run under
+  // `.sideChain()` / `.sideChainIf()` / `.forEachSideChain()` do not run under
   // `ctx.signal`. They substitute the request's background signal so a task
   // tree survives transport teardown (FIX-663) — and that substitution used to
   // discard anything a caller had composed on top, including the signal that
@@ -187,7 +187,7 @@ describe("FIX-1005: step abortSignal reaches BACKGROUND work", () => {
   // These run through `runAction` — a unit context installs no background
   // signal at all, so it cannot reproduce the substitution that causes this.
 
-  function backgroundFlow(
+  function sideChainFlow(
     build: (probe: Marker) => ReturnType<typeof sequencer>
   ) {
     const marker: Marker = { ran: false, abortedWhenDone: false };
@@ -199,10 +199,10 @@ describe("FIX-1005: step abortSignal reaches BACKGROUND work", () => {
     return { marker, extra, root };
   }
 
-  it("aborts a .work() task dispatched by the child", async () => {
-    const { marker, extra, root } = backgroundFlow((probe) =>
+  it("aborts a .sideChain() task dispatched by the child", async () => {
+    const { marker, extra, root } = sideChainFlow((probe) =>
       sequencer({ name: "bg-child", inputSchema: z.unknown() })
-        .work(slowLeaf("bg", probe))
+        .sideChain(slowLeaf("bg", probe))
         .map(() => ({ done: true }))
     );
 
@@ -214,10 +214,10 @@ describe("FIX-1005: step abortSignal reaches BACKGROUND work", () => {
     expect(marker.abortedWhenDone).toBe(true);
   });
 
-  it("aborts a .workIf() task dispatched by the child", async () => {
-    const { marker, extra, root } = backgroundFlow((probe) =>
+  it("aborts a .sideChainIf() task dispatched by the child", async () => {
+    const { marker, extra, root } = sideChainFlow((probe) =>
       sequencer({ name: "bgif-child", inputSchema: z.unknown() })
-        .workIf(() => true, slowLeaf("bg-if", probe))
+        .sideChainIf(() => true, slowLeaf("bg-if", probe))
         .map(() => ({ done: true }))
     );
 
@@ -229,11 +229,11 @@ describe("FIX-1005: step abortSignal reaches BACKGROUND work", () => {
     expect(marker.abortedWhenDone).toBe(true);
   });
 
-  it("aborts a .forEachBackground() task dispatched by the child", async () => {
-    const { marker, extra, root } = backgroundFlow((probe) =>
+  it("aborts a .forEachSideChain() task dispatched by the child", async () => {
+    const { marker, extra, root } = sideChainFlow((probe) =>
       sequencer({ name: "feb-child", inputSchema: z.unknown() })
         .map(() => [1])
-        .forEachBackground(slowLeaf("bg-feb", probe))
+        .forEachSideChain(slowLeaf("bg-feb", probe))
         .map(() => ({ done: true }))
     );
 
@@ -247,11 +247,11 @@ describe("FIX-1005: step abortSignal reaches BACKGROUND work", () => {
 
   it("aborts background work dispatched THREE scopes down", async () => {
     // The depth guard. Composing at the dispatch alone survives one scope: each
-    // nested scope re-derives the background signal, so a `.work()` deeper in
+    // nested scope re-derives the background signal, so a `.sideChain()` deeper in
     // the tree used to get the request's again with the extra signal gone.
-    const { marker, extra, root } = backgroundFlow((probe) => {
+    const { marker, extra, root } = sideChainFlow((probe) => {
       const inner = sequencer({ name: "deep-inner", inputSchema: z.unknown() })
-        .work(slowLeaf("bg-deep", probe))
+        .sideChain(slowLeaf("bg-deep", probe))
         .map(() => ({ done: true }));
       const middle = sequencer({
         name: "deep-middle",
@@ -276,7 +276,7 @@ describe("FIX-1005: step abortSignal reaches BACKGROUND work", () => {
     // supplied here, so the task runs to completion as FIX-663 requires.
     const marker: Marker = { ran: false, abortedWhenDone: false };
     const child = sequencer({ name: "bg-clean", inputSchema: z.unknown() })
-      .work(slowLeaf("bg-untouched", marker))
+      .sideChain(slowLeaf("bg-untouched", marker))
       .map(() => ({ done: true }));
     const root = sequencer({ name: "root", inputSchema: z.unknown() }).step(child);
 

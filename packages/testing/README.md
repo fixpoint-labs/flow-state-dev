@@ -109,7 +109,7 @@ const report = await evalBlock(classifier, {
     exactMatch("sentiment"),
     analyzerScorer({
       criteria: ["Output is relevant to the input"],
-      model: "anthropic/claude-haiku",
+      model: "anthropic/claude-haiku-4-5",
     }),
   ],
   concurrency: 3,
@@ -123,7 +123,7 @@ const report = await evalBlock(classifier, {
 ```ts
 analyzerScorer({
   criteria: ["Accurate", "Concise", "Professional tone"],
-  model: "claude-haiku",       // cheaper model for grading
+  model: "anthropic/claude-haiku-4-5",  // cheaper model for grading
   scoreMapping: "mean",        // "mean" | "min" | { strategy: "weighted", weights }
   threshold: 0.7,              // pass/fail cutoff
 })

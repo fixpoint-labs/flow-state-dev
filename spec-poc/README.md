@@ -4,7 +4,8 @@ Throwaway proof-of-concept code for a **never-merged** spec or epic PR, one dire
 question: `spec-poc/<ISSUE-ID>-<slug>/`, or `spec-poc/epic-<name>/` at epic altitude.
 
 **On `main` this directory contains only this file.** A POC lives on the `spec/<ISSUE-ID>` or
-`epic/<name>` branch that carries it and disappears when that PR closes unmerged. The
+`epic/<name>` branch that carries it — those branches are never deleted, so the code stays
+reachable after the PR closes unmerged, but it never reaches `main`. The
 implementation branch is cut from fresh `origin/main`, so a POC cannot ride along into the
 codebase — and whatever else an implementation PR carries over from the spec branch, the POC
 beside it is never part of that. If you want to keep something a POC produced, **graduate it**

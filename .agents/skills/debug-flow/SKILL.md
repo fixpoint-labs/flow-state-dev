@@ -205,7 +205,7 @@ Summarize for the user:
 |------|---------|-------------|
 | **handler** | Arbitrary logic | `execute(input, ctx) → output`. No model integration. |
 | **generator** | AI/LLM integration | Multi-step model loop with tool execution. Resolves model via `ctx.resolveModel()`. Streams text via `content.delta`. |
-| **sequencer** | Block composition | Chains blocks via `.step()`. Supports `.parallel()`, `.forEach()`, `.rescue()`, `.branch()`, `.doWhile()`, `.work()`. |
+| **sequencer** | Block composition | Chains blocks via `.step()`. Supports `.parallel()`, `.forEach()`, `.rescue()`, `.branch()`, `.doWhile()`, `.sideChain()`. |
 | **router** | Dynamic dispatch | `execute(input, ctx)` returns one of N `routes` blocks to run. |
 
 ### Sequencer DSL Quick Reference
@@ -218,7 +218,7 @@ Summarize for the user:
 .forEach(block)                 — Iterate array input, run block per item
 .rescue([{ when: [...], block }]) — Error recovery
 .branch({ name: [cond, block] }) — Route by condition
-.work(block)                    — Non-aborting side effect
+.sideChain(block)                    — Non-aborting side effect
 .tap(block)                     — Side effect (preserves throughput)
 .map(fn)                        — Pure data transformation
 .doWhile(cond, block)           — Loop while condition true
@@ -250,7 +250,7 @@ Summarize for the user:
 | `context` | LLM only | Hidden context injection |
 | `state_change` | Client (transient) | State mutation record |
 | `error` | Client | Terminal request failure |
-| `step_error` | Client | Recoverable step/work failure |
+| `step_error` | Client | Recoverable step/side-chain failure |
 
 ### Error Taxonomy
 

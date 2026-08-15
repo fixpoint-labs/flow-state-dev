@@ -51,7 +51,7 @@ import { z } from "zod";
 
 const researchWorker = generator({
   name: "research-task",
-  model: "gpt-5-mini",
+  model: "openai/gpt-5.4-mini",
   inputSchema: z.object({
     taskId: z.string(),
     goal: z.string(),

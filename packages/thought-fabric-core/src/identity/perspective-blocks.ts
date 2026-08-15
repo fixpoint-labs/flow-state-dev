@@ -244,10 +244,10 @@ export function perspectiveAnalyze(config: PerspectiveAnalyzeConfig) {
  *   .map((input) => ({ content: input.proposal }))
  *   .step(securityAudit)
  *
- * // As a .work() sidechain
+ * // As a .sideChain() sidechain
  * const pipeline = sequencer({ name: 'review' })
  *   .step(mainBlock)
- *   .work((input) => ({ content: input.proposal }), securityAudit)
+ *   .sideChain((input) => ({ content: input.proposal }), securityAudit)
  *   .step(nextBlock)
  * ```
  */

@@ -19,7 +19,7 @@ Hygiene work originally landed alongside the memory subpath that lived here; it 
 
 ### 2026-05-07 — Memory: structured-output repair (FIX-570)
 
-Memory consolidation and prune generators now register a `repairOutput` hook recovering from common mis-shapes (bare arrays wrapped under the envelope key, narrative text wrapping a JSON code block, mid-stream truncation recovered by walking back to the last balanced `}`, partial objects defaulted to `[]`). Unrecoverable strings degrade to an empty envelope with a `[tf.memory]` warning so a single bad cycle doesn't crash the background `.work()` step. `MemorySystemConfig.model` accepts `string | string[]`; arrays build a `createFallbackModel` chain. New optional `consolidationModel` and `pruneModel` fields.
+Memory consolidation and prune generators now register a `repairOutput` hook recovering from common mis-shapes (bare arrays wrapped under the envelope key, narrative text wrapping a JSON code block, mid-stream truncation recovered by walking back to the last balanced `}`, partial objects defaulted to `[]`). Unrecoverable strings degrade to an empty envelope with a `[tf.memory]` warning so a single bad cycle doesn't crash the background `.sideChain()` step. `MemorySystemConfig.model` accepts `string | string[]`; arrays build a `createFallbackModel` chain. New optional `consolidationModel` and `pruneModel` fields.
 
 ### 2026-05-06 — Generator: log unparseable candidates
 
@@ -39,7 +39,7 @@ Replaces role-named `agent` / `worker` presets with five orthogonal section pres
 
 ### 2026-05-02 — Memory pipeline + naming reliability fixes
 
-`contextFormatter` now returns an object (`{ digest?, working? }`) rather than a pre-formatted string so the framework's context aggregator nests proper child tags under `<memory>`. Digest now regenerates as a top-level `.work()` step when `digest` is configured, instead of riding inside the consolidation / prune gates. Framework-namespaced tool blocks like `tf.memory/recall` are aliased to `^[a-zA-Z0-9_-]+$` form before submission to providers (OpenAI). Recall tool prompt wording is more directive about personal/user-specific details.
+`contextFormatter` now returns an object (`{ digest?, working? }`) rather than a pre-formatted string so the framework's context aggregator nests proper child tags under `<memory>`. Digest now regenerates as a top-level `.sideChain()` step when `digest` is configured, instead of riding inside the consolidation / prune gates. Framework-namespaced tool blocks like `tf.memory/recall` are aliased to `^[a-zA-Z0-9_-]+$` form before submission to providers (OpenAI). Recall tool prompt wording is more directive about personal/user-specific details.
 
 ### 2026-05-02 — Memory: simplified `contextFormatter` (FIX-407)
 

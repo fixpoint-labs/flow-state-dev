@@ -3,13 +3,14 @@
  * Guards the two ways a point-in-time spec leaks into `main`.
  *
  * 1. `spec/` carries the in-flight spec on a spec branch, and `spec-poc/` the
- *    throwaway POC backing it. Both die with the spec PR, so both must be empty
- *    (README only) everywhere else. Spec and epic PRs legitimately carry them,
+ *    throwaway POC backing it. Neither ever lands on `main` — the spec PR closes
+ *    unmerged at approval and its branch is kept as a frozen record — so both
+ *    must be empty (README only) everywhere else. Spec and epic PRs carry them,
  *    so CI skips this script for them by BRANCH name (`spec/*`, `epic/*` — see
  *    `.github/workflows/ci.yml`, which explains why the `spec` label can't be
  *    the key); every other PR and `main` itself is checked.
- * 2. Source and docs must not cite a spec by repo path. The spec copy dies with
- *    its PR, so a `spec/FIX-123.md` or `spec/_epics/<name>.md` reference is
+ * 2. Source and docs must not cite a spec by repo path. No spec file exists on
+ *    `main`, so a `spec/FIX-123.md` or `spec/_epics/<name>.md` reference is
  *    dangling the moment it is written — a comment states its reason, it does
  *    not link to one.
  *
@@ -25,8 +26,8 @@ const ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 
 /**
  * The never-merged directories, per `spec/README.md`: the spec itself, and the
- * throwaway POC that backs it. Both are point-in-time artifacts that die with
- * the spec PR, so both leak onto `main` the same way and are checked together.
+ * throwaway POC that backs it. Both are point-in-time artifacts confined to the
+ * spec branch, so both leak onto `main` the same way and are checked together.
  */
 const EPHEMERAL_DIRS = ["spec", "spec-poc"];
 

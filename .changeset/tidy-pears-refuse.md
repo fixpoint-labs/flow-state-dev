@@ -83,7 +83,7 @@ govern a task awaiting review, so it stays yours for as long as the review takes
   resume — so cleanup does not re-run on every re-entry.
 
 Both options now reach a step's whole subtree, including the background work it
-dispatches. `.work()`, `.workIf()` and `.forEachBackground()` deliberately run
+dispatches. `.sideChain()`, `.sideChainIf()` and `.forEachSideChain()` deliberately run
 under the request's background signal so they outlive a disconnected client;
 they now run under that signal composed with the step's, so they still stop when
 the step's own signal fires.

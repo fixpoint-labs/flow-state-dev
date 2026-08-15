@@ -41,7 +41,7 @@ import { generator } from "@flow-state-dev/core";
 
 const myGenerator = generator({
   name: "my-gen",
-  model: "preset/fast",
+  model: "openai/gpt-5.4-mini",
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
   outputSchema: z.object({ response: z.string() }),
@@ -111,7 +111,7 @@ const pipeline = sequencer({
 });
 ```
 
-**Methods:** `step`, `stepIf`, `map`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `loopBack`, `work`, `workIf`, `waitForWork`, `tap`, `tapIf`, `rescue`, `branch`, `stepAll`, `stepAny`, `race`, `exitIf`
+**Methods:** `step`, `stepIf`, `map`, `parallel`, `forEach`, `forEachSideChain`, `doUntil`, `doWhile`, `loopBack`, `sideChain`, `sideChainIf`, `waitForSideChain`, `tap`, `tapIf`, `rescue`, `branch`, `stepAll`, `stepAny`, `race`, `exitIf`
 
 ### `router(config)`
 
@@ -206,7 +206,7 @@ import {
 
 const agent = generator({
   name: "agent",
-  model: "preset/fast",
+  model: "openai/gpt-5.4-mini",
   prompt: "You can inspect and edit approved resource files.",
   tools: [readResourceContentTool(), writeResourceContentTool()],
 });

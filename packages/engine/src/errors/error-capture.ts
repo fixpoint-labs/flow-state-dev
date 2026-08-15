@@ -39,7 +39,7 @@ export interface ErrorCaptureEvent {
   blockPath?: string;
   /** 0-indexed retry attempt of the failing block. */
   attempt?: number;
-  /** Error scope: "block" | "request" | "work" | "resource". */
+  /** Error scope: "block" | "request" | "sideChain" | "resource". */
   scope?: FlowErrorScope;
   /** True for high-frequency transient blocks (poll loops); lets adapters down-sample. */
   transient?: boolean;

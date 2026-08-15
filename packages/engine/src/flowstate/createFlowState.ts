@@ -138,7 +138,7 @@ function resolveDetachedDrainTimeout(configured: number | undefined): number {
 }
 
 /**
- * Resolve `true` when `work` settles within `ms`, `false` when the budget runs
+ * Resolve `true` when `pending` settles within `ms`, `false` when the budget runs
  * out first. Never rejects — the caller passes an `allSettled`, and a timeout is
  * an answer rather than an error.
  *
@@ -154,7 +154,7 @@ function resolveDetachedDrainTimeout(configured: number | undefined): number {
  * through `finish`, which clears the timer, so a drain that completes early
  * leaves nothing armed to hold the process past its work.
  */
-function settledWithin(work: Promise<unknown>, ms: number): Promise<boolean> {
+function settledWithin(pending: Promise<unknown>, ms: number): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     let done = false;
     const finish = (value: boolean): void => {
@@ -164,7 +164,7 @@ function settledWithin(work: Promise<unknown>, ms: number): Promise<boolean> {
       resolve(value);
     };
     const timer = setTimeout(() => finish(false), ms);
-    void work.then(
+    void pending.then(
       () => finish(true),
       () => finish(true)
     );

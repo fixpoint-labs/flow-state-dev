@@ -164,7 +164,7 @@ const securityEngineer = perspective({
 // Analyze content through the perspective's lens
 const analysis = perspectiveAnalyze({
   perspective: securityEngineer,
-  model: 'gpt-5',
+  model: 'openai/gpt-5.5',
 })
 
 const result = await analysis.run(
@@ -219,13 +219,13 @@ const securityEngineer = perspective({ ... })
 // Bundle: pre-configured blocks + capability + helpers
 const sec = system(securityEngineer, {
   positionScope: 'user', // positions persist across sessions for the user
-  model: 'gpt-5',
+  model: 'openai/gpt-5.5',
 })
 
 // Declarative capability use: auto-installs resources, context, and helpers
 const chat = generator({
   name: 'chat',
-  model: 'gpt-5',
+  model: 'openai/gpt-5.5',
   uses: [sec.capability],
   user: (input) => input,
   // Gets static framing + accumulated observations/positions injected as context,
@@ -247,7 +247,7 @@ const observe = handler({
 
 // Or use the bundled capture sequencer (analyze → observe)
 const pipeline = sequencer({ name: 'review' })
-  .work((input) => ({ content: input.proposal }), sec.capture)
+  .sideChain((input) => ({ content: input.proposal }), sec.capture)
   .step(nextBlock)
 
 // Wire resources in the flow
