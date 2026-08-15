@@ -674,7 +674,12 @@ function collectFindings(project, relativePath) {
       // nor a string literal, so every other rule here is blind to it.
       if (Node.isRegularExpressionLiteral(node)) {
         const source = node.getText();
-        if (/(^|\/|\\\/)(work|workIf|forEachBackground)\\\[/.test(source)) {
+        // The bracket must be followed by something that is not a letter, so a
+        // regex about `work\[shop` is not mistaken for one about the persisted
+        // segment. Same over-reach the segment rule had, found by auditing the
+        // other pattern-shaped rules after review caught that one rather than
+        // waiting to be told about this one.
+        if (/(^|\/|\\\/)(work|workIf|forEachBackground)\\\[(?![a-zA-Z])/.test(source)) {
           record(node, "E4", source.slice(0, 40));
         }
       }

@@ -513,3 +513,32 @@ describe("callee detection sees through wrappers too", () => {
     expect(scan("const v = (job.work);", seq)).toEqual([]);
   });
 });
+
+/**
+ * The last rule of the same class, closed by audit rather than by report.
+ *
+ * After review caught the segment regex allowing `"work[shop"`, I probed the
+ * other two pattern-shaped rules for the same defect. The regex-literal rule
+ * had it (`/work\[shop/` fired); the template-head rule did not, because it
+ * requires the exact `op:` prefix. Both directions are pinned here so the
+ * distinction is not re-derived next time.
+ */
+describe("the pattern-shaped rules match the segment, not a prefix of it", () => {
+  const seq = "packages/core/src/blocks/sequencer.ts";
+
+  it("the regex rule fires on a real path assertion", () => {
+    expect(encodings(String.raw`const ok = /\/work\[\d+\]$/.test(p);`, seq)).toContain("E4");
+    expect(encodings(String.raw`const ok = /work\[0\]/.test(p);`, seq)).toContain("E4");
+  });
+
+  it("the regex rule does NOT fire on a word that merely continues past the bracket", () => {
+    expect(scan(String.raw`const ok = /work\[shop/.test(p);`, seq)).toEqual([]);
+    expect(scan(String.raw`const ok = /homework\[0\]/.test(p);`, seq)).toEqual([]);
+  });
+
+  it("the template-head rule was already tight — it requires the exact `op:` prefix", () => {
+    expect(encodings("const n = `work:${x}`;", seq)).toContain("E4");
+    expect(scan("const n = `workshop:${x}`;", seq)).toEqual([]);
+    expect(scan("const n = `working:${x}`;", seq)).toEqual([]);
+  });
+});
