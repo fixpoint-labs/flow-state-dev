@@ -64,6 +64,32 @@ export interface PullRequestFacts {
 export type ArtifactKind = "spec" | "implementation" | "epic_spec" | "retrospective";
 
 /**
+ * Where a goal check stood when it took its verdict — and therefore **what the
+ * verdict is about**.
+ *
+ * The third part of a proof, beside the verdict and the revision, because a
+ * check taken on the submission's branch and a check taken on the base prove
+ * two different claims:
+ *
+ * - **`"branch"`** — *this change does what the issue asked.* It is what the
+ *   merge gate needs: an invitation to merge is an invitation to merge **this**,
+ *   and the only code that answers for it is the code on the branch. Every
+ *   verdict a coding dispatch reports is one of these, because a dispatch runs
+ *   in a workspace standing on the phase's own branch.
+ * - **`"base"`** — *what landed does what the issue asked.* It is what settles
+ *   the issue, and it is not implied by the first however green the branch was:
+ *   the merge may have squashed, resolved a conflict, or landed on a base that
+ *   moved underneath it. Conductor cannot see which of those happened — no fact
+ *   in this snapshot describes a merge commit — so it re-proves rather than
+ *   assuming, which is the fail-closed direction and the only one available.
+ *
+ * A verdict and its ground travel together for the same reason a verdict and its
+ * revision do: read without one, "proved" answers a question nobody asked. The
+ * revision says *of what code*; the ground says *of what claim*.
+ */
+export type ProofGround = "branch" | "base";
+
+/**
  * A reviewable output of a phase. Unifies spec review and code review — a "PR"
  * is not an entity, it is where an artifact happens to be hosted.
  */
@@ -134,6 +160,15 @@ export interface World {
    * the only thing that should read this field.
    */
   readonly goalCheckSha: string | null;
+  /**
+   * The ground {@link World.goalCheck} was taken on — see {@link ProofGround},
+   * and {@link standingVerdict} for the rule that reads it. Meaningless when no
+   * check has run, and `"branch"` is what a record written before the field
+   * existed reads back as (BP-030): the claim a pre-merge dispatch makes, which
+   * is the direction that re-proves after a merge rather than settling on a
+   * proof of the branch.
+   */
+  readonly goalCheckGround: ProofGround;
   /** Children, for an epic. Empty for an issue. */
   readonly childIssues: readonly ChildIssueFacts[];
   /** Content hash per guidance path, as last read from the repo. */
@@ -298,6 +333,56 @@ export function goalCheckFor(
 }
 
 /**
+ * The ground the work in front of us has to be proved on **right now**.
+ *
+ * One question, asked from three places that must agree: the gate that demands
+ * the proof, the phase's completion, and the tick that provisions the workspace
+ * a check runs in. A submission that has merged needs the base proved; anything
+ * else needs its own branch proved. Written once so the workspace a check stands
+ * in cannot disagree with the claim its verdict is recorded as — a pre-merge
+ * check provisioned at the base would pass while proving nothing about the work,
+ * which is worse than not running.
+ *
+ * Work hosted at no submission (the multi-PR assembled goal) reads as `"branch"`:
+ * there is no merge of its own, so nothing has landed for a base proof to be
+ * about, and the verdict such an issue holds is its own assembled one.
+ */
+export function requiredGround(pr: PullRequestFacts | undefined): ProofGround {
+  return pr?.state === "merged" ? "base" : "branch";
+}
+
+/**
+ * The goal verdict that **stands for the work in front of us** — the stored
+ * verdict, kept only where it describes both the revision that work is sitting
+ * at ({@link goalCheckFor}) and the claim that work now needs proving
+ * ({@link requiredGround}).
+ *
+ * Every predicate in `IMPLEMENTATION` reads this rather than either half alone,
+ * and the two halves close two different holes:
+ *
+ * - **The revision** stops a proof outliving the code it was taken against, by
+ *   the property argued on {@link goalCheckFor}.
+ * - **The ground** stops a proof outliving the *claim* it was taken for. A
+ *   merged submission keeps the head SHA its branch ended on, so a branch proof
+ *   at that revision matches the head exactly — and reading it as a proof of
+ *   what landed settles the issue on a check that never saw the base. The
+ *   revision cannot catch that, because nothing about the revision changed; only
+ *   the question did.
+ *
+ * Both directions of an unbound answer read as **unproved**, which is the
+ * direction that costs a re-run rather than a merge.
+ */
+export function standingVerdict(
+  world: World,
+  artifact: ArtifactFacts | undefined,
+): World["goalCheck"] {
+  const verdict = goalCheckFor(world, artifact);
+  if (verdict === null) return null;
+  const ground = requiredGround(prForArtifact(world, artifact));
+  return world.goalCheckGround === ground ? verdict : null;
+}
+
+/**
  * True when any human has reviewed the PR at its current head, in any state.
  *
  * Deliberately *not* collapsed to current positions the way
@@ -370,17 +455,19 @@ const conductorPolicySchema: z.ZodType<ConductorPolicy> = z.object({
  * without the keys quietly becoming strings.
  *
  * The input type is `unknown` rather than `World`, which the other schemas here
- * do not need. `goalCheckSha` carries a default so that a ledger row written
- * before the field existed parses back with the proof unbound (BP-030), and a
- * default is precisely a field the *input* may omit. Only the output is pinned
- * to {@link World}, which is the direction the annotation exists for: a field
- * added to the type and forgotten here still fails to compile.
+ * do not need. `goalCheckSha` and `goalCheckGround` carry defaults so that a
+ * ledger row written before either field existed parses back with the proof
+ * unbound and claimed for the branch (BP-030), and a default is precisely a
+ * field the *input* may omit. Only the output is pinned to {@link World}, which
+ * is the direction the annotation exists for: a field added to the type and
+ * forgotten here still fails to compile.
  */
 export const worldSchema: z.ZodType<World, z.ZodTypeDef, unknown> = z.object({
   artifacts: z.array(artifactFactsSchema),
   pullRequests: z.record(z.coerce.number().int(), pullRequestFactsSchema),
   goalCheck: z.enum(["passed", "failed"]).nullable(),
   goalCheckSha: z.string().nullable().default(null),
+  goalCheckGround: z.enum(["branch", "base"]).default("branch"),
   childIssues: z.array(z.object({ id: z.string(), settled: z.boolean() })),
   guidanceHashes: z.record(z.string(), z.string()),
   policy: conductorPolicySchema,

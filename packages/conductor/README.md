@@ -350,13 +350,12 @@ export default defineConductor({
 });
 ```
 
-Conductor appends the work item's id and runs it with no shell, in a workspace it has put on
-the merged base — so what gets proved is what a reader of the base branch would actually get,
-not the feature branch that still exists beside it. **The exit status is the verdict**: `0`
-passes, anything else fails, and nothing the command prints is read. That is the whole reason
-conductor runs it rather than asking the coding harness to: a harness reports how its own
-agent loop ended, never the status of what the agent ran inside it, so a verdict taken from
-one is a model grading its own work at a merge gate.
+Conductor appends the work item's id and runs it with no shell, in a workspace it has
+provisioned itself. **The exit status is the verdict**: `0` passes, anything else fails, and
+nothing the command prints is read. That is the whole reason conductor runs it rather than
+asking the coding harness to: a harness reports how its own agent loop ended, never the status
+of what the agent ran inside it, so a verdict taken from one is a model grading its own work
+at a merge gate.
 
 Three outcomes, not two. A command that **ran** settles the work either way. A command that
 could not run — missing, crashed, killed, timed out — is conductor's failure rather than the
@@ -364,6 +363,43 @@ work's: it claims no verdict at all and asks a human, because "your change did n
 the issue asked" is the wrong thing to tell someone whose runner was not installed. And a
 project that declares no `goalCheck` proves nothing, which is a valid answer — an issue with
 no goal to run is not held on proving one.
+
+### The lifecycle of a proof
+
+One rule, and everything below is a consequence of it:
+
+> **A merge gate never opens on unproved work, and an issue is not done until what *landed*
+> passes its goal.**
+
+A proof is three things, not one: a **verdict**, the **revision** it was taken against, and
+the **ground** it stood on. Read without any of the three, "proved" answers a question nobody
+asked.
+
+| | |
+|---|---|
+| **What proves** | The `runGoalCheck` dispatch, which conductor executes itself. A coding dispatch may also report a verdict it ran — `implement` does, before the PR exists — and that is always a *branch* proof, because a dispatch runs standing on the phase's branch. |
+| **What invalidates** | The **revision** moving, however it moved: a revision, a rebase, a conflict fix, a human's push. And the **ground** moving, which is what a merge does — a proof of the branch says nothing about what landed. Both read as *there is no standing proof*, which is one question rather than a list of causes. |
+| **What re-proves, and when** | The `awaiting_goal_check` gate, which applies to any **live** submission — open or merged — holding no passing proof on the ground it now needs. The tick derives a `goal_check_needed` from the stored proof on every tick, so re-proving happens because the state calls for it, not because an event happened to arrive. It converges because running the check writes the proof that closes the gap. |
+| **What a failed proof means** | Not the same as no proof. It is a statement about the work: back to the agent while the submission is open, to a human once it has merged. It never releases the gate that demanded it, and it is re-derived from the stored verdict until that handling is on disk. |
+
+The two grounds are opposite and each is wrong in the other's place. A check taken **on the
+branch** answers *does this change do what the issue asked* — the only thing a merge gate can
+sensibly ask, since the invitation is to merge that branch. A check taken **on the base**,
+detached at the remote's tip, answers *does what landed do what the issue asked* — which the
+first does not imply, because a merge can squash, resolve a conflict, or land on a base that
+moved. Conductor cannot see which of those happened, so it re-proves rather than assuming.
+Provisioning and recording come from one decision, so a check cannot be recorded as proving
+something other than what it stood on.
+
+Two things bound the cost. A check is bought once per revision per ground, because the proof
+it writes is what stops the derivation. And once a human has been asked about the phase, the
+derivation stops entirely — an outstanding escalation is something to wait for.
+
+**One precondition this rests on and cannot check.** A verdict is only as good as the tree the
+command ran in. Conductor binds a proof to a revision, but the workspace that revision was
+checked out into is the branch layer's to hand over clean: an edit left behind in a re-entered
+worktree is code that is in the tree and in no revision, and a check that passes on it has
+proved something that exists nowhere.
 
 `examples/conductor-self-drive` is the whole thing end to end: a level-1 config, and a small
 piece of source for conductor to change.

@@ -98,6 +98,21 @@ export const issueStateSchema = z.object({
    * they move together where it counts.
    */
   goalCheckSha: z.string().nullable().default(null),
+  /**
+   * The ground {@link issueStateSchema.goalCheck} was taken on — the third part
+   * of the proof, and the one that keeps a verdict from answering a question it
+   * was never asked. See `model/world`'s `ProofGround` for what the two values
+   * claim and `standingVerdict` for the rule that reads it.
+   *
+   * Defaults to `"branch"` rather than being nullable, and the direction is the
+   * point (BP-030). A record written before this field existed holds a verdict
+   * some dispatch reported, and every dispatch that can report one runs on the
+   * phase's branch — so `"branch"` is the honest reading. It is also the safe
+   * one: after a merge it reads as *not proved on the ground that matters*, so
+   * the issue re-proves against the base instead of settling on a check that
+   * never saw it. `"base"` would do the opposite, and settle silently.
+   */
+  goalCheckGround: z.enum(["branch", "base"]).default("branch"),
   /** ISO timestamp of the newest signal reduced against this entity. */
   lastSignalAt: z.string().nullable().default(null),
 });

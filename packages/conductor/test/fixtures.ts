@@ -13,6 +13,7 @@ import type { Signal, SignalKind } from "../src/model/signals";
 import type {
   ArtifactFacts,
   ArtifactKind,
+  ProofGround,
   PullRequestFacts,
   ReviewFacts,
   World,
@@ -78,6 +79,7 @@ export function world(overrides: Partial<World> = {}): World {
     pullRequests: {},
     goalCheck: null,
     goalCheckSha: null,
+    goalCheckGround: "branch",
     childIssues: [],
     guidanceHashes: {},
     policy: DEFAULT_POLICY,
@@ -100,20 +102,24 @@ export function worldWith(
 }
 
 /**
- * A goal verdict together with the revision it was taken against — the pair
- * every gate actually reads (`model/world`'s `goalCheckFor`).
+ * A goal verdict together with the revision it was taken against **and the
+ * ground it stood on** — the triple every gate actually reads
+ * (`model/world`'s `standingVerdict`).
  *
- * Spelled as one helper because the two halves are one fact: a world carrying a
+ * Spelled as one helper because the three are one fact: a world carrying a
  * verdict and no revision is not "proved", it is a proof of code nobody can
- * point at, and the gates treat it as unproved. A test that means *this work has
- * been proved* has to say which revision, and {@link HEAD} is what the default
- * {@link pr} sits at.
+ * point at; and a branch verdict against a merged submission is not "proved"
+ * either, it is a proof of a question nobody asked. The gates treat both as
+ * unproved. A test that means *this work has been proved* has to say which
+ * revision and which claim — {@link HEAD} is what the default {@link pr} sits
+ * at, and `"branch"` is what a dispatch reports before a merge.
  */
 export function proved(
   verdict: "passed" | "failed",
   sha: string | null = HEAD,
-): Pick<World, "goalCheck" | "goalCheckSha"> {
-  return { goalCheck: verdict, goalCheckSha: sha };
+  ground: ProofGround = "branch",
+): Pick<World, "goalCheck" | "goalCheckSha" | "goalCheckGround"> {
+  return { goalCheck: verdict, goalCheckSha: sha, goalCheckGround: ground };
 }
 
 /** An approving human review at the PR's current head. */
@@ -165,6 +171,7 @@ export const SIGNAL_KINDS: readonly SignalKind[] = [
   "dispatch_completed",
   "dispatch_failed",
   "progress_stalled",
+  "goal_check_needed",
   "goal_check_passed",
   "goal_check_failed",
   "guidance_changed",

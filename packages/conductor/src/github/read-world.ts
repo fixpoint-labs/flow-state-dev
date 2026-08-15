@@ -47,6 +47,8 @@ export interface ReadWorldInput {
   readonly goalCheck?: "passed" | "failed" | null;
   /** Conductor-owned. The revision `goalCheck` was taken against, or `null`. */
   readonly goalCheckSha?: string | null;
+  /** Conductor-owned. The ground `goalCheck` was taken on. Passed through verbatim. */
+  readonly goalCheckGround?: "branch" | "base";
   /** Conductor-owned. Empty for an issue. */
   readonly childIssues?: readonly ChildIssueFacts[];
   /** Repo-relative guidance paths to hash. Only read when a gate declares `guidance`. */
@@ -452,6 +454,7 @@ export async function readWorld(
       pullRequests,
       goalCheck: input.goalCheck ?? null,
       goalCheckSha: input.goalCheckSha ?? null,
+      goalCheckGround: input.goalCheckGround ?? "branch",
       childIssues: input.childIssues ?? [],
       guidanceHashes,
       policy: input.policy ?? DEFAULT_POLICY,

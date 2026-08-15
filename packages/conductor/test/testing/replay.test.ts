@@ -42,10 +42,11 @@ describe("one issue, end to end", () => {
       "reviseSpec", // a feedback round on the spec PR
       "implement", // entering IMPLEMENTATION on approval
       "addressFeedback", // CI went red
-      // No `runGoalCheck`: this is the single-PR shape, where the goal was
-      // proved at implementation completion before the PR opened. Conductor
-      // re-running it after the merge is the multi-PR ordering, and applying it
-      // here is what let a human merge work conductor had never proved.
+      // One `runGoalCheck`, and only after the merge. The branch proof taken at
+      // implementation completion is what opened the merge gate — conductor
+      // never invited a merge it had not proved — but it says nothing about what
+      // *landed*, so the issue owes exactly one more check and gets it.
+      "runGoalCheck",
     ]);
   });
 
@@ -115,8 +116,9 @@ describe("one issue, end to end", () => {
       "awaiting_review",
       "awaiting_ci", // CI reported red
       "awaiting_review", // CI green, no fresh approval yet
-      "awaiting_merge", // approved *and* proved; conductor waits for a human
-      null, // merged — the goal was already proved, so IMPLEMENTATION is complete
+      "awaiting_merge", // approved *and* the branch proved; conductor waits
+      "awaiting_goal_check", // merged — what landed has not been proved yet
+      null, // proved on the base, so IMPLEMENTATION is complete
     ]);
   });
 });
@@ -223,10 +225,10 @@ describe("the fake dispatcher", () => {
   it("records every brief it was handed, which is what makes the loop assertable", async () => {
     const dispatcher = fakeDispatcher();
     await replay(script({ dispatcher }));
-    // Four, matching the lifecycle's dispatches above: the single-PR path has
-    // no post-merge `runGoalCheck` to make a fifth.
-    expect(dispatcher.briefs).toHaveLength(4);
-    expect(dispatcher.results).toHaveLength(4);
+    // Five, matching the lifecycle's dispatches above — the four coding runs and
+    // the one post-merge `runGoalCheck` that proves what landed.
+    expect(dispatcher.briefs).toHaveLength(5);
+    expect(dispatcher.results).toHaveLength(5);
     expect(dispatcher.results.map((r) => r.dispatchId)).toEqual(
       dispatcher.briefs.map((b) => b.dispatchId),
     );

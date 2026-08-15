@@ -9,12 +9,13 @@
  */
 
 import {
+  artifactKindForPhase,
   phaseDefinition,
   type EntityKind,
   type Gate,
   type Phase,
 } from "../model/phases";
-import type { World } from "../model/world";
+import { artifactOfKind, standingVerdict, type World } from "../model/world";
 
 /** The minimum an entity must carry for the driver to reduce against it. */
 export interface ConductorEntity {
@@ -59,14 +60,22 @@ export function deriveGate(entity: ConductorEntity, world: World): Gate | null {
  * and a phase **no gate applies to at all**, where the table has nothing to say
  * about the entity's situation.
  *
- * `IMPLEMENTATION` is where they come apart, and not rarely. An approved
- * implementation PR whose goal was never proved derives no gate: `awaiting_ci`
- * and `awaiting_review` are satisfied, `awaiting_merge` refuses to *apply* on
- * unproved work, and `awaiting_goal_check` is waiting for a merge. It is an open
+ * `IMPLEMENTATION` is where they used to come apart, and not rarely. An approved
+ * implementation PR whose goal was never proved derived no gate: `awaiting_ci`
+ * and `awaiting_review` satisfied, `awaiting_merge` refusing to *apply* on
+ * unproved work, and `awaiting_goal_check` waiting for a merge. It is an open
  * submission with a human's approval standing on it — a thing anyone can act on
- * — and reading it as stuck would file a report at the ordinary end of a review.
- * A phase holding no submission at all is the opposite: nobody has anything to
- * act on.
+ * — and reading it as stuck would have filed a report at the ordinary end of a
+ * review. A phase holding no submission at all is the opposite: nobody has
+ * anything to act on.
+ *
+ * **That world no longer exists**, because the same absence was also the reason a
+ * proof could never be re-earned: `awaiting_goal_check` now applies to it and
+ * asks for the proof. The two readings therefore agree everywhere the shipped
+ * tables can reach today — which is a result of closing that hole rather than a
+ * reason to stop reading `appliesWhen`. A phase table is data, and a phase
+ * defined elsewhere can reintroduce a gate that applies and is satisfied while
+ * its phase cannot complete.
  *
  * **A terminal phase is excluded rather than falling out of the predicate.**
  * `SETTLED` holds no gates and completes nothing, which is the exact shape of a
@@ -91,4 +100,39 @@ export function isPhaseComplete(entity: ConductorEntity, world: World): boolean 
 /** The phase this entity advances to when complete, or `null` at a terminal phase. */
 export function nextPhase(entity: ConductorEntity): Phase | null {
   return phaseDefinition(entity.kind, entity.phase)?.next ?? null;
+}
+
+/**
+ * What the work in front of the entity still **owes a proof**, or `null`.
+ *
+ * The pure half of the transition that re-proves. `awaiting_goal_check` already
+ * answers *does this work need a proof it does not have* — including which
+ * submissions are live enough to be worth proving and which ground the proof has
+ * to stand on — so this asks the table rather than restating it, and splits the
+ * one answer the table cannot give on its own:
+ *
+ * - **`goal_check_needed`** — nothing has proved the code in front of us. The
+ *   answer is to run the check.
+ * - **`goal_check_failed`** — something has, and it failed. That is a statement
+ *   about the work, not a missing measurement, and the answer is to send the work
+ *   back rather than to measure it again.
+ *
+ * Keyed on the **derived** gate rather than on `awaiting_goal_check`'s own
+ * `appliesWhen`, so a red build or an unanswered review is handled first and
+ * nothing pays for a proof of code CI has already failed.
+ *
+ * Pure over the snapshot, like everything else here. What it deliberately does
+ * *not* know is whether a human has already been asked, or whether the caller
+ * has just bought work that may have moved the code — both are statements about
+ * durable state and about the pass in progress, and they belong to the caller
+ * that holds them (`runtime/tick`, and the replay harness that mirrors it).
+ */
+export function outstandingProof(
+  entity: ConductorEntity,
+  world: World,
+): "goal_check_needed" | "goal_check_failed" | null {
+  if (deriveGate(entity, world) !== "awaiting_goal_check") return null;
+  const kind = artifactKindForPhase(entity.phase);
+  const verdict = kind ? standingVerdict(world, artifactOfKind(world, kind)) : null;
+  return verdict === "failed" ? "goal_check_failed" : "goal_check_needed";
 }

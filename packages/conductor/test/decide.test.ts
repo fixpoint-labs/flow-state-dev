@@ -86,10 +86,43 @@ describe("the decide table", () => {
     expect(kinds(actions)).toEqual(["rebaseOnBase"]);
   });
 
-  it("runs the goal check once the PR merges — merging is the trigger, not the finish", () => {
-    const w = worldWith("implementation", pr({ state: "merged", checks: "success" }));
-    const actions = decide(issue("IMPLEMENTATION"), signal("merged"), w);
-    expect(kinds(actions)).toEqual(["runGoalCheck"]);
+  it("runs the goal check when the work owes one — the state is the trigger, not an event", () => {
+    // `merged` used to be the trigger, and being an *event* is exactly what made
+    // the transition incomplete: an approved, green, **unmerged** PR whose proof
+    // a push had invalidated had no event left that could ask for a new one, and
+    // a merge lost to a restart could not be re-observed. The trigger is now the
+    // state itself, derived by `runtime/tick` from the stored proof on every
+    // tick for as long as the work owes a proof.
+    const merged = worldWith("implementation", pr({ state: "merged", checks: "success" }));
+    expect(decide(issue("IMPLEMENTATION"), signal("merged"), merged)).toEqual([]);
+    expect(kinds(decide(issue("IMPLEMENTATION"), signal("goal_check_needed"), merged))).toEqual(
+      ["runGoalCheck"],
+    );
+
+    // And before the merge, which is the case that had no path at all: the proof
+    // describes a revision that is no longer the head, the merge gate correctly
+    // refuses to apply, and this is what gets the proof back.
+    const pushedPast = worldWith(
+      "implementation",
+      pr({ checks: "success", reviews: [freshApproval()] }),
+      {},
+      proved("passed", "an-earlier-commit"),
+    );
+    expect(
+      kinds(decide(issue("IMPLEMENTATION"), signal("goal_check_needed"), pushedPast)),
+    ).toEqual(["runGoalCheck"]);
+  });
+
+  it("asks for no goal check while a build or a reviewer is still outstanding", () => {
+    // The gate is last in the table, so a red build or an unanswered review is
+    // answered first and nothing pays for a proof of code CI has already failed.
+    const red = worldWith("implementation", pr({ checks: "failure" }));
+    expect(decide(issue("IMPLEMENTATION"), signal("goal_check_needed"), red)).toEqual([]);
+
+    const unreviewed = worldWith("implementation", pr({ checks: "success" }));
+    expect(decide(issue("IMPLEMENTATION"), signal("goal_check_needed"), unreviewed)).toEqual(
+      [],
+    );
   });
 
   it("does not settle an issue on its own PR opening, goal already proved or not", () => {
@@ -112,12 +145,24 @@ describe("the decide table", () => {
       "implementation",
       pr({ state: "merged", checks: "success" }),
       {},
-      proved("passed"),
+      proved("passed", HEAD, "base"),
     );
     const actions = decide(issue("IMPLEMENTATION"), signal("goal_check_passed"), w);
     expect(actions).toEqual([
       { kind: "enterPhase", entityId: ENTITY_ID, phase: "SETTLED" },
     ]);
+
+    // The same verdict at the same revision, taken on the branch instead: the
+    // issue is done when what *landed* passes, and a branch proof is not that.
+    const branchOnly = worldWith(
+      "implementation",
+      pr({ state: "merged", checks: "success" }),
+      {},
+      proved("passed", HEAD, "branch"),
+    );
+    expect(decide(issue("IMPLEMENTATION"), signal("goal_check_passed"), branchOnly)).toEqual(
+      [],
+    );
   });
 
   it("retrospects and polishes docs when an epic enters WRAP", () => {
@@ -1003,7 +1048,7 @@ describe("an approval that landed before conductor was watching", () => {
       "implementation",
       pr({ state: "merged", checks: "success" }),
       {},
-      proved("passed"),
+      proved("passed", HEAD, "base"),
     );
     expect(decide(issue("IMPLEMENTATION"), signal("goal_check_passed"), w)).toEqual([
       { kind: "enterPhase", entityId: ENTITY_ID, phase: "SETTLED" },
@@ -1029,7 +1074,7 @@ describe("escalation", () => {
       "implementation",
       pr({ state: "merged", checks: "success" }),
       {},
-      proved("failed"),
+      proved("failed", HEAD, "base"),
     );
     const actions = decide(issue("IMPLEMENTATION"), signal("goal_check_failed"), w);
     expect(kinds(actions)).toEqual(["escalate"]);
@@ -1136,8 +1181,11 @@ describe("recovery work aimed at a PR that is no longer open", () => {
     });
 
     // Asserted on the actions, so a regression reports the paid dispatch rather
-    // than an internal predicate's answer about the PR.
-    expect(kinds(actions)).toEqual(["runGoalCheck"]);
+    // than an internal predicate's answer about the PR. Neither observed signal
+    // buys anything now: the merge is not what asks for the proof of what landed
+    // — the derived `goal_check_needed` is — so what this pins is that the
+    // recovery bought nothing, which is the whole point of the case.
+    expect(kinds(actions)).toEqual([]);
     expect(entity.phase).toBe("IMPLEMENTATION");
   });
 

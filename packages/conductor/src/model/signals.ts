@@ -45,6 +45,7 @@ export type SignalKind =
   | "dispatch_failed"
   | "progress_stalled"
   // — the goal harness —
+  | "goal_check_needed"
   | "goal_check_passed"
   | "goal_check_failed"
   // — ambient —
@@ -139,7 +140,22 @@ export interface IssueSettledSignal extends SignalBase {
 /**
  * Signals that carry no payload beyond the base fields.
  *
- * `progress_stalled` is the one worth a word. It reports that the entity has
+ * `goal_check_needed` and `progress_stalled` are the two worth a word, and they
+ * are the same kind of thing: a statement about durable state rather than about
+ * an event, derived on every tick rather than remembered.
+ *
+ * `goal_check_needed` reports that **the work in front of the entity holds no
+ * passing proof on the ground it now needs** — a revision nothing has checked, a
+ * proof a push left behind, or a submission that has merged and whose branch
+ * proof says nothing about what landed. It carries no payload for the same
+ * reason `progress_stalled` does not: the situation is read back out of the
+ * world the row already stores, and a second copy on the signal is a second
+ * source of truth that disagrees the moment the row is replayed. It is the only
+ * thing that dispatches `runGoalCheck`, and being derived rather than observed
+ * is what makes re-proving a transition of the lifecycle rather than a lucky
+ * consequence of some other signal happening to arrive.
+ *
+ * `progress_stalled` reports that the entity has
  * **nothing left that could move it** — no gate of its phase applies, the phase
  * cannot complete, and its entry work has settled — which is a statement about
  * durable state rather than about an event, and is therefore derived on every
@@ -151,6 +167,7 @@ export interface IssueSettledSignal extends SignalBase {
 export interface PlainSignal extends SignalBase {
   readonly kind:
     | "phase_entered"
+    | "goal_check_needed"
     | "goal_check_passed"
     | "goal_check_failed"
     | "progress_stalled"
@@ -241,6 +258,7 @@ export const signalSchema: z.ZodType<Signal> = z.discriminatedUnion("kind", [
     ...base,
     kind: z.enum([
       "phase_entered",
+      "goal_check_needed",
       "goal_check_passed",
       "goal_check_failed",
       "progress_stalled",

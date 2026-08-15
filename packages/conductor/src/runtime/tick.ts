@@ -58,8 +58,10 @@
  *   queue, so it needs a durable source to be re-derived from and a written
  *   consequence to stop. `phase_entered` has {@link entryCompleted};
  *   `dispatch_failed` has {@link unreducedFailures}; `progress_stalled` has
- *   {@link stalled}. One rule, one instance per derived signal — not one
- *   predicate stretched across the three.
+ *   {@link stalled}; `goal_check_needed` and `goal_check_failed` have
+ *   {@link proofGap}, whose durable source is the stored proof itself. One rule,
+ *   one instance per derived signal — not one predicate stretched across the
+ *   four.
  *
  * One assumption this file makes and does not enforce: **one tick at a time per
  * entity.** Nothing here is atomic across its read-modify-write, so overlapping
@@ -104,9 +106,11 @@ import type { Signal } from "../model/signals";
 import {
   artifactOfKind,
   prForArtifact,
+  requiredGround,
   type ArtifactFacts,
   type ArtifactKind,
   type ChildIssueFacts,
+  type ProofGround,
   type World,
 } from "../model/world";
 import type { EpicState, IssueState, LedgerEntryState } from "../model/entities";
@@ -114,6 +118,7 @@ import { decide } from "../driver/decide";
 import {
   deriveGate,
   isPhaseStranded,
+  outstandingProof,
   type ConductorEntity,
 } from "../driver/derive-gate";
 import { branchNameFor, provisionWorkspace, DETACHED_AT_BASE } from "../dispatch/branch";
@@ -209,17 +214,20 @@ async function persistEntity(
 type GoalCheckVerdict = "passed" | "failed" | null;
 
 /**
- * A verdict and the revision it was taken against — the pair every gate reads
- * through `model/world`'s `goalCheckFor`. A `sha` of `null` means the revision
- * is not known, which reads as *not proved* everywhere it matters.
+ * A verdict, the revision it was taken against, and the ground it stood on —
+ * the triple every gate reads through `model/world`'s `standingVerdict`. A `sha`
+ * of `null` means the revision is not known, which reads as *not proved*
+ * everywhere it matters; the `ground` says which claim the verdict answers, and
+ * a proof of the branch is not a proof of what landed.
  */
 interface GoalProof {
   readonly verdict: GoalCheckVerdict;
   readonly sha: string | null;
+  readonly ground: ProofGround;
 }
 
-/** No verdict, and therefore no revision. */
-const UNPROVED: GoalProof = { verdict: null, sha: null };
+/** No verdict, and therefore no revision and no claim. */
+const UNPROVED: GoalProof = { verdict: null, sha: null, ground: "branch" };
 
 /**
  * The stored goal proof for this entity.
@@ -231,7 +239,11 @@ const UNPROVED: GoalProof = { verdict: null, sha: null };
 async function readGoalCheck(context: TickContext): Promise<GoalProof> {
   if (context.entityKind === "epic") return UNPROVED;
   const stored = await context.collections.issues.read(context.entityId);
-  return { verdict: stored?.goalCheck ?? null, sha: stored?.goalCheckSha ?? null };
+  return {
+    verdict: stored?.goalCheck ?? null,
+    sha: stored?.goalCheckSha ?? null,
+    ground: stored?.goalCheckGround ?? "branch",
+  };
 }
 
 /**
@@ -243,10 +255,11 @@ async function readGoalCheck(context: TickContext): Promise<GoalProof> {
  * makes the value survive the restart the whole tick is built around — a verdict
  * held only in this tick's snapshot would be lost with the process.
  *
- * **The two move together, always.** They are one fact in two columns (see
+ * **The three move together, always.** They are one fact in three columns (see
  * `model/entities` for why they are not one nested column), and a write of the
- * verdict that left the old revision standing would claim the new proof was
- * taken against code it never saw.
+ * verdict that left the old revision or the old ground standing would claim the
+ * new proof was taken against code it never saw, or for a question it was never
+ * asked.
  */
 async function persistGoalCheck(
   context: TickContext,
@@ -259,6 +272,7 @@ async function persistGoalCheck(
     ...stored,
     goalCheck: proof.verdict,
     goalCheckSha: proof.sha,
+    goalCheckGround: proof.ground,
   });
 }
 
@@ -521,9 +535,79 @@ function stalled(
 ): boolean {
   if (!isPhaseStranded(entity, world)) return false;
   if (!entryCompleted(ledger, dispatches, entity)) return false;
-  return !ledger.some(
+  return !humanAlreadyAsked(ledger, entity);
+}
+
+/**
+ * Has a human already been asked to look at this entity, in the phase it is in?
+ *
+ * An outstanding escalation is *something to wait for*, so it converges every
+ * derived signal that would otherwise keep asking: the stall report above, and
+ * the proof gap below. Scoped to the current phase, because an ask answered two
+ * phases ago is not an ask.
+ *
+ * One definition rather than two, because the two would drift and the failure is
+ * asymmetric: a copy that stops matching either spams a human or goes quiet.
+ */
+function humanAlreadyAsked(
+  ledger: readonly LedgerEntryState[],
+  entity: ConductorEntity,
+): boolean {
+  return ledger.some(
     (row) => row.actionKind === "escalate" && row.phaseBefore === entity.phase,
   );
+}
+
+/**
+ * What the work in front of the entity still owes the lifecycle — **the derived
+ * signal that makes a proof re-earnable.**
+ *
+ * `runtime/tick` derives four signals, and each obeys the same rule: a derived
+ * signal has no observation cursor, so it needs a durable source to be
+ * re-derived from and a written consequence that stops it. This is that rule for
+ * the goal proof, and it is what closes the transition the lifecycle was missing.
+ *
+ * - **The durable source** is the stored proof itself — the verdict, the revision
+ *   it names and the ground it stood on — read back into the snapshot before any
+ *   of this runs. Nothing new is stored to make this work, and nothing is
+ *   remembered across a restart that is not already the proof.
+ * - **The consequence that stops it** is a proof that *passes* at the revision
+ *   and ground in front of us, which is precisely `awaiting_goal_check` being
+ *   satisfied. So one check is bought per revision per ground and no more:
+ *   running it writes the proof that closes the gap, whichever way the verdict
+ *   went.
+ *
+ * Two gaps, because *no proof* and *a failed proof* are not the same state and
+ * must not be answered the same way:
+ *
+ * - **`goal_check_needed`** — nothing has proved the code in front of us on the
+ *   ground it needs. `decide` dispatches the check.
+ * - **`goal_check_failed`** — something has, and it failed. `decide` sends the
+ *   work back: to the agent while the submission is open, to a human once it has
+ *   merged. Re-deriving it is what makes that survive a process that died between
+ *   persisting the verdict and reducing the signal it produced — without it the
+ *   next tick finds a durably failed proof and nobody who has been told.
+ *
+ * **Read off the derived gate rather than from a second copy of the predicates.**
+ * `awaiting_goal_check` already answers *does this work need a proof it does not
+ * have* — including the open-or-merged scoping and the ground — and asking the
+ * table is what keeps the derivation from drifting away from the gate it exists
+ * to release. Keying on the *derived* gate rather than on the gate's own
+ * `appliesWhen` also means a red build or an outstanding review is answered
+ * first, so nothing pays for a proof of code CI has already failed.
+ *
+ * `null` once a human has been asked in this phase: an escalation is an
+ * outstanding ask, and a check that cannot run — a missing runner, a broken
+ * workspace — would otherwise be re-derived and re-bought every tick, which is
+ * unbounded paid work in exactly the situation that earned the escalation.
+ */
+function proofGap(
+  entity: ConductorEntity,
+  world: World,
+  ledger: readonly LedgerEntryState[],
+): "goal_check_needed" | "goal_check_failed" | null {
+  if (humanAlreadyAsked(ledger, entity)) return null;
+  return outstandingProof(entity, world);
 }
 
 /**
@@ -742,10 +826,17 @@ async function appendLedger(
  * is an attempt that failed to change anything rather than an attempt that never
  * happened.
  *
+ * **And an attempt that never happened is exactly what a failed dispatch is**,
+ * which is why {@link runTick} calls this *after* the run and only on one that
+ * settled `completed`. A harness that was never installed, never given a
+ * workspace, or never given a credential read no comment and wrote no code; the
+ * failure is a fact about the runner, and the round budget is a statement about
+ * the work.
+ *
  * A redundant tick still costs nothing, and not because of a check here: a tick
  * that reduces no new signal produces no revision action, so this is never
- * reached. Nothing in this function can be reached without a dispatch being
- * bought on the other side of it.
+ * reached. Nothing in this function can be reached without a dispatch having
+ * settled on the other side of it.
  *
  * `lastRoundSha` is a record rather than a gate — the head the last round was
  * handled at, kept on the row for the audit trail. Nothing reads it.
@@ -867,24 +958,52 @@ async function recordProduced(
  * **Which revision a fresh verdict is recorded against splits on the same
  * question.** A dispatch that cannot push proved the head that is already in
  * `head` — `runGoalCheck` is the case that matters, and it is the whole reason
- * this takes a head at all: it runs after the merge, detached at the base, and
- * the merged submission's head is the revision that *put* the proved code there.
+ * this takes a head at all: after a merge it runs detached at the base, and the
+ * merged submission's head is the revision that *put* the proved code there.
  * Nothing can move a merged head afterwards, so that binding never goes stale;
  * a base that moves on later is somebody else's change, not this issue's to
- * re-prove. A dispatch that *could* push proved whatever it wrote, and the head
- * in hand was read before it ran — so the revision is left `null` for
- * {@link bindUnresolvedProof} to resolve, and reads as unproved until it does.
+ * re-prove. Before a merge it runs on the submission's own branch, and the head
+ * in the snapshot is the revision it stood on. A dispatch that *could* push
+ * proved whatever it wrote, and the head in hand was read before it ran — so the
+ * revision is left `null` for {@link bindUnresolvedProof} to resolve, and reads
+ * as unproved until it does.
+ *
+ * **And which claim it answers is carried, not inferred.** `ground` comes from
+ * where the workspace was actually provisioned, decided once by
+ * {@link proofGroundFor} and used for the provisioning and the record alike, so
+ * a check cannot be recorded as proving something other than what it stood on.
+ * Every coding dispatch runs on the phase's branch, so its verdict is a branch
+ * proof whatever it reports.
  */
 function claimedGoalCheck(
   action: DispatchAction,
   result: DispatchResult,
   head: string | null,
+  ground: ProofGround,
 ): GoalProof | undefined {
   const mayHavePushed = MUTATES_WORK[action.kind];
   const verdict = mayHavePushed ? (result.goalCheck ?? null) : result.goalCheck;
   if (verdict === undefined) return undefined;
   if (verdict === null) return UNPROVED;
-  return { verdict, sha: mayHavePushed ? null : head };
+  return { verdict, sha: mayHavePushed ? null : head, ground };
+}
+
+/**
+ * The ground a goal check dispatched **now** would stand on, and therefore both
+ * where its workspace is provisioned and what its verdict is recorded as
+ * proving.
+ *
+ * One expression, read from `model/world`'s `requiredGround`, so the two can
+ * never disagree. They must not: a check provisioned at the base before the
+ * merge proves the code *without* the change and would pass while proving
+ * nothing about it, which is worse than not running at all; and one provisioned
+ * on the branch after the merge proves a branch that still exists and still
+ * passes but is not what a reader of the base gets.
+ */
+function proofGroundFor(entity: ConductorEntity, world: World): ProofGround {
+  const kind = artifactKindForPhase(entity.phase);
+  const artifact = kind ? artifactOfKind(world, kind) : undefined;
+  return requiredGround(prForArtifact(world, artifact));
 }
 
 /**
@@ -931,7 +1050,14 @@ async function bindUnresolvedProof(
   if (world.goalCheck === null || world.goalCheckSha !== null) return world;
   const head = activeHead(entity, world);
   if (head === null) return world;
-  await persistGoalCheck(context, { verdict: world.goalCheck, sha: head });
+  await persistGoalCheck(context, {
+    verdict: world.goalCheck,
+    sha: head,
+    // The ground is not an unknown being resolved — the dispatch that reported
+    // the verdict already said which claim it was answering. Only the revision
+    // was unknowable.
+    ground: world.goalCheckGround,
+  });
   return { ...world, goalCheckSha: head };
 }
 
@@ -1048,25 +1174,39 @@ const GOAL_CHECK_VENDOR = "conductor";
  * harness conductor has never heard of needs no goal-check code at all.
  *
  * ---------------------------------------------------------------------------
- * WHERE IT RUNS
+ * WHERE IT RUNS — AND WHY THAT IS NOT ONE ANSWER
  * ---------------------------------------------------------------------------
  *
- * {@link DETACHED_AT_BASE}, always. `runGoalCheck` is dispatched from
- * `awaiting_goal_check`, a gate that applies only once the PR has **merged**,
- * and the entity is still in `IMPLEMENTATION` while it runs — so the phase's own
- * branch is `fix/<id>`: the feature branch, which still exists and still passes,
- * and which is not what landed whenever the merge squashed, resolved a conflict,
- * or the base moved on in between. A proof taken there is a proof of code that
- * never reached the base, and it settles the issue on it. The proof has to be
- * taken against what a reader of the base branch would actually get, and
- * `dispatch/branch`'s third plan says exactly that in its commands: fetch the
- * base, put HEAD on `<remote>/<base>`, own no ref.
+ * On the **ground the proof is being taken for**, which {@link proofGroundFor}
+ * decides once for the provisioning and the record together. The two answers are
+ * opposite and each is wrong in the other's place:
+ *
+ * - **After the merge — {@link DETACHED_AT_BASE}.** The entity is still in
+ *   `IMPLEMENTATION` while it runs, so the phase's own branch is `fix/<id>`: the
+ *   feature branch, which still exists and still passes, and which is not what
+ *   landed whenever the merge squashed, resolved a conflict, or the base moved on
+ *   in between. A proof taken there is a proof of code that never reached the
+ *   base, and it settles the issue on it. `dispatch/branch`'s third plan says
+ *   exactly what is wanted instead: fetch the base, put HEAD on
+ *   `<remote>/<base>`, own no ref.
+ * - **Before the merge — the phase's branch.** This provisioning used to be
+ *   unconditional, which was right while a check could only be dispatched after a
+ *   merge. Now that a proof is re-earnable on an open submission, standing at the
+ *   base would prove the base — code *without* the change — and pass. That is
+ *   worse than not running: it would open a merge gate having proved nothing
+ *   about the work, which is the one thing this lifecycle exists to prevent.
+ *
+ * Both plans are run in conductor's own worktree, and the branch plan's re-entry
+ * rule means the check stands on the branch's remote tip. What that tip contains
+ * is `dispatch/branch`'s to guarantee: a workspace carrying edits that are in no
+ * revision makes any verdict taken in it a statement about code that exists
+ * nowhere, and nothing here can detect that.
  *
  * The isolation is conductor's own `worktree`, not the dispatcher's declared
  * model, because this is not the dispatcher's run: a `remote` harness provisions
  * nothing locally, and conductor cannot spawn a process in an environment it has
- * no path to. A worktree also keeps a `cwd` harness's repo root from being
- * detached under the developer standing in it.
+ * no path to. A worktree also keeps a `cwd` harness's repo root from being moved
+ * under the developer standing in it.
  *
  * ---------------------------------------------------------------------------
  * THREE OUTCOMES, NOT TWO
@@ -1100,6 +1240,7 @@ const GOAL_CHECK_VENDOR = "conductor";
 async function runGoalCheck(
   context: TickContext,
   entity: ConductorEntity,
+  ground: ProofGround,
 ): Promise<DispatchResult> {
   const { config, git, now } = context.deps;
   const startedAt = now().toISOString();
@@ -1175,7 +1316,10 @@ async function runGoalCheck(
       isolation: "worktree",
       repoRoot: config.repoRoot,
       entityId: context.entityId,
-      branch: DETACHED_AT_BASE,
+      // The one place the two grounds differ, and the reason `ground` is passed
+      // in rather than re-derived here: the claim the verdict is recorded as
+      // making and the code it was taken against must come from one decision.
+      branch: ground === "base" ? DETACHED_AT_BASE : branchNameFor(entity),
       git,
       baseBranch: config.baseBranch,
       remote: config.remote,
@@ -1337,6 +1481,7 @@ export async function observeWorld(
     // passed.
     goalCheck: proof.verdict,
     goalCheckSha: proof.sha,
+    goalCheckGround: proof.ground,
     childIssues: await readChildIssues(context),
     guidancePaths: context.deps.config.guidance,
     policy: context.deps.config.policy,
@@ -1399,6 +1544,7 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
     // See `observeWorld` for why an omission here is silent and total.
     goalCheck: proof.verdict,
     goalCheckSha: proof.sha,
+    goalCheckGround: proof.ground,
     childIssues: await readChildIssues(context),
     guidancePaths: context.deps.config.guidance,
     policy: context.deps.config.policy,
@@ -1469,7 +1615,42 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
    */
   let stallChecked = false;
 
+  /**
+   * Whether this tick has bought work that could have moved the code.
+   *
+   * A goal check must stand on the revision its snapshot reports, and a coding
+   * dispatch this tick just ran may already have pushed past it — so the proof
+   * question is not asked at all in a tick that bought one. Same principle as
+   * the dispatch record being read once at the top: **a tick never judges the
+   * work it has just bought.** Deferring costs one tick and keeps every verdict
+   * bound to a revision conductor has actually seen.
+   */
+  let boughtWork = false;
+
+  /**
+   * Whether the proof gap has been derived. Made **once, when the queue first
+   * empties**, for the same reason the stall check is: what the work still owes
+   * is only knowable after everything the tick had has been reduced. Derived
+   * *before* the stall check, because dispatching a check is something that can
+   * move the entity, and "nothing left that could move it" has to be asked last.
+   */
+  let proofChecked = false;
+
   for (;;) {
+    if (queue.length === 0 && !proofChecked) {
+      proofChecked = true;
+      // Re-read: the rows this tick wrote are the ones that matter, an
+      // escalation appended a moment ago being an ask already outstanding.
+      ledger = await readLedger(context);
+      const gap = boughtWork ? null : proofGap(entity, world, ledger);
+      if (gap !== null) {
+        queue.push({
+          signal: { kind: gap, entityId: context.entityId, at },
+          derived: true,
+        });
+      }
+    }
+
     if (queue.length === 0) {
       if (stallChecked) break;
       stallChecked = true;
@@ -1543,18 +1724,38 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
       if (dispatched.has(key)) continue;
       dispatched.add(key);
 
-      if (action.kind === "reviseSpec" || action.kind === "addressFeedback") {
-        await countReviewRound(context, entity, world);
-      }
-
       // The one action conductor performs itself. Everything downstream of this
       // line is identical either way — the same `DispatchResult`, the same
       // settling signal, the same proof handling — because what changes is who
       // ran the work, not what a result means. See {@link runGoalCheck}.
+      const ground = proofGroundFor(entity, world);
+      if (MUTATES_WORK[action.kind]) boughtWork = true;
       const result =
         action.kind === "runGoalCheck"
-          ? await runGoalCheck(context, entity)
+          ? await runGoalCheck(context, entity, ground)
           : await runDispatch(context, entity, action, summary);
+
+      // **After the dispatch, and only for one that settled.** A round is a
+      // handled feedback pass, and a harness that never ran handled nothing: a
+      // dispatch that failed read no comment, wrote no code, and changed nothing
+      // about the work. Counting it ahead of the run — which is where this used
+      // to be — charged the pass to whatever broke the *runner*: an uninstalled
+      // SDK, a workspace that could not be cut, a credential that never reached
+      // the agent process. The ledger then asserts a pass that never happened,
+      // and the cost is not bookkeeping: the budget is the loop detector that
+      // parks a stuck review, so a round spent by a non-event is a round the
+      // recovery does not get once the runner is fixed.
+      //
+      // A dispatch that *completed* and pushed nothing still counts — that is an
+      // attempt that changed nothing, not an attempt that never happened, and it
+      // is the distinction {@link countReviewRound} is written around.
+      if (
+        result.outcome === "completed" &&
+        (action.kind === "reviseSpec" || action.kind === "addressFeedback")
+      ) {
+        await countReviewRound(context, entity, world);
+      }
+
       queue.unshift({
         signal: {
           kind: result.outcome === "completed" ? "dispatch_completed" : "dispatch_failed",
@@ -1582,10 +1783,27 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
       // in the phase table now, where the artifact it turns on is required
       // positively. A verdict this tick cannot act on is one the phase table
       // declines, not one this tick withholds.
-      const claim = claimedGoalCheck(action, result, activeHead(entity, world));
+      const claim = claimedGoalCheck(
+        action,
+        result,
+        activeHead(entity, world),
+        // A coding dispatch runs on the phase's branch whatever the submission's
+        // state, so only a check conductor provisioned itself can be a base
+        // proof. `proofGroundFor` is the provisioning decision, reused.
+        action.kind === "runGoalCheck" ? ground : "branch",
+      );
       if (claim !== undefined) {
         await persistGoalCheck(context, claim);
-        world = { ...world, goalCheck: claim.verdict, goalCheckSha: claim.sha };
+        // All three, or the snapshot the rest of this tick reduces against holds
+        // a verdict under the previous claim — a base proof read as a branch one
+        // is a proof the gates decline, and the issue sits one step from SETTLED
+        // with nothing left to move it.
+        world = {
+          ...world,
+          goalCheck: claim.verdict,
+          goalCheckSha: claim.sha,
+          goalCheckGround: claim.ground,
+        };
         if (claim.verdict !== null) {
           queue.unshift({
             signal: {

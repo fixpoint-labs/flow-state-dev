@@ -232,6 +232,7 @@ export async function readLocalWorld(
       pullRequests,
       goalCheck: request.goalCheck ?? null,
       goalCheckSha: request.goalCheckSha ?? null,
+      goalCheckGround: request.goalCheckGround ?? "branch",
       childIssues: request.childIssues ?? [],
       guidanceHashes,
       policy: request.policy ?? DEFAULT_POLICY,

@@ -699,12 +699,28 @@ export function decide(
       return [];
 
     case "awaiting_goal_check":
-      if (signal.kind === "merged") {
+      // **One trigger, and it is a derived one.** `goal_check_needed` is
+      // re-derived from durable state on every tick for exactly as long as the
+      // work in front of the entity holds no passing proof on the ground it
+      // needs (`runtime/tick`'s `proofWanted`), so the re-proof happens because
+      // the state calls for it rather than because some other signal happened to
+      // arrive.
+      //
+      // It used to be `merged`, and that is the whole of finding 3: a `merged`
+      // is a one-shot event, so an approved, green, *unmerged* PR whose proof a
+      // push had invalidated had no path to a new one at all, and a merge signal
+      // lost to a restart could not be re-observed either. Keeping `merged` as a
+      // second trigger would be a second path to the same dispatch that only
+      // works when an event lands — which is the under-specification, not a
+      // belt-and-braces. The derived signal is seeded from the same snapshot the
+      // merge is read in, so nothing is slower for having one trigger.
+      if (signal.kind === "goal_check_needed") {
         return [
           {
             kind: "runGoalCheck",
             entityId: entity.id,
-            because: `PR #${signal.pullNumber} merged.`,
+            because:
+              "The work has no passing goal verdict at the revision it is sitting at.",
           },
         ];
       }

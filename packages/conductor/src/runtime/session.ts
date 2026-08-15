@@ -375,6 +375,7 @@ export async function openConductor(input: OpenConductorInput): Promise<Conducto
       externalKey: item.externalKey ?? null,
       goalCheck: null,
       goalCheckSha: null,
+      goalCheckGround: "branch",
       lastSignalAt: null,
     });
     if (item.summary !== undefined) {

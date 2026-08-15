@@ -16,14 +16,23 @@
  *   would silently drop every `draftSpec` and `implement`.
  * - **A settled dispatch feeds its signal back in.** That is how a failed
  *   dispatch reaches the escalation `decide` has for it.
+ * - **A step that leaves the work owing a proof derives the signal that asks for
+ *   one.** Re-proving is driven by the *state* rather than by an event
+ *   (`runtime/tick`'s `proofGap`), so a harness that only replayed scripted
+ *   signals would show an approved, unproved PR sitting still — which is the
+ *   defect the derivation exists to remove, reproduced in the fast loop.
  * - **The world is re-materialized per step.** Gates are predicates over a
  *   snapshot, so a step supplies the snapshot as it stood when that signal
  *   arrived, exactly as the tick's read-world step would.
  */
 
 import { decide } from "../driver/decide";
-import { deriveGate, type ConductorEntity } from "../driver/derive-gate";
-import { isDispatch, type Action } from "../model/actions";
+import {
+  deriveGate,
+  outstandingProof,
+  type ConductorEntity,
+} from "../driver/derive-gate";
+import { isDispatch, MUTATES_WORK, type Action } from "../model/actions";
 import type { Gate, Phase } from "../model/phases";
 import type { Signal, SignalKind } from "../model/signals";
 import type { World } from "../model/world";
@@ -99,6 +108,8 @@ export async function replay(script: ReplayScript): Promise<ReplayResult> {
   let world = script.world;
 
   const records: ReplayRecord[] = [];
+  /** Phases a human has already been asked about. */
+  const escalated = new Set<Phase>();
   const actions: Action[] = [];
   const dispatches: PhaseBrief[] = [];
   const results: DispatchResult[] = [];
@@ -113,7 +124,25 @@ export async function replay(script: ReplayScript): Promise<ReplayResult> {
       { signal: step.signal, derived: false },
     ];
 
-    while (queue.length > 0) {
+    /** Work bought in this step, which may already have moved the code. */
+    let boughtWork = false;
+    /** Derived once per step, when the queue first empties — as the tick does. */
+    let proofChecked = false;
+
+    for (;;) {
+      if (queue.length === 0 && !proofChecked) {
+        proofChecked = true;
+        const gap =
+          boughtWork || escalated.has(entity.phase)
+            ? null
+            : outstandingProof(entity, world);
+        if (gap !== null) {
+          queue.push({
+            signal: { kind: gap, entityId: entity.id, at: step.signal.at },
+            derived: true,
+          });
+        }
+      }
       const next = queue.shift();
       if (!next) break;
       const { signal, derived } = next;
@@ -124,6 +153,9 @@ export async function replay(script: ReplayScript): Promise<ReplayResult> {
       actions.push(...produced);
 
       for (const action of produced) {
+        // An outstanding ask is something to wait for, so it converges the
+        // derived proof signal exactly as it does in the tick.
+        if (action.kind === "escalate") escalated.add(entity.phase);
         if (action.kind === "enterPhase") {
           entity = { ...entity, phase: action.phase };
           queue.push({
@@ -133,6 +165,7 @@ export async function replay(script: ReplayScript): Promise<ReplayResult> {
           continue;
         }
         if (!isDispatch(action)) continue;
+        if (MUTATES_WORK[action.kind]) boughtWork = true;
 
         const branch = branchNameFor(entity);
         const brief = briefFor(entity, action, {

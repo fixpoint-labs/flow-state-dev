@@ -30,10 +30,10 @@
 
 import {
   artifactOfKind,
-  goalCheckFor,
   hasFreshHumanApproval,
   hasHumanReviewAtHead,
   prForArtifact,
+  standingVerdict,
   type ArtifactKind,
   type World,
 } from "./world";
@@ -152,12 +152,14 @@ const specPr = (world: World) => prForArtifact(world, artifactOfKind(world, "spe
 const implArtifact = (world: World) => artifactOfKind(world, "implementation");
 const implPr = (world: World) => prForArtifact(world, implArtifact(world));
 /**
- * The goal verdict, but only where it still describes the code the issue's
- * implementation is sitting at. Every predicate below reads this rather than
- * `world.goalCheck` — see `./world`'s {@link goalCheckFor} for why a bare
- * verdict cannot hold the invariant this phase is built around.
+ * The goal verdict, but only where it still describes **the code the issue's
+ * implementation is sitting at** and **the claim that code now has to answer
+ * for**. Every predicate below reads this rather than `world.goalCheck` — see
+ * `./world`'s {@link standingVerdict} for why a bare verdict cannot hold the
+ * invariant this phase is built around, and which of the two halves closes
+ * which hole.
  */
-const implGoalCheck = (world: World) => goalCheckFor(world, implArtifact(world));
+const implProof = (world: World) => standingVerdict(world, implArtifact(world));
 const epicSpecPr = (world: World) =>
   prForArtifact(world, artifactOfKind(world, "epic_spec"));
 
@@ -231,36 +233,70 @@ const SPEC: PhaseDefinition = {
  * than as four independent choices:
  *
  * > **A merge gate never opens on unproved work, and an issue is not done until
- * > its goal passes.**
+ * > what landed passes its goal.**
  *
  * Neither half mentions how many PRs the issue has, and that is the point: the
  * same predicates describe both shapes `orchestration.md` defines (the
  * paragraph after the lifecycle diagram, "For a **single-PR** issue…").
  *
  * - **Single-PR.** `issue-implement` proves the goal on the real path at
- *   completion, *before* the PR opens, so `goalCheck` is already `passed` by
- *   the time `awaiting_merge` is reached. The gate applies, a human merges,
- *   done. Conductor never invites a merge it has not proved.
+ *   completion, *before* the PR opens, so a branch proof is already standing by
+ *   the time `awaiting_merge` is reached. The gate applies, a human merges, and
+ *   the base is proved before the issue settles. Conductor never invites a merge
+ *   it has not proved.
  * - **Multi-PR.** The sub-PRs are nested tasks carrying gates of their own; the
  *   issue's own goal is the *assembled* one, which runs only once they settle.
  *   Its `goalCheck` is `null` until then, so `awaiting_merge` never applies at
  *   this level — correctly, because the issue-level merge gate was never about
  *   a sub-PR's merge.
  *
- * **"Proved" means proved *at the revision that is there now*.** A verdict is a
- * statement about the code the check ran on, so every predicate below reads
- * {@link goalCheckFor} rather than `world.goalCheck` — the verdict, kept only
- * where it still describes the head. Without that, holding the invariant meant
- * enumerating the ways a proof could be outrun, and no enumeration over
- * conductor's own dispatches can be complete: a human pushing another commit to
- * the implementation PR changes the code with no dispatch to enumerate. The
- * argument in full is on `goalCheckFor`.
+ * ---------------------------------------------------------------------------
+ * THE LIFECYCLE OF A PROOF, IN FOUR ANSWERS
+ * ---------------------------------------------------------------------------
+ *
+ * A proof is a **verdict, the revision it was taken against, and the ground it
+ * stood on** (`./world`'s `ProofGround`). Every gate below reads all three
+ * through {@link standingVerdict}, and the four questions the table answers are:
+ *
+ * 1. **What proves.** One dispatch: `runGoalCheck`, which conductor executes
+ *    itself because a verdict must be an exit status rather than an agent's
+ *    account of itself. A coding dispatch may *also* report a verdict it ran
+ *    (`implement` does, in the single-PR shape, before the PR exists) — always a
+ *    **branch** proof, because a dispatch runs standing on the phase's branch.
+ * 2. **What invalidates.** The revision moving, by the property argued on
+ *    `goalCheckFor`; and the *claim* moving, which is what a merge does — a
+ *    branch proof says nothing about what landed. Both are read here as *there
+ *    is no standing proof*, which is one question rather than a list of causes.
+ * 3. **What re-proves, and when.** `awaiting_goal_check`, below, which applies to
+ *    any live submission holding no passing proof on the ground it needs. It is
+ *    the only gate that dispatches `runGoalCheck`, and `runtime/tick` derives the
+ *    `goal_check_needed` that reaches it from durable state on every tick — so
+ *    re-proving is a transition of this lifecycle rather than something that
+ *    happens when a signal happens to arrive. It converges because the check
+ *    writes a proof at that revision and ground, which is exactly the condition
+ *    that stops the derivation.
+ * 4. **What a failed proof means.** Not the same as no proof: it is a statement
+ *    about the work, and `decide` routes it — back to the agent while the PR is
+ *    open, to a human once it has merged. What it must never do is release the
+ *    gate that demanded it, which is why `satisfiedBy` below reads `"passed"`
+ *    and not "a verdict exists".
+ *
+ * **What none of this can promise, and the floor it rests on:** a verdict is
+ * only as good as the tree the command ran in. Conductor binds a proof to a
+ * revision, but the workspace that revision was checked out into is the branch
+ * layer's to hand over clean — a stale edit left in a re-entered worktree is
+ * code that is in the tree and not in the revision, and a check that passes on
+ * it has proved something that exists nowhere. That precondition is owed to this
+ * lifecycle by `dispatch/branch`, and it is stated here because nothing in this
+ * table can detect its absence.
  *
  * **Why `completedWhen` reads the artifact and its PR, and not `goalCheck`
- * alone.** Because the single-PR shape makes `goalCheck === "passed"` true while
- * the PR is still open, and completing on that alone settles an issue on its own
+ * alone.** Because the single-PR shape makes a branch proof stand while the PR
+ * is still open, and completing on that alone settles an issue on its own
  * `pr_opened` — before CI, before review, before anyone merged. The condition is
- * *goal proved, and the work no longer sitting in an open PR*.
+ * *the standing proof passed, and the work no longer sitting in an open PR* —
+ * and after a merge the standing proof is a **base** one, so what settles the
+ * issue is always a check of what landed.
  *
  * The PR test alone cannot express that, because `implPr(w)` is `undefined` in
  * two states that mean opposite things, and `!== "open"` is vacuously true for
@@ -292,11 +328,6 @@ const SPEC: PhaseDefinition = {
  * guard that deferred a *passing* verdict to the next tick whenever the phase's
  * submission was not in the snapshot yet. That worked, and it put a phase
  * completion rule where the next person editing this table could not see it.
- *
- * **`awaiting_goal_check` is not redundant.** It is the path for work that
- * reached the base *without* a proof: a human merging ahead of the gate, and
- * the assembled multi-PR goal. It is what dispatches `runGoalCheck`, and it is
- * the only gate that does.
  *
  * Adding multi-PR therefore needs no PR-plan fact in `World` and no second gate
  * table. If it starts to look like it does, the nesting is being modelled in
@@ -342,7 +373,7 @@ const IMPLEMENTATION: PhaseDefinition = {
       // Conductor never merges. This gate is released by a human, always — and
       // it does not open until the goal has passed **against the code that is
       // there now**, so a human is never invited to merge work conductor has not
-      // proved. See the phase note above and `./world`'s `goalCheckFor`.
+      // proved. See the phase note above and `./world`'s `standingVerdict`.
       // `artifact.reviews`: it only applies once the PR carries a fresh human
       // approval, which is a read of the PR's reviews. `goalCheck`: the proof
       // requirement itself, verdict and proved revision together — they are one
@@ -352,24 +383,58 @@ const IMPLEMENTATION: PhaseDefinition = {
       // reader fetches, which is the mapping `test/declared-reads` asserts.
       name: "awaiting_merge",
       reads: ["pr.state", "pr.mergeable", "artifact.reviews", "goalCheck"],
-      appliesWhen: (w) => hasFreshHumanApproval(implPr(w)) && implGoalCheck(w) === "passed",
+      appliesWhen: (w) => hasFreshHumanApproval(implPr(w)) && implProof(w) === "passed",
       satisfiedBy: (w) => implPr(w)?.state === "merged",
     },
     {
-      // Released by a proof of *what merged*, not by any proof at all. A human
-      // who pushes past a standing verdict and then merges leaves a merged head
-      // no proof describes, and reading the bare field here would call that
-      // satisfied and let `completedWhen` settle the issue on it — the merge
-      // gate held, and the phase finished anyway one gate further down. Asking
-      // the same question both places is what makes the two agree.
+      /**
+       * **The gate that keeps a proof re-earnable.**
+       *
+       * It applies to any *live* submission — open or merged — and it is
+       * released by a **passing** proof on the ground that submission now needs.
+       * Both halves are corrections of the same under-specification, and each
+       * closes a way an issue used to go permanently idle while looking healthy:
+       *
+       * - **Open, not only merged.** A head that moves invalidates the proof,
+       *   correctly. Applying only after a merge then left nothing that could
+       *   ever take a new one: `awaiting_merge` refuses to apply on unproved
+       *   work, the other open-PR gates are satisfied, and no gate was derived
+       *   at all — so a revision, a rebase, a conflict fix or a human's push
+       *   made the issue unmergeable *forever* short of a human merging work
+       *   conductor considers unproved. Applying while the submission is open is
+       *   what turns "the proof is gone" into "take another one".
+       * - **Passing, not merely present.** `!== null` released this gate on a
+       *   *failed* verdict — the gate that exists to demand a proof, satisfied
+       *   by the proof failing. The phase could not complete, no gate was
+       *   outstanding, and an applicable-but-satisfied gate suppressed stall
+       *   detection too, so the issue sat idle with nothing reporting it. A
+       *   failure is handled by `decide` (back to the agent, or to a human after
+       *   a merge) and re-derived from the stored proof until that handling is on
+       *   disk; it is never a release.
+       *
+       * A **closed, unmerged** submission is deliberately outside it. That is an
+       * abandoned branch — `decide` escalates the closure to a human — and
+       * proving it would be paid work on work nobody is taking forward. With no
+       * gate applying, such an issue reads as stranded, which is the truth.
+       *
+       * `reads` is `pr.state` and `goalCheck`: the state decides both whether the
+       * gate applies and which ground the proof must stand on, and the verdict,
+       * its revision and its ground are one conductor-owned fact materialized
+       * from one input. The head the revision is compared against arrives with
+       * `pr.state` — state and head come out of the one pull request record every
+       * reader fetches.
+       */
       name: "awaiting_goal_check",
       reads: ["pr.state", "goalCheck"],
-      appliesWhen: (w) => implPr(w)?.state === "merged",
-      satisfiedBy: (w) => implGoalCheck(w) !== null,
+      appliesWhen: (w) => {
+        const state = implPr(w)?.state;
+        return state === "open" || state === "merged";
+      },
+      satisfiedBy: (w) => implProof(w) === "passed",
     },
   ],
   completedWhen: (w) =>
-    implGoalCheck(w) === "passed" &&
+    implProof(w) === "passed" &&
     implArtifact(w) !== undefined &&
     implPr(w)?.state !== "open",
   next: "SETTLED",

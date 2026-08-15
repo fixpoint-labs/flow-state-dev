@@ -100,6 +100,13 @@ export interface ObservationRequest {
    * has no opinion on it, and dropping it makes every verdict read as unproved.
    */
   readonly goalCheckSha?: string | null;
+  /**
+   * Conductor-owned, and the third part of the same fact: the ground the verdict
+   * was taken on (`model/world`'s `ProofGround`). Passed through verbatim — an
+   * observer has no opinion on it, and dropping it makes every post-merge issue
+   * read as proved by a check that only ever saw the branch.
+   */
+  readonly goalCheckGround?: "branch" | "base";
   /** Conductor-owned. Empty for an issue. */
   readonly childIssues?: readonly ChildIssueFacts[];
   /** Repo-relative guidance paths to hash. Only read when a gate declares `guidance`. */
