@@ -149,6 +149,16 @@ function budgetSpent(entity: ConductorEntity, world: World): boolean {
  * budget we stop auto-handling feedback and ask a human whether the approach
  * itself needs re-examining — grinding out round thirteen is not the answer the
  * process wants.
+ *
+ * **Every path that buys a revision goes through here**, comments and CI alike.
+ * The cap is a loop detector, and a build nobody can get green is the same loop
+ * as a thread nobody can settle — the process doc says new CI results past the
+ * cap are recorded and not acted on, in the same breath as comments. A CI branch
+ * that compared the budget itself would be a second copy of this rule, and two
+ * copies is how one of them stops matching the doc.
+ *
+ * A red base never reaches here: it is suppressed at the call site, so someone
+ * else's breakage neither dispatches nor spends a round.
  */
 function reviseOrEscalate(
   entity: ConductorEntity,
@@ -455,13 +465,12 @@ export function decide(
     case "awaiting_ci":
       if (signal.kind === "ci_concluded" && signal.conclusion === "failure") {
         if (baseIsRed(entity, world)) return [];
-        return [
-          {
-            kind: "addressFeedback",
-            entityId: entity.id,
-            because: `CI failed on ${signal.sha}.`,
-          },
-        ];
+        return reviseOrEscalate(
+          entity,
+          world,
+          "addressFeedback",
+          `CI failed on ${signal.sha}.`,
+        );
       }
       return [];
 
@@ -487,13 +496,12 @@ export function decide(
         // Same suppression as `awaiting_ci`: a red base is someone else's
         // breakage whether or not review has started on this PR.
         if (baseIsRed(entity, world)) return [];
-        return [
-          {
-            kind: "addressFeedback",
-            entityId: entity.id,
-            because: `CI failed on ${signal.sha} after review started.`,
-          },
-        ];
+        return reviseOrEscalate(
+          entity,
+          world,
+          "addressFeedback",
+          `CI failed on ${signal.sha} after review started.`,
+        );
       }
       return [];
 

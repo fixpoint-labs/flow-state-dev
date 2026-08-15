@@ -267,8 +267,15 @@ const IMPLEMENTATION: PhaseDefinition = {
       // the branch handling it waits for `base_recovered` instead of
       // dispatching an agent. Undeclared, `baseRed` reads `false` forever and
       // conductor chases someone else's breakage.
+      // `artifact.rounds`: a CI failure here is revised or escalated on the
+      // same budget as review feedback, and that comparison reads the
+      // artifact's rounds. Declared here rather than borrowed from
+      // `awaiting_review` — the tick unions a phase's declarations, so this
+      // gate reads a real number today either way, but a guard that depends on
+      // its neighbour's declaration breaks silently the moment that neighbour
+      // changes, and the failure is unbounded paid work.
       name: "awaiting_ci",
-      reads: ["pr.state", "pr.checkRuns", "pr.baseStatus"],
+      reads: ["pr.state", "pr.checkRuns", "pr.baseStatus", "artifact.rounds"],
       appliesWhen: (w) => implPr(w)?.state === "open" && implPr(w)?.checks !== null,
       satisfiedBy: (w) => implPr(w)?.checks === "success",
     },

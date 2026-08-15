@@ -12,7 +12,7 @@ import { decide } from "../src/driver/decide";
 import { deriveGate, isPhaseComplete } from "../src/driver/derive-gate";
 import { reconcile } from "../src/driver/reconcile";
 import type { Action } from "../src/model/actions";
-import { EPIC_PHASES, ISSUE_PHASES } from "../src/model/phases";
+import { EPIC_PHASES, ISSUE_PHASES, factsReadBy } from "../src/model/phases";
 import type { Signal } from "../src/model/signals";
 import { DEFAULT_POLICY } from "../src/model/world";
 import {
@@ -401,6 +401,84 @@ describe("review-round budgets", () => {
     expect(kinds(decide(issue("IMPLEMENTATION"), signal("changes_requested"), w))).toEqual(
       ["addressFeedback"],
     );
+  });
+
+  /**
+   * The cap is a *loop detector*, and the loop it exists to catch is as often a
+   * build nobody can get green as a thread nobody can settle. The process doc is
+   * explicit that new CI results are among the things that "still arrive and are
+   * still recorded; they are simply not acted on" — so a CI failure past the cap
+   * has to reach the same escalation a comment does, not a paid agent run.
+   *
+   * These assert the *actions*, not a flag: a regression here spends money, and
+   * the failure message should name the dispatch that was bought.
+   */
+  describe("and the cap covers a red build, not only a red reviewer", () => {
+    const CAP = DEFAULT_POLICY.implementationReviewRoundBudget;
+
+    /** Gated on `awaiting_ci`: CI is the only thing outstanding. */
+    const failingCi = (reviewRounds: number) =>
+      worldWith("implementation", pr({ checks: "failure" }), { reviewRounds });
+
+    /** Gated on `awaiting_review`: the build goes red after review started. */
+    const failingCiUnderReview = (reviewRounds: number) =>
+      worldWith("implementation", pr({ checks: null, reviews: [review()] }), {
+        reviewRounds,
+      });
+
+    it("escalates instead of dispatching when CI fails at the cap", () => {
+      const w = failingCi(CAP);
+      expect(deriveGate(issue("IMPLEMENTATION"), w)).toBe("awaiting_ci");
+      const actions = decide(issue("IMPLEMENTATION"), signal("ci_concluded"), w);
+      expect(kinds(actions)).toEqual(["escalate"]);
+      expect(actions[0]).toMatchObject({
+        reason: expect.stringContaining("approach may need re-examining"),
+      });
+    });
+
+    it("still dispatches on the last permitted round", () => {
+      const w = failingCi(CAP - 1);
+      expect(kinds(decide(issue("IMPLEMENTATION"), signal("ci_concluded"), w))).toEqual([
+        "addressFeedback",
+      ]);
+    });
+
+    it("escalates a failure that lands after review started, too", () => {
+      const w = failingCiUnderReview(CAP);
+      expect(deriveGate(issue("IMPLEMENTATION"), w)).toBe("awaiting_review");
+      expect(kinds(decide(issue("IMPLEMENTATION"), signal("ci_concluded"), w))).toEqual([
+        "escalate",
+      ]);
+    });
+
+    it("still dispatches under review on the last permitted round", () => {
+      const w = failingCiUnderReview(CAP - 1);
+      expect(kinds(decide(issue("IMPLEMENTATION"), signal("ci_concluded"), w))).toEqual([
+        "addressFeedback",
+      ]);
+    });
+
+    it("charges a red base nothing, at the cap as below it", () => {
+      // Someone else's breakage is not a round, so it must neither dispatch
+      // (which is what `countReviewRound` charges against) nor escalate as if
+      // this PR had exhausted anything. The entity waits for `base_recovered`,
+      // exactly as it does below the cap.
+      const w = worldWith("implementation", pr({ checks: "failure", baseRed: true }), {
+        reviewRounds: CAP,
+      });
+      expect(decide(issue("IMPLEMENTATION"), signal("ci_concluded"), w)).toEqual([]);
+    });
+
+    it("materializes artifact.rounds for the phase, or the cap reads zero forever", () => {
+      // The guard is only alive if the tick fetches the number it compares.
+      // `awaiting_ci` does not declare `artifact.rounds` itself — it is carried
+      // by `awaiting_review`, and the tick unions a phase's declarations. That
+      // union is what this pins. The stronger form, the one `pr.baseStatus`
+      // already earned on its own neighbour, is for `awaiting_ci` to declare it
+      // directly; until it does, deleting it from `awaiting_review` silently
+      // resets every implementation's CI budget to zero.
+      expect(factsReadBy("issue", "IMPLEMENTATION")).toContain("artifact.rounds");
+    });
   });
 });
 
