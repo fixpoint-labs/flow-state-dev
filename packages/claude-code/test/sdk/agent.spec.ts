@@ -393,6 +393,66 @@ describe("claudeCodeAgent", () => {
     expect(items.some((i) => i.type === "error")).toBe(true);
   });
 
+  it("errors on a success-subtype result the SDK flagged with is_error", async () => {
+    // The verbatim shape an unauthenticated run returns from the Agent SDK: a
+    // `success` subtype, `is_error: true`, and the operator-facing reason in
+    // `result`. Keyed on the subtype alone, this persisted a COMPLETED handle
+    // for a run that never did any work (zero turns, zero cost).
+    const messages: SdkMessageLike[] = [
+      {
+        type: "result",
+        subtype: "success",
+        is_error: true,
+        result: "Invalid API key · Please run /login",
+        session_id: "sess_unauth",
+        usage: { input_tokens: 0, output_tokens: 0 },
+        total_cost_usd: 0,
+      },
+    ];
+    const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery(messages) });
+    const { output, error, items, state } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(error).toBeNull();
+    const handle = output as SdkAgentHandle;
+    expect(handle.status).toBe("errored");
+    // The SDK's own subtype is preserved as reported — `status` is the verdict,
+    // `resultSubtype` is the fact, and inventing a subtype would lose the fact.
+    expect(handle.resultSubtype).toBe("success");
+
+    // The handle appended to session state is the one downstream readers trust.
+    const runs = state.session[SDK_AGENT_RUNS_KEY] as SdkAgentHandle[];
+    expect(runs).toHaveLength(1);
+    expect(runs[0].status).toBe("errored");
+
+    // The operator needs the SDK's own words, not "the run failed".
+    const errorItem = items.find((i) => i.type === "error") as
+      | { message: string; code?: string }
+      | undefined;
+    expect(errorItem?.message).toBe("Invalid API key · Please run /login");
+  });
+
+  it("still completes a success result the SDK did not flag", async () => {
+    // Control for the test above: a fix that failed every run would pass it.
+    const messages: SdkMessageLike[] = [
+      {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "final answer",
+        session_id: "sess_ok",
+      },
+    ];
+    const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery(messages) });
+    const { output, error, items, state } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(error).toBeNull();
+    const handle = output as SdkAgentHandle;
+    expect(handle.status).toBe("completed");
+    expect(handle.resultSubtype).toBe("success");
+    expect((state.session[SDK_AGENT_RUNS_KEY] as SdkAgentHandle[])[0].status).toBe("completed");
+    expect(items.some((i) => i.type === "error")).toBe(false);
+  });
+
   it("wraps a mid-stream SDK throw in ClaudeAgentRunError and rethrows", async () => {
     const resolveClaudeAgent: ResolveClaudeAgent = () => ({
       query: async function* () {

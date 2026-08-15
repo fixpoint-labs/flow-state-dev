@@ -196,27 +196,53 @@ function translateStreamEvent(
   return [];
 }
 
+/**
+ * This package's code for a run the SDK flagged with `is_error` on an
+ * otherwise-successful terminal result. The SDK reports no subtype of its own
+ * for that shape, and reporting `success` as the code of an error item is the
+ * false signal this whole path exists to avoid.
+ */
+const FLAGGED_SUCCESS_CODE = "error_flagged_success";
+
 /** `result` terminal message → an optional error notice plus a result event. */
 function translateResult(msg: Extract<SdkMessageLike, { type: "result" }>): TranslatedEvent[] {
-  const { subtype, subtypeLabel, succeeded, finalMessage, errorDetail, sessionId, usage, costUsd } =
-    readTerminalResult(msg);
+  const {
+    subtype,
+    subtypeLabel,
+    succeeded,
+    isError,
+    finalMessage,
+    errorDetail,
+    sessionId,
+    usage,
+    costUsd,
+  } = readTerminalResult(msg);
 
   const events: TranslatedEvent[] = [];
-  // Any terminal subtype that is not "success" is an errored outcome — including
-  // an unrecognized subtype (a future SDK failure mode), which normalizes to
-  // `null`. `succeeded` is defined on the raw subtype for exactly that reason,
-  // so a failed run never reports "completed" downstream.
+  // A run fails on a non-"success" subtype — including an unrecognized one (a
+  // future SDK failure mode), which normalizes to `null` — or on the SDK's own
+  // `is_error` flag. `succeeded` already carries both, so a failed run never
+  // reports "completed" downstream. See `./result`.
   if (!succeeded) {
+    // Name the failure class by what actually failed the run. A flagged success
+    // has no failure subtype to name, so neither the code nor the fallback text
+    // may claim one.
+    const flaggedSuccess = isError && subtypeLabel === "success";
     events.push({
       kind: "error",
+      // The SDK's own words first: "Invalid API key · Please run /login" is what
+      // an operator can act on; a generic "the run failed" is not.
       message:
-        finalMessage ?? errorDetail ?? `Claude Code agent run failed (${subtypeLabel}).`,
-      code: msg.subtype ?? "unknown",
+        finalMessage ??
+        errorDetail ??
+        `Claude Code agent run failed (${flaggedSuccess ? "success subtype flagged is_error" : subtypeLabel}).`,
+      code: flaggedSuccess ? FLAGGED_SUCCESS_CODE : (msg.subtype ?? "unknown"),
     });
   }
   events.push({
     kind: "result",
     subtype,
+    succeeded,
     finalMessage: finalMessage ?? errorDetail,
     sessionId,
     usage,

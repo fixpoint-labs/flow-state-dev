@@ -304,17 +304,14 @@ function overranBudget(timeoutMs: number, stopped: boolean): string {
  *
  * A run failed if its subtype is anything but `success` — **including a subtype
  * this package does not recognize**, which is how a future SDK failure mode
- * reports itself and must not be read as a completion. `is_error` is honoured
- * alongside it, for a `success` result the SDK itself flagged.
+ * reports itself and must not be read as a completion — or if the SDK flagged it
+ * with `is_error`. Both are already in `succeeded`; see `./result`.
  */
 function reduceResult(msg: Extract<SdkMessageLike, { type: "result" }>): ClaudeHeadlessResult {
-  const { subtype, subtypeLabel, succeeded, isError, finalMessage, errorDetail, sessionId, usage, costUsd } =
+  const { subtype, subtypeLabel, succeeded, finalMessage, errorDetail, sessionId, usage, costUsd } =
     readTerminalResult(msg);
 
-  // `is_error` is honoured alongside the subtype here, and only here: this
-  // surface's whole contract is a settled ok/not-ok value, so a `success` the
-  // SDK itself flagged must not come back `ok`. See `./result`.
-  if (succeeded && !isError) {
+  if (succeeded) {
     return { ok: true, error: null, finalMessage, sessionId, costUsd, subtype, usage };
   }
 

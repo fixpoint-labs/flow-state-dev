@@ -31,7 +31,12 @@ export type SdkResultSubtype =
 export interface SdkAgentHandle extends RemoteAgentTaskHandle {
   source: "sdk";
   status: "running" | "completed" | "errored";
-  /** The SDK's terminal `result.subtype`, or `null` if the run never produced one. */
+  /**
+   * The SDK's terminal `result.subtype`, or `null` if the run never produced
+   * one. Reported as the SDK gave it, which is not a verdict: a run the SDK
+   * flagged with `is_error` carries `resultSubtype: "success"` on a handle whose
+   * `status` is `"errored"`. Read `status`.
+   */
   resultSubtype: SdkResultSubtype | null;
   /** The last assistant message text, or `null` if the run produced none. */
   finalMessage: string | null;
@@ -188,6 +193,13 @@ export type TranslatedEvent =
   | {
       kind: "result";
       subtype: SdkResultSubtype | null;
+      /**
+       * Whether the run succeeded — the whole verdict, already accounting for
+       * the SDK's `is_error` flag as well as the subtype. Read this, not
+       * `subtype`: a run the SDK flagged reports `subtype: "success"` and
+       * `succeeded: false`.
+       */
+      succeeded: boolean;
       finalMessage: string | null;
       sessionId: string | null;
       usage: { inputTokens: number; outputTokens: number } | null;

@@ -206,12 +206,56 @@ describe("translateSdkMessage", () => {
       {
         kind: "result",
         subtype: "success",
+        succeeded: true,
         finalMessage: "all done",
         sessionId: "sess_42",
         usage: { inputTokens: 100, outputTokens: 20 },
         costUsd: 0.05,
       },
     ]);
+  });
+
+  it("maps a success subtype the SDK flagged with is_error to a failed result", () => {
+    // The shape an unauthenticated run returns: `success` subtype, `is_error`
+    // set, and the reason in `result`. The subtype alone reads as a completion.
+    const events = translateOne({
+      type: "result",
+      subtype: "success",
+      is_error: true,
+      result: "Invalid API key · Please run /login",
+      session_id: "sess_unauth",
+      total_cost_usd: 0,
+    });
+    expect(events).toEqual([
+      {
+        kind: "error",
+        message: "Invalid API key · Please run /login",
+        code: "error_flagged_success",
+      },
+      {
+        kind: "result",
+        subtype: "success",
+        succeeded: false,
+        finalMessage: "Invalid API key · Please run /login",
+        sessionId: "sess_unauth",
+        usage: null,
+        costUsd: 0,
+      },
+    ]);
+  });
+
+  it("names the flagged-success failure class when the SDK reported no text", () => {
+    const events = translateOne({
+      type: "result",
+      subtype: "success",
+      is_error: true,
+      session_id: "sess_bare",
+    });
+    expect(events.find((e) => e.kind === "error")).toEqual({
+      kind: "error",
+      message: "Claude Code agent run failed (success subtype flagged is_error).",
+      code: "error_flagged_success",
+    });
   });
 
   it("maps an error_max_turns result (errors[]) to an error event plus a result event", () => {
@@ -227,6 +271,7 @@ describe("translateSdkMessage", () => {
       {
         kind: "result",
         subtype: "error_max_turns",
+        succeeded: false,
         finalMessage: "hit the turn limit; and another detail",
         sessionId: "sess_7",
         usage: null,

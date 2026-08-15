@@ -9,25 +9,27 @@
  * agreeing in meaning: the next SDK subtype would have had to be added in two
  * places, and one of them would have been missed.
  *
- * **Facts here, policy at the caller.** This module reports what the message
- * said; it does not decide what counts as a failure, because the callers
- * genuinely differ on one point and flattening that would be a silent
- * behaviour change:
+ * **`succeeded` is the whole verdict.** A run failed if its subtype is anything
+ * but `success` *or* the SDK set `is_error`, and this module answers that in one
+ * field so no caller has to remember to read two. It previously reported the two
+ * facts separately and left the combining to each caller, on the theory that
+ * they legitimately differed — and the callers promptly disagreed: `headless.ts`
+ * honoured `is_error`, `translate.ts` did not, so an unauthenticated run (which
+ * returns `subtype: "success"`, `is_error: true`, and the reason in `result`)
+ * settled as failed on one surface and persisted a *completed* run handle on the
+ * other. A verdict a caller can get half-right is a verdict this module owes it.
  *
- * - `headless.ts` fails a run on `is_error` as well as on the subtype, because
- *   its whole contract is a settled ok/not-ok value.
- * - `translate.ts` keys its error event on the subtype alone, and the
- *   `TranslatedEvent` result variant carries no `is_error` to key on.
+ * Two rules `succeeded` encodes, both of which read a failure as a failure:
  *
- * So `succeeded` is defined on the subtype and `isError` is reported beside it,
- * leaving that one divergence visible in one file instead of implied across
- * three.
+ * - **Anything not exactly `success` failed**, including a subtype this version
+ *   does not recognize. It is checked against the raw string, not the normalized
+ *   one: a future SDK failure mode normalizes to `null`, and reading `null` as
+ *   "no error reported" would report a failed run as a completion.
+ * - **`is_error` overrides an otherwise-successful subtype.** The SDK sets it on
+ *   a terminal `success` result whose run nonetheless went wrong.
  *
- * The rule both callers do share, and the reason `succeeded` is not derived
- * from the normalized subtype: **anything that is not exactly `success` is a
- * failure, including a subtype this version does not recognize.** A future SDK
- * failure mode normalizes to `null`, and reading `null` as "no error reported"
- * would report a failed run as a completion.
+ * `isError` stays exposed beside it as a reported fact — already folded into
+ * `succeeded`, and read only to *name* which of the two rules failed the run.
  */
 import type { SdkMessageLike, SdkResultSubtype } from "./types";
 
@@ -47,11 +49,16 @@ export interface SdkTerminalResult {
   /** The subtype as reported, for a human-readable reason. Never empty. */
   readonly subtypeLabel: string;
   /**
-   * `true` only for an exactly-`success` subtype. An unrecognized subtype is
-   * `false` — see the note on failure classification above.
+   * The single verdict: `true` only for an exactly-`success` subtype the SDK did
+   * not flag with `is_error`. An unrecognized subtype is `false` — see the note
+   * on failure classification above.
    */
   readonly succeeded: boolean;
-  /** The SDK's own error flag, as reported. Policy is the caller's. */
+  /**
+   * The SDK's own error flag, as reported. Already folded into
+   * {@link SdkTerminalResult.succeeded} — read it to *describe* a failure, never
+   * to decide one.
+   */
   readonly isError: boolean;
   /** The agent's final answer. `null` on an error-subtype result, which has none. */
   readonly finalMessage: string | null;
@@ -84,23 +91,15 @@ export function normalizeSubtype(raw: string | undefined): SdkResultSubtype | nu
   return raw !== undefined && KNOWN_SUBTYPES.has(raw) ? (raw as SdkResultSubtype) : null;
 }
 
-/**
- * True when a normalized subtype means the run failed. `null` counts as a
- * failure for the reason above: it is an unrecognized subtype, not an absent
- * one.
- */
-export function isErroredSubtype(subtype: SdkResultSubtype | null): boolean {
-  return subtype !== "success";
-}
-
 /** Read one terminal `result` message into {@link SdkTerminalResult}. */
 export function readTerminalResult(msg: SdkResultMessage): SdkTerminalResult {
   const raw = msg.subtype;
+  const isError = msg.is_error === true;
   return {
     subtype: normalizeSubtype(raw),
     subtypeLabel: raw ?? "unknown subtype",
-    succeeded: raw === "success",
-    isError: msg.is_error === true,
+    succeeded: raw === "success" && !isError,
+    isError,
     // Error-subtype results carry `errors[]` and no `result`; a success result
     // carries `result` and no `errors`. Both are read, neither is invented.
     finalMessage: typeof msg.result === "string" ? msg.result : null,
