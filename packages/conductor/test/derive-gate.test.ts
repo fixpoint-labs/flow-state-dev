@@ -397,7 +397,13 @@ describe("a phase the world leaves nowhere to go", () => {
     // the phase. A test for "does an artifact exist" calls this progress.
     const atAPath = world({
       artifacts: [
-        artifact("spec", 10, { hostedAt: { type: "file", path: "spec/FIX-1.md" } }),
+        // Deliberately not a `spec/`-shaped path: CI refuses any reference to
+        // one, because a spec never lands on the base branch (BP-037) and the
+        // reference would dangle. A vendor writing the draft to its worktree is
+        // the same situation and reads honestly.
+        artifact("spec", 10, {
+          hostedAt: { type: "file", path: ".conductor/drafts/FIX-1.md" },
+        }),
       ],
     });
     expect(isPhaseStranded(issue("SPEC"), atAPath)).toBe(true);
