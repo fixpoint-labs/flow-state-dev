@@ -224,6 +224,40 @@ function stalledReason(entity: ConductorEntity, world: World): string {
 }
 
 /**
+ * A human's feedback on the artifact, whichever channel it arrived through.
+ *
+ * Three channels reach conductor and all three say the same thing — someone read
+ * the work and wants something changed:
+ *
+ * - **A comment**, on the conversation or on a review thread, which the reader
+ *   turns into `feedback_received`.
+ * - **A review requesting changes**, `changes_requested`.
+ * - **A review submitted with no verdict**, `review_submitted` — GitHub's
+ *   summary box, submitted as a plain comment. It is neither of the two comment
+ *   endpoints, so a reviewer who writes their whole review there produces *no
+ *   prose signal at all*, and a branch consuming only the first two answered
+ *   them with silence.
+ *
+ * Reading the third as feedback is the rule M1 already applies to prose
+ * (`github/signals`: any human comment is feedback, without asking a model what
+ * kind it is), raised to the one review state that carries prose and no verdict.
+ * Being wrong costs one revision bought for a "nice work" summary and one round
+ * against the budget; the alternative is a review that never becomes work.
+ *
+ * **Humanness is not checked here and must not be.** A bot's review never
+ * becomes a signal in the first place — both readers drop it on the author
+ * (`driver/reconcile`, `github/signals`), which is what keeps conductor from
+ * reading its own comment back as fresh feedback and paying for it every turn.
+ */
+function isFeedback(signal: Signal): boolean {
+  return (
+    signal.kind === "feedback_received" ||
+    signal.kind === "changes_requested" ||
+    signal.kind === "review_submitted"
+  );
+}
+
+/**
  * Signals that mean the same thing in any phase. Returns `undefined` when the
  * signal is not universal, so the caller falls through to the phase table.
  */
@@ -519,6 +553,59 @@ export function decide(
         },
       ];
     }
+    // A human's feedback is handled phase-wide for the same reason a conflict
+    // is — a reviewer does not wait for the build — and the failure it closes is
+    // worse than a delay, because **a gate that declined a signal did not stop
+    // the cursor moving past it.** A comment or a change request that lands
+    // while checks are still running reduces under `awaiting_ci`, which had
+    // nothing to say about a review; the tick persists the comment and review
+    // cursor regardless, so when CI goes green and `awaiting_review` becomes
+    // current there is nothing left to reduce. `addressFeedback` never runs, the
+    // requested changes stay unresolved, and conductor waits for a review that
+    // already happened.
+    //
+    // This is the *observed* half of the rule `runtime/tick`'s
+    // `unreducedFailures` states for derived ones: **a signal is protected until
+    // its consequence is on disk.** A derived signal gets that from a durable
+    // source of its own; an observed one gets it from the cursor being persisted
+    // last — and that only covers a signal the tick did not finish reducing,
+    // never one a gate answered with nothing. The other shape considered was to
+    // retain the feedback until CI cleared, which is more faithful to the gate
+    // order and needs somewhere durable to retain it: a signal that produces no
+    // action writes no ledger row, so retention means new persisted state that
+    // is a second copy of what the world already reports. Acting on it now needs
+    // none, and matches how `merge_conflict` and `base_recovered` are already
+    // handled one branch up.
+    //
+    // Dispatching while checks are in flight costs the run that is in flight:
+    // conclusions are read against the PR's head, so the moment the revision
+    // pushes, the old head's run stops being read and the new head gets its own.
+    // That is a wasted CI run, occasionally a second round when the failure the
+    // reviewer had not seen comes back — against feedback that was otherwise
+    // lost for the life of the issue.
+    //
+    // Same `prIsOpen` predicate as the two above, and for the same reason: a
+    // revision aims an agent at a *branch*, and a merged or abandoned PR has
+    // none worth touching.
+    if (isFeedback(signal) && prIsOpen) {
+      return reviseOrEscalate(
+        entity,
+        world,
+        "addressFeedback",
+        "Review feedback arrived on the implementation PR.",
+      );
+    }
+    // A question is dropped by exactly the same gate, and answering one pushes
+    // nothing — so there is nothing about a build in flight that makes it wrong.
+    if (signal.kind === "question_asked" && prIsOpen) {
+      return [
+        {
+          kind: "answerQuestion",
+          entityId: entity.id,
+          because: `Question on PR #${signal.pullNumber}.`,
+        },
+      ];
+    }
     // A failed goal check means two different things either side of the merge,
     // and the merge is the only thing that tells them apart — so the predicate
     // has to be read rather than assumed. **After** the merge it needs a human:
@@ -561,7 +648,7 @@ export function decide(
     case "awaiting_spec_review":
     case "awaiting_spec_approval":
     case "awaiting_objective_approval":
-      if (signal.kind === "feedback_received" || signal.kind === "changes_requested") {
+      if (isFeedback(signal)) {
         return reviseOrEscalate(entity, world, "reviseSpec", "Review feedback arrived.");
       }
       if (signal.kind === "question_asked") {
@@ -588,23 +675,12 @@ export function decide(
       return [];
 
     case "awaiting_review":
-      if (signal.kind === "changes_requested" || signal.kind === "feedback_received") {
-        return reviseOrEscalate(
-          entity,
-          world,
-          "addressFeedback",
-          "Review feedback arrived on the implementation PR.",
-        );
-      }
-      if (signal.kind === "question_asked") {
-        return [
-          {
-            kind: "answerQuestion",
-            entityId: entity.id,
-            because: `Question on PR #${signal.pullNumber}.`,
-          },
-        ];
-      }
+      // Feedback and questions are handled phase-wide above rather than here.
+      // They used to live at this gate alone, which is what lost every review
+      // that arrived before the build finished — and a second copy kept here for
+      // the gate that happens to be current most often is how the two would
+      // drift. A red build is genuinely this gate's, because the suppression it
+      // needs is a gate's fact.
       if (signal.kind === "ci_concluded" && signal.conclusion === "failure") {
         // Same suppression as `awaiting_ci`: a red base is someone else's
         // breakage whether or not review has started on this PR.

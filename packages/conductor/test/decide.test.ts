@@ -10,7 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { decide } from "../src/driver/decide";
 import { deriveGate, isPhaseComplete } from "../src/driver/derive-gate";
-import { reconcile } from "../src/driver/reconcile";
+import { reconcile, toObservedPr } from "../src/driver/reconcile";
 import type { Action } from "../src/model/actions";
 import { EPIC_PHASES, ISSUE_PHASES, factsReadBy } from "../src/model/phases";
 import type { Signal } from "../src/model/signals";
@@ -1183,5 +1183,158 @@ describe("recovery work aimed at a PR that is no longer open", () => {
     expect(
       kinds(decide(issue("IMPLEMENTATION"), signal("base_recovered"), recovered)),
     ).toEqual(["rebaseOnBase"]);
+  });
+});
+
+describe("human feedback that arrives before CI has finished", () => {
+  /** PR 10 with a human change request standing at its head. */
+  const reviewed = (checks: "pending" | "success") =>
+    pr({ checks, reviews: [review({ id: "rev-cr", state: "CHANGES_REQUESTED" })] });
+
+  /** Conductor's copy from a poll that saw the PR open with nothing on it yet. */
+  const beforeAnyOfIt = {
+    number: 10,
+    state: "open" as const,
+    headSha: HEAD,
+    checks: null,
+    mergeable: true,
+    baseRed: false,
+    knownReviewIds: [] as readonly string[],
+    observedAt: "2026-08-14T09:00:00Z",
+  };
+
+  it("does the work the reviewer asked for, rather than losing it when CI goes green", () => {
+    // Reviewing before the build finishes is ordinary human behaviour, and the
+    // gate that was current when it landed — `awaiting_ci` — had nothing to say
+    // about a review. That on its own would be harmless if the signal came back;
+    // it does not. The tick persists the observation cursor whatever the gate
+    // answered, so the review is *known* from then on and reconciliation never
+    // re-emits it. `awaiting_review` becomes current one tick later with nothing
+    // left to reduce, and conductor sits waiting for a review that has already
+    // happened while the requested changes stay unresolved.
+    //
+    // Only visible across ticks, which is why this is a batch rather than a
+    // cell: reduced on its own, the same `changes_requested` at a green PR is
+    // handled correctly today.
+    const pending = reviewed("pending");
+    const firstTick = reconcile({
+      entityId: ENTITY_ID,
+      observed: [beforeAnyOfIt],
+      fresh: [pending],
+      now: AT,
+    });
+    expect(firstTick.map((s) => s.kind)).toEqual(["changes_requested"]);
+
+    const green = reviewed("success");
+    const secondTick = reconcile({
+      entityId: ENTITY_ID,
+      observed: [toObservedPr(pending, AT)],
+      fresh: [green],
+      now: AT,
+    });
+    // The mechanism, pinned rather than assumed: the review is behind the
+    // cursor now, so the only thing the second tick reports is the build going
+    // green. Nothing replays the feedback, ever.
+    expect(secondTick.map((s) => s.kind)).toEqual(["ci_concluded"]);
+
+    // And the two gates are the two this falls between.
+    const pendingWorld = worldWith("implementation", pending);
+    const greenWorld = worldWith("implementation", green);
+    expect(deriveGate(issue("IMPLEMENTATION"), pendingWorld)).toBe("awaiting_ci");
+    expect(deriveGate(issue("IMPLEMENTATION"), greenWorld)).toBe("awaiting_review");
+
+    let entity = issue("IMPLEMENTATION");
+    const reduce = (signals: readonly Signal[], w: typeof pendingWorld) =>
+      signals.flatMap((s) => {
+        const produced = decide(entity, s, w);
+        for (const action of produced) {
+          if (action.kind === "enterPhase") entity = issue(action.phase);
+        }
+        return produced;
+      });
+
+    // Asserted on the actions, so a regression reports the work that was never
+    // done rather than an internal predicate's answer about a gate. Asserted
+    // per tick, because *which* tick does the work is the whole finding: the
+    // feedback is answered when it arrives, and the build going green is not a
+    // second thing to act on.
+    expect(kinds(reduce(firstTick, pendingWorld))).toEqual(["addressFeedback"]);
+    expect(kinds(reduce(secondTick, greenWorld))).toEqual([]);
+  });
+
+  it("answers a question asked before CI finished, which the same gate was dropping", () => {
+    // The other prose signal `awaiting_ci` swallowed, lost the same way and for
+    // the same reason. A question costs no push, so there is nothing about a
+    // build in flight that makes answering it wrong.
+    const w = worldWith("implementation", pr({ checks: "pending" }));
+    expect(deriveGate(issue("IMPLEMENTATION"), w)).toBe("awaiting_ci");
+    expect(kinds(decide(issue("IMPLEMENTATION"), signal("question_asked"), w))).toEqual([
+      "answerQuestion",
+    ]);
+  });
+
+  it("spends the same round budget it would have spent one gate later", () => {
+    // The cap is a loop detector and there is one path that compares against it.
+    // Feedback arriving early is the same feedback; a branch that acted on it
+    // without going through `reviseOrEscalate` would be a third hand-written
+    // budget comparison, and that is how one of them stops matching the doc.
+    const w = worldWith(
+      "implementation",
+      reviewed("pending"),
+      { reviewRounds: DEFAULT_POLICY.implementationReviewRoundBudget },
+    );
+    expect(deriveGate(issue("IMPLEMENTATION"), w)).toBe("awaiting_ci");
+    const actions = decide(issue("IMPLEMENTATION"), signal("changes_requested"), w);
+    expect(kinds(actions)).toEqual(["escalate"]);
+    expect(actions[0]).toMatchObject({
+      reason: expect.stringContaining("approach may need re-examining"),
+    });
+  });
+
+  it("does not aim a revision at the branch of a PR that has already merged", () => {
+    // Phase-wide is not artifact-state-blind, the same rule the conflict and
+    // rebase branches already hold: a revision aims an agent at a branch, and a
+    // merged PR's work is on the base with no branch left worth touching.
+    const w = worldWith("implementation", pr({ state: "merged", checks: "success" }));
+    expect(decide(issue("IMPLEMENTATION"), signal("feedback_received"), w)).toEqual([]);
+  });
+});
+
+describe("a review whose feedback is only in the summary box", () => {
+  // A reviewer who types their whole review into GitHub's summary field and
+  // submits it as a plain comment leaves a `COMMENTED` review and nothing else:
+  // no issue comment, no inline review comment, so no prose signal is produced
+  // at all. The one thing that reaches conductor is `review_submitted`, which
+  // both feedback branches ignored — so the reviewer was answered with silence.
+  //
+  // Reading it as feedback is the rule M1 already applies to prose (`github/
+  // signals`: any human comment is feedback, without asking a model what kind
+  // it is). The cost of being wrong is one revision bought for a "nice work"
+  // summary, against a review that otherwise never becomes work at all.
+
+  it("does the work on the implementation PR", () => {
+    const w = worldWith("implementation", pr({ checks: "success", reviews: [review()] }));
+    expect(deriveGate(issue("IMPLEMENTATION"), w)).toBe("awaiting_review");
+    expect(kinds(decide(issue("IMPLEMENTATION"), signal("review_submitted"), w))).toEqual([
+      "addressFeedback",
+    ]);
+  });
+
+  it("revises the spec, because the same box is where a spec gets reviewed too", () => {
+    const w = worldWith("spec", pr({ reviews: [review()] }));
+    expect(kinds(decide(issue("SPEC"), signal("review_submitted"), w))).toEqual([
+      "reviseSpec",
+    ]);
+  });
+
+  it("spends a round like any other feedback rather than a path of its own", () => {
+    const w = worldWith(
+      "implementation",
+      pr({ checks: "success", reviews: [review()] }),
+      { reviewRounds: DEFAULT_POLICY.implementationReviewRoundBudget },
+    );
+    expect(kinds(decide(issue("IMPLEMENTATION"), signal("review_submitted"), w))).toEqual([
+      "escalate",
+    ]);
   });
 });
