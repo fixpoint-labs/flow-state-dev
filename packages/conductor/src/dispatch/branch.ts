@@ -23,6 +23,12 @@
  *   Re-entry — a spec-review round, a PR-feedback round, each in a fresh
  *   worktree — fetches and checks out the *existing* branch instead.
  *
+ * A third rule sits beside them and is about the *tree* rather than the ref: a
+ * worktree that is re-entered is handed over **clean**. An edit left behind by
+ * the last dispatch is code that is in the tree and in no revision, and the
+ * proof lifecycle binds a verdict to a revision — see
+ * {@link WORKTREE_SCRUB_COMMANDS}, which is where that debt is paid.
+ *
  * Whether it is creation or re-entry is derived, not remembered: a branch that
  * exists on the remote is a re-entry. There is no flag for a caller to get wrong.
  * Because the creation plan *resets* the branch, that derivation must never be
@@ -68,6 +74,42 @@ export const LS_REMOTE_NO_MATCHING_REFS = 2;
 
 /** Where conductor keeps its worktrees, relative to the repo root. */
 export const WORKTREE_ROOT = ".conductor/worktrees";
+
+/**
+ * What it takes to hand a re-entered worktree over with nothing uncommitted in
+ * it, as argv arrays **without** the leading `git`.
+ *
+ * **This is the precondition the proof lifecycle is owed and cannot check.** A
+ * verdict is only as good as the tree the command ran in: conductor binds a
+ * proof to a revision, so an edit a previous dispatch left behind is code that
+ * is *in the tree and in no revision*, and a check that passes on it has proved
+ * something that exists nowhere — recorded against a SHA that does not describe
+ * what ran. `model/phases` → `IMPLEMENTATION` and the README's "The lifecycle of
+ * a proof" both state the debt and both say the same thing about it: nothing in
+ * the phase table can detect its absence, so it has to be closed here.
+ *
+ * **A checkout does not close it.** Neither `checkout -B` nor `checkout
+ * --detach` discards a working-tree change — git carries an uncommitted edit
+ * across a switch, and refuses the switch outright when it would be overwritten.
+ * So a re-entry inherits whatever the last dispatch left, and the two ways that
+ * ends are a proof of code in no revision or a dispatch that dies on the
+ * checkout.
+ *
+ * **Two commands, because neither covers the other's half.** `reset --hard`
+ * discards tracked modifications and anything staged; `clean -fd` removes
+ * untracked files and directories.
+ *
+ * **Without `-x`, deliberately.** Ignored files — `node_modules`, build output,
+ * a local `.env` — are outside the revision by design, and removing them makes
+ * every re-entry pay a reinstall. The failure being closed is a *source* edit
+ * that a check would compile. A stale build artifact influencing a verdict is a
+ * real but different hazard, and buying a full reinstall per round is not the
+ * shape of its fix.
+ */
+export const WORKTREE_SCRUB_COMMANDS: readonly (readonly string[])[] = [
+  ["reset", "--hard"],
+  ["clean", "-fd"],
+];
 
 /**
  * The branch a phase's work belongs on, or `null` for a phase that produces no
@@ -318,7 +360,9 @@ function parseWorktreeList(stdout: string): string[] {
  * - `cwd` runs the branch plan in the repo root.
  * - `worktree` adds `.conductor/worktrees/<entityId>` if it is missing, then runs
  *   the branch plan inside it. The worktree is added **detached** so it never
- *   occupies a branch ref on the way in.
+ *   occupies a branch ref on the way in. One it already had is scrubbed first
+ *   ({@link WORKTREE_SCRUB_COMMANDS}), so no dispatch inherits an edit the last
+ *   one left uncommitted.
  *
  * Which plan runs comes from `request.branch`: a name is probed and resolved to
  * {@link branchPlan}'s creation or re-entry, {@link DETACHED_AT_BASE} is
@@ -364,7 +408,21 @@ export async function provisionWorkspace(
   if (isolation === "worktree") {
     const listed = await run(["worktree", "list", "--porcelain"], repoRoot);
     if (!parseWorktreeList(listed.stdout).includes(target)) {
+      // Fresh from `worktree add`, so clean by construction — scrubbing it would
+      // be two git calls buying nothing.
       await run(["worktree", "add", "--detach", target], repoRoot);
+    } else {
+      // Re-entry, and the worktree came back carrying whatever the last dispatch
+      // left in it. Scrubbed **before** the checkout: after it, the edit has
+      // already been carried onto the branch this dispatch works on, and a
+      // `checkout -B` over a conflicting change fails outright. See
+      // {@link WORKTREE_SCRUB_COMMANDS} for why a checkout is not enough.
+      //
+      // Scoped to a worktree conductor cut for itself, and to nothing else. A
+      // `cwd` provision's workspace is the repo root a human is sitting in, and
+      // discarding uncommitted work conductor was never given is a worse failure
+      // than the one this closes. That tree is the caller's to hand over clean.
+      for (const argv of WORKTREE_SCRUB_COMMANDS) await run(argv, target);
     }
   }
 

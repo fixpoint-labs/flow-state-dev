@@ -395,11 +395,13 @@ Two things bound the cost. A check is bought once per revision per ground, becau
 it writes is what stops the derivation. And once a human has been asked about the phase, the
 derivation stops entirely — an outstanding escalation is something to wait for.
 
-**One precondition this rests on and cannot check.** A verdict is only as good as the tree the
-command ran in. Conductor binds a proof to a revision, but the workspace that revision was
-checked out into is the branch layer's to hand over clean: an edit left behind in a re-entered
-worktree is code that is in the tree and in no revision, and a check that passes on it has
-proved something that exists nowhere.
+**One precondition this rests on, held one layer down.** A verdict is only as good as the tree
+the command ran in. Conductor binds a proof to a revision, but the workspace that revision was
+checked out into has to be handed over clean: an edit left behind in a re-entered worktree is
+code that is in the tree and in no revision, and a check that passes on it has proved something
+that exists nowhere. So a worktree conductor re-enters is scrubbed — tracked changes discarded,
+untracked files removed — before anything is checked out into it. A worktree conductor did not
+cut is left alone, because that one belongs to whoever is standing in it.
 
 `examples/conductor-self-drive` is the whole thing end to end: a level-1 config, and a small
 piece of source for conductor to change.

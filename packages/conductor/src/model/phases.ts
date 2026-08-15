@@ -281,14 +281,16 @@ const SPEC: PhaseDefinition = {
  *    gate that demanded it, which is why `satisfiedBy` below reads `"passed"`
  *    and not "a verdict exists".
  *
- * **What none of this can promise, and the floor it rests on:** a verdict is
- * only as good as the tree the command ran in. Conductor binds a proof to a
- * revision, but the workspace that revision was checked out into is the branch
- * layer's to hand over clean — a stale edit left in a re-entered worktree is
- * code that is in the tree and not in the revision, and a check that passes on
- * it has proved something that exists nowhere. That precondition is owed to this
- * lifecycle by `dispatch/branch`, and it is stated here because nothing in this
- * table can detect its absence.
+ * **The floor this rests on, and where it is held:** a verdict is only as good
+ * as the tree the command ran in. Conductor binds a proof to a revision, but the
+ * workspace that revision was checked out into is the branch layer's to hand
+ * over clean — a stale edit left in a re-entered worktree is code that is in the
+ * tree and not in the revision, and a check that passes on it has proved
+ * something that exists nowhere. `dispatch/branch` holds it by scrubbing a
+ * worktree it re-enters before any checkout runs
+ * (`WORKTREE_SCRUB_COMMANDS`). It is stated here rather than only there because
+ * nothing in this table can detect its absence, so a change that drops it would
+ * fail silently as a wrong verdict rather than as a broken checkout.
  *
  * **Why `completedWhen` reads the artifact and its PR, and not `goalCheck`
  * alone.** Because the single-PR shape makes a branch proof stand while the PR

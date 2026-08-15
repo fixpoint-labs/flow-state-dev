@@ -18,6 +18,7 @@ import {
   worktreePath,
   type GitResult,
   type GitRunner,
+  type WorkspaceRef,
 } from "../../src/dispatch/branch";
 import { epic, issue } from "../fixtures";
 
@@ -253,6 +254,138 @@ describe("provisioning detached at the base", () => {
     expect(git.calls.some((c) => c.argv[0] === "checkout" && c.argv[1] === "--detach")).toBe(
       false,
     );
+  });
+});
+
+describe("a worktree that survived the last dispatch", () => {
+  /**
+   * A git that models the one thing a checkout does **not** do: an uncommitted
+   * edit survives it.
+   *
+   * `fetch` and `checkout` carry whatever is in the tree across — that is the
+   * whole defect. Only `reset --hard` (tracked modifications) and `clean -fd`
+   * (untracked files) empty it, and they are separate commands because neither
+   * one covers the other's half. A fake that answered `ok()` to everything would
+   * let a provisioner that scrubs nothing pass.
+   */
+  function gitWithLeftovers(): GitRunner & {
+    readonly tree: { modified: string[]; untracked: string[] };
+  } {
+    const tree = { modified: ["src/thing.ts"], untracked: ["src/scratch.ts"] };
+    const runner = (async (argv: readonly string[]): Promise<GitResult> => {
+      if (argv[0] === "worktree" && argv[1] === "list") {
+        return ok("worktree /repo\nworktree /repo/.conductor/worktrees/FIX-1\n");
+      }
+      if (argv[0] === "ls-remote") return ok("abc refs/heads/fix/FIX-1");
+      if (argv[0] === "reset" && argv[1] === "--hard") {
+        tree.modified = [];
+        return ok();
+      }
+      if (argv[0] === "clean") {
+        tree.untracked = [];
+        return ok();
+      }
+      return ok();
+    }) as GitRunner & { tree: typeof tree };
+    Object.defineProperty(runner, "tree", { get: () => tree });
+    return runner;
+  }
+
+  const reEnter = (git: GitRunner, branch: WorkspaceRef = "fix/FIX-1") =>
+    provisionWorkspace({
+      isolation: "worktree",
+      repoRoot: "/repo",
+      entityId: "FIX-1",
+      branch,
+      git,
+    });
+
+  // The debt `model/phases` → IMPLEMENTATION and README → "The lifecycle of a
+  // proof" both state and neither can detect: a verdict is only as good as the
+  // tree the command ran in. An edit the last dispatch left behind is code that
+  // is in the tree and in no revision, so a check that passes on it has proved
+  // something that exists nowhere — and the proof is then bound to a SHA that
+  // does not describe what ran.
+  it("hands over a re-entered worktree with nothing uncommitted in it, so a goal check cannot pass on code that is in no revision", async () => {
+    const git = gitWithLeftovers();
+    await reEnter(git);
+    expect(git.tree).toEqual({ modified: [], untracked: [] });
+  });
+
+  it("scrubs a worktree re-entered detached at the base too — the ground a post-merge proof stands on", async () => {
+    const git = gitWithLeftovers();
+    await reEnter(git, DETACHED_AT_BASE);
+    expect(git.tree).toEqual({ modified: [], untracked: [] });
+  });
+
+  // Ordering, not just presence. After the checkout the edit has already been
+  // carried onto the branch the dispatch will work on — and a `checkout -B` over
+  // a conflicting local change fails outright, which turns a stale edit into a
+  // dead dispatch.
+  it("scrubs before the checkout, not after it", async () => {
+    const git = scriptedGit([
+      ["worktree list", ok("worktree /repo\nworktree /repo/.conductor/worktrees/FIX-1\n")],
+      ["ls-remote", ok("abc refs/heads/fix/FIX-1")],
+    ]);
+    await reEnter(git);
+
+    const ran = git.calls.map((c) => c.argv.join(" "));
+    const scrubbed = ran.findIndex((argv) => argv.startsWith("reset --hard"));
+    const checkedOut = ran.findIndex((argv) => argv.startsWith("checkout"));
+    expect(scrubbed).toBeGreaterThanOrEqual(0);
+    expect(checkedOut).toBeGreaterThan(scrubbed);
+    // In the worktree, never in the repo root — scrubbing the root would be the
+    // developer's own tree.
+    expect(git.calls[scrubbed]?.cwd).toBe("/repo/.conductor/worktrees/FIX-1");
+  });
+
+  // The sibling path, and the one that must NOT be touched. `worktree add`
+  // produces a clean checkout by construction, so scrubbing it is two git calls
+  // buying nothing.
+  it("does not scrub a worktree it just created", async () => {
+    const git = scriptedGit([
+      ["worktree list", ok("worktree /repo\n")],
+      ["ls-remote", noSuchBranch()],
+    ]);
+    await reEnter(git);
+    expect(git.calls.some((c) => c.argv[0] === "reset" || c.argv[0] === "clean")).toBe(false);
+  });
+
+  // The other sibling, and the reason the scrub is scoped to a worktree rather
+  // than to every provision: under `cwd` the workspace IS the developer's repo
+  // root. A `reset --hard` there destroys uncommitted work conductor was never
+  // given, which is a far worse failure than the one being fixed.
+  it("never scrubs a cwd provision — that tree belongs to a human, not to conductor", async () => {
+    const git = scriptedGit([["ls-remote", ok("abc refs/heads/fix/FIX-1")]]);
+    await provisionWorkspace({
+      isolation: "cwd",
+      repoRoot: "/repo",
+      entityId: "FIX-1",
+      branch: "fix/FIX-1",
+      git,
+    });
+    expect(git.calls.some((c) => c.argv[0] === "reset" || c.argv[0] === "clean")).toBe(false);
+  });
+
+  it("records the scrub on the audit trail, like every other command it runs", async () => {
+    const provisioned = await reEnter(gitWithLeftovers());
+    expect(provisioned.ran.map((argv) => argv.join(" "))).toEqual([
+      "worktree list --porcelain",
+      "reset --hard",
+      "clean -fd",
+      "ls-remote --exit-code --heads origin fix/FIX-1",
+      "fetch origin fix/FIX-1",
+      "checkout -B fix/FIX-1 origin/fix/FIX-1",
+    ]);
+  });
+
+  it("fails the dispatch rather than running it in a tree it could not clean", async () => {
+    const git = scriptedGit([
+      ["worktree list", ok("worktree /repo\nworktree /repo/.conductor/worktrees/FIX-1\n")],
+      ["clean", fail("fatal: could not remove")],
+    ]);
+    await expect(reEnter(git)).rejects.toBeInstanceOf(WorkspaceProvisionError);
+    expect(git.calls.some((c) => c.argv[0] === "checkout")).toBe(false);
   });
 });
 
