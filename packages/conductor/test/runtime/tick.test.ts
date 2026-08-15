@@ -59,11 +59,33 @@ const T1 = "2026-08-02T00:00:00Z";
 
 let repo: TestRepo;
 let statePath: string;
+let originPath: string | null = null;
 
 afterEach(async () => {
   await repo?.cleanup();
   if (statePath) await fs.rm(statePath, { recursive: true, force: true });
+  if (originPath) await fs.rm(originPath, { recursive: true, force: true });
+  originPath = null;
 });
+
+/**
+ * Give the test checkout a real `origin` — a bare repository it can push to and
+ * be provisioned from.
+ *
+ * Every other test in this file runs against a checkout with no remote, which is
+ * why they all use `remote` isolation: conductor provisions nothing, and the git
+ * half of a dispatch is never exercised. A test that wants to assert what a
+ * workspace actually ends up on needs the real thing.
+ */
+async function addOrigin(): Promise<string> {
+  const bare = await fs.mkdtemp(path.join(os.tmpdir(), "conductor-origin-"));
+  const init = await repo.git(["init", "--bare", "-q", "-b", "main"], bare);
+  if (init.code !== 0) throw new Error(`git init --bare failed: ${init.stderr}`);
+  await repo.run("remote", "add", "origin", bare);
+  await repo.run("push", "-q", "origin", "main");
+  originPath = bare;
+  return bare;
+}
 
 /** A resolved config pointing at the test repo, with a given dispatcher. */
 function configFor(dispatcher: Dispatcher, policy: ConductorPolicy = DEFAULT_POLICY): ResolvedConductor {
@@ -1043,8 +1065,24 @@ describe("one review pass's worth of comments", () => {
   });
 });
 
+/**
+ * A round is one handled feedback pass, and a pass is one revision dispatch.
+ *
+ * Two properties pull against each other and both are wanted, so each has its
+ * own test below and the pair is the rule:
+ *
+ * - Comments arriving in **one poll** coalesce into one dispatch and one round.
+ * - A **second, later** pass on the same head still counts, because it is a
+ *   second dispatch somebody paid for.
+ *
+ * Every test here drives a dispatcher that pushes nothing, so the head never
+ * moves. That is not a contrivance — it is the shape a vendor takes when it
+ * decides the feedback needs no code change, and it is the shape under which a
+ * head-keyed counter sat at one forever while the loop ran.
+ */
 describe("the review-round budget", () => {
-  it("counts a round per head, so feedback past the budget escalates", async () => {
+  /** Drive to an open submission under review, with a budget and a mute vendor. */
+  async function underReview(budget: number) {
     repo = await createTestRepo();
     await freshState();
     const submission = await submit(`fix/${ENTITY}`);
@@ -1054,24 +1092,105 @@ describe("the review-round budget", () => {
       results: [{ produced: { pullNumber: submission.number } }],
     });
     const session = await open(dispatcher, {
-      policy: { ...DEFAULT_POLICY, implementationReviewRoundBudget: 1 },
+      policy: { ...DEFAULT_POLICY, implementationReviewRoundBudget: budget },
     });
 
     await manageIssue(session);
     await session.tick(ENTITY);
     await session.tick(ENTITY);
+    return { session, dispatcher, submission };
+  }
+
+  /**
+   * The round count as the *next* tick reads it.
+   *
+   * Taken off the world the row carries rather than out of the store: a row's
+   * world is the snapshot the reduction was made against, so this is the number
+   * the budget was actually spent against, not a field a test went looking for.
+   */
+  const roundsIn = (work: { ledger: readonly LedgerEntryState[] }): number | undefined =>
+    work.ledger.at(-1)?.world?.artifacts.at(-1)?.reviewRounds;
+
+  it("counts a round per pass, so feedback past the budget escalates", async () => {
+    const { session, submission } = await underReview(1);
 
     await comment(submission.number, "alice.1.md", "This needs a test.\n");
     const first = await session.tick(ENTITY);
     expect(first.ledger.at(-1)?.actionKind).toBe("addressFeedback");
 
-    // A second piece of feedback on the same head is the same round's; the
-    // round already counted is what spends the budget.
     await comment(submission.number, "alice.2.md", "And a doc line.\n");
     const second = await session.tick(ENTITY);
     expect(second.ledger.at(-1)?.actionKind).toBe("escalate");
 
     expect(replayFailures(second.ledger)).toEqual([]);
+  });
+
+  // The finding. A pass that pushes nothing leaves the head where it was, so a
+  // counter keyed on the head recorded ZERO for it — while a paid dispatch ran.
+  // The counter could sit at one indefinitely, and the cap that is meant to park
+  // a stuck loop at twelve rounds never fired however many passes were handled.
+  it("counts a second, later pass on an unchanged head", async () => {
+    const { session, dispatcher, submission } = await underReview(2);
+
+    await comment(submission.number, "alice.1.md", "This needs a test.\n");
+    await session.tick(ENTITY);
+
+    // A separate poll, and a separate paid dispatch: the vendor answered the
+    // first pass without writing a commit, so this is the same head again.
+    await comment(submission.number, "alice.2.md", "And a doc line.\n");
+    const second = await session.tick(ENTITY);
+    expect(second.ledger.at(-1)?.actionKind).toBe("addressFeedback");
+
+    await comment(submission.number, "alice.3.md", "Rename the helper.\n");
+    const third = await session.tick(ENTITY);
+
+    // Two passes were handled, so two rounds were spent, so the third is past a
+    // budget of two. With the head as the key this stays at one forever and the
+    // loop never parks.
+    expect(roundsIn(third)).toBe(2);
+    expect(third.ledger.at(-1)?.actionKind).toBe("escalate");
+
+    // And the head really did not move — which is what makes the count above the
+    // count of *passes* rather than of commits.
+    expect(third.ledger.at(-1)?.world?.pullRequests[submission.number]?.headSha).toBe(
+      submission.head,
+    );
+    expect(dispatcher.actionsRun()).toEqual([
+      "implement",
+      "addressFeedback",
+      "addressFeedback",
+    ]);
+    expect(replayFailures(third.ledger)).toEqual([]);
+  });
+
+  // The other half, and the one that must not be traded away for the fix above:
+  // a human leaving three comments in one review pass is one pass. `runTick`'s
+  // dispatch coalescing is what makes it one, and the round is counted inside
+  // that guard.
+  it("counts one poll's worth of comments as a single pass", async () => {
+    const { session, dispatcher, submission } = await underReview(2);
+
+    await comment(submission.number, "alice.1.md", "This needs a test.\n");
+    await comment(submission.number, "alice.2.md", "And a doc line.\n");
+    await comment(submission.number, "alice.3.md", "Rename the helper.\n");
+    const batched = await session.tick(ENTITY);
+    expect(batched.ledger.filter((row) => row.actionKind === "addressFeedback")).toHaveLength(3);
+    expect(batched.dispatchCount).toBe(2);
+
+    // One round for the batch, read off the next reduction's own snapshot. Three
+    // would have spent the budget of two here, and this next pass would escalate
+    // instead of being handled.
+    await comment(submission.number, "alice.4.md", "One more thought.\n");
+    const later = await session.tick(ENTITY);
+
+    expect(roundsIn(later)).toBe(1);
+    expect(later.ledger.at(-1)?.actionKind).toBe("addressFeedback");
+    expect(dispatcher.actionsRun()).toEqual([
+      "implement",
+      "addressFeedback",
+      "addressFeedback",
+    ]);
+    expect(replayFailures(later.ledger)).toEqual([]);
   });
 });
 
@@ -1256,14 +1375,74 @@ describe("the goal check, from the dispatch that proves it to SETTLED", () => {
     expect(brief).toBeDefined();
     expect(brief?.branch).not.toBe(`fix/${ENTITY}`);
 
-    // The name is the mechanism, not decoration: `dispatch/branch` cuts a branch
-    // the remote does not have from `<remote>/<base>` and resets it there every
-    // time (`branchPlan`'s creation plan, covered in `test/dispatch/branch`), so
-    // "a branch conductor never pushes" is how this file says *the base, at the
-    // revision that is on it now* with today's policy. What this test does not
-    // prove is the git: the checkout has no remote to fetch from, so the
-    // composition is asserted in two halves rather than one.
-    expect(brief?.branch).toBe(`goal-check/${ENTITY}`);
+    // No branch, because a proof is taken *on the base itself* and there is
+    // nothing to commit onto or push. Naming any branch here is what put the
+    // check on the superseded feature branch in the first place, and a name that
+    // stood in for "the base" only meant that as long as nobody pushed it. The
+    // provision is `DETACHED_AT_BASE`; the git it produces is asserted end to
+    // end below.
+    expect(brief?.branch).toBeNull();
+  });
+
+  it("provisions the post-merge check from the base itself, against a real remote", async () => {
+    repo = await createTestRepo();
+    await freshState();
+    await addOrigin();
+
+    const submission = await submit(`fix/${ENTITY}`);
+    await repo.run("push", "-q", "origin", `fix/${ENTITY}`);
+
+    // A vendor doing exactly what its brief says — "commit your work and push" —
+    // with the name the branch-shaped version of this used. Under a plan keyed
+    // on a branch name, this is what flips the next pass onto the re-entry plan
+    // and provisions the PREVIOUS proof's commits instead of the base.
+    await repo.run("push", "-q", "origin", `fix/${ENTITY}:goal-check/${ENTITY}`);
+
+    // `worktree` isolation is what the shipped dispatcher declares, so this is
+    // the real provisioning path rather than a stand-in for it.
+    const dispatcher = fakeDispatcher({
+      isolation: "worktree",
+      results: [{ produced: { pullNumber: submission.number } }, { goalCheck: "passed" }],
+    });
+    const session = await open(dispatcher);
+
+    await manageIssue(session);
+    await session.tick(ENTITY);
+    await session.tick(ENTITY);
+    await review(submission.number, "alice", "APPROVED", submission.head);
+    await session.tick(ENTITY);
+
+    // The merge lands, and the base moves on afterwards — somebody else's merge,
+    // which is the ordinary case and the one that makes the feature branch stop
+    // describing what a reader of the base gets.
+    await mergeIntoMain(`fix/${ENTITY}`);
+    await repo.commit("later.ts", "// landed after\n", "someone else's merge", "2026-08-04T00:00:00Z");
+    await repo.run("push", "-q", "origin", "main");
+    const base = await repo.sha("main");
+
+    await session.tick(ENTITY);
+    expect(dispatcher.actionsRun()).toEqual(["implement", "runGoalCheck"]);
+
+    const brief = dispatcher.briefs.find((b) => b.action === "runGoalCheck")!;
+    expect(brief.branch).toBeNull();
+
+    // The whole composition in one assertion, which the two-halves version could
+    // not make: the directory the agent was handed is standing on the base at the
+    // revision the remote has now.
+    const inWorkspace = async (...argv: string[]) =>
+      (await repo.git(argv, brief.workspacePath!)).stdout.trim();
+
+    expect(await inWorkspace("rev-parse", "HEAD")).toBe(base);
+    expect(await inWorkspace("rev-parse", "HEAD")).not.toBe(submission.head);
+    // Detached: `--abbrev-ref HEAD` answers with the literal "HEAD" when no
+    // branch is checked out, which is what stops a pushed `goal-check/<id>` from
+    // ever being what this stands on.
+    expect(await inWorkspace("rev-parse", "--abbrev-ref", "HEAD")).toBe("HEAD");
+    // And the code is really there — the commit that landed after the merge is
+    // in the tree the check runs against, which is the point of taking it here.
+    // `fix/<id>` does not contain it, so a provision from the feature branch
+    // answers with nothing.
+    expect(await inWorkspace("show", "HEAD:later.ts")).toBe("// landed after");
   });
 
   describe("a dispatch that lands on the code the proof was taken against", () => {

@@ -10,6 +10,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   branchNameFor,
   branchPlan,
+  DETACHED_AT_BASE,
+  detachedBasePlan,
   LS_REMOTE_NO_MATCHING_REFS,
   provisionWorkspace,
   WorkspaceProvisionError,
@@ -76,7 +78,7 @@ describe("branch naming", () => {
 describe("the checkout plan", () => {
   it("cuts a new branch off freshly-fetched origin/main, so it never inherits the coordinator's drifted checkout", () => {
     const plan = branchPlan("fix/FIX-1", false);
-    expect(plan.creating).toBe(true);
+    expect(plan.kind).toBe("creation");
     expect(plan.commands).toEqual([
       ["fetch", "origin", "main"],
       ["checkout", "-B", "fix/FIX-1", "origin/main"],
@@ -85,7 +87,7 @@ describe("the checkout plan", () => {
 
   it("re-enters an existing branch off its OWN remote tip — resetting to origin/main here would discard every commit already on it", () => {
     const plan = branchPlan("fix/FIX-1", true);
-    expect(plan.creating).toBe(false);
+    expect(plan.kind).toBe("re-entry");
     expect(plan.commands).toEqual([
       ["fetch", "origin", "fix/FIX-1"],
       ["checkout", "-B", "fix/FIX-1", "origin/fix/FIX-1"],
@@ -143,6 +145,114 @@ describe("the checkout plan", () => {
       ["fetch", "upstream", "fix/FIX-1"],
       ["checkout", "-B", "fix/FIX-1", "upstream/fix/FIX-1"],
     ]);
+  });
+});
+
+describe("the detached plan — work measured against the base, not written on a branch", () => {
+  it("fetches the base and puts HEAD on it, naming no branch at all", () => {
+    const plan = detachedBasePlan();
+    expect(plan.kind).toBe("detached");
+    expect(plan.branch).toBeNull();
+    expect(plan.commands).toEqual([
+      ["fetch", "origin", "main"],
+      ["checkout", "--detach", "origin/main"],
+    ]);
+  });
+
+  it("honours the configured base and remote, like every other plan here", () => {
+    expect(detachedBasePlan("release", "upstream").commands).toEqual([
+      ["fetch", "upstream", "release"],
+      ["checkout", "--detach", "upstream/release"],
+    ]);
+  });
+
+  // The rule the whole module exists for, held by the third plan too. Naming the
+  // base branch instead of detaching would be `checkout -B main origin/main`,
+  // which occupies the shared `main` ref — two parallel workers on it collide,
+  // and under `cwd` it resets a developer's own base.
+  it("occupies no ref, so it never collides on the shared base the way `-B <base>` would", () => {
+    for (const argv of [
+      ...detachedBasePlan().commands,
+      ...detachedBasePlan("trunk", "fork").commands,
+    ]) {
+      if (argv[0] !== "checkout") continue;
+      expect(argv).toContain("--detach");
+      expect(argv).not.toContain("-B");
+      expect(argv).not.toContain("main");
+      expect(argv).not.toContain("trunk");
+      expect(argv.at(-1)).toMatch(/^(origin|fork)\//);
+    }
+  });
+});
+
+describe("provisioning detached at the base", () => {
+  it("asks the remote nothing — no branch name means no creation/re-entry question", async () => {
+    const git = scriptedGit([["worktree list", ok("worktree /repo\n")]]);
+    await provisionWorkspace({
+      isolation: "worktree",
+      repoRoot: "/repo",
+      entityId: "FIX-1",
+      branch: DETACHED_AT_BASE,
+      git,
+    });
+
+    expect(git.calls.map((c) => c.argv.join(" "))).toEqual([
+      "worktree list --porcelain",
+      "worktree add --detach /repo/.conductor/worktrees/FIX-1",
+      "fetch origin main",
+      "checkout --detach origin/main",
+    ]);
+    // The probe is what a plan keyed on a branch name has to run, and it is the
+    // one command here that could fail without the base ever being wrong.
+    expect(git.calls.some((c) => c.argv[0] === "ls-remote")).toBe(false);
+  });
+
+  // The precise regression the branch name carried. A brief tells an agent to
+  // commit its work and push, so `goal-check/<id>` is a name a vendor can put on
+  // the remote — after which the probe finds it, the re-entry plan applies, and
+  // the next proof is taken against the PREVIOUS proof's commits instead of the
+  // base. A plan with no name has nothing for that to attach to.
+  it("provisions identically on a second pass, whatever the remote has grown in between", async () => {
+    const request = {
+      isolation: "worktree",
+      repoRoot: "/repo",
+      entityId: "FIX-1",
+      branch: DETACHED_AT_BASE,
+      git: scriptedGit([
+        ["worktree list", ok("worktree /repo\n")],
+        // Everything a vendor could have pushed, answered as "it is there".
+        ["ls-remote", ok("abc refs/heads/goal-check/FIX-1")],
+      ]),
+    } as const;
+
+    const first = await provisionWorkspace(request);
+    const second = await provisionWorkspace(request);
+
+    expect(second.ran).toEqual(first.ran);
+    expect(second.ran.map((argv) => argv.join(" "))).toContain(
+      "checkout --detach origin/main",
+    );
+    expect(second.ran.flat()).not.toContain("-B");
+    expect(second.ran.flat().join(" ")).not.toContain("goal-check");
+  });
+
+  it("still refuses to guess when git itself fails, rather than running the work on whatever HEAD was", async () => {
+    const git = scriptedGit([
+      ["worktree list", ok("worktree /repo\n")],
+      ["fetch", fail("could not read from remote")],
+    ]);
+    await expect(
+      provisionWorkspace({
+        isolation: "worktree",
+        repoRoot: "/repo",
+        entityId: "FIX-1",
+        branch: DETACHED_AT_BASE,
+        git,
+      }),
+    ).rejects.toBeInstanceOf(WorkspaceProvisionError);
+    expect(git.calls.some((c) => c.argv[0] === "checkout" && c.argv[1] === "--detach")).toBe(
+      false,
+    );
   });
 });
 

@@ -105,7 +105,12 @@ import {
 import type { EpicState, IssueState, LedgerEntryState } from "../model/entities";
 import { decide } from "../driver/decide";
 import { deriveGate, type ConductorEntity } from "../driver/derive-gate";
-import { branchNameFor, provisionWorkspace } from "../dispatch/branch";
+import {
+  branchNameFor,
+  provisionWorkspace,
+  DETACHED_AT_BASE,
+  type WorkspaceRef,
+} from "../dispatch/branch";
 import { briefFor } from "../dispatch/brief";
 import type { DispatchResult, PhaseBrief } from "../dispatch/types";
 import { EMPTY_OBSERVATION_CURSOR, type ObservationCursor } from "../observe/types";
@@ -591,9 +596,38 @@ async function appendLedger(
  * Count a review round against the artifact a revision is answering.
  *
  * Conductor owns this number — no source reports it — and it is what the round
- * budget is spent against, so nothing else can maintain it. A round is counted
- * once per head: several pieces of feedback on the same commit are one round,
- * and a push starts the next one, which is what `lastRoundSha` records.
+ * budget is spent against, so nothing else can maintain it.
+ *
+ * **A round is one handled feedback pass, and a pass is one revision dispatch.**
+ * Two properties pull against each other here and both are wanted, so the rule
+ * is written as the thing that separates them:
+ *
+ * - Comments arriving in **one poll** are one pass. They reduce to one
+ *   `addressFeedback` action each and one ledger row each, but the
+ *   {@link dispatchKey} coalescing in {@link runTick} lets only the first of
+ *   them buy a run — and this is called from inside that guard, so the batch is
+ *   one dispatch and one round. The coalescing window is the tick, which is also
+ *   the window in which an artifact's head cannot move.
+ * - A **later** pass on the same head is a second pass. It is a second paid
+ *   dispatch answering feedback the first one did not settle, so it costs a
+ *   second round.
+ *
+ * The head is what this used to key on, and keying on it collapsed the second
+ * case into the first. A pass that pushes no commit leaves the head where it
+ * was, so every later pass on that head counted **zero**: the counter could sit
+ * at one while pass after pass was handled and paid for, and the cap meant to
+ * park a stuck loop at twelve rounds never fired. Distinct heads are not
+ * distinct attempts — distinct *dispatches* are, and a pass that changed nothing
+ * is an attempt that failed to change anything rather than an attempt that never
+ * happened.
+ *
+ * A redundant tick still costs nothing, and not because of a check here: a tick
+ * that reduces no new signal produces no revision action, so this is never
+ * reached. Nothing in this function can be reached without a dispatch being
+ * bought on the other side of it.
+ *
+ * `lastRoundSha` is a record rather than a gate — the head the last round was
+ * handled at, kept on the row for the audit trail. Nothing reads it.
  */
 async function countReviewRound(
   context: TickContext,
@@ -610,12 +644,11 @@ async function countReviewRound(
   if (!artifact || artifact.hostedAt.type !== "pr") return;
 
   const head = world.pullRequests[artifact.hostedAt.number]?.headSha;
-  if (!head || head === artifact.lastRoundSha) return;
 
   await context.collections.artifacts.write(artifact.id, {
     ...artifact,
     reviewRounds: artifact.reviewRounds + 1,
-    lastRoundSha: head,
+    lastRoundSha: head ?? artifact.lastRoundSha,
   });
 }
 
@@ -830,34 +863,31 @@ async function adoptSubmissionForBranch(
  * on it. The proof has to be taken against what a reader of the base branch
  * would actually get.
  *
- * **How a base revision is named with today's branch policy, and what that
- * assumes.** `dispatch/branch` has two plans and no third: re-entry checks out a
- * branch the remote already has, and creation cuts one the remote does *not*
- * have from `<remote>/<base>` — resetting it there every time, which is exactly
- * the semantics a goal check wants. So a branch conductor never pushes is how
- * this file says "the base, at the revision on it now". The assumptions are
- * stated rather than buried: the base is `ConductorConfig.baseBranch`, the
- * remote's copy of it is authoritative, and `goal-check/<id>` stays absent from
- * the remote. Naming `baseBranch` itself instead would provision `checkout -B
- * <base> <remote>/<base>`, which occupies the shared base ref in a worktree —
- * the one thing that module's policy exists to prevent — and resets a
- * developer's local base under `cwd`. Passing `null` is worse than either: it
- * skips the branch plan, so a worktree left on `fix/<id>` by an earlier dispatch
- * is reused as-is, and the false proof comes back with nothing recording it.
+ * So a goal check is provisioned {@link DETACHED_AT_BASE} — `dispatch/branch`'s
+ * third plan, which fetches the base and puts HEAD on `<remote>/<base>` while
+ * owning no ref. It says "the base, at the revision on it now" in the commands
+ * themselves rather than as a consequence of a branch name nobody pushes, and
+ * nothing a vendor pushes can flip it onto a different plan. The two shapes it
+ * replaces both fail: naming `baseBranch` would provision `checkout -B <base>
+ * <remote>/<base>`, occupying the shared base ref in a worktree — the one thing
+ * that module's policy exists to prevent — and resetting a developer's local
+ * base under `cwd`. Passing `null` skips the branch plan entirely, so a worktree
+ * left on `fix/<id>` by an earlier dispatch is reused as-is and the false proof
+ * comes back with nothing recording it.
  *
- * **The honest home for this is `dispatch/branch`**, as a third plan that
- * provisions *detached* at `<remote>/<base>` (`fetch <remote> <base>` then
- * `checkout --detach <remote>/<base>`). That needs no branch name at all and
- * cannot go stale if somebody pushes one. Until it exists, this keeps the goal
- * check off the superseded branch.
+ * **The limit, stated.** A detached provision is conductor putting a local
+ * workspace on the base, so it reaches a `worktree` or `cwd` dispatcher — which
+ * is every dispatcher shipped today. A `remote` dispatcher provisions its own
+ * environment and is told only a branch name, and there is no branch name for
+ * "the base at its current revision"; it is told `null`, which is honest but is
+ * not an instruction. A vendor that runs its own checkout needs the brief to
+ * carry the target some other way, and the brief has nowhere to put it yet.
  */
-function workspaceBranchFor(
+function workspaceRefFor(
   entity: ConductorEntity,
   action: DispatchAction,
-): string | null {
-  return action.kind === "runGoalCheck"
-    ? `goal-check/${entity.id}`
-    : branchNameFor(entity);
+): WorkspaceRef {
+  return action.kind === "runGoalCheck" ? DETACHED_AT_BASE : branchNameFor(entity);
 }
 
 /**
@@ -880,7 +910,11 @@ async function runDispatch(
   const { config, dispatcher, git, now } = context.deps;
   const startedAt = now().toISOString();
   const dispatchId = `${context.entityId}#${(await countDispatches(context)) + 1}`;
-  const branch = workspaceBranchFor(entity, action);
+  const workspaceRef = workspaceRefFor(entity, action);
+  // The brief names a branch only when there is one to name. A detached
+  // provision has none, and saying so is the honest answer: there is nothing to
+  // commit onto and nothing to push.
+  const branch = typeof workspaceRef === "string" ? workspaceRef : null;
 
   // The record goes down before the run, not after it: a dispatch that is in
   // flight when the process dies has to be visible to whoever looks next.
@@ -913,7 +947,7 @@ async function runDispatch(
       isolation: dispatcher.isolation,
       repoRoot: config.repoRoot,
       entityId: context.entityId,
-      branch,
+      branch: workspaceRef,
       git,
       baseBranch: config.baseBranch,
       remote: config.remote,
@@ -1144,9 +1178,9 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
       // is what the replay invariant needs — but the brief the first one hands
       // over already asks the agent to address everything outstanding, so the
       // other four buy the same work again and land as sequential edits on top of
-      // each other. `countReviewRound` already counts the batch as one round;
-      // this is the dispatcher agreeing with the round accounting. Coalescing
-      // suppresses the *run* only, never the record.
+      // each other. This guard is also what makes the batch one *round*: a round
+      // is counted per dispatch, and {@link countReviewRound} is called from
+      // inside here. Coalescing suppresses the *run* only, never the record.
       const key = dispatchKey(entity, action, world);
       if (dispatched.has(key)) continue;
       dispatched.add(key);

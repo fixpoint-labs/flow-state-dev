@@ -27,6 +27,14 @@
  * exists on the remote is a re-entry. There is no flag for a caller to get wrong.
  * Because the creation plan *resets* the branch, that derivation must never be
  * made from a failed probe — see {@link LS_REMOTE_NO_MATCHING_REFS}.
+ *
+ * There is a **third plan**, and it is outside that derivation rather than a
+ * special case inside it: {@link detachedBasePlan} puts a workspace on the
+ * remote's base at its current revision and on no branch at all. Work that is
+ * *measured* rather than written needs the code a reader of the base would
+ * actually get, which is not any branch conductor pushes. Having no branch is
+ * what makes it safe — see that function for why the creation/re-entry question
+ * is neither answerable nor needed there.
  */
 
 import path from "node:path";
@@ -81,18 +89,33 @@ export function branchNameFor(entity: ConductorEntity): string | null {
 }
 
 /**
- * The git commands that put a worktree on `branch`, as argv arrays **without**
- * the leading `git` (the runner supplies the binary).
+ * Which of the three plans a {@link BranchPlan} is.
+ *
+ * A discriminant rather than a `creating` boolean, because there are three
+ * plans and a boolean can hold two. `"detached"` reading as `creating: false`
+ * would have said "re-entry to an existing branch", which is the one thing it
+ * is not.
+ */
+export type BranchPlanKind = "creation" | "re-entry" | "detached";
+
+/**
+ * The git commands that leave a worktree where a dispatch needs it, as argv
+ * arrays **without** the leading `git` (the runner supplies the binary).
  */
 export interface BranchPlan {
-  readonly branch: string;
-  /** True when the branch is being cut fresh; false on re-entry to an existing one. */
-  readonly creating: boolean;
+  readonly kind: BranchPlanKind;
+  /** The branch the workspace ends on; `null` for a detached provision. */
+  readonly branch: string | null;
   readonly commands: readonly (readonly string[])[];
 }
 
 /**
  * Build the checkout plan for a branch.
+ *
+ * Work that is *written* goes on a branch, and this is the plan for it. Work
+ * that is *measured* against the base does not — see {@link detachedBasePlan},
+ * which is a plan of its own precisely so that "the base at its current
+ * revision" is not spelled as a branch name nobody pushes.
  *
  * @param branch The branch to end up on.
  * @param existsOnRemote Whether the remote already has it — the creation/re-entry
@@ -111,8 +134,8 @@ export function branchPlan(
   if (existsOnRemote) {
     // Re-entry: base on the branch's own remote tip so its commits survive.
     return {
+      kind: "re-entry",
       branch,
-      creating: false,
       commands: [
         ["fetch", remote, branch],
         ["checkout", "-B", branch, `${remote}/${branch}`],
@@ -120,14 +143,79 @@ export function branchPlan(
     };
   }
   return {
+    kind: "creation",
     branch,
-    creating: true,
     commands: [
       ["fetch", remote, baseBranch],
       ["checkout", "-B", branch, `${remote}/${baseBranch}`],
     ],
   };
 }
+
+/**
+ * Provision **detached at the remote's base**, on no branch at all.
+ *
+ * For work that measures rather than writes. A post-merge goal check has to be
+ * taken against what a reader of the base branch would actually get — which is
+ * not the feature branch, whenever the merge squashed, resolved a conflict, or
+ * the base moved on afterwards. This says that directly: fetch the base, put
+ * HEAD on `<remote>/<base>`, own no ref.
+ *
+ * **What happens on re-entry**, since the other two plans turn on that question
+ * and a detached checkout cannot answer it: there is no re-entry to derive, and
+ * none to need. The plan is unconditional and identical on every pass, and each
+ * pass moves HEAD to whatever the base is *now* — which is what a fresh proof
+ * wants, and the reason there is nothing to preserve between passes. A commit
+ * made on a detached HEAD belongs to no branch and goes nowhere, so no pass can
+ * leave state a later one would have to keep. Consequently there is no
+ * `ls-remote` probe here either: the creation/re-entry discriminator is not
+ * asked, so the failed-probe hazard {@link LS_REMOTE_NO_MATCHING_REFS} guards
+ * against has nothing to bite.
+ *
+ * **And nothing a vendor pushes can change it.** That is the property a branch
+ * name could not hold. A brief tells an agent to commit its work and push, so a
+ * name like `goal-check/<id>` is a name a vendor can put on the remote — after
+ * which the probe finds it, the re-entry plan applies, and the next proof is
+ * taken against the *previous* proof's commits instead of the base. A plan with
+ * no branch name has nothing for that to attach to.
+ *
+ * It also stays inside the rule the whole module exists for: `--detach`
+ * occupies no ref, so this never checks out the shared base the way a
+ * `checkout -B <base> <remote>/<base>` would — the collision parallel workers
+ * hit on `main`.
+ */
+export function detachedBasePlan(
+  baseBranch: string = DEFAULT_BASE_BRANCH,
+  remote: string = DEFAULT_REMOTE,
+): BranchPlan {
+  return {
+    kind: "detached",
+    branch: null,
+    commands: [
+      ["fetch", remote, baseBranch],
+      ["checkout", "--detach", `${remote}/${baseBranch}`],
+    ],
+  };
+}
+
+/**
+ * Ask for a provision detached at the remote's base, in place of a branch name.
+ *
+ * A symbol rather than a reserved branch name, and that is the whole point: a
+ * reserved name is a naming convention, and a naming convention is what this
+ * replaces. No branch any remote could ever carry collides with it, and no
+ * caller can pass it by accident.
+ */
+export const DETACHED_AT_BASE: unique symbol = Symbol("conductor.detached-at-base");
+
+/**
+ * Where a dispatch's workspace is put: a branch, the base detached, or nowhere.
+ *
+ * `null` means the phase produces nothing and no checkout runs at all — which is
+ * a different thing from {@link DETACHED_AT_BASE}, where a checkout very much
+ * runs and lands on the base.
+ */
+export type WorkspaceRef = string | typeof DETACHED_AT_BASE | null;
 
 /** Result of running one git command. */
 export interface GitResult {
@@ -188,8 +276,12 @@ export interface ProvisionRequest {
   readonly isolation: IsolationModel;
   readonly repoRoot: string;
   readonly entityId: string;
-  /** The phase's branch, or `null` for a phase that produces none. */
-  readonly branch: string | null;
+  /**
+   * Where to leave the workspace: the phase's branch, {@link DETACHED_AT_BASE}
+   * for work measured against the base, or `null` for a phase that produces
+   * neither.
+   */
+  readonly branch: WorkspaceRef;
   readonly git: GitRunner;
   readonly baseBranch?: string;
   /** The remote to probe, fetch, and track. Defaults to `origin`. */
@@ -227,6 +319,10 @@ function parseWorktreeList(stdout: string): string[] {
  * - `worktree` adds `.conductor/worktrees/<entityId>` if it is missing, then runs
  *   the branch plan inside it. The worktree is added **detached** so it never
  *   occupies a branch ref on the way in.
+ *
+ * Which plan runs comes from `request.branch`: a name is probed and resolved to
+ * {@link branchPlan}'s creation or re-entry, {@link DETACHED_AT_BASE} is
+ * {@link detachedBasePlan}, and `null` checks out nothing.
  *
  * @throws WorkspaceProvisionError when any git command fails.
  */
@@ -273,6 +369,15 @@ export async function provisionWorkspace(
   }
 
   if (branch === null) return { path: target, ran };
+
+  // No name, so nothing to probe: the creation/re-entry question is not asked
+  // here, because the plan is the same either way. See {@link detachedBasePlan}.
+  if (branch === DETACHED_AT_BASE) {
+    for (const argv of detachedBasePlan(baseBranch, remote).commands) {
+      await run(argv, target);
+    }
+    return { path: target, ran };
+  }
 
   // `--exit-code` makes "no such branch" exit 2 rather than exit 0 with empty
   // output, so existence is read off the code without parsing refs. Anything
