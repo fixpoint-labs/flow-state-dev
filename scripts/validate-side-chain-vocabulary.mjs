@@ -50,6 +50,11 @@
  *     without type information "a `"work"` argument" and "the tier" are the
  *     same shape, and the wider rule flags correct code.
  *   - `.js` / `.jsx` sources. Every first-party source is TypeScript.
+ *   - UNTRACKED files. The walk is `git ls-files`, so a new file is not checked
+ *     until it is staged. Deliberate — it is what keeps `.claude/worktrees/**`
+ *     copies from multiplying every count — but it means a local run can be
+ *     greener than CI.
+ *
  * **And one gap that runs the other way — over-reach, deliberate and unescapable:**
  * a `phase:` or `scope:` field valued `"work"` is denied REPOSITORY-WIDE,
  * whatever that field means locally. Nothing here consults the declaring type,
@@ -72,11 +77,6 @@
  * dense framework field names (`session`, `request`, `main`, `block`, `user`,
  * `org`, …) and `"work"` is not a legitimate value of either under any current
  * meaning.
- *
- *   - UNTRACKED files. The walk is `git ls-files`, so a new file is not checked
- *     until it is staged. Deliberate — it is what keeps `.claude/worktrees/**`
- *     copies from multiplying every count — but it means a local run can be
- *     greener than CI.
  *
  * ## Deny by name, allow by concept
  *
