@@ -46,6 +46,39 @@ describe("the four encodings each fire", () => {
   });
 
   /**
+   * Each path builder is mapped to ITS OWN op-argument index. A single shared
+   * constant was right for `childBlockPath` (op at 2) and wrong for
+   * `blockPathSegment` (op at 0), so the direct helper call produced nothing —
+   * while the builder was named in the guarded list. Naming a builder as
+   * covered is a claim; the index is what makes it true.
+   */
+  it("E4 — the direct helper call, whose op is the FIRST argument", () => {
+    expect(encodings(`const seg = blockPathSegment("work", i);`)).toContain("E4");
+  });
+
+  it("E4 — does not fire on the op in the wrong position for that builder", () => {
+    // `blockPathSegment(op, index)` takes no op at index 1, so a `"work"` there
+    // is not a path segment. Proves the index is consulted, not ignored.
+    expect(encodings(`const seg = blockPathSegment(op, "work");`)).not.toContain("E4");
+  });
+
+  /**
+   * The route that skips the builders entirely: a segment that was already
+   * formatted, handed to `extendBlockPath`. `op[index]` is the segment's exact
+   * shape, so a literal of that shape IS a persisted path segment. This rule
+   * found two stale `"work[0]"` arguments the rename had left in
+   * `sequencer-kernel.test.ts` on the day it was added.
+   */
+  it("E4 — an already-built segment passed as a literal", () => {
+    expect(encodings(`const p = extendBlockPath(parent, "work[0]");`)).toContain("E4");
+    expect(encodings(`await runSideChain(ctx, rt, cfg, "work[0]", 5, "t");`)).toContain("E4");
+  });
+
+  it("E4 — leaves an unrelated segment literal alone", () => {
+    expect(encodings(`const p = extendBlockPath(parent, "step[0]");`)).toEqual([]);
+  });
+
+  /**
    * The path segment is the only part of this rename with a runtime
    * consequence, so the shapes that encode it get over-covered. This one was
    * found by a red suite, not by the check: a regex is neither an identifier
@@ -297,8 +330,11 @@ describe("the denylist is closed, so ordinary use of the word stays legal", () =
  * mental model. Same pin the sibling guard puts on its own exemption.
  */
 describe("side-chain vocabulary check — the exemption", () => {
-  it("holds exactly one entry, so it cannot be broadened into a no-op", () => {
-    expect(exemptFiles).toEqual(["packages/devtool/test/legacy-phase-record.test.ts"]);
+  it("holds exactly the two rename-boundary tests, by name", () => {
+    expect(exemptFiles).toEqual([
+      "packages/devtool/test/legacy-phase-record.test.ts",
+      "packages/engine/test/side-chain-rename-continuation.test.ts",
+    ]);
   });
 });
 

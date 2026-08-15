@@ -89,10 +89,10 @@ describe("runChild", () => {
 });
 
 describe("runSideChain", () => {
-  it("pushes a work task and the promise resolves with the child's output", async () => {
+  it("pushes a side-chain task and the promise resolves with the child's output", async () => {
     const ctx = createMockContext();
     const runtime = runtimeState();
-    const result = await runSideChain(ctx, runtime, { block: inc }, "work[0]", 5, "task-a");
+    const result = await runSideChain(ctx, runtime, { block: inc }, "sideChain[0]", 5, "task-a");
     // Pass-through: the sequencer's running value is unchanged.
     expect(result.value).toBe(5);
     expect(runtime.pendingSideChainTasks).toHaveLength(1);
@@ -100,11 +100,11 @@ describe("runSideChain", () => {
     expect(settled).toEqual({ name: "task-a", status: "fulfilled", value: 6 });
   });
 
-  it("applies the connector before dispatching the background block", async () => {
+  it("applies the connector before dispatching the side-chain block", async () => {
     const ctx = createMockContext();
     const runtime = runtimeState();
     const connector = (v: number): number => v + 100;
-    await runSideChain(ctx, runtime, { block: inc, connector }, "work[0]", 1, "task-b");
+    await runSideChain(ctx, runtime, { block: inc, connector }, "sideChain[0]", 1, "task-b");
     const settled = await runtime.pendingSideChainTasks[0].promise;
     expect(settled).toMatchObject({ status: "fulfilled", value: 102 }); // (1 + 100) + 1
   });

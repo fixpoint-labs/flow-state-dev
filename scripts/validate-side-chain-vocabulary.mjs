@@ -282,36 +282,70 @@ export const retiredNames = [
 ];
 
 /**
- * The single audited exception: the test whose SUBJECT is the retired spelling.
+ * The audited exceptions: the tests whose SUBJECT is the retired spelling.
  *
- * FIX-766 shipped no BP-030 shim for the persisted `phase` value, on the claim
- * that nothing reads it to decide anything. `legacy-phase-record.test.ts` is
- * what holds that claim honest — it feeds a pre-rename record through the one
- * reader there is and asserts it degrades rather than breaks. It necessarily
- * contains `phase: "work"`, and a check that forbade it would delete the proof.
+ * FIX-766 left two behaviours that can only be characterised by writing the old
+ * vocabulary down, one per persisted surface it crosses:
  *
- * Asserted to hold exactly one entry so it cannot be quietly broadened into a
- * general escape hatch — the same guard `validate-updater-purity.mjs` puts on
- * its own exemption.
+ *   - `legacy-phase-record.test.ts` feeds a pre-rename `phase: "work"` record
+ *     through the one reader there is and asserts it degrades rather than
+ *     breaks. It holds decision 2's "nothing reads it" claim honest.
+ *   - `side-chain-rename-continuation.test.ts` rewrites a durable log to the
+ *     pre-rename path segment (`…/work[n]`) and asserts the completed child
+ *     re-executes — the accepted cost, pinned rather than assumed.
+ *
+ * Both exist to prove behaviour ACROSS the rename boundary, which is a closed
+ * category: it cannot grow without a new persisted surface, and a new persisted
+ * surface is a decision someone has to make out loud. The list is asserted by
+ * name in the fixtures so it cannot quietly become an escape hatch — the
+ * invariant that matters is that it is closed and named, not that it is one.
  */
-const EXEMPT_FILES = ["packages/devtool/test/legacy-phase-record.test.ts"];
+const EXEMPT_FILES = [
+  "packages/devtool/test/legacy-phase-record.test.ts",
+  "packages/engine/test/side-chain-rename-continuation.test.ts",
+];
 
-if (EXEMPT_FILES.length !== 1) {
+if (EXEMPT_FILES.length !== 2) {
   console.error(
-    `[side-chain-vocabulary] The exemption list must hold exactly one entry (the legacy-record test); found ${EXEMPT_FILES.length}.`
+    `[side-chain-vocabulary] The exemption list must hold exactly the two rename-boundary tests; found ${EXEMPT_FILES.length}.`
   );
   process.exit(1);
 }
 
-/** Exported so a test can assert the exemption stays at one entry. */
+/** Exported so a test can pin the exemption by name. */
 export const exemptFiles = EXEMPT_FILES;
 
 /** Op literals that become block-path segments or default block names. */
 const PATH_OP_LITERALS = new Set(["work", "workIf", "forEachBackground"]);
-/** Functions whose operation argument becomes a path segment. */
-const PATH_BUILDERS = new Set(["childBlockPath", "blockPathSegment"]);
-/** Zero-based position of the `op` argument in those builders. */
-const PATH_OP_ARG_INDEX = 2;
+/**
+ * Path builders, each mapped to the position of ITS OWN `op` argument.
+ *
+ * This was a single shared constant (`PATH_OP_ARG_INDEX = 2`), which is correct
+ * for `childBlockPath(ctx, runtime, op, stepIndex)` and wrong for
+ * `blockPathSegment(op, index)`, where the op is first. So a direct
+ * `blockPathSegment("work", i)` produced no finding — while the builder was
+ * named in this very list, which is what makes it the dangerous kind of bug:
+ * **listing a builder as guarded is a claim; the index is what makes it true.**
+ * A reader checking coverage sees the name and stops.
+ *
+ * It also lands on E4, the encoding that reaches the persisted block path and
+ * therefore the replay-log key. A hole here does not merely miss a rename — it
+ * lets the retired segment come back, and the consequence of that is the
+ * silent re-execution decision 2 accepted *only* because it was bounded to the
+ * pre-publish window.
+ *
+ * Indices are derived from the declarations, not from memory:
+ *   childBlockPath(ctx, runtime, op, stepIndex, iteration?)  packages/core/src/blocks/sequencer.ts
+ *   blockPathSegment(op, index)                              packages/contracts/src/block-instance-id.ts
+ *
+ * The other `blockPath*` helpers in that module (`blockPathIteration`,
+ * `blockPathLoop`, `blockPathBranch`, `blockPathRescue`, `blockPathTool`) take
+ * no tier op at all, so they are deliberately absent rather than mapped.
+ */
+const PATH_BUILDERS = new Map([
+  ["childBlockPath", 2],
+  ["blockPathSegment", 0],
+]);
 /**
  * Only the module that DEFINES sequencer ops turns a bare `name:` into a path
  * name. Scoping this is what keeps the rule from flagging every `name: "work"`
@@ -517,14 +551,29 @@ function collectFindings(project, relativePath) {
         if (isRetiredTierLiteral(node)) record(node, "E2", node.getLiteralValue());
 
         // E4 — runtime literals that become block-path segments.
+        // E4 — an ALREADY-BUILT segment as a literal,
+        // `extendBlockPath(p, "work[0]")`. The builders below cover the normal
+        // construction route; this covers the one that skips them. `op[index]`
+        // is the segment's exact shape, so a literal of that shape IS a
+        // persisted path segment however it was written. Found while deriving
+        // the builder arities: `extendBlockPath` takes an already-formatted
+        // segment, so no op-argument rule can reach it.
+        if (/^(work|workIf|forEachBackground)\[\d*\]?/.test(node.getLiteralValue())) {
+          record(node, "E4", `segment literal "${node.getLiteralValue()}"`);
+          return;
+        }
+
         if (PATH_OP_LITERALS.has(node.getLiteralValue())) {
           const parent = node.getParent();
+          const callee = Node.isCallExpression(parent)
+            ? parent.getExpression().getText()
+            : undefined;
+          const opIndex = callee === undefined ? undefined : PATH_BUILDERS.get(callee);
           if (
-            Node.isCallExpression(parent) &&
-            PATH_BUILDERS.has(parent.getExpression().getText()) &&
-            parent.getArguments().indexOf(node) === PATH_OP_ARG_INDEX
+            opIndex !== undefined &&
+            parent.getArguments().indexOf(node) === opIndex
           ) {
-            record(node, "E4", `${parent.getExpression().getText()}(…, "${node.getLiteralValue()}")`);
+            record(node, "E4", `${callee}(… "${node.getLiteralValue()}" at arg ${opIndex})`);
           } else if (
             Node.isPropertyAssignment(parent) &&
             parent.getName() === "name" &&
