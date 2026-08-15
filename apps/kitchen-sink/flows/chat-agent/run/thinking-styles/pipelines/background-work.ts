@@ -230,6 +230,29 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
     // the settle happens in the child, whose stream is its own.
     sessionStateSchema: z.object({
       reportedSideChainTaskIds: z.array(z.string()).default([]),
+      /**
+       * The pre-rename spelling of the key above, read-only.
+       *
+       * FIX-766 renamed the middle execution tier from `work` to `sideChain`,
+       * and this key travelled with it as an ordinary identifier — which it is
+       * NOT: it is a persisted session-state key, so a conversation that
+       * started before the deploy holds its acknowledgements under the old
+       * name. Reading only the new one would default to `[]` and re-announce
+       * every job the user has already been told about.
+       *
+       * That is a third persisted surface. FIX-766 decision 2 accepted "no
+       * shim" for exactly two — `provenance.phase` (a value nothing reads to
+       * decide anything) and the block path (an identifier, where the alias
+       * would have to land in every prefix comparison in the path grammar).
+       * Neither argument covers this one: it IS read to decide something, and
+       * dual-reading a flat state key is four lines. So it gets the shim
+       * BP-030 asks for rather than an exemption argued from the other two.
+       *
+       * Never written. The union below is persisted under the new name on the
+       * next acknowledgement, so a session converges after one report and this
+       * key can be deleted once no live session predates the deploy.
+       */
+      reportedBackgroundTaskIds: z.array(z.string()).default([]),
     }),
     uses: [board.capability],
     execute: async (input, ctx) => {
@@ -237,11 +260,16 @@ export function createBackgroundWorkPipeline(config: PipelineConfig) {
       // collection per call, so `tasks()` once is the documented shape.
       const ledger = await ctx.cap["background-work"].tasks();
       const handles = await ledger.list();
-      const alreadyReported = new Set(
+      const alreadyReported = new Set([
         // `?? []` and not a truthiness check: a session that predates this key
         // has no value at all (BP-030).
-        ctx.session.state.reportedSideChainTaskIds ?? [],
-      );
+        ...(ctx.session.state.reportedSideChainTaskIds ?? []),
+        // …and one that predates the FIX-766 rename has its acknowledgements
+        // under the retired spelling. Dropping these re-reports every job the
+        // user was already told about. See the schema for why this one is
+        // shimmed when two other persisted surfaces deliberately were not.
+        ...(ctx.session.state.reportedBackgroundTaskIds ?? []),
+      ]);
       const rows = handles.map(
         (task): ReportedTask => ({
           id: task.id,

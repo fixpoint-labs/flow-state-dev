@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   analyzeSources,
   exemptFiles,
+  mayContainRetiredName,
   retiredNames,
 } from "../../../scripts/validate-side-chain-vocabulary.mjs";
 
@@ -274,5 +275,46 @@ describe("the denylist is closed, so ordinary use of the word stays legal", () =
 describe("side-chain vocabulary check — the exemption", () => {
   it("holds exactly one entry, so it cannot be broadened into a no-op", () => {
     expect(exemptFiles).toEqual(["packages/devtool/test/legacy-phase-record.test.ts"]);
+  });
+});
+
+/**
+ * The pre-filter decides which files are parsed at all, so a filter narrower
+ * than the rules deletes coverage without failing anything — the quietest
+ * version of the failure this check has had seven times.
+ *
+ * The repo-level proof is `node scripts/validate-side-chain-vocabulary.mjs
+ * --parity`, which re-runs the scan with the filter off and diffs. These pin
+ * the property it rests on, derived from the denylist so adding a name cannot
+ * leave the filter behind.
+ */
+describe("the pre-filter never hides a file the rules would flag", () => {
+  it("admits every name on the denylist", () => {
+    for (const name of retiredNames as string[]) {
+      expect(
+        (mayContainRetiredName as (t: string) => boolean)(`const x = ${name};`),
+        `pre-filter would skip a file containing ${name}`
+      ).toBe(true);
+    }
+  });
+
+  it("admits the E2 literal in every quote style", () => {
+    const check = mayContainRetiredName as (t: string) => boolean;
+    expect(check('const p = { phase: "work" };')).toBe(true);
+    expect(check("const p = { phase: 'work' };")).toBe(true);
+    expect(check("const p = { phase: `work` };")).toBe(true);
+  });
+
+  it("admits the E4 forms — path argument, template head and regex", () => {
+    const check = mayContainRetiredName as (t: string) => boolean;
+    expect(check(`childBlockPath(ctx, runtime, "work", i)`)).toBe(true);
+    expect(check("name: `work:${block.name}`")).toBe(true);
+    expect(check(String.raw`/\/work\[\d+\]$/.test(path)`)).toBe(true);
+  });
+
+  it("skips files whose only match is a word that merely CONTAINS the token", () => {
+    const check = mayContainRetiredName as (t: string) => boolean;
+    expect(check("const framework = 1; const network = 2; const teamwork = 3;")).toBe(false);
+    expect(check("// homework and paperwork are not tiers")).toBe(false);
   });
 });

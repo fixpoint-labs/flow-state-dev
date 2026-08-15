@@ -304,7 +304,7 @@ export function createInboundTransportHost(
     // The config this dispatch runs under. Normally the host's own; a detached
     // child carries the LAUNCHING request's, because the caller may have derived
     // one the host was never built with — `fsdev run` does, so `--model` reaches
-    // side-chain work rather than silently resolving the app's default
+    // the detached child rather than silently resolving the app's default
     // (FIX-1077). Server-set only; see `InboundRequestEnvelope.runtimeConfig`.
     const dispatchRuntimeConfig = envelope.runtimeConfig ?? runtimeConfig;
 

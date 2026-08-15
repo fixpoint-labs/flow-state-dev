@@ -510,6 +510,58 @@ function collectFindings(project, relativePath) {
 }
 
 /**
+ * Cheap text pre-filter, DERIVED from the rule set rather than written beside it.
+ *
+ * Building a ts-morph project over all ~2,500 tracked sources costs seconds on
+ * every `pnpm typecheck`, local and CI, forever — a one-time migration charging
+ * rent on every run afterwards. Almost no file can produce a finding, and which
+ * ones can is decidable from the rules themselves:
+ *
+ *   - E1/E3 fire on an identifier from the closed denylist. An identifier
+ *     appears verbatim in source, so the file text must contain that exact
+ *     substring.
+ *   - E2 fires on the string literal `work`, which is written with quotes.
+ *   - E4 fires on the op literals, the `work:`-style template heads, and the
+ *     `work\[` regex form — all of which contain one of the above.
+ *
+ * The pattern is BUILT from `RETIRED_NAMES` / `RETIRED_MEMBER_NAMES` instead of
+ * being maintained alongside them. A hand-written filter is the dangerous shape
+ * here: it drifts from the rules silently, and a pre-filter narrower than the
+ * rule set deletes coverage without failing anything — which is the exact
+ * failure mode this check has already had seven times. Deriving it means adding
+ * a name to the denylist automatically widens the filter.
+ *
+ * `--parity` re-runs the scan with the filter off and diffs, so the claim is
+ * checkable against the real tree rather than merely argued here.
+ */
+const PREFILTER = new RegExp(
+  [
+    // Every retired name is a whole identifier, and an identifier is never
+    // preceded by a letter. The lookbehind is what keeps `framework`,
+    // `network`, `teamwork` and `homework` out — they contain `work` but can
+    // never BE the member `work`, so parsing them buys nothing.
+    ...[...RETIRED_NAMES, ...RETIRED_MEMBER_NAMES].map(
+      (n) => `(?<![A-Za-z])${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`
+    ),
+    // E2's literal, in any quote style JavaScript allows.
+    //
+    // Redundant TODAY, and deliberately kept: `work` is in
+    // `RETIRED_MEMBER_NAMES`, and its alternative above already matches
+    // `"work"` because a quote is not a letter. Mutation-testing showed this
+    // line removable with no coverage loss. It stays because E2's rule does not
+    // depend on that membership — if `work` ever leaves the member list (it is
+    // the most ordinary word here, so that is a plausible future call), E2
+    // would still fire on the literal while the filter stopped admitting its
+    // file. Cheap insurance against a change made two files away.
+    "[\"'`]work[\"'`]",
+  ].join("|")
+);
+
+export function mayContainRetiredName(text) {
+  return PREFILTER.test(text);
+}
+
+/**
  * Every tracked TypeScript source.
  *
  * `git ls-files`, not a filesystem glob, for two reasons that both bit the
@@ -532,7 +584,7 @@ function trackedSources() {
 }
 
 /** Analyze the repository's real tracked sources. */
-export function analyzeRepository() {
+export function analyzeRepository({ prefilter = true } = {}) {
   const project = new Project({
     skipAddingFilesFromTsConfig: true,
     skipFileDependencyResolution: true,
@@ -544,6 +596,17 @@ export function analyzeRepository() {
   for (const filePath of trackedSources()) {
     if (exempt.has(path.normalize(filePath))) continue;
     if (!fs.existsSync(filePath)) continue;
+    // Read once and decide before parsing: reading a file is far cheaper than
+    // adding it to a ts-morph project, and almost every file is skipped here.
+    if (prefilter) {
+      let text;
+      try {
+        text = fs.readFileSync(filePath, "utf8");
+      } catch {
+        continue;
+      }
+      if (!mayContainRetiredName(text)) continue;
+    }
     try {
       project.addSourceFileAtPath(filePath);
     } catch {
@@ -563,6 +626,21 @@ const ENCODING_LABEL = {
 
 function main() {
   const wantJson = process.argv.includes("--json");
+
+  // `--parity` re-runs the scan with the pre-filter OFF and diffs the two. The
+  // filter's soundness is an argument in its docblock; this turns it into a
+  // check anybody can run against the real tree.
+  if (process.argv.includes("--parity")) {
+    const filtered = JSON.stringify(analyzeRepository({ prefilter: true }));
+    const full = JSON.stringify(analyzeRepository({ prefilter: false }));
+    if (filtered === full) {
+      console.log("[side-chain-vocabulary] parity OK — the pre-filter removes no findings.");
+      return;
+    }
+    console.error("[side-chain-vocabulary] PARITY FAILURE — the pre-filter is hiding findings.");
+    process.exit(1);
+  }
+
   const findings = analyzeRepository();
 
   if (wantJson) {
