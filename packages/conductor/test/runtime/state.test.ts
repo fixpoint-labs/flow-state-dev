@@ -246,16 +246,21 @@ describe("the registry's cap", () => {
     expect(cap).toBeGreaterThan(0);
 
     // Filling 500 rows through the handle would read the directory 500 times;
-    // the store is the same one either way, so seed it directly.
+    // the store is the same one either way, so seed it directly. The keys are
+    // independent and each is its own file, so the seed goes at once rather than
+    // one fsync after another — awaited in sequence, the time to reach a cap the
+    // declaration owns is a measure of the disk, and the test fails on a slow one.
     const address = addressFor(conductorRegistry, IDS);
-    for (let n = 0; n < cap; n += 1) {
-      await store.write(address, `registry/EPIC-${n}`, {
-        id: `EPIC-${n}`,
-        kind: "epic",
-        sessionId: `session-${n}`,
-        addedAt: "2026-08-20T12:00:00Z",
-      });
-    }
+    await Promise.all(
+      Array.from({ length: cap }, (_, n) =>
+        store.write(address, `registry/EPIC-${n}`, {
+          id: `EPIC-${n}`,
+          kind: "epic",
+          sessionId: `session-${n}`,
+          addedAt: "2026-08-20T12:00:00Z",
+        }),
+      ),
+    );
 
     await expect(
       registry.write("EPIC-new", {
