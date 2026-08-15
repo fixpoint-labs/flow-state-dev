@@ -85,6 +85,22 @@ interface CheckRunPayload {
   conclusion?: string | null;
 }
 
+/**
+ * One entry of GitHub's *combined status* for a commit, narrowed.
+ *
+ * The older of GitHub's two CI reporting mechanisms. A repository whose CI
+ * reports through the Statuses API — Jenkins, CircleCI, Buildkite, anything
+ * posting to `POST /statuses/{sha}` — produces **no check runs at all**, so a
+ * reader that consults only the Check Runs API sees nothing forever.
+ */
+interface CommitStatusPayload {
+  state?: string | null;
+  context?: string | null;
+}
+
+/** The single value `PullRequestFacts.checks` carries. */
+type ChecksConclusion = PullRequestFacts["checks"];
+
 /** Conclusions that mean the check did not pass. */
 const FAILING_CONCLUSIONS = new Set([
   "failure",
@@ -94,6 +110,9 @@ const FAILING_CONCLUSIONS = new Set([
   "startup_failure",
   "stale",
 ]);
+
+/** Commit-status states that mean the context did not pass. */
+const FAILING_STATUS_STATES = new Set(["failure", "error"]);
 
 /**
  * Aggregate a commit's check runs into the single value `PullRequestFacts.checks`
@@ -106,9 +125,7 @@ const FAILING_CONCLUSIONS = new Set([
  * @returns `null` when nothing has reported — which the `awaiting_ci` gate reads
  *   as "no CI on this PR" rather than as a failure.
  */
-export function aggregateChecks(
-  runs: readonly CheckRunPayload[],
-): "pending" | "success" | "failure" | null {
+export function aggregateChecks(runs: readonly CheckRunPayload[]): ChecksConclusion {
   if (runs.length === 0) return null;
   let pending = false;
   for (const run of runs) {
@@ -121,6 +138,61 @@ export function aggregateChecks(
   return pending ? "pending" : "success";
 }
 
+/**
+ * The same aggregation over classic commit statuses.
+ *
+ * The combined-status endpoint already returns the *latest* status per context,
+ * so each entry is one CI system's current word on the commit and no collapsing
+ * is needed here.
+ *
+ * **Anything that is neither a failure nor `success` counts as pending**, which
+ * includes a state this reader does not recognize. That is the fail-closed
+ * direction: an unrecognized state read as success would open a merge gate on a
+ * context nobody has seen pass, and read as pending it merely waits.
+ *
+ * @returns `null` when no context has reported. Deliberately derived from the
+ *   entry count and never from the envelope's own `state`, which GitHub reports
+ *   as `"pending"` for a commit that has no statuses at all — reading that would
+ *   put every check-run repository into a permanent `awaiting_ci`.
+ */
+export function aggregateStatuses(
+  statuses: readonly CommitStatusPayload[],
+): ChecksConclusion {
+  if (statuses.length === 0) return null;
+  let pending = false;
+  for (const status of statuses) {
+    const state = (status.state ?? "").toLowerCase();
+    if (FAILING_STATUS_STATES.has(state)) return "failure";
+    if (state !== "success") pending = true;
+  }
+  return pending ? "pending" : "success";
+}
+
+/**
+ * Fold the two mechanisms' answers into one.
+ *
+ * A repository may use either or both, and when it uses both they are equally
+ * authoritative — a required status check and a required check run are the same
+ * promise made through two APIs. So the combination is the same precedence each
+ * aggregation already applies internally, raised one level: **failure outranks
+ * pending outranks success, and `null` only survives when neither mechanism
+ * reported anything.**
+ *
+ * Written as an explicit fold rather than falling back from one API to the
+ * other. A fallback ("read statuses only when there are no check runs") reads a
+ * repository with a green check run and a failing required status as green,
+ * which is the exact exposure this whole path exists to prevent.
+ */
+export function combineChecks(
+  a: ChecksConclusion,
+  b: ChecksConclusion,
+): ChecksConclusion {
+  if (a === "failure" || b === "failure") return "failure";
+  if (a === "pending" || b === "pending") return "pending";
+  if (a === "success" || b === "success") return "success";
+  return null;
+}
+
 /** Every check run reported against a git ref. */
 async function checkRunsFor(
   client: GitHubClient,
@@ -130,6 +202,45 @@ async function checkRunsFor(
     client.path("commits", encodeURIComponent(ref), "check-runs"),
     (page) => (page as { check_runs?: CheckRunPayload[] })?.check_runs ?? [],
   );
+}
+
+/**
+ * Every classic commit status reported against a git ref.
+ *
+ * A 404 is read as "no statuses", the same leniency {@link contentHash} applies
+ * and for the same reason: it is a repository that has not adopted this
+ * mechanism, not a failure. The leniency is narrow rather than a blanket
+ * softening — a ref that genuinely does not exist 404s the check-runs read
+ * beside this one, which does raise, so a bad ref is still loud.
+ */
+async function commitStatusesFor(
+  client: GitHubClient,
+  ref: string,
+): Promise<CommitStatusPayload[]> {
+  try {
+    return await client.paginate<CommitStatusPayload>(
+      client.path("commits", encodeURIComponent(ref), "status"),
+      (page) => (page as { statuses?: CommitStatusPayload[] })?.statuses ?? [],
+    );
+  } catch (error) {
+    if (error instanceof GitHubApiError && error.status === 404) return [];
+    throw error;
+  }
+}
+
+/**
+ * What CI says about a ref, across both of GitHub's reporting mechanisms.
+ *
+ * Both are always read, never one conditionally on the other — see
+ * {@link combineChecks}. They are independent requests, so they run together and
+ * a ref costs one round trip rather than two.
+ */
+async function checksFor(client: GitHubClient, ref: string): Promise<ChecksConclusion> {
+  const [runs, statuses] = await Promise.all([
+    checkRunsFor(client, ref),
+    commitStatusesFor(client, ref),
+  ]);
+  return combineChecks(aggregateChecks(runs), aggregateStatuses(statuses));
 }
 
 /**
@@ -173,7 +284,8 @@ function prReadPlan(facts: ReadonlySet<WorldFact>) {
  *
  * `checks` is aggregated for the **current head SHA** — a check reported
  * against a SHA that has since been pushed over is not this PR's status, and
- * scoping it here is what keeps a stale green from releasing `awaiting_ci`.
+ * scoping it here is what keeps a stale green from releasing `awaiting_ci`. It
+ * covers both of GitHub's CI mechanisms; see {@link combineChecks}.
  *
  * @param client The GitHub client.
  * @param pullNumber The pull request to read.
@@ -213,14 +325,11 @@ export async function readPullRequest(
     }
   }
 
-  const checks =
-    plan.checks && headSha ? aggregateChecks(await checkRunsFor(client, headSha)) : null;
+  const checks = plan.checks && headSha ? await checksFor(client, headSha) : null;
 
   const baseRef = pull.base?.ref ?? "";
   const baseRed =
-    plan.baseStatus && baseRef
-      ? aggregateChecks(await checkRunsFor(client, baseRef)) === "failure"
-      : false;
+    plan.baseStatus && baseRef ? (await checksFor(client, baseRef)) === "failure" : false;
 
   return {
     number: pull.number,
@@ -231,6 +340,41 @@ export async function readPullRequest(
     baseRed,
     reviews,
   };
+}
+
+/**
+ * The pull request whose head is `branch`, or `null` when there is none.
+ *
+ * The GitHub half of the observer seam's `submissionForBranch`. Conductor knows
+ * the branch a phase's work goes on — it named it — and this turns that into the
+ * PR number an artifact can be hosted at, whoever opened it.
+ *
+ * `state=all` rather than `state=open` on purpose: a PR that was opened and then
+ * closed is news conductor has to reduce (`decide` escalates a `pr_closed`), and
+ * filtering to open ones would make a closed PR indistinguishable from a branch
+ * nobody has submitted at all.
+ *
+ * The **newest** is returned when a branch has hosted several, matching
+ * `artifactOfKind`'s "the last one supersedes the earlier ones" rule: a
+ * replacement PR opened after the first was closed is the one this phase is
+ * working on.
+ *
+ * @param client The GitHub client.
+ * @param branch The branch to look up, in this repository.
+ * @returns The pull request number, or `null`.
+ */
+export async function pullRequestForBranch(
+  client: GitHubClient,
+  branch: string,
+): Promise<number | null> {
+  const head = encodeURIComponent(`${client.owner}:${branch}`);
+  const payloads = await client.paginate<{ number?: number | null }>(
+    `${client.path("pulls")}?head=${head}&state=all`,
+  );
+  const numbers = payloads
+    .map((payload) => payload.number)
+    .filter((number): number is number => typeof number === "number");
+  return numbers.length === 0 ? null : Math.max(...numbers);
 }
 
 /**

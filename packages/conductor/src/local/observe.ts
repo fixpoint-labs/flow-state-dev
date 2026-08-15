@@ -36,7 +36,7 @@ import type { Signal } from "../model/signals";
 import type { PullRequestFacts } from "../model/world";
 import type { Observation, ObservationRequest, Observer } from "../observe/types";
 import { readLocalWorld, type LocalSourceOptions } from "./read-world";
-import { readComments } from "./store";
+import { findSubmissionByBranch, readComments } from "./store";
 import { defaultGitRunner } from "../config/discover";
 
 /** The source identity every local observation is recorded under. */
@@ -76,6 +76,15 @@ export function localObserver(options: LocalObserverOptions): Observer {
 
   return {
     source: LOCAL_SOURCE,
+
+    // The local answer to "which submission hosts this branch" is a scan of the
+    // submission records, which is where a branch's identity is written down
+    // when it is put up for review. Nothing is stood in for: a branch nobody has
+    // submitted has no record, and `null` is the true statement about it.
+    async submissionForBranch(branch: string): Promise<number | null> {
+      const submission = await findSubmissionByBranch(source.repoRoot, branch);
+      return submission?.number ?? null;
+    },
 
     async observe(request: ObservationRequest): Promise<Observation> {
       const { world, facts } = await readLocalWorld(source, request);

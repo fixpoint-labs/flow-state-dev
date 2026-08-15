@@ -109,6 +109,26 @@ export function checkRuns(...runs: ReturnType<typeof checkRun>[]) {
   return { total_count: runs.length, check_runs: runs };
 }
 
+/** One classic commit status — the other way a CI system reports on a commit. */
+export function commitStatus(state: string, context = "ci/build") {
+  return { state, context };
+}
+
+/**
+ * The envelope the combined-status endpoint wraps its array in.
+ *
+ * `state` is included because the real payload carries it, and it is deliberately
+ * `"pending"` for an empty set — which is what GitHub really returns for a commit
+ * with no statuses, and the reason the reader counts entries instead of reading it.
+ */
+export function commitStatuses(...statuses: ReturnType<typeof commitStatus>[]) {
+  return {
+    state: statuses.length === 0 ? "pending" : statuses[0]!.state,
+    total_count: statuses.length,
+    statuses,
+  };
+}
+
 /** GitHub's comment payload, shared by the two comment endpoints. */
 export function commentPayload(overrides: Record<string, unknown> = {}) {
   return {

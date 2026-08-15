@@ -139,4 +139,34 @@ export interface Observer {
   readonly source: string;
   /** Read the world once, and report what changed since the cursor. */
   observe(request: ObservationRequest): Promise<Observation>;
+  /**
+   * The submission hosting `branch` right now, or `null` when the source has
+   * none — a lookup, not a materialization.
+   *
+   * **This is how a submission enters the observed world in the first place.**
+   * {@link observe} reads the submissions an entity's artifacts already name,
+   * which is the right rule for everything *after* an artifact exists and no
+   * help at all before one does. Conductor pushes work to a branch and something
+   * else opens the submission for it — the agent at the end of its run, or a
+   * human — and neither of those is a fact any vendor result can be trusted to
+   * report: an agent's own prose is not an authority on what GitHub holds, and a
+   * human's PR is opened with conductor nowhere in the loop. Asking the source
+   * which submission hosts the branch answers both cases with one question, and
+   * it is the source's to answer because only the source knows.
+   *
+   * Deliberately **not** part of `observe`: the answer is one number, artifact
+   * identity is conductor's to mint (`reviewRounds` and the artifact id have
+   * nowhere else to come from), and folding the lookup into the snapshot would
+   * make the reader an authority on which artifacts an entity has.
+   *
+   * Required rather than optional. A source that cannot answer it strands every
+   * entity it observes at the moment the work is handed out, which is exactly
+   * the failure this method exists to close — so a new source must answer it
+   * rather than quietly not implement it.
+   *
+   * @param branch The branch conductor's dispatches push to for a phase.
+   * @returns The submission number, newest when a branch has hosted several.
+   *   `null` when nothing has been opened for it.
+   */
+  submissionForBranch(branch: string): Promise<number | null>;
 }

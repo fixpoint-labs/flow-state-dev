@@ -48,9 +48,10 @@
  * - **A phase's entry work runs once, and runs at least once.** Adopting the
  *   ledger's phase moves the entity without moving the *entry* that dispatches
  *   that phase's opening work, so "resumes" has to cover the entry too: it is
- *   re-derived from the ledger until a row proves it was reduced against this
- *   phase, and never after. See {@link entrySeeded} for why "the ledger is
- *   nonempty" is not that proof.
+ *   re-derived until the entry's *effect* is proved complete, and never after.
+ *   See {@link entryCompleted} for why neither "the ledger is nonempty" nor "a
+ *   row was written" is that proof — a row records what was decided, and the
+ *   dispatch record is what records that it finished.
  *
  * One assumption this file makes and does not enforce: **one tick at a time per
  * entity.** Nothing here is atomic across its read-modify-write, so overlapping
@@ -81,6 +82,7 @@ import { randomUUID } from "node:crypto";
 import { isDispatch, type Action, type DispatchAction } from "../model/actions";
 import {
   artifactKindForPhase,
+  phaseDefinition,
   type EntityKind,
   type Gate,
   type Phase,
@@ -89,6 +91,7 @@ import type { Signal } from "../model/signals";
 import {
   artifactOfKind,
   type ArtifactFacts,
+  type ArtifactKind,
   type ChildIssueFacts,
   type World,
 } from "../model/world";
@@ -201,18 +204,55 @@ async function readLedger(context: TickContext): Promise<LedgerEntryState[]> {
     .sort((a, b) => a.seq - b.seq);
 }
 
+/** One row of the dispatch record, as the collection hands it back. */
+type DispatchRow = Awaited<ReturnType<ConductorCollections["dispatches"]["list"]>>[number];
+
 /**
- * Has the entity's **current** phase already had its entry reduced?
+ * Has the entity's **current** phase had its entry work *finish*?
  *
  * Entry is what dispatches a phase's opening work, and the tick that enters a
- * phase drains it in the same pass — so the record that it ran is the row that
- * entry produced: a `phase_entered` signal reduced *against the phase being
- * entered*. A row carrying both is proof for that phase and for no other, which
- * is the whole correction. An empty ledger is only the first instance of "the
- * current phase has not been entered"; a nonempty one says nothing about it, and
- * reading it as proof strands an entity that advanced a phase durably and died
- * before the entry it had queued — in IMPLEMENTATION with no PR, no dispatch,
- * and no signal an artifact-free world could ever produce to start one.
+ * phase drains it in the same pass — so the first half of the proof is the row
+ * that entry produced: a `phase_entered` signal reduced *against the phase being
+ * entered*. A row carrying both is proof for that phase and for no other. An
+ * empty ledger is only the first instance of "the current phase has not been
+ * entered"; a nonempty one says nothing about it, and reading it as proof
+ * strands an entity that advanced a phase durably and died before the entry it
+ * had queued.
+ *
+ * **But the row records that the entry was *decided*, not that its effect
+ * completed, and the restart path needs the second fact.** The row is appended
+ * ahead of the dispatch it records — deliberately, so a dispatch that ran always
+ * has a row — which leaves a window where the row is on disk and the work is
+ * not: the process dies after the append and before `runDispatch` settles. An
+ * in-process agent cannot report back after its parent dies, so nothing ever
+ * settles that dispatch, and a predicate reading the row alone suppresses the
+ * entry forever. The entity sits in IMPLEMENTATION with no PR, no dispatch, and
+ * no signal an artifact-free world could ever produce to start one.
+ *
+ * The second half of the proof is therefore the dispatch record, which already
+ * carries it: `runDispatch` writes the row **before** the run with
+ * `outcome: null` and rewrites it with the outcome when it settles, so an
+ * unsettled dispatch is already durably visible and this needs no new state.
+ * Entry is complete when every entry action the phase declares has a *settled*
+ * dispatch — settled either way, because a failed one is escalated by `decide`
+ * and re-running it would loop.
+ *
+ * Scoped to the phase's own `onEnter` actions rather than to any dispatch of the
+ * phase: an `addressFeedback` that died mid-flight is unfinished work too, but
+ * re-deriving *entry* for it would dispatch `implement` a second time on a PR
+ * that already exists.
+ *
+ * **What this cannot tell apart, stated rather than papered over.** A dispatch
+ * that is merely slow looks exactly like one whose process died — an unsettled
+ * row is all either leaves behind. Within one process the two are separable by
+ * construction and not by inspection: `./session` runs one tick at a time per
+ * entity, and this predicate is evaluated before the tick dispatches anything,
+ * so a dispatch this process started cannot be in flight while it runs. Across
+ * processes nothing separates them, and that is already outside the "one tick at
+ * a time per entity" assumption this file states and does not enforce. The
+ * failure chosen is the recoverable one: a second dispatch costs money and lands
+ * a second commit on a branch the branch policy already re-enters, while the
+ * alternative strands the entity permanently with nothing able to release it.
  *
  * Matching on the phase *name* is enough because neither phase table cycles: a
  * phase is entered at most once per entity, so there is no earlier visit's row
@@ -222,11 +262,24 @@ async function readLedger(context: TickContext): Promise<LedgerEntryState[]> {
  * children) leaves no row and is therefore re-seeded on every tick. That is
  * deliberate and free — re-reducing an entry that produced nothing appends zero
  * rows and dispatches nothing — and the alternative, reading "no row" as
- * "already done", is the bug this predicate exists to close.
+ * "already done", is the bug the first half of this predicate exists to close.
  */
-function entrySeeded(ledger: readonly LedgerEntryState[], phase: Phase): boolean {
-  return ledger.some(
-    (row) => row.signalKind === "phase_entered" && row.phaseBefore === phase,
+function entryCompleted(
+  ledger: readonly LedgerEntryState[],
+  dispatches: readonly DispatchRow[],
+  entity: ConductorEntity,
+): boolean {
+  const entered = ledger.some(
+    (row) => row.signalKind === "phase_entered" && row.phaseBefore === entity.phase,
+  );
+  if (!entered) return false;
+
+  const onEnter = phaseDefinition(entity.kind, entity.phase)?.onEnter ?? [];
+  return onEnter.every((action) =>
+    dispatches.some(
+      (row) =>
+        row.phase === entity.phase && row.action === action && row.outcome !== null,
+    ),
   );
 }
 
@@ -475,6 +528,23 @@ async function recordProduced(
         : null;
   if (!hostedAt) return;
 
+  await recordArtifact(context, kind, hostedAt);
+}
+
+/**
+ * Write down that the entity holds an artifact of `kind` hosted at `hostedAt`,
+ * unless it already does.
+ *
+ * The one writer of an artifact row, and the reason artifact identity stays
+ * conductor's: the id is minted here in creation order (see
+ * {@link nextArtifactId}, and `World.artifacts` for why that order is
+ * load-bearing) and `reviewRounds` starts where only conductor could start it.
+ */
+async function recordArtifact(
+  context: TickContext,
+  kind: ArtifactKind,
+  hostedAt: ArtifactFacts["hostedAt"],
+): Promise<void> {
   const rows = (await context.collections.artifacts.list()).filter(
     (row) => row.entityId === context.entityId,
   );
@@ -495,6 +565,54 @@ async function recordProduced(
     reviewRounds: 0,
     lastRoundSha: null,
   });
+}
+
+/**
+ * Adopt the submission somebody opened for this phase's branch.
+ *
+ * **The step that lets work an agent actually did enter the observed world.**
+ * The read is driven by the artifacts an entity holds, so a submission nobody
+ * recorded is a submission no gate will ever read — and the ordinary recording
+ * path ({@link recordProduced}) only fires when a vendor *reported* a pull
+ * request. The default Claude dispatcher reports the branch and nothing else, on
+ * purpose: whether a PR exists is a structural fact, and parsing it out of an
+ * agent's prose would make the agent a second authority on it. Without this
+ * step, that correct refusal means the PR the agent opened never enters the
+ * world at all, no `pr_opened`, CI, review or merge gate can appear, and the
+ * entity goes idle after one dispatch. Reconciliation cannot recover it either,
+ * because recovery works over PRs that were *read*, and this one never is.
+ *
+ * So conductor asks the source the one question it can answer: **which
+ * submission is on this branch?** It is asked of the branch rather than the
+ * vendor result deliberately, because that also covers the case a vendor report
+ * never could — a *human* opening the PR for a branch the agent pushed, with
+ * conductor nowhere in the loop.
+ *
+ * The lookup is skipped once the phase holds an artifact of its kind, so it
+ * costs one extra source call per tick only in the window between the work being
+ * handed out and the submission appearing. A replacement submission opened after
+ * the first one closed is not adopted here: a PR closed unmerged is escalated to
+ * a human by `decide`, and quietly picking up its successor would route around
+ * the escalation.
+ */
+async function adoptSubmissionForBranch(
+  context: TickContext,
+  entity: ConductorEntity,
+): Promise<void> {
+  const kind = artifactKindForPhase(entity.phase);
+  if (!kind) return;
+
+  const branch = branchNameFor(entity);
+  if (!branch) return;
+
+  const rows = await context.collections.artifacts.list();
+  const held = rows.some((row) => row.entityId === context.entityId && row.kind === kind);
+  if (held) return;
+
+  const number = await context.deps.observer.submissionForBranch(branch);
+  if (number === null) return;
+
+  await recordArtifact(context, kind, { type: "pr", number });
 }
 
 /**
@@ -586,10 +704,15 @@ async function runDispatch(
   return result;
 }
 
+/** Every dispatch record belonging to this entity, in storage order. */
+async function dispatchRows(context: TickContext): Promise<readonly DispatchRow[]> {
+  const rows = await context.collections.dispatches.list();
+  return rows.filter((row) => row.entityId === context.entityId);
+}
+
 /** How many phase executions this entity has had, ever. */
 export async function countDispatches(context: TickContext): Promise<number> {
-  const rows = await context.collections.dispatches.list();
-  return rows.filter((row) => row.entityId === context.entityId).length;
+  return (await dispatchRows(context)).length;
 }
 
 /**
@@ -656,6 +779,13 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
   let entity = await loadEntity(context, ledger);
   let seq = ledger.at(-1)?.seq ?? 0;
 
+  // Ahead of the read, because the read is driven by what this may record: a
+  // submission opened for the phase's branch — by the agent at the end of its
+  // run, or by a human — has no artifact naming it, and without one it is
+  // invisible to the observation about to happen. See {@link
+  // adoptSubmissionForBranch}.
+  await adoptSubmissionForBranch(context, entity);
+
   const observation = await context.deps.observer.observe({
     entity: { kind: entity.kind, phase: entity.phase },
     entityId: context.entityId,
@@ -670,14 +800,15 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
 
   const queue: Queued[] = [];
 
-  // A phase whose entry has not been reduced has never been *entered*, whatever
-  // its row says it advanced into. Entry is what dispatches a phase's opening
-  // work, so without this a fresh item sits still forever and a restart taken
-  // mid-transition loses that phase's opening work permanently. Derived from the
-  // ledger rather than stored on the entity, which is what makes it restart-safe
-  // in both directions — see {@link entrySeeded}. The property is exact: a
-  // phase's entry work runs once, and runs at least once.
-  if (!entrySeeded(ledger, entity.phase)) {
+  // A phase whose entry work has not *finished* has not really been entered,
+  // whatever its row says it advanced into. Entry is what dispatches a phase's
+  // opening work, so without this a fresh item sits still forever, and a restart
+  // taken mid-transition or mid-dispatch loses that phase's opening work
+  // permanently. Derived from the ledger and the dispatch record rather than
+  // stored on the entity, which is what makes it restart-safe in both
+  // directions — see {@link entryCompleted}. The property is exact: a phase's
+  // entry work runs once, and runs at least once.
+  if (!entryCompleted(ledger, await dispatchRows(context), entity)) {
     queue.push({
       signal: { kind: "phase_entered", entityId: context.entityId, at },
       derived: true,

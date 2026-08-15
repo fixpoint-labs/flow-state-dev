@@ -8,9 +8,17 @@ live.
 openConductor({ config, statePath })
       │
       ├─ manage(item)  registry row, entity row, the work item's own prose
-      ├─ tick(id)      observe → decide → execute → ledger
+      ├─ tick(id)      adopt → observe → decide → execute → ledger
       └─ read(id)      the same answer, reducing nothing
 ```
+
+**Adopt** is the step ahead of the read: the observation is driven by the artifacts an
+entity holds, and the submission somebody opened for the phase's branch — the agent at
+the end of its run, or a human — is named by no artifact yet. So the tick asks the
+source which submission is on the branch and records the artifact before it reads.
+Without it a harness that reports only the branch (which is what the shipped one
+reports, on purpose) leaves its pull request permanently outside the world: no
+`pr_opened`, no CI, no review or merge gate, and an entity idle after one dispatch.
 
 | File | What it owns |
 |---|---|
@@ -35,10 +43,14 @@ way a property survives a change nobody remembers to re-verify.
   (`loadEntity` adopts the ledger's phase, because the ledger is the authority for a
   transition and the entity row is a projection of it). The entry a phase move
   queues is covered by the same authority: **a phase's entry work runs once, and
-  runs at least once**, because it is re-derived until a ledger row shows a
-  `phase_entered` reduced against *that* phase. Resuming into a phase whose entry
-  never ran is what a nonempty-ledger test misses, and it is unrecoverable — an
-  artifact-free world produces no signal that could start the work later.
+  runs at least once**, because it is re-derived until two things hold — a ledger
+  row shows a `phase_entered` reduced against *that* phase, and every entry action
+  the phase declares has a **settled** dispatch record. The row alone is not
+  enough: it is written before the dispatch it records, so a process that died
+  mid-dispatch leaves a row proving something that never finished, and nothing
+  settles it afterwards. Resuming into a phase whose entry never ran is
+  unrecoverable — an artifact-free world produces no signal that could start the
+  work later.
 - **This holds for one tick at a time, per entity.** A tick is a read-modify-write
   and none of it is atomic; two overlapping ones read the same cursor and ledger
   sequence and run the same paid dispatch twice, with the atomic rename hiding it.

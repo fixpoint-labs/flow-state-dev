@@ -141,7 +141,7 @@ function storeDyingAfter(
 /** The observer with a yield in it, so two overlapping ticks really do overlap. */
 function slowObserver(inner: Observer): Observer {
   return {
-    source: inner.source,
+    ...inner,
     async observe(request) {
       await new Promise((resolve) => setTimeout(resolve, 5));
       return inner.observe(request);
@@ -302,6 +302,35 @@ function harness(): FakeDispatcher {
   });
 }
 
+/** A recording dispatcher that also opened a submission, and what it opened. */
+interface AgentDispatcher extends FakeDispatcher {
+  /** The submission the agent opened during its run, or `null` before it ran. */
+  submission(): { number: number; head: string } | null;
+}
+
+/**
+ * A harness that behaves the way the shipped one does.
+ *
+ * It pushes a branch and opens the submission itself, and reports **only the
+ * branch** — `claudeCodeDispatcher` deliberately reports nothing else, because
+ * whether a pull request exists is a structural fact conductor reads and an
+ * agent's prose is not an authority on it. Every other dispatcher in this file
+ * is scripted with a `pullNumber`, which is a thing no real vendor here says.
+ */
+function agentOpeningItsOwnPr(): AgentDispatcher {
+  const inner = fakeDispatcher({ isolation: "remote" });
+  let opened: { number: number; head: string } | null = null;
+  return {
+    ...inner,
+    submission: () => opened,
+    async run(brief) {
+      const result = await inner.run(brief);
+      opened = await submit(brief.branch!);
+      return result;
+    },
+  };
+}
+
 describe("putting one work item under management", () => {
   it("dispatches the phase's opening work on the first tick, and records it", async () => {
     const dispatcher = harness();
@@ -348,6 +377,102 @@ describe("putting one work item under management", () => {
 
     expect(observed.gate).toBe("awaiting_review");
     expect(observed.entity.phase).toBe("IMPLEMENTATION");
+  });
+});
+
+describe("a submission conductor was never told about", () => {
+  it("enters the world from the phase's branch, so a gate exists at all", async () => {
+    repo = await createTestRepo();
+    await freshState();
+
+    const dispatcher = agentOpeningItsOwnPr();
+    const session = await open(dispatcher);
+    await manageIssue(session);
+
+    const dispatched = await session.tick(ENTITY);
+
+    // What the real harness reports, and no more. Nothing in this result names a
+    // pull request, so nothing on the recording path can create the artifact the
+    // read is driven by.
+    expect(dispatcher.results[0]?.produced).toEqual({ branch: `fix/${ENTITY}` });
+    expect(dispatched.gate).toBeNull();
+
+    const observed = await session.tick(ENTITY);
+
+    // The assertion that matters is the gate rather than the fetch: with the
+    // submission outside the world every IMPLEMENTATION gate stops applying, the
+    // phase completes nothing, and the entity is idle for good after one
+    // dispatch — which is the whole drive, unreachable.
+    expect(observed.gate).toBe("awaiting_review");
+
+    // And the gate is operable, not merely named: a human's approval on that
+    // submission reduces against it.
+    const submission = dispatcher.submission()!;
+    await review(submission.number, "alice", "APPROVED", submission.head);
+    const approved = await session.tick(ENTITY);
+
+    expect(approved.ledger.map((row) => row.actionKind)).toEqual([
+      "implement",
+      "recordApproval",
+    ]);
+    expect(replayFailures(approved.ledger)).toEqual([]);
+    expect(ledgerFailures(approved.ledger, "IMPLEMENTATION", approved.entity.phase)).toEqual(
+      [],
+    );
+  });
+
+  it("finds the one a human opened for the branch the agent pushed", async () => {
+    repo = await createTestRepo();
+    await freshState();
+
+    // The vendor said nothing at all about what it produced — which is the whole
+    // shape when the human is the one who opens the pull request.
+    const dispatcher = fakeDispatcher({ isolation: "remote", results: [{ produced: {} }] });
+    const session = await open(dispatcher);
+    await manageIssue(session);
+    await session.tick(ENTITY);
+    expect(dispatcher.results[0]?.produced).toEqual({});
+
+    // A human, afterwards, with conductor nowhere in the loop.
+    const submission = await submit(`fix/${ENTITY}`);
+    const observed = await session.tick(ENTITY);
+
+    expect(observed.gate).toBe("awaiting_review");
+
+    await review(submission.number, "alice", "APPROVED", submission.head);
+    const approved = await session.tick(ENTITY);
+    expect(approved.ledger.map((row) => row.actionKind)).toEqual([
+      "implement",
+      "recordApproval",
+    ]);
+  });
+
+  it("does not go looking once the phase already holds an artifact", async () => {
+    // The lookup is a fallback for the window before an artifact exists, not a
+    // second authority over the one conductor recorded. Once the phase holds an
+    // artifact of its kind, the source is not asked.
+    repo = await createTestRepo();
+    await freshState();
+    await submit(`fix/${ENTITY}`);
+
+    const asked: string[] = [];
+    const session = await open(harness(), {
+      observer: (inner) => ({
+        ...inner,
+        submissionForBranch(branch) {
+          asked.push(branch);
+          return inner.submissionForBranch(branch);
+        },
+      }),
+    });
+
+    await manageIssue(session);
+    await session.tick(ENTITY);
+    await session.tick(ENTITY);
+    await session.tick(ENTITY);
+
+    // Once — on the first tick, before the dispatch recorded the artifact.
+    expect(asked).toEqual([`fix/${ENTITY}`]);
   });
 });
 
@@ -499,6 +624,95 @@ describe("property 2: a restart resumes, it does not redo", () => {
     // And once, not once per tick: the row the recovery wrote is what stops it.
     await resumed.tick(ENTITY);
     expect(second.actionsRun()).toEqual(["implement"]);
+  });
+
+  it("dispatches the entry work again when the dispatch died with the process", async () => {
+    repo = await createTestRepo();
+    await freshState();
+
+    // The window beside the one above, and the reason a row is not enough: the
+    // `phase_entered → implement` row is durably on disk and the dispatch it
+    // records is still in flight when the process dies. The store stops
+    // accepting writes the instant the dispatch record is written, and
+    // `runDispatch` writes that record *before* the run — so what is left behind
+    // is a dispatch that started and never settled, which is exactly what a
+    // killed process leaves. An in-process agent cannot report back after its
+    // parent dies, so nothing will ever settle it.
+    const first = fakeDispatcher({ isolation: "remote" });
+    const session = await open(first, {
+      store: storeDyingAfter(fileStateStore(statePath), (key) =>
+        key.startsWith("dispatches/"),
+      ),
+    });
+
+    await manageIssue(session);
+    await expect(session.tick(ENTITY)).rejects.toThrow(/the process died/);
+    expect(first.actionsRun()).toEqual(["implement"]);
+
+    // The restart, over a healthy store and a dispatcher that has run nothing.
+    // Nothing in the world can start an implementation: no submission exists,
+    // and none will until this phase's entry work actually runs. If it is
+    // suppressed here it is suppressed forever.
+    const second = fakeDispatcher({ isolation: "remote" });
+    const resumed = await open(second);
+    const ticked = await resumed.tick(ENTITY);
+
+    expect(second.actionsRun()).toEqual(["implement"]);
+    expect(ticked.entity.phase).toBe("IMPLEMENTATION");
+    expect(replayFailures(ticked.ledger)).toEqual([]);
+
+    // And once. The settled record the recovery wrote is what stops it — the
+    // unsettled one from the dead process is still sitting there beside it, so
+    // "a settled dispatch exists" has to be the test rather than "no unsettled
+    // one does", or this loops every tick.
+    await resumed.tick(ENTITY);
+    expect(second.actionsRun()).toEqual(["implement"]);
+  });
+
+  it("still enters a phase that dispatches nothing on entry", async () => {
+    repo = await createTestRepo();
+    await freshState();
+
+    // The other half of the entry proof, and the half a dispatch record cannot
+    // carry: an epic phase with no `onEnter` produces no dispatch to settle, so
+    // "every entry action has settled" is vacuously true for it. Only the
+    // ledger's own `phase_entered` row separates *entered* from *not yet*, and
+    // without it nothing ever queues the signal that lets the phase complete —
+    // the epic sits in a finished phase with no signal left to move it.
+    const dispatcher = fakeDispatcher({ isolation: "remote" });
+    const session = await open(dispatcher);
+    await session.manage({
+      id: "EPIC-1",
+      kind: "epic",
+      phase: "CROSS_SPEC_REVIEW",
+      summary: "One issue, so there is no spec set to be incoherent with.",
+    });
+
+    const ticked = await session.tick("EPIC-1");
+
+    expect(ticked.ledger.map((row) => row.actionKind)).toEqual(["enterPhase"]);
+    expect(ticked.entity.phase).toBe("ISSUES");
+    expect(dispatcher.briefs).toHaveLength(0);
+  });
+
+  it("does not re-run entry work that settled, however it settled", async () => {
+    repo = await createTestRepo();
+    await freshState();
+
+    // `cwd` isolation provisions for real and this checkout has no `origin`, so
+    // the dispatch settles as a failure. Settled is settled: `decide` has
+    // already escalated it, and re-deriving the entry would grind out the same
+    // failure on every tick.
+    const dispatcher = fakeDispatcher({ isolation: "cwd" });
+    const session = await open(dispatcher);
+    await manageIssue(session);
+
+    const failed = await session.tick(ENTITY);
+    expect(failed.ledger.map((row) => row.actionKind)).toEqual(["implement", "escalate"]);
+
+    const again = await session.tick(ENTITY);
+    expect(again.dispatchCount).toBe(1);
+    expect(again.ledger).toHaveLength(failed.ledger.length);
   });
 
   it("does not re-enter a phase whose entry work already ran", async () => {

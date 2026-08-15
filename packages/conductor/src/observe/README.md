@@ -25,6 +25,12 @@ the seam.
 - **The cursor round-trips verbatim.** Conductor stores it and hands it back untouched. It
   is the only thing a dropped event can be detected against, which is what makes polling
   authoritative rather than best-effort.
+- **A source can say which submission is on a branch.** `submissionForBranch` is the
+  seam's second method and it is a lookup, not a materialization: `observe` reads the
+  submissions an entity's artifacts already name, which is no help before the first one
+  exists. Conductor names the branch its work goes on; something else opens the pull
+  request for it, and neither an agent's own account of its run nor a human's PR is
+  something a vendor result can be trusted to report. One question answers both.
 
 How a source *learned* that something changed — a webhook, a poll, a file watcher — is
 deliberately absent from the seam. `reconcile` turns any source's fresh facts into the

@@ -12,6 +12,7 @@
 import type { Observation, ObservationRequest, Observer } from "../observe/types";
 import type { GitHubClient } from "./client";
 import { pollGitHub } from "./poll";
+import { pullRequestForBranch } from "./read-world";
 
 /** The source identity every GitHub observation is recorded under. */
 export const GITHUB_SOURCE = "github";
@@ -27,6 +28,9 @@ export function githubObserver(client: GitHubClient): Observer {
     source: GITHUB_SOURCE,
     observe(request: ObservationRequest): Promise<Observation> {
       return pollGitHub(client, request);
+    },
+    submissionForBranch(branch: string): Promise<number | null> {
+      return pullRequestForBranch(client, branch);
     },
   };
 }

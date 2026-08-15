@@ -12,6 +12,9 @@ import { deriveGate } from "../../src/driver/derive-gate";
 import { createGitHubClient } from "../../src/github/client";
 import {
   aggregateChecks,
+  aggregateStatuses,
+  combineChecks,
+  pullRequestForBranch,
   readPullRequest,
   readWorld,
   toObservedPr,
@@ -24,6 +27,8 @@ import {
   SELF_LOGIN,
   checkRun,
   checkRuns,
+  commitStatus,
+  commitStatuses,
   pullPayload,
   reviewPayload,
   stubFetch,
@@ -85,6 +90,197 @@ describe("aggregateChecks", () => {
     expect(
       aggregateChecks([checkRun("completed", "neutral"), checkRun("completed", "skipped")]),
     ).toBe("success");
+  });
+});
+
+describe("aggregateStatuses", () => {
+  it("reports null when no context has reported", () => {
+    expect(aggregateStatuses([])).toBeNull();
+  });
+
+  it("treats error the same as failure — both mean the context did not pass", () => {
+    expect(aggregateStatuses([commitStatus("error")])).toBe("failure");
+    expect(aggregateStatuses([commitStatus("failure")])).toBe("failure");
+  });
+
+  it("lets a failing context outrank one still running", () => {
+    expect(
+      aggregateStatuses([commitStatus("pending", "a"), commitStatus("failure", "b")]),
+    ).toBe("failure");
+  });
+
+  it("passes only when every context passed", () => {
+    expect(
+      aggregateStatuses([commitStatus("success", "a"), commitStatus("success", "b")]),
+    ).toBe("success");
+    expect(
+      aggregateStatuses([commitStatus("success", "a"), commitStatus("pending", "b")]),
+    ).toBe("pending");
+  });
+
+  it("reads a state it does not recognize as pending, never as a pass", () => {
+    // Fail-closed. A state read as success opens a merge gate on a context
+    // nobody has seen pass; read as pending it merely waits.
+    expect(aggregateStatuses([commitStatus("expected")])).toBe("pending");
+  });
+});
+
+describe("combineChecks", () => {
+  it("keeps null only when neither mechanism reported anything", () => {
+    expect(combineChecks(null, null)).toBeNull();
+  });
+
+  it("does not let a green check run hide a failing required status", () => {
+    // The whole point of folding rather than falling back: a repository may use
+    // both, and a red context in either is red.
+    expect(combineChecks("success", "failure")).toBe("failure");
+    expect(combineChecks("failure", "success")).toBe("failure");
+  });
+
+  it("waits when either mechanism is still running", () => {
+    expect(combineChecks("success", "pending")).toBe("pending");
+    expect(combineChecks(null, "pending")).toBe("pending");
+  });
+
+  it("passes when the only mechanism that reported passed", () => {
+    expect(combineChecks("success", null)).toBe("success");
+    expect(combineChecks(null, "success")).toBe("success");
+  });
+});
+
+describe("a repository whose CI reports classic commit statuses", () => {
+  /** Routes for an open implementation PR whose head has the given CI reports. */
+  function repoWith(routes: Record<string, StubRoute>): Record<string, StubRoute> {
+    return {
+      [`GET ${P}/pulls/7`]: pullPayload(),
+      [`GET ${P}/pulls/7/reviews`]: [],
+      [`GET ${P}/commits/main/check-runs`]: checkRuns(),
+      [`GET ${P}/commits/main/status`]: commitStatuses(),
+      ...routes,
+    };
+  }
+
+  it("sees a failing status that reports no check run at all", async () => {
+    // The failure this closes is an exposure, not a stall: with `checks: null`
+    // the `awaiting_ci` gate stops applying entirely, `awaiting_review` opens,
+    // and review and merge are offered on work whose CI never passed.
+    const { client: gh, calls } = client(
+      repoWith({
+        [`GET ${P}/commits/sha-head/check-runs`]: checkRuns(),
+        [`GET ${P}/commits/sha-head/status`]: commitStatuses(commitStatus("failure")),
+      }),
+    );
+
+    const { world } = await readWorld(gh, {
+      entity: { kind: "issue", phase: "IMPLEMENTATION" },
+      artifacts: [implArtifact],
+    });
+
+    expect(calls).toContain(`GET ${P}/commits/sha-head/status`);
+    expect(world.pullRequests[7]?.checks).toBe("failure");
+    expect(deriveGate({ id: "FIX-1", kind: "issue", phase: "IMPLEMENTATION" }, world)).toBe(
+      "awaiting_ci",
+    );
+  });
+
+  it("holds the gate on a status that is still pending", async () => {
+    const { client: gh } = client(
+      repoWith({
+        [`GET ${P}/commits/sha-head/check-runs`]: checkRuns(),
+        [`GET ${P}/commits/sha-head/status`]: commitStatuses(commitStatus("pending")),
+      }),
+    );
+
+    const { world } = await readWorld(gh, {
+      entity: { kind: "issue", phase: "IMPLEMENTATION" },
+      artifacts: [implArtifact],
+    });
+
+    expect(world.pullRequests[7]?.checks).toBe("pending");
+    expect(deriveGate({ id: "FIX-1", kind: "issue", phase: "IMPLEMENTATION" }, world)).toBe(
+      "awaiting_ci",
+    );
+  });
+
+  it("combines the two mechanisms when a repository uses both", async () => {
+    const { client: gh } = client(
+      repoWith({
+        [`GET ${P}/commits/sha-head/check-runs`]: checkRuns(checkRun("completed", "success")),
+        [`GET ${P}/commits/sha-head/status`]: commitStatuses(commitStatus("failure")),
+      }),
+    );
+
+    const { world } = await readWorld(gh, {
+      entity: { kind: "issue", phase: "IMPLEMENTATION" },
+      artifacts: [implArtifact],
+    });
+
+    expect(world.pullRequests[7]?.checks).toBe("failure");
+  });
+
+  it("still reports no CI when neither mechanism has anything to say", async () => {
+    // The other direction has to keep working: `null` means "no CI configured
+    // here", and a repository using check runs only must not be pushed into a
+    // permanent `awaiting_ci` by the empty combined status GitHub returns.
+    const { client: gh } = client(
+      repoWith({
+        [`GET ${P}/commits/sha-head/check-runs`]: checkRuns(),
+        [`GET ${P}/commits/sha-head/status`]: commitStatuses(),
+      }),
+    );
+
+    const { world } = await readWorld(gh, {
+      entity: { kind: "issue", phase: "IMPLEMENTATION" },
+      artifacts: [implArtifact],
+    });
+
+    expect(world.pullRequests[7]?.checks).toBeNull();
+    expect(deriveGate({ id: "FIX-1", kind: "issue", phase: "IMPLEMENTATION" }, world)).toBe(
+      "awaiting_review",
+    );
+  });
+
+  it("reads a red base from statuses too, so a red base is still not our failure", async () => {
+    const { client: gh } = client(
+      repoWith({
+        [`GET ${P}/commits/sha-head/check-runs`]: checkRuns(checkRun("completed", "failure")),
+        [`GET ${P}/commits/sha-head/status`]: commitStatuses(),
+        [`GET ${P}/commits/main/status`]: commitStatuses(commitStatus("failure")),
+      }),
+    );
+
+    const { world } = await readWorld(gh, {
+      entity: { kind: "issue", phase: "IMPLEMENTATION" },
+      artifacts: [implArtifact],
+    });
+
+    expect(world.pullRequests[7]?.baseRed).toBe(true);
+  });
+});
+
+describe("the pull request on a branch", () => {
+  it("finds it by head branch, whoever opened it", async () => {
+    const { client: gh, calls } = client({
+      [`GET ${P}/pulls`]: [{ number: 12 }],
+    });
+
+    expect(await pullRequestForBranch(gh, "fix/FIX-1")).toBe(12);
+    expect(calls).toContain(`GET ${P}/pulls`);
+  });
+
+  it("takes the newest when a branch has hosted several", async () => {
+    // Matches `artifactOfKind`: the later submission supersedes the earlier one.
+    const { client: gh } = client({
+      [`GET ${P}/pulls`]: [{ number: 4 }, { number: 19 }, { number: 11 }],
+    });
+
+    expect(await pullRequestForBranch(gh, "fix/FIX-1")).toBe(19);
+  });
+
+  it("reports null for a branch nobody has opened a pull request for", async () => {
+    const { client: gh } = client({ [`GET ${P}/pulls`]: [] });
+
+    expect(await pullRequestForBranch(gh, "fix/FIX-1")).toBeNull();
   });
 });
 

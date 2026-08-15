@@ -157,6 +157,30 @@ export async function readSubmission(
 }
 
 /**
+ * The submission hosting a branch, or `null` when none has been opened for it.
+ *
+ * The local half of the observer seam's `submissionForBranch`, and the same scan
+ * {@link openSubmission} does to stay idempotent — one implementation, because
+ * "which submission is this branch's" has one answer and two callers.
+ *
+ * The **newest** match is returned, matching the GitHub reader: a branch has at
+ * most one submission today (opening is idempotent on the branch), so this only
+ * differs from "the first" if the directory is hand-edited — in which case the
+ * later record is the one someone meant.
+ */
+export async function findSubmissionByBranch(
+  repoRoot: string,
+  branch: string,
+): Promise<LocalSubmission | null> {
+  let found: LocalSubmission | null = null;
+  for (const number of await existingNumbers(repoRoot)) {
+    const existing = await readSubmission(repoRoot, number);
+    if (existing?.branch === branch) found = existing;
+  }
+  return found;
+}
+
+/**
  * A review's identity: the file it lives in, when it was saved, and the verdict
  * it carried at that moment.
  *
@@ -507,12 +531,10 @@ export async function openSubmission(
   now: string,
 ): Promise<LocalSubmission> {
   for (let attempt = 0; attempt < OPEN_ATTEMPTS; attempt += 1) {
-    const numbers = await existingNumbers(repoRoot);
-    for (const number of numbers) {
-      const existing = await readSubmission(repoRoot, number);
-      if (existing?.branch === branch) return existing;
-    }
+    const existing = await findSubmissionByBranch(repoRoot, branch);
+    if (existing) return existing;
 
+    const numbers = await existingNumbers(repoRoot);
     const submission: LocalSubmission = {
       number: (numbers.at(-1) ?? 0) + 1,
       branch,

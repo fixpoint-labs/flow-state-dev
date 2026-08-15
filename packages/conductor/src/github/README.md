@@ -9,7 +9,7 @@ can tell which source produced them.
 |---|---|
 | `client.ts` | auth, pagination, typed errors, and which account the token is. Nothing domain-shaped. |
 | `identity.ts` | who counts as a human |
-| `read-world.ts` | GitHub → `World`, fetching the facts the phase's gates declare |
+| `read-world.ts` | GitHub → `World`, fetching the facts the phase's gates declare, plus the PR on a branch |
 | `signals.ts` | payloads → signals, structural only |
 | `poll.ts` | the read path: fresh read, reconcile, comment cursor |
 | `observe.ts` | that read path, stated as an `Observer` |
@@ -29,6 +29,14 @@ Two things worth knowing before changing anything here:
   configured, and **the read path raises rather than polling without it.** A token on
   an ordinary `User` account, which is what a personal access token is, looks exactly
   like a human otherwise.
+
+- **CI is read through both of GitHub's mechanisms, always.** Check Runs and the older
+  Statuses API are separate endpoints, and a repository can use either or both. Reading
+  only check runs makes a repository whose CI posts commit statuses look like a
+  repository with no CI at all — which does not strand it, it *exposes* it: `checks:
+  null` stops the `awaiting_ci` gate applying, so review and merge open on work whose
+  CI never passed. The two are folded, not fallen back through: failure outranks
+  pending outranks success, and "no CI here" survives only when neither reported.
 
 Polling is the whole read path today; webhooks come later. That is not a degraded mode —
 reconciliation is what makes a poll authoritative, because a tick diffs what it read
