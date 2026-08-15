@@ -22,6 +22,7 @@ import { thesesCollection, thesisKey } from "../../portfolio/portfolio-resources
 import type { Tripwire } from "@/domain/portfolio/schema/thesis-schema";
 import { decisionSnapshotResource } from "../decision-snapshot-resource";
 import type { DecisionSnapshotState } from "../decision-snapshot-resource";
+import { levelsForStance } from "../lib/trade-levels";
 import { PHASE_3_MEMO_KEYS } from "../registry";
 import { memosCollection } from "../resources";
 import { sessionStateSchema } from "../state";
@@ -71,12 +72,32 @@ export const adoptThesis = handler({
         ? criteria.map((c) => `- ${c}`).join("\n")
         : null;
 
+    // FIX-780 — re-apply the stance gate at the READ, because this is the seam
+    // where a legacy record turns into durable user data.
+    //
+    // The PM writer gates the snapshot on the WRITE, so any run decided after
+    // that fix is already correct and this is a no-op (the gate is idempotent).
+    // It is NOT a no-op for a report that COMPLETED before the fix and is merely
+    // reopened: no Phase 5 write ever runs on that path, so the stored snapshot
+    // still carries a flat call's two monitoring levels under `stopPrice` /
+    // `targetPrice`. Adopting those verbatim minted a standing thesis with a
+    // stop and a live "Price through the stop level" tripwire — on a position
+    // the desk explicitly declined to take, and with a number nothing in the
+    // record says was ever a stop.
+    //
+    // The gate drops the pair the stance cannot carry, so a legacy flat record
+    // adopts NO levels and NO tripwire. Absent stays absent. The numbers are not
+    // re-filed under the monitoring names either: the record does not say which
+    // of the two was which, and guessing here would wear a stored value's
+    // authority — the same move the display and write rules already refuse.
+    const adopted = levelsForStance(snapshot.direction, snapshot);
+
     // A price tripwire from the stop level gives FIX-763's deterministic check a
     // machine-readable falsifier out of the box; the user adds richer tripwires
     // later via the editor.
     const tripwires: Tripwire[] =
-      snapshot.stopPrice != null
-        ? [{ kind: "price", note: "Price through the stop level", level: snapshot.stopPrice, byDate: null }]
+      adopted.stopPrice != null
+        ? [{ kind: "price", note: "Price through the stop level", level: adopted.stopPrice, byDate: null }]
         : [];
 
     const entryRationale = [
@@ -97,8 +118,8 @@ export const adoptThesis = handler({
       tripwires,
       // The snapshot's holdingPeriod enum is a subset of the thesis horizon.
       timeHorizon: snapshot.holdingPeriod,
-      targetPrice: snapshot.targetPrice,
-      stopPrice: snapshot.stopPrice,
+      targetPrice: adopted.targetPrice,
+      stopPrice: adopted.stopPrice,
       // Capture the originating report automatically (the FIX-763 read).
       sourceSessionId: ctx.session.identity.id,
       createdAt: existing?.state.createdAt ?? now,

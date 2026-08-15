@@ -226,6 +226,62 @@ describe("buildRunSummary", () => {
     expect(summary.finalRating).toBeNull();
   });
 
+  /**
+   * FIX-780 — a report COMPLETED before the write-side stance gate and merely
+   * reopened never re-runs the Phase 5 write, so its stored snapshot can still
+   * carry a flat call's monitoring levels under `stopPrice` / `targetPrice`.
+   * The summary re-applies the gate at the read rather than mirroring verbatim,
+   * so it can never publish `direction: "flat"` beside a `stopPrice` — the exact
+   * contradiction the level fields' own schema comment rules out.
+   */
+  it("nulls a legacy flat snapshot's mislabeled levels instead of mirroring them", () => {
+    const summary = buildRunSummary({
+      sessionState: sessionState({ runComplete: true }),
+      decisionSnapshot: decisionSnapshot({
+        finalRating: "Hold",
+        direction: "flat",
+        // The pre-fix shape: the monitoring pair wearing the trade names.
+        stopPrice: 320,
+        targetPrice: 195,
+        reassessBelowPrice: null,
+        invalidateAbovePrice: null,
+      }),
+      memos: [],
+      sessionId: SESSION_ID,
+      ranAt: RAN_AT,
+    });
+
+    expect(summary.direction).toBe("flat");
+    expect(summary.stopPrice).toBeNull();
+    expect(summary.targetPrice).toBeNull();
+    // Not re-filed under the monitoring names — nothing in the record says which
+    // of the two numbers was which.
+    expect(summary.reassessBelowPrice).toBeNull();
+    expect(summary.invalidateAbovePrice).toBeNull();
+  });
+
+  it("keeps a post-fix flat run's monitoring levels intact (the gate is idempotent)", () => {
+    const summary = buildRunSummary({
+      sessionState: sessionState({ runComplete: true }),
+      decisionSnapshot: decisionSnapshot({
+        finalRating: "Hold",
+        direction: "flat",
+        stopPrice: null,
+        targetPrice: null,
+        reassessBelowPrice: 195,
+        invalidateAbovePrice: 320,
+      }),
+      memos: [],
+      sessionId: SESSION_ID,
+      ranAt: RAN_AT,
+    });
+
+    expect(summary.reassessBelowPrice).toBe(195);
+    expect(summary.invalidateAbovePrice).toBe(320);
+    expect(summary.stopPrice).toBeNull();
+    expect(summary.targetPrice).toBeNull();
+  });
+
   it("echoes the mandate id from session state on a mandate-set stopped run", () => {
     const summary = buildRunSummary({
       sessionState: sessionState({

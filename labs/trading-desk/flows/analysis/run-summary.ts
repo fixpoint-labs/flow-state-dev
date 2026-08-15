@@ -24,6 +24,7 @@
  */
 import { z } from "zod";
 import { ratingSchema } from "./lib/rating-engine";
+import { levelsForStance } from "./lib/trade-levels";
 import type { DecisionSnapshotState } from "./decision-snapshot-resource";
 import { ALL_MEMO_KEYS } from "./registry";
 import type { MemoState, MemoStatus } from "./resources";
@@ -204,10 +205,14 @@ export function buildRunSummary(input: BuildRunSummaryInput): RunSummary {
     targetWeightPct,
     direction: decision?.direction ?? null,
     sizePct: decision?.sizePct ?? null,
-    stopPrice: decision?.stopPrice ?? null,
-    targetPrice: decision?.targetPrice ?? null,
-    reassessBelowPrice: decision?.reassessBelowPrice ?? null,
-    invalidateAbovePrice: decision?.invalidateAbovePrice ?? null,
+    // FIX-780 — the SAME read-seam gate `adoptThesis` applies, for the same
+    // reason: a report completed before the write-side fix and merely reopened
+    // never re-runs the Phase 5 write, so its stored snapshot can still carry a
+    // flat call's monitoring levels under the trade names. Mirroring verbatim
+    // would publish `direction: "flat"` alongside a `stopPrice` — contradicting
+    // the invariant this schema's own field comment states. Idempotent for every
+    // run decided after the fix.
+    ...levelsForStance(decision?.direction ?? null, decision ?? {}),
     holdingPeriod: decision?.holdingPeriod ?? null,
     decidedAt: decision?.decidedAt ?? null,
 
