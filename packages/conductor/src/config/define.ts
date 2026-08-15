@@ -35,7 +35,7 @@ import {
   type HarnessProbe,
   type RepoRef,
 } from "./discover";
-import type { GitRunner } from "../dispatch/branch";
+import { DEFAULT_REMOTE, type GitRunner } from "../dispatch/branch";
 
 /**
  * What a project declares. Every field is optional, and a level-1 project sets
@@ -90,9 +90,12 @@ export type FieldOrigin = "discovered" | "configured";
  * level-1 project will ask first — *what did it decide, and did I decide any of
  * it?* A board, a CLI, and this package's own example all render it.
  *
- * `guidance` is absent deliberately: it is the one field with no discovery
- * behind it, so it has no origin to report. Empty means the project named no
- * documents, not that conductor went looking and found none.
+ * `guidance` and `remote` are absent deliberately: neither has a discovery
+ * behind it, so neither has an origin to report. Empty `guidance` means the
+ * project named no documents, not that conductor went looking and found none;
+ * `remote` is either configured or the `origin` default, and reporting that
+ * default as `"discovered"` would claim conductor probed the checkout when it
+ * probed nothing. Every field listed here does have a real lookup behind it.
  */
 export interface ConductorOrigins {
   readonly repoRoot: FieldOrigin;
@@ -106,6 +109,17 @@ export interface ResolvedConductor {
   /** Absolute path to the checkout under management. */
   readonly repoRoot: string;
   readonly repo: RepoRef;
+  /**
+   * The git remote every read and every checkout goes through — `origin` unless
+   * the config named another.
+   *
+   * Carried rather than re-defaulted downstream: discovery already used this
+   * remote to find `repo` and `baseBranch`, and `provisionWorkspace` falls back
+   * to `origin` when its `remote` is omitted. Without this field a fork working
+   * off `upstream` would be *discovered* from upstream and then *provisioned*
+   * from origin, which may be the fork or may not exist at all.
+   */
+  readonly remote: string;
   /** The URL `repo` was read from, or `null` when the repo was configured outright. */
   readonly remoteUrl: string | null;
   readonly baseBranch: string;
@@ -158,7 +172,9 @@ export async function resolveConductor(
   options: ResolveOptions = {},
 ): Promise<ResolvedConductor> {
   const { cwd = process.cwd(), env = process.env, git = defaultGitRunner, probe } = options;
-  const remote = config.remote ?? "origin";
+  // The same constant provisioning defaults to, so the remote discovery reads
+  // from and the remote a checkout is cut off can never drift apart.
+  const remote = config.remote ?? DEFAULT_REMOTE;
 
   const repoRoot = config.repoRoot ?? (await discoverRepoRoot(git, cwd));
 
@@ -184,6 +200,7 @@ export async function resolveConductor(
   return {
     repoRoot,
     repo,
+    remote,
     remoteUrl,
     baseBranch,
     token: discoverGitHubToken(env),

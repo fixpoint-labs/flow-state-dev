@@ -155,6 +155,15 @@ describe("worktree paths", () => {
     expect(() => worktreePath("/repo", "../../etc")).toThrow(WorkspaceProvisionError);
     expect(() => worktreePath("/repo", "a/b")).toThrow(WorkspaceProvisionError);
   });
+
+  it("produces the canonical path whatever shape the configured root has — git only ever reports one", () => {
+    // `git worktree list` prints `/repo/.conductor/worktrees/FIX-1` regardless
+    // of how repoRoot was written, so anything else here is a path that can
+    // never be found in that list.
+    for (const root of ["/repo/", "/repo//", "/repo/./", "/repo/sub/.."]) {
+      expect(worktreePath(root, "FIX-1")).toBe("/repo/.conductor/worktrees/FIX-1");
+    }
+  });
 });
 
 describe("provisioning to the declared isolation model", () => {
@@ -287,6 +296,111 @@ describe("provisioning to the declared isolation model", () => {
       }),
     ).rejects.toThrow(/worktree add/);
     expect(git).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("a repoRoot that is not already canonical", () => {
+  /**
+   * A git that keeps a real worktree registry, the way the daemon does: `worktree
+   * add` records the path **canonicalized**, `worktree list` prints back what was
+   * recorded, and adding a path that is already registered fails.
+   *
+   * That canonicalization is the whole failure. A first pass always succeeds —
+   * the registry is empty, so no comparison happens — and the failure only
+   * surfaces on the *second* provisioning of the same entity, which is every
+   * spec-review and PR-feedback round.
+   */
+  function gitWithWorktreeRegistry(): GitRunner & { readonly registry: string[] } {
+    const registry: string[] = ["/repo"];
+    const runner = (async (argv: readonly string[]): Promise<GitResult> => {
+      if (argv[0] === "worktree" && argv[1] === "list") {
+        return ok(registry.map((p) => `worktree ${p}\n`).join(""));
+      }
+      if (argv[0] === "worktree" && argv[1] === "add") {
+        const requested = argv.at(-1)!;
+        const canonical = requested.replace(/\/{2,}/g, "/").replace(/\/$/, "");
+        if (registry.includes(canonical)) {
+          return fail(`fatal: '${requested}' is already registered`);
+        }
+        registry.push(canonical);
+        return ok();
+      }
+      if (argv[0] === "ls-remote") return ok("abc refs/heads/fix/FIX-1");
+      return ok();
+    }) as GitRunner & { registry: string[] };
+    Object.defineProperty(runner, "registry", { get: () => registry });
+    return runner;
+  }
+
+  const provisionTwice = async (repoRoot: string, git: GitRunner) => {
+    const request = {
+      isolation: "worktree",
+      repoRoot,
+      entityId: "FIX-1",
+      branch: "fix/FIX-1",
+      git,
+    } as const;
+    const first = await provisionWorkspace(request);
+    const second = await provisionWorkspace(request);
+    return { first, second };
+  };
+
+  // The regression: a trailing slash makes the target `/repo//.conductor/...`,
+  // which git canonicalizes away in `worktree list`. The `includes` check then
+  // misses, and the re-entry re-runs `worktree add` on a path git already has —
+  // failing the whole dispatch on round two of a PR-feedback loop.
+  it("re-enters a worktree it already provisioned when the root carries a trailing slash", async () => {
+    const git = gitWithWorktreeRegistry();
+    const { first, second } = await provisionTwice("/repo/", git);
+
+    expect(first.path).toBe("/repo/.conductor/worktrees/FIX-1");
+    expect(second.path).toBe("/repo/.conductor/worktrees/FIX-1");
+    // Added exactly once across both passes — the second found it and moved on.
+    expect(second.ran.map((argv) => argv.join(" "))).not.toContain(
+      "worktree add --detach /repo/.conductor/worktrees/FIX-1",
+    );
+    expect(git.registry).toEqual(["/repo", "/repo/.conductor/worktrees/FIX-1"]);
+  });
+
+  it("behaves identically to a root that was already canonical", async () => {
+    const slashed = gitWithWorktreeRegistry();
+    const plain = gitWithWorktreeRegistry();
+    const withSlash = await provisionTwice("/repo/", slashed);
+    const without = await provisionTwice("/repo", plain);
+    expect(withSlash.second.ran).toEqual(without.second.ran);
+    expect(slashed.registry).toEqual(plain.registry);
+  });
+
+  it("never hands git a path it would have to canonicalize", async () => {
+    const git = scriptedGit([
+      ["worktree list", ok("worktree /repo\n")],
+      ["ls-remote", noSuchBranch()],
+    ]);
+    const provisioned = await provisionWorkspace({
+      isolation: "worktree",
+      repoRoot: "/repo//",
+      entityId: "FIX-1",
+      branch: "fix/FIX-1",
+      git,
+    });
+    for (const { argv, cwd } of git.calls) {
+      expect(cwd).not.toMatch(/\/\//);
+      expect(argv.join(" ")).not.toMatch(/\/\//);
+    }
+    expect(provisioned.ran.flat().join(" ")).not.toMatch(/\/\//);
+  });
+
+  it("runs a cwd dispatcher in the canonical root too", async () => {
+    const git = scriptedGit([["ls-remote", noSuchBranch()]]);
+    const provisioned = await provisionWorkspace({
+      isolation: "cwd",
+      repoRoot: "/repo/",
+      entityId: "FIX-1",
+      branch: "spec/FIX-1",
+      git,
+    });
+    expect(provisioned.path).toBe("/repo");
+    expect(git.calls.every((c) => c.cwd === "/repo")).toBe(true);
   });
 });
 

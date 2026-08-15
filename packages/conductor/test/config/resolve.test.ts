@@ -20,7 +20,12 @@ import {
   resolveConductor,
   type KnownHarness,
 } from "../../src/config";
-import type { GitResult, GitRunner } from "../../src/dispatch/branch";
+import {
+  DEFAULT_REMOTE,
+  provisionWorkspace,
+  type GitResult,
+  type GitRunner,
+} from "../../src/dispatch/branch";
 import type { Dispatcher } from "../../src/dispatch/types";
 
 /** A git that answers from a table, and reports "not found" for anything else. */
@@ -268,6 +273,53 @@ describe("the overrides discovery cannot cover", () => {
     });
     expect(resolved.repo.owner).toBe("acme");
     expect(resolved.baseBranch).toBe("release");
+  });
+
+  // The regression: discovery read `upstream`, but the resolved config had no
+  // field to carry that choice into `provisionWorkspace`, whose omitted-remote
+  // default is `origin`. A fork would be discovered from upstream and then cut
+  // its branches off origin — a different repo, or no repo at all.
+  it("carries the named remote through to the resolved config, so provisioning uses the same one discovery did", async () => {
+    const resolved = await resolveConductor(defineConductor({ remote: "upstream" }), {
+      env: ENV,
+      git: fakeGit({
+        "rev-parse --show-toplevel": "/repo\n",
+        "remote get-url upstream": "https://github.com/acme/thing.git\n",
+        "symbolic-ref --quiet refs/remotes/upstream/HEAD": "refs/remotes/upstream/release\n",
+      }),
+      probe: () => true,
+    });
+    expect(resolved.remote).toBe("upstream");
+
+    // End to end: what the resolver produced is enough to provision from
+    // upstream, with nothing left defaulting to origin.
+    const argvs: string[] = [];
+    await provisionWorkspace({
+      isolation: "cwd",
+      repoRoot: resolved.repoRoot,
+      entityId: "FIX-1",
+      branch: "fix/FIX-1",
+      baseBranch: resolved.baseBranch,
+      remote: resolved.remote,
+      git: (argv) => {
+        argvs.push(argv.join(" "));
+        // Exit 2 on the probe is "no such branch yet" — the creation path.
+        const code = argv[0] === "ls-remote" ? 2 : 0;
+        return Promise.resolve({ code, stdout: "", stderr: "" });
+      },
+    });
+    expect(argvs.some((argv) => argv.includes("origin"))).toBe(false);
+    expect(argvs).toContain("checkout -B fix/FIX-1 upstream/release");
+  });
+
+  it("resolves to origin when no remote is named, matching provisioning's own default", async () => {
+    const resolved = await resolveConductor(defineConductor(), {
+      env: ENV,
+      git: fakeGit(HAPPY),
+      probe: () => true,
+    });
+    expect(resolved.remote).toBe(DEFAULT_REMOTE);
+    expect(resolved.remote).toBe("origin");
   });
 
   it("keeps a supplied dispatcher instead of probing for one", async () => {

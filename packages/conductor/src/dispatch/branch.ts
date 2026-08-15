@@ -29,6 +29,8 @@
  * made from a failed probe — see {@link LS_REMOTE_NO_MATCHING_REFS}.
  */
 
+import path from "node:path";
+
 import type { ConductorEntity } from "../driver/derive-gate";
 import type { IsolationModel } from "./types";
 
@@ -155,10 +157,19 @@ export class WorkspaceProvisionError extends Error {
 }
 
 /**
- * The worktree directory for an entity.
+ * The worktree directory for an entity, in the canonical form git reports.
  *
  * Rejects an id that could climb out of the worktree root — ids come from a
  * tracker, and a tracker is not a place to hold a path traversal.
+ *
+ * **Normalized, because this path is compared against `git worktree list`.** A
+ * `repoRoot` carrying a trailing slash would otherwise produce
+ * `/repo//.conductor/worktrees/FIX-1`, which git canonicalizes to
+ * `/repo/.conductor/worktrees/FIX-1` in its own output. The two never match, so
+ * the *second* provisioning pass — a re-entry, the first one having registered
+ * the worktree — reads the worktree as absent and re-runs `worktree add` on a
+ * path git already has, failing the whole dispatch. A first provision succeeds
+ * either way, which is what makes it a re-entry-only failure.
  */
 export function worktreePath(repoRoot: string, entityId: string): string {
   if (entityId.includes("/") || entityId.includes("\\") || entityId.includes("..")) {
@@ -168,7 +179,7 @@ export function worktreePath(repoRoot: string, entityId: string): string {
       "",
     );
   }
-  return `${repoRoot}/${WORKTREE_ROOT}/${entityId}`;
+  return path.join(path.resolve(repoRoot), WORKTREE_ROOT, entityId);
 }
 
 /** What to provision, and for whom. */
@@ -193,12 +204,17 @@ export interface ProvisionedWorkspace {
   readonly ran: readonly (readonly string[])[];
 }
 
-/** Paths git reports as existing worktrees. */
+/**
+ * Paths git reports as existing worktrees, normalized so they compare equal to
+ * a {@link worktreePath}. Both sides of that comparison are canonicalized — a
+ * mismatch there is read as "not provisioned yet" and re-adds a worktree git
+ * already registered.
+ */
 function parseWorktreeList(stdout: string): string[] {
   return stdout
     .split("\n")
     .filter((line) => line.startsWith("worktree "))
-    .map((line) => line.slice("worktree ".length).trim());
+    .map((line) => path.resolve(line.slice("worktree ".length).trim()));
 }
 
 /**
@@ -219,7 +235,7 @@ export async function provisionWorkspace(
 ): Promise<ProvisionedWorkspace> {
   const {
     isolation,
-    repoRoot,
+    repoRoot: declaredRepoRoot,
     entityId,
     branch,
     git,
@@ -227,6 +243,11 @@ export async function provisionWorkspace(
     remote = DEFAULT_REMOTE,
   } = request;
   if (isolation === "remote") return { path: null, ran: [] };
+
+  // Canonicalized once, then used for every cwd and every path comparison — a
+  // configured `repoRoot` with a trailing slash must not produce a target git
+  // reports back in a different form. See {@link worktreePath}.
+  const repoRoot = path.resolve(declaredRepoRoot);
 
   const ran: (readonly string[])[] = [];
   const run = async (argv: readonly string[], cwd: string) => {
