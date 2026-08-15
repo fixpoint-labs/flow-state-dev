@@ -11,6 +11,11 @@
  * Empty fragments (`pnpm changeset --empty`, internal-only work) release
  * nothing and are skipped.
  *
+ * Run it after `git commit`, not after `git add`. It finds fragments by
+ * diffing `origin/main...HEAD`, so anything still staged — or still untracked —
+ * is invisible to it and the check passes without ever reading the thing it
+ * validates. A green result from a check aimed just past the claim.
+ *
  * No dependencies, so CI runs it without an install.
  */
 
