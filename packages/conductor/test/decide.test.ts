@@ -1061,3 +1061,110 @@ describe("a goal check that fails before the merge", () => {
     expect(actions[0]).toMatchObject({ reason: expect.stringContaining("budget") });
   });
 });
+
+describe("recovery work aimed at a PR that is no longer open", () => {
+  it("does not rebase a branch whose PR merged in the same poll", () => {
+    // The base went red while the implementation PR was in flight, and by the
+    // next poll two things had happened at once: a human merged the PR, and
+    // someone fixed the base. Reconciliation reports both, and `base_recovered`
+    // is reduced second — against an entity still in IMPLEMENTATION, waiting on
+    // its post-merge goal check.
+    //
+    // Handling recovery phase-wide is right: a conflict or a recovery that
+    // lands while CI is still running is just as real as one at the merge gate.
+    // What phase-wide must not mean is artifact-state-blind. A rebase here
+    // spends a paid dispatch on work that is already on the base, and the agent
+    // it dispatches pushes commits to the branch of a PR that has merged — a
+    // real change to someone's repository, not merely waste.
+    //
+    // Only visible as a batch. Reduced on its own, `base_recovered` arrives
+    // while the PR is still open and the dispatch is correct; it is the merge
+    // landing in the same poll that puts the branch past the point where a
+    // rebase means anything.
+    const fresh = pr({
+      state: "merged",
+      checks: "success",
+      baseRed: false,
+      reviews: [freshApproval()],
+    });
+    const signals = reconcile({
+      entityId: ENTITY_ID,
+      observed: [
+        {
+          number: 10,
+          state: "open",
+          headSha: HEAD,
+          checks: "success",
+          mergeable: true,
+          baseRed: true,
+          knownReviewIds: ["rev-approve"],
+          observedAt: "2026-08-14T09:00:00Z",
+        },
+      ],
+      fresh: [fresh],
+      now: AT,
+    });
+    // Pinned rather than assumed: the pairing is what makes the defect
+    // reachable, and the merge is reduced first.
+    expect(signals.map((s) => s.kind)).toEqual(["merged", "base_recovered"]);
+
+    const w = worldWith("implementation", fresh);
+    let entity = issue("IMPLEMENTATION");
+    const actions = signals.flatMap((s) => {
+      const produced = decide(entity, s, w);
+      for (const action of produced) {
+        if (action.kind === "enterPhase") entity = issue(action.phase);
+      }
+      return produced;
+    });
+
+    // Asserted on the actions, so a regression reports the paid dispatch rather
+    // than an internal predicate's answer about the PR.
+    expect(kinds(actions)).toEqual(["runGoalCheck"]);
+    expect(entity.phase).toBe("IMPLEMENTATION");
+  });
+
+  it("does not resolve a conflict reported against a PR that has merged", () => {
+    // The twin of the same rule. No poll produces this pairing today — both
+    // readers report `mergeable: null` once a PR is no longer open, so
+    // reconciliation cannot put `merge_conflict` behind `merged` the way it puts
+    // `base_recovered` there — but `decide` is a reducer over whatever signal it
+    // is handed, and this file's header promises that an input it cannot act on
+    // is inert rather than expensive. A conflict on a merged PR is exactly that:
+    // there is no open branch left to resolve it on. Guarded alongside its twin
+    // rather than left for a later round, because one predicate covering one
+    // half of a pair is how the other half stays broken.
+    const w = worldWith(
+      "implementation",
+      pr({ state: "merged", checks: "success", mergeable: false }),
+    );
+    expect(decide(issue("IMPLEMENTATION"), signal("merge_conflict"), w)).toEqual([]);
+  });
+
+  it("does not chase a base recovery onto a PR that was closed unmerged", () => {
+    // The predicate is "still open", not "not merged". A closed implementation
+    // PR is already escalated as a human intervention, and dispatching an agent
+    // to rebase the abandoned branch on top of that is the same paid mistake
+    // wearing a different PR state.
+    const w = worldWith("implementation", pr({ state: "closed", checks: "failure" }));
+    expect(decide(issue("IMPLEMENTATION"), signal("base_recovered"), w)).toEqual([]);
+  });
+
+  it("still dispatches both while the PR is open, which is what the branch is for", () => {
+    // The guard narrows the branch, it does not remove it: deleting the
+    // phase-wide handling outright would satisfy both tests above while
+    // stranding every real conflict and every real recovery.
+    const conflicting = worldWith(
+      "implementation",
+      pr({ checks: "success", mergeable: false }),
+    );
+    expect(
+      kinds(decide(issue("IMPLEMENTATION"), signal("merge_conflict"), conflicting)),
+    ).toEqual(["resolveConflict"]);
+
+    const recovered = worldWith("implementation", pr({ checks: "failure", baseRed: false }));
+    expect(
+      kinds(decide(issue("IMPLEMENTATION"), signal("base_recovered"), recovered)),
+    ).toEqual(["rebaseOnBase"]);
+  });
+});

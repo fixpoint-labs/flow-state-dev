@@ -410,7 +410,27 @@ export function decide(
   // `awaiting_merge`: a conflict that lands while CI is still running is just
   // as real, and waiting for the merge gate to fix it would stall the PR.
   if (entity.phase === "IMPLEMENTATION") {
-    if (signal.kind === "merge_conflict") {
+    // Phase-wide, but not artifact-state-blind. Both branches below aim an
+    // agent at a *branch*, and a branch is only worth touching while the PR on
+    // it is still open — once it has merged, the work is already on the base
+    // and there is nothing left to rebase onto or resolve against.
+    //
+    // The pairing that makes this reachable is one poll reporting two things at
+    // once. A snapshot recording a red base, then a read finding both the merge
+    // and the recovery, queues `merged` and `base_recovered` together; the
+    // merge is reduced first and leaves the entity in `IMPLEMENTATION` awaiting
+    // its goal check, so the recovery lands on a phase that is still live and
+    // dispatches a rebase against a merged PR. That is not only a paid run
+    // wasted: the agent pushes commits to the branch of a merged PR, which is a
+    // real change to the repository, and the branch policy's `-B` handling makes
+    // branch-state surprises expensive.
+    //
+    // One predicate over both signals, not a guard on the one that bites today.
+    // A conflict reported against a merged PR is exactly as impossible to act
+    // on, and a pair fixed by halves is how the unfixed half survives.
+    const prIsOpen = activePr(entity, world)?.state === "open";
+
+    if (signal.kind === "merge_conflict" && prIsOpen) {
       return [
         {
           kind: "resolveConflict",
@@ -419,7 +439,7 @@ export function decide(
         },
       ];
     }
-    if (signal.kind === "base_recovered") {
+    if (signal.kind === "base_recovered" && prIsOpen) {
       return [
         {
           kind: "rebaseOnBase",
