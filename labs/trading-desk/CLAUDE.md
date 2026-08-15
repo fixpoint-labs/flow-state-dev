@@ -1777,103 +1777,39 @@ The rule is **unobserved → null**, NOT *falsy → null*. A company measured at
 readings and they stay. Over-applying is a defect in its own right: it deletes
 evidence the desk actually gathered.
 
-The rule BINDS every producer. What has actually been **audited and corrected**
-so far is a named list, and the two are not the same thing — do not read the
-list as a clean bill of health for the adapters not on it. Which producers the
-rule binds is decided by **where a number came from**, not by which file emits
-it. Four classes, corrected:
+**Status and provenance fields are bound by the same rule** — a verdict field
+must only ever describe work that actually happened, never that a code path
+executed (FIX-779). Switching a signal off *loudly* is a design choice;
+switching it off *silently* is a bug.
 
-1. **Empty-payload builders** (`tools/empty-payloads.ts`) — the provider was
-   unreachable, so every numeric field is unobserved by construction.
-2. **Indicator math** (`tools/indicators-math.ts`) — a series too short to
-   compute an indicator yields `null`, and `trendLabel` yields `null` rather
-   than `"flat"` when either moving average is missing. A trend we could not
-   measure is reported as no trend; `"flat"` is a finding.
-3. **Partial live reads** (`tools/data/get_macro_indicators.ts`) — a read that
-   answers for six of nine series nulls the three it missed. The payload still
-   reports `source: "fred"`, so the VALUES are the only thing that can mark the
-   gap.
-4. **Sparse-but-successful adapters** (`lib/providers/finnhub.ts`,
-   `lib/providers/yahoo.ts`) — the most common and most dangerous path. The
-   fetch WORKED and the payload carries a live source tag, so nothing marks a
-   field the provider simply left out. These use an **absence-aware**
-   conversion (`undefined`/non-numeric → `null`; a finite `0` → `0`) — the one
-   shared `observedFinite` leaf in `lib/providers/observed.ts`, not a per-file
-   copy, because two copies drift on exactly the edge cases where a drifted one
-   fabricates. Do NOT reuse the `!== 0` P/E helpers (`nullablePct` /
-   `nullableNumberFrom`) on margins or ROE — a zero P/E is non-physical, a zero
-   margin is a measurement.
-   **OHLCV price bars are the one place this class DROPS rather than nulls.**
-   A bar is the unit of observation — every OHLC consumer (ATR, stochastic, OBV,
-   VWMA) needs the whole tuple — so a chart response carrying a bar with legs
-   missing yields no honest partial reading, and `isObservedBar` rejects it.
-   Zero-filling it published a zero low and a zero-volume day (and, on Finnhub's
-   parallel arrays, a zero CLOSE) under a live provider tag. The DATE leg is
-   coerced by the same class of trap one axis over: `new Date(null)` and
-   `new Date(false)` are a valid 1970-01-01, so `observedIsoDay` takes only a
-   real `Date`, a finite number, or a non-blank string.
-   **Zero surviving bars is a provider MISS, not an empty answer.** The drop
-   filter can empty the series, and the price chain only advances on a THROW —
-   so a resolved `bars: []` skipped a fallback that could have answered and
-   published an empty payload under a live `finnhub` / `yahoo` tag. Both
-   adapters throw instead.
-   **Insider transactions are on this path too** (`fetchFinnhubInsiderTransactions`,
-   `fetchAlphaVantageInsiderTransactions`): an omitted `transactionPrice` /
-   `share_price` reads `null`, because a `0` here legitimately means a non-cash
-   transaction (grant, gift, tax withholding) and the two were the same value
-   until FIX-1063. A row with no share count at all is dropped rather than
-   published as zero shares. On the Alpha Vantage path the DIRECTION is covered
-   too: that adapter ships no SEC transaction code, so the sign of `shares` is
-   the only thing carrying buy-vs-sell, and a row whose
-   `acquisition_or_disposal` is absent or unrecognized is dropped rather than
-   defaulted to a disposal. **What this does NOT cover:** Finnhub's `shares`
-   falls back to `share` — a post-transaction BALANCE, not the delta — when the
-   signed `change` is missing, so the quantity can be wrong by the size of the
-   position and reads unsigned. That is an observed number in the wrong role,
-   not an absence published as an observation, so it is a different defect
-   class and is tracked as FIX-1143.
+Where the rule lives — read these before touching a producer:
 
-> **The audit is not finished.** These four classes are the producers that have
-> been swept. The other adapters under `lib/providers/` have NOT been checked
-> for absence-awareness — that sweep is tracked as its own work (FIX-1141). If
-> you are touching a producer not named above, assume it may still zero-fill,
-> and do not treat the contract stamp as evidence that it doesn't.
+- **`lib/providers/observed.ts`** — the ONE shared `observedFinite` /
+  `observedIsoDay` leaf every sparse-but-successful adapter converts through
+  (`undefined`/non-numeric → `null`; a finite `0` → `0`). Never hand-roll a
+  per-file copy: two copies drift on exactly the edge cases where a drifted one
+  fabricates. Do NOT reuse the `!== 0` P/E helpers (`nullablePct` /
+  `nullableNumberFrom`) on margins or ROE — a zero P/E is non-physical, a zero
+  margin is a measurement.
+- **`flows/analysis/data-honesty-contract.ts`** — the version stamp for
+  legacy-report detection, and the enumerated list of surfaces that have
+  actually been audited. That header is canonical for what the stamp does and
+  does not promise; read the list before assuming a producer is covered.
+- **`tools/runtime/normalize-legacy-financials.ts`** — the ONE legacy read
+  boundary (zeros → null only on a `source: "unavailable"` payload). Consumers
+  are entitled to assume normalized inputs; **do not add a per-consumer
+  `if (x === 0)` check** — a consumer that needs one has found a gap in the
+  normalizer and should say so.
+- `flows/analysis/lib/composite-math.ts` is the stated exclusion: it
+  zero-weights a missing term but returns `missingInputs` alongside the score,
+  so it already labels rather than fabricates.
 
-**Status and provenance fields are bound by the same rule.** A verdict field
-must only ever describe work that actually happened. A discovery payload's
-`entityCheck: "verified"` meaning "this code path executed" — rather than "this
-evidence was checked" — delivered a provider outage to the model as a completed
-search that found nothing (FIX-779). Switching a signal off *loudly* is a
-design choice; switching it off *silently* is a bug. A marker that travels with
-the payload to its reader is honest degradation; a value indistinguishable from
-a real one is not.
-
-**Legacy records are marked, not repaired.** A session written before this
-contract carries nothing separating a missing zero from a measured one, so
-recomputing would be a guess. Two seams handle it:
-
-- `tools/runtime/normalize-legacy-financials.ts` — ONE shared normalizer,
-  applied at both persisted-`financialsData` read boundaries (`compute-spine.ts`
-  and the PM commit, which reads the resource directly so a resumed session
-  reaches it without passing the spine). It converts zeros to null **only** on a
-  payload tagged `source: "unavailable"`, where the empty-payload builder is
-  provably the only producer; a live-tagged zero is left alone, because flipping
-  it would invent a gap where there was a fact. Consumers are entitled to assume
-  normalized inputs — **do not add a per-consumer `if (x === 0)` check**; a
-  consumer that needs one has found a gap in the normalizer and should say so.
-- `data-honesty-contract.ts` — the version stamped onto every run at
-  `seedSession`, read by the Summary's `ReportProvenanceNotice` and the
-  artifacts bundle. **Absent always means pre-fix**, in every direction. One
-  marker carries all such disclosures as a reason list; a later fix adds an
-  entry, not a second banner. It is a **version marker for legacy-report
-  detection — NOT a certificate that every figure was observed**; its scope is
-  the corrected surfaces enumerated in that file's header, and the header says
-  why widening it back into a blanket claim is the same defect this contract
-  exists to prevent.
-
-`flows/analysis/lib/composite-math.ts` is the stated exclusion: it zero-weights
-a missing term but returns `missingInputs` alongside the score, so it already
-labels rather than fabricates.
+> **The audit is not finished.** Only the producers enumerated in
+> `data-honesty-contract.ts` have been swept. The other adapters under
+> `lib/providers/` have NOT been checked for absence-awareness — that sweep is
+> tracked as its own work (FIX-1141). If you are touching a producer not on that
+> list, assume it may still zero-fill, and do not treat the contract stamp as
+> evidence that it doesn't.
 
 > Adding a data tool? Its empty-payload builder emits `null` for every
 > unobserved numeric, and its output schema must allow that. See the "Adding a

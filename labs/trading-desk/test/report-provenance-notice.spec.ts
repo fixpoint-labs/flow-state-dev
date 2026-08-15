@@ -105,6 +105,13 @@ describe("each reason is self-contained", () => {
  * would be a larger change than the fix. It is deliberately coarse: it asserts
  * only WHICH module owns the mount, so it survives formatting and refactors and
  * fails on the one move that matters — putting the disclosure back behind a tab.
+ *
+ * A SOURCE-GREP PIN, NOT A BEHAVIOURAL TEST. It matches on source text, so a
+ * rename or a re-import can fail it without anything regressing. If it breaks,
+ * first ask whether the mount actually moved behind a gate; if it did not,
+ * re-point the pin. The durable fix is a pure `reasonsForProvenance` helper
+ * these could assert against directly — a refactor, tracked with the rest of the
+ * data-honesty follow-ups, not a reason to trust a red run here blindly.
  */
 describe("the provenance notice is not gated behind a tab", () => {
   const read = (p: string) =>
@@ -145,7 +152,9 @@ describe("the provenance notice is not gated behind a tab", () => {
  * one.
  *
  * Structural for the same reason as the block above: this package has no React
- * render harness, and adding one is a larger change than the fix.
+ * render harness, and adding one is a larger change than the fix. It is a
+ * SOURCE-GREP PIN too — a rename can fail it without a regression, so read a
+ * failure as "check whether the gate moved", not as proof that it did.
  */
 describe("the provenance notice does not fire on an empty state", () => {
   const source = readFileSync(

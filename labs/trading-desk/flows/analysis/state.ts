@@ -33,10 +33,6 @@
  */
 import { z } from "zod";
 import { citationIntegritySchema } from "./resources";
-export {
-  DATA_HONESTY_CONTRACT_VERSION,
-  isPreDataHonestyFix,
-} from "./data-honesty-contract";
 import { portfolioContextInput } from "./flow-schema";
 import { riskMandateSchema } from "./lib/risk-mandate";
 import { thesisRecordSchema } from "@/domain/portfolio/schema/thesis-schema";
