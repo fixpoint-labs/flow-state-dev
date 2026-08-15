@@ -421,3 +421,95 @@ describe("a backtick literal is a string too", () => {
     expect(scan("const x = extendBlockPath(p, `step[0]`);", seq)).toEqual([]);
   });
 });
+
+/**
+ * E4's two remaining precision bugs, both found in review.
+ *
+ * The segment rule read `\[\d*\]?` with no `$`, so zero digits and a missing
+ * bracket were allowed and anything could follow. `blockPathSegment(op, index)`
+ * emits exactly `op[index]`, so anything else is a false positive — the
+ * direction this check has already had to correct twice.
+ *
+ * The path-builder branch read `getParent()` instead of `effectiveParent()`,
+ * which is the helper written for precisely this trap and whose own docblock
+ * describes it. The earlier wrapped-argument fix reached E2 only, so E4 — the
+ * encoding that reaches the persisted block path — kept the hole for four
+ * rounds.
+ */
+describe("E4 matches the persisted segment shape, and nothing else", () => {
+  const seq = "packages/core/src/blocks/sequencer.ts";
+
+  it("does not fire on strings that merely start like a segment", () => {
+    expect(scan('const x = extendBlockPath(p, "work[shop");', seq)).toEqual([]);
+    expect(scan('const x = extendBlockPath(p, "work[abc]");', seq)).toEqual([]);
+    expect(scan('const x = extendBlockPath(p, "work[0]suffix");', seq)).toEqual([]);
+  });
+
+  it("still fires on a complete segment", () => {
+    expect(encodings('const x = extendBlockPath(p, "work[0]");', seq)).toContain("E4");
+    expect(encodings('const x = extendBlockPath(p, "work[12]");', seq)).toContain("E4");
+  });
+});
+
+describe("E4 sees through type-only wrappers, like E2 already did", () => {
+  const seq = "packages/core/src/blocks/sequencer.ts";
+
+  it("fires on an op argument behind `as const`", () => {
+    expect(encodings('const x = blockPathSegment("work" as const, i);', seq)).toContain("E4");
+    expect(encodings('const x = childBlockPath(ctx, rt, "work" as const, i);', seq)).toContain("E4");
+  });
+
+  it("fires on a wrapped default block name", () => {
+    expect(encodings('const o = { name: "work" as const };', seq)).toContain("E4");
+  });
+
+  it("CONTROL — the unwrapped forms still fire", () => {
+    expect(encodings('const x = blockPathSegment("work", i);', seq)).toContain("E4");
+  });
+
+  it("CONTROL — a wrapped op in the WRONG argument position still does not fire", () => {
+    // Proves the wrapper fix did not cost the per-builder index check.
+    expect(scan('const x = blockPathSegment(op, "work" as const);', seq)).toEqual([]);
+  });
+
+  /**
+   * The template branch never consulted `getParent()`, so it never carried this
+   * assumption — checked rather than assumed, since "the fix is elsewhere too"
+   * is the shape of half the findings on this change.
+   */
+  it("the template branch was already immune, wrapped or not", () => {
+    expect(encodings("const n = `work:${b.name}`;", seq)).toContain("E4");
+    expect(encodings("const n = `work:${b.name}` as const;", seq)).toContain("E4");
+  });
+});
+
+/**
+ * The assumption was never per-rule, it was per-branch.
+ *
+ * Review caught E4's path builder reading `getParent()` where
+ * `effectiveParent()` was required. Auditing every raw `getParent()` in the
+ * check afterwards found the identifier rule doing the same thing: a
+ * parenthesized callee puts a `ParenthesizedExpression` between the property
+ * access and the call, so `(pipeline.work)(b)` produced nothing.
+ *
+ * Three branches held that assumption independently, which is why the fix is
+ * "route every branch through the helper" rather than "patch the two lines
+ * review named".
+ */
+describe("callee detection sees through wrappers too", () => {
+  const seq = "packages/core/src/blocks/sequencer.ts";
+
+  it("fires on a parenthesized callee", () => {
+    expect(encodings("(pipeline.work)(b);", seq)).toContain("E1");
+  });
+
+  it("fires when the receiver is wrapped", () => {
+    expect(encodings("(pipeline as Seq).work(b);", seq)).toContain("E1");
+    expect(encodings("pipeline!.work(b);", seq)).toContain("E1");
+  });
+
+  it("CONTROL — a field READ still does not fire, parenthesized or not", () => {
+    expect(scan("const v = job.work;", seq)).toEqual([]);
+    expect(scan("const v = (job.work);", seq)).toEqual([]);
+  });
+});

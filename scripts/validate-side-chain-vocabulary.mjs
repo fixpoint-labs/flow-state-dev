@@ -273,8 +273,14 @@ function isCalledOrMethodDeclaration(node) {
   const parent = node.getParent();
   if (parent === undefined) return false;
   if (Node.isPropertyAccessExpression(parent) && parent.getNameNode() === node) {
-    const grandparent = parent.getParent();
-    return Node.isCallExpression(grandparent) && grandparent.getExpression() === parent;
+    // Through `effectiveParent` for the same reason E2 and E4 do: `(pipeline
+    // .work)(b)` puts a ParenthesizedExpression between the access and the
+    // call, so a raw grandparent is not the CallExpression. Found by auditing
+    // every raw `getParent()` in this file after review caught the E4 branch
+    // doing it — the assumption was never per-rule, it was per-branch, and
+    // three branches had it independently.
+    const { parent: grandparent, node: held } = effectiveParent(parent);
+    return Node.isCallExpression(grandparent) && grandparent.getExpression() === held;
   }
   if (Node.isMethodSignature(parent) || Node.isMethodDeclaration(parent)) {
     return parent.getNameNode() === node;
@@ -610,20 +616,32 @@ function collectFindings(project, relativePath) {
         // persisted path segment however it was written. Found while deriving
         // the builder arities: `extendBlockPath` takes an already-formatted
         // segment, so no op-argument rule can reach it.
-        if (/^(work|workIf|forEachBackground)\[\d*\]?/.test(node.getLiteralValue())) {
+        // Anchored, and the digits are required: `blockPathSegment(op, index)`
+        // emits exactly `op[index]` with a numeric index and nothing after it.
+        // The first version used `\d*\]?` with no `$`, which matched
+        // `"work[shop"`, `"work[abc]"` and `"work[0]suffix"` — a false positive
+        // in a gate, the direction this check has already had to correct twice.
+        if (/^(work|workIf|forEachBackground)\[\d+\]$/.test(node.getLiteralValue())) {
           record(node, "E4", `segment literal "${node.getLiteralValue()}"`);
           return;
         }
 
         if (PATH_OP_LITERALS.has(node.getLiteralValue())) {
-          const parent = node.getParent();
+          // Through `effectiveParent`, not `getParent()`. `blockPathSegment(
+          // "work" as const, i)` puts an AsExpression between the literal and
+          // the call, so a raw parent is not the CallExpression and the
+          // argument list holds the wrapper rather than the literal — the exact
+          // trap that helper was written for, and which its own docblock
+          // describes. The earlier wrapped-argument fix reached E2 only; this
+          // branch walked past the helper for four rounds.
+          const { parent, node: held } = effectiveParent(node);
           const callee = Node.isCallExpression(parent)
             ? parent.getExpression().getText()
             : undefined;
           const opIndex = callee === undefined ? undefined : PATH_BUILDERS.get(callee);
           if (
             opIndex !== undefined &&
-            parent.getArguments().indexOf(node) === opIndex
+            parent.getArguments().indexOf(held) === opIndex
           ) {
             record(node, "E4", `${callee}(… "${node.getLiteralValue()}" at arg ${opIndex})`);
           } else if (

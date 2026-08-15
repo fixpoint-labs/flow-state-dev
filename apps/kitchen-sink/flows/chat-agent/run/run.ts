@@ -3,8 +3,8 @@
  *
  * Pipeline order:
  *   applyRequestedMode → applyFeatures → skillActivator → resolveThinkingStyle
- *     → thinkingStyleRouter → biasCheck (.work) → perspective capture (.sideChainIf)
- *     → mem.captureFromItems (.work) → autoTitle (.work) → incrementRequestCount
+ *     → thinkingStyleRouter → biasCheck (.sideChain) → perspective capture (.sideChainIf)
+ *     → mem.captureFromItems (.sideChain) → autoTitle (.sideChain) → incrementRequestCount
  *
  * The router dispatches to the assistant generator (default) or one of the five
  * pattern pipelines; everything after it runs as background `.sideChain()` except the
