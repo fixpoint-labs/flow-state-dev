@@ -25,7 +25,6 @@ export {
   headShaAt,
   isAncestor,
   mergesCleanly,
-  blobHash,
   LocalGitError,
 } from "./git";
 

@@ -186,19 +186,18 @@ function slowObserver(inner: Observer): Observer {
 /**
  * An observer that reports one extra signal, on the next observation only.
  *
- * Two signal kinds this file needs have no producer yet and are not pretending
- * otherwise: `guidance_changed` has none at all (see `model/phases` on why
- * `guidance` is declared by no gate), and `question_asked` arrives with the
- * classifier — `github/signals` says so in as many words. Both are in the
- * vocabulary `decide` reduces and both name an action conductor dispatches, so
- * the honest stand-in for the missing producer is **the signal, injected at the
- * seam that will one day emit it**. That is a different thing from scripting a
- * dispatcher result no vendor produces, which is how a defect hid in this file
- * for weeks: nothing here invents what the *world* looks like, and every
- * assertion below is still made against a real checkout.
+ * One signal kind this file needs has no producer yet and is not pretending
+ * otherwise: `question_asked` arrives with the classifier — `github/signals`
+ * says so in as many words. It is in the vocabulary `decide` reduces and it
+ * names an action conductor dispatches, so the honest stand-in for the missing
+ * producer is **the signal, injected at the seam that will one day emit it**.
+ * That is a different thing from scripting a dispatcher result no vendor
+ * produces, which is how a defect hid in this file for weeks: nothing here
+ * invents what the *world* looks like, and every assertion below is still made
+ * against a real checkout.
  *
  * One-shot, because an observer that re-reported it every tick would be a world
- * where a guidance document changes forever.
+ * where the same comment is left forever.
  */
 function signalInjector(): {
   send(signal: Signal): void;
@@ -1931,26 +1930,6 @@ describe("the goal check, from the dispatch that proves it to SETTLED", () => {
 
       expect(dispatcher.actionsRun()).toEqual(["implement", "rebaseOnBase"]);
       expect(rebased.gate).not.toBe("awaiting_merge");
-      expect((await session.read(ENTITY)).gate).not.toBe("awaiting_merge");
-    });
-
-    it("shuts it after a guidance re-examination wrote different code", async () => {
-      const injected = signalInjector();
-      const { session, dispatcher } = await atTheMergeGate(agentProvingItsGoal("passed"), {
-        policy: { ...DEFAULT_POLICY, onGuidanceChanged: "reExamineOpenPrs" },
-        observer: injected.wrap,
-      });
-
-      injected.send({
-        kind: "guidance_changed",
-        entityId: ENTITY,
-        at: "2026-08-03T00:00:00Z",
-        path: "docs/philosophy.md",
-      });
-      const reExamined = await session.tick(ENTITY);
-
-      expect(dispatcher.actionsRun()).toEqual(["implement", "reExamineOpenPrs"]);
-      expect(reExamined.gate).not.toBe("awaiting_merge");
       expect((await session.read(ENTITY)).gate).not.toBe("awaiting_merge");
     });
 

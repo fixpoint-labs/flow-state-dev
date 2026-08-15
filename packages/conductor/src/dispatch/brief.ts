@@ -74,7 +74,6 @@ const ACTION_INTENT: Record<DispatchAction["kind"], string> = {
   runGoalCheck: "Verify on the real path that the merged change does what the item asked.",
   retrospect: "Write the retrospective for this work.",
   polishDocs: "Run an editorial pass over the documentation this work touched.",
-  reExamineOpenPrs: "Re-examine the open pull requests against the guidance that changed.",
 };
 
 /**

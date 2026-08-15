@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
 import { decide } from "../src/driver/decide";
 import { ledgerEntryStateSchema, type LedgerEntryState } from "../src/model/entities";
 import type { EntityKind, Phase } from "../src/model/phases";
-import { signalSchema, type Signal } from "../src/model/signals";
+import { RETIRED_SIGNAL_KINDS, signalSchema, type Signal } from "../src/model/signals";
 import { worldSchema, type World } from "../src/model/world";
 import {
   ENTITY_ID,
@@ -153,7 +153,7 @@ describe("a ledger row carries `decide`'s three arguments", () => {
         reviews: [review({ state: "CHANGES_REQUESTED" }), freshApproval("older-sha")],
       }),
       { reviewRounds: 3 },
-      { ...proved("failed"), guidanceHashes: { "docs/philosophy.md": "h1" } },
+      proved("failed"),
     );
 
     expect(roundTrip(row({ world })).world).toEqual(world);
@@ -224,6 +224,69 @@ describe("a row written before the payload fields existed (BP-030)", () => {
     expect(stored.entityKind).toBeNull();
     expect(stored.signal).toBeNull();
     expect(stored.world).toBeNull();
+  });
+});
+
+describe("a row naming a signal kind conductor has retired (BP-030)", () => {
+  /** A row the tick wrote while the kind was still in the vocabulary. */
+  function retiredRow(kind: string, payload: Record<string, unknown>) {
+    return {
+      id: "led-0",
+      entityId: ENTITY_ID,
+      entityKind: "issue",
+      seq: 1,
+      signalKind: kind,
+      signalSynthesized: false,
+      signal: { kind, entityId: ENTITY_ID, at: "2026-08-14T12:00:00Z", ...payload },
+      world: worldWith("implementation", pr()),
+      actionKind: "escalate",
+      phaseBefore: "IMPLEMENTATION",
+      phaseAfter: "IMPLEMENTATION",
+      gate: null,
+      at: "2026-08-14T12:00:00Z",
+    };
+  }
+
+  it.each(RETIRED_SIGNAL_KINDS)(
+    "reads a `%s` row back rather than throwing a discriminator error at the tick",
+    (kind) => {
+      // Deleting a signal kind deletes it from `signalSchema`'s discriminated
+      // union, and a row that names one would otherwise fail to parse with
+      // "Invalid discriminator value" — wedging every read of an entity whose
+      // ledger happens to contain one, forever, over a transition that already
+      // happened. It degrades instead, the way `decide` degrades on unknown
+      // input.
+      const stored = ledgerEntryStateSchema.parse(retiredRow(kind, { path: "AGENTS.md" }));
+
+      // The row still says what arrived and what conductor did about it.
+      expect(stored.signalKind).toBe(kind);
+      expect(stored.actionKind).toBe("escalate");
+      expect(stored.world).not.toBeNull();
+
+      // The payload is dropped rather than half-parsed: there is no branch left
+      // to reduce it, so a replay must not be handed something that looks live.
+      expect(stored.signal).toBeNull();
+    },
+  );
+
+  it("still rejects a malformed payload of a kind conductor does handle", () => {
+    // The tolerance is a named list, not a blanket `.catch(null)`. A real
+    // defect in a live signal is still loud.
+    expect(() =>
+      ledgerEntryStateSchema.parse({
+        ...row(),
+        signal: { kind: "approved", entityId: ENTITY_ID, at: "2026-08-14T12:00:00Z" },
+      }),
+    ).toThrow();
+  });
+
+  it("names only kinds that are genuinely gone from the vocabulary", () => {
+    // A kind listed here *and* still in `SIGNAL_KINDS` would silently null out
+    // a signal conductor can actually reduce.
+    const live = RETIRED_SIGNAL_KINDS.filter((kind) =>
+      (SIGNAL_KINDS as readonly string[]).includes(kind),
+    );
+    expect(live).toEqual([]);
   });
 });
 

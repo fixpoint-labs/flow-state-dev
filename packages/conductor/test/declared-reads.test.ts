@@ -92,7 +92,6 @@ const WORLD_FIELD_FACT: Partial<Record<keyof World, WorldFact>> = {
   // against is a PR field, and maps to `pr.state` above.
   goalCheckSha: "goalCheck",
   childIssues: "childIssues",
-  guidanceHashes: "guidance",
 };
 
 type FieldFacts = Readonly<Record<string, WorldFact | null | undefined>>;
@@ -312,32 +311,5 @@ describe("decide reads only what the phase declares", () => {
         expect.arrayContaining([...required].sort()),
       );
     }
-  });
-});
-
-describe("guidance is inert on purpose, not by omission", () => {
-  it("is declared by no phase, and read by nothing in the driver", () => {
-    // Both halves matter. Nothing produces `guidance_changed` and no predicate
-    // reads `guidanceHashes`, so declaring the fact would buy a content-hash
-    // request per tick that nothing consumes — see the note on `WorldFact`.
-    // The day a producer exists, the sweep above fails until `guidance` gets a
-    // declaration site, which is exactly when that question should be asked.
-    const declaring = PHASES.filter(([kind, definition]) =>
-      factsReadBy(kind, definition.name).includes("guidance"),
-    ).map(([kind, definition]) => `${kind}/${definition.name}`);
-
-    expect(declaring).toEqual([]);
-
-    const readers = PHASES.filter(([kind, definition]) => {
-      const seen = new Set<WorldFact>();
-      for (const [, base] of WORLDS) {
-        for (const signalKind of SIGNAL_KINDS) {
-          decide(entityIn(kind, definition), signal(signalKind), observed(base, seen));
-        }
-      }
-      return seen.has("guidance");
-    });
-
-    expect(readers).toEqual([]);
   });
 });

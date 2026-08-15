@@ -470,26 +470,6 @@ describe("reads are driven by what the phase declared", () => {
     expect(calls).toContain(`GET ${P}/commits/main/check-runs`);
     expect(world.pullRequests[7]!.baseRed).toBe(true);
   });
-
-  it("hashes guidance only when a phase declares it", async () => {
-    const { client: gh, calls } = client({
-      [`GET ${P}/pulls/7`]: pullPayload(),
-      [`GET ${P}/pulls/7/reviews`]: [],
-      [`GET ${P}/commits/main/check-runs`]: checkRuns(),
-      [`GET ${P}/contents/docs/philosophy.md`]: { sha: "blob-1" },
-    });
-
-    const { world } = await readWorld(gh, {
-      entity: { kind: "issue", phase: "SPEC" },
-      artifacts: [specArtifact],
-      guidancePaths: ["docs/philosophy.md"],
-    });
-
-    // No gate in the table declares `guidance` today, so nothing is hashed and
-    // no request is made for it.
-    expect(world.guidanceHashes).toEqual({});
-    expect(calls).not.toContain(`GET ${P}/contents/docs/philosophy.md`);
-  });
 });
 
 describe("several pull requests in one world", () => {

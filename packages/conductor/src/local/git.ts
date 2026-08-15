@@ -181,20 +181,3 @@ export async function headShaAt(
   const sha = await must(git, repoRoot, ["rev-list", "-1", `--before=${at}`, ref]);
   return sha || null;
 }
-
-/**
- * The blob hash of a file's current content, which is the same identity GitHub's
- * contents API reports — so a guidance hash means the same thing on both sources
- * and a change detected by one would be detected by the other.
- *
- * @returns The hash, or `null` when the file does not exist.
- */
-export async function blobHash(
-  git: GitRunner,
-  repoRoot: string,
-  path: string,
-): Promise<string | null> {
-  const result = await git(["hash-object", "--", path], repoRoot);
-  const hash = result.stdout.trim();
-  return result.code === 0 && hash ? hash : null;
-}

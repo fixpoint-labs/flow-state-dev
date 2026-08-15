@@ -77,26 +77,6 @@ export type Gate = IssueGate | EpicGate;
 /**
  * The vocabulary a gate declares in `reads`. The tick maps each entry to the
  * fetch that materializes it. A user-defined phase declares from this same set.
- *
- * **`guidance` is deliberately declared by no gate, and is therefore inert.**
- * Written down rather than left to be rediscovered, because an undeclared fact
- * that looks live is the same hazard twice over. Three things have to be true
- * before it earns a declaration, and none of them is today:
- *
- * 1. Nothing in the driver reads `world.guidanceHashes`. `decide`'s
- *    `guidance_changed` branch reads the *signal's* path and the policy, not
- *    the snapshot. Declaring `guidance` on a gate would assert a read no
- *    predicate and no branch performs — the same incoherence from the other
- *    side — and would buy a content-hash request per guidance path per tick
- *    that nothing consumes.
- * 2. Nothing produces `guidance_changed`. The hashes exist to be diffed against
- *    the previous tick's, and no such comparison exists (`driver/reconcile`
- *    diffs PR facts only). Materializing them changes no behaviour.
- * 3. The default policy is `onGuidanceChanged: "ignore"`.
- *
- * When (2) is built, `guidance` needs a declaration site — and not a gate,
- * since `guidance_changed` is handled phase-universally, above the gate table.
- * That is a real design question and it belongs with the producer, not here.
  */
 export type WorldFact =
   | "artifact.reviews"
@@ -106,8 +86,7 @@ export type WorldFact =
   | "pr.mergeable"
   | "pr.baseStatus"
   | "goalCheck"
-  | "childIssues"
-  | "guidance";
+  | "childIssues";
 
 /**
  * One gate. `appliesWhen` decides whether the gate is in play at all;

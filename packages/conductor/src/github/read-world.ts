@@ -51,8 +51,6 @@ export interface ReadWorldInput {
   readonly goalCheckGround?: "branch" | "base";
   /** Conductor-owned. Empty for an issue. */
   readonly childIssues?: readonly ChildIssueFacts[];
-  /** Repo-relative guidance paths to hash. Only read when a gate declares `guidance`. */
-  readonly guidancePaths?: readonly string[];
   readonly policy?: ConductorPolicy;
 }
 
@@ -211,11 +209,10 @@ async function checkRunsFor(
 /**
  * Every classic commit status reported against a git ref.
  *
- * A 404 is read as "no statuses", the same leniency {@link contentHash} applies
- * and for the same reason: it is a repository that has not adopted this
- * mechanism, not a failure. The leniency is narrow rather than a blanket
- * softening — a ref that genuinely does not exist 404s the check-runs read
- * beside this one, which does raise, so a bad ref is still loud.
+ * A 404 is read as "no statuses" rather than as a failure: it is a repository
+ * that has not adopted this mechanism. The leniency is narrow rather than a
+ * blanket softening — a ref that genuinely does not exist 404s the check-runs
+ * read beside this one, which does raise, so a bad ref is still loud.
  */
 async function commitStatusesFor(
   client: GitHubClient,
@@ -390,22 +387,6 @@ export async function pullRequestForBranch(
  */
 export { toObservedPr } from "../driver/reconcile";
 
-/** The blob SHA of a repo file, which is its content hash. `null` when absent. */
-async function contentHash(client: GitHubClient, path: string): Promise<string | null> {
-  try {
-    const payload = await client.request<{ sha?: string | null }>(
-      "GET",
-      client.path("contents", path.split("/").map(encodeURIComponent).join("/")),
-    );
-    return payload?.sha ?? null;
-  } catch (error) {
-    // A guidance file that does not exist is not an error — it is a repo that
-    // has not adopted that document. Anything else is a real failure.
-    if (error instanceof GitHubApiError && error.status === 404) return null;
-    throw error;
-  }
-}
-
 /**
  * Read GitHub and materialize the snapshot `decide` consumes.
  *
@@ -440,14 +421,6 @@ export async function readWorld(
     pullRequests[number] = read[index]!;
   });
 
-  const guidanceHashes: Record<string, string> = {};
-  if (facts.has("guidance")) {
-    for (const path of input.guidancePaths ?? []) {
-      const hash = await contentHash(client, path);
-      if (hash !== null) guidanceHashes[path] = hash;
-    }
-  }
-
   return {
     world: {
       artifacts: input.artifacts,
@@ -456,7 +429,6 @@ export async function readWorld(
       goalCheckSha: input.goalCheckSha ?? null,
       goalCheckGround: input.goalCheckGround ?? "branch",
       childIssues: input.childIssues ?? [],
-      guidanceHashes,
       policy: input.policy ?? DEFAULT_POLICY,
     },
     facts: [...facts],

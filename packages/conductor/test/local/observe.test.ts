@@ -505,17 +505,6 @@ describe("checks", () => {
   });
 });
 
-describe("guidance", () => {
-  it("is not hashed, because no gate declares it", async () => {
-    repo = await createTestRepo();
-    const { number } = await submitBranch("spec/FIX-1");
-
-    const observation = await observeWith([artifactAt(number)]);
-
-    expect(observation.world.guidanceHashes).toEqual({});
-  });
-});
-
 describe("an artifact naming a submission that was never opened", () => {
   it("is skipped rather than raised, the way a hand-edited ledger is everywhere else", async () => {
     repo = await createTestRepo();
@@ -573,6 +562,5 @@ function worldFacts(world: World) {
   return {
     pullRequests: world.pullRequests,
     goalCheck: world.goalCheck,
-    guidanceHashes: world.guidanceHashes,
   };
 }

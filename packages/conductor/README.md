@@ -246,7 +246,6 @@ restart you can actually try.
 | `mergeable` | a cached background computation | `git merge-tree --write-tree`, the merge itself |
 | `checks` | check runs on the head | what a real check run recorded for that commit |
 | `reviews` | submitted reviews | verdict files a human wrote |
-| `guidanceHashes` | the contents API's blob sha | `git hash-object`, the same blob sha |
 
 The parts git does not hold are files under the checkout:
 

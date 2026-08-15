@@ -118,15 +118,12 @@ export interface ConductorPolicy {
   readonly specReviewRoundBudget: number;
   /** Review rounds allowed on an implementation PR before escalating. Default 12. */
   readonly implementationReviewRoundBudget: number;
-  /** What a `guidance_changed` signal dispatches, if anything. */
-  readonly onGuidanceChanged: "reExamineOpenPrs" | "ignore";
 }
 
 /** The default policy, matching `docs/contributing/orchestration.md`. */
 export const DEFAULT_POLICY: ConductorPolicy = {
   specReviewRoundBudget: 2,
   implementationReviewRoundBudget: 12,
-  onGuidanceChanged: "ignore",
 };
 
 /**
@@ -171,8 +168,6 @@ export interface World {
   readonly goalCheckGround: ProofGround;
   /** Children, for an epic. Empty for an issue. */
   readonly childIssues: readonly ChildIssueFacts[];
-  /** Content hash per guidance path, as last read from the repo. */
-  readonly guidanceHashes: Readonly<Record<string, string>>;
   readonly policy: ConductorPolicy;
 }
 
@@ -444,7 +439,6 @@ const artifactFactsSchema: z.ZodType<ArtifactFacts> = z.object({
 const conductorPolicySchema: z.ZodType<ConductorPolicy> = z.object({
   specReviewRoundBudget: z.number().int(),
   implementationReviewRoundBudget: z.number().int(),
-  onGuidanceChanged: z.enum(["reExamineOpenPrs", "ignore"]),
 });
 
 /**
@@ -469,6 +463,5 @@ export const worldSchema: z.ZodType<World, z.ZodTypeDef, unknown> = z.object({
   goalCheckSha: z.string().nullable().default(null),
   goalCheckGround: z.enum(["branch", "base"]).default("branch"),
   childIssues: z.array(z.object({ id: z.string(), settled: z.boolean() })),
-  guidanceHashes: z.record(z.string(), z.string()),
   policy: conductorPolicySchema,
 });

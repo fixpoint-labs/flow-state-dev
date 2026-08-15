@@ -109,8 +109,6 @@ export interface ObservationRequest {
   readonly goalCheckGround?: "branch" | "base";
   /** Conductor-owned. Empty for an issue. */
   readonly childIssues?: readonly ChildIssueFacts[];
-  /** Repo-relative guidance paths to hash. Only read when a gate declares `guidance`. */
-  readonly guidancePaths?: readonly string[];
   readonly policy?: ConductorPolicy;
   /** The cursor the previous observation returned, or {@link EMPTY_OBSERVATION_CURSOR}. */
   readonly cursor: ObservationCursor;

@@ -33,7 +33,7 @@
 
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
-import { signalSchema } from "./signals";
+import { isRetiredSignal, signalSchema } from "./signals";
 import { hostedAtSchema, worldSchema } from "./world";
 
 /** Issue type — a routing key selecting discipline and review lenses, not a state machine. */
@@ -311,8 +311,15 @@ export const ledgerEntryStateSchema = z.object({
   signalKind: z.string(),
   /** True when the signal was inferred by reconciliation rather than observed. */
   signalSynthesized: z.boolean().default(false),
-  /** `decide`'s second argument, whole. `null` on a row written before this field. */
-  signal: signalSchema.nullable().default(null),
+  /**
+   * `decide`'s second argument, whole. `null` on a row written before this
+   * field — and `null` on a row naming a signal kind conductor has since
+   * retired, which reads back rather than throwing (`./signals`'s
+   * {@link RETIRED_SIGNAL_KINDS}). `signalKind` below still says what arrived.
+   */
+  signal: z
+    .preprocess((value) => (isRetiredSignal(value) ? null : value), signalSchema.nullable())
+    .default(null),
   /** `decide`'s third argument, whole. `null` on a row written before this field. */
   world: worldSchema.nullable().default(null),
   actionKind: z.string(),

@@ -81,7 +81,6 @@ export function world(overrides: Partial<World> = {}): World {
     goalCheckSha: null,
     goalCheckGround: "branch",
     childIssues: [],
-    guidanceHashes: {},
     policy: DEFAULT_POLICY,
     ...overrides,
   };
@@ -147,7 +146,6 @@ export function signal(kind: SignalKind, overrides: Record<string, unknown> = {}
     approval_expressed: { author: "alice", commentId: "c1", pullNumber: 10 },
     dispatch_completed: { dispatchId: "d1" },
     dispatch_failed: { dispatchId: "d1" },
-    guidance_changed: { path: "docs/philosophy.md" },
     issue_settled: { childId: "FIX-2" },
   };
   return { kind, ...base, ...payloads[kind], ...overrides } as Signal;
@@ -174,7 +172,6 @@ export const SIGNAL_KINDS: readonly SignalKind[] = [
   "goal_check_needed",
   "goal_check_passed",
   "goal_check_failed",
-  "guidance_changed",
   "external_status_changed",
   "objective_approved",
   "issue_settled",

@@ -26,7 +26,6 @@ export type ActionKind =
   | "runGoalCheck"
   | "retrospect"
   | "polishDocs"
-  | "reExamineOpenPrs"
   // — ledger writes: conductor's own record —
   | "enterPhase"
   | "recordApproval"
@@ -62,8 +61,7 @@ export interface DispatchAction extends ActionBase {
     | "rebaseOnBase"
     | "runGoalCheck"
     | "retrospect"
-    | "polishDocs"
-    | "reExamineOpenPrs";
+    | "polishDocs";
   /** What prompted this dispatch, carried into the brief as context. */
   readonly because?: string;
 }
@@ -140,7 +138,6 @@ export const MUTATES_WORK: Record<DispatchAction["kind"], boolean> = {
   runGoalCheck: false,
   retrospect: true,
   polishDocs: true,
-  reExamineOpenPrs: true,
 };
 
 /** True when the action hands work to a dispatcher rather than writing the ledger. */

@@ -189,21 +189,6 @@ describe("the decide table", () => {
       { kind: "enterPhase", entityId: ENTITY_ID, phase: "WRAP" },
     ]);
   });
-
-  it("reacts to changed guidance only when the policy configures a reaction", () => {
-    const inert = worldWith("implementation", pr());
-    expect(decide(issue("IMPLEMENTATION"), signal("guidance_changed"), inert)).toEqual([]);
-
-    const reactive = worldWith(
-      "implementation",
-      pr(),
-      {},
-      { policy: { ...DEFAULT_POLICY, onGuidanceChanged: "reExamineOpenPrs" } },
-    );
-    expect(
-      kinds(decide(issue("IMPLEMENTATION"), signal("guidance_changed"), reactive)),
-    ).toEqual(["reExamineOpenPrs"]);
-  });
 });
 
 describe("keeping judgment out of the transition", () => {

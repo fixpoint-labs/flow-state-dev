@@ -14,7 +14,6 @@
  * | `checks` | check runs on the head | what a real check run recorded for that commit |
  * | `baseRed` | check runs on the base ref | the same, asked of the base's head |
  * | `reviews` | submitted reviews | verdict files a human wrote (see `./store`) |
- * | `guidanceHashes` | the contents API's blob sha | `git hash-object`, the same blob sha |
  *
  * **Nothing here is a stand-in.** Every row above is a real read of real state,
  * which is the whole difference between this and the replay harness in
@@ -37,7 +36,7 @@ import {
 } from "../model/world";
 import type { ObservationRequest } from "../observe/types";
 import type { GitRunner } from "../dispatch/branch";
-import { blobHash, headSha, headShaAt, isAncestor, mergesCleanly } from "./git";
+import { headSha, headShaAt, isAncestor, mergesCleanly } from "./git";
 import { readCheck, readReviews, readSubmission, type LocalSubmission } from "./store";
 
 /** What the local source needs to know before it can read anything. */
@@ -218,14 +217,6 @@ export async function readLocalWorld(
     );
   }
 
-  const guidanceHashes: Record<string, string> = {};
-  if (facts.has("guidance")) {
-    for (const path of request.guidancePaths ?? []) {
-      const hash = await blobHash(options.git, options.repoRoot, path);
-      if (hash !== null) guidanceHashes[path] = hash;
-    }
-  }
-
   return {
     world: {
       artifacts: request.artifacts,
@@ -234,7 +225,6 @@ export async function readLocalWorld(
       goalCheckSha: request.goalCheckSha ?? null,
       goalCheckGround: request.goalCheckGround ?? "branch",
       childIssues: request.childIssues ?? [],
-      guidanceHashes,
       policy: request.policy ?? DEFAULT_POLICY,
     },
     facts: [...facts],

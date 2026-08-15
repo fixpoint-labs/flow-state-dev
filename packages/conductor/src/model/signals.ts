@@ -49,7 +49,6 @@ export type SignalKind =
   | "goal_check_passed"
   | "goal_check_failed"
   // — ambient —
-  | "guidance_changed"
   | "external_status_changed"
   // — epic —
   | "objective_approved"
@@ -146,12 +145,6 @@ export interface DispatchSignal extends SignalBase {
   readonly detail?: string | null;
 }
 
-/** A guidance document's content hash moved. */
-export interface GuidanceChangedSignal extends SignalBase {
-  readonly kind: "guidance_changed";
-  readonly path: string;
-}
-
 /** A child issue passed its goal check. */
 export interface IssueSettledSignal extends SignalBase {
   readonly kind: "issue_settled";
@@ -203,7 +196,6 @@ export type Signal =
   | PullRequestSignal
   | ProseSignal
   | DispatchSignal
-  | GuidanceChangedSignal
   | IssueSettledSignal
   | PlainSignal;
 
@@ -221,6 +213,41 @@ export const PROSE_DERIVED_KINDS = [
 /** True when `kind` is classifier output rather than a structural observation. */
 export function isProseDerived(kind: SignalKind): boolean {
   return (PROSE_DERIVED_KINDS as readonly string[]).includes(kind);
+}
+
+/**
+ * Signal kinds conductor has **retired** — removed from the vocabulary above,
+ * and still nameable by a ledger row written while they existed.
+ *
+ * A row is a transcript of a reduction that already happened, so one naming a
+ * retired kind reads back with `signal: null` and its `signalKind` intact
+ * (`./entities`): the row still says what arrived, and nothing pretends it can
+ * be replayed. Replay was already gone the moment the branch that handled the
+ * kind was deleted — a signal that still parsed would reduce to `[]` rather
+ * than to the action the row records — so the only question this answers is
+ * whether **reading** such a row crashes, and the whole ledger with it.
+ *
+ * It falls the same way `decide` does on an unrecognized signal, in that file's
+ * own words: *unknown input is inert, never fatal.* The narrowness is the point
+ * — this list, and nothing else. A malformed payload of a kind conductor still
+ * handles is a real defect and still throws (BP-030).
+ *
+ * **Entries are permanent.** Removing one does not tidy anything up; it makes
+ * the rows that named it start throwing again.
+ */
+export const RETIRED_SIGNAL_KINDS: readonly string[] = ["guidance_changed"];
+
+/**
+ * True when `value` is a stored signal payload naming a retired kind.
+ *
+ * Deliberately structural and forgiving about everything else: it reads one
+ * property off an object it does not otherwise trust, so a genuinely corrupt
+ * row falls through to the schema and fails there rather than here.
+ */
+export function isRetiredSignal(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const kind = (value as { kind?: unknown }).kind;
+  return typeof kind === "string" && RETIRED_SIGNAL_KINDS.includes(kind);
 }
 
 /** Fields every variant carries, spread into each option below. */
@@ -275,7 +302,6 @@ export const signalSchema: z.ZodType<Signal> = z.discriminatedUnion("kind", [
     // Optional so a row written before the field existed still parses (BP-030).
     detail: z.string().nullable().optional(),
   }),
-  z.object({ ...base, kind: z.literal("guidance_changed"), path: z.string() }),
   z.object({ ...base, kind: z.literal("issue_settled"), childId: z.string() }),
   z.object({
     ...base,

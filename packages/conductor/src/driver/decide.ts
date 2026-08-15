@@ -254,17 +254,6 @@ function decideUniversal(
   world: World,
 ): Action[] | undefined {
   switch (signal.kind) {
-    case "guidance_changed":
-      return world.policy.onGuidanceChanged === "reExamineOpenPrs"
-        ? [
-            {
-              kind: "reExamineOpenPrs",
-              entityId: entity.id,
-              because: `Guidance changed: ${signal.path}`,
-            },
-          ]
-        : [];
-
     // **Conductor never retries**, so the reason this used to carry — `Dispatch
     // <id> exhausted its attempts.` — was false for every failure it was ever
     // written about. It described a mechanism that does not exist, to the one
