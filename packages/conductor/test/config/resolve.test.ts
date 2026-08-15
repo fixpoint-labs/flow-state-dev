@@ -305,6 +305,52 @@ describe("the overrides discovery cannot cover", () => {
     expect(resolved.origins.repo).toBe("configured");
   });
 
+  // The regression: `repoRoot` is typed absolute and every downstream reader is
+  // entitled to believe it. A configured relative path was returned untouched,
+  // so git discovery, and then worktree provisioning, resolved it against the
+  // process's cwd instead of the resolver's — conductor inspecting, and
+  // committing to, whichever checkout the process happened to be started from.
+  it("anchors a configured relative repoRoot to the resolver's cwd", async () => {
+    const cwds: string[] = [];
+    const answers = {
+      "remote get-url origin": "https://github.com/acme/thing.git\n",
+      "ls-remote --symref origin HEAD": "ref: refs/heads/main\tHEAD\nsha1\tHEAD\n",
+    };
+    const resolved = await resolveConductor(defineConductor({ repoRoot: "checkouts/thing" }), {
+      cwd: "/work",
+      env: ENV,
+      git: (argv, cwd) => {
+        cwds.push(cwd ?? "");
+        return fakeGit(answers)(argv, cwd);
+      },
+      probe: () => true,
+    });
+
+    expect(resolved.repoRoot).toBe(path.resolve("/work", "checkouts/thing"));
+    // Normalizing a path does not change where it came from.
+    expect(resolved.origins.repoRoot).toBe("configured");
+    // And the value actually reached git as the checkout to read, which is what
+    // makes the wrong answer act on the wrong repository rather than just look
+    // wrong in a field.
+    expect(cwds).not.toContain("checkouts/thing");
+    expect(new Set(cwds)).toEqual(new Set([resolved.repoRoot]));
+  });
+
+  // Both paths are absolute by one rule rather than two, so a relative answer
+  // from either side lands in the same place. Resolving only the configured
+  // branch would pass the test above and still leave the two able to disagree.
+  it("anchors a discovered repoRoot the same way", async () => {
+    const resolved = await resolveConductor(defineConductor(), {
+      cwd: "/work",
+      env: ENV,
+      git: fakeGit({ ...HAPPY, "rev-parse --show-toplevel": "checkouts/thing\n" }),
+      probe: () => true,
+    });
+
+    expect(resolved.repoRoot).toBe(path.resolve("/work", "checkouts/thing"));
+    expect(resolved.origins.repoRoot).toBe("discovered");
+  });
+
   it("uses a named remote for both the repo and the base branch", async () => {
     const resolved = await resolveConductor(defineConductor({ remote: "upstream" }), {
       env: ENV,

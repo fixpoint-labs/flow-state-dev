@@ -21,6 +21,8 @@
  * absent until something adopts it.
  */
 
+import path from "node:path";
+
 import type { Dispatcher } from "../dispatch/types";
 import { DEFAULT_POLICY, type ConductorPolicy } from "../model/world";
 import {
@@ -189,7 +191,15 @@ export async function resolveConductor(
   // from and the remote a checkout is cut off can never drift apart.
   const remote = config.remote ?? DEFAULT_REMOTE;
 
-  const repoRoot = config.repoRoot ?? (await discoverRepoRoot(git, cwd));
+  // Resolved once, here, and fed to everything downstream — the field is typed
+  // absolute and every reader is entitled to believe it. A configured relative
+  // path returned as written is resolved against the *process's* cwd by the git
+  // commands and the worktree provisioning that follow, not against the one this
+  // resolver was handed, so conductor would inspect and commit to a different
+  // checkout than the caller named. Both branches go through the one resolve so
+  // the configured path and the discovered one cannot come out under different
+  // rules.
+  const repoRoot = path.resolve(cwd, config.repoRoot ?? (await discoverRepoRoot(git, cwd)));
 
   let repo = config.repo;
   let remoteUrl: string | null = null;

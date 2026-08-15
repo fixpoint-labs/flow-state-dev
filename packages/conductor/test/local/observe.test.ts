@@ -282,6 +282,27 @@ describe("a review a human wrote as a file", () => {
     ]);
   });
 
+  it("skips a verdict whose fields are the wrong type, and still reads the good one beside it", async () => {
+    repo = await createTestRepo();
+    const { number } = await submitBranch("spec/FIX-1");
+    // Valid JSON carrying a number where a verdict belongs — the case a syntax
+    // check waves through. Named to sort first, so a fix that merely stops
+    // throwing but abandons the read still fails here: what matters is that
+    // alice's approval survives bob's typo, not that nothing raised.
+    await repo.write(
+      inbox(number, "reviews", "aaron.json"),
+      `${JSON.stringify({ reviewer: "aaron", state: 1 })}\n`,
+    );
+    await fileReview(number, "alice.json", { reviewer: "alice", state: "APPROVED" }, T2);
+
+    const observation = await observeWith([artifactAt(number)]);
+    const pr = observation.world.pullRequests[number]!;
+
+    expect(pr.reviews.map((r) => r.reviewer)).toEqual(["alice"]);
+    expect(hasFreshHumanApproval(pr)).toBe(true);
+    expect(observation.signals.map((s) => s.kind)).toEqual(["pr_opened", "approved"]);
+  });
+
   it("becomes the signal the approval gate reads", async () => {
     repo = await createTestRepo();
     const { number } = await submitBranch("spec/FIX-1");

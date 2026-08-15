@@ -102,22 +102,75 @@ async function readJson<T>(file: string): Promise<T | null> {
 }
 
 /**
- * The same read, but a file that is not valid JSON is treated as absent.
+ * A verdict, as a reviewer writes one.
+ *
+ * `state` is matched case-insensitively because a human typing `approved` into
+ * a file means the verdict, and only the three a reviewer actually stands
+ * behind are verdicts at all — the same set the GitHub reader accepts. The rest
+ * are optional because every one of them is derivable: the name comes from the
+ * file, the timestamp from its mtime, the commit from the branch's history.
+ */
+const reviewFileSchema = z.object({
+  reviewer: z.string().optional(),
+  state: z
+    .string()
+    .transform((state) => state.toUpperCase())
+    .pipe(z.enum(["APPROVED", "CHANGES_REQUESTED", "COMMENTED"])),
+  sha: z.string().optional(),
+  at: z.string().optional(),
+});
+
+/**
+ * One verdict file, or `null` when the file is not a verdict.
  *
  * Only for the inbox. A reviewer's directory is written by hand, so a truncated
- * save or a stray file is an ordinary occurrence — and the same rule `decide`
- * holds applies: **unknown input is inert, never fatal.** One malformed verdict
- * must not wedge the tick that would have read the twelve good ones beside it.
- * A record conductor itself wrote (`submission.json`) gets no such leniency,
- * because a malformed one there means something is corrupting the store.
+ * save, a typo, or a stray file is an ordinary occurrence — and the same rule
+ * `decide` holds applies: **unknown input is inert, never fatal.** One malformed
+ * verdict must not wedge the read that would have returned the twelve good ones
+ * beside it. A record conductor itself wrote (`submission.json`,
+ * `reviewed-heads.json`) gets no such leniency, and neither does a check record,
+ * because a malformed one there means the writer is broken rather than that a
+ * human fumbled a save.
+ *
+ * **The whole payload is validated, not the syntax.** `{ "state": 1 }` parses
+ * as JSON and is not a verdict; read through a cast it becomes a `ReviewFacts`
+ * whose fields are not the types they claim, and the first thing to touch one
+ * throws — from inside a loop over every other reviewer's file, taking their
+ * valid verdicts down with it. That is the wedge this leniency exists to
+ * prevent, arriving through the one door it was not watching.
+ *
+ * **Inert is not invisible.** A dropped verdict is a human waiting on a gate
+ * that will never move, so the skip names the file and what was wrong with it.
+ * There is nowhere else they could find out: conductor cannot reply to a file.
  */
-async function readJsonIfValid<T>(file: string): Promise<T | null> {
+async function readReviewFile(file: string): Promise<z.infer<typeof reviewFileSchema> | null> {
+  const ignore = (reason: string): null => {
+    console.warn(
+      `Ignoring ${file}: ${reason}. It is not a verdict conductor can read, so it ` +
+        `counts as no review at all — fix the file and save it again.`,
+    );
+    return null;
+  };
+
+  let raw: unknown;
   try {
-    return await readJson<T>(file);
+    raw = await readJson<unknown>(file);
   } catch (error) {
-    if (error instanceof SyntaxError) return null;
-    throw error;
+    if (!(error instanceof SyntaxError)) throw error;
+    return ignore("it is not valid JSON");
   }
+  // Gone between the listing and the read, which is not a malformed file.
+  if (raw === null) return null;
+
+  const parsed = reviewFileSchema.safeParse(raw);
+  if (!parsed.success) {
+    return ignore(
+      parsed.error.issues
+        .map((issue) => `${issue.path.join(".") || "(root)"} ${issue.message}`)
+        .join("; "),
+    );
+  }
+  return parsed.data;
 }
 
 /**
@@ -309,22 +362,10 @@ export async function readReviews(
     if (!name.endsWith(".json")) continue;
 
     const file = path.join(dir, name);
-    const payload = await readJsonIfValid<{
-      reviewer?: string;
-      state?: string;
-      sha?: string;
-      at?: string;
-    }>(file);
+    const payload = await readReviewFile(file);
     if (!payload) continue;
 
-    const state = (payload.state ?? "").toUpperCase();
-    // Same rule the GitHub reader applies: only the three states a reviewer
-    // actually stands behind become facts. Anything else is a malformed file,
-    // and a malformed file is not a verdict.
-    if (state !== "APPROVED" && state !== "CHANGES_REQUESTED" && state !== "COMMENTED") {
-      continue;
-    }
-
+    const { state } = payload;
     const at = payload.at ?? isoSeconds((await fs.stat(file)).mtime);
     const id = reviewId(name, at, state);
 
