@@ -62,18 +62,28 @@
  *   {@link proofGap}, whose durable source is the stored proof itself. One rule,
  *   one instance per derived signal — not one predicate stretched across the
  *   four.
+ * - **An observed signal whose consequence *is* on disk is not reduced again.**
+ *   The cursor is persisted last, so a killed process re-observes what it had
+ *   already reduced — which is what keeps an unfinished reduction from being
+ *   lost, and what would otherwise buy a finished one a second time. A comment
+ *   whose reduction and the paid pass it bought are both durable is dropped from
+ *   the re-observation; see {@link answeredComments}.
  *
  * One assumption this file makes and does not enforce: **one tick at a time per
  * entity.** Nothing here is atomic across its read-modify-write, so overlapping
  * ticks duplicate a paid dispatch. `./session` serializes them, and states there
  * what that does and does not cover.
  *
- * The window this does *not* close is stated rather than papered over: the
- * observation cursor is persisted at the end of a tick, so a process killed
- * mid-tick re-observes the signals it had already reduced and may repeat a
- * dispatch that was in flight. The alternative — persisting the cursor before
- * reducing — loses those signals permanently and strands the entity at a gate
- * nothing will release, which is the worse of the two failures by a wide margin.
+ * The ordering that costs the most to explain is the cursor's, so it is stated
+ * rather than papered over: it is persisted at the *end* of a tick, so a process
+ * killed mid-tick re-observes everything it had reduced. The alternative —
+ * persisting it before reducing — loses those signals permanently and strands
+ * the entity at a gate nothing will release, which is the worse of the two
+ * failures by a wide margin. The re-observation is therefore kept and read
+ * against what is on disk (the bullet above), which leaves one window open and
+ * no smaller: a dispatch that was **in flight** when the process died is
+ * indistinguishable from one whose process merely stopped reporting, and is
+ * bought again. That is {@link entryCompleted}'s trade, argued there.
  *
  * ---------------------------------------------------------------------------
  * 3. EVERY TRANSITION IS REPRODUCIBLE FROM THE LEDGER
@@ -466,6 +476,105 @@ function unreducedFailures(
       // report would depend on whether the process happened to survive.
       .map((row) => ({ dispatchId: row.id, detail: row.detail }))
   );
+}
+
+/**
+ * The comment a signal is about, as a key one comment cannot share with another.
+ * `null` for every signal that is not a human's prose.
+ *
+ * The pull request is part of it because a comment id is the *source's*, and an
+ * entity reads several submissions — a spec PR and an implementation PR — whose
+ * ids are minted independently.
+ */
+function commentIdentity(signal: Signal): string | null {
+  if (signal.kind !== "feedback_received" && signal.kind !== "question_asked") {
+    return null;
+  }
+  return `${signal.pullNumber}:${signal.commentId}`;
+}
+
+/**
+ * Was this stored action kind handed to a dispatcher rather than written to the
+ * ledger?
+ *
+ * `isDispatch` answers this for an {@link Action}; a ledger row holds the kind
+ * as a bare string, which no union can narrow. {@link MUTATES_WORK} is keyed by
+ * exactly `DispatchAction["kind"]` and it is a *type error* to add a dispatch
+ * kind without adding it there, so its key set is the one list of dispatch kinds
+ * that cannot go stale — which is why this reads its keys rather than keeping a
+ * second list beside it. The values are a different question and are not read.
+ */
+function isDispatchKind(actionKind: string): boolean {
+  return Object.hasOwn(MUTATES_WORK, actionKind);
+}
+
+/**
+ * Comments this entity has already answered — **the observed half of the rule
+ * the derived signals hold themselves to.**
+ *
+ * A signal is protected until its consequence is on disk. A derived signal has
+ * no cursor, so each kind gets a durable source of its own
+ * ({@link entryCompleted}, {@link unreducedFailures}, {@link proofGap}). An
+ * *observed* signal has one already — the observation cursor — but the cursor is
+ * persisted **last**, deliberately, because persisting it before reducing loses
+ * a signal permanently and strands the entity at a gate nothing will release.
+ *
+ * That ordering protects a reduction that did not finish. What it does not do is
+ * stop one that *did* being re-observed and bought again: a process killed
+ * between an `addressFeedback` settling and the cursor write comes back to a
+ * comment the cursor never learned about, dispatches a paid agent against
+ * feedback that was already answered, and lands a second set of edits on the
+ * branch on top of the first. The recovery is free either way — the comment is
+ * re-observed regardless — so this reads what is already on disk rather than
+ * moving the cursor write, which would trade a paid duplicate for a lost signal.
+ *
+ * **Two facts, and both are required**, exactly as {@link entryCompleted} needs
+ * both:
+ *
+ * - **The reduction is recorded** — a ledger row whose stored signal names this
+ *   comment. Rows carry `decide`'s signal whole, so the comment is identified
+ *   from what the ledger already holds; nothing new is stored to make this work.
+ * - **The work that reduction bought has settled.** The row is appended *before*
+ *   the dispatch it records, so a row alone is satisfied by a run that never
+ *   happened — and suppressing there leaves a reviewer's comment unanswered for
+ *   the life of the issue, under a gate that still applies so no stall reports it
+ *   either. Settled **either way**, for {@link entryCompleted}'s reason: a failed
+ *   dispatch is escalated by `decide`, and re-running it would loop.
+ *
+ * A reduction that bought no dispatch at all — a comment past the round budget
+ * reduces to an `escalate` — needs only the row: the row *is* the consequence.
+ *
+ * The dispatch is matched to the row by phase, action, and having started no
+ * earlier than the row was written. That is not a proxy for identity: a revision
+ * pass is a pass over **everything outstanding** on the artifact (the same claim
+ * {@link dispatchKey}'s coalescing rests on), so a settled pass that began after
+ * a comment was reduced answered that comment. Which is also why one dispatch
+ * covers a whole poll's worth of comments here, as it does there.
+ */
+function answeredComments(
+  ledger: readonly LedgerEntryState[],
+  dispatches: readonly DispatchRow[],
+): ReadonlySet<string> {
+  const answered = new Set<string>();
+  for (const row of ledger) {
+    if (row.signal === null) continue;
+    const comment = commentIdentity(row.signal);
+    if (comment === null) continue;
+    if (
+      isDispatchKind(row.actionKind) &&
+      !dispatches.some(
+        (dispatch) =>
+          dispatch.phase === row.phaseBefore &&
+          dispatch.action === row.actionKind &&
+          dispatch.outcome !== null &&
+          dispatch.startedAt >= row.at,
+      )
+    ) {
+      continue;
+    }
+    answered.add(comment);
+  }
+  return answered;
 }
 
 /**
@@ -1436,7 +1545,14 @@ async function runDispatch(
     phase: entity.phase,
     action: action.kind,
     vendor: dispatcher.vendor,
-    startedAt: result.startedAt,
+    // Conductor's own clock, the same value the opening write recorded — not the
+    // dispatcher's account of when it started. This is the record of *when
+    // conductor handed the work over*, and {@link answeredComments} reads it to
+    // tell a pass that ran after a comment was reduced from one that ran before.
+    // A vendor's self-reported time is caller-supplied input (BP-031), and one
+    // that reports the epoch — `fakeDispatcher` does exactly that — would
+    // silently disable that guard rather than fail it.
+    startedAt,
     settledAt: result.settledAt,
     outcome: result.outcome,
     costUsd: result.costUsd,
@@ -1591,7 +1707,16 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
       derived: true,
     });
   }
-  for (const signal of observation.signals) queue.push({ signal, derived: false });
+  // And the same rule on the observed side: a comment whose reduction *and* the
+  // pass it bought are both on disk has had its consequence recorded, so a
+  // re-observation of it — which is what a cursor lost with the process leaves
+  // behind — is not bought a second time. See {@link answeredComments}.
+  const answered = answeredComments(ledger, dispatches);
+  for (const signal of observation.signals) {
+    const comment = commentIdentity(signal);
+    if (comment !== null && answered.has(comment)) continue;
+    queue.push({ signal, derived: false });
+  }
 
   const summary = await readEntitySummary(context);
 
@@ -1850,3 +1975,4 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
 export function mintSessionId(): string {
   return `conductor-${randomUUID()}`;
 }
+

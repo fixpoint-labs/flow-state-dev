@@ -955,6 +955,99 @@ describe("property 2: a restart resumes, it does not redo", () => {
     expect(again.ledger).toHaveLength(failed.ledger.length);
   });
 
+  it("does not buy a second pass over feedback the dispatch it bought already handled", async () => {
+    repo = await createTestRepo();
+    await freshState();
+    const submission = await submit(`fix/${ENTITY}`);
+
+    const first = fakeDispatcher({
+      isolation: "remote",
+      results: [{ produced: { pullNumber: submission.number } }],
+    });
+    const session = await open(first);
+    await manageIssue(session);
+    await session.tick(ENTITY);
+    await session.tick(ENTITY);
+
+    await comment(submission.number, "alice.1.md", "This needs a test.\n");
+
+    // The fourth window on the same seam, and the only one on the *observed*
+    // side: the comment's reduction is on disk and so is the settled dispatch it
+    // bought, and the process dies before the observation cursor that records
+    // the comment as reduced. The store stops accepting writes the instant the
+    // `addressFeedback` record settles — which is after the agent ran, read the
+    // comment, and pushed whatever it pushed.
+    const dying = fakeDispatcher({ isolation: "remote" });
+    const doomed = await open(dying, {
+      store: storeDyingAfter(
+        fileStateStore(statePath),
+        (key, state) =>
+          key.startsWith("dispatches/") &&
+          state.action === "addressFeedback" &&
+          state.outcome !== null,
+      ),
+    });
+    await expect(doomed.tick(ENTITY)).rejects.toThrow(/the process died/);
+    expect(dying.actionsRun()).toEqual(["addressFeedback"]);
+
+    // The restart, over a healthy store and a dispatcher that has run nothing.
+    // The comment is still in the inbox and the cursor never learned about it,
+    // so it is observed again — and a re-observed comment whose pass has already
+    // been bought and settled must not buy a second one. That pass is a paid
+    // agent run against feedback it already answered, and it lands a second set
+    // of edits on the branch on top of the first.
+    const second = fakeDispatcher({ isolation: "remote" });
+    const resumed = await open(second);
+    const ticked = await resumed.tick(ENTITY);
+
+    expect(second.briefs).toHaveLength(0);
+    expect(ticked.dispatchCount).toBe(2);
+    expect(
+      ticked.ledger.filter((row) => row.actionKind === "addressFeedback"),
+    ).toHaveLength(1);
+    expect(replayFailures(ticked.ledger)).toEqual([]);
+    expect(ledgerFailures(ticked.ledger, "IMPLEMENTATION", ticked.entity.phase)).toEqual([]);
+  });
+
+  it("still handles feedback whose dispatch died with the process", async () => {
+    repo = await createTestRepo();
+    await freshState();
+    const submission = await submit(`fix/${ENTITY}`);
+
+    const first = fakeDispatcher({
+      isolation: "remote",
+      results: [{ produced: { pullNumber: submission.number } }],
+    });
+    const session = await open(first);
+    await manageIssue(session);
+    await session.tick(ENTITY);
+    await session.tick(ENTITY);
+
+    await comment(submission.number, "alice.1.md", "This needs a test.\n");
+
+    // The other side of the same window, and the reason the row alone cannot be
+    // the proof: the store dies the instant the dispatch record is *opened*, so
+    // the reduction is on disk and the run it records never settled. Nothing in
+    // the world can produce another signal for this comment — a re-observation
+    // is the only thing that can, and suppressing it on the row alone leaves the
+    // reviewer's comment unanswered for the life of the issue, at a gate that
+    // still applies so nothing reports it either.
+    const dying = fakeDispatcher({ isolation: "remote" });
+    const doomed = await open(dying, {
+      store: storeDyingAfter(fileStateStore(statePath), (key) =>
+        key.startsWith("dispatches/"),
+      ),
+    });
+    await expect(doomed.tick(ENTITY)).rejects.toThrow(/the process died/);
+
+    const second = fakeDispatcher({ isolation: "remote" });
+    const resumed = await open(second);
+    const ticked = await resumed.tick(ENTITY);
+
+    expect(second.actionsRun()).toEqual(["addressFeedback"]);
+    expect(replayFailures(ticked.ledger)).toEqual([]);
+  });
+
   it("does not re-enter a phase whose entry work already ran", async () => {
     repo = await createTestRepo();
     await freshState();
