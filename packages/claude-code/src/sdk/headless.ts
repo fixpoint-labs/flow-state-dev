@@ -16,8 +16,8 @@
  * as text this package would have to parse back out of stdout.
  *
  * **It settles; it does not throw.** An uninstalled SDK, a timeout, a crash
- * mid-stream, and an error-subtype result all come back as `ok: false` with a
- * reason. Callers whose bookkeeping runs off the returned value (a ledger, a
+ * mid-stream, an error-subtype result, and a run the harness refused a tool all
+ * come back as `ok: false` with a reason. Callers whose bookkeeping runs off the returned value (a ledger, a
  * retry budget) would lose the record to a thrown error, so there is nothing to
  * catch. A `timeoutMs` no timer can hold settles the same way, and it is the
  * one failure that is the caller's own mistake rather than the run's — the
@@ -33,7 +33,11 @@
  * has to treat those runs as unknown rather than as free.
  */
 import { ClaudeAgentSdkNotInstalledError, describeThrown } from "./errors";
-import { readTerminalResult, type SdkTokenUsage } from "./result";
+import {
+  readTerminalResult,
+  type SdkPermissionDenial,
+  type SdkTokenUsage,
+} from "./result";
 import { defaultResolveClaudeAgentQuery } from "./sdk-client";
 import type {
   ClaudeAgentQuery,
@@ -75,9 +79,17 @@ export type ClaudeHeadlessUsage = SdkTokenUsage;
 
 /** What one headless run settled to. */
 export interface ClaudeHeadlessResult {
-  /** `true` only for a `success` result the SDK did not itself mark as an error. */
+  /**
+   * `true` only for a `success` result the SDK did not itself mark as an error
+   * **and did not refuse a tool** — an unattended run that was refused something
+   * it asked for did not do the work, whatever its subtype says.
+   */
   readonly ok: boolean;
-  /** Why it failed, in plain terms. `null` when `ok`. */
+  /**
+   * Why it failed, in plain terms. `null` when `ok`. A run that was refused a
+   * tool says *refused* and names every refused call, so a missing permission
+   * reads differently from an agent that tried and failed.
+   */
   readonly error: string | null;
   /** The agent's final answer, or `null` when the run reported none. */
   readonly finalMessage: string | null;
@@ -366,18 +378,74 @@ function overranBudget(timeoutMs: number, stopped: boolean): string {
 }
 
 /**
+ * The plain-text reason for a run that was refused tools, or `null` when it was
+ * refused none.
+ *
+ * Its whole job is to be unmistakable for the other kind of failure. "The agent
+ * tried and failed" sends a human to read the agent's work; "the agent was
+ * refused" sends them to the permission configuration, and the two are a wasted
+ * afternoon apart. So the word *refused* leads, every refused call is named
+ * rather than counted, and the reason states plainly that the refused work did
+ * not happen — which is the fact a ledger row would otherwise imply the
+ * opposite of.
+ *
+ * Every refusal is listed, not just the first. A run refused `git commit` and
+ * then `git push` has one missing permission, and a reason naming only the
+ * commit sends someone to grant exactly half of it.
+ */
+function refusedReason(denials: readonly SdkPermissionDenial[]): string | null {
+  if (denials.length === 0) return null;
+  const named = denials
+    .map(({ toolName, detail }) => (detail === null ? toolName : `${toolName}(${detail})`))
+    .join(", ");
+  return (
+    `The Claude Code run was refused ${denials.length} tool call${denials.length === 1 ? "" : "s"} ` +
+    `it asked to make, so whatever it needed them for did not happen: ${named}. ` +
+    `Grant what the run legitimately needs, or narrow what it is asked to do.`
+  );
+}
+
+/**
  * Reduce the SDK's terminal `result` message to a {@link ClaudeHeadlessResult}.
  *
  * A run failed if its subtype is anything but `success` — **including a subtype
  * this package does not recognize**, which is how a future SDK failure mode
  * reports itself and must not be read as a completion — or if the SDK flagged it
  * with `is_error`. Both are already in `succeeded`; see `./result`.
+ *
+ * **And a run that was refused a tool failed, whatever its subtype says.** This
+ * is the third rule, and it is this surface's rather than `./result`'s: an
+ * unattended run has nobody to answer a permission prompt, so a refusal is not
+ * a decision anyone made — it is work the caller asked for that could not be
+ * done. The SDK reports it as `subtype: "success"` all the same, because from
+ * its side the conversation ended normally: the model was told to try a
+ * different approach, said something sensible, and stopped. A caller reading
+ * only the subtype records a completed dispatch whose commit was never made.
+ *
+ * **Any refusal fails the run, not just refusals of tools that write.** The
+ * narrower rule needs a taxonomy of which tools and — for `Bash` — which
+ * *commands* count as writing, and every gap in it fails silently in the exact
+ * direction this rule exists to close. The cost of the two mistakes is not
+ * symmetric either: a false failure is one visible re-run, while a false
+ * success is a lie in the ledger that nobody goes looking for. An agent that
+ * probes a command it did not need therefore fails its run — the honest reading
+ * of a run whose permissions did not match what it was asked to do.
  */
 function reduceResult(msg: Extract<SdkMessageLike, { type: "result" }>): ClaudeHeadlessResult {
-  const { subtype, subtypeLabel, succeeded, finalMessage, errorDetail, sessionId, usage, costUsd } =
-    readTerminalResult(msg);
+  const {
+    subtype,
+    subtypeLabel,
+    succeeded,
+    permissionDenials,
+    finalMessage,
+    errorDetail,
+    sessionId,
+    usage,
+    costUsd,
+  } = readTerminalResult(msg);
+  const refused = refusedReason(permissionDenials);
 
-  if (succeeded) {
+  if (succeeded && refused === null) {
     return { ok: true, error: null, finalMessage, sessionId, costUsd, subtype, usage };
   }
 
@@ -386,11 +454,18 @@ function reduceResult(msg: Extract<SdkMessageLike, { type: "result" }>): ClaudeH
   // the subtype so the failure class survives into the caller's plain-text
   // reason without the caller having to read a Claude-shaped field.
   const detail = errorDetail ?? finalMessage;
+  // Both reasons when there are both, because they are usually one story: a run
+  // that spent its turn ceiling working around refusals is diagnosed by the
+  // refusals, and a reason that dropped either half would send someone to raise
+  // the ceiling on a run that will be refused again at the new one.
+  const failure = succeeded
+    ? null
+    : detail
+      ? `${detail} (${subtypeLabel})`
+      : `Claude Code run failed (${subtypeLabel}).`;
   return {
     ok: false,
-    error: detail
-      ? `${detail} (${subtypeLabel})`
-      : `Claude Code run failed (${subtypeLabel}).`,
+    error: [failure, refused].filter((part) => part !== null).join(" "),
     finalMessage,
     sessionId,
     costUsd,

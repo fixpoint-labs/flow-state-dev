@@ -30,6 +30,16 @@
  *
  * `isError` stays exposed beside it as a reported fact — already folded into
  * `succeeded`, and read only to *name* which of the two rules failed the run.
+ *
+ * **Refusals are reported, not judged.** `permissionDenials` is the third thing
+ * this module reads and the one `succeeded` deliberately does *not* fold in,
+ * because the same fact means opposite things on the two paths that read it. On
+ * the flow path a host answers `onToolApproval` and a denial is the host getting
+ * what it asked for; folding it into the verdict would report every deliberate
+ * refusal as an errored run. On the unattended path there is no host, so a
+ * refusal means the agent asked for something nobody could grant and did not get
+ * it — a failure `runClaudeHeadless` decides for itself. This module's job is to
+ * make the fact impossible to miss; whose failure it is belongs to the caller.
  */
 import type { SdkMessageLike, SdkResultSubtype } from "./types";
 
@@ -40,6 +50,41 @@ type SdkResultMessage = Extract<SdkMessageLike, { type: "result" }>;
 export interface SdkTokenUsage {
   readonly inputTokens: number;
   readonly outputTokens: number;
+}
+
+/** One tool call the run asked to make and was not permitted to make. */
+export interface SdkPermissionDenial {
+  /** The tool, in the SDK's spelling — `Bash`, `Edit`. Never empty. */
+  readonly toolName: string;
+  /**
+   * The part of the call worth naming in a failure reason: a `Bash` command, an
+   * edit's path. `null` when the input carried neither, which is all the SDK
+   * guarantees. Truncated, because a refused commit carries its whole message.
+   */
+  readonly detail: string | null;
+}
+
+/**
+ * How much of a refused call's input a reason carries. Long enough to identify
+ * the command, short enough that a refused heredoc commit does not become the
+ * whole ledger row.
+ */
+const DETAIL_LIMIT = 120;
+
+/**
+ * Name the refused call in the terms whoever reads the reason will act in.
+ *
+ * `command` and `file_path` are the two inputs that answer "refused to do
+ * what?" for the tools an unattended run is actually refused — everything else
+ * is identified well enough by the tool's name alone, and guessing at an
+ * arbitrary tool's most interesting field would print a different field each
+ * time.
+ */
+function denialDetail(input: Record<string, unknown> | undefined): string | null {
+  const named = input?.["command"] ?? input?.["file_path"];
+  if (typeof named !== "string" || named.length === 0) return null;
+  const flattened = named.replace(/\s+/g, " ").trim();
+  return flattened.length > DETAIL_LIMIT ? `${flattened.slice(0, DETAIL_LIMIT)}…` : flattened;
 }
 
 /** Everything this package reads out of one terminal `result` message. */
@@ -60,6 +105,18 @@ export interface SdkTerminalResult {
    * to decide one.
    */
   readonly isError: boolean;
+  /**
+   * Tool calls the run was refused, in the order the SDK reported them. Empty
+   * when it was refused none, and empty on an SDK version that predates the
+   * field — which is indistinguishable from a clean run and is the one reading
+   * this cannot improve on.
+   *
+   * **Deliberately not folded into {@link SdkTerminalResult.succeeded}** — see
+   * the note at the top of this module. A caller with no one to answer a prompt
+   * should treat a non-empty list as a failed run; a caller that answers
+   * approvals itself should not.
+   */
+  readonly permissionDenials: readonly SdkPermissionDenial[];
   /** The agent's final answer. `null` on an error-subtype result, which has none. */
   readonly finalMessage: string | null;
   /** `errors[]` joined, or `null` when the result carried none. */
@@ -100,6 +157,10 @@ export function readTerminalResult(msg: SdkResultMessage): SdkTerminalResult {
     subtypeLabel: raw ?? "unknown subtype",
     succeeded: raw === "success" && !isError,
     isError,
+    permissionDenials: (msg.permission_denials ?? []).map((denial) => ({
+      toolName: denial.tool_name ?? "an unnamed tool",
+      detail: denialDetail(denial.tool_input),
+    })),
     // Error-subtype results carry `errors[]` and no `result`; a success result
     // carries `result` and no `errors`. Both are read, neither is invented.
     finalMessage: typeof msg.result === "string" ? msg.result : null,

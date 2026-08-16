@@ -138,6 +138,19 @@ export type SdkMessageLike =
        * alongside `subtype`, not instead of it.
        */
       is_error?: boolean;
+      /**
+       * Every tool call the run asked to make and did not get, in the SDK's own
+       * spelling. The SDK records one here for any permission decision that was
+       * not `allow` — an explicit deny, and an `ask` no one could answer — so it
+       * is the only place an unattended caller can learn that the agent was
+       * *refused* rather than that it tried and failed. Absent on an SDK version
+       * that predates the field; empty on a run that was refused nothing.
+       */
+      permission_denials?: Array<{
+        tool_name?: string;
+        tool_use_id?: string;
+        tool_input?: Record<string, unknown>;
+      }>;
       session_id?: string;
       /** `NonNullableUsage` carries `input_tokens`/`output_tokens` (+ cache). */
       usage?: { input_tokens?: number; output_tokens?: number } | null;

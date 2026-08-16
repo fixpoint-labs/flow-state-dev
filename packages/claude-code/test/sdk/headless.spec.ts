@@ -197,6 +197,73 @@ describe("runClaudeHeadless", () => {
     expect(run.costUsd).toBe(1.25);
   });
 
+  it("fails a run the harness refused a tool, which the SDK still reports as a success", async () => {
+    // The shape that cost an investigation: the agent asked to push, the harness
+    // refused it, the model was told to try something else, and the run ended
+    // `subtype: "success"`. Read as a completion, that is a dispatch recorded as
+    // done whose branch was never pushed.
+    const { resolveAgent } = scriptedAgent([
+      result({
+        permission_denials: [
+          { tool_name: "Bash", tool_use_id: "call-1", tool_input: { command: "git push" } },
+        ],
+      }),
+    ]);
+    const run = await runClaudeHeadless({ prompt: "p", resolveAgent });
+    expect(run.ok).toBe(false);
+    // The reason has to say *refused*, not just "failed": an operator reading the
+    // ledger acts on a missing permission differently than on a broken agent.
+    expect(run.error).toContain("refused");
+    expect(run.error).toContain("Bash");
+    expect(run.error).toContain("git push");
+    // Cost, session and usage survive — the tokens were spent either way.
+    expect(run.costUsd).toBe(1.25);
+    expect(run.sessionId).toBe("sess-abc");
+  });
+
+  it("keeps a failed run's own reason and adds what it was refused, so both diagnoses survive", async () => {
+    const { resolveAgent } = scriptedAgent([
+      result({
+        subtype: "error_max_turns",
+        is_error: true,
+        result: undefined,
+        errors: ["ran out of turns"],
+        permission_denials: [
+          { tool_name: "Bash", tool_use_id: "call-1", tool_input: { command: "pnpm test" } },
+        ],
+      }),
+    ]);
+    const run = await runClaudeHeadless({ prompt: "p", resolveAgent });
+    expect(run.ok).toBe(false);
+    // Burning the turn ceiling and being refused a tool are one story, not two:
+    // the refusals are usually why the turns went.
+    expect(run.error).toContain("ran out of turns");
+    expect(run.error).toContain("error_max_turns");
+    expect(run.error).toContain("pnpm test");
+  });
+
+  it("reports every refusal, not just the first, so a missing permission is not read as one command", async () => {
+    const { resolveAgent } = scriptedAgent([
+      result({
+        permission_denials: [
+          { tool_name: "Bash", tool_use_id: "c1", tool_input: { command: "git commit -m 'x'" } },
+          { tool_name: "Edit", tool_use_id: "c2", tool_input: { file_path: "/etc/hosts" } },
+        ],
+      }),
+    ]);
+    const run = await runClaudeHeadless({ prompt: "p", resolveAgent });
+    expect(run.ok).toBe(false);
+    expect(run.error).toContain("git commit");
+    expect(run.error).toContain("/etc/hosts");
+  });
+
+  it("leaves a run that was refused nothing alone, so an empty denial list is not a failure", async () => {
+    const { resolveAgent } = scriptedAgent([result({ permission_denials: [] })]);
+    const run = await runClaudeHeadless({ prompt: "p", resolveAgent });
+    expect(run.ok).toBe(true);
+    expect(run.error).toBeNull();
+  });
+
   it("fails on a subtype it does not recognize, rather than reading a future failure as success", async () => {
     const { resolveAgent } = scriptedAgent([
       result({ subtype: "error_something_new", is_error: true, result: undefined }),
