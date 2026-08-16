@@ -384,6 +384,14 @@ the issue asked" is the wrong thing to tell someone whose runner was not install
 project that declares no `goalCheck` proves nothing, which is a valid answer — an issue with
 no goal to run is not held on proving one.
 
+Two things worth knowing about how it is run, because the realistic goal command is a wrapper
+like `pnpm test` and the work happens in what that wrapper spawns. **A timeout takes the whole
+process tree**, not just the process conductor started, so nothing is left behind writing to a
+workspace conductor has finished with. And **stdout is discarded while stderr is capped at 8
+MiB** — nothing printed is read, so the only reason to hold output at all is the tail that
+decorates a failure reason. A command that pushes past the stderr cap is stopped and reported
+as a run that produced no verdict.
+
 ### The lifecycle of a proof
 
 One rule, and everything below is a consequence of it:

@@ -45,7 +45,7 @@
  *   what it refuses to do is *choose* a program.
  */
 
-import { spawn } from "node:child_process";
+import { ExecaError, execa } from "execa";
 
 import type { ResolvedGoalCheck } from "../config/define";
 import { renderCommand } from "../util/command";
@@ -58,6 +58,20 @@ import { renderCommand } from "../util/command";
  * because that is where a stack trace and a "command not found" land.
  */
 const REASON_TAIL = 2000;
+
+/**
+ * How much stderr conductor will hold while a runner produces it.
+ *
+ * Only the last {@link REASON_TAIL} characters are ever read, so this is not a
+ * budget for what is *wanted* — it is the point past which a runner is taking
+ * memory from the process that is supposed to be measuring it. Held without a
+ * ceiling, a runaway command exhausts conductor's heap long before the timeout
+ * it was given fires, and takes the tick's record of what happened with it.
+ *
+ * Reaching it stops the command, so it is set generously: four thousand times
+ * the tail, far past any real runner's diagnostics, and still bounded.
+ */
+const STDERR_CEILING = 8 * 1024 * 1024;
 
 /** What running the goal command asks for. */
 export interface GoalCheckRequest {
@@ -95,105 +109,143 @@ function tail(text: string): string {
 }
 
 /**
+ * What execa said went wrong, when it is a failure result rather than a status.
+ *
+ * `originalMessage` is the underlying `spawn … ENOENT`, without the command and
+ * output execa's own message repeats — the reason already names the command it
+ * tried. Taken through `unknown` because the narrowing is on the *shape* of a
+ * result whose type is otherwise pinned to the options it was run with.
+ *
+ * @param result A settled execa result.
+ * @returns The underlying message, or a stand-in when there is none to read.
+ */
+function failureMessage(result: unknown): string {
+  return result instanceof ExecaError ? result.originalMessage : "no reason was reported";
+}
+
+/**
  * Run the declared goal command and turn its exit status into an outcome.
  *
  * **Settles; never throws.** The same contract the dispatcher seam holds, for
  * the same reason: a rejected promise skips the ledger, and a transition that
  * skipped the ledger is one no restart can recover. Every way a child process
  * can fail — a bad executable, a crash before exec, a signal, a timeout — comes
- * back as `not-run` with a reason instead.
+ * back as `not-run` with a reason instead. `reject: false` is what makes that
+ * one code path rather than a `catch` that has to remember which failures are
+ * verdicts: a non-zero exit is the *work* failing and must not be caught with
+ * the rest.
  *
- * The child is spawned with `shell: false` (node's default), so no element of
- * the argv is parsed for quoting, globbing, redirection or substitution.
+ * The child is spawned with `shell: false`, so no element of the argv is parsed
+ * for quoting, globbing, redirection or substitution.
  */
 export async function runGoalCheckCommand(
   request: GoalCheckRequest,
 ): Promise<GoalCheckOutcome> {
   const { goalCheck, cwd, entityId, env } = request;
+  const rendered = renderCommand(goalCheck.command);
   const [executable, ...rest] = goalCheck.command;
   // Unreachable through `resolveConductor`, which rejects an empty command at
   // open. Answered rather than asserted, because this is the boundary where a
-  // hand-built config would otherwise reach `spawn(undefined)`.
+  // hand-built config would otherwise reach `execa(undefined)`.
   if (executable === undefined) {
     return { kind: "not-run", reason: "The declared goal command is empty." };
   }
-  const argv = [...rest, entityId];
-
-  return new Promise<GoalCheckOutcome>((resolve) => {
-    let settled = false;
-    const settle = (outcome: GoalCheckOutcome) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(outcome);
+  // The same boundary, for the other value that arrives here unmediated. Zero
+  // and below cannot bound a run, and a run with no bound is a tick that never
+  // ends — so it is refused here rather than read as "no ceiling was wanted".
+  // (Rejecting it at config open, where the operator would hear about it hours
+  // earlier, is a separate and better fix that this does not replace.)
+  if (!(goalCheck.timeoutMs > 0)) {
+    return {
+      kind: "not-run",
+      reason:
+        `The goal command \`${rendered}\` was given a ceiling of ` +
+        `${goalCheck.timeoutMs}ms, which cannot bound a run, so it was not started.`,
     };
+  }
 
-    let child: ReturnType<typeof spawn>;
-    try {
-      child = spawn(executable, argv, { cwd, env: env ?? process.env, shell: false });
-    } catch (cause) {
-      // `spawn` normally reports failure on the `error` event, but an invalid
-      // argument (a cwd that is not a string, an argv element that is not) is a
-      // synchronous throw — and a throw here would reject rather than settle.
-      return resolve({
+  let result;
+  try {
+    result = await execa(executable, [...rest, entityId], {
+      cwd,
+      // `extendEnv: false` because a caller that passes `env` is stating the
+      // whole environment, the way `child_process.spawn` reads it.
+      env: env ?? process.env,
+      extendEnv: false,
+      shell: false,
+      // The verdict is the exit status, so a non-zero one must come back as a
+      // value. Throwing it would put it through the same path as a runner that
+      // never started, and report failed work as broken machinery.
+      reject: false,
+      timeout: goalCheck.timeoutMs,
+      // The declared command is realistically a wrapper — `pnpm test`, a build
+      // script — and the work is in what it spawns. Killing only the direct
+      // child leaves those alive to keep writing to a workspace conductor has
+      // already finished with. Off by default, hence stated.
+      killDescendants: true,
+      // stdout is drained and dropped; stderr is kept, bounded, for the tail a
+      // `not-run` reason carries.
+      buffer: { stdout: false, stderr: true },
+      maxBuffer: { stderr: STDERR_CEILING },
+    });
+  } catch (cause) {
+    // `reject: false` covers everything the subprocess does; what is left is
+    // execa refusing the request at all (an option it will not accept, a `cwd`
+    // that is not a string) — and a throw here would reject rather than settle.
+    return {
+      kind: "not-run",
+      reason:
+        `The goal command \`${rendered}\` could not be started: ` +
+        `${cause instanceof Error ? cause.message : String(cause)}`,
+    };
+  }
+
+  const stderr = typeof result.stderr === "string" ? result.stderr : "";
+
+  if (result.timedOut) {
+    return {
+      kind: "not-run",
+      reason:
+        `The goal command \`${rendered}\` did not finish within ` +
+        `${goalCheck.timeoutMs}ms and was killed, so it proved nothing either way.`,
+    };
+  }
+
+  if (result.isMaxBuffer) {
+    return {
+      kind: "not-run",
+      reason:
+        `The goal command \`${rendered}\` produced more than ${STDERR_CEILING} bytes of ` +
+        `output on stderr and was killed before it could report a verdict.`,
+    };
+  }
+
+  // Undefined exactly when there is no status to read: the command was killed
+  // rather than returned, or never started at all. A signal distinguishes them,
+  // and both are the machinery failing rather than the work.
+  if (result.exitCode === undefined) {
+    if (result.signal !== undefined) {
+      return {
         kind: "not-run",
         reason:
-          `The goal command \`${renderCommand(goalCheck.command)}\` could not be started: ` +
-          `${cause instanceof Error ? cause.message : String(cause)}`,
-      });
+          `The goal command \`${rendered}\` was killed by ${result.signal} ` +
+          `before it could report a verdict.${stderr ? ` stderr: ${tail(stderr)}` : ""}`,
+      };
     }
+    return {
+      kind: "not-run",
+      reason:
+        `The goal command \`${rendered}\` could not be executed in ${cwd}: ` +
+        `${failureMessage(result)}`,
+    };
+  }
 
-    let stderr = "";
-    let stdout = "";
-    child.stderr?.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString();
-    });
-    child.stdout?.on("data", (chunk: Buffer) => {
-      stdout += chunk.toString();
-    });
-
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      settle({
-        kind: "not-run",
-        reason:
-          `The goal command \`${renderCommand(goalCheck.command)}\` did not finish within ` +
-          `${goalCheck.timeoutMs}ms and was killed, so it proved nothing either way.`,
-      });
-    }, goalCheck.timeoutMs);
-    // A goal runner outliving the tick is a hung tick; a timer outliving it is
-    // a process that will not exit. Both are avoidable, and only one of them is
-    // the child's fault.
-    timer.unref?.();
-
-    child.on("error", (cause) => {
-      settle({
-        kind: "not-run",
-        reason:
-          `The goal command \`${renderCommand(goalCheck.command)}\` could not be executed in ` +
-          `${cwd}: ${cause.message}`,
-      });
-    });
-
-    child.on("close", (code, signal) => {
-      // Killed rather than returned. The timeout path has already settled with
-      // a reason of its own; anything else here is a crash (a segfault, an
-      // OOM kill), which is the machinery failing rather than the work.
-      if (code === null) {
-        settle({
-          kind: "not-run",
-          reason:
-            `The goal command \`${renderCommand(goalCheck.command)}\` was killed by ${signal} ` +
-            `before it could report a verdict.${stderr ? ` stderr: ${tail(stderr)}` : ""}`,
-        });
-        return;
-      }
-      settle({ kind: "verdict", verdict: code === 0 ? "passed" : "failed", exitCode: code });
-    });
-
-    // Read but deliberately not acted on: a goal runner's own PASS/FAIL line is
-    // for the human reading the log. Grading it here would put the verdict back
-    // in prose, which is the thing the exit status exists to replace.
-    void stdout;
-  });
+  // A runner's own PASS/FAIL line is for the human reading the log, which is
+  // why stdout is never retained. Grading it here would put the verdict back in
+  // prose, which is the thing the exit status exists to replace.
+  return {
+    kind: "verdict",
+    verdict: result.exitCode === 0 ? "passed" : "failed",
+    exitCode: result.exitCode,
+  };
 }

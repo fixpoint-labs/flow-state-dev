@@ -56,6 +56,7 @@ import {
   type ScriptedDispatch,
 } from "../../src/testing/fake";
 import { createTestRepo, type TestRepo } from "../local/repo";
+import { stopped } from "../process";
 
 const ENTITY = "FIX-1";
 const SUMMARY = "Add a `reverse` operation to the registry.";
@@ -2368,23 +2369,6 @@ describe("the goal check, run by conductor against the repo's own goal command",
   /** The record of the one execution conductor performed itself. */
   async function goalCheckRecord(): Promise<DispatchState | undefined> {
     return (await dispatchRecords()).find((row) => row.action === "runGoalCheck");
-  }
-
-  /**
-   * Whether a process is gone, polled briefly. `kill(pid, 0)` sends no signal
-   * and answers whether the process exists; a kill is asynchronous, so the
-   * honest test waits a moment for it rather than sampling once.
-   */
-  async function stopped(pid: number): Promise<boolean> {
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      try {
-        process.kill(pid, 0);
-      } catch {
-        return true;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-    return false;
   }
 
   /** A goal command naming a program that is not there. */
