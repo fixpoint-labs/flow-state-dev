@@ -185,8 +185,18 @@ export interface ResolvedConductor {
   /** The URL `repo` was read from, or `null` when the repo was configured outright. */
   readonly remoteUrl: string | null;
   readonly baseBranch: string;
-  /** The GitHub token. Never logged, never carried into a brief. */
-  readonly token: string;
+  /**
+   * The GitHub token. Never logged, never carried into a brief.
+   *
+   * `null` when the environment holds none, which is a resolvable state rather
+   * than a failed resolution: an entity whose world is read from a local
+   * checkout never reaches the GitHub API, and that source exists for exactly
+   * the machines with no credential on them. `openConductor` raises
+   * (`requireGitHubToken`) when it has to build the default GitHub observer
+   * without one — the same error, at the point where GitHub is actually the
+   * source being read.
+   */
+  readonly token: string | null;
   readonly dispatcher: Dispatcher;
   readonly guidance: readonly string[];
   /**

@@ -35,7 +35,7 @@ import path from "node:path";
 
 import { createGitHubClient, restBaseUrlForHost } from "../github/client";
 import { githubObserver } from "../github/observe";
-import { defaultGitRunner } from "../config/discover";
+import { defaultGitRunner, requireGitHubToken } from "../config/discover";
 import type { ResolvedConductor } from "../config/define";
 import type { GitRunner } from "../dispatch/branch";
 import type { Observer } from "../observe/types";
@@ -286,7 +286,14 @@ export async function openConductor(input: OpenConductorInput): Promise<Conducto
       createGitHubClient({
         owner: config.repo.owner,
         repo: config.repo.repo,
-        token: config.token,
+        // Demanded here rather than at resolution, because this branch is the
+        // only thing that reads GitHub. A caller passing its own observer — a
+        // local checkout is the shipped one — is a supported configuration that
+        // touches no GitHub API, and requiring a credential of it closed the
+        // source that exists for machines with none. Still eager: this runs
+        // while `openConductor` assembles, so a credential-less GitHub run stops
+        // before any work item is managed.
+        token: requireGitHubToken(config.token),
         // The host is discovered alongside the owner and the repo, and dropping
         // it here aimed every read at public GitHub — which 404s for a private
         // Enterprise repo, or answers with an unrelated public one of the same

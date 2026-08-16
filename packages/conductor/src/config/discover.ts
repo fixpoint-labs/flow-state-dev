@@ -208,24 +208,47 @@ export async function discoverDefaultBranch(
  * broader `GH_TOKEN` deliberately, and picking the narrower one surfaces much
  * later as a permissions error on an upstream read or write.
  *
- * GitHub is the one connector that is not optional — it hosts the artifacts and
- * the gates — so an absent token is an error rather than a degraded mode.
+ * **`null` rather than a raise, and this is the one discovery that reports an
+ * absence instead of refusing it.** Every other field here has a
+ * `conductor.config.ts` override, so "the lookup missed and nobody said
+ * otherwise" is a genuine dead end. The token has none — and it is also the one
+ * field a whole *supported* configuration never uses: an entity read from a
+ * local checkout touches no GitHub API, and demanding a credential for it closes
+ * the source that exists precisely for machines that have none. So the absence
+ * travels, and {@link requireGitHubToken} refuses it at the point where GitHub
+ * is actually the source being read.
  */
-export function discoverGitHubToken(env: NodeJS.ProcessEnv): string {
+export function discoverGitHubToken(env: NodeJS.ProcessEnv): string | null {
   // Blank is unset. A workflow that writes `GH_TOKEN: ${{ secrets.PAT }}` with
   // no such secret exports an empty string, and `??` alone would take it and
   // report "no token" with a perfectly good `GITHUB_TOKEN` sitting there.
   const token = [env.GH_TOKEN, env.GITHUB_TOKEN].find((value) => (value ?? "").trim() !== "");
-  if (!token || token.trim() === "") {
-    throw new ConductorConfigError(
-      "No GitHub token found. Conductor reads GH_TOKEN or GITHUB_TOKEN, in that " +
-        "order — the same variables the `gh` CLI uses, in the same precedence. " +
-        "GitHub hosts the artifacts and the gates, so there is no mode that runs " +
-        "without it.",
-      "github.token",
-    );
-  }
-  return token.trim();
+  return token ? token.trim() : null;
+}
+
+/**
+ * The token, or the error that names what to set — raised where GitHub is the
+ * source being read, and nowhere else.
+ *
+ * **Still eager.** The property the config layer holds is that a lookup which
+ * cannot answer fails *at startup*, wearing its own name, rather than twenty
+ * minutes later wearing something else's. This keeps it: the default observer is
+ * built while `openConductor` is assembling, one call after resolution, so a
+ * credential-less run against GitHub still stops before a work item is managed.
+ * What moves is only *which* configurations the requirement applies to.
+ *
+ * Blank counts as absent, for {@link discoverGitHubToken}'s reason — a value the
+ * environment set to the empty string is a secret that did not arrive.
+ */
+export function requireGitHubToken(token: string | null): string {
+  if (token !== null && token.trim() !== "") return token.trim();
+  throw new ConductorConfigError(
+    "No GitHub token found, and the world is being read from GitHub. Conductor " +
+      "reads GH_TOKEN or GITHUB_TOKEN, in that order — the same variables the " +
+      "`gh` CLI uses, in the same precedence. Set one, or pass an `observer` that " +
+      "reads somewhere else: a local checkout needs no credential.",
+    "github.token",
+  );
 }
 
 /** One coding harness conductor knows how to dispatch to. */

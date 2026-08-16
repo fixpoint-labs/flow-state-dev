@@ -156,6 +156,41 @@ describe("resolveConductor at level 1", () => {
     });
     expect(resolved.token).toBe("broad-token-operator-supplied");
   });
+
+  /**
+   * The one discovery that reports an absence instead of refusing it, and the
+   * reason it is the exception rather than a hole in the rule above.
+   *
+   * Every other field here has a `conductor.config.ts` override, so a lookup
+   * that misses with nothing declared is a genuine dead end. The token has none
+   * — and it is the one field an entire supported configuration never uses,
+   * since a world read from a local checkout touches no GitHub API. Raising here
+   * meant the local source could not be reached through resolution at all, on
+   * exactly the machines it exists for. The refusal moved to `openConductor`,
+   * where the default GitHub observer is built; `test/config/local-path` drives
+   * both sides of that.
+   */
+  it("resolves with no credential anywhere, and says so rather than guessing", async () => {
+    const resolved = await resolveConductor(defineConductor(), {
+      env: {} as NodeJS.ProcessEnv,
+      git: fakeGit(HAPPY),
+      probe: () => true,
+    });
+    expect(resolved.token).toBeNull();
+  });
+
+  it("reads a blank token as no token, not as a token", async () => {
+    // A workflow writing `GH_TOKEN: ${{ secrets.PAT }}` with no such secret
+    // exports the empty string. Carried through as a value it authenticates
+    // nothing and fails as a 401 several steps later, wearing GitHub's words
+    // rather than its own.
+    const resolved = await resolveConductor(defineConductor(), {
+      env: { GH_TOKEN: "  ", GITHUB_TOKEN: "" } as NodeJS.ProcessEnv,
+      git: fakeGit(HAPPY),
+      probe: () => true,
+    });
+    expect(resolved.token).toBeNull();
+  });
 });
 
 describe("a discovery that cannot answer", () => {
@@ -202,11 +237,6 @@ describe("a discovery that cannot answer", () => {
       "no coding harness installed",
       { env: ENV, git: fakeGit(HAPPY), probe: () => false },
       "dispatcher",
-    ],
-    [
-      "no GitHub token",
-      { env: {} as NodeJS.ProcessEnv, git: fakeGit(HAPPY), probe: () => true },
-      "github.token",
     ],
   ];
 

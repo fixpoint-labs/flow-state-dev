@@ -13,9 +13,11 @@ The process it encodes is not new — it is the one already written down in
 >
 > **In the tree:** the entity model; the pure driver (`decide`, `deriveGate`,
 > `reconcile`); the two seams — `Dispatcher` for how work gets done, `Observer`
-> for how the world is read — with their implementations, internal to the
-> package rather than exported: Claude Code behind the first, GitHub and a local
-> checkout behind the second; the config surface (`defineConductor` /
+> for how the world is read — with their implementations behind them: Claude
+> Code behind the first, GitHub and a local checkout behind the second. GitHub is
+> the default and is never named, so it stays internal; the local source is a
+> choice a caller states, so it is reachable at
+> `@flow-state-dev/conductor/local`. Also the config surface (`defineConductor` /
 > `resolveConductor` and its discovery); and the **tick** — `openConductor`,
 > which assembles observe → decide → execute → ledger over durable state,
 > registers the collections below against it, and provisions and runs a phase,
@@ -236,8 +238,27 @@ implementation, it lives in that implementation's options.
 ## Reading a local checkout
 
 The second observer reads a real git repository, which is what makes the process
-runnable without GitHub — no issues burned, no PRs opened, and a kill-mid-gate
-restart you can actually try.
+runnable without GitHub — no issues burned, no PRs opened, no credential on the
+machine, and a kill-mid-gate restart you can actually try.
+
+```ts
+import { openConductor, resolveConductor } from "@flow-state-dev/conductor";
+import { localObserver } from "@flow-state-dev/conductor/local";
+
+const config = await resolveConductor(declared, { cwd });
+const session = await openConductor({
+  config,
+  statePath: ".conductor/state",
+  observer: localObserver({ repoRoot: config.repoRoot, baseBranch: config.baseBranch }),
+});
+```
+
+Naming the observer is the whole switch. A token is read at resolution when the
+environment has one and is *required* only where GitHub is actually the source
+being read — which is `openConductor` building its default observer, one call
+later, so a credential-less run against GitHub still stops before any work item
+is managed. A checkout with no GitHub remote needs `repo` declared as well, since
+that is discovered by parsing the remote's URL.
 
 | World fact | GitHub | Local |
 |---|---|---|
@@ -297,7 +318,7 @@ facts of the machine it runs on, so it reads them rather than asking:
 | Not configured  | Discovered from                                              |
 | --------------- | ------------------------------------------------------------ |
 | the repository  | `git remote get-url origin`, in the checkout conductor runs in |
-| GitHub auth     | `GH_TOKEN`, then `GITHUB_TOKEN` — the variables `gh` already uses, in `gh`'s own precedence |
+| GitHub auth     | `GH_TOKEN`, then `GITHUB_TOKEN` — the variables `gh` already uses, in `gh`'s own precedence. Read here, required only where GitHub is the source being read |
 | the base branch | the remote's HEAD                                             |
 | the dispatcher  | the coding harness that can actually be loaded (Claude Code's Agent SDK, today) |
 

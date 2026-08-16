@@ -40,6 +40,7 @@ export {
   discoverRepoRoot,
   KNOWN_HARNESSES,
   parseRepoRef,
+  requireGitHubToken,
   type DiscoveredDefaultBranch,
   type HarnessProbe,
   type KnownHarness,

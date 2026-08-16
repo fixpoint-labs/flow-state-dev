@@ -13,10 +13,16 @@
  * This entrypoint exports the config surface, the entity model, the pure
  * driver, the two seams — `Dispatcher` for how work gets done, `Observer` for
  * how the world is read — and `openConductor`, the runtime that assembles them
- * into a tick over durable state. The seams' implementations stay internal to
- * the package (`src/github`, `src/local`), and the test scaffolding built on the
- * dispatch seam — `fakeDispatcher` and the `replay` harness — lives at
- * `@flow-state-dev/conductor/testing`, so neither lands in a consumer's bundle.
+ * into a tick over durable state.
+ *
+ * **A seam implementation is reachable exactly when a caller has to name it.**
+ * GitHub is what `openConductor` builds when no observer is passed, so nothing
+ * imports it and `src/github` stays internal. The local source is the opposite:
+ * reading a checkout instead of a repository is the caller's decision to state,
+ * so `localObserver` lives at `@flow-state-dev/conductor/local` — a subpath, for
+ * the same reason `fakeDispatcher` and the `replay` harness live at
+ * `@flow-state-dev/conductor/testing`, so neither lands in a consumer's bundle
+ * unasked.
  */
 
 export * from "./config";

@@ -46,6 +46,10 @@
       "types": "./dist/observe/index.d.ts",
       "default": "./src/observe/index.ts"
     },
+    "./local": {
+      "types": "./dist/local/index.d.ts",
+      "default": "./src/local/index.ts"
+    },
     "./testing": {
       "types": "./dist/testing/index.d.ts",
       "default": "./src/testing/index.ts"
