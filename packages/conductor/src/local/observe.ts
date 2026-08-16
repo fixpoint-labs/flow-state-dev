@@ -118,6 +118,10 @@ export function localObserver(options: LocalObserverOptions): Observer {
             at: comment.at || request.now,
             author: comment.author,
             commentId: comment.id,
+            // The same namespace `commentKey` carries. There is one stream here,
+            // so it cannot collide with itself — it is stated because what
+            // identifies a comment downstream is the pair, not the id.
+            commentSource: LOCAL_SOURCE,
             pullNumber: pr.number,
           });
         }

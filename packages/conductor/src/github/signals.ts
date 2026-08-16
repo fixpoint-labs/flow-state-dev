@@ -38,12 +38,29 @@ export interface SignalParseContext {
 }
 
 /**
+ * The two comment streams GitHub reports, as the namespace their ids belong to.
+ *
+ * **The endpoints number independently**, so a conversation comment and a review
+ * comment on one pull request can carry the same numeric id. Every place that
+ * identifies a comment — the poll cursor's keys, the signal it produces, and the
+ * webhook path that mirrors both — has to say which stream the id came from, and
+ * has to say it with the *same* token: a comment read by a poll and the same
+ * comment delivered by a webhook are one comment, and two spellings of its
+ * stream would make them two.
+ */
+export const ISSUE_COMMENTS = "issue";
+/** @see {@link ISSUE_COMMENTS} */
+export const REVIEW_COMMENTS = "review";
+
+/**
  * One comment, normalized across the two REST endpoints that produce them
  * (`issues/{n}/comments` and `pulls/{n}/comments`) and the two webhook events
  * that mirror them.
  */
 export interface CommentFacts {
   readonly id: string;
+  /** Which stream `id` was minted in — {@link ISSUE_COMMENTS} or {@link REVIEW_COMMENTS}. */
+  readonly source: string;
   readonly author: GitHubActor | null;
   readonly at: string;
   readonly pullNumber: number;
@@ -73,6 +90,7 @@ export function signalFromComment(
     at: comment.at || ctx.now,
     author: comment.author?.login ?? "",
     commentId: comment.id,
+    commentSource: comment.source,
     pullNumber: comment.pullNumber,
   };
 }
@@ -231,6 +249,7 @@ export function signalsFromWebhook(
       const signal = signalFromComment(
         {
           id: String(num(payload, "comment", "id") ?? str(payload, "comment", "id")),
+          source: ISSUE_COMMENTS,
           author: actor(payload, "comment", "user"),
           at: str(payload, "comment", "created_at"),
           pullNumber,
@@ -248,6 +267,7 @@ export function signalsFromWebhook(
       const signal = signalFromComment(
         {
           id: String(num(payload, "comment", "id") ?? str(payload, "comment", "id")),
+          source: REVIEW_COMMENTS,
           author: actor(payload, "comment", "user"),
           at: str(payload, "comment", "created_at"),
           pullNumber,

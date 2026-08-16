@@ -386,6 +386,9 @@ describe("a comment a human wrote as a file", () => {
       at: T2,
       author: "alice",
       commentId: "alice.1.md",
+      // The stream the id belongs to, matching the namespace `commentKey`
+      // writes into the cursor. A comment is identified by the pair.
+      commentSource: LOCAL_SOURCE,
       pullNumber: number,
     });
 

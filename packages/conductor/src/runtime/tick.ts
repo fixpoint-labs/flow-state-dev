@@ -479,18 +479,48 @@ function unreducedFailures(
 }
 
 /**
+ * The stream of a comment whose signal names none.
+ *
+ * Only a ledger row written before signals carried their stream (BP-030), which
+ * is identified the way it always was: across every stream at once. That is the
+ * *old* identity and it is wrong in the same way — but it is the only thing such
+ * a row supports, and reading it as matching nothing would re-buy a pass over
+ * feedback it records as answered.
+ */
+const ANY_COMMENT_STREAM = "*";
+
+/**
  * The comment a signal is about, as a key one comment cannot share with another.
  * `null` for every signal that is not a human's prose.
  *
- * The pull request is part of it because a comment id is the *source's*, and an
- * entity reads several submissions — a spec PR and an implementation PR — whose
- * ids are minted independently.
+ * Two things scope the id, and neither is optional:
+ *
+ * - **The pull request**, because a comment id is the *source's*, and an entity
+ *   reads several submissions — a spec PR and an implementation PR — whose ids
+ *   are minted independently.
+ * - **The stream**, because a source can report comments on more than one and
+ *   they number independently: GitHub's conversation and review-thread endpoints
+ *   both hand out a bare integer, and the same integer can name a comment on
+ *   each. `github/poll` namespaces its cursor keys for exactly this reason, and
+ *   an identity that dropped the namespace would answer the second comment with
+ *   whatever answered the first — which is to say drop it, and then record it as
+ *   seen. See {@link ProseSignal.commentSource}.
+ *
+ * Two keys, because the ledger holds rows from before the stream was recorded:
+ * `key` is what this comment is, and `anyStream` is what such a row can have
+ * called it.
  */
-function commentIdentity(signal: Signal): string | null {
+function commentIdentity(
+  signal: Signal,
+): { readonly key: string; readonly anyStream: string } | null {
   if (signal.kind !== "feedback_received" && signal.kind !== "question_asked") {
     return null;
   }
-  return `${signal.pullNumber}:${signal.commentId}`;
+  const scope = `${signal.pullNumber}:${signal.commentId}`;
+  return {
+    key: `${signal.commentSource ?? ANY_COMMENT_STREAM}:${scope}`,
+    anyStream: `${ANY_COMMENT_STREAM}:${scope}`,
+  };
 }
 
 /**
@@ -572,7 +602,7 @@ function answeredComments(
     ) {
       continue;
     }
-    answered.add(comment);
+    answered.add(comment.key);
   }
   return answered;
 }
@@ -1714,7 +1744,13 @@ export async function runTick(context: TickContext): Promise<ManagedWork> {
   const answered = answeredComments(ledger, dispatches);
   for (const signal of observation.signals) {
     const comment = commentIdentity(signal);
-    if (comment !== null && answered.has(comment)) continue;
+    // Both keys, because a row from before signals carried their stream recorded
+    // the comment under the one that matches every stream — see
+    // {@link ANY_COMMENT_STREAM}. A signal that names no stream produces the
+    // same key twice, which is the old behaviour exactly.
+    if (comment !== null && (answered.has(comment.key) || answered.has(comment.anyStream))) {
+      continue;
+    }
     queue.push({ signal, derived: false });
   }
 

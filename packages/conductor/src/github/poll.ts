@@ -30,7 +30,13 @@ import { EMPTY_OBSERVATION_CURSOR, type ObservationCursor } from "../observe/typ
 import type { GitHubClient } from "./client";
 import type { GitHubActor } from "./identity";
 import { readWorld, toObservedPr, type ReadWorldInput } from "./read-world";
-import { signalFromComment, type SignalParseContext } from "./signals";
+import {
+  ISSUE_COMMENTS,
+  REVIEW_COMMENTS,
+  signalFromComment,
+  type CommentFacts,
+  type SignalParseContext,
+} from "./signals";
 
 /**
  * What conductor persists between ticks so the next one can tell new from
@@ -79,13 +85,17 @@ interface CommentPayload {
   created_at?: string | null;
 }
 
-/** One comment plus which endpoint it came from, for cursor namespacing. */
-interface SourcedComment {
+/**
+ * One comment plus which endpoint it came from.
+ *
+ * `source` is carried rather than folded into `key`, because the namespace is
+ * needed twice and by two different consumers: the cursor keys this poll writes,
+ * and the signal it produces — which is identified downstream and would collapse
+ * the two streams back together if it arrived without one. See `./signals`'
+ * {@link ISSUE_COMMENTS}.
+ */
+interface SourcedComment extends CommentFacts {
   readonly key: string;
-  readonly id: string;
-  readonly author: GitHubActor | null;
-  readonly at: string;
-  readonly pullNumber: number;
 }
 
 /** Both comment streams on a PR: the conversation, and the review threads. */
@@ -94,8 +104,8 @@ async function readComments(
   pullNumber: number,
 ): Promise<SourcedComment[]> {
   const sources: readonly [string, string][] = [
-    ["issue", client.path("issues", pullNumber, "comments")],
-    ["review", client.path("pulls", pullNumber, "comments")],
+    [ISSUE_COMMENTS, client.path("issues", pullNumber, "comments")],
+    [REVIEW_COMMENTS, client.path("pulls", pullNumber, "comments")],
   ];
 
   const out: SourcedComment[] = [];
@@ -106,6 +116,7 @@ async function readComments(
       out.push({
         key: `${source}:${id}`,
         id,
+        source,
         author: payload.user ?? null,
         at: payload.created_at ?? "",
         pullNumber,

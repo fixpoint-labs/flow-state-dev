@@ -103,11 +103,26 @@ export interface PullRequestSignal extends SignalBase {
   readonly pullNumber: number;
 }
 
-/** Classifier output over a human comment. Scoped to the PR it was left on. */
+/**
+ * Classifier output over a human comment. Scoped to the PR it was left on.
+ *
+ * `commentSource` is the stream `commentId` was minted in — the same namespace
+ * token the source's cursor key carries, and the reason that key is namespaced
+ * at all: **a source can report comments on several streams that number
+ * independently**, and GitHub is one (`issue:` for the conversation, `review:`
+ * for a review thread). Without it, two different comments carrying one numeric
+ * id are one comment to anything downstream that identifies them, and the second
+ * is answered by whatever answered the first — which is to say, not at all.
+ *
+ * Optional, because ledger rows written before this field existed must still
+ * parse (BP-030). A signal that names no stream is identified the way it always
+ * was, across every stream at once.
+ */
 export interface ProseSignal extends SignalBase {
   readonly kind: "feedback_received" | "question_asked";
   readonly author: string;
   readonly commentId: string;
+  readonly commentSource?: string;
   readonly pullNumber: number;
 }
 
@@ -282,6 +297,8 @@ export const signalSchema: z.ZodType<Signal> = z.discriminatedUnion("kind", [
     kind: z.enum(["feedback_received", "question_asked"]),
     author: z.string(),
     commentId: z.string(),
+    // Optional so a row written before the field existed still parses (BP-030).
+    commentSource: z.string().optional(),
     pullNumber: z.number().int(),
   }),
   z.object({
