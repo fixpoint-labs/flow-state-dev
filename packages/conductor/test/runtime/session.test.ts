@@ -216,4 +216,28 @@ describe("which GitHub the default observer polls", () => {
       expect(url.startsWith("https://api.github.com/")).toBe(true);
     }
   });
+
+  it("addresses api.github.com when the remote spells the host GitHub.com", async () => {
+    // The host is whatever the remote spelled — `git@GitHub.com:owner/repo.git`
+    // is an ordinary public-GitHub remote — and hostnames are case-insensitive.
+    // Told apart by an exact match, this repository is classified as Enterprise
+    // and every read goes to `https://GitHub.com/api/v3`, which is not an API.
+    const requested = await urlsPolledForHost("GitHub.com");
+
+    expect(requested.filter((url) => url.includes("/api/v3"))).toEqual([]);
+    for (const url of requested) {
+      expect(url.startsWith("https://api.github.com/")).toBe(true);
+    }
+  });
+
+  it("addresses api.github.com when the remote roots the host as github.com.", async () => {
+    // A rooted FQDN resolves to the same host, so the same reasoning applies:
+    // the trailing dot is a spelling, not a different GitHub.
+    const requested = await urlsPolledForHost("github.com.");
+
+    expect(requested.filter((url) => url.includes("/api/v3"))).toEqual([]);
+    for (const url of requested) {
+      expect(url.startsWith("https://api.github.com/")).toBe(true);
+    }
+  });
 });

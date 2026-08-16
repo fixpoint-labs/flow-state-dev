@@ -99,8 +99,33 @@ const BODY_LIMIT = 1000;
 /** Default GitHub REST base. Overridable for GitHub Enterprise and for tests. */
 const DEFAULT_BASE_URL = "https://api.github.com";
 
-/** The host public GitHub is served from, as a git remote spells it. */
+/** The host public GitHub is served from, in the one spelling compared against. */
 const PUBLIC_GITHUB_HOST = "github.com";
+
+/**
+ * One hostname, one spelling.
+ *
+ * A host reaches here as the git remote spelled it, and a remote spells it any
+ * way DNS accepts: `GitHub.com` from a copy-pasted URL or a GUI client,
+ * `github.com.` from a rooted FQDN. Both name public GitHub, and told apart by
+ * an exact match both are classified as Enterprise and polled at a `/api/v3`
+ * that does not exist.
+ *
+ * A **port is deliberately left alone**. `github.com:8443` is not a spelling of
+ * `github.com` — it is a different endpoint, and public GitHub's API is not
+ * behind it; stripping one would silently redirect a proxied install to
+ * `api.github.com`. The default port never arrives here anyway, `URL` having
+ * already dropped it.
+ *
+ * Applied here rather than in `parseRepoRef` on purpose. `RepoRef.host` is also
+ * interpolated into the default `orgId` (`runtime/session`), which is the
+ * **storage address** every managed work item is written under — normalizing at
+ * the parse site would silently re-address an existing install's whole state
+ * directory and bring conductor up with an empty registry.
+ */
+function canonicalHost(host: string): string {
+  return host.toLowerCase().replace(/\.$/, "");
+}
 
 /**
  * The REST base a repository's host is reached at.
@@ -118,7 +143,9 @@ const PUBLIC_GITHUB_HOST = "github.com";
  * here fails loudly on the first request against a host that is genuinely
  * conductor's repository; refusing to guess would strand every Enterprise
  * install on the default, which fails *silently* by reading an unrelated public
- * repository of the same name.
+ * repository of the same name. That rule only holds if "unrecognized" means a
+ * genuinely different host rather than a different spelling of this one, which
+ * is what {@link canonicalHost} is for.
  *
  * Not covered: a GitHub Enterprise Cloud data-residency tenant, whose API lives
  * at `https://api.<tenant>.ghe.com` rather than under `/api/v3`. Conductor's
@@ -126,7 +153,8 @@ const PUBLIC_GITHUB_HOST = "github.com";
  * needs a config field it does not have yet.
  */
 export function restBaseUrlForHost(host: string): string {
-  return host === PUBLIC_GITHUB_HOST ? DEFAULT_BASE_URL : `https://${host}/api/v3`;
+  const canonical = canonicalHost(host);
+  return canonical === PUBLIC_GITHUB_HOST ? DEFAULT_BASE_URL : `https://${canonical}/api/v3`;
 }
 
 export interface GitHubClientOptions extends IdentityOptions {
