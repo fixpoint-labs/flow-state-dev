@@ -91,6 +91,31 @@ describe("aggregateChecks", () => {
       aggregateChecks([checkRun("completed", "neutral"), checkRun("completed", "skipped")]),
     ).toBe("success");
   });
+
+  it("reads a completed run whose conclusion it does not recognize as pending, never as a pass", () => {
+    // Fail-closed, the same direction `aggregateStatuses` below already takes
+    // and the same whitelist the webhook path applies (`github/signals`). A
+    // conclusion GitHub adds later that lands in neither set must not be
+    // aggregated into `success` — that clears `awaiting_ci` on a run nobody has
+    // seen pass. Pending rather than failure: an unrecognized conclusion is not
+    // evidence of a red build, and routing it to repair spends a paid dispatch
+    // on nothing.
+    expect(aggregateChecks([checkRun("completed", "something_new")])).toBe("pending");
+  });
+
+  it("reads a completed run that reported no conclusion at all as pending", () => {
+    // The transient shape: GitHub reports `completed` with `conclusion: null`
+    // in the moment before the conclusion settles. Falling through left it
+    // contributing nothing, so a suite of one such run aggregated to `success`.
+    expect(aggregateChecks([checkRun("completed", null)])).toBe("pending");
+    expect(aggregateChecks([checkRun("completed", "")])).toBe("pending");
+  });
+
+  it("does not let a conclusion it cannot read hide behind runs that passed", () => {
+    expect(
+      aggregateChecks([checkRun("completed", "success"), checkRun("completed", null)]),
+    ).toBe("pending");
+  });
 });
 
 describe("aggregateStatuses", () => {
@@ -567,5 +592,35 @@ describe("toObservedPr", () => {
       knownReviewIds: ["1", "2"],
       observedAt: "2026-08-14T12:00:00Z",
     });
+  });
+});
+
+describe("a check run whose conclusion conductor cannot read", () => {
+  it("holds the merge gate rather than offering review on a suite that never passed", async () => {
+    // The exposure, stated at the gate: with the unreadable conclusion folded
+    // into `success` the `awaiting_ci` gate is satisfied, `awaiting_review`
+    // opens, and merge is offered on a check that reported no accepted passing
+    // conclusion.
+    const { client: gh } = client({
+      [`GET ${P}/pulls/7`]: pullPayload(),
+      [`GET ${P}/pulls/7/reviews`]: [],
+      [`GET ${P}/commits/sha-head/check-runs`]: checkRuns(
+        checkRun("completed", "success"),
+        checkRun("completed", "something_new"),
+      ),
+      [`GET ${P}/commits/sha-head/status`]: commitStatuses(),
+      [`GET ${P}/commits/main/check-runs`]: checkRuns(),
+      [`GET ${P}/commits/main/status`]: commitStatuses(),
+    });
+
+    const { world } = await readWorld(gh, {
+      entity: { kind: "issue", phase: "IMPLEMENTATION" },
+      artifacts: [implArtifact],
+    });
+
+    expect(world.pullRequests[7]?.checks).toBe("pending");
+    expect(deriveGate({ id: "FIX-1", kind: "issue", phase: "IMPLEMENTATION" }, world)).toBe(
+      "awaiting_ci",
+    );
   });
 });

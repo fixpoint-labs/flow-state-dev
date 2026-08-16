@@ -113,6 +113,17 @@ const FAILING_CONCLUSIONS = new Set([
   "stale",
 ]);
 
+/**
+ * Conclusions that count as a pass.
+ *
+ * A whitelist rather than "everything that is not a failure". The two sets
+ * together do not exhaust the possibilities — GitHub can add a conclusion, and a
+ * run reported as `completed` can carry none at all — so which set the leftovers
+ * fall into is the whole question, and only a whitelist puts them on the safe
+ * side of it. `github/signals` applies the same three on the webhook path.
+ */
+const PASSING_CONCLUSIONS = new Set(["success", "neutral", "skipped"]);
+
 /** Commit-status states that mean the context did not pass. */
 const FAILING_STATUS_STATES = new Set(["failure", "error"]);
 
@@ -123,6 +134,15 @@ const FAILING_STATUS_STATES = new Set(["failure", "error"]);
  * **A definitive failure outranks a run still in flight.** A red check is
  * actionable the moment it reports; waiting for the rest of the suite only
  * delays the fix, and the aggregate cannot become green again while it stands.
+ *
+ * **A conclusion in neither set is pending, never a pass.** Same direction as
+ * {@link aggregateStatuses}, for the same reason: read as success it clears
+ * `awaiting_ci` and offers merge on a run that reported no accepted passing
+ * conclusion. Pending rather than failure because an unreadable conclusion is
+ * not evidence of a red build — `failure` routes to repair, which would spend a
+ * paid dispatch answering a suite that may be perfectly green, and the commonest
+ * case here is the transient one (`completed` with the conclusion not yet set)
+ * that the next tick resolves on its own.
  *
  * @returns `null` when nothing has reported — which the `awaiting_ci` gate reads
  *   as "no CI on this PR" rather than as a failure.
@@ -135,7 +155,9 @@ export function aggregateChecks(runs: readonly CheckRunPayload[]): ChecksConclus
       pending = true;
       continue;
     }
-    if (run.conclusion && FAILING_CONCLUSIONS.has(run.conclusion)) return "failure";
+    const conclusion = run.conclusion ?? "";
+    if (FAILING_CONCLUSIONS.has(conclusion)) return "failure";
+    if (!PASSING_CONCLUSIONS.has(conclusion)) pending = true;
   }
   return pending ? "pending" : "success";
 }
