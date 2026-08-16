@@ -156,6 +156,32 @@ describe("runClaudeHeadless", () => {
     expect(optionsOf(edits.query).allowDangerouslySkipPermissions).toBeUndefined();
   });
 
+  it("forwards an allow-list, which is the only way a non-prompting run gets a command", async () => {
+    const { query, resolveAgent } = scriptedAgent([result()]);
+    await runClaudeHeadless({
+      prompt: "p",
+      allowedTools: ["Bash(git commit:*)", "Bash(git push:*)"],
+      resolveAgent,
+    });
+    // A permission mode grants tools; it does not grant *commands*. Without the
+    // list reaching the SDK, `git push` falls through to a prompt no unattended
+    // run can answer, and the refusal is the whole failure.
+    expect(optionsOf(query).allowedTools).toEqual(["Bash(git commit:*)", "Bash(git push:*)"]);
+  });
+
+  it("sends no allow-list when the caller set none, so the SDK's own defaults stand", async () => {
+    const bare = scriptedAgent([result()]);
+    await runClaudeHeadless({ prompt: "p", resolveAgent: bare.resolveAgent });
+    expect(optionsOf(bare.query).allowedTools).toBeUndefined();
+
+    // An empty list is "grant nothing extra", which is what omitting it already
+    // means downstream — the SDK only appends `--allowedTools` for a non-empty
+    // one — so it must not arrive as a different instruction.
+    const empty = scriptedAgent([result()]);
+    await runClaudeHeadless({ prompt: "p", allowedTools: [], resolveAgent: empty.resolveAgent });
+    expect(optionsOf(empty.query).allowedTools).toBeUndefined();
+  });
+
   it("reports the final message, session, cost, usage and subtype of a successful run", async () => {
     const { resolveAgent } = scriptedAgent([result()]);
     const run = await runClaudeHeadless({ prompt: "p", resolveAgent });

@@ -136,6 +136,23 @@ export interface RunClaudeHeadlessOptions {
    */
   readonly permissionMode?: string;
   /**
+   * Permission rules granted for this run, in the SDK's own rule syntax — a bare
+   * tool name (`"Edit"`) grants the tool outright, and `"Bash(git push:*)"`
+   * grants one command prefix. Nothing extra is granted when unset or empty.
+   *
+   * **A permission mode grants tools; it does not grant commands.** `acceptEdits`
+   * permits `Bash` for a fixed handful of file-shuffling commands and nothing
+   * else, so an unattended run told to commit and push is refused both unless
+   * they are named here. There is no prompt to fall back on: with no
+   * `canUseTool` the SDK sends no permission-prompt tool, the request is refused,
+   * and the run reports the refusal rather than the command.
+   *
+   * Which rules to grant is the caller's policy — this surface knows nothing
+   * about what its prompt asks for. Keep the list to what the prompt actually
+   * needs: it runs unattended in a directory that usually holds a credential.
+   */
+  readonly allowedTools?: readonly string[];
+  /**
    * Ceiling on conversation turns. No ceiling when unset.
    *
    * Must be a positive, finite number. Anything else — `Infinity`, `NaN`, `0`,
@@ -507,6 +524,7 @@ export async function runClaudeHeadless(
     cwd,
     model,
     permissionMode,
+    allowedTools,
     maxTurns,
     maxBudgetUsd,
     timeoutMs,
@@ -620,6 +638,10 @@ export async function runClaudeHeadless(
               : {}),
           }
         : {}),
+      // Copied, and omitted when empty: the SDK's option is a mutable `string[]`
+      // it forwards verbatim, and an empty one is already what omitting it
+      // means downstream — no `--allowedTools` argument is appended for it.
+      ...(allowedTools && allowedTools.length > 0 ? { allowedTools: [...allowedTools] } : {}),
       ...(maxTurns === undefined ? {} : { maxTurns }),
       ...(maxBudgetUsd === undefined ? {} : { maxBudgetUsd }),
       // Merged, not passed through: the SDK treats `env` as the whole environment.

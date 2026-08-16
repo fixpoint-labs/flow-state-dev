@@ -96,6 +96,72 @@ describe("the claude-code dispatcher", () => {
     expect(optionsOf(query).permissionMode).toBe("acceptEdits");
   });
 
+  it("grants the git commands every mutating brief ends with, so a dispatch can publish its work", async () => {
+    const { query, resolveAgent } = scriptedAgent([result()]);
+    await claudeCodeDispatcher({ resolveAgent, now: at }).run(BRIEF);
+
+    // The brief closes "commit your work on this branch and push it". Neither
+    // command is in the permission mode's own list, so without these rules the
+    // dispatch is refused exactly the two steps that make its work visible.
+    expect(optionsOf(query).allowedTools).toEqual([
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+    ]);
+  });
+
+  it("grants nothing but those commands — the list is the boundary, not a formality", async () => {
+    const { query, resolveAgent } = scriptedAgent([result()]);
+    await claudeCodeDispatcher({ resolveAgent, now: at }).run(BRIEF);
+    const granted = optionsOf(query).allowedTools as string[];
+
+    // A bare tool name or a wildcard grants that tool unconditionally, which
+    // would pass a test that only checks git works while handing an agent on a
+    // worktree holding a push credential an arbitrary shell.
+    expect(granted).not.toContain("Bash");
+    expect(granted).not.toContain("Bash(*)");
+    expect(granted.every((rule) => rule.startsWith("Bash(git "))).toBe(true);
+    // Nothing outside git is granted — not the package manager, not the network,
+    // not the GitHub CLI that could merge the work it was told only to push.
+    for (const outside of ["gh", "npm", "pnpm", "curl", "rm", "sh", "bash", "node"]) {
+      expect(granted.some((rule) => rule.includes(`(${outside} `) || rule === `Bash(${outside}:*)`))
+        .toBe(false);
+    }
+  });
+
+  it("lets an operator replace the grant, rather than only widen it", async () => {
+    const { query, resolveAgent } = scriptedAgent([result()]);
+    await claudeCodeDispatcher({
+      resolveAgent,
+      now: at,
+      allowedTools: ["Bash(git status:*)"],
+    }).run(BRIEF);
+    // Replaced, not merged: a default that could only be added to is a floor no
+    // operator can lower, and the narrower grant is the one worth being able to
+    // ask for.
+    expect(optionsOf(query).allowedTools).toEqual(["Bash(git status:*)"]);
+  });
+
+  it("records a dispatch the harness refused as failed, so a grant that misses a command is visible", async () => {
+    const { resolveAgent } = scriptedAgent([
+      result({
+        permission_denials: [
+          { tool_name: "Bash", tool_use_id: "c1", tool_input: { command: "gh pr create" } },
+        ],
+      }),
+    ]);
+    const dispatched = await claudeCodeDispatcher({ resolveAgent, now: at }).run(BRIEF);
+
+    // The whole point of a narrow list: what is outside it is refused, and a
+    // refusal is a failed dispatch that names the command, not a completed one.
+    expect(dispatched.outcome).toBe("failed");
+    expect(dispatched.error).toContain("refused");
+    expect(dispatched.error).toContain("gh pr create");
+  });
+
   it("passes the rendered brief as the prompt, so the harness knows the work, the branch and the reason", async () => {
     const { query, resolveAgent } = scriptedAgent([result()]);
     await claudeCodeDispatcher({ resolveAgent, now: at }).run(BRIEF);

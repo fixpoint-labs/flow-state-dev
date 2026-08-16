@@ -37,14 +37,71 @@ function reasonFor(site: ThrowSite, cause: unknown): string {
     : `The Claude Code harness threw instead of settling: ${detail}`;
 }
 
+/**
+ * What a dispatched phase is permitted to run, in the vendor's rule syntax.
+ *
+ * Every mutating brief ends "commit your work on this branch and push it", and
+ * conductor learns what a dispatch produced by reading GitHub — so a phase that
+ * cannot push produced nothing conductor can see. The permission mode does not
+ * cover it: `acceptEdits` grants `Bash` for a fixed handful of file-shuffling
+ * commands (`mkdir`, `mv`, `cp`, `rm`, `sed`, …) and `git` is not among them.
+ * Unattended there is no prompt to fall back on, so the commands the brief asks
+ * for have to be named, and this is the list of them.
+ *
+ * **It is a security boundary, so it is exactly the brief's commands.** The
+ * agent works in a worktree holding a push credential, on material that includes
+ * review comments written by anyone who can comment on the PR. `git add`,
+ * `commit` and `push` are what publishing the work costs; `status`, `diff` and
+ * `log` are what the agent needs to know what it is publishing. Nothing here
+ * reaches the network except `push`, nothing merges, and nothing runs a shell:
+ * a bare `Bash` rule — or `bypassPermissions`, which was considered and rejected
+ * — would turn a prompt-injected review comment into an arbitrary command.
+ *
+ * The prefix rules are checked by the vendor CLI against each `&&`-separated
+ * subcommand, so `git add -A && git commit -m … && git push` is decided command
+ * by command, and any part outside this list refuses the whole line.
+ */
+const GIT_PUBLISH_TOOLS: readonly string[] = [
+  "Bash(git add:*)",
+  "Bash(git commit:*)",
+  "Bash(git push:*)",
+  "Bash(git status:*)",
+  "Bash(git diff:*)",
+  "Bash(git log:*)",
+];
+
 export interface ClaudeCodeDispatcherOptions {
   /** Model alias or id. Omitted when unset, so the vendor's default applies. */
   readonly model?: string;
   /**
    * Permission mode. Default `"acceptEdits"`: a dispatched phase edits files
    * unattended, and a mode that prompts would hang forever with no terminal.
+   *
+   * **Not `"dontAsk"`, which reads like the stricter choice and is not.** It
+   * exists in the pinned vendor SDK and does turn an unanswerable prompt into a
+   * named auto-denial — but that is *all* it does. The file-edit tools and the
+   * safe-command list are auto-allowed by a check against `acceptEdits`
+   * specifically, with no `dontAsk` branch, so under it every `Edit` and `Write`
+   * outside an explicit rule is denied and a dispatched phase cannot edit the
+   * repository at all. Buying the clearer refusal back would mean granting the
+   * edit tools outright, which is *wider* than `acceptEdits` — that mode also
+   * confines edits to the workspace, and a bare `Edit` rule does not. The
+   * clearer refusal is not needed anyway: the vendor records every non-allow
+   * decision, prompt-less or explicit, in the same place, and
+   * `runClaudeHeadless` fails the run on either.
    */
   readonly permissionMode?: string;
+  /**
+   * Commands the phase may run, in the vendor's rule syntax. Defaults to
+   * {@link GIT_PUBLISH_TOOLS} — the git commands every mutating brief asks for.
+   *
+   * **Replaces the default rather than extending it**, so an operator can hand a
+   * dispatch *less* than conductor's own list and not only more. Whatever is
+   * passed is the whole grant, and anything outside it is refused — which now
+   * settles the dispatch as failed rather than passing silently, so a list that
+   * misses a command the brief needs shows up as a named refusal in the ledger.
+   */
+  readonly allowedTools?: readonly string[];
   /** Ceiling on conversation turns for one dispatch. No ceiling when unset. */
   readonly maxTurns?: number;
   /** Vendor-side spend ceiling in USD for one dispatch. No ceiling when unset. */
@@ -77,6 +134,7 @@ export function claudeCodeDispatcher(
   const {
     model,
     permissionMode = "acceptEdits",
+    allowedTools = GIT_PUBLISH_TOOLS,
     maxTurns,
     maxBudgetUsd,
     timeoutMs = 30 * 60 * 1000,
@@ -146,6 +204,7 @@ export function claudeCodeDispatcher(
           cwd: brief.workspacePath,
           model,
           permissionMode,
+          allowedTools,
           maxTurns,
           maxBudgetUsd,
           timeoutMs,
