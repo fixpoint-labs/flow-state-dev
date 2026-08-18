@@ -66,7 +66,15 @@ Deterministic *mutation* is what goes. Carried by themes 1, 5, 6 and 8.
 - *FIX-548* — in an empty directory, `npm create flow-state my-app` **followed by the dev command
   it prints** yields a streamed model response from the surface the template ships — the chat
   page. The provider key goes in at the prompt, the way a real user supplies it, rather than
-  being pre-exported. Run once; there is one template.
+  being pre-exported. Run once; there is one template. **And the same run asserts the additive
+  guarantee on the greenfield side**, because theme 6 now binds this path too and a streaming
+  chat page proves nothing about it: `create-next-app`'s own `AGENTS.md` block is still present
+  alongside the appended FSD section, its `CLAUDE.md` is untouched, `.env.local` is actually
+  ignored (`git check-ignore`, since that entry comes from the host scaffold and is asserted
+  rather than added), and **the run's report is compared against the actual diff** — the same
+  check the brownfield runs make, for the same reason. Without these, the scaffolder could
+  overwrite an agent-instructions file it did not author, or leave a provider key untracked by
+  `.gitignore`, and every other listed check would still pass.
 - *FIX-1160* — one recorded run covering **both halves of the pack**: the Claude plugin
   installed from its published source and one of its packaged skills invoked, and then a coding
   assistant in a freshly scaffolded project, given a stated feature goal and nothing else,
@@ -223,11 +231,23 @@ call.
    therefore two things, not one: the DevTool has to be made **resolvable** as well as
    **known**. Greenfield satisfies it by declaring it in the template; the brownfield skill is
    instructed to add it, and detection reports whether it is already there. Neither becomes an
-   issue of its own. **There is one next-steps block, authored once in FIX-1159 and reused
-   verbatim by FIX-548 and by the skill** — a second copy is how the two entry paths start
-   telling people different things. It sits with FIX-1159 because the constraint that makes it
-   hard is the brownfield one: **a next-steps block must not print a command the project cannot
-   run**, and greenfield can always run what it just wrote.
+   issue of its own. **There is one next-steps block: one authored source in FIX-1159, shared as
+   semantic content and rendered per package manager** — the same steps, in the same order,
+   saying the same things, with the commands rendered for the manager the path is actually using.
+   A second *authored* copy is how the two entry paths start telling people different things.
+
+   **It is deliberately not byte-identical, and requiring that was a defect.** Greenfield prints
+   `npm run dev` / `npx fsdev dev`; a brownfield run against a pnpm repo must print `pnpm dev` /
+   `pnpm exec fsdev dev`, because detection found pnpm. A literally shared block is wrong for at
+   least one supported context, and §3's own transcripts have always shown the two rendering
+   differently — the word "verbatim" contradicted the document's own illustrations. What must
+   not vary is the content: which servers exist, what each is for, which ports they land on, and
+   the caveats that go with them.
+
+   It sits with FIX-1159 because the constraint that makes it hard is the brownfield one:
+   **a next-steps block must not print a command the project cannot run**, and greenfield can
+   always run what it just wrote. That constraint is precisely why rendering has to vary and
+   content must not.
 
 6. **A run is additive over files it did not author, and the developer's diff review — not an
    enumerated file list — is what makes it safe.** The old boundary was a fixed four files plus
@@ -264,9 +284,12 @@ call.
    entry paths rather than one — and the file that made it look brownfield-only is exactly the
    file §5 Q1 chose.
 
-   **§1's proof checks the guarantee two ways**, because an open boundary cannot be checked by
-   asserting a closed list survived: seeded content in the files a brownfield run touches in
-   practice, *and* the run's own report compared against the actual diff.
+   **§1's proof checks the guarantee two ways on both paths**, because an open boundary cannot
+   be checked by asserting a closed list survived: seeded content in the files a run touches in
+   practice, *and* the run's own report compared against the actual diff. **Extending this theme
+   to greenfield extended its proof with it** — FIX-548's check asserts `create-next-app`'s
+   `AGENTS.md` block, its `CLAUDE.md`, and the `.env.local` ignore survive the scaffold. A
+   guarantee this document makes and no listed check exercises is worse than one it never made.
 
 7. **No separate docs issue.** End-user functionality is documented in the change set that
    ships it — which now includes documenting the install skill as the brownfield path. The
@@ -765,3 +788,16 @@ noisiest period we will have, which is the cost you already declined once.
   `spec-poc/FIX-548-next-template-shape/`), which also corrects §5 Q1's assumption and §3's
   Template A tree. Theme 1 gained one clarification FIX-548 asked for: *owns its template end to
   end* means checked-in files, since the drift tripwire only works if a person can read the shape.
+- **After epic review of that fold — two consequences the fold itself created.** First, extending
+  theme 6 to greenfield made a guarantee that no listed check exercised: §1's FIX-548 proof
+  verified only that the chat page streams, so the scaffolder could have overwritten
+  `create-next-app`'s `AGENTS.md` or left `.env.local` unignored with every check still green.
+  That proof now asserts the preservation and the report-versus-diff comparison on the greenfield
+  side too, and theme 6 points at it. Second, theme 5's *"reused verbatim"* was unsatisfiable and
+  contradicted §3's own transcripts, which print `npm run dev` for greenfield and `pnpm dev` for a
+  brownfield run against a pnpm repo — detection exists precisely so the printed commands match
+  the host. Theme 5 now requires **one authored source, shared semantic content, rendered per
+  package manager**; what must not vary is which servers exist, what each is for, their ports, and
+  the caveats. Nothing about the Node second-process behaviour changed: theme 2 cut the Node
+  *template* (greenfield), not the brownfield Node path, which theme 8 still owns and §1's
+  second-process check still proves.
