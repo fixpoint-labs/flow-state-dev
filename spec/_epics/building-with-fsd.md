@@ -926,7 +926,9 @@ developer sees a diff in a tracked file and deletes it. Choosing the namespaced 
 wrong is quiet: FIX-1160 ships, nothing reads it, and the objective's second half is unproven
 while looking done.
 
-**Resolution — `AGENTS.md`.** Decided by the objective's first line: the outcome is that the
+**Resolution — `AGENTS.md`.** *Decided by the coordinator from the objective, not by the owner —
+unlike Q2 and Q3 no owner record exists, and an attribution sweep confirmed none is claimed here.*
+Decided by the objective's first line: the outcome is that the
 assistant beside the developer writes working FSD code, and a namespaced file nothing reads
 fails that outcome by construction. **Collision risk is the cost of the objective, not an
 alternative to it** — so it is managed, not avoided. **Behaviour required: append a delimited
@@ -968,7 +970,9 @@ later.
 green during the noisiest period we will have.
 
 **Resolution — install-by-URL only at launch. No public directory listing during the launch
-window.** **The decision is the product owner's.** *The rationale that used to appear here —
+window.** **The decision is the product owner's** — recorded contemporaneously on the epic PR
+(#1301, comment 5298965007, 2026-08-14T22:56:22Z, "Two owner decisions recorded"), which is the
+evidence an attribution sweep checks it against. *The rationale that used to appear here —
 "a support commitment in the week we can least afford one", with the add-later/delist-later
 asymmetry settling it — is the **coordinator's reconstruction**, not words the owner is recorded
 as saying. It is verbatim the recommendation two paragraphs above, and presenting it as reasoning
@@ -995,7 +999,8 @@ same *kind* of thing — a packaged capability an agent loads — at different l
 word is coherent rather than colliding, and this is not the incoherence case it was raised as.
 The resolution is **qualification, not renaming**: write *Claude skills* or *the Claude plugin*
 wherever ambiguity is genuinely possible, and let FSD's runtime concept keep the bare name
-`skills`. **FIX-417 and FIX-424 are unaffected and must not be touched.** The split makes this
+`skills`. **FIX-417 and FIX-424 are unaffected and must not be touched.** *Owner decision,
+recorded on the epic PR alongside Q2 (#1301, comment 5298965007, 2026-08-14T22:56:22Z).* The split makes this
 convention matter more, not less — the brownfield entry path is itself a Claude skill now, so
 the word appears in more places. Carried by theme 3. **Closed — not reopenable by an issue.**
 
@@ -1185,3 +1190,4 @@ those narratives now live in
 - **Credential wiring audited** — the DevTool needs the same secret; `git check-ignore` became a precondition before any credential is written; every control gained a negative case.
 - **Attribution audit** — the one-template cut was recorded as the owner's without evidence and is reopened as **Q6**; Q2's rationale re-marked as the coordinator's; Q4 stopped pre-arguing from words the owner never said.
 - **Length and sibling sweep** — §3 cut to four lines, §4 to its table, this log rebuilt; the reopened Q6's stale deferral entry corrected, and the bind guard's predicate stated once after a paraphrase got it wrong.
+- **Attribution sweep** — every "the owner's" / "your call" line checked against an artifact. Q2's and Q3's decisions evidenced (epic PR comment, 2026-08-14) and now cite it; Q1 marked as the coordinator's from the objective; the brownfield direction change evidenced (2026-08-15); the one-template cut unevidenced and already reopened as Q6. No further claims reopened — three clean, two already corrected.
