@@ -280,8 +280,8 @@ instance. That is the evidence LAB-137 should carry.
   forbids raw `entry.x !== mutation.y` beside it.
 
 **Still enumerable — a grid, and honestly so.** The remaining family is *an assertion certifying
-on evidence that does not cover its case*, over roughly `field × surface × presence`. Round 6
-filled four cells, round 7 two and round 8 two; these are cells nobody has reported and that this check does
+on evidence that does not cover its case*, over roughly `field × surface × presence`. Rounds 6
+to 10 filled ten cells between them; these are cells nobody has reported and that this check does
 not currently grade:
 
 - `lastTouchedAt` on a row is read into no comparison, so a record may carry any timestamp.
@@ -293,9 +293,13 @@ not currently grade:
 - **Surplus pathless gap rows are accepted.** One pathless mutation and two `file`/`rawPath: null`
   gaps satisfies the inequality, and the unmatched gap is a stored claim the stream does not
   evidence. This is **the ambiguity rule's fourth direction** — the pathless side — and it arrived
-  after the class was written down, which is the useful part: the class entry is what stops the
-  fifth, and a fourth instance turning up after the generalisation is evidence the generalisation
-  is load-bearing rather than decorative.
+  after the class was written down.
+
+  When this was first recorded it said the class entry *is what stops the fifth*. **That was
+  wrong, and the next round proved it wrong**: a fifth direction arrived one round later, produced
+  by the fourth's own repair. Writing a class down makes its instances recognisable; it does not
+  make them stop. The correction is left visible here rather than edited away, because a file
+  about checks that certify more than they measured should not quietly fix its own overclaim.
 - **A5 skips gap handling whenever any plan row exists.** A run whose plan was partly recorded and
   partly gapped emits `a5-ok`, because a non-empty `rows` short-circuits the branch that reads
   plan gaps. **It certifies a fractional account** — which is, in one phrase, the thing this whole
