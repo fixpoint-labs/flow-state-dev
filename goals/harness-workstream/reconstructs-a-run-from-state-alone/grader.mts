@@ -357,6 +357,12 @@ function compareSemantics(mutation: StreamMutation, entry: DidEntry): Finding[] 
  * And the pairing must be UNIQUE in both directions — many rows for one
  * mutation, many mutations for one gap, and many gaps for one mutation are the
  * same defect approached from three sides, each caught by its own branch here.
+ *
+ * **A row is an AGGREGATE, and several mutations naming it is normal.** One row
+ * per path, folding every call on that path, last settlement winning. So the
+ * row's kind and outcome are compared against the LAST mutation naming it, once
+ * per row — not against each of them, which asserted that one row described
+ * every call and rejected a run that edited a file it had written.
  */
 function gradeAgreement(view: GradeableView): Finding[] {
   const findings: Finding[] = [];
@@ -401,7 +407,12 @@ function gradeAgreement(view: GradeableView): Finding[] {
       // ORDER IS LOAD-BEARING. The gap exemption below must never be reached
       // while a row exists: a gap explains a mutation the collection is
       // MISSING, and does not license a row that is present and wrong.
-      findings.push(...compareSemantics(mutation, rows[0]));
+      //
+      // The row's SEMANTICS are compared in the per-row pass below, not here.
+      // A row is an aggregate — one per path, last settlement wins — so a run
+      // that writes a file and then edits it produces two mutations and one
+      // row, and comparing every mutation against that row asserts the row
+      // describes each of them. It describes the last one.
       continue;
     }
     // The SAME ambiguity rule, in its third direction. Round 1 caught one
@@ -445,19 +456,73 @@ function gradeAgreement(view: GradeableView): Finding[] {
   for (const entry of view.did) {
     // Recomputed from the arrays, not read off `entry.namedBy`: a count derived
     // beside the array it describes can drift from it.
-    const naming = view.streamMutations.filter((m) => sameFile(m.path, entry.topic)).length;
-    if (naming > 1) {
-      findings.push({
-        id: "A2",
-        status: "fail",
-        because: "a2-ambiguous-row",
-        message:
-          `the row keyed "${entry.topic}" is named by ${naming} stream mutations — which ` +
-          `operation it records is unresolvable, so it cannot corroborate any of them`,
-      });
+    const naming = view.streamMutations.filter((m) => sameFile(m.path, entry.topic));
+    if (naming.length > 1) {
+      // TOUCHING A PATH TWICE IS ORDINARY, AND THIS USED TO FAIL IT. The
+      // recorder keys one row per path and folds every call on it into that row
+      // (`work-recorder.ts` — one entry per subject, last settlement wins), so
+      // a plain write-then-edit or a retry produces several mutations and one
+      // row. Reading that as an unresolvable pairing rejected faithful state,
+      // and it only ever passed because no graded run happened to edit a file
+      // it had written.
+      //
+      // What IS unresolvable is several DIFFERENT paths matching one row: the
+      // spellings are short and this comparison is by trailing segments, so two
+      // files can both be candidates for one row and nothing can say which it
+      // records. Identical spellings inside one run are one file.
+      const spellings = [...new Set(naming.map((m) => m.path))];
+      if (spellings.length > 1) {
+        findings.push({
+          id: "A2",
+          status: "fail",
+          because: "a2-ambiguous-row",
+          message:
+            `the row keyed "${entry.topic}" is named by mutations on ${spellings.length} ` +
+            `different paths (${spellings.join(", ")}) — which file it records is unresolvable, ` +
+            `so it cannot corroborate any of them`,
+        });
+        continue;
+      }
+      // The row carries the LAST settlement, so the last mutation is the one it
+      // describes. Which one that is has to be readable: an unreadable position
+      // or a tie makes the terminal call unrecoverable, and grading the wrong
+      // one would assert the row is wrong about a call it never described.
+      // `itemIndex` carries duplicates, which is why the tie is a real state
+      // and not a defensive branch — A4 fails on the same shape.
+      const positions = naming.map((m) => m.at);
+      if (positions.some((p) => p === null)) {
+        findings.push({
+          id: "A2",
+          status: "fail",
+          because: "a2-terminal-unreadable",
+          message:
+            `the row keyed "${entry.topic}" folds ${naming.length} mutations and at least one of ` +
+            `them carries no readable stream position, so which call the row's kind and outcome ` +
+            `describe cannot be determined`,
+        });
+        continue;
+      }
+      const highest = Math.max(...(positions as number[]));
+      const terminal = naming.filter((m) => m.at === highest);
+      if (terminal.length > 1) {
+        findings.push({
+          id: "A2",
+          status: "fail",
+          because: "a2-terminal-tied",
+          message:
+            `the row keyed "${entry.topic}" folds ${naming.length} mutations and ${terminal.length} ` +
+            `of them share the last stream position ${highest} — itemIndex carries duplicates, so ` +
+            `which one the row settled on is not recoverable`,
+        });
+        continue;
+      }
+      findings.push(...compareSemantics(terminal[0], entry));
       continue;
     }
-    if (naming === 1) continue;
+    if (naming.length === 1) {
+      findings.push(...compareSemantics(naming[0], entry));
+      continue;
+    }
     findings.push({
       id: "A2",
       status: "fail",
@@ -661,33 +726,50 @@ function gradeCausality(view: GradeableView): Finding[] {
  */
 function gradePlan(view: GradeableView): Finding[] {
   const { rows, toolCalls } = view.plan;
+  // NO PLAN CALL MEANS NOTHING WAS MEASURED, ROWS OR NO ROWS — and this gate
+  // has to come first, because it is the condition on EVERY real run. Selecting
+  // the ROWS arm on `rows.length > 0` alone certified a plan record that the
+  // run's own stream shows no call behind: a false green one stray row away, on
+  // the path every verdict this goal has ever produced takes. The predecessor
+  // goal's truth table already read "no plan tools" as inconclusive regardless
+  // of rows; this one now agrees with it.
+  //
+  // Rows without calls are REPORTED rather than failed, for the same reason a
+  // missing file with a successful shell call is: the stream may be blind to
+  // how they got there, and an input that cannot determine an answer must not
+  // produce one — in either direction.
+  if (toolCalls === 0) {
+    return [
+      {
+        id: "A5",
+        status: "unmeasured",
+        because: "a5-unmeasured",
+        message:
+          `this run invoked no plan tool in its own item stream, so nothing was measured about ` +
+          `the plan half` +
+          (rows.length > 0
+            ? ` — and yet the record holds ${rows.length} plan row(s), which nothing in the ` +
+              `stream evidences`
+            : ``) +
+          `. Tools it did use: ${view.toolNamesSeen.join(", ") || "(none)"}`,
+      },
+    ];
+  }
   if (rows.length === 0) {
-    if (toolCalls > 0) {
-      // A plan gap is the recorder SAYING it could not record — the translator
-      // emits exactly that when a successful create's item id is unreadable. So
-      // a call with a gap beside it is a named absence, not a loss. Same rule
-      // the file side already follows, and it was applied there and not here.
-      const planGaps = view.gaps.filter((g) => g.kind === "plan").length;
-      if (planGaps < toolCalls) {
-        return [
-          {
-            id: "A5",
-            status: "fail",
-            because: "a5-lost",
-            message:
-              `the plan tools fired ${toolCalls} time(s) in this run, no row was recorded, and ` +
-              `only ${planGaps} plan gap(s) account for it — our bug`,
-          },
-        ];
-      }
+    // A plan gap is the recorder SAYING it could not record — the translator
+    // emits exactly that when a successful create's item id is unreadable. So
+    // a call with a gap beside it is a named absence, not a loss. Same rule
+    // the file side already follows, and it was applied there and not here.
+    const planGaps = view.gaps.filter((g) => g.kind === "plan").length;
+    if (planGaps < toolCalls) {
       return [
         {
           id: "A5",
-          status: "unmeasured",
-          because: "a5-unmeasured",
+          status: "fail",
+          because: "a5-lost",
           message:
-            `this run's ${toolCalls} plan tool call(s) are each accounted for by a plan gap, so ` +
-            `the recorder said what it could not record rather than losing it`,
+            `the plan tools fired ${toolCalls} time(s) in this run, no row was recorded, and ` +
+            `only ${planGaps} plan gap(s) account for it — our bug`,
         },
       ];
     }
@@ -697,8 +779,8 @@ function gradePlan(view: GradeableView): Finding[] {
         status: "unmeasured",
         because: "a5-unmeasured",
         message:
-          `this run invoked no plan tool in its own item stream, so nothing was measured about ` +
-          `the plan half. Tools it did use: ${view.toolNamesSeen.join(", ") || "(none)"}`,
+          `this run's ${toolCalls} plan tool call(s) are each accounted for by a plan gap, so ` +
+          `the recorder said what it could not record rather than losing it`,
       },
     ];
   }

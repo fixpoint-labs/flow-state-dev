@@ -631,9 +631,10 @@ const GUARD_CASES: GuardCase[] = [
     want: "fail",
   },
   {
-    // Built from the ARRAYS, not by setting a count: a second mutation that
-    // also names the first row.
-    name: "A2 — a row is named by two different mutations",
+    // Built from the ARRAYS, not by setting a count. The ambiguity is the
+    // SPELLING, not the repetition: a bare `alpha.txt` could be this row or a
+    // file in another directory, and nothing can say which.
+    name: "A2 — a row is named by mutations on two different paths",
     mutate: (v) => {
       v.streamMutations.push({
         path: "alpha.txt",
@@ -645,6 +646,53 @@ const GUARD_CASES: GuardCase[] = [
       });
     },
     because: "a2-ambiguous-row",
+    id: "A2",
+    want: "fail",
+  },
+  {
+    // THE WORLD THIS ASSERTION USED TO REJECT, and the reason it would have
+    // started failing ordinary runs: a run writes a file and then edits it. The
+    // recorder folds both into one aggregate row. The fixture now carries it,
+    // so the calibration proves it on every invocation — this case pins the
+    // half that matters, which is WHICH call the row is compared against.
+    //
+    // The row here says `created`, matching the FIRST mutation. It must fail:
+    // the row carries the last settlement, and a row still describing the write
+    // after the edit landed is a stale record, not a faithful one.
+    name: "A2 — an aggregate row reports the first call instead of the last",
+    mutate: (v) => {
+      const row = v.did.find((d) => d.path === "/work/repo/alpha.txt");
+      if (row !== undefined) row.kind = "created";
+    },
+    because: "a2-kind-disagrees",
+    id: "A2",
+    want: "fail",
+  },
+  {
+    // The terminal call has to be identifiable before the row can be compared
+    // against it. An unreadable position on any of the folded mutations makes
+    // it unrecoverable — grading the wrong one would assert the row is wrong
+    // about a call it never described.
+    name: "A2 — a folded mutation carries no readable position",
+    mutate: (v) => {
+      const edit = v.streamMutations.find((m) => m.path === "/work/repo/alpha.txt" && m.tool === "Edit");
+      if (edit !== undefined) edit.at = null;
+    },
+    because: "a2-terminal-unreadable",
+    id: "A2",
+    want: "fail",
+  },
+  {
+    // And the tie. `itemIndex` carries duplicates — the fixture has three at
+    // one position — so two calls on one path sharing the last position is a
+    // real state, and which one settled the row is not recoverable from it.
+    name: "A2 — two folded mutations share the last stream position",
+    mutate: (v) => {
+      for (const m of v.streamMutations) {
+        if (m.path === "/work/repo/alpha.txt") m.at = 6;
+      }
+    },
+    because: "a2-terminal-tied",
     id: "A2",
     want: "fail",
   },
@@ -776,10 +824,17 @@ const GUARD_CASES: GuardCase[] = [
     // terminal status is unreadable, so it says nothing about how the mutation
     // ended — and the row's `applied` stands on no corroboration. Skipping the
     // comparison certifies; this must fail.
+    // Selected by PATH rather than by array index. Indexed at `[0]` it silently
+    // stopped expressing its condition the moment the fixture gained a second
+    // call on that path: `[0]` was no longer the mutation the row is compared
+    // against, and the world graded clean. The guard table caught it.
     name: "A2 — the stream cannot say how a mutation ended and the row claims applied",
     mutate: (v) => {
-      v.streamMutations[0].status = "in_progress";
-      v.streamMutations[0].outcome = null;
+      const only = v.streamMutations.find((m) => m.path === "/work/repo/beta.txt");
+      if (only !== undefined) {
+        only.status = "in_progress";
+        only.outcome = null;
+      }
     },
     because: "a2-outcome-unevaluable",
     id: "A2",
@@ -992,6 +1047,25 @@ const GUARD_CASES: GuardCase[] = [
   {
     name: "A5 — the run never planned, which reports rather than fails",
     mutate: () => undefined,
+    because: "a5-unmeasured",
+    id: "A5",
+    want: "unmeasured",
+  },
+  {
+    // THE ONE ON THE HOT PATH. `toolCalls === 0` is true on every real run
+    // (FIX-1185), so this is the branch every verdict this goal has produced
+    // went through — and selecting the ROWS arm on `rows.length > 0` alone
+    // meant a single spurious row would have been certified `a5-ok` with
+    // nothing in the stream behind it. Rows without calls are reported, not
+    // failed: the stream may be blind to how they got there, and that is a
+    // can't-tell in the other direction.
+    name: "A5 — plan rows exist and the run invoked no plan tool",
+    mutate: (v) => {
+      v.plan = {
+        rows: [{ title: "write the ledger", status: "completed", previousStatus: "in_progress" }],
+        toolCalls: 0,
+      };
+    },
     because: "a5-unmeasured",
     id: "A5",
     want: "unmeasured",

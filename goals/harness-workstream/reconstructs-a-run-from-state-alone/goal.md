@@ -24,8 +24,11 @@ it reads is empty.
 2. Every mutation the item stream shows and the file record lacks is accounted for by a gap row
    **carrying that path**; a difference nothing accounts for fails, and so does a record row the
    stream never showed. Where the two DO pair up, the record must agree about what happened —
-   an `Edit` stored as `created`, or a failed call stored as `applied`, fails. And a pairing
-   that is not unique is an ambiguity, never a match
+   an `Edit` stored as `created`, or a failed call stored as `applied`, fails. A row is an
+   **aggregate** — one per path, folding every call on it, last settlement winning — so several
+   mutations naming one row is ordinary, and the row is compared against the **last** of them.
+   Several *different paths* matching one row is an ambiguity, never a match, and so is a
+   terminal call that cannot be identified
 3. Order is non-decreasing over `itemIndex` across at least two distinct positions, over **every
    item the request holds, sub-agents included** — the set the positions assertion 4 compares are
    drawn from, and the set the claim names
@@ -34,7 +37,9 @@ it reads is empty.
    `itemIndex` carries duplicates, so equal positions say nothing about which came first
 5. The plan half resolves to rows, or to UNMEASURED with its reason named — never to LOST. Judged
    **per run and worst-first**: one run that fired the plan tools and lost every row is our bug,
-   and a sibling that recorded fine does not outvote it
+   and a sibling that recorded fine does not outvote it. **A run that invoked no plan tool is
+   UNMEASURED whatever rows exist** — rows with no call behind them are reported, not certified,
+   which is the same reading the predecessor goal's truth table already used
 6. Every set an assertion iterates is non-empty, failing by name
 7. Every `nextCursor` was followed, on all three collections
 8. The reader's own source imports nothing but the collection accessor keys
@@ -91,7 +96,7 @@ generator actions. The calibration and every guard case are **model-free** and r
 ## The preconditions, and why they run every time
 
 The reader derives the known account from the known state **exactly**, a deliberately lossy copy
-of that state is caught by assertion 2, and 60 guard cases each break one assertion on purpose
+of that state is caught by assertion 2, and 64 guard cases each break one assertion on purpose
 and confirm it reaches the verdict it is supposed to. All of it is model-free, so it runs on
 every invocation rather than sitting in this log as a one-time claim — and if any of it fails,
 no coding run is dispatched at all. An instrument is sanity-checked against a case whose answer
@@ -102,6 +107,13 @@ open the sets the reader derives, and a fixture can retire a check silently. It 
 runs (so the per-run partition is exercised) and a positioned sub-agent item whose position
 reaches the ordering set (so assertion 3's scope is exercised). Delete either from the fixture
 and a precondition says so instead of the coverage quietly disappearing.
+
+**And the fixture's own contents are a claim about coverage, which is where two findings landed
+rather than in any assertion.** A state the fixture never contains is a state no rule about it
+was ever tested against — that is how assertion 2 came to reject a run that edited a file it had
+written, for nineteen green runs. The repeat-touch world is now in the fixture; so is the
+sub-agent ordering. The lesson is the general one: **when a finding is about a state, the fix
+belongs in the calibration pair, not only in a guard case.**
 
 **The broken world is handed in rather than provoked**, and that is the point. Mutating a grader
 and re-running a real check has a blind spot congruent with the defects it is meant to catch: a
@@ -185,6 +197,18 @@ be produced at all.
   and reported the loss excused. That is the third direction of one rule — one mutation naming
   many rows (round 1), many mutations consuming one gap (round 3), many gaps offered for one
   mutation (round 7). Each direction was closed correctly and the next stayed open.
+- **Assertion 2 rejected a run that edited a file it had written**, and this is the one that
+  would have fired on ordinary work. A record row is an AGGREGATE — one per path, folding every
+  call on it — but the check demanded one mutation per row and read a second as an unresolvable
+  pairing. A plain write-then-edit, or a retry, is faithful state this check called a defect. The
+  fixture now carries the repeat, so the false red is caught by the calibration itself rather
+  than by anyone remembering: reintroducing the rule reports *"the grader reports 1 failure(s) on
+  a state whose account is correct"* before a run is dispatched.
+- **Assertion 5 certified plan rows that no plan call evidenced.** The ROWS arm was selected on
+  `rows.length > 0` alone, and `toolCalls === 0` is the condition on **every real run**
+  (FIX-1185) — so the one thing standing between the graded path and a false `a5-ok` was the
+  absence of a spurious row. `toolCalls === 0` is now decided first, and reads UNMEASURED
+  whatever rows exist, which is what the predecessor goal's truth table already said.
 
 One masking relationship among the preconditions themselves was removed for the same reason: a
 failed lossy-calibration used to return early and hide the entire guard table. All preconditions
@@ -192,10 +216,23 @@ now report together.
 
 ## What is closed by construction, and what is still a grid
 
-Seven review rounds produced 21 reported findings. The concepts stopped being new around round 3;
-the **instances never stopped arriving** — 3, 2, 3, 3, 4, 4, 2 per round. Those are different
+Eight review rounds produced 23 reported findings. The concepts stopped being new around round 3;
+the **instances never stopped arriving** — 3, 2, 3, 3, 4, 4, 2, 2 per round. Those are different
 questions, and only the second says whether the work is done. Recording both is the point of this
 section.
+
+**Round 8 changed what the earlier PASSes are worth, and that belongs here rather than in a
+footnote.** Until it, assertion 2 rejected a run that edited a file it had already written — so
+the nineteen consecutive PASSes happened partly because no graded run touched a path twice. They
+are still real: those runs were faithful and the check verified them. But the twentieth would
+have gone red on ordinary work, and a regression check that fails on normal behaviour gets
+switched off inside a week. That was the check's **viability**, not its precision.
+
+The general form is the one this file keeps meeting: a check is only as tested as the states it
+has actually been shown. Two of the last four findings were the fixture's silence rather than the
+code's logic — a set the fixture never contained, so a rule about it could be wrong for as long
+as it liked. Both are now IN the fixture, where the calibration exercises them model-free on
+every invocation.
 
 **The two rules that kept coming back are the same rule.** *An input that cannot determine an
 answer must not produce one* — the ambiguity rule and the null rule are both spellings of it.
@@ -219,7 +256,7 @@ table executes, and it has never once been half-applied.
 
 **Still enumerable — a grid, and honestly so.** The remaining family is *an assertion certifying
 on evidence that does not cover its case*, over roughly `field × surface × presence`. Round 6
-filled four cells and round 7 two; these are cells nobody has reported and that this check does
+filled four cells, round 7 two and round 8 two; these are cells nobody has reported and that this check does
 not currently grade:
 
 - `lastTouchedAt` on a row is read into no comparison, so a record may carry any timestamp.
@@ -229,17 +266,18 @@ not currently grade:
 - A row's `storageKey` and its `topic` are never checked against each other.
 - A gap's `reason` and `at` are carried and never graded.
 
-**One round-7 finding did not live in that grid, and saying otherwise would repeat the defect it
-was.** Assertion 3's scope was not a cell of `field × surface × presence` — it was *which set a
-derivation reads*, one level up from any field. That axis has exactly one other inhabitant, and
-it is deliberate rather than open: narrative is top-level by choice, and it says so in three
-places. The grid above describes the family this check has repeatedly produced; it is not a proof
-that no other axis exists, and nothing here should be read as one.
+**Three of the last four findings did not live in that grid, and saying otherwise would repeat
+the defect they were.** Assertion 3's scope was *which set a derivation reads*, one level up from
+any field. Assertion 2's aggregate-row rejection and assertion 5's rows-without-calls were a
+third thing again: **a rule about a state the fixture never contained**, which no amount of
+grading precision would have surfaced. The grid describes the family this check has repeatedly
+produced. It is not a proof that no other axis exists, and nothing here should be read as one —
+the honest statement is that the grid's cells are named and the axes are not closed.
 
 Filling those buys those. **Every one lives in a branch the graded runs do not reach** — they need
 an incidental file outside the expectation, an unreadable vendor field, or a plan half that
 reports UNMEASURED on every real run. That is the stopping line for a Proof: the question this
-issue exists to answer has been answered nineteen times, and precision on unreached edges is worth
+issue exists to answer has been answered twenty-two times, and precision on unreached edges is worth
 bounding rather than grinding.
 
 The residual belongs beside **LAB-137**, not inside it. LAB-137 is recorder-side — *confirm only
@@ -290,7 +328,11 @@ live, and the branch that would call the whole run inconclusive sits behind them
 
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
-| 2026-08-18 | **`91d726679`** | Agent SDK default | **PASS — the verdict** | Nineteenth consecutive real run, on the committed tree, round 7 folded and final. 3 of 3 held-out paths `created`/`edited` and `applied`; 3 stream mutations and 3 rows naming the same files; non-decreasing across 30 items of the request at 26 distinct positions; mutations 17–22, last word at 24; 1 shell call, 0 of them ran. **60 guards** proven first. Plan arm UNMEASURED. This run spawned no sub-agent, so `items` and `topLevel` are both 30 — A3's widened scope is exercised by the calibration fixture and precondition 1c-ter, not by this run |
+| 2026-08-18 | working tree at `6f62875fe`, pre-commit (round 8 folded) | Agent SDK default | PASS | Twenty-first consecutive real run. **64 guards**. The fixture now carries a path written and then edited |
+| 2026-08-18 | working tree at `6f62875fe`, pre-commit | — | FAIL *(deliberate)* | Any repeated touch treated as an ambiguity again — the state of the check for its first nineteen PASSes. **`CALIBRATION FAILED — the grader reports 1 failure(s) on a state whose account is correct`**, plus nine guard cases red. The false red on faithful state, caught before a run is dispatched |
+| 2026-08-18 | working tree at `6f62875fe`, pre-commit | — | FAIL *(deliberate)* | Plan rows allowed to outvote the absence of any plan call. *"'A5 — plan rows exist and the run invoked no plan tool' did not reach A5/a5-unmeasured; it produced `["a5-ok=pass"]`"* — the false green on the branch every real run takes |
+| 2026-08-18 | working tree at `6f62875fe`, pre-commit | — | FAIL *(deliberate, and unplanned)* | Adding the repeat to the fixture made a guard case stop expressing its condition: `streamMutations[0]` was no longer the mutation its row is compared against, so the world graded clean. *"'A2 — the stream cannot say how a mutation ended and the row claims applied' did not reach A2/a2-outcome-unevaluable; it produced `["a2-ok=pass"]`"*. It now selects by path |
+| 2026-08-18 | **`91d726679`** | Agent SDK default | PASS *(superseded)* | Nineteenth consecutive real run, on the committed tree, round 7 folded and final. 3 of 3 held-out paths `created`/`edited` and `applied`; 3 stream mutations and 3 rows naming the same files; non-decreasing across 30 items of the request at 26 distinct positions; mutations 17–22, last word at 24; 1 shell call, 0 of them ran. **60 guards** proven first. Plan arm UNMEASURED. This run spawned no sub-agent, so `items` and `topLevel` are both 30 — A3's widened scope is exercised by the calibration fixture and precondition 1c-ter, not by this run |
 | 2026-08-18 | working tree at `fca81252b`, pre-commit (round 7 folded) | Agent SDK default | PASS | Eighteenth consecutive real run. **60 guards**. A3 now reads *"non-decreasing across 30 item(s) of this request, sub-agents included, at 26 distinct position(s)"* — and on this run that is the same 30 items, because the run spawned no sub-agent. The broader scope is exercised model-free by the calibration fixture, not by the graded run |
 | 2026-08-18 | working tree at `fca81252b`, pre-commit | — | FAIL *(deliberate)* | A2's gap exemption regressed to `findIndex`. *"'A2 — two gap rows could each be the one covering a lost mutation' did not reach A2/a2-ambiguous-gap with a fail; it produced ["a2-ok=pass"]"* — the ambiguity rule's third direction, reproducing the reported false green exactly |
 | 2026-08-18 | working tree at `fca81252b`, pre-commit | — | FAIL *(deliberate)* | The ordering set narrowed back to the top-level thread. Calibration red before dispatch; in isolation the world the review reported — `0,1,2,3,4,4,4,5,6,5,7,8` with the nested pair reversed — grades `a3-out-of-order=fail` now and graded `a3-ok=pass` under the old scope |

@@ -6,10 +6,10 @@
         {
           "topic": "req_cal_1/inv_a/work/repo/alpha.txt",
           "path": "/work/repo/alpha.txt",
-          "kind": "created",
+          "kind": "edited",
           "outcome": "applied",
           "firstAt": 1,
-          "namedBy": 1
+          "namedBy": 2
         },
         {
           "topic": "req_cal_1/inv_a/work/repo/beta.txt",
@@ -104,6 +104,14 @@
           "status": "completed",
           "kind": null,
           "outcome": "applied"
+        },
+        {
+          "path": "/work/repo/alpha.txt",
+          "tool": "Edit",
+          "at": 6,
+          "status": "completed",
+          "kind": "edited",
+          "outcome": "applied"
         }
       ],
       "said": [
@@ -131,6 +139,7 @@
           4,
           5,
           6,
+          6,
           7,
           8
         ],
@@ -154,10 +163,10 @@
         "Write"
       ],
       "counts": {
-        "items": 11,
-        "topLevel": 10,
+        "items": 12,
+        "topLevel": 11,
         "messages": 2,
-        "toolOutputs": 8
+        "toolOutputs": 9
       },
       "reads": {
         "observed-file-ops": {

@@ -169,19 +169,22 @@ export interface DidEntry {
    */
   topic: string;
   /**
-   * The path as the run's tool call spelled it, from the matching stream
-   * mutation. Null unless exactly one named it.
+   * The path as the run's tool calls spelled it. Null unless every mutation
+   * naming this row spelled it the SAME way — several calls on one path are
+   * ordinary (the row is an aggregate), two different paths matching one row
+   * are not, and that one stays underived for the grader to report.
    */
   path: string | null;
   /** `created` / `edited`, or null when the projection does not carry it. */
   kind: string | null;
   /** `pending` / `applied` / `failed`, or null when not carried. */
   outcome: string | null;
-  /** First `itemIndex` naming this row; null unless exactly one mutation did. */
+  /** Earliest `itemIndex` naming this row; null when the spellings disagree. */
   firstAt: number | null;
   /**
-   * How many of this run's stream mutations name this row. Anything but 1 is
-   * unresolvable and is graded, never silently picked — see `paths.mts`.
+   * How many of this run's stream mutations name this row. More than one is
+   * ordinary; more than one SPELLING is unresolvable and is graded, never
+   * silently picked — see `paths.mts`.
    */
   namedBy: number;
 }
@@ -491,16 +494,26 @@ export async function readAccount(read: Read, workstreamId: string): Promise<Acc
     const did: DidEntry[] = files.rows.map((row) => {
       const data = payload(row);
       const topic = row.topic ?? "";
-      // Exactly one naming mutation, or none of its details are derived. Two
-      // candidates is an ambiguity the grader reports, never a choice made here.
+      // ONE SPELLING, however many mutations carry it. A row is an aggregate —
+      // one per path, folding every call on that path — so a run that writes a
+      // file and then edits it names its row twice, which is ordinary rather
+      // than ambiguous. What is ambiguous is two DIFFERENT spellings both
+      // matching this row, and that stays underived: the grader reports it,
+      // this file never picks one.
       const naming = streamMutations.filter((m) => sameFile(m.path, topic));
-      const unique = naming.length === 1 ? naming[0] : undefined;
+      const spellings = [...new Set(naming.map((m) => m.path))];
+      const path = spellings.length === 1 ? spellings[0] : null;
+      const positions = naming
+        .map((m) => m.at)
+        .filter((v): v is number => typeof v === "number");
       return {
         topic,
-        path: unique?.path ?? null,
+        path,
         kind: str(data, "lastKind"),
         outcome: str(data, "outcome"),
-        firstAt: typeof unique?.at === "number" ? unique.at : null,
+        // The FIRST position naming the row, which is what the sort below wants.
+        // The grader picks the terminal one itself, from the mutations.
+        firstAt: path !== null && positions.length > 0 ? Math.min(...positions) : null,
         namedBy: naming.length,
       };
     });
