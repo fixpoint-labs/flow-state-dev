@@ -179,6 +179,39 @@ function stringifyArgs(input: unknown): string {
 }
 
 /**
+ * Everything still in flight when the stream ended, as durable gaps.
+ *
+ * Called once after the message loop — on the success path AND the throw path,
+ * because an aborted or max-turns run is exactly when this fires.
+ *
+ * **This closes an asymmetry, not a hypothetical.** A file mutation records a
+ * `pending` row the instant its call is seen, so an interrupt leaves visible
+ * evidence that a write was attempted. A plan CREATE cannot do that: the item
+ * has no id until the harness answers, so there is nothing to key a row under.
+ * Without this drain an interrupted create is indistinguishable from a run that
+ * never planned — which is the same "empty means two different things" confusion
+ * the plan half's whole INCONCLUSIVE arm exists to resolve, reappearing one
+ * layer down.
+ *
+ * Open plan UPDATES and open file ops need nothing here: both already emitted a
+ * `pending` observation at call time, and an unsettled attempt keeping its
+ * attempted state is the designed record of an interrupted run.
+ */
+export function drainUnsettledObservations(state: TranslateState): TranslatedEvent[] {
+  const events: TranslatedEvent[] = [];
+  for (const [, create] of state.openPlanCreates) {
+    events.push({
+      kind: "work_gap_observed",
+      reason:
+        `a plan item was being created when the run ended, so it never got an id to be ` +
+        `recorded under${create.title !== null ? ` ("${create.title}")` : ""}`,
+    });
+  }
+  state.openPlanCreates.clear();
+  return events;
+}
+
+/**
  * Translate one SDK message into zero or more {@link TranslatedEvent}s,
  * mutating `state` to track open tools and sub-agents. Pure aside from that
  * mutation: no `ctx`, no SDK, no I/O.

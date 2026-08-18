@@ -134,9 +134,10 @@ resource collections and writes into them as it goes:
 claudeCodeAgent({ sessionState: false, recordWork: true });
 ```
 
-Entries are keyed under the run's request id, so a workstream reused across runs
-answers per run. All three declare client state reads, so
-`GET /sessions/:id/resources/observed-file-ops?topicPrefix=observed-file-ops/<runId>/`
+Entries are keyed as `<requestId>/<invocation>`, so a workstream reused across
+runs — and a request that runs the agent more than once — both answer per run.
+All three declare client state reads, so
+`GET /sessions/:id/resources/observed-file-ops?topicPrefix=observed-file-ops/<requestId>/`
 returns them; each row's payload is on `clientData`. Follow `nextCursor` — the
 route pages.
 

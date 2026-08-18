@@ -390,6 +390,46 @@ describe("createWorkRecorder — watching the work never breaks the work", () =>
     expect([...gaps.rows.values()]).toHaveLength(0);
   });
 
+  it("persists a gap raised by a write that failed mid-flush", async () => {
+    // The invariant `stop()` depends on, and the reason it can flush once
+    // rather than draining to quiescence: a flush drains gaps LAST, in the same
+    // chained body as the file and plan writes, so a failure in either lands in
+    // that same flush's gap batch. Snapshot the gaps any earlier and a gap
+    // raised by a failing write waits for a flush that may never come — at
+    // shutdown, never — losing it in the case where it is most informative,
+    // because the thing that produced it was a failed write.
+    let releaseWrite: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    const slowFailingFiles: UpsertableCollection = {
+      async upsert() {
+        await held;
+        throw new Error("store went away mid-write");
+      },
+    };
+    const gaps = fakeCollection();
+    const recorder = createWorkRecorder({
+      runId: RUN,
+      files: slowFailingFiles,
+      plan: fakeCollection(),
+      gaps,
+      flushIntervalMs: 5,
+    });
+
+    recorder.observe(fileCall("/work/src/checkout.ts"));
+    // Let the interval fire, so the write is genuinely in flight and the
+    // pending maps are empty by the time `stop()` looks at them.
+    await new Promise((r) => setTimeout(r, 40));
+
+    const stopping = recorder.stop();
+    releaseWrite();
+    await stopping;
+
+    expect([...gaps.rows.keys()]).toEqual([`${RUN}/000001`]);
+    expect(String([...gaps.rows.values()][0].reason)).toContain("store went away mid-write");
+  });
+
   it("keeps working without a gaps collection at all", async () => {
     const notes: string[] = [];
     const recorder = createWorkRecorder({

@@ -168,26 +168,29 @@ framework stores and serves for you — and writes into them as the run goes:
 | `observed-plan` | item on the run's own to-do list: its wording, its current status, and the status before that |
 | `observed-gaps` | thing the recorder understood and could not record, with the reason |
 
-Entries are keyed under the run's own request id. A workstream can host several
-runs over its life, so this is what keeps one run's answer from becoming the
-whole workstream's history.
+Entries are keyed as `<requestId>/<invocation>`. A workstream can host several
+runs over its life, and a single request can itself run the agent more than once
+— a generator holding it as a tool can call it repeatedly — so both halves are
+needed to keep one run's answer from becoming somebody else's.
 
 ### Reading it back
 
 Both records come back over the resource route, one page at a time. Scope the
-read to the run you care about with `topicPrefix`, and follow `nextCursor` while
-one is returned:
+read with `topicPrefix`, and follow `nextCursor` while one is returned:
 
 ```
-GET /sessions/<workstreamId>/resources/observed-file-ops?topicPrefix=observed-file-ops/<runId>/
+GET /sessions/<workstreamId>/resources/observed-file-ops?topicPrefix=observed-file-ops/<requestId>/
 
 { "items": [
-  { "topic": "<runId>/work/repo/src/checkout.ts",
-    "storageKey": "observed-file-ops/<runId>/work/repo/src/checkout.ts",
+  { "topic": "<requestId>/<invocation>/work/repo/src/checkout.ts",
+    "storageKey": "observed-file-ops/<requestId>/<invocation>/work/repo/src/checkout.ts",
     "clientData": { "lastKind": "edited", "outcome": "applied",
                     "lastTouchedAt": 1787021400123 } }
 ] }
 ```
+
+Prefixing with the request id gives you everything that request did; adding the
+invocation narrows it to one run.
 
 Each row's payload is on `clientData`. `outcome` has three values, not two:
 `pending` while a mutation has been seen and not yet settled, then `applied` or

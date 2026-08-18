@@ -3,6 +3,7 @@ import { testBlock, createTestContext } from "@flow-state-dev/testing";
 import {
   claudeCodeAgent,
   forwardSignalToController,
+  runNamespace,
   SDK_SESSION_ID_KEY,
   SDK_AGENT_RUNS_KEY,
 } from "../../src/sdk/agent";
@@ -724,7 +725,7 @@ describe("claudeCodeAgent — recordWork", () => {
     const runtime = await createTestContext({ declaredResources: block.declaredResources });
     await block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
 
-    const runId = runtime.ctx.request.identity.id;
+    const runId = runNamespace(runtime.ctx as never);
     const resources = runtime.ctx.resources as unknown as Record<
       string,
       { list(): Promise<Array<{ path: string; state: Record<string, unknown> }>> }
@@ -743,6 +744,84 @@ describe("claudeCodeAgent — recordWork", () => {
       status: "in_progress",
       lastOutcome: "applied",
     });
+  });
+
+  it("namespaces by INVOCATION, so two calls in one request do not merge", async () => {
+    // A generator holding this agent as a tool can call it several times in one
+    // request — the framework's tool executor disambiguates each call by
+    // `stepNumber:toolCallId` precisely because that happens. Keying on the
+    // request id alone would merge every such run: same paths overwritten, same
+    // to-do ids merged, and gap ordinals (which restart at 1 per recorder)
+    // clobbering each other outright.
+    const requestId = "req_shared";
+    const first = {
+      request: { identity: { id: requestId } },
+      _blockIdentity: { blockPath: "root/tool(claude-code-agent,0:call_a)" },
+    };
+    const second = {
+      request: { identity: { id: requestId } },
+      _blockIdentity: { blockPath: "root/tool(claude-code-agent,1:call_b)" },
+    };
+
+    expect(runNamespace(first as never)).not.toBe(runNamespace(second as never));
+    // …and both still begin with the request id, so a reader can still ask
+    // "everything this request did" with one prefix.
+    for (const ns of [runNamespace(first as never), runNamespace(second as never)]) {
+      expect(ns.startsWith(`${requestId}/`)).toBe(true);
+    }
+    // One invocation stays ONE key segment, so the path segments that follow it
+    // are the file's and nothing else.
+    expect(runNamespace(first as never).split("/")).toHaveLength(2);
+  });
+
+  it("falls back to a stable discriminator when there is no block identity", () => {
+    // A context with no block identity has exactly one invocation by
+    // construction, so a constant is honest — and must stay stable, or every
+    // run would land in a different namespace.
+    const ctx = { request: { identity: { id: "req_x" } } };
+    expect(runNamespace(ctx as never)).toBe("req_x/0");
+    expect(runNamespace(ctx as never)).toBe(runNamespace(ctx as never));
+  });
+
+  it("records an interrupted plan create as a gap rather than losing it", async () => {
+    // The plan side's version of the pending file row. A create has no id until
+    // the harness answers, so an interrupt leaves nothing to key a row under —
+    // and without this an interrupted plan attempt is indistinguishable from a
+    // run that never planned.
+    const interrupted: SdkMessageLike[] = [
+      {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_c",
+              name: "TaskCreate",
+              input: { subject: "Create the file", description: "…", activeForm: "Creating" },
+            },
+          ],
+        },
+      },
+      // …and the stream ends. No result ever arrives.
+      RESULT_OK,
+    ];
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery(interrupted),
+      recordWork: true,
+      includePartialMessages: false,
+    });
+    const runtime = await createTestContext({ declaredResources: block.declaredResources });
+    await block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+
+    const resources = runtime.ctx.resources as unknown as Record<
+      string,
+      { list(): Promise<Array<{ path: string; state: Record<string, unknown> }>> }
+    >;
+    expect(await resources["observed-plan"].list()).toHaveLength(0);
+    const gapRows = await resources["observed-gaps"].list();
+    expect(gapRows).toHaveLength(1);
+    // The wording is carried through, so the gap says WHICH item was lost.
+    expect(String(gapRows[0].state.reason)).toContain("Create the file");
   });
 
   it("leaves ONE row for one write, even when the harness resolves a different path", async () => {

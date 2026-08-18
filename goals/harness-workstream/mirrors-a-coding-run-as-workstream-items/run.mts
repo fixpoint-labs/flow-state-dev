@@ -424,7 +424,10 @@ await runGoal(async () => {
    *
    * Both halves are load-bearing. `topicPrefix` is matched against the STORAGE
    * key, not the bare topic — so the value passed is the run's full namespace,
-   * `<collection>/<runId>/`. Without it the route returns the first page of the
+   * `<collection>/<requestId>/`. (A row's key is `<requestId>/<invocation>/…`;
+   * one request runs the agent once here, so the request prefix is exactly one
+   * run's rows — but the invocation segment is what keeps that true when a
+   * generator calls the agent repeatedly.) Without it the route returns the first page of the
    * collection's whole sorted key space, which after enough reused-workstream
    * runs can be entirely somebody else's rows. And `nextCursor` has to be
    * followed, because the default page is 50: a run that touched more files

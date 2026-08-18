@@ -47,11 +47,20 @@ export interface UpsertableCollection {
 /** Options for {@link createWorkRecorder}. */
 export interface WorkRecorderOptions {
   /**
-   * The run's own identity, prefixed onto every key. A workstream session is
-   * REUSED across runs, so without this a second run would merge its file
-   * entries by path into the first run's rows and mix its plan items in, and a
-   * reader would get "what has this workstream ever done" in answer to "what
-   * did this run do".
+   * The run's own namespace, prefixed onto every key. May be more than one
+   * path segment — see {@link WorkRecorderOptions} callers.
+   *
+   * A workstream session is REUSED across runs, so without this a second run
+   * would merge its file entries by path into the first run's rows and mix its
+   * plan items in, and a reader would get "what has this workstream ever done"
+   * in answer to "what did this run do".
+   *
+   * It must identify **one invocation of the agent**, not one request. Those
+   * are not the same thing: a generator holding the agent as a tool can call it
+   * several times in a single request, and every one of those is a separate
+   * coding run with its own files, its own to-do ids, and its own gap ordinals.
+   * A request-wide namespace merges all of them — and the gap ordinals, which
+   * restart at 1 per recorder, would overwrite each other outright.
    */
   runId: string;
   files: UpsertableCollection;
@@ -331,6 +340,21 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
       }
     },
     flush,
+    /**
+     * Flush once, then await whatever was already in flight.
+     *
+     * A gap raised by a write that fails DURING this settle is not lost, and it
+     * is worth saying why, because the reasoning is not local to this function:
+     * a flush drains gaps LAST, inside the same chained body as the file and
+     * plan writes, so a failure in either of those lands in that same flush's
+     * gap batch. Nothing can add to `pendingGaps` after its snapshot except a
+     * later flush, which snapshots again. Measured, not assumed — see the
+     * "persists a gap raised by a write that failed mid-flush" test.
+     *
+     * That invariant is what makes a single flush sufficient here. If the drain
+     * order in `flush` ever changes, this stops being true and `stop()` needs
+     * to drain to quiescence instead.
+     */
     async stop(): Promise<void> {
       if (timer !== null) {
         clearTimeout(timer);

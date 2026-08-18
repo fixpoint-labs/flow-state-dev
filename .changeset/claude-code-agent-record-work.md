@@ -25,9 +25,11 @@ and writes into them as the run goes:
   a mutation that never happened.
 
 All three declare client state reads, so they come back over the resource route
-that already ships; each row's payload is on `clientData`. Entries are keyed
-under the run's request id, so a workstream reused across runs answers per run —
-scope a read with `topicPrefix` and follow `nextCursor`.
+that already ships; each row's payload is on `clientData`. Entries are keyed as
+`<requestId>/<invocation>`, so a workstream reused across runs — and a request
+that runs the agent more than once, which a generator holding it as a tool can
+do — both answer per run. Scope a read with `topicPrefix` (the request id alone
+gives everything that request did) and follow `nextCursor`.
 
 Two limits are deliberate and stated rather than hidden. The file record covers
 **tool-driven** operations only: a run that edits through the shell makes no

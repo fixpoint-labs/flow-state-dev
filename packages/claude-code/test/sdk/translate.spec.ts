@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { createTranslateState, translateSdkMessage } from "../../src/sdk/translate";
+import {
+  createTranslateState,
+  drainUnsettledObservations,
+  translateSdkMessage,
+} from "../../src/sdk/translate";
 import type { SdkMessageLike } from "../../src/sdk/types";
 
 /**
@@ -464,6 +468,63 @@ describe("translateSdkMessage — observed work", () => {
       ],
     },
   };
+
+  it("drains an unsettled plan create to a gap when the stream ends", () => {
+    const state = createTranslateState({ partialMessages: false });
+    translateSdkMessage(createCall, state);
+    const drained = drainUnsettledObservations(state);
+
+    expect(drained).toHaveLength(1);
+    expect(drained[0]).toMatchObject({ kind: "work_gap_observed" });
+    // Names the item, so the gap says WHICH plan attempt was lost.
+    expect((drained[0] as { reason: string }).reason).toContain("Create notes.txt");
+    // …and draining twice does not double-report it.
+    expect(drainUnsettledObservations(state)).toEqual([]);
+  });
+
+  it("drains nothing for work that already recorded an attempt", () => {
+    // Open file ops and open plan UPDATES both emitted a `pending` observation
+    // at call time, so an unsettled attempt keeping its attempted state is
+    // already the designed record. Re-reporting them as gaps would turn every
+    // interrupted run into a pile of false alarms.
+    const state = createTranslateState({ partialMessages: false });
+    translateSdkMessage(writeCall, state);
+    translateSdkMessage(
+      {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_u",
+              name: "TaskUpdate",
+              input: { taskId: "5", status: "in_progress" },
+            },
+          ],
+        },
+      },
+      state,
+    );
+    expect(drainUnsettledObservations(state)).toEqual([]);
+  });
+
+  it("drains nothing after a create that settled normally", () => {
+    const state = createTranslateState({ partialMessages: false });
+    translateSdkMessage(createCall, state);
+    translateSdkMessage(
+      {
+        type: "user",
+        tool_use_result: { task: { id: "5", subject: "Create notes.txt" } },
+        message: {
+          content: [
+            { type: "tool_result", tool_use_id: "toolu_c", content: "Task #5 created" },
+          ],
+        },
+      },
+      state,
+    );
+    expect(drainUnsettledObservations(state)).toEqual([]);
+  });
 
   it("records nothing for a plan create until its result names an id", () => {
     // The ids are NOT positional — the same two-item list was allocated #1/#2 on

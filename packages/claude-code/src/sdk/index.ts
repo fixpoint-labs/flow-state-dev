@@ -7,6 +7,7 @@
 export {
   claudeCodeAgent,
   claudeAgentSessionStateSchema,
+  runNamespace,
   SDK_SESSION_ID_KEY,
   SDK_AGENT_RUNS_KEY,
   type ClaudeCodeAgentOptions,
@@ -23,6 +24,7 @@ export {
 } from "./session";
 export {
   createTranslateState,
+  drainUnsettledObservations,
   translateSdkMessage,
   type TranslateState,
 } from "./translate";

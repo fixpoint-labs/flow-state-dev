@@ -23,7 +23,11 @@ import {
   emitTranslatedEvent,
   finalizeOpenItems,
 } from "./emit";
-import { createTranslateState, translateSdkMessage } from "./translate";
+import {
+  createTranslateState,
+  drainUnsettledObservations,
+  translateSdkMessage,
+} from "./translate";
 import { createWorkRecorder, type UpsertableCollection, type WorkRecorder } from "./work-recorder";
 import {
   OBSERVED_FILE_OPS,
@@ -207,9 +211,40 @@ export function forwardSignalToController(signal: AbortSignal | undefined): Abor
  * degrade to status notes alone. The two records are not optional that way —
  * without them there is nothing to record into.
  *
- * Every entry is keyed under the run's request id. That is the run's own
- * identity, and it is what keeps a reused workstream's runs apart.
+ * Every entry is keyed under {@link runNamespace}, which is what keeps a reused
+ * workstream's runs apart.
  */
+/**
+ * The key namespace for ONE run: `<requestId>/<invocation>`.
+ *
+ * **The request id alone is not the run's identity, and using it as one is a
+ * silent data-merging bug.** A generator holding this agent as a tool can call
+ * it several times inside a single request — the framework's own tool executor
+ * disambiguates each call by `stepNumber:toolCallId` precisely because that
+ * happens. Every such call is a separate coding run: its own files, its own
+ * to-do ids (the harness numbers those per agent session, so two runs both
+ * having a task `5` is ordinary), and its own gap ordinals, which restart at 1
+ * per recorder and would therefore overwrite each other outright.
+ *
+ * `blockPath` is the framework's per-invocation identity — derived from the
+ * block tree and the model step, so it is unique per call AND stable across a
+ * replay, which a minted id would not be. Slashes are flattened so one
+ * invocation stays one key segment.
+ *
+ * Two segments rather than one, deliberately: the request id stays the leading
+ * segment, so `topicPrefix=<collection>/<requestId>/` still selects everything
+ * one request did, while `<collection>/<requestId>/<invocation>/` narrows to a
+ * single run. Replacing the request id outright would have made a row
+ * impossible to correlate back to the request that caused it.
+ */
+export function runNamespace(ctx: BlockContext): string {
+  const path = (ctx as { _blockIdentity?: { blockPath?: string } })._blockIdentity?.blockPath;
+  // A context without a block identity (a direct `execute`, a mock) has exactly
+  // one invocation by construction, so a constant is the honest discriminator.
+  const invocation = typeof path === "string" && path.length > 0 ? path.replace(/\//g, ".") : "0";
+  return `${ctx.request.identity.id}/${invocation}`;
+}
+
 function openWorkRecorder(ctx: BlockContext): WorkRecorder | null {
   const resources = (ctx as { resources?: Record<string, unknown> }).resources;
   const upsertable = (accessor: string): UpsertableCollection | undefined => {
@@ -228,7 +263,7 @@ function openWorkRecorder(ctx: BlockContext): WorkRecorder | null {
     return null;
   }
   return createWorkRecorder({
-    runId: ctx.request.identity.id,
+    runId: runNamespace(ctx),
     files,
     plan,
     ...(gaps !== undefined ? { gaps } : {}),
@@ -371,7 +406,9 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         await finalizeOpenItems(ctx, emitState, name);
         // A run that failed mid-stream is one of the two cases the record exists
         // for — it may have written files before it died — so the last window's
-        // buffer is written out here as well as on the success path.
+        // buffer is written out here as well as on the success path, and
+        // anything still in flight is drained to a gap first.
+        for (const event of drainUnsettledObservations(translateState)) recorder?.observe(event);
         await recorder?.stop();
         // Persist the session id even on failure so the next request can resume
         // the conversation the SDK actually created.
@@ -392,6 +429,9 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       }
 
       await finalizeOpenItems(ctx, emitState, name);
+      // A clean run can still end with a create unanswered (`error_max_turns`
+      // ends the stream mid-exchange), so this drain is not throw-path-only.
+      for (const event of drainUnsettledObservations(translateState)) recorder?.observe(event);
       await recorder?.stop();
 
       // Prefer the coalesced/whole assistant text the emitter tracked; fall
