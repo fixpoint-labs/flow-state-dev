@@ -12,11 +12,17 @@ project, drops each candidate config shape in, and runs `next build`, `next dev`
 `import()` against each.
 
 **The exit status is the evidence, and every claim below feeds it** — `0` every row of the table
-behaved as documented *and* the served-route and `AGENTS.md` assertions held, `1` something
-disagreed with what this file claims, `2` the run could not be completed. Each variant declares
-the outcome this README claims for it, so **"the build failed" is not automatically a probe
-failure** — two variants are supposed to fail — but "the build did something other than what we
-documented" is.
+behaved as documented *and* the scaffold-discovery and served-route assertions held, `1`
+something disagreed with what this file claims, `2` the run could not be completed.
+
+Each variant declares both the outcome **and the diagnostic** this README claims for it, so
+**"the build failed" is not automatically a probe failure** — two variants are supposed to fail —
+and equally, a failure for the *wrong reason* is not a pass. A shared route-file typo, a
+dependency problem, or a future Next regression would otherwise reduce to `fail` and be read as
+"matched the documented result", letting the probe go green without ever reproducing `TS5097` or
+the module-resolution behaviour that is the whole justification for the chosen shape. Pass rows
+assert the route compiled (`/api/flows` in the build output), not merely that the process
+exited 0.
 
 Two earlier versions of this probe could report green for claims they had not proved, which is
 why the status is wired this way:
@@ -57,6 +63,12 @@ both `GET /api/flows` (the bare route) and `GET /api/flows/sessions/abc` (the ca
 returns this run's unique marker, proving the config module that loaded is the one this run wrote.
 
 ## Four things it found that nothing in the epic or the sibling specs knew
+
+All four are **asserted, and asserted before this script writes anything** — not printed for a
+reader to eyeball. Ordering is the whole point: the probe later appends its own FSD section to
+`AGENTS.md`, and `next dev` restores Next's block, so a check placed at the end would report
+green exactly when the pinned scaffolder had stopped writing these files. Finding 1 especially,
+because the spec's append-not-create design rests on it.
 
 1. **`create-next-app@16` writes `AGENTS.md` itself**, with its own delimited block
    (`<!-- BEGIN:nextjs-agent-rules -->`), and **`next dev` re-adds that block on every run**. So

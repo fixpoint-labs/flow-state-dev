@@ -40,10 +40,27 @@ cd "$APP" || exit 2
 
 echo "=== what create-next-app wrote (findings 1-4) ==="
 ls -a | tr '\n' ' '; echo
-echo "AGENTS.md delimiters:"; grep -o 'BEGIN:[a-z-]*' AGENTS.md || echo "  (none)"
-echo ".gitignore env line:"; grep -n '^\.env' .gitignore || echo "  (none)"
 echo "manifest type field: $(node -p "require('./package.json').type ?? '(absent)'")"
 echo "tsconfig include:    $(node -p "JSON.stringify(require('./tsconfig.json').include)")"
+
+# ASSERTED, NOT PRINTED — and asserted HERE, before this script writes anything.
+# The greenfield-appends design rests on create-next-app writing its own AGENTS.md,
+# and this check is self-concealing if it runs later: the append near the end
+# recreates AGENTS.md, and `next dev` restores Next's own block. A probe that
+# checked at the end would go green exactly when the pinned scaffolder had stopped
+# doing the thing the spec depends on.
+[ -f AGENTS.md ] \
+  && echo "  AGENTS.md: present" \
+  || fail "create-next-app no longer writes AGENTS.md — the spec's append-not-create premise is dead"
+grep -q 'BEGIN:nextjs-agent-rules' AGENTS.md 2>/dev/null \
+  && echo "  AGENTS.md: carries next's own delimited block" \
+  || fail "AGENTS.md has no nextjs-agent-rules block — the append target is not what the spec describes"
+[ -f CLAUDE.md ] \
+  && echo "  CLAUDE.md: present" \
+  || fail "create-next-app no longer writes CLAUDE.md — README finding 2 is stale"
+grep -qE '^\.env' .gitignore 2>/dev/null \
+  && echo "  .gitignore: ignores .env* ($(grep -nE '^\.env' .gitignore | head -1))" \
+  || fail "create-next-app's .gitignore no longer ignores .env* — spec decision 7 loses its host-supplied entry"
 
 # The route shape the spec specifies: a catch-all plus a sibling bare route, both
 # carrying the canonical exports from packages/next/README.md. An earlier version
@@ -103,8 +120,16 @@ set_pkg_type() { # $1 = module|none
 
 # $1 label · $2 config filename · $3 import specifier
 # $4 expected build: pass|fail · $5 expected import: clean|warn
+# $6 grep -E pattern that MUST appear in build.log for this variant
+#
+# $6 is what makes a `fail` row mean something. Without it any nonzero exit —
+# a typo in the shared route files, a dependency failure, a future Next
+# regression — reads as "matched the documented result", and the probe could go
+# green without ever reproducing TS5097 or the module-resolution behaviour that
+# is the entire justification for decision 4. Pass rows assert the route
+# compiled, not merely that the process exited 0.
 variant() {
-  local label="$1" cfg="$2" spec="$3" want_build="$4" want_import="$5"
+  local label="$1" cfg="$2" spec="$3" want_build="$4" want_import="$5" want_diag="$6"
   rm -f fsdev.config.ts fsdev.config.mts
   printf '%s\n' "$CONFIG_BODY" > "$cfg"
   printf 'export { default as flowstate } from "%s";\n' "$spec" > lib/flowstate.ts
@@ -114,10 +139,16 @@ variant() {
   # Status via a temp file, not a pipeline — a pipe would report grep's status.
   npx next build > build.log 2>&1
   local build_status=$?
-  grep -E "error TS|Module not found|Failed to|Compiled successfully|Route \(app\)" build.log | head -4 | sed 's/^/  /'
+  grep -E "error TS|Module not found|Failed to|Compiled successfully|Route \(app\)|/api/flows" build.log | head -4 | sed 's/^/  /'
   local got_build; [ $build_status -eq 0 ] && got_build=pass || got_build=fail
   echo "  build: $got_build (expected $want_build)"
   [ "$got_build" = "$want_build" ] || fail "$label: build $got_build, README claims $want_build"
+
+  if grep -qE "$want_diag" build.log; then
+    echo "  diagnostic: matched /$want_diag/"
+  else
+    fail "$label: build was '$got_build' but /$want_diag/ never appeared — the documented cause is unproven"
+  fi
 
   # A rejected import must fail the probe; an expected warning must be present.
   # Set exitCode and return — never process.exit() here. Node emits
@@ -142,14 +173,19 @@ variant() {
 
 set_pkg_type none
 set_tsconfig_flag false
-variant ".mts, explicit .mts extension"      fsdev.config.mts "../fsdev.config.mts" fail clean
-variant ".mts, extensionless import"         fsdev.config.mts "../fsdev.config"     fail clean
+variant ".mts, explicit .mts extension"      fsdev.config.mts "../fsdev.config.mts" fail clean \
+        "error TS5097"
+variant ".mts, extensionless import"         fsdev.config.mts "../fsdev.config"     fail clean \
+        "Module not found.*fsdev\.config"
 set_tsconfig_flag true
-variant ".mts + allowImportingTsExtensions"  fsdev.config.mts "../fsdev.config.mts" pass clean
+variant ".mts + allowImportingTsExtensions"  fsdev.config.mts "../fsdev.config.mts" pass clean \
+        "/api/flows"
 set_tsconfig_flag false
-variant ".ts, no type field"                 fsdev.config.ts  "../fsdev.config"     pass warn
+variant ".ts, no type field"                 fsdev.config.ts  "../fsdev.config"     pass warn \
+        "/api/flows"
 set_pkg_type module
-variant ".ts + type:module   <-- CHOSEN"     fsdev.config.ts  "../fsdev.config"     pass clean
+variant ".ts + type:module   <-- CHOSEN"     fsdev.config.ts  "../fsdev.config"     pass clean \
+        "/api/flows"
 
 echo
 echo "=== chosen shape, served for real ==="
