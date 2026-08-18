@@ -89,10 +89,25 @@ type WorkstreamRow = {
   status?: string;
 };
 
+/**
+ * The ordering field a stored item actually carries.
+ *
+ * Verified against a live readback payload, not assumed. The first version of
+ * this goal read `seq`, which **does not exist** on a stored item — so the
+ * filter that kept numeric values produced an empty array, `every` was
+ * vacuously true, no failure could ever be pushed, and the goal printed "in
+ * non-decreasing sequence" having measured nothing. A check that cannot see
+ * what it claims to measure fails green, which is worse than not having it.
+ *
+ * `sequence_number` is not the field either — that one lives on SSE events, not
+ * on the persisted item.
+ */
+const ORDER_FIELD = "itemIndex" as const;
+
 /** The slice of a stored item the assertions read. */
 type StoredItem = {
   type?: string;
-  seq?: number;
+  [ORDER_FIELD]?: number;
   ownedBy?: string;
   content?: Array<{ text?: string }>;
   message?: string;
@@ -165,13 +180,8 @@ await runGoal(async () => {
   });
 
   /**
-   * The detached worker.
-   *
-   * `sessionState: false` is what makes the board accept it: a detached worker
-   * may not declare `sessionStateSchema`, because every detached worker in a
-   * flow becomes a route on one shared workstream flow. A background job is one
-   * run in one workstream, so nothing on this path reads that state back — the
-   * job's own history is the item stream, which is this goal's whole subject.
+   * The detached worker. `sessionState: false` is what makes the board accept
+   * it — see the option's docs in `packages/claude-code/src/sdk/agent.ts`.
    */
   const codingRun = sequencer({
     name: "coding-run",
@@ -266,9 +276,31 @@ await runGoal(async () => {
   const host = await serve(flowstate as never, { port: 0, host: "127.0.0.1" });
   const base = `http://127.0.0.1:${host.port}/api/flows`;
 
+  /**
+   * Read one route, and **throw on anything that isn't a real answer**.
+   *
+   * A swallowed transport error is the same defect as a blind assertion: a dead
+   * host, a non-2xx, or an unparseable body would all come back as `undefined`,
+   * the poll below would read that as "no workstream yet", and the goal would
+   * spend its whole timeout deciding the run never started. The verdict would
+   * be a plausible-looking FAIL about the wrong thing — or, on a read that only
+   * feeds an optional assertion, a quiet PASS. Absence has to mean absence.
+   */
   const getJson = async (path: string): Promise<any> => {
-    const res = await fetch(`${base}${path}`);
-    return res.json().catch(() => undefined);
+    let res: Response;
+    try {
+      res = await fetch(`${base}${path}`);
+    } catch (err) {
+      throw new Error(`GET ${path} could not reach the host: ${(err as Error).message}`);
+    }
+    if (!res.ok) {
+      throw new Error(`GET ${path} returned ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    }
+    try {
+      return await res.json();
+    } catch (err) {
+      throw new Error(`GET ${path} returned an unparseable body: ${(err as Error).message}`);
+    }
   };
 
   try {
@@ -397,13 +429,48 @@ await runGoal(async () => {
     }
 
     // IN ORDER. Two independent readings, because either alone is weak: the
-    // stored sequence must be monotonic, and the run's activity must precede
-    // the report it wrote about that activity.
-    const seqs = items.map((i) => i.seq).filter((s): s is number => typeof s === "number");
-    const monotonic = seqs.every((s, idx) => idx === 0 || s >= seqs[idx - 1]);
-    if (seqs.length > 0 && !monotonic) {
-      failures.push(`the mirrored items are not in order: sequence ${seqs.join(",")}`);
+    // stored ordering field must be monotonic, and the run's activity must
+    // precede the report it wrote about that activity.
+    //
+    // Checked PER REQUEST, because `ORDER_FIELD` is an index within one
+    // request's stream — flattening across requests first and then asserting
+    // monotonicity would report a false failure the moment a workstream has a
+    // second run.
+    //
+    // **A missing field is a FAILURE, not a skip.** This is the half that was
+    // wrong before: guarding the assertion on "did we read any numbers" meant
+    // reading none satisfied it. If the ordering cannot be read the goal has no
+    // evidence for the claim it is making, and no evidence is a fail.
+    //
+    // The hole that left, concretely: the two orderings below are meant to be
+    // independent readings, and only the coarse one was ever live. A regression
+    // that scrambled the intermediate items would sail through, because
+    // tool-before-message survives almost any reshuffle.
+    let orderSpan = "";
+    for (const [n, req] of requests.entries()) {
+      const reqItems = req.items ?? [];
+      if (reqItems.length === 0) continue;
+      const indices = reqItems.map((i) => i[ORDER_FIELD]);
+      const readable = indices.filter((v): v is number => typeof v === "number");
+      if (readable.length !== reqItems.length) {
+        failures.push(
+          `could not read the item ordering on request ${n + 1}: ${
+            reqItems.length - readable.length
+          } of ${reqItems.length} items carry no numeric \`${ORDER_FIELD}\`, so there is no ` +
+            `evidence for the in-order claim`,
+        );
+        continue;
+      }
+      if (!readable.every((v, idx) => idx === 0 || v >= readable[idx - 1])) {
+        failures.push(
+          `the mirrored items are not in order on request ${n + 1}: ` +
+            `${ORDER_FIELD} ${readable.join(",")}`,
+        );
+        continue;
+      }
+      orderSpan = `${ORDER_FIELD} ${readable[0]}–${readable[readable.length - 1]}`;
     }
+
     if (tools.length > 0 && messages.length > 0) {
       const firstTool = topLevel.indexOf(tools[0]);
       const lastMessage = topLevel.lastIndexOf(messages[messages.length - 1]);
@@ -462,10 +529,11 @@ await runGoal(async () => {
         `${PARENT_SESSION_ID}, topic "${workstream.topic}", status "${workstream.status}"); ` +
         `its request history returned ${items.length} items with include_items=true and ` +
         `${bareItems.length} without, of which ${messages.length} top-level messages and ` +
-        `${tools.length} top-level tool_outputs, in non-decreasing sequence, naming the ` +
+        `${tools.length} top-level tool_outputs, non-decreasing on ${orderSpan}, naming the ` +
         `held-out file "${fixture.outputFileName}"; the originating request's own stream ` +
-        `carried none of the run's mirrored items. Store adapter: @flow-state-dev/store-sqlite. Settlement not ` +
-        `asserted — board defaults, no retry allowance, lost runs written off (FIX-1182).`,
+        `carried none of the run's mirrored items. Store adapter: @flow-state-dev/store-sqlite. ` +
+        `Settlement not asserted — board defaults, no retry allowance, lost runs written off ` +
+        `(FIX-1182).`,
     };
   } finally {
     await host.close();

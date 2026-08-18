@@ -10,10 +10,7 @@ export {
   SDK_AGENT_RUNS_KEY,
   type ClaudeCodeAgentOptions,
 } from "./agent";
-export {
-  createClaudeCodeAgentCapability,
-  type CreateClaudeCodeAgentCapabilityOptions,
-} from "./capability";
+export { createClaudeCodeAgentCapability } from "./capability";
 export {
   defaultResolveClaudeAgent,
   createDefaultResolveClaudeAgent,

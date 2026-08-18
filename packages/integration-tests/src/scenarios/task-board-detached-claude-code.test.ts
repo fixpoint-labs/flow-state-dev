@@ -1,26 +1,13 @@
 /**
  * The task board accepts `claudeCodeAgent` as a detached worker once its
- * conversation state is turned off (LAB-133).
+ * conversation state is turned off (LAB-133). See `sessionState` in
+ * `packages/claude-code/src/sdk/agent.ts` for what the option does and why.
  *
- * This is the one behaviour that needs both packages in the same file, and it
- * is the whole reason the opt-out exists. The board refuses a detached worker
- * whose block — or any block composed under it — authors a
- * `sessionStateSchema`, because every detached worker in a flow becomes a route
- * on one shared Workstream flow. `claudeCodeAgent` authors one by default, so
- * before this option the composition could not be built at all.
- *
- * **Asserted here rather than in `packages/claude-code`** so a published vendor
- * package does not take a dev dependency on `@flow-state-dev/orchestration` for
- * one test, and **rather than only in the goal check** because the goal needs a
- * real model and the optional Agent SDK peer and therefore does not run in CI —
- * a construction refusal that started firing again would be invisible until
- * somebody ran the goal by hand. The composition itself still lives in the goal
+ * **Asserted here** rather than in `packages/claude-code` (which would take an
+ * `@flow-state-dev/orchestration` dev dependency for one test) and rather than
+ * only in the goal check (which needs a real model and the optional Agent SDK
+ * peer, so it does not run in CI). The composition itself lives in the goal
  * check; this file builds the smallest board that exercises the refusal.
- *
- * The *rejecting* half is not re-pinned here: six tests in
- * `orchestration/test/task-board/task-board-detached-config.test.ts` already
- * cover it, one of them naming `sessionStateSchema` explicitly. What is new is
- * that a real block can now satisfy it.
  */
 import { describe, expect, it } from "vitest";
 import { sequencer } from "@flow-state-dev/core";
@@ -46,9 +33,11 @@ function codingRun(options: { sessionState?: boolean }): TaskWorker {
     inputSchema: taskWorkerInputSchema,
     outputSchema: z.unknown(),
   }).step(
+    // `sessionState: undefined` is the same as omitting it — the block's own
+    // default applies — so the conditional spread bought nothing.
     claudeCodeAgent({
       model: "test-model",
-      ...(options.sessionState === undefined ? {} : { sessionState: options.sessionState }),
+      sessionState: options.sessionState,
     }).connectInput((input: { goal: string }) => ({ prompt: input.goal })),
   );
   return toPrompt as unknown as TaskWorker;
