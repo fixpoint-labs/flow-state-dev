@@ -144,6 +144,13 @@ async function assemble(
     },
   };
 
+  // BP-017 does not apply here, and this note exists so it is not re-raised: it
+  // governs production recipes, where structured material belongs in `context`
+  // and `user` stays short. This recipe's job is to exercise the framework's
+  // assembly, which means populating all three slots and covering BOTH the
+  // escaped path (`context` → XML-tagged, `<` escaped) and the verbatim one
+  // (`prompt` and `user`). Routing the tail through `context` would make the
+  // check test less, not more.
   const recipe = generator({
     name: "review-brief",
     model: "stub/recorder",
@@ -481,13 +488,19 @@ await runGoal(async () => {
         (t) => `${JSON.stringify(`<${t}>`)} inside ${l.path}`,
       ),
     ),
-    ...WORLD.issues.flatMap((issue) =>
-      leaves(issue, "issue").flatMap((l) =>
-        TAIL_ANCHORS.map((a) => a.replace(/^\n/, ""))
-          .filter((a) => l.text.includes(a))
-          .map((a) => `${JSON.stringify(a)} inside ${l.path} of ${issue.id}`),
-      ),
-    ),
+    // Checked against the RENDERED tail, not against leaves. The collision is a
+    // property of the joined text and neither per-leaf test is exact: matching a
+    // bare `PR #` rejects a body that merely mentions "PR #123" mid-sentence,
+    // which cannot move a boundary, while matching the newline-prefixed anchor
+    // against a leaf misses a body that *starts* with it and picks the newline up
+    // from the join. An anchor appearing exactly once is the precise condition,
+    // and `renderTail` is a pure function of the fixture, so setup can just ask.
+    ...WORLD.issues.flatMap((issue) => {
+      const rendered = renderTail(WORLD, issue.id);
+      return TAIL_ANCHORS.filter((a) => rendered.indexOf(a) !== rendered.lastIndexOf(a)).map(
+        (a) => `${JSON.stringify(a)} occurs more than once in ${issue.id}'s tail`,
+      );
+    }),
   ];
   if (anchorCollisions.length > 0) {
     return {
