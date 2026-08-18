@@ -2,32 +2,29 @@
  * Goal check — one phase's context recipe hands the model the SAME brief on
  * every pass, and its standing half survives a change of issue (LAB-136).
  *
- * Model-free (`Model: n/a`), real assembly path, out of CI. See goal.md for the
- * contract; this header covers only what a reader needs to follow the code.
+ * The contract, the recipe constraint, the localization rule and the anti-game
+ * design live in `goal.md`. This file implements them. Two points are repeated
+ * here only because getting either wrong produces a silent GREEN:
  *
- * What makes this a goal check rather than a dressed-up unit test:
- *   - It measures the brief the FRAMEWORK hands a model, not a string a helper
- *     in this file built. The recipe is a real `generator`, run through the real
- *     `runAction`, and the capture point is `options.messages` as the resolved
- *     model receives it. Nothing here calls `assembleMessages` directly.
- *   - The stub is step-capable (`generateStep` / `streamStep`) and its legacy
- *     `generate` THROWS. A `generate()`-only stub drives a compatibility path
- *     production never takes, and it fails GREEN — so the throw is the guard
- *     that keeps this check on the mechanism it claims to measure.
- *   - Every fact graded is pulled from the fixture world; no brief text is
- *     hardcoded here. Swap the world for another valid one and a correct recipe
- *     still passes.
+ *   - The stub must be step-capable, and its legacy `generate` therefore throws.
+ *     A `generate()`-only stub drives the SDK-owned path production never takes.
+ *   - `localize` consults the recipe constraint FIRST. An unresolved slot means
+ *     the capture is blind, and blindness is not evidence of stability.
+ *
+ * WHAT A GREEN HERE DOES NOT PROVE: eight passes seconds apart in one process
+ * rule out per-call nondeterminism and nothing else. Not drift across restarts,
+ * machines, processes or locales; not a clock read landing inside one tick; not
+ * fixture mutation. Do not report this as the epic's headline claim having been
+ * met. `goal.md` → "Coverage this does not have" is the full list.
  *
  * Run: pnpm tsx goals/context-supply/assembles-the-same-brief-every-pass/run.mts
  */
 import { defineFlow, generator } from "@flow-state-dev/core";
 import type { GeneratorModel, GeneratorModelCallOptions } from "@flow-state-dev/core";
 import { createInMemoryStores, runAction } from "@flow-state-dev/engine";
-import { loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
+import { goalSessionId, loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
 
-// ---------------------------------------------------------------------------
-// The fixture world — hand-built, no database, no event feed.
-// ---------------------------------------------------------------------------
+// --- the fixture world -----------------------------------------------------
 
 interface PullRequest {
   number: number;
@@ -35,13 +32,10 @@ interface PullRequest {
   linesAdded: number;
   linesRemoved: number;
   diff: string;
-  /**
-   * What the author ran, and what they did not. Added after the first human read
-   * of the assembled brief: the standards the brief carries ask a reviewer to
-   * check that every claim has a re-runnable evidence path, and the brief gave
-   * them nothing to check that against. The gap was in the recipe's world, not in
-   * the framework's assembly — which is the human gate working as intended.
-   */
+  /** What the author ran, and what they did not. Added after the first human
+   *  read: the standards the brief carries ask a reviewer to check that every
+   *  claim has a re-runnable evidence path, and the brief gave them nothing to
+   *  check it against. See the verdict log's first row. */
   verification: string;
 }
 interface Issue {
@@ -68,23 +62,13 @@ const issueOf = (world: World, id: string): Issue => {
   return found;
 };
 
-// ---------------------------------------------------------------------------
-// The recipe — one generator, three slots.
+// --- the recipe: one generator, three slots --------------------------------
 //
-//   instructions ← what a reviewer is for            ] never varies →
-//   grounding    ← how we build; what a review covers] the standing half
-//   message      ← this issue, this PR, this diff      varies → the changing half
-//
-// RECIPE CONSTRAINT (load-bearing, not stylistic — see goal.md): every dynamic
-// contribution is a TOP-LEVEL slot function. No functions may survive inside a
-// slot's returned value. `resolveSlotValues` calls top-level slot functions and
-// stops; a function nested inside object-form context is resolved LATER, by
-// `aggregateContextEntries`, and so never appears in this capture. Such a
-// formatter would drift the assembled bytes while the capture reported the slot
-// stable — and the localization step below would blame the framework for our own
-// recipe's nondeterminism. `slotsFullyResolved` enforces the constraint; the
-// nested-drift variant at the bottom proves that guard fires.
-// ---------------------------------------------------------------------------
+// RECIPE CONSTRAINT — every dynamic contribution is a TOP-LEVEL slot function,
+// and no function may survive inside a slot's returned value. This is
+// load-bearing for localization's attribution, not stylistic; `goal.md` carries
+// the reasoning. `unresolvedSlots` enforces it and the nested variant below
+// proves that guard fires.
 
 type SlotName = "instructions" | "grounding" | "tail";
 
@@ -121,14 +105,15 @@ function reviewGrounding(world: World): unknown {
 /**
  * Run the recipe once and capture what the framework handed the model.
  *
- * `grounding` is a parameter only so the two anti-game variants can swap that
- * one slot; everything else is identical between the real recipe and the
- * variants, which is what makes the variants evidence about this recipe.
+ * `grounding` is a parameter only so the anti-game variants can swap that one
+ * slot; everything else is identical between the real recipe and the variants,
+ * which is what makes the variants evidence about this recipe.
  */
 async function assemble(
   world: World,
   issueId: string,
   grounding: (w: World) => unknown,
+  passLabel: string,
 ): Promise<Capture> {
   const capture: Capture = { messages: [], slots: {} };
   const record = <T,>(slot: SlotName, value: T): T => {
@@ -136,9 +121,6 @@ async function assemble(
     return value;
   };
 
-  // The recording stub. Step-capable, exactly as every real model is; the
-  // legacy multi-step entry point throws rather than quietly measuring a path
-  // production never executes.
   const model: GeneratorModel = {
     modelId: "stub/recorder",
     async generate() {
@@ -147,17 +129,15 @@ async function assemble(
           "compatibility path, which production never takes. The capture is void.",
       );
     },
+    // `generateStep` only. `streamStep` is optional on `GeneratorModel` and this
+    // recipe is tool-free and identity-less, so `canStream` is false and the
+    // streaming branch is unreachable — a `streamStep` here would be dead
+    // surface. Adding tools or `itemVisibility` later cannot silently reroute to
+    // a legacy path either: `canStream` also requires `stream` or `streamStep` to
+    // exist, and neither does.
     async generateStep(options: GeneratorModelCallOptions) {
       capture.messages = options.messages;
       return { text: "", finishReason: "stop" };
-    },
-    async *streamStep(options: GeneratorModelCallOptions) {
-      capture.messages = options.messages;
-      yield {
-        type: "finish" as const,
-        finishReason: "stop",
-        fullResult: { text: "", finishReason: "stop" },
-      };
     },
   };
 
@@ -180,9 +160,10 @@ async function assemble(
     actionName: "review" as never,
     input: {},
     userId: "goal-user",
-    // A fresh session per pass: a shared one would accumulate history and make
-    // pass 2 legitimately differ from pass 1, which is not the drift we're after.
-    sessionId: `lab136_${Math.random().toString(16).slice(2)}`,
+    // Per-pass slug is load-bearing, not decorative: `goalSessionId`'s stamp is
+    // per-PROCESS, so a bare slug would hand all eight passes one session, and
+    // the accumulated history would make pass 2 legitimately differ from pass 1.
+    sessionId: goalSessionId(`lab136-${passLabel}`),
     stores: createInMemoryStores(),
     runtimeConfig: {
       modelResolver: Object.assign(() => model, { resolveId: (id: string) => id }),
@@ -194,31 +175,23 @@ async function assemble(
   return capture;
 }
 
-// ---------------------------------------------------------------------------
-// One named comparator, used by the signal checks AND by the anti-game checks.
-// A canary that compared strings its own way would prove nothing about the
-// comparator the real check runs on.
-// ---------------------------------------------------------------------------
+// --- one named comparator, used by every check -----------------------------
 
 const renderBrief = (messages: unknown[]): string => JSON.stringify(messages);
 
 function briefsAgree(captures: Capture[]): boolean {
-  // An empty set must not "agree" — `[].every()` is true, and a vacuous green
-  // is the failure mode this whole goal exists to avoid.
+  // An empty set must not "agree" — `[].every()` is true, and a vacuous green is
+  // the failure mode this whole goal exists to avoid.
   if (captures.length === 0) return false;
   const first = renderBrief(captures[0]!.messages);
   return captures.every((c) => renderBrief(c.messages) === first);
 }
 
-// ---------------------------------------------------------------------------
-// The standing / changing boundary, derived from the leading system-role run.
+// --- the standing / changing boundary --------------------------------------
 //
-// `assembleMessages` returns `[...systemPrefix, ...history, ...user]`. This
-// recipe declares no history and its message slot yields user-role messages, so
-// the leading system run IS the standing half — exactly, not heuristically. That
-// exactness is a property of THIS recipe's shape, so it is asserted rather than
-// assumed; if the assertion fails the derivation is void, which is correct.
-// ---------------------------------------------------------------------------
+// The leading system run IS the standing half — exactly, for this recipe's
+// shape, not as a heuristic. Asserted rather than assumed; `goal.md` has the
+// derivation.
 
 const roleOf = (m: unknown): string | undefined =>
   typeof m === "object" && m !== null ? (m as { role?: string }).role : undefined;
@@ -235,12 +208,73 @@ function preconditionFailure(messages: unknown[]): string | undefined {
   return undefined;
 }
 
+/** Byte views — for the identity claims. */
 const standingHalf = (c: Capture): string => renderBrief(c.messages.slice(0, 1));
 const changingHalf = (c: Capture): string => renderBrief(c.messages.slice(1));
 
-// ---------------------------------------------------------------------------
-// The recipe constraint, enforced rather than documented.
-// ---------------------------------------------------------------------------
+/** Text views — what the model actually reads; for the content assertions. */
+const textOf = (messages: unknown[]): string =>
+  messages.map((m) => String((m as { content?: unknown }).content ?? "")).join("\n");
+const standingText = (c: Capture): string => textOf(c.messages.slice(0, 1));
+const changingText = (c: Capture): string => textOf(c.messages.slice(1));
+
+// --- what the brief must actually carry ------------------------------------
+//
+// Derived by walking the fixture, never hand-listed, so the graded set cannot
+// drift from what the brief promises. Without it the shape stays stable while
+// the content drains away and every other signal stays green.
+
+interface Leaf {
+  path: string;
+  text: string;
+}
+
+function leaves(value: unknown, path: string): Leaf[] {
+  if (value === null || value === undefined) return [];
+  if (typeof value === "string" || typeof value === "number") {
+    return [{ path, text: String(value) }];
+  }
+  if (Array.isArray(value)) return value.flatMap((v, i) => leaves(v, `${path}[${i}]`));
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).flatMap(([k, v]) =>
+      leaves(v, path === "" ? k : `${path}.${k}`),
+    );
+  }
+  return [];
+}
+
+/** Contributions the standing half claims to carry. */
+const standingContributions = (): Leaf[] => [
+  ...leaves(WORLD.phase, "phase"),
+  ...leaves(WORLD.grounding, "grounding"),
+  ...leaves(WORLD.objective, "objective"),
+];
+
+/** Contributions one issue's changing half claims to carry. */
+const changingContributions = (id: string): Leaf[] => leaves(issueOf(WORLD, id), `issue(${id})`);
+
+/** Context values are XML-escaped on the way into the system message; prompt and
+ *  user values are not. Accept either form so the check works for both slots. */
+const escapeXml = (s: string): string =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const carries = (haystack: string, leaf: string): boolean =>
+  haystack.includes(leaf) || haystack.includes(escapeXml(leaf));
+
+const missingFrom = (haystack: string, expected: Leaf[]): string[] =>
+  expected.filter((l) => !carries(haystack, l.text)).map((l) => l.path);
+
+// --- identity, for the leak check and the setup guard ----------------------
+
+const identifyingFacts = (id: string): string[] => {
+  const issue = issueOf(WORLD, id);
+  return [issue.id, issue.title, `#${issue.pullRequest.number}`];
+};
+
+/** Substring, not equality: the leak check uses `includes`, so `ISSUE-1` against a
+ *  world also holding `ISSUE-10` would report a leak that is really an overlap. */
+const collides = (x: string, y: string): boolean => x.includes(y) || y.includes(x);
+
+// --- the recipe constraint, enforced rather than documented ----------------
 
 function containsFunction(value: unknown): boolean {
   if (typeof value === "function") return true;
@@ -254,24 +288,12 @@ function unresolvedSlots(c: Capture): SlotName[] {
   return (Object.keys(c.slots) as SlotName[]).filter((k) => containsFunction(c.slots[k]));
 }
 
-// ---------------------------------------------------------------------------
-// Localization (decision 3). Reads the slot outputs captured DURING the same
-// runs — there is no code path here that re-runs the recipe to localize, because
-// a fresh run is a different sample and can report "slots were stable" for drift
-// the slots themselves caused.
-// ---------------------------------------------------------------------------
+// --- localization (decision 3) ---------------------------------------------
+//
+// Reads slot outputs captured DURING the same runs; there is no code path that
+// re-runs to localize, because a fresh run is a different sample.
 
-interface Attribution {
-  /** `recipe` — ours to fix here. `seam` — a framework finding, filed not repaired. */
-  verdict: "recipe" | "seam";
-  detail: string;
-}
-
-/**
- * The RAW signal: did the captured slot outputs agree across passes? Deliberately
- * not an attribution — "they agreed" only means something once we know the
- * capture could see every dynamic contribution. `localize` decides that first.
- */
+/** Raw signal, deliberately NOT an attribution — see `localize`. */
 function slotOutputsAgree(captures: Capture[]): { agree: boolean; drifted: SlotName[] } {
   const names = [...new Set(captures.flatMap((c) => Object.keys(c.slots) as SlotName[]))];
   const drifted = names.filter((name) => {
@@ -281,17 +303,17 @@ function slotOutputsAgree(captures: Capture[]): { agree: boolean; drifted: SlotN
   return { agree: drifted.length === 0, drifted };
 }
 
-/**
- * Attribute a red byte-comparison to the recipe or to the assembly seam.
- *
- * The constraint check comes FIRST, and that ordering is the whole soundness
- * argument. Spelled the obvious way — "slots differ → recipe, else → seam" — this
- * step emits a confident `seam` verdict for a recipe whose nested formatter the
- * capture never saw: a false framework finding, which under decision 3 pauses the
- * epic. An unresolved slot is therefore not evidence of stability; it is evidence
- * that the capture is blind, and blindness is never grounds for escalating.
- */
+interface Attribution {
+  /** `recipe` — ours to fix here. `seam` — a framework finding, filed not repaired. */
+  verdict: "recipe" | "seam";
+  detail: string;
+}
+
 function localize(captures: Capture[]): Attribution {
+  // The constraint FIRST. Spelled the obvious way — slots differ → recipe, else
+  // → seam — this step emits a confident `seam` for a recipe whose nested
+  // formatter the capture never saw: a false framework finding, which under
+  // decision 3 pauses the epic.
   const unresolved = [...new Set(captures.flatMap(unresolvedSlots))];
   if (unresolved.length > 0) {
     return {
@@ -307,28 +329,25 @@ function localize(captures: Capture[]): Attribution {
     : { verdict: "recipe", detail: `slot output varies between passes: ${drifted.join(", ")}` };
 }
 
-// ---------------------------------------------------------------------------
-// The checks.
-// ---------------------------------------------------------------------------
+// --- the checks ------------------------------------------------------------
 
 const PASSES = 8;
 const [ISSUE_A, ISSUE_B] = WORLD.issues.map((i) => i.id) as [string, string];
 
-/** Facts a correctly-assembled tail must carry, pulled from the fixture. */
-const factsOf = (id: string): string[] => {
-  const issue = issueOf(WORLD, id);
-  return [issue.id, issue.title, `#${issue.pullRequest.number}`];
-};
-
 await runGoal(async () => {
   const failures: string[] = [];
 
-  // S0 — setup honesty guard. The two issues must be distinguishable in the
-  // fixture, or "each tail carries its own facts" could pass on a coincidence.
-  const overlap = factsOf(ISSUE_A).filter((f) => factsOf(ISSUE_B).includes(f));
-  if (overlap.length > 0) {
+  // S0 — setup honesty guard. The two issues must be distinguishable, or the
+  // leak check could pass (or fail) on an overlap rather than on a real leak.
+  const overlaps = identifyingFacts(ISSUE_A).flatMap((x) =>
+    identifyingFacts(ISSUE_B).filter((y) => collides(x, y)).map((y) => `${x} ~ ${y}`),
+  );
+  if (overlaps.length > 0) {
     return {
-      failures: [`setup invalid: the two fixture issues share identifying facts: ${overlap.join(", ")}`],
+      failures: [
+        `setup invalid: the two fixture issues have overlapping identifying facts, so the ` +
+          `leak check cannot distinguish them: ${overlaps.join("; ")}`,
+      ],
       evidence: "",
     };
   }
@@ -336,7 +355,7 @@ await runGoal(async () => {
   // S1 — eight passes over the same issue, each on a fresh copy of the world.
   const eight: Capture[] = [];
   for (let i = 0; i < PASSES; i += 1) {
-    eight.push(await assemble(freshWorld(), ISSUE_A, reviewGrounding));
+    eight.push(await assemble(freshWorld(), ISSUE_A, reviewGrounding, `pass-${i}`));
   }
   if (!briefsAgree(eight)) {
     const where = localize(eight);
@@ -355,24 +374,28 @@ await runGoal(async () => {
     failures.push(`standing/changing boundary is not derivable: ${preFail}`);
   }
 
-  // G1 — the recipe constraint that makes localization's attribution sound.
-  const unresolved = eight.flatMap(unresolvedSlots);
-  if (unresolved.length > 0) {
-    failures.push(
-      `recipe constraint broken: slot(s) [${[...new Set(unresolved)].join(", ")}] returned a value ` +
-        `containing a function. Nested formatters resolve after the capture, so localization would ` +
-        `read them as stable and blame the assembly seam for this recipe's own drift.`,
-    );
+  const a = eight[0]!;
+  const b = await assemble(freshWorld(), ISSUE_B, reviewGrounding, "issue-b");
+
+  // S3 — the brief carries every contribution it claims to. Without this the
+  // shape can stay perfectly stable while the content drains away.
+  const standingMissing = missingFrom(standingText(a), standingContributions());
+  if (standingMissing.length > 0) {
+    failures.push(`the standing half is missing contributions it claims to carry: ${standingMissing.join(", ")}`);
+  }
+  for (const [id, capture] of [
+    [ISSUE_A, a],
+    [ISSUE_B, b],
+  ] as const) {
+    const tailMissing = missingFrom(changingText(capture), changingContributions(id));
+    if (tailMissing.length > 0) {
+      failures.push(`${id}'s changing half is missing contributions it claims to carry: ${tailMissing.join(", ")}`);
+    }
   }
 
-  // S3 — two DIFFERENT issues. The standing half must hold; the changing half
-  // must actually change and carry its own issue's facts. Without the last two,
-  // a recipe that silently assembled issue A twice would pass every other signal.
-  const a = eight[0]!;
-  const b = await assemble(freshWorld(), ISSUE_B, reviewGrounding);
-  // Gated on the precondition: with the boundary void, every conclusion below is
-  // drawn from a split that does not mean what it claims, and reporting them
-  // alongside the real cause just buries it.
+  // S4 — two DIFFERENT issues. Standing half holds; the changing half actually
+  // changes and carries its own identity, not the other's. Without the last two,
+  // a recipe that silently assembled issue A twice passes every other signal.
   if (preFail !== undefined) {
     failures.push("the two-issue signals were not evaluated — the boundary precondition failed above");
   } else {
@@ -389,30 +412,27 @@ await runGoal(async () => {
       [ISSUE_A, a, ISSUE_B],
       [ISSUE_B, b, ISSUE_A],
     ] as const) {
-      const tail = changingHalf(capture);
-      const missing = factsOf(id).filter((f) => !tail.includes(f));
-      if (missing.length > 0) {
-        failures.push(`${id}'s changing half is missing its own fixture's facts: ${missing.join(", ")}`);
-      }
-      const leaked = factsOf(other).filter((f) => tail.includes(f));
+      const leaked = identifyingFacts(other).filter((f) => changingText(capture).includes(f));
       if (leaked.length > 0) {
         failures.push(`${id}'s changing half carries ${other}'s facts: ${leaked.join(", ")}`);
       }
     }
   }
 
-  // A1/A2 — anti-game. A variant whose grounding appends a PER-CALL COUNTER
-  // (never the clock: eight in-process assemblies can land in one tick). The
-  // same named comparator must return false, and localization — reading the slot
-  // outputs captured on these same runs — must attribute it to the recipe.
+  // A1/A2 — anti-game: a per-call COUNTER in the grounding (never the clock —
+  // in-process assemblies can share a tick). The same named comparator must
+  // return false, and localization must attribute it to the recipe. Two
+  // assemblies suffice: a per-call counter differs on the second. The primary
+  // loop runs eight because that is the claim's language; the canary has no such
+  // obligation.
   let calls = 0;
   const countingGrounding = (w: World): unknown => ({
     ...(reviewGrounding(w) as Record<string, unknown>),
     drift: `call ${(calls += 1)}`,
   });
   const canary: Capture[] = [];
-  for (let i = 0; i < PASSES; i += 1) {
-    canary.push(await assemble(freshWorld(), ISSUE_A, countingGrounding));
+  for (let i = 0; i < 2; i += 1) {
+    canary.push(await assemble(freshWorld(), ISSUE_A, countingGrounding, `canary-${i}`));
   }
   if (briefsAgree(canary)) {
     failures.push(
@@ -429,21 +449,18 @@ await runGoal(async () => {
     );
   }
 
-  // A3/A4 — the constraint's own anti-game, and the reason it is load-bearing.
-  // A nested context function drifts the brief while its top-level slot value
-  // looks unchanged. Three things must hold, and the middle one is the hazard
-  // this issue found: the RAW slot signal says "stable" (deceptive), the guard
-  // sees the unresolved function, and `localize` therefore refuses to blame the
-  // seam. Remove the guard from `localize` and this same input yields a
-  // confident false framework finding.
+  // A3/A4 — the constraint's own anti-game. A nested context function drifts the
+  // brief while its top-level slot value looks unchanged: the raw slot signal
+  // says "stable" (the hazard), the guard sees the unresolved function, and
+  // localization therefore refuses to blame the seam.
   let nested = 0;
   const nestedGrounding = (w: World): unknown => ({
     ...(reviewGrounding(w) as Record<string, unknown>),
     drift: () => `call ${(nested += 1)}`,
   });
   const nestedRuns = [
-    await assemble(freshWorld(), ISSUE_A, nestedGrounding),
-    await assemble(freshWorld(), ISSUE_A, nestedGrounding),
+    await assemble(freshWorld(), ISSUE_A, nestedGrounding, "nested-0"),
+    await assemble(freshWorld(), ISSUE_A, nestedGrounding, "nested-1"),
   ];
   if (briefsAgree(nestedRuns)) {
     failures.push("setup invalid: the nested-drift variant did not actually drift the brief");
@@ -471,27 +488,25 @@ await runGoal(async () => {
   }
 
   // The brief itself is the product of this issue. Put it in front of the human.
-  const brief = (c: Capture): string =>
-    c.messages
-      .map((m) => `[${roleOf(m)}]\n${String((m as { content?: unknown }).content ?? "")}`)
-      .join("\n\n");
-  console.log(`\n===== the brief, issue ${ISSUE_A} =====\n${brief(a)}\n`);
-  console.log(`===== the brief, issue ${ISSUE_B} (standing half elided) =====\n${changingHalf(b)}\n`);
+  console.log(`\n===== the brief, issue ${ISSUE_A} =====\n${textOf(a.messages)}\n`);
+  console.log(`===== the brief, issue ${ISSUE_B} (standing half elided) =====\n${changingText(b)}\n`);
 
+  const graded = standingContributions().length + changingContributions(ISSUE_A).length;
   return {
     failures,
     evidence:
       `${PASSES} passes of the review recipe, each over a fresh copy of the fixture world, handed the ` +
-      `model a byte-identical brief (${renderBrief(eight[0]!.messages).length} bytes, ` +
-      `standing half ${standingHalf(a).length}); the boundary precondition held (exactly one leading ` +
-      `system message); assembling ${ISSUE_B} instead left the standing half unchanged while the ` +
-      `changing half differed and carried its own fixture's facts and none of ${ISSUE_A}'s. ` +
-      `The comparator is proved able to fire: the same ${PASSES}-pass check over a grounding that ` +
-      `appends a per-call counter returned false, and localization attributed it to the recipe ` +
-      `(${canaryWhere.detail}) rather than the assembly seam. The recipe constraint is proved able to ` +
-      `fire too: for a nested context formatter the raw slot signal looks stable — the hazard — the ` +
-      `guard sees the unresolved function, and localization consequently refuses to blame the seam. ` +
-      `Model n/a throughout — the stub records what it was handed and its legacy generate() throws, ` +
-      `so the assembly measured is the framework's own.`,
+      `model a byte-identical brief (${renderBrief(a.messages).length} bytes, standing half ` +
+      `${standingHalf(a).length}); the boundary precondition held (exactly one leading system ` +
+      `message); all ${graded} contributions the brief claims to carry were present, derived by ` +
+      `walking the fixture rather than hand-listed; assembling ${ISSUE_B} instead left the standing ` +
+      `half unchanged while the changing half differed, carried its own contributions and none of ` +
+      `${ISSUE_A}'s identity. The comparator is proved able to fire: the same named comparator over ` +
+      `a grounding that appends a per-call counter returned false, and localization attributed ` +
+      `it to the recipe (${canaryWhere.detail}) rather than the assembly seam. The recipe constraint ` +
+      `is proved able to fire too: for a nested context formatter the raw slot signal looks stable — ` +
+      `the hazard — the guard sees the unresolved function, and localization consequently refuses to ` +
+      `blame the seam. Model n/a throughout — the stub records what it was handed and its legacy ` +
+      `generate() throws, so the assembly measured is the framework's own.`,
   };
 });
