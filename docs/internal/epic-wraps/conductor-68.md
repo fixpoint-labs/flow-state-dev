@@ -222,6 +222,31 @@ must FAIL.
 **Detection note:** a one-directional guard is structurally unable to see an inversion. This is the
 concrete case behind *a fix that encodes a preference needs a test where the two sides disagree*.
 
+**And then the repair for it created a new false green on the same assertion — the fourth
+self-inflicted regression, and the sharpest single illustration this epic produced.**
+
+Making `Write` indeterminate was **the most carefully reasoned change in the file**, and it was
+right about the stream, which genuinely carries no field distinguishing a creation from an
+overwrite. It then discarded something the stream never had and **the harness always does**: the
+harness makes a fresh temp directory and seeds exactly one file, so it knows before dispatch which
+paths cannot exist. A recorder labelling a creation `edited` passed A1 (kind non-null) and passed
+A2 (kind comparison correctly skipped), with nothing left to catch it.
+
+*"Don't guess where the stream is silent"* was always the rule; *"discard ground truth we hold"*
+never was. The repair puts the expectation on the `Expectation`, introduced **after** the account
+exists — so the deprived reader still never sees it and the inversion the goal rests on is intact.
+
+**Stated narrowly, because the obvious version would false-red:** a path that *existed* can never
+read `created` (unconditional); a path that *did not exist*, named by exactly one mutation, by a
+call that *applied*, must read `created`. Both qualifiers are load-bearing — a create target
+written then edited legitimately reads `edited`, and a failed call created nothing. It shipped with
+**three stand-downs that must stay green**, so it cannot degrade into *"any `edited` row on a
+create target fails"*.
+
+**This is why the argument is about possibility rather than reliability.** Every other instance
+here can be answered with *"be more careful."* This one cannot: it was the careful change.
+`goal.md`'s class entry now leads with it instead of the count.
+
 ---
 
 ## `false-red` — the check rejects faithful state
