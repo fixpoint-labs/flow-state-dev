@@ -78,6 +78,7 @@
   },
   "streamMutations": [
     {
+      "runId": "req_cal_1",
       "path": "/work/repo/alpha.txt",
       "tool": "Write",
       "at": 1,
@@ -86,6 +87,7 @@
       "outcome": "applied"
     },
     {
+      "runId": "req_cal_1",
       "path": "/work/repo/epsilon.txt",
       "tool": "Write",
       "at": 3,
@@ -94,6 +96,7 @@
       "outcome": "applied"
     },
     {
+      "runId": "req_cal_1",
       "path": "/work/repo/beta.txt",
       "tool": "Edit",
       "at": 4,
@@ -102,6 +105,7 @@
       "outcome": "applied"
     },
     {
+      "runId": "req_cal_1",
       "path": "/work/repo/gamma.txt",
       "tool": "Write",
       "at": 4,
@@ -110,6 +114,7 @@
       "outcome": "failed"
     },
     {
+      "runId": "req_cal_1",
       "path": "/work/repo/my-alpha.txt",
       "tool": "Write",
       "at": 4,
@@ -118,6 +123,7 @@
       "outcome": "applied"
     },
     {
+      "runId": "req_cal_1",
       "path": "/work/repo/delta.txt",
       "tool": "Write",
       "at": 6,

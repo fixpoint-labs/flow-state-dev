@@ -269,6 +269,7 @@ const GUARD_CASES: GuardCase[] = [
         namedBy: 1,
       });
       a.streamMutations.push({
+        runId: a.runIds[0],
         path: "/work/other/alpha.txt",
         tool: "Write",
         at: 9,
@@ -288,6 +289,7 @@ const GUARD_CASES: GuardCase[] = [
     name: "A2 — a mutation could be either of two rows, so a lost record could hide",
     mutate: (a) => {
       a.streamMutations.push({
+        runId: a.runIds[0],
         path: "alpha.txt",
         tool: "Write",
         at: 9,
@@ -310,9 +312,20 @@ const GUARD_CASES: GuardCase[] = [
     want: "fail",
   },
   {
+    // Built from the ARRAYS, not by setting the count: a second mutation that
+    // also names the first row. Setting `namedBy` alone would test a field the
+    // grader deliberately no longer reads.
     name: "A2 — a row is named by two different mutations",
     mutate: (a) => {
-      a.did[0].namedBy = 2;
+      a.streamMutations.push({
+        runId: a.runIds[0],
+        path: "alpha.txt",
+        tool: "Write",
+        at: 9,
+        status: "completed",
+        kind: "created",
+        outcome: "applied",
+      });
     },
     because: "a2-ambiguous-row",
     id: "A2",
@@ -328,6 +341,23 @@ const GUARD_CASES: GuardCase[] = [
       // created. One side changed, so the two genuinely disagree.
       const row = a.did.find((d) => d.kind === "edited");
       if (row !== undefined) row.kind = "created";
+    },
+    because: "a2-kind-disagrees",
+    id: "A2",
+    want: "fail",
+  },
+  {
+    // A gap sitting next to a settlement can disguise the settlement being
+    // wrong: the gap explains the discrepancy, so an exemption checked before
+    // the comparison accepts a row that asserts a mutation nobody confirmed.
+    // Present row + present gap + contradicting semantics is that world.
+    name: "A2 — a gap row is present AND the file row contradicts the stream",
+    mutate: (a) => {
+      const row = a.did.find((d) => d.kind === "edited");
+      if (row !== undefined) {
+        row.kind = "created";
+        a.gaps.push({ runId: a.runIds[0], reason: "skipped", rawPath: row.path });
+      }
     },
     because: "a2-kind-disagrees",
     id: "A2",
@@ -489,6 +519,98 @@ const GUARD_CASES: GuardCase[] = [
     },
     because: "a2-pathless-no-gap",
     id: "A2",
+    want: "fail",
+  },
+  {
+    // The false red the per-run scoping exists to prevent: a workstream reused
+    // by two runs that each touched the same path and each recorded it
+    // faithfully. Matched against the combined set, every row reads as named
+    // twice and A2 fails on a perfectly good record. This case must PASS.
+    name: "A2 — two runs touched the same path and both records are faithful",
+    mutate: (a) => {
+      const second = "req_cal_2";
+      a.runIds.push(second);
+      a.did.push({
+        runId: second,
+        topic: `${second}/inv_b/work/repo/alpha.txt`,
+        path: "/work/repo/alpha.txt",
+        kind: "created",
+        outcome: "applied",
+        firstAt: 1,
+        namedBy: 1,
+      });
+      a.streamMutations.push({
+        runId: second,
+        path: "/work/repo/alpha.txt",
+        tool: "Write",
+        at: 1,
+        status: "completed",
+        kind: "created",
+        outcome: "applied",
+      });
+      a.order.runs.push({
+        runId: second,
+        indices: [0, 1, 2],
+        unreadable: 0,
+        firstMutationAt: 1,
+        lastMutationAt: 1,
+        lastMessageAt: 2,
+      });
+    },
+    because: "a2-ok",
+    id: "A2",
+    want: "pass",
+  },
+  {
+    // And the same world seen by A1: the expected path now has a row under each
+    // run. Two faithful answers, not an unresolvable one.
+    name: "A1 — two runs each recorded the expected path",
+    mutate: (a) => {
+      const second = "req_cal_2";
+      a.runIds.push(second);
+      a.did.push({
+        runId: second,
+        topic: `${second}/inv_b/work/repo/alpha.txt`,
+        path: "/work/repo/alpha.txt",
+        kind: "created",
+        outcome: "applied",
+        firstAt: 1,
+        namedBy: 1,
+      });
+      a.streamMutations.push({
+        runId: second,
+        path: "/work/repo/alpha.txt",
+        tool: "Write",
+        at: 1,
+        status: "completed",
+        kind: "created",
+        outcome: "applied",
+      });
+      a.order.runs.push({
+        runId: second,
+        indices: [0, 1, 2],
+        unreadable: 0,
+        firstMutationAt: 1,
+        lastMutationAt: 1,
+        lastMessageAt: 2,
+      });
+    },
+    because: "a1-ok",
+    id: "A1",
+    want: "pass",
+  },
+  {
+    // The POC measured itemIndex carrying duplicates, so this is the ordinary
+    // shape rather than a synthetic one: the last mutation and the last word
+    // share a position. Nothing in the data says which came first, so A4 must
+    // decline rather than certify.
+    name: "A4 — the report and the last mutation share a stream position",
+    mutate: (a) => {
+      a.order.runs[0].lastMutationAt = 6;
+      a.order.runs[0].lastMessageAt = 6;
+    },
+    because: "a4-tied",
+    id: "A4",
     want: "fail",
   },
   {

@@ -131,7 +131,15 @@ function gradePaths(account: GradeableAccount, expectation: Expectation): Findin
   let unmeasured = 0;
   for (const path of expectation.paths) {
     const entries = entriesFor(account, path);
-    if (entries.length > 1) {
+    const perRun = new Map<string, DidEntry[]>();
+    for (const entry of entries) {
+      perRun.set(entry.runId, [...(perRun.get(entry.runId) ?? []), entry]);
+    }
+    // WITHIN a run. A workstream is reused, so the same path recorded by two
+    // runs is two faithful rows — reading that as ambiguity would fail a
+    // correct record.
+    const clash = [...perRun.values()].find((rows) => rows.length > 1);
+    if (clash !== undefined) {
       // Two rows could be this path. Grading both would grade a file the job
       // never named; grading either would be a guess. Neither is evidence.
       findings.push({
@@ -139,8 +147,8 @@ function gradePaths(account: GradeableAccount, expectation: Expectation): Findin
         status: "fail",
         because: "a1-ambiguous",
         message:
-          `"${path}" matches ${entries.length} rows in the file record ` +
-          `(${entries.map((e) => e.topic).join(", ")}) — the record cannot be resolved to one ` +
+          `"${path}" matches ${clash.length} rows within one run ` +
+          `(${clash.map((e) => e.topic).join(", ")}) — the record cannot be resolved to one ` +
           `file, so nothing can be said about whether this path was recorded`,
       });
       continue;
@@ -265,7 +273,9 @@ function gradeAgreement(account: GradeableAccount): Finding[] {
 
   let accounted = 0;
   for (const mutation of account.streamMutations) {
-    const rows = account.did.filter((d) => sameFile(d.topic, mutation.path));
+    const rows = account.did.filter(
+      (d) => d.runId === mutation.runId && sameFile(d.topic, mutation.path),
+    );
     if (rows.length > 1) {
       // Accepting any one of them would let a genuinely missing record hide
       // behind a different row that happens to share a tail — the exact failure
@@ -282,10 +292,19 @@ function gradeAgreement(account: GradeableAccount): Finding[] {
       continue;
     }
     if (rows.length === 1) {
+      // ORDER IS LOAD-BEARING. The gap exemption below must never be reached
+      // while a row exists, because a gap explains a mutation the collection is
+      // MISSING — it does not license a row that is present and wrong. Those are
+      // different claims, and collapsing them lets partial handling disguise
+      // incomplete handling: the gap makes the discrepancy look accounted for
+      // while the row still asserts a mutation nobody confirmed. A guard case
+      // builds exactly that world.
       findings.push(...compareSemantics(mutation, rows[0]));
       continue;
     }
-    const gap = account.gaps.find((g) => g.rawPath !== null && sameFile(g.rawPath, mutation.path));
+    const gap = account.gaps.find(
+      (g) => g.runId === mutation.runId && g.rawPath !== null && sameFile(g.rawPath, mutation.path),
+    );
     if (gap !== undefined) {
       accounted += 1;
       continue;
@@ -302,18 +321,25 @@ function gradeAgreement(account: GradeableAccount): Finding[] {
   }
 
   for (const entry of account.did) {
-    if (entry.namedBy > 1) {
+    // Recomputed from the arrays, not read off `entry.namedBy`. The reader
+    // derives that count beside the array it describes, and a count that drifts
+    // from its array is how A6 could once have reported "fine" about a set
+    // nothing else could see. Same rule, other assertion.
+    const naming = account.streamMutations.filter(
+      (m) => m.runId === entry.runId && sameFile(m.path, entry.topic),
+    ).length;
+    if (naming > 1) {
       findings.push({
         id: "A2",
         status: "fail",
         because: "a2-ambiguous-row",
         message:
-          `the row keyed "${entry.topic}" is named by ${entry.namedBy} stream mutations — which ` +
+          `the row keyed "${entry.topic}" is named by ${naming} stream mutations — which ` +
           `operation it records is unresolvable, so it cannot corroborate any of them`,
       });
       continue;
     }
-    if (entry.namedBy === 1) continue;
+    if (naming === 1) continue;
     findings.push({
       id: "A2",
       status: "fail",
@@ -504,6 +530,23 @@ function gradeCausality(account: GradeableAccount): Finding[] {
         message:
           `run ${run.runId} carries ${lastActivity === null ? "no file mutation" : "no message"} ` +
           `at a readable position, so "activity preceded the report" could not be evaluated`,
+      });
+      continue;
+    }
+    if (lastActivity === lastWord) {
+      // The POC measured `itemIndex` carrying duplicates, so a tie is ordinary
+      // and says nothing about order. A4's claim is causal — the run acted, then
+      // reported — and equality is exactly the case the data cannot support.
+      // Certifying it would be a claim wider than the measurement that produced
+      // the field.
+      findings.push({
+        id: "A4",
+        status: "fail",
+        because: "a4-tied",
+        message:
+          `run ${run.runId} last changed a file at position ${lastActivity} and last spoke at ` +
+          `the same position — itemIndex carries duplicates, so which came first is not ` +
+          `recoverable and the causal claim cannot be evaluated`,
       });
       continue;
     }

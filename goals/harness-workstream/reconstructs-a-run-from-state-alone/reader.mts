@@ -113,6 +113,14 @@ interface StoredRequest {
 
 /** One mutation the run's own item stream shows. */
 export interface StreamMutation {
+  /**
+   * Which run made it. Pairing is scoped to this: a workstream is reused, so
+   * two requests touching the same path both name it, and matching against the
+   * combined set would read every correctly-namespaced row as ambiguous. That
+   * is a false red on a faithful record — as bad as a false green, just failing
+   * in the direction that wastes time rather than lies.
+   */
+  runId: string;
   /** The path exactly as the tool call named it — raw, uncanonicalized. */
   path: string;
   tool: string;
@@ -354,27 +362,34 @@ export async function readAccount(read: Read, workstreamId: string): Promise<Acc
   );
   const toolItems = allItems.filter((i) => i.type === "tool_output");
 
-  // Activity: every item, sub-agents included — see the header.
+  // Activity: every item, sub-agents included — see the header. Walked per
+  // request so each mutation keeps the run that made it.
   const mutationTools = new Set<string>(Object.keys(FILE_MUTATION_TOOLS));
-  const mutationItems = toolItems.filter((i) => mutationTools.has(i.toolCall?.name ?? ""));
   const streamMutations: StreamMutation[] = [];
   let mutationsWithNoPath = 0;
-  for (const item of mutationItems) {
-    const path = pathOfCall(item);
-    if (path === null) {
-      mutationsWithNoPath += 1;
-      continue;
+  for (const request of requests) {
+    const requestRunId = request.id;
+    if (typeof requestRunId !== "string") continue;
+    for (const item of (request.items ?? []).filter(
+      (i) => i.type === "tool_output" && mutationTools.has(i.toolCall?.name ?? ""),
+    )) {
+      const path = pathOfCall(item);
+      if (path === null) {
+        mutationsWithNoPath += 1;
+        continue;
+      }
+      const tool = item.toolCall?.name ?? "";
+      const status = typeof item.status === "string" ? item.status : null;
+      streamMutations.push({
+        runId: requestRunId,
+        path,
+        tool,
+        at: typeof item.itemIndex === "number" ? item.itemIndex : null,
+        status,
+        kind: FILE_MUTATION_TOOLS[tool],
+        outcome: status === null ? null : (OUTCOME_OF_STATUS[status] ?? null),
+      });
     }
-    const tool = item.toolCall?.name ?? "";
-    const status = typeof item.status === "string" ? item.status : null;
-    streamMutations.push({
-      path,
-      tool,
-      at: typeof item.itemIndex === "number" ? item.itemIndex : null,
-      status,
-      kind: FILE_MUTATION_TOOLS[tool],
-      outcome: status === null ? null : (OUTCOME_OF_STATUS[status] ?? null),
-    });
   }
 
   // A shell call the harness REFUSED cannot have edited anything, so it must
@@ -450,7 +465,9 @@ export async function readAccount(read: Read, workstreamId: string): Promise<Acc
       const topic = row.topic ?? "";
       // Exactly one naming mutation, or none of its details are derived. Two
       // candidates is an ambiguity the grader reports, never a choice made here.
-      const naming = streamMutations.filter((m) => sameFile(m.path, topic));
+      const naming = streamMutations.filter(
+        (m) => m.runId === runId && sameFile(m.path, topic),
+      );
       const unique = naming.length === 1 ? naming[0] : undefined;
       did.push({
         runId,

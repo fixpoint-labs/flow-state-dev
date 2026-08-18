@@ -28,7 +28,8 @@ it reads is empty.
    that is not unique is an ambiguity, never a match
 3. Order is non-decreasing over `itemIndex`, per request, across at least two distinct positions
 4. The run's **last** file mutation precedes its final report — a write after the closing word
-   leaves a row in the record the report never covered
+   leaves a row in the record the report never covered. A **tie** is unevaluable, not a pass:
+   `itemIndex` carries duplicates, so equal positions say nothing about which came first
 5. The plan half resolves to rows, or to UNMEASURED with its reason named — never to LOST
 6. Every set an assertion iterates is non-empty, failing by name
 7. Every `nextCursor` was followed, on all three collections
@@ -45,6 +46,11 @@ and which already gained a segment mid-build. The cost: when one side is short, 
 be true of more than one candidate. No caller resolves that. The reader leaves the derived path
 and position null; the grader fails by name. A wrong assignment would let assertion 2 pass while a
 mutation record is genuinely missing, which is the exact failure it exists to catch.
+
+Pairing is scoped **within a run**. A workstream is reused, so two requests touching the same
+path each name it — matching against the combined set would read every correctly-namespaced row
+as ambiguous and fail a faithful record. A false red is as bad as a false green; it just fails in
+the direction that wastes time rather than lying.
 
 **Anti-game:** Must not read the harness transcript, the working tree — including any file the
 run wrote — or git. The reader's deprivation is a **parameter shape**: its only input is a bound
@@ -65,7 +71,7 @@ generator actions. The calibration and every guard case are **model-free** and r
 ## The preconditions, and why they run every time
 
 The reader derives the known account from the known state **exactly**, a deliberately lossy copy
-of that state is caught by assertion 2, and 36 guard cases each break one assertion on purpose
+of that state is caught by assertion 2, and 40 guard cases each break one assertion on purpose
 and confirm it reaches the verdict it is supposed to. All of it is model-free, so it runs on
 every invocation rather than sitting in this log as a one-time claim — and if any of it fails,
 no coding run is dispatched at all. An instrument is sanity-checked against a case whose answer
@@ -107,6 +113,17 @@ be produced at all.
 - Assertion 8 checked module specifiers only, and `process.cwd()` names no module. It now also
   scans for bare globals and computed dynamic imports, over the shared `paths.mts` as well as the
   reader.
+- Assertion 2's gap exemption, as originally specified, could disguise a corrupt row: a gap
+  explains a mutation the collection is **missing**, and does not license a row that is present
+  and wrong. Partial handling made incomplete handling look complete. The branch order now checks
+  the row first, and a case builds that world so a later reorder cannot reintroduce it.
+- Assertion 2's reverse direction read a count the reader had computed beside the array. It now
+  recomputes from the array, the same rule assertion 6 already follows.
+- Assertion 4 treated a **tie** as evidence of order, so a report sharing a position with the last
+  mutation was certified as following it. The POC had already measured `itemIndex` carrying
+  duplicates — the assertion was built on top of that finding and then ignored it.
+- Assertion 2 paired across the whole workstream rather than within a run, which would have failed
+  a faithful record the moment a reused workstream held two requests touching one path.
 
 One masking relationship among the preconditions themselves was removed for the same reason: a
 failed lossy-calibration used to return early and hide the entire guard table. All preconditions
@@ -140,6 +157,10 @@ live, and the branch that would call the whole run inconclusive sits behind them
 
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-08-18 | working tree at `87c3edcc0`, pre-commit (round 2 folded) | Agent SDK default | PASS | Ninth consecutive real run. **40 guards** |
+| 2026-08-18 | working tree at `87c3edcc0`, pre-commit | — | FAIL *(deliberate)* | A tie allowed to certify causality again. *"'A4 — the report and the last mutation share a stream position' did not reach A4/a4-tied"* |
+| 2026-08-18 | working tree at `87c3edcc0`, pre-commit | — | FAIL *(deliberate)* | Per-run scoping dropped from both of A2's pairing directions. The false red reproduces exactly: *"'A2 — two runs touched the same path and both records are faithful' did not reach A2/a2-ok with a pass; it produced ["a2-ambiguous-mutation=fail","a2-ambiguous-mutation=fail","a2-ambiguous-row=fail","a2-ambiguous-row=fail"]"* |
+| 2026-08-18 | working tree at `87c3edcc0`, pre-commit (round 1 corrections) | Agent SDK default | PASS | Eighth consecutive real run. **37 guards**. Adds the world where a gap row sits beside a file row whose semantics contradict the stream — reintroducing the short-circuit is caught: *"'A2 — a gap row is present AND the file row contradicts the stream' did not reach A2/a2-kind-disagrees … it produced ["a2-ok=pass"]"* |
 | 2026-08-18 | working tree at `238f71137`, pre-commit (round 1 folded) | Agent SDK default | PASS | Seventh consecutive real run, with the round-1 fixes in. 31 items at 28 distinct positions; mutations 18–23, last word at 25; 1 shell call, 0 of them ran. **36 guards**, up from 30 |
 | 2026-08-18 | working tree at `238f71137`, pre-commit | — | FAIL *(deliberate)* | Assertion 2's semantic comparison removed entirely. Both new cases red: *"did not reach A2/a2-kind-disagrees … it produced ["a2-ok=pass"]"*, same for `a2-outcome-disagrees`. The world where a record says `created` about an `Edit` |
 | 2026-08-18 | working tree at `238f71137`, pre-commit | — | FAIL *(deliberate)* | Assertion 2 regressed to **silently picking the first candidate** — the reviewer's P1 verbatim. *"did not reach A2/a2-ambiguous-mutation"*. This is the mutation that would have let a lost record hide behind a row sharing its tail |
