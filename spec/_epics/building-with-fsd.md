@@ -182,8 +182,10 @@ call.
    wrapper relationship is gone, and what remains is the shared next-steps block (theme 5) and the
    wiring contract the template conforms to (theme 9). The two still proceed in parallel further
    than they could, but not as far as the next-steps block alone would allow: theme 9 constrains
-   the template's own files, not just what it prints. **FIX-1160 now depends on
-   FIX-1159**: it packages content that issue authors. **FIX-1162 no longer gates FIX-548's
+   the template's own files, not just what it prints. **FIX-1160 depends on FIX-1159** (it
+   packages content that issue authors) **and now also lands before FIX-548**, which ships the
+   agent-instructions content FIX-1160 authors (theme 9 (ii)) — so FIX-548 is last of the four.
+   **FIX-1162 no longer gates FIX-548's
    spec or its build** — the name is chosen and available, so nothing is waiting on a decision.
    What it still gates is the *release*: `npm create flow-state` resolves only to an unscoped
    published `create-flow-state`, so that publish is a hard prerequisite, and it is an owner
@@ -343,58 +345,70 @@ call.
    described in the same words. This binds FIX-548 (what the template ships) and FIX-1159 (what
    the skill is instructed to do), which is why it is a theme rather than either issue's local
    call — and **theme 9 is where that shared shape is written down and who writes it**; this
-   theme states the requirement, theme 9 assigns the artifact. **The Node half of that parity requirement is gone with the Node template (theme 2)**:
-   the second-process shape now appears in exactly one place, the brownfield Node path, so
-   there is no second description to keep in step — and §1's second-process proof is its only
-   check, which is why that proof got harder to cut, not easier. **The
-   move to a skill does not soften this into a per-run judgement call:** the agent reads the
+   theme states the requirement, theme 9 assigns the artifact. **The Node half of that parity
+   requirement is gone with the Node template (theme 2)**: the second-process shape now appears in
+   exactly one place, the brownfield Node path, so there is no second description to keep in step
+   — and §1's second-process proof is its only check, which is why that proof got harder to cut,
+   not easier. **The move to a skill does not soften this into a per-run judgement call:** the
+   agent reads the
    host, but the *rule* is fixed here, and detection reports which host it found rather than the
    agent re-deciding what "knowable" means each time. **§1's proof runs this path directly**,
    because the other checks cover the Next.js path only, and nothing else touches the brownfield
    Node behaviour this theme commits to.
 
-9. **The shape both entry paths produce is specified once, by FIX-1159 — the skill cannot point
-   at FIX-548's template, because it can never reach it.** Theme 1 used to make the template the
-   reference shape and have the install skill's instructions point at it. A brownfield developer
-   installs the plugin and nothing else: theme 4 forbids an instruction that reads our monorepo,
-   and the template ships inside the published scaffolder, which is neither in the plugin nor one
-   of its artifacts. The instruction had **no reachable referent**, which left the skill only two
-   moves — restate the template (the exact drift theme 1's tripwire exists to catch) or invent a
-   distribution seam nobody owned. This is a hole the greenfield/brownfield split created, not a
-   pre-existing one: moving the template's content to FIX-548 while the skill ships inside
-   FIX-1160's plugin severed the skill from the shape it is supposed to produce.
+9. **Content one issue owns and another ships needs a named author and an ordering edge. The
+   split left two such artifacts with neither.** **The rule: one author, an explicit merge edge to
+   whoever ships it, and the shipper consumes rather than re-authors.** Both instances below use
+   it; neither needs a new package, a new dependency between packages, or a new artifact.
 
-   **What the two paths share is smaller than the template**, which is why "point at the template"
-   was under-specified even before reachability: the template carries a chat page and
-   `flows/chat.ts` that no brownfield run writes, and a plain-Node run writes no mount at all. The
-   common part is the **wiring** — the Next.js mount pair, `fsdev.config.ts`'s shape including its
-   store profile, and the dependency set. The other two shared things already have owners: the
-   next-steps block (theme 5, FIX-1159) and the `AGENTS.md` section (theme 3, FIX-1160).
+   **(i) The wiring contract — FIX-1159 authors it, FIX-548's template conforms.** Theme 1 used to
+   make the template the reference shape and have the install skill point at it. The skill can
+   never reach it: theme 4 forbids an instruction that reads our monorepo, a brownfield developer
+   installs only the plugin, and the template ships inside the published scaffolder — neither in
+   the plugin nor one of its artifacts. That left the skill to restate the template (the drift the
+   tripwire exists to catch) or invent an unowned seam. It is FIX-1159's by theme 1's own rule,
+   since "what wiring FSD into an existing repo requires" is the knowledge it holds; and because
+   the contract is skill content, it travels the path skill content already travels — FIX-1159
+   authors → FIX-1160 packages → the plugin ships. FIX-548 remains the set's only deterministic
+   writer and still owns its template end to end: **writing the shape and specifying it are
+   different jobs**, which is what the split required and what theme 1 had collapsed into one.
 
-   **Decided: FIX-1159 authors the wiring contract, and FIX-548's template conforms to it.** The
-   seam is assigned by theme 1's own rule — which issue holds the knowledge — and "what wiring FSD
-   into an existing repo requires" is FIX-1159's by that rule. **It needs no new artifact and no
-   new seam:** the contract is skill content, and skill content already has a distribution path
-   (FIX-1159 authors → FIX-1160 packages → the plugin ships), so it reaches a stranger's repo
-   through the channel the install skill already travels. FIX-548 still owns its template end to
-   end and is still the set's only deterministic writer — it is the contract's *consumer*, not its
-   source. **Writing the shape and specifying it are now different jobs**, which is what the split
-   actually required and what theme 1 had collapsed into one.
+   **What the contract covers** — the part both paths genuinely share, which is smaller than the
+   template (that carries a chat page and `flows/chat.ts` no brownfield run writes, and a
+   plain-Node run writes no mount at all): the Next.js mount pair; `fsdev.config.ts`'s shape
+   including its store profile; and the dependency set, which now has to name one thing it never
+   did.
 
-   **The drift tripwire survives, re-aimed.** It used to point from the skill at the template; it
-   now points from both at the contract. The signal is a template file or an instruction that
-   restates the wiring instead of citing it. The check it rests on is **theme 8's parity
-   requirement** — both paths must deliver the same mounted-route shape — so a divergence surfaces
-   as the two entry paths' proofs producing different shapes.
+   **The provider SDK belongs to the dependency set, keyed to the provider the prompt selected.**
+   Choosing OpenAI and entering a key installed no `@ai-sdk/openai`: `@flow-state-dev/core` carries
+   it as a **devDependency only** (verified in `packages/core/package.json` — absent from
+   `dependencies` and `peerDependencies`), and `createModelResolver` resolves provider packages
+   from the consumer's own `node_modules`. With it absent the direct path is unavailable and there
+   is no configured gateway to fall through to, so the first chat request throws `No provider
+   available for "openai"` — and **every real-model proof in §1 fails with it.** The contract names
+   the package per provider (`openai` → `@ai-sdk/openai`, `anthropic` → `@ai-sdk/anthropic`,
+   `google` → `@ai-sdk/google`), never a fixed one, because the prompt offers a choice. A gateway
+   key is the alternative the resolver accepts; choosing between them is the owning issues' call,
+   shipping neither is not.
 
-   **Rejected — the plugin ships a copy of the template.** It makes FIX-1160 a second writer of
-   the shape, so there are two copies to keep in step, which is the drift the tripwire exists to
-   catch; and it needs the plugin's packaging to pull FIX-548's template, a build-time dependency
-   between two deliverables that have none today. **Also rejected:** the skill reading the
-   published `create-flow-state` package at run time — legal under theme 4, since npm is not our
-   monorepo, but it makes the greenfield demo app the authority for brownfield wiring and still
-   never says which parts are wiring and which are demo; and the skill producing the shape from
-   instructions alone, which *is* the restatement theme 1 forbids.
+   **(ii) The agent-instructions content — FIX-1160 authors it, FIX-548's template ships it.** §5
+   Q1 assigns the content to FIX-1160 and theme 3 has the template ship it, but no edge ordered
+   them: in a merge order where FIX-548 lands first, the template ships an absent or copied draft
+   that then drifts from FIX-1160's version. Same shape as (i), same fix — **FIX-1160 lands before
+   FIX-548**, and the template consumes that content rather than drafting its own.
+
+   **The drift tripwire, re-aimed.** It used to point from the skill at the template; it now points
+   from both at whatever the named author wrote, and the signal is a template file or an
+   instruction that restates shared content instead of citing it. The check for (i) is **theme 8's
+   parity requirement** — both paths deliver the same mounted-route shape — and for the provider
+   SDK it is §1's real-model proofs, which only now genuinely exercise it.
+
+   **Rejected — the plugin ships a copy of the template.** It makes FIX-1160 a second writer of the
+   shape and needs the plugin's packaging to pull FIX-548's template, a build-time dependency
+   between two deliverables that have none. **Also rejected:** the skill reading the published
+   `create-flow-state` at run time (legal under theme 4 — npm is not our monorepo — but it makes
+   the greenfield demo app the authority for brownfield wiring and never separates wiring from
+   demo), and the shape from instructions alone, which *is* the restatement theme 1 forbids.
 
    **No new package and no new dependency between packages.** Had the answer needed either, it
    would have gone to the owner instead of into this theme.
@@ -461,6 +475,7 @@ my-app/
     CLAUDE.md                        create-next-app's, untouched
 ~   .gitignore                       already carries .env* — asserted, not added
 ~   package.json                     +next, react, @flow-state-dev/{core,engine,next,react,cli,devtool}
+                                     and the selected provider's SDK, e.g. @ai-sdk/openai (theme 9)
     next.config.ts                   create-next-app's, untouched
     tsconfig.json                    create-next-app's
 ```
@@ -489,6 +504,7 @@ a development default, is the owning issue's call.
 +   fsdev.config.ts
 ~   AGENTS.md        +FSD section, delimited   (created if absent, appended if present)
 ~   package.json     deps +@flow-state-dev/{core,engine,next,react,cli,devtool}
+                          + the selected provider's SDK, e.g. @ai-sdk/openai (theme 9)
 ~   .gitignore       +FSD ignore entries
 ~   .env.local       +OPENAI_API_KEY=   (created if absent, appended if present;
                                          REFUSED if the file is already tracked — theme 6)
@@ -507,6 +523,7 @@ a development default, is the owning issue's call.
 +   fsdev.config.ts
 ~   AGENTS.md                       +FSD section, delimited  (created if absent, appended if present)
 ~   package.json                    deps +@flow-state-dev/{core,engine,node,cli,devtool}
+                                    + the selected provider's SDK, e.g. @ai-sdk/openai (theme 9)
 ~   .gitignore                      +FSD ignore entries
 ~   .env.local                      +OPENAI_API_KEY=
 ~   package-lock.json               rewritten by your package manager when the run installs
@@ -624,11 +641,13 @@ survived from FIX-1159's spec unchanged throughout is everything it *verified* a
 packages (`serve()` binds all interfaces and reads no `.env`; the bare `/api/flows` is a real
 endpoint needing its own file); those are facts about the code, not consequences of the command.
 
-**Dependencies.** FIX-1160 now depends on FIX-1159 — it packages content that issue authors.
-FIX-1159 still lands before FIX-548, for the shared next-steps block (theme 5) **and now also for
-the wiring contract the template conforms to (theme 9)** — which is a firmer edge than the
-next-steps block alone, since it constrains the template's own files rather than what it prints.
-**The
+**Dependencies.** FIX-1160 depends on FIX-1159 — it packages content that issue authors.
+FIX-1159 lands before FIX-548, for the shared next-steps block (theme 5) **and the wiring
+contract the template conforms to (theme 9)** — a firmer edge than the next-steps block alone,
+since it constrains the template's own files rather than what it prints. **FIX-1160 now also lands
+before FIX-548** (theme 9): it authors the agent-instructions content the template ships, and
+without that edge a template landing first ships a draft that then drifts. That makes FIX-548 the
+last of the four, on a `FIX-1159 → FIX-1160 → FIX-548` critical path. **The
 FIX-1162 → FIX-548 edge has narrowed but not gone**: the name no longer blocks speccing or
 building, and the unscoped publish is still a hard prerequisite for release. None of these is an
 accepted deferral; each is a real ordering constraint on merge, and each pair can be specced in
@@ -794,160 +813,47 @@ noisiest period we will have, which is the cost you already declined once.
 
 ## Epic evolution
 
-- **Epic drafted** — three issues under one outcome: a stranger reaches a streaming AI feature
-  in their own project from one command, and their coding assistant writes FSD code that runs.
-  Scoped the scaffolder down to a thin wrapper over `fsdev init`, and recorded the accepted cost
-  of shipping two templates instead of one. *(The name it used at drafting, `create-fsd-app`,
-  was later found to belong to an unrelated project — see the naming record in §4.)*
-- **After the inline end-state sketch** — added theme 5's one-next-steps-block clause and
-  theme 6 (init is additive over its named in-place edits), because drawing the two diffs made
-  visible what the prose had not: both entry paths print the same block, and the risky half of
-  init is a short, nameable file list.
-- **Q1 answered — `AGENTS.md`** — theme 6 re-drafted to own `AGENTS.md` as a fourth in-place
-  edit carrying an append-only, never-overwrite guarantee, because the spec had recommended
-  appending to that file while theme 6 listed only three editable ones. §3's diffs and the
-  "Nothing else was touched" output are corrected to match.
-- **After epic review** — added theme 8 (a mounted route where the host's conventions make the
-  location knowable, a second process otherwise, and the run says which), because §3 had
-  surfaced that asymmetry inside a section that explicitly binds nothing, leaving the constraint
-  unowned across FIX-1159 and FIX-548. Corrected theme 5's premise: `@flow-state-dev/devtool` is
-  an *optional peer* of the CLI, so outside this monorepo `fsdev dev` cannot resolve its assets.
-- **Q2 answered — install-by-URL only** — theme 3 now carries the plugin's distribution channel,
-  because FIX-1160's scope turns on it and a decision living only in §5 is one a child issue
-  reads too late.
-- **Q3 answered — no rename, qualify instead** — themes 3 and 4 now write *Claude skills* where
-  this doc means the packaged kind, because a convention the epic asks FIX-1160 to follow has to
-  hold in the epic's own prose first.
-- **After epic review (round 2)** — theme 6's boundary widened to name the lockfile: init has to
-  install for the next-steps block to be runnable at all (theme 5), an install rewrites a file
-  init does not author, and a four-file guarantee that omits it is a promise init breaks on its
-  first run. FIX-1162 added to the running index.
-- **After epic review (round 3)** — §1's proof for FIX-1160 now runs *through the plugin* rather
-  than through the scaffolded `AGENTS.md` alone, because the goal check as written could pass in
-  full while the plugin's manifest, install source, and skills were unusable — and §5 Q2 had
-  just narrowed the plugin to that one channel.
-- **After convergence — uncontested corrections** (not a review round). FIX-548's scope named
-  the Next.js chat page as the wrapper's demo content; theme 1 was re-drafted around *demo
-  content vs. scaffolding*; §1's proof gained the existing-Node run; and three inline factual
-  fixes landed (`.agents/skills/`, the required store profile, §1's metadata line moving below
-  the problem).
-- **After convergence — completing the previous correction** (not a review round). The
-  demo-content boundary reached the flow file, and §1's brownfield checks began seeding
-  distinctive content into each of theme 6's four in-place files.
-- **Owner direction change, post-convergence — brownfield becomes an agent skill; greenfield
-  stays a deterministic command.** Not a review round: an owner decision arriving after
-  convergence, which the convergence rule permits. **The reason is the enumeration argument,
-  recorded in §1** — across three review rounds the deterministic init grew a separate branch for
-  each of a dozen host-shape cases (four merge semantics, CommonJS vs ESM, two Node ranges,
-  three package-manager signals, a tracked `.env.local`, an existing config, an existing script,
-  npm's option separator, `create-next-app` drift, the bind guard, a store race, provider SDK
-  selection), each found by a reviewer one at a time, with no round at which they stop. That is
-  a command trying to enumerate every host repo; an agent reads the repo in front of it instead,
-  and the developer reviews the diff. **Detection stays deterministic and ships as scripts the
-  skill calls; deterministic mutation is what goes.** Themes 1, 5, 6 and 8 were re-drafted rather
-  than annotated: theme 1 because the whole init-as-shared-primitive architecture it described
-  is gone, themes 5, 6 and 8 because each described init's mutation behaviour. **Theme 6's
-  safety properties were preserved as instruction rather than dropped** — never overwrite what it
-  did not author, refuse rather than write a credential into a tracked `.env.local`, install
-  through the project's own package manager, name every file it touched — and §1's proof gained
-  the **report-versus-diff** check, because an open boundary cannot be verified by asserting a
-  closed list survived. §1's *Not doing* entry against an authoring MCP server was re-argued: its
-  old reasoning ("the CLI already carries the actions") inverted, though the conclusion holds.
-  §1's holistic necessity was re-ranked — **FIX-1160 is now load-bearing**, since the install
-  skill reaches a stranger only through the plugin it packages, and FIX-548 is stronger because
-  the two-command alternative that undercut it no longer exists. Ownership recorded in theme 1:
-  FIX-1159 authors the detection scripts and the skill's content, FIX-1160 packages and
-  distributes it. §3's trees, diffs and transcripts, and §4's index, follow. **New Q4** asks the
-  owner whether install-by-URL still holds now that the plugin is the brownfield path's only
-  channel — the decision they made priced a different thing. Two corrections travelled with this
-  pass because the surrounding prose was being re-drafted anyway and leaving them would have
-  written known-false text: the greenfield package is `create-fsdev-app` *(superseded by the
-  entry below — the name is `create-flow-state`)*, and the Node paths generate no server entrypoint
-  (FIX-1159 verified `serve()` binds all interfaces and reads no `.env`). The rest of FIX-1162's
-  naming finding, FIX-548's proposal to drop the Node template, and FIX-1160's marketplace-
-  manifest mechanism are recorded in §4 as raised, not folded.
-- **Owner decisions folded, post-convergence — one template, and the name** (not a review round;
-  four of the five items were factual corrections). **The Node API template is cut**, so theme 2
-  now reads as one template and no longer invites a "third"; §1's *Not doing* names the cut;
-  FIX-548's proof runs once; theme 8 lost the Node half of its greenfield/brownfield parity
-  clause, which makes §1's second-process check the epic's only Node coverage of any kind; and
-  §3's Node template tree and Node transcript are gone — the transcript taking the
-  `fsdev serve → :8787` error with it (`fsdev serve` binds `$HOST ?? 0.0.0.0` on `$PORT ?? 3000`,
-  verified in `packages/cli/src/commands/serve.ts` and `packages/node/src/serve.ts`; the host was
-  the worse half, since the CLI's bind guard refuses it for an unauthenticated flow). **The
-  scaffolder is `create-flow-state`** (`npm create flow-state my-app`), replacing every
-  `create-fsdev-app` and `create-fsd-app` in this document — `create-fsd-app` belongs to an
-  unrelated maintainer and is not ours, verified against the registry, so §4 now carries a
-  standing naming record rather than a raised-not-folded entry. **§1's Outcome no longer promises
-  "one step"**, because §1's own FIX-548 proof says "the npx command followed by the printed dev
-  command" and the precise statement is the one that stays: the scaffolder does not start or open
-  the app, and no comparable tool does. **Theme 6 stopped being a brownfield-only theme** —
-  `create-next-app` writes its own `AGENTS.md` and `CLAUDE.md`, so the greenfield Next path
-  appends to an agent-instructions file rather than creating one (measured:
-  `spec-poc/FIX-548-next-template-shape/`), which also corrects §5 Q1's assumption and §3's
-  Template A tree. Theme 1 gained one clarification FIX-548 asked for: *owns its template end to
-  end* means checked-in files, since the drift tripwire only works if a person can read the shape.
-- **After epic review of that fold — two consequences the fold itself created.** First, extending
-  theme 6 to greenfield made a guarantee that no listed check exercised: §1's FIX-548 proof
-  verified only that the chat page streams, so the scaffolder could have overwritten
-  `create-next-app`'s `AGENTS.md` or left `.env.local` unignored with every check still green.
-  That proof now asserts the preservation and the report-versus-diff comparison on the greenfield
-  side too, and theme 6 points at it. Second, theme 5's *"reused verbatim"* was unsatisfiable and
-  contradicted §3's own transcripts, which print `npm run dev` for greenfield and `pnpm dev` for a
-  brownfield run against a pnpm repo — detection exists precisely so the printed commands match
-  the host. Theme 5 now requires **one authored source, shared semantic content, rendered per
-  package manager**; what must not vary is which servers exist, what each is for, their ports, and
-  the caveats. Nothing about the Node second-process behaviour changed: theme 2 cut the Node
-  *template* (greenfield), not the brownfield Node path, which theme 8 still owns and §1's
-  second-process check still proves.
-- **After epic review, round 2 — theme 6's contract is not absolute, and now says so.** Both
-  findings were the same defect as the greenfield-proof gap: the contract was widened to cover
-  greenfield without walking what it then covered. **Its two exceptions are now enumerated in
-  theme 6 itself.** (a) A **stock placeholder the scaffolder just wrote, whose purpose is to be
-  replaced** — `create-next-app`'s `app/page.tsx`, which the template must replace to deliver the
-  chat UI at all. The binding rule had forbidden the deliverable, and the exception existed only
-  in §3, which the document explicitly says binds nothing — the same failure that created theme
-  8. The boundary is **authorship and intent, not location**: `AGENTS.md` is written just as
-  recently and is still appended, because its content is meant to persist. (b) **Formats that
-  cannot carry a delimiter** — `package.json` is JSON, so "add a delimited FSD section" was
-  unsatisfiable while both paths must add dependencies to it; the invariant there is
-  **structural preservation**, which is also why installing through the project's own package
-  manager is required rather than merely tidy. Lockfiles are never written directly;
-  `tsconfig.json` is not in the edit set for the chosen template shape. §3's stranded note now
-  points at theme 6 instead of holding the rule, and the install-skill transcript distinguishes
-  appending from adding keys.
-- **After review of that fold — one stale attribution and three surfaces the exceptions had
-  outrun** (factual corrections, not a review round). §4's dependency summary said FIX-1159 was
-  back in spec review "as a command for greenfield and a skill for brownfield", which
-  contradicted theme 1's ownership decision and the index: **FIX-1159 is brownfield-only and
-  ships no command**, and an implementer reading that line could have duplicated or reclaimed
-  FIX-548's scaffolder scope. Theme 1's ownership paragraph now names FIX-548's greenfield
-  command explicitly rather than leaving it to be inferred from the surrounding prose. Three
-  surfaces still described theme 6 as it read *before* its exceptions were enumerated: its own
-  heading and bullet preamble made the developer's diff review the thing that makes a run safe,
-  which is true of brownfield and impossible on greenfield — where the guarantee is held by the
-  template's checked-in contents and the printed report §1 compares against the diff; §3's
-  greenfield transcript reported only `AGENTS.md` and `.env.local`, omitting the replaced
-  `page.tsx` (exception (a)), the changed `package.json` (exception (b)) and the lockfile, so the
-  epic's own report-versus-diff check would have failed on its own illustration; and §3's
-  template caption called all four `~` files appends and counted three.
-- **New theme 9 — the split had severed the install skill from the shape it produces.** Theme 1
-  made FIX-548's template the reference shape and had the skill's instructions point at it. A
-  brownfield developer installs the plugin and nothing else; theme 4 forbids an instruction that
-  reads our monorepo; the template ships inside the published scaffolder, which is neither in the
-  plugin nor one of its artifacts. **The instruction had no reachable referent**, leaving the
-  skill to restate the template — the exact drift the tripwire exists to catch — or to invent a
-  seam nobody owned. **Decided: FIX-1159 authors the wiring contract (the Next.js mount pair,
-  `fsdev.config.ts`'s shape, the dependency set) and FIX-548's template conforms to it**, which
-  assigns the seam by theme 1's own rule and needs no new artifact — the contract is skill
-  content, so it ships through the path skill content already travels (FIX-1159 → FIX-1160 →
-  plugin). Writing the shape and specifying it are now different jobs. Rejected: the plugin
-  shipping a copy of the template (a second writer, plus a build-time dependency between two
-  deliverables that have none), the skill reading the published scaffolder at run time (legal but
-  makes the greenfield demo app the authority for brownfield wiring), and the shape from
-  instructions alone (the restatement theme 1 forbids). **No new package and no new dependency
-  between packages.** §1's tripwire paragraph, theme 1's reference-shape and sequencing clauses,
-  theme 8's cross-reference, §3's first finding, and §4's index row and dependency paragraph all
-  follow — the FIX-1159 → FIX-548 edge is firmer than before, since it now constrains the
-  template's files rather than only what it prints. §4's index row also dropped the last live
-  claim that FIX-1159 is "greenfield command + brownfield skill"; a sweep found no third instance.
+One line per turn: what triggered it, what changed, why. The reasoning that still binds lives in
+the themes and decisions above — it is not repeated here.
+
+- **Epic drafted** — three issues under one outcome; scaffolder scoped to a thin wrapper over
+  `fsdev init`, two templates accepted.
+- **After the inline end-state sketch** — added theme 5's one-next-steps-block clause and theme 6
+  (a run is additive over what it touches), because drawing the diffs showed what prose had not.
+- **Q1 answered — `AGENTS.md`** — theme 6 took on the append-never-overwrite guarantee for it,
+  since the spec recommended appending to a file theme 6 did not list.
+- **After epic review** — added theme 8 (mounted route where derivable, second process otherwise),
+  because §3 had surfaced the asymmetry in a section that binds nothing; corrected theme 5's
+  premise (devtool is an *optional peer* of the CLI).
+- **Q2 answered — install-by-URL only** — theme 3 took the plugin's distribution channel, so a
+  child issue reads it in a theme rather than only in §5.
+- **Q3 answered — no rename, qualify instead** — themes 3 and 4 write *Claude skills* for the
+  packaged kind; FSD's runtime `skills` keeps the bare word.
+- **Epic review, round 2** — theme 6's boundary named the lockfile; FIX-1162 added to the index.
+- **Epic review, round 3** — §1's FIX-1160 proof now runs *through the plugin*, which §5 Q2 had
+  just made the only channel.
+- **Two convergence passes (not review rounds)** — FIX-548's demo-content scope, §1's existing-Node
+  proof, the `.agents/skills/` path, the required store profile, and seeded sentinels in the files
+  a brownfield run edits.
+- **Owner direction change — brownfield becomes an agent skill, greenfield stays a command.** The
+  deterministic init kept growing a branch per host shape with no round at which they stop, so
+  detection stays deterministic and mutation goes. Themes 1, 5, 6 and 8 re-drafted; §1's proof
+  gained the report-versus-diff check; new Q4.
+- **Owner decisions folded — one template, and the name.** Node API template cut (theme 2); the
+  scaffolder is `create-flow-state`; §1's Outcome stopped promising "one step"; theme 6 stopped
+  being brownfield-only, since `create-next-app` writes its own `AGENTS.md`.
+- **Epic review of that fold** — §1's greenfield proof now asserts the additive guarantee it had
+  extended without checking, and theme 5's "verbatim" became one authored source rendered per
+  package manager.
+- **Epic review, round 2** — theme 6's two exceptions enumerated in theme 6 itself: a stock
+  placeholder the scaffolder just wrote, and formats that cannot carry a delimiter.
+- **Review of that fold** — §4's summary and index row corrected to FIX-1159 brownfield-only, and
+  three surfaces that still described theme 6 as it read before its exceptions.
+- **New theme 9 — shared content needs a named author and an ordering edge.** The split had
+  severed the install skill from the shape it produces: FIX-1159 authors the wiring contract,
+  FIX-548's template conforms.
+- **Theme 9 generalized, and a P1 caught with it** — the provider SDK (`@ai-sdk/openai` and
+  siblings) was in no dependency list though `@flow-state-dev/core` carries it only as a
+  devDependency, so every real-model proof would have failed; and the agent-instructions content
+  gained the same author-and-edge treatment (FIX-1160 before FIX-548). This section compressed to
+  one line per turn.
