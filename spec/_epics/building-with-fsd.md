@@ -118,9 +118,9 @@ brownfield path is made of. **FIX-548 is stronger than it was**: it is now the o
 deterministic path to a running app, and the two-command alternative that used to undercut it
 (`npx create-next-app && npx …init`) no longer exists, because there is no brownfield command
 to run second. **The package-name half of the case against it is now settled** —
-`create-flow-state` is unregistered and available (verified against `registry.npmjs.org`), so
-the headline command is a name we can have rather than a hope. What is left of the case against
-it is the saved command alone.
+`create-flow-state` is registered and ours (published at `0.0.0`, verified against
+`registry.npmjs.org`), so the headline command is a name we hold rather than a hope. What is left
+of the case against it is the saved command alone.
 
 **One deterministic writer, one specified shape.** The old boundary — the wrapper owns demo
 content, init owns scaffolding — existed to stop two deterministic writers duplicating
@@ -200,12 +200,18 @@ call.
    than they could, but not as far as the next-steps block alone would allow: theme 9 constrains
    the template's own files, not just what it prints. **FIX-1160 depends on FIX-1159** (it
    packages content that issue authors) **and now also lands before FIX-548**, which ships the
-   agent-instructions content FIX-1160 authors (theme 9 (ii)) — so FIX-548 is last of the four.
+   agent-instructions content FIX-1160 authors (theme 9 (c)) — so FIX-548 is last of the four.
    **FIX-1162 no longer gates FIX-548's
-   spec or its build** — the name is chosen and available, so nothing is waiting on a decision.
-   What it still gates is the *release*: `npm create flow-state` resolves only to an unscoped
-   published `create-flow-state`, so that publish is a hard prerequisite, and it is an owner
-   operation rather than agent work.
+   spec or its build** — the names are held, so nothing is waiting on a decision. What it still
+   gates is the *release*, and the gate is **not** "acquire a name": both `create-flow-state` and
+   `fsdev` are registered at `0.0.0` to the owner's **personal** npm account (`jnhoffner`), not to
+   an organization. **The release gate is that the identity CI publishes with can write to every
+   package the quickstarts install** — the unscoped `create-flow-state` that `npm create flow-state`
+   resolves to, and every `@flow-state-dev/*` the generated manifest declares. An org-scoped
+   publishing token would fail on exactly the two packages both onboarding paths depend on, and it
+   would fail on the first release rather than in review. It is an owner operation rather than agent
+   work; **FIX-1162's worker is filing the `npm owner add` / transfer, so this theme states the gate
+   and does not duplicate the mechanism.**
 
 2. **One template: the Next.js chat app. The framework-neutral Node API template is cut.**
    This reverses the earlier "two templates, and only two"; the reversal is the owner's, and the
@@ -256,22 +262,31 @@ call.
    therefore two things, not one: the DevTool has to be made **resolvable** as well as
    **known**. Greenfield satisfies it by declaring it in the template; the brownfield skill is
    instructed to add it, and detection reports whether it is already there. Neither becomes an
-   issue of its own. **There is one next-steps block: one authored source in FIX-1159, shared as
-   semantic content and rendered per package manager** — the same steps, in the same order,
-   saying the same things, with the commands rendered for the manager the path is actually using.
-   A second *authored* copy is how the two entry paths start telling people different things.
-   **How that single source reaches FIX-548, and what fails when it drifts, is theme 9 (iii)** —
-   this theme states the requirement, theme 9 carries the mechanism. It is a *source block*: the
-   package-manager commands are declared substitutions, so what is shared and checked is the block
-   text with placeholders intact, and only the rendered output differs.
+   issue of its own. **There is one next-steps block: one authored source in FIX-1159, embedded by
+   both shippers and rendered per host** — the same steps, in the same order, saying the same
+   things, with the commands rendered for the manager and topology the path is actually running
+   against. A second *authored* copy is how the two entry paths start telling people different
+   things. **How that single source reaches FIX-548, and what fails when it drifts, is theme 9** —
+   this theme states the requirement, theme 9 assigns the ownership and the invariant.
 
-   **It is deliberately not byte-identical, and requiring that was a defect.** Greenfield prints
-   `npm run dev` / `npx fsdev dev`; a brownfield run against a pnpm repo must print `pnpm dev` /
-   `pnpm exec fsdev dev`, because detection found pnpm. A literally shared block is wrong for at
-   least one supported context, and §3's own transcripts have always shown the two rendering
-   differently — the word "verbatim" contradicted the document's own illustrations. What must
-   not vary is the content: which servers exist, what each is for, which ports they land on, and
-   the caveats that go with them.
+   **The rendered output is deliberately not byte-identical, and requiring that was a defect.**
+   Greenfield prints `npm run dev` / `npx fsdev dev`; a brownfield run against a pnpm repo must
+   print `pnpm dev` / `pnpm exec fsdev dev`, because detection found pnpm. A literally shared
+   rendering is wrong for at least one supported context, and §3's own transcripts have always
+   shown the two differing — the word "verbatim" contradicted the document's own illustrations.
+   **What must not vary is the authored text**, which is why theme 9 makes both forms of variation
+   declared: the package-manager values, and the host-topology conditional. **The process list is
+   not invariant** — a mounted-route host and a second-process host genuinely run different
+   servers, which is exactly what that conditional exists to express. What is invariant is that
+   whichever servers the host ends up with, the block says what each is for, which port it lands
+   on, and the caveats that go with it.
+
+   **A printed command is checked against the CLI's actual flags before it ships.** Twice now a
+   command in this document could not have done what it appeared to: `fsdev run` takes the caller
+   identity as its own parameter (hard-coded `cli-user`) and **not** from `--input`, so a `userId`
+   key in the payload sets nothing and teaches a first-hour reader a wrong mental model — and our
+   published CLI docs already show `-i '{"message": "…"}'` without it. Both entry paths print these
+   commands, so this is theme 5's rather than either issue's.
 
    It sits with FIX-1159 because the constraint that makes it hard is the brownfield one:
    **a next-steps block must not print a command the project cannot run**, and greenfield can
@@ -378,237 +393,123 @@ call.
    because the other checks cover the Next.js path only, and nothing else touches the brownfield
    Node behaviour this theme commits to.
 
-9. **Three shared artifacts, one mechanism: author, kind, carrier, check.** This epic has an
-   artifact authored by one issue and shipped by another three times over — the wiring contract,
-   the agent-instructions block, the next-steps block — and it solved the seam twice, differently,
-   before being asked for a third. Enumerating solutions has the same failure mode as enumerating
-   host shapes (§1) or dependency names (below): there is no round at which they stop. **So the
-   rule is stated once here, and each artifact declares its four fields against it.**
+9. **Three shared artifacts, one seam: author, kind, carrier, check.** Three times this epic has an
+   artifact authored by one issue and shipped by another — the wiring contract, the
+   agent-instructions block, the next-steps block — and it solved the seam twice, differently,
+   before being asked for a third. **The mechanism was then wrong five times**, with one diagnosis
+   every time: each fix defended a *stored value* (a hand-incremented label, a canonical-only
+   digest, a self-referential whole-block digest, the normalization that fix required, and finally
+   a stripped marker nothing validated). Stored values are gone. **What this theme keeps is what
+   genuinely spans issues — who owns each artifact, what order they land in, and the invariant every
+   shipper must satisfy.** The mechanics of checking it belong to the owning issues; (d) says which.
 
    **Every shared artifact declares an author, a kind, a carrier, and a check.**
 
    - **Author** — the one issue that holds the knowledge. Every other issue is a shipper, and a
      shipper never re-authors.
-   - **Kind — and the kind determines the check.** There are exactly two:
-     - a **specification**, where shippers produce host-appropriate output that *conforms*, and
-       the outputs legitimately differ, so the check is **behavioural**: both entry paths' proofs
-       must produce the same observable shape;
-     - a **source block**, where one canonical text with **declared substitution points** is
-       embedded **verbatim, placeholders unrendered**, in every shipper's own source and
-       substituted at emit time, so the check is **text equality**.
-   - **Carrier** — how it reaches its shippers. Both carriers already exist and neither is new:
-     shippers live in this monorepo beside their authors, and the brownfield shipper is skill
-     content, which reaches a stranger through the plugin FIX-1160 packages.
-   - **Check** — per kind above, and subject to the two rules below.
+   - **Kind** — a **specification**, where shippers produce host-appropriate output that *conforms*
+     and the outputs legitimately differ, so the check is behavioural; or a **source block**, one
+     canonical text embedded verbatim in every shipper's own source, so the check is text equality.
+   - **Carrier** — how it reaches its shippers. Both already exist and neither is new: shippers live
+     in this monorepo beside their authors, and the brownfield shipper is skill content, which
+     reaches a stranger through the plugin FIX-1160 packages.
+   - **Check** — **owned by the artifact's author**, because the author owns canonical. See (a).
 
-   **Rule 1: the check compares the two texts themselves, and nothing is stored in the shipped
-   copy.** The canonical block and each shipper's embedded block are both read at test time,
-   normalized identically, and compared. Nothing is hand-maintained anywhere in the loop, because
-   **a check whose failure depends on someone remembering to update it is not a check.**
-
-   **The stored `sha256` marker is gone. The question it failed is recorded here so it is not
-   reintroduced: does the marker have a job the comparison does not already do?** It does not. A
-   marker could only earn its place by letting something verify the block *without* the canonical
-   text in hand — a shipper self-checking against a source it cannot reach. **No shipper is in
-   that position:** all three artifacts' canonical texts and every embedded copy live in this
-   monorepo, and the test holds both sides. The delimiters theme 6 already requires are what
-   *locate* the block; the comparison is what *validates* it; the marker did neither. Nothing in
-   this epic reads it, and a value nothing reads cannot fail — it can only be wrong.
-
-   **That is also the diagnosis of all five defects, which were one defect.** A hand-incremented
-   label (passes when someone forgets to increment); a canonical-only digest (passes when a
-   shipper's body is stale, since its body was never hashed); a whole-block digest (can never
-   pass, because writing the value changes the bytes being hashed); the marker-stripping
-   normalization that third fix required; and finally a stripped marker nothing validates. **Every
-   one of them is a defect in a *stored value*, not in the comparison.** Four fixes went into
-   defending the field and each opened the next hole. Remove the stored value and four of the five
-   cannot be written down again. What survives is the single real requirement — that both sides are
-   read from content rather than trusted — and equality satisfies it directly.
-
-   **The hashing goes with the marker.** Both texts are in hand at test time, so `sha256` was only
-   ever a way to compare two strings we already had, and the word *digest* is what kept summoning a
-   stored value to compare against. Direct comparison is the same check with a better failure
-   message: a diff of the two blocks rather than two unequal hex strings.
-
-   **The normalization stays, because it is still not the implementer's to invent.** The compared
-   text is derived identically on the canonical side and every shipped copy:
-
-   1. take the bytes between the opening and closing FSD delimiters, exclusive;
-   2. normalize line endings to `\n`, strip trailing whitespace from each line, and strip leading
-      and trailing blank lines.
-
-   A current copy is therefore byte-identical to canonical after normalization.
-
-   **Rule 2: everything that varies is a declared substitution or lives outside the delimiters.**
-   The delimited block is byte-identical to canonical everywhere it is embedded; per-host prose
-   goes outside it, and per-host values go in named placeholders. **This is what separates the two
-   objects that three rounds kept conflating: the *file* varies, the *block* does not.** Theme 5's
-   "not byte-identical" was always about the printed output — the block's text was never the thing
-   that had to differ. A block that needs undeclared variation is not a source block, and that is
-   a cross-cutting question rather than a shipper's local call.
-
-   **Declared variation has two forms, not one — because package-manager substitution could not
-   express the difference theme 8 makes.**
-
-   - **(a) Value substitutions** — named placeholders replaced with a detected value. Today:
-     `{{dev}}`, `{{exec}}` and their siblings, the package-manager commands.
-   - **(b) Conditional sections** — a named region rendered only under one of theme 8's two
-     topologies, `mounted-route` or `second-process`. **The key set is closed and lives here:**
-     theme 8 fixes exactly two topologies and detection reports which one it found, so a block
-     wanting a third key raises the same cross-cutting question undeclared variation does. This is
-     a conditional *region* — no expressions, no nesting, no iteration. Not a template language.
-
-   **Why this is widened here rather than left to a shipper.** The next-steps block must print a
-   **different process list per topology**: a mounted-route host runs its own dev server and FSD
-   answers inside it, while a second-process host starts `fsdev serve` *alongside* the server
-   already there. `{{dev}}` and `{{exec}}` vary the words of a command, not how many processes
-   there are. Rule 2's other escape does not help either — moving the process list outside the
-   delimiters puts the block's whole payload back into unowned per-host prose, which is exactly
-   what theme 5 created a single authored source to prevent. Under the contract as it stood, one
-   invariant block had to print a wrong process list for at least one host, or be edited outside
-   the declared substitutions and break its own check.
-
-   **Every shipper embeds every branch; each renders only its own.** FIX-548's scaffolder ships
-   greenfield Next.js and will never render `second-process`; FIX-1159's skill renders whichever
-   detection reported. The unrendered branch still sits in the shipper's source byte-identical to
-   canonical, because that is what rule 1's comparison reads. **A shipper that trims a branch it
-   cannot reach breaks the check** — stated explicitly because trimming it looks like tidying.
-
-   **This is the epic's to declare, and FIX-1159 adds no parallel mechanism.** The same defect was
-   raised against FIX-1159's next-steps renderer, where it reads as one issue's problem. It is not:
-   the block has **two** shippers, so any mechanism FIX-1159 invented locally would have to be
-   honoured by FIX-548's scaffolder to keep the comparison green — which is the definition of
-   cross-cutting, and what this theme's own rule already says about a block needing undeclared
-   variation. FIX-1159 implements against the contract above.
-
-   **The three artifacts.**
-
-   | Artifact | Author | Kind | Shippers | Check |
+   | Artifact | Author | Kind | Shippers | Check owner |
    |---|---|---|---|---|
-   | Wiring contract | FIX-1159 | specification | FIX-548's template · FIX-1159's skill | theme 8 parity + the dependency rule, under pnpm |
-   | Agent-instructions block | FIX-1160 | source block (no substitutions expected) | FIX-548's `AGENTS.md` · FIX-1159's skill, **embedded by FIX-1160 at packaging** — see (ii) | text equality |
-   | Next-steps block | FIX-1159 | source block (values: package-manager commands · conditional: host topology) | FIX-548's scaffolder · FIX-1159's skill | text equality |
+   | Wiring contract | FIX-1159 | specification | FIX-548's template · FIX-1159's skill | FIX-1159 |
+   | Agent-instructions block | FIX-1160 | source block | FIX-548's `AGENTS.md` · FIX-1159's skill, **embedded by FIX-1160 at packaging** — see (c) | FIX-1160 |
+   | Next-steps block | FIX-1159 | source block | FIX-548's scaffolder · FIX-1159's skill | FIX-1159 |
 
-   **(i) The wiring contract is a specification, not a block, and that is why it alone is checked
-   behaviourally.** Theme 1 used to make FIX-548's template the reference shape and have the install skill
-   point at it; the skill can never reach it, since theme 4 forbids an instruction that reads our
-   monorepo and the template ships inside the published scaffolder — neither in the plugin nor one
-   of its artifacts. It is FIX-1159's by theme 1's own rule, since "what wiring FSD into an existing
-   repo requires" is the knowledge it holds. Its outputs genuinely differ — the template writes
-   `flows/chat.ts` and a chat page, a brownfield Next run writes `flows/hello.ts`, a plain-Node run
-   writes no mount at all — so conformance, checked behaviourally, is the only honest check.
-   **FIX-548 remains the set's only deterministic writer**: writing the shape and specifying it are
-   different jobs.
+   **(a) The check belongs to the author, and that is what keeps the mechanics out of this
+   document.** The normalization, the comparison, the placeholder syntax and the test itself are
+   **one implementation per artifact, owned by the issue that owns canonical** — so two shippers
+   cannot drift apart on a normalization neither of them implements. Those mechanics were written
+   out here across five rounds because that is where the defects were being found, not because they
+   span issues; an epic-spec is a coordination artifact, and a renderer's syntax is not
+   coordination. **What stays is the invariant, because it binds a shipper that does not own the
+   check.**
 
-   **What it covers:** the Next.js mount pair; `fsdev.config.ts`'s shape including its store
-   profile; and the dependency set — which is itself a rule, not a list, for the same reason this
-   theme is: **every package the generated files import directly is a direct dependency.** Two
-   rounds each found one missing member. **pnpm's strict isolation does not expose a dependency's
-   own dependencies for direct import**, so "core already depends on it" never satisfies a
-   consumer's `import`. `examples/hello-chat` already shows the whole shape — it declares the
-   `@flow-state-dev/*` packages, `zod` and `@ai-sdk/openai` directly, and its flow opens
-   `import { z } from "zod"` beside its `@flow-state-dev/core` import. Today that means:
+   **The invariant, for source blocks.** A shipper embeds the canonical text **verbatim**, and its
+   embedded copy is identical to canonical after the author's normalization. Everything that varies
+   is a **declared substitution** or lives outside the delimiters — per-host prose outside, per-host
+   values in named placeholders. **This is what three rounds kept conflating: the *file* varies, the
+   *block* does not.**
 
-   - **`zod`** — the generated flows need an input schema and every public example imports `z`
-     directly. `@flow-state-dev/core` carries `zod` in its own `dependencies`, which does nothing
-     for a consumer under pnpm; without it the pnpm brownfield proof fails **while importing the
-     generated flow**, before `fsdev run` reaches a model.
-   - **the AI SDK for the provider selected** — `openai` → `@ai-sdk/openai`, `anthropic` →
-     `@ai-sdk/anthropic`, `google` → `@ai-sdk/google`, never a fixed one. `@flow-state-dev/core`
-     carries `@ai-sdk/openai` as a **devDependency only** (verified in `packages/core/package.json`),
-     and `createModelResolver` resolves provider packages from the consumer's `node_modules`, so
-     without it the first request throws `No provider available for "openai"`. A gateway key is the
-     alternative the resolver accepts; choosing between them is the owning issues' call, shipping
-     neither is not.
+   **Declared variation has two forms**, and the second exists because the first cannot express what
+   theme 8 requires:
 
-   **The dependency rule is only checkable under pnpm — and it has to be checked on *both* emitted
-   manifests.** npm hoists transitives into a flat `node_modules`, so a proof run with npm passes
-   on an incomplete `package.json` and hides the entire class. §1's mounted-route proof runs on
-   pnpm for exactly this reason — but that proof exercises **FIX-1159's brownfield output only**,
-   while FIX-548 emits a `package.json` of its own whose proof is an `npm create` run. This
-   contract names FIX-548's template as a shipper, so it was promising a check the listed proofs
-   did not make: **FIX-548 could omit `zod` and every stated check would still pass.** So FIX-548's
-   proof gains a **pnpm-isolated install of the emitted template** — install the scaffolded app's
-   manifest with pnpm and run the generated flow. The headline command stays
-   `npm create flow-state my-app`, because that is the advertised UX and not the thing under test.
+   - **values** — named placeholders replaced with a detected value (the package-manager commands);
+   - **conditional sections** — a named region rendered only under one of theme 8's two topologies,
+     `mounted-route` or `second-process`. **The key set is closed and lives here**, because theme 8
+     fixes exactly two topologies; a block wanting a third key is a cross-cutting question rather
+     than a shipper's call. The next-steps block needs this form: a mounted-route host runs its own
+     dev server with FSD answering inside it, a second-process host starts `fsdev serve` alongside
+     the server already there, and substituting a package-manager command cannot turn one process
+     list into the other. Moving the process list outside the delimiters is not the escape — that
+     returns the block's whole payload to unowned per-host prose, which is what theme 5 exists to
+     prevent.
 
-   **A static import-versus-manifest assertion would not have closed this**, which is worth stating
-   because it is the cheaper fix and it is the wrong one. The provider SDK is **never statically
-   imported**: `createModelResolver` resolves it at run time through `createRequire` against the
-   consumer's working directory (verified in `packages/core/src/models/createModelResolver.ts` —
-   `createRequire`, a dynamic `await import()`, and the `No provider available for "…"` throw). No
-   scan of the generated files' `import` statements can see `@ai-sdk/openai`. That is one of
-   exactly two members this rule names, and the one a review round already missed once. Only an
-   isolated install that actually runs the flow reaches it.
+   **Every shipper embeds every branch and renders only its own.** FIX-548's scaffolder ships
+   greenfield Next.js and never renders `second-process`, but the unrendered branch still sits in
+   its source byte-identical to canonical, because that is what the author's check reads. **A
+   shipper that trims a branch it cannot reach breaks the check** — stated here rather than in the
+   author's spec because it binds the shipper, and trimming it looks like tidying.
 
-   **The runtime floor is part of the contract too, and a path refuses rather than produces an app
-   that cannot run.** Every FSD package declares `"engines": { "node": ">=22" }` (verified across
-   `core`, `engine`, `cli`, `next`), but **Next 16 accepts Node 20.9+ and npm's engines check only
-   warns** — so on Node 20.9–21 the advertised command completes and hands the developer an app
-   whose dependencies cannot run. **One rule, stated once so the next reader does not find two:**
-   the effective floor is the higher of `>=22` and the Node 22.18 boundary FIX-548 already handles
-   for its own path, and **both entry paths check it before they write anything** — greenfield
-   fails *before* invoking `create-next-app`, with guidance naming Node 22; brownfield detection
-   reports the host's version and the run refuses on the same boundary. **FIX-548's goal check
-   exercises the refusal**, not only the success path: a scaffold that completes on an unsupported
-   runtime is the failure this rule exists to prevent, and nothing else in the epic would catch it.
+   **(b) The wiring contract is the one specification, and this is its surface.** Its outputs
+   genuinely differ — the template writes `flows/chat.ts` and a chat page, a brownfield Next run
+   writes `flows/hello.ts`, a plain-Node run writes no mount at all — so conformance checked
+   behaviourally is the only honest check. It is FIX-1159's because "what wiring FSD into an
+   existing repo requires" is the knowledge it holds; **FIX-548 remains the set's only deterministic
+   writer**, and writing the shape and specifying it are different jobs. It covers:
 
-   **(ii) The agent-instructions block — FIX-1160 authors it, and also embeds it, because it is the
-   one artifact that flows against the epic's dependency direction.** §5 Q1 assigns the content to
-   FIX-1160 and theme 3 has the template ship it, but nothing ordered or connected them, so a
-   template landing first would ship a draft that drifts. **FIX-1160 lands before FIX-548**, and
-   the template embeds the canonical block verbatim inside the delimiters theme 6 already requires
-   — and nothing else: no marker, per rule 1.
+   - the Next.js mount pair, and `fsdev.config.ts`'s shape including its store profile;
+   - **the dependency set, which is a rule rather than a list**: *every package the generated files
+     import directly is a direct dependency.* Two review rounds each found one missing member, which
+     is why it is a rule. Today it reaches `zod` and the AI SDK for the selected provider.
+   - **the runtime floor** — every FSD package requires Node `>=22`, so **both entry paths check
+     before they write anything** and refuse rather than hand over an app that cannot run.
 
-   **The second shipper created a cycle, and co-location resolves it.** FIX-1159's install skill
-   must also emit this block — but FIX-1159 lands *before* FIX-1160, because FIX-1160 packages the
-   skill. Requiring FIX-1159 to embed FIX-1160's canonical block demands a source that has not
-   landed, and reversing the edge breaks packaging instead. **Decided: FIX-1160 owns the content
-   *and* the embedding. FIX-1159's skill carries a named placeholder, and FIX-1160 substitutes the
-   canonical block when it packages the plugin.** Nothing new is
-   invented: a placeholder filled by the packager is rule 2's declared-substitution mechanism
-   applied one level up, and it runs along the existing FIX-1159 → FIX-1160 edge rather than
-   against it. The alternative — splitting FIX-1160 so the block lands ahead of the skill content
-   flowing the other way — creates a partly-landed deliverable to buy an ordering we do not need.
+   **Both manifests are proved by an isolated (pnpm) install, and neither issue may substitute a
+   static scan.** npm's flat `node_modules` hoists transitives, so an npm-only proof passes on an
+   incomplete `package.json`; and a static import scan cannot see the provider SDK, which is
+   resolved at run time rather than imported. **This binds the two issues symmetrically** —
+   FIX-1159's brownfield manifest and FIX-548's greenfield manifest each need their own isolated
+   install — and that symmetry is why the requirement is here while the reasoning behind it is each
+   issue's to record.
 
-   **Only this artifact has the cycle, and the diagnosis generalizes: an artifact authored against
-   the epic's dependency direction cannot be embedded by an issue upstream of its author.** The
-   wiring contract and the next-steps block are both authored by FIX-1159 and shipped by FIX-548
-   and FIX-1159's own skill — with the grain, so neither needs this treatment. Checked rather than
-   assumed, since expectation is what produced the cycle in the first place.
+   **(c) Ordering, and the one artifact that flows against it.** FIX-1160 authors the
+   agent-instructions content the template ships, so **FIX-1160 lands before FIX-548**; without that
+   edge a template landing first ships a draft that drifts. The second shipper created a cycle —
+   FIX-1159's skill must emit the block too, but FIX-1159 lands *before* FIX-1160, which packages
+   the skill. **Resolved by co-location: FIX-1160 owns the content *and* the embedding.** FIX-1159's
+   skill carries a named placeholder and FIX-1160 substitutes the canonical block when it packages
+   the plugin — the declared-substitution mechanism applied one level up, running along the existing
+   FIX-1159 → FIX-1160 edge instead of against it. **Only this artifact has the cycle**, and the
+   diagnosis generalizes: an artifact authored against the epic's dependency direction cannot be
+   embedded by an issue upstream of its author. The other two are authored by FIX-1159 and shipped
+   with the grain, checked rather than assumed.
 
-   *One retraction: I claimed in an earlier round that this block must vary — that a template which
-   just wrote `flows/chat.ts` can name it while a brownfield run cannot. That was asserted, not
-   established, and it is what pushed the check away from the block and into a canonical-only
-   digest. Theme 3 calls this file universal; the block is treated as invariant until a shipper
-   demonstrates otherwise, and if one does, the variation becomes a declared substitution rather
-   than free prose.*
+   **Rejected, across all three, because each creates a coupling the package boundaries should not
+   carry:** a build-time copy between packages; the plugin shipping a copy of the template (it makes
+   FIX-1160 a second writer of the shape); and the skill reading the published `create-flow-state`
+   at run time (legal under theme 4, since npm is not our monorepo, but it makes the greenfield demo
+   app the authority for brownfield wiring). **No new package and no new dependency between
+   packages** — the checks read files and compare strings at test time. Had the mechanism needed
+   either, it would have gone to the owner rather than into this theme.
 
-   **(iii) The next-steps block — FIX-1159 authors, FIX-548 and FIX-1159's skill ship it.** Theme 5
-   declared the single authored source and left it there: no carrier, no renderer, no check, so the
-   two issues would have implemented independently and either duplicated the block or invented an
-   unowned dependency. It is a **source block with both forms of declared variation** — the
-   package-manager values (`{{dev}}`, `{{exec}}` and their siblings) and the host-topology
-   conditional rule 2 adds — so what is shared and compared is the *template text with placeholders
-   and both branches intact*, and what differs is only the rendered output, which is exactly what
-   theme 5 always required. **The topology conditional is what lets one authored source serve a
-   mounted-route host and a second-process host without either being wrong**; it is declared in
-   rule 2 rather than here, because it binds FIX-548's scaffolder too.
+   **(d) What each issue owns, now that this theme has stopped carrying it.** Each is a spec change
+   in the receiving issue, not a new deliverable:
 
-   **This dissolves FIX-1159's renderer problem rather than answering it.** A Markdown skill has no
-   callable interface and cannot invoke a shared renderer — which is why "one authored source" kept
-   looking like it needed one. It does not: **the skill embeds the same block text and substitutes
-   the values detection already gave it.** There is nothing to call, and no interface to design.
-
-   **Rejected, across all three:** a build-time copy between packages (`create-flow-state` reaching
-   into another package's source — undeclared it is worse than declared, declared it is a new
-   dependency between packages); the plugin shipping a copy of the template (it makes FIX-1160 a
-   second writer of the shape); and the skill reading the published `create-flow-state` at run time
-   (legal under theme 4, since npm is not our monorepo, but it makes the greenfield demo app the
-   authority for brownfield wiring). **No new package and no new dependency between packages** —
-   and with rule 1 reduced to text equality, no library at all: the comparisons read two files and
-   compare two strings at test time. Had the mechanism needed either, it would have gone to the
-   owner instead of into this theme.
+   - **FIX-1159** — the next-steps block's canonical text, its placeholder and conditional syntax,
+     its normalization and equality check; the wiring contract's content; the brownfield manifest's
+     isolated-install proof. *Spec in review, so this lands in the current round.*
+   - **FIX-1160** — the agent-instructions block's canonical text, its normalization and equality
+     check, and the packaging-time substitution into FIX-1159's placeholder. *Approved spec —
+     **needs re-taking**.*
+   - **FIX-548** — embedding both blocks verbatim, every branch included (`second-process` among
+     them, which it never renders); conformance to the wiring contract; the greenfield manifest's
+     isolated-install proof and the runtime-floor refusal. *Approved spec — **needs re-taking**.*
 
 ## 3. Shape of the whole
 
@@ -772,7 +673,7 @@ $ npm create flow-state my-app
     npx fsdev dev      the FSD DevTool    → http://localhost:4200
                        run flows, inspect traces, replay a request
 
-    npx fsdev run chat send --input '{"userId":"u1","message":"hello"}'
+    npx fsdev run chat send --input '{"message":"hello"}'
                        run a flow from the terminal, no browser needed
 
   AGENTS.md tells your coding assistant how to write FSD flows.
@@ -815,7 +716,7 @@ the stronger sense that the CLI's bind guard refuses that host for an unauthenti
     pnpm dev             your app, now serving /api/flows/*  → http://localhost:3000
     pnpm exec fsdev dev  the FSD DevTool                     → http://localhost:4200
 
-    pnpm exec fsdev run hello send --input '{"userId":"u1","message":"hi"}'
+    pnpm exec fsdev run hello send --input '{"message":"hi"}'
 
   AGENTS.md tells your coding assistant how to write FSD flows.
 ```
@@ -825,9 +726,9 @@ the stronger sense that the CLI's bind guard refuses that host for an unauthenti
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
 | FIX-1159 | The brownfield knowledge — deterministic detection scripts, the install skill's **content**, the shared next-steps block, and **the wiring contract both entry paths satisfy** (theme 9) | spec | [#1310](https://github.com/fixpoint-labs/flow-state-dev/pull/1310) | — | In spec review — re-shaped against this fold to **brownfield only, no command of its own**; the earlier approval was retracted with the direction change |
-| FIX-1162 | Register the npm names the launch needs — the short CLI entry name and the scaffolding name | spec | [#1313](https://github.com/fixpoint-labs/flow-state-dev/pull/1313) | — | In spec review — the npm operations themselves still sit with the owner |
+| FIX-1162 | Register the npm names the launch needs — the short CLI entry name and the scaffolding name | spec | [#1313](https://github.com/fixpoint-labs/flow-state-dev/pull/1313) | — | In spec review — **both names now registered at `0.0.0` to a personal account**; what remains is the publishing identity's write access (`npm owner add` / transfer) and the unproven `@flow-state-dev` scope. Owner operations, not agent work |
 | FIX-548 | `create-flow-state` — the deterministic greenfield path; **one** template (Next.js chat app), owned end to end | spec | [#1312](https://github.com/fixpoint-labs/flow-state-dev/pull/1312) | — | Spec complete, approved at `404e82c` — **approval needs re-taking**: theme 9 now requires a pnpm-isolated install of the emitted template in its goal check (posted to #1312; its spec is not edited by the epic) |
-| FIX-1160 | The authoring pack **and the plugin that distributes the install skill** — agent-instructions file, authoring skills, install skill | spec | [#1311](https://github.com/fixpoint-labs/flow-state-dev/pull/1311) | — | In spec review, **scope grew** — it is now the brownfield path's only delivery channel |
+| FIX-1160 | The authoring pack **and the plugin that distributes the install skill** — agent-instructions file, authoring skills, install skill | spec | [#1311](https://github.com/fixpoint-labs/flow-state-dev/pull/1311) | — | Spec complete, approved at `dd9b656` — **approval needs re-taking**: theme 9 (d) hands it the agent-instructions block's normalization and equality check (posted to #1311). Scope had already grown: it is the brownfield path's only delivery channel |
 
 **The greenfield/brownfield split landed on top of two specs that were already written, and both
 have since been re-drafted against it.** FIX-1159's spec described a deterministic `fsdev init`
@@ -849,7 +750,8 @@ before FIX-548** (theme 9): it authors the agent-instructions content the templa
 without that edge a template landing first ships a draft that then drifts. That makes FIX-548 the
 last of the four, on a `FIX-1159 → FIX-1160 → FIX-548` critical path. **The
 FIX-1162 → FIX-548 edge has narrowed but not gone**: the name no longer blocks speccing or
-building, and the unscoped publish is still a hard prerequisite for release. None of these is an
+building, and a publishing identity that can write every package the quickstarts install is still
+a hard prerequisite for release (theme 1). None of these is an
 accepted deferral; each is a real ordering constraint on merge, and each pair can be specced in
 parallel. **The cut Node template is the one thing here that *is* a deferral** — it is not
 blocked on anything and nothing starts when something else lands; v1 simply does not ship it.
@@ -860,18 +762,24 @@ one of them is somebody else's package.** The scaffolder is **`create-flow-state
 short name was believed unobtainable) and, before that, `create-fsd-app`.
 **`create-fsd-app` is not ours and never will be:** `create-fsd-app@1.1.2` is a React/Vite
 starter published 2024-10-18 by an unrelated maintainer (`keyready`), verified against
-`registry.npmjs.org`. Any sentence implying we hold or will hold it is false. `create-flow-state`
-returns 404 — unregistered and available — which is the fact the choice rests on, and it is not
-the same fact as owning it. Publishing unscoped is load-bearing rather than cosmetic:
-`npm create <name>` resolves only to the unscoped `create-<name>`.
+`registry.npmjs.org`. Any sentence implying we hold or will hold it is false. **`create-flow-state`
+and `fsdev` are now both registered at `0.0.0` to `jnhoffner`** — a personal account, which is the
+fact theme 1's release gate turns on, and it is not the same fact as CI being able to publish them.
+Publishing unscoped is load-bearing rather than cosmetic: `npm create <name>` resolves only to the
+unscoped `create-<name>`.
 
 **Raised up but not folded here** — each belongs to a separate pass, and none is a gap in this
 one:
 
-- **Whether the `@flow-state-dev/` npm scope is ours at all** is untouched and is the larger
-  half of FIX-1162's finding: nothing under it has ever been published, and an npm scope belongs
-  to whoever registers the matching organization first. Two sibling specs lean on it as a safe
-  fallback. Unlike the scaffolder name, this one is not settled by anything in this fold.
+- **Whether the `@flow-state-dev/` npm scope is ours at all** is still open and is the larger half
+  of FIX-1162's finding: nothing under it has ever been published, and an npm scope belongs to
+  whoever registers the matching organization first. Two sibling specs lean on it as a safe
+  fallback. **It is explicitly *not* recorded as confirmed, because the obvious check cannot
+  establish it:** `/-/org/<name>/package` returns 200 with an empty body for scopes that exist and
+  scopes that do not alike, so a 200 there is not evidence. **The cheap proof is publishing any one
+  scoped package at `0.0.0`** — that is the check to run, and until it runs the scope is an
+  assumption. This matters more than it did, because theme 1's release gate now depends on the
+  publishing identity's write access across the whole `@flow-state-dev/*` set.
 - **FIX-1160's POC established that Claude Code has no bare-URL plugin install** — the path is
   `plugin marketplace add <source>` then `plugin install`, so a marketplace manifest is a
   required distribution artifact rather than a public listing. Consistent with §5 Q2 as written;
@@ -1089,3 +997,19 @@ the themes and decisions above — it is not repeated here.
   **FIX-548's goal check gained a pnpm-isolated install of the emitted template**, since the
   dependency rule was asserted of the greenfield manifest while only the brownfield one was ever
   installed strictly.
+- **Theme 9 cut roughly in half, and the mechanics went to the issues that own them** — it had
+  reached 231 lines because five rounds of fixes each landed where the defect was found rather than
+  where it belonged, which is not a reason to keep them in a coordination artifact. **The check now
+  belongs to each artifact's author**, so normalization, placeholder syntax and the test are one
+  implementation per artifact and cannot drift between shippers. The epic keeps ownership, ordering,
+  and the invariant that binds a shipper who does not own the check — verbatim embedding, the two
+  declared forms of variation, the closed topology key set, "embed every branch", and the
+  isolated-install requirement on both manifests, which is here only because it binds the two issues
+  symmetrically. FIX-1160 and FIX-548 both need their approvals re-taken.
+- **The npm gate reframed, and a stale registry fact corrected** — `create-flow-state` and `fsdev`
+  are registered at `0.0.0`, but to a **personal** account, so the release gate is not "acquire the
+  name": it is that the identity CI publishes with can write every package the quickstarts install.
+  The `@flow-state-dev` scope stays **unconfirmed** — `/-/org/<name>/package` returns 200 for
+  strings that exist and ones that do not, so the cheap proof is publishing one scoped package.
+  Also: `fsdev run` takes caller identity as its own parameter, not from `--input`, so both printed
+  commands dropped the `userId` key they could never have set.
