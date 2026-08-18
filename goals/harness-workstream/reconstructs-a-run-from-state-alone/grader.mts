@@ -680,26 +680,45 @@ function gradeAgreement(view: GradeableView): Finding[] {
       // The third defect one of our own repairs introduced, and the same shape
       // as the seventh gap direction: a rule that is right about the world it
       // was shown and over-rejects the neighbouring one. So the discriminator
-      // is the number of distinct GRADED SEMANTICS, never the number of calls —
-      // and a tie whose kind or outcome genuinely differs still fails, because
-      // then the row's claim does depend on which call it settled on.
-      const semantics = [
-        ...new Set(terminal.map((m) => `${JSON.stringify(m.kind)}|${JSON.stringify(m.outcome)}`)),
+      // is the graded verdict, never the number of calls — and a tie whose
+      // candidates genuinely disagree still fails, because then the row's claim
+      // does depend on which call it settled on.
+      //
+      // **AND THE SIXTH SELF-INFLICTED DEFECT, WHICH IS A NEW SHAPE: TWO OF OUR
+      // OWN REPAIRS INTERACTING.** The first version of this compared the tied
+      // calls' kind and outcome as SERIALIZED VALUES. That is identity, and
+      // what is needed is compatibility — because the `Write`-is-indeterminate
+      // repair made `null` mean *no claim*, and abstention is not identical to
+      // anything. A tied `Write` and `Edit` against an `edited`/`applied` row
+      // both grade clean, and two distinct strings came out, so a faithful
+      // concurrent state was rejected. Each repair is correct alone; only
+      // together do they produce the false red.
+      //
+      // So each candidate is EVALUATED against the row and the VERDICTS are
+      // compared. Candidates that reach the same verdict cannot be told apart
+      // by anything downstream, so which one the row settled on cannot matter.
+      const verdicts = terminal.map((m) => ({ mutation: m, findings: compareSemantics(m, entry) }));
+      const distinct = [
+        ...new Set(
+          verdicts.map((v) => JSON.stringify(v.findings.map((f) => f.because).sort())),
+        ),
       ];
-      if (semantics.length > 1) {
+      if (distinct.length > 1) {
         findings.push({
           id: "A2",
           status: "fail",
           because: "a2-terminal-tied",
           message:
             `the row keyed "${entry.topic}" folds ${naming.length} mutations and ${terminal.length} ` +
-            `of them share the last stream position ${highest}, disagreeing about what happened ` +
-            `(${semantics.join(" vs ")}) — itemIndex carries duplicates, so which one the row ` +
-            `settled on is not recoverable, and the answer depends on it`,
+            `of them share the last stream position ${highest}, and they do not grade alike ` +
+            `(${verdicts
+              .map((v) => `${v.mutation.tool}: ${v.findings.map((f) => f.because).join("+") || "clean"}`)
+              .join(" vs ")}) — itemIndex carries duplicates, so which one the row settled on is ` +
+            `not recoverable, and the answer depends on it`,
         });
         continue;
       }
-      findings.push(...compareSemantics(terminal[0], entry));
+      findings.push(...verdicts[0].findings);
       continue;
     }
     if (naming.length === 1) {

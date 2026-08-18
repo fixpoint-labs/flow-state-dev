@@ -248,14 +248,14 @@ questions, and only the second says whether the work is done. Recording both is 
 section.
 
 **Round 11 kept the arrival rate up and moved where they arrive from**, which is the more useful
-half. Fourteen findings: two assertions that cannot fail on the real path (3 and 7), a field the
+half. Fifteen findings: two assertions that cannot fail on the real path (3 and 7), a field the
 reader drops before the grader sees it (`lastOutcome`), a successful create whose lost row leaves
 no trace on either surface, the ambiguity rule's sixth **and seventh** directions, a pre-dispatch
 gate missing a failure it already held, an A2 branch that reports the stream showed no mutation
 when it showed one, a deprivation guard that checks the module rather than the binding, **harness
 ground truth discarded along with the stream's silence**, **a tie rejected when nothing depended on
-it**, a dot segment that makes one file read as two, a fixture shape the harness cannot seed, and **a shell branch that cannot tell a refused call from one that ran and failed**.
-**Four of the fourteen are in an assertion's own logic, and all four are regressions from our own
+it**, a dot segment that makes one file read as two, a fixture shape the harness cannot seed, **a shell branch that cannot tell a refused call from one that ran and failed**, and **a tie comparison that two correct repairs made wrong between them**.
+**Five of the fifteen are in an assertion's own logic, and all five are regressions from our own
 repairs** — which is the round's finding rather than the count. Every previous round's instances were, because that is where a
 reviewer reads; the three levels this same failure has now appeared at (guard, fixture, store)
 were each invisible from the one below.
@@ -284,6 +284,22 @@ fixed was the instance in front of us. That is the case for the guard table in o
 rule is remembered, and remembering is what failed; a table executes, and it has never once been
 half-applied.
 
+**THE SIXTH IS A SHAPE NONE OF THE OTHERS WERE: TWO OF OUR OWN REPAIRS INTERACTING.** The
+indeterminate-`Write` repair made `null` kind mean *no claim*. The tie repair compared *distinct
+graded semantics*. Each is correct alone — and the tie repair implemented "distinct" as
+**serialized identity**, so a tied `Write` and `Edit` against an `edited`/`applied` row produced two
+different strings and was rejected, although both candidates grade the row clean. **Abstention is
+not identical to anything.** Neither repair produces that false red by itself; only the pair does.
+
+That matters beyond the fix, and it is the first instance that **argues for** the per-case
+must-pass-neighbour clause rather than merely fitting it. Every discipline proposed so far attaches
+to a *repair* — check both directions when you change a rule. No amount of per-repair care catches
+this one, because neither repair was wrong; the defect lives in the space between them, and only a
+requirement attached to the **case** — *every fold carries a world that must still pass* — is
+positioned to see it. It is also the reason the existing tie guard stopped expressing its
+condition: that case **was** this false red, written as a failure. It is now the must-pass
+neighbour, and a genuinely disagreeing tie took its place.
+
 **THE FIFTH IS THE BEST INSTANCE THIS FILE HAS, AND IT IS A PROCESS DEFECT RATHER THAN A CODE ONE.**
 It took three careful steps to produce, none of them a mistake at the time:
 
@@ -310,8 +326,8 @@ not *denied*, which certifies nothing happened, and not *lost*, which asserts a 
 real fix needs a discriminator on the failure at the recorder (`@flow-state-dev/claude-code`'s
 `emitToolResult`), which is **LAB-137's territory, not this file's**.
 
-**Five self-inflicted regressions now, from five different repairs — and one of them is the repair
-for the worst defect this file ever had.** The tool table asserting `Write` means `created` was the
+**Six self-inflicted regressions now — five from a single repair each, and one from two correct
+repairs meeting.** The tool table asserting `Write` means `created` was the
 only defect here that failed red on truth AND green on the defect; its repair, which is the most
 carefully reasoned change in the file, created a **new false green on the same assertion**. That is
 the sharpest available statement of what this class is: *the fix is where the next defect comes
@@ -323,11 +339,12 @@ watching for exactly that.**
 
 - *"The written-down class entry is what stops the fifth."* The fifth arrived one round later,
   produced by the fourth's own repair.
-- *"Self-inflicted regression is a closed category with one member."* Falsified **four times in the
+- *"Self-inflicted regression is a closed category with one member."* Falsified **five times in the
   round it was written** — the seventh gap direction from round 10's per-mutation spelling test,
   the tie over-rejection from the aggregate-row repair, ground truth discarded by the
-  indeterminate-`Write` repair, and the shell branch that cannot tell refusal from
-  execution-then-failure. A bound of one, wrong by four, inside a single round.
+  indeterminate-`Write` repair, the shell branch that cannot tell refusal from
+  execution-then-failure, and the serialized tie comparison that two correct repairs produced
+  between them. A bound of one, wrong by five, inside a single round.
 - And one placed here rather than by the coordinator: *"every remaining finding lives in a branch
   the real runs do not reach."* Falsified this round by two assertions that cannot fire at all —
   a cell the criterion did not have.
@@ -338,7 +355,9 @@ that fifth; the **tie over-rejection**, from the aggregate-row repair; **ground 
 along with the stream's silence**, from the indeterminate-`Write` repair; and **refusal conflated
 with execution-then-failure**, from the correction to a coordinator's own claim. Five repairs, five
 new defects, no two in the same place — and the last was produced by the most deliberate step in
-the list.
+the list. **The sixth is not on that list because it belongs to no single repair**: comparing tied
+candidates by serialized identity rather than by verdict, which only became wrong once `null` kind
+meant *no claim*. Two repairs, both right, one defect between them.
 
 Three bounds, three falsifications, by three different people all of whom knew the class was
 recurring while they wrote them — and a fourth self-inflicted instance arriving in the same round

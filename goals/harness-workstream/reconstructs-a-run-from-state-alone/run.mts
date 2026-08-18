@@ -950,13 +950,52 @@ const GUARD_CASES: GuardCase[] = [
     want: "fail",
   },
   {
-    // And the tie. `itemIndex` carries duplicates — the fixture has three at
-    // one position — so two calls on one path sharing the last position is a
-    // real state, and which one settled the row is not recoverable from it.
-    name: "A2 — two folded mutations share the last stream position",
+    // THE SIXTH SELF-INFLICTED DEFECT, AND A NEW SHAPE: TWO OF OUR OWN REPAIRS
+    // INTERACTING. This world used to be the `a2-terminal-tied` case, and it
+    // was the wrong world for it.
+    //
+    // `itemIndex` carries duplicates — the fixture has three at one position —
+    // so a `Write` and an `Edit` on one path sharing the last position is a
+    // real state. Against an `edited`/`applied` row BOTH grade clean: the
+    // `Edit` matches, and the `Write` contributes `null` kind, which the
+    // indeterminate-`Write` repair made mean *no claim*. Nothing downstream can
+    // tell the two candidates apart, so which one the row settled on cannot
+    // matter — and the first version of the tie check compared SERIALIZED
+    // VALUES, got two distinct strings, and rejected faithful concurrent state.
+    //
+    // Identity where compatibility was meant. Each repair is right alone; only
+    // together do they produce the false red — which is why per-repair care
+    // could not have caught it, and a per-case must-pass neighbour can.
+    name: "A2 — a tied Write and Edit that both grade clean against the row",
     mutate: (v) => {
       for (const m of v.streamMutations) {
         if (m.path === "/work/repo/alpha.txt") m.at = 6;
+      }
+    },
+    because: "a2-ok",
+    id: "A2",
+    want: "pass",
+  },
+  {
+    // And the tie that must STILL fail, because the candidates genuinely
+    // disagree: two `Edit` calls at the last position, one completed and one
+    // failed. Against an `edited`/`applied` row the first grades clean and the
+    // second reports `a2-outcome-disagrees`, so the row's verdict really does
+    // depend on which call it settled on — and the stream cannot say.
+    //
+    // Without this case, "stop failing on ties" would be indistinguishable from
+    // the fix.
+    name: "A2 — a tie whose candidates reach different verdicts",
+    mutate: (v) => {
+      const alpha = v.streamMutations.filter((m) => m.path === "/work/repo/alpha.txt");
+      for (const m of alpha) {
+        m.at = 6;
+        m.tool = "Edit";
+        m.kind = "edited";
+      }
+      if (alpha.length > 0) {
+        alpha[0].status = "failed";
+        alpha[0].outcome = "failed";
       }
     },
     because: "a2-terminal-tied",
