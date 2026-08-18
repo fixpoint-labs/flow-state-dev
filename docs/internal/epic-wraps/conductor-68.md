@@ -46,9 +46,33 @@ terminates inquiry.
 | 11 | CI dashboard | `Cursor Bugbot: neutral` | a usage-limit abort rendering beside six passes; **an absence wearing a non-failure's clothes** | coordinator |
 | 12 | LAB-135 guard case | selected `streamMutations[0]` | after the fixture grew, index 0 was no longer the mutation its row compares against — the broken world graded clean | the guard table's own branch tags |
 
-**#10 is the measurement worth keeping from this epic.** Not *"we found N bugs"* — a real test
-suite, written for that exact code, was blind to four defects simultaneously, and **proximity to a
-passing test was actively misleading**.
+| 13 | LAB-135 **A3** | `a3-out-of-order` over `itemIndex` | **the store returns items sorted by the exact field A3 tests.** All three branches dead: the batch query the reader lands on is `ORDER BY request_id, sequence ASC`, the legacy dual-read merge re-sorts on `itemIndex` too, `sequence INTEGER NOT NULL` kills `a3-unreadable`, and 31 items are never short of two positions | codex |
+| 14 | LAB-135 **A7** | collection truncation | `STATE_LIST_DEFAULT_LIMIT` is 50 and these runs write **three** rows, so `nextCursor` is never offered, `a7-truncated` needs 200 pages, and `a7-never-read` cannot be produced by `readAccount` at all | the A3 sweep |
+
+**#13 and #14 are the epic's real headline, and they are worse than #10.** *Two of eight assertions
+in the Proof certify nothing about the run.* All 26 PASSes contained an A3 and an A7 that could not
+have been anything else. What those runs actually certify is **A1, A2, A4, A6 and A8** over the
+dispatched run — that is the honest sentence, and it is now the one in `goal.md`'s verdict section
+rather than in a limits list where it would read as an edge.
+
+**#10 remains the sharpest single measurement.** Not *"we found N bugs"* — a real test suite,
+written for that exact code, was blind to four defects simultaneously, and **proximity to a passing
+test was actively misleading**.
+
+**What made #14 findable was the question, not the diligence.** #13 was caught by a reviewer
+reading the *storage layer* rather than the check. Generalising that into a procedure — **name the
+field each assertion reads, then ask what happens to that field between the writer and the check**
+— turned up #14 immediately, and one notch higher turned up a third (the reader's plan-row mapping
+drops `lastOutcome`, so A5's ROWS arm is blind to whether a transition settled; named, not fixed).
+**Three findings from one question, after eight rounds of review had missed all three.**
+
+**And the disclosure is executed rather than remembered**, which is the part worth copying.
+Precondition 1f writes two items out of order through a real store and reads them back: sorted
+keeps the disclosure, as-written fails the goal with *"THE A3 DISCLOSURE IS STALE"*. So the
+scoping cannot quietly go on under-reporting itself once the store changes. **Its first version
+could not fail** — the write path sorts each batch by `item.id`, the author's ids agreed with index
+order, so the probe went silent against a read doing no sorting at all. **A blind check inside the
+fix for a blind check, caught by its author before it shipped.** The ids now contradict the index.
 
 **#12 is a decay mode, not a defect.** The guard was correct when written and retired silently as
 the data around it grew — in the direction of passing. It was caught only because an earlier round
@@ -230,7 +254,27 @@ They don't.
 output** and I read the row that agreed with me) and inventing precise timestamps in coordinator
 state. Both are the epic's own defect family, committed by the coordinator running it.
 
-**How they were caught: worker pushback ×4, restraint pass ×1, stale review ×1, POC ×1, self ×2.
+**Shape D — a plausible mechanism handed over as a lead (1), and the guardrail is the whole
+lesson.** Finding A3 inert, I checked whether a real fix existed and found what looked like one:
+`request_events` is written and read by its own `sequence_number`, **not** by `itemIndex`, so the
+event stream should be an independent witness of item order. I passed it to the worker **explicitly
+as a lead, not a finding**, with instructions to check the world could be produced first.
+
+**It was refuted, with measurement.** The events *are* a genuinely independent surface — but not of
+*this* property: `itemIndex` is reserved at item **construction** (`emittedItemCount++`), while the
+event sequence is assigned later at **emission**, with awaits between. A faithful model-free run
+produced `item.added` events carrying `0,1,1,3,2,3,4,7,5,6,7,11,8,13,9,15`. **Routing A3 through
+the event log would have failed ordinary faithful state on every run.** A second sufficient reason
+sat underneath: an empty log falls back to `buildReplayEvents`, which reconstructs from
+`record.items` and is `itemIndex`-sorted again — *the same tautology one level down.*
+
+**So the coordinator's fix for a blind check was a false red on every run.** The only thing between
+that and defect #4 traceable to one of my folds was labelling it a lead and demanding it be
+verified before it was built. **That labelling is doing more work than any rule in this document** —
+the mechanism was plausible, I had just read the code, and I was the most confident I had been all
+epic.
+
+**How they were caught: worker pushback ×5, restraint pass ×1, stale review ×1, POC ×1, self ×2.
 Never by re-reading my own message.**
 
 ---
