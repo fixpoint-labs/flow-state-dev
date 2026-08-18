@@ -26,7 +26,12 @@ fail() { echo "  MISMATCH — $1"; RC=1; }
 WORK="${1:-$(mktemp -d)}"
 mkdir -p "$WORK" || exit 2
 APP="$WORK/probe"
-rm -rf "$APP"
+# Never delete a directory the caller may care about. The argument is a workdir,
+# not a scratch space we own, and `rm -rf` on it was a data-loss hazard.
+if [ -e "$APP" ]; then
+  echo "refusing to run: $APP already exists — remove it or pass a different workdir" >&2
+  exit 2
+fi
 echo "workdir: $WORK"
 
 # Exact, not @16 — a range would re-resolve and this script is cited as evidence,
@@ -44,11 +49,16 @@ echo "manifest type field: $(node -p "require('./package.json').type ?? '(absent
 echo "tsconfig include:    $(node -p "JSON.stringify(require('./tsconfig.json').include)")"
 
 # ASSERTED, NOT PRINTED — and asserted HERE, before this script writes anything.
-# The greenfield-appends design rests on create-next-app writing its own AGENTS.md,
+# The greenfield-appends design rests on AGENTS.md existing in the scaffold output,
 # and this check is self-concealing if it runs later: the append near the end
-# recreates AGENTS.md, and `next dev` restores Next's own block. A probe that
-# checked at the end would go green exactly when the pinned scaffolder had stopped
-# doing the thing the spec depends on.
+# recreates AGENTS.md itself. A probe that checked at the end would go green
+# exactly when the pinned scaffolder had stopped writing these files.
+#
+# Note what this does and does not establish. The invocation above passes
+# --agents-md explicitly (as the spec requires of every flag), so these assertions
+# guard "create-next-app still writes AGENTS.md WHEN ASKED" — which is what the
+# design depends on. They say nothing about the flag's default, and the README
+# does not claim they do.
 [ -f AGENTS.md ] \
   && echo "  AGENTS.md: present" \
   || fail "create-next-app no longer writes AGENTS.md — the spec's append-not-create premise is dead"
@@ -58,9 +68,18 @@ grep -q 'BEGIN:nextjs-agent-rules' AGENTS.md 2>/dev/null \
 [ -f CLAUDE.md ] \
   && echo "  CLAUDE.md: present" \
   || fail "create-next-app no longer writes CLAUDE.md — README finding 2 is stale"
-grep -qE '^\.env' .gitignore 2>/dev/null \
-  && echo "  .gitignore: ignores .env* ($(grep -nE '^\.env' .gitignore | head -1))" \
-  || fail "create-next-app's .gitignore no longer ignores .env* — spec decision 7 loses its host-supplied entry"
+# Ask git, not the text. A `grep '^\.env'` passes on a .gitignore that only lists
+# `.env.example`, which does NOT ignore .env.local — so the credential stop
+# (spec decision 7) could rest on a premise the probe reported as true. The
+# scaffold runs with --disable-git, so init a throwaway repo just to evaluate the
+# rules. check-ignore works on a path that does not exist yet, which is the state
+# the real command is in when it decides whether it may write the key.
+git init -q . 2>/dev/null
+if git check-ignore -q .env.local; then
+  echo "  .gitignore: git would ignore .env.local ($(git check-ignore -v .env.local | awk '{print $1":"$2}'))"
+else
+  fail "git would NOT ignore .env.local in a fresh scaffold — spec decision 7 loses its host-supplied entry"
+fi
 
 # The route shape the spec specifies: a catch-all plus a sibling bare route, both
 # carrying the canonical exports from packages/next/README.md. An earlier version
@@ -214,12 +233,17 @@ CATCH=$(curl -s --max-time 20 --noproxy '*' "http://127.0.0.1:$PORT/api/flows/se
 echo "  GET /api/flows/sessions/abc -> $CATCH"
 [ "$CATCH" = "$MARKER:catchall:sessions/abc:200" ] || fail "catch-all route: expected $MARKER:catchall:sessions/abc:200"
 
+# SURVIVAL, not restoration. Next's block was already present before the server
+# started, so a count of one proves it was left alone — it does not prove `next dev`
+# would re-create a missing block, and the README no longer claims it does.
+# Restoration is irrelevant to the design: what matters is that our appended
+# section is still there afterwards.
 FSD_N=$(grep -c 'FSD SECTION SENTINEL' AGENTS.md)
 NEXT_N=$(grep -c 'BEGIN:nextjs-agent-rules' AGENTS.md)
-echo "  FSD section survived next dev: $FSD_N (expect 1)"
-echo "  next's own block still there:  $NEXT_N (expect 1)"
-[ "$FSD_N" = 1 ] || fail "appended FSD section did not survive next dev"
-[ "$NEXT_N" = 1 ] || fail "next's own block is not intact"
+echo "  our appended FSD section, after next dev: $FSD_N (expect 1)"
+echo "  next's own block, left intact:            $NEXT_N (expect 1)"
+[ "$FSD_N" = 1 ] || fail "our appended FSD section did not survive next dev"
+[ "$NEXT_N" = 1 ] || fail "next's own block was altered or duplicated by next dev"
 
 kill "$DEV_PID" 2>/dev/null; wait "$DEV_PID" 2>/dev/null
 

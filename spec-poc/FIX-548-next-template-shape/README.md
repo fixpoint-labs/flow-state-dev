@@ -7,85 +7,75 @@ bundler** (the mounted route imports it) and the **`fsdev` CLI** (a native `impo
 FIX-1159 decision 4 settles the CLI half by using `.mts`. Nobody had checked the bundler half,
 and the whole product — a streamed response rendered in a browser — runs through it.
 
-Run it: `bash probe.sh` (needs network; ~2 minutes). It scaffolds a real `create-next-app@16`
-project, drops each candidate config shape in, and runs `next build`, `next dev`, and a native
-`import()` against each.
+Run it: `bash probe.sh [workdir]` (needs network; ~3 minutes). It scaffolds a real
+`create-next-app@16.3.1` project, drops each candidate config shape in, and runs `next build`,
+`next dev`, and a native `import()` against each. It refuses to run if `<workdir>/probe` already
+exists rather than deleting it.
 
-**The exit status is the evidence, and every claim below feeds it** — `0` every row of the table
-behaved as documented *and* the scaffold-discovery and served-route assertions held, `1`
-something disagreed with what this file claims, `2` the run could not be completed.
+## The contract between this file and the script
 
-Each variant declares both the outcome **and the diagnostic** this README claims for it, so
-**"the build failed" is not automatically a probe failure** — two variants are supposed to fail —
-and equally, a failure for the *wrong reason* is not a pass. A shared route-file typo, a
-dependency problem, or a future Next regression would otherwise reduce to `fail` and be read as
-"matched the documented result", letting the probe go green without ever reproducing `TS5097` or
-the module-resolution behaviour that is the whole justification for the chosen shape. Pass rows
-assert the route compiled (`/api/flows` in the build output), not merely that the process
-exited 0.
+**Every claim below is backed by an assertion that fails the run if the claim becomes false.**
+That is the point of the file, and it has been the source of every review finding against this
+POC — four rounds of "this check cannot fail the thing it is cited for." So the rule now is:
+a claim is either asserted, or it is not made here.
 
-Two earlier versions of this probe could report green for claims they had not proved, which is
-why the status is wired this way:
+Exit status: `0` every claim below held · `1` one of them did not · `2` the run could not be
+completed (scaffold or install failed, no free port, workdir occupied).
 
-- it reached a **stale dev server** left over from a previous run, so it now uses a fresh marker
-  per run on a port it proves free first;
-- it **discarded `next build`'s status** through a pipeline and let a rejected `import()` resolve,
-  so those two — the exact claims the spec cites this POC for — sat outside the exit code.
+Each variant asserts both its **outcome** and its **diagnostic**, so "the build failed" is not
+automatically a pass for a row documented as failing — a route-file typo, a dependency problem,
+or a future Next regression would otherwise be read as "matched the documented result". Rows
+documented as passing assert the route actually compiled (`/api/flows` in the build output),
+not merely that the process exited 0.
 
-Wiring those in immediately earned its keep: the first run of the accumulating version exited `1`
-on the `.ts, no type field` row, and the cause was the probe, not the finding. Its `import()` check
-called `process.exit(0)` in the `.then()`, which cut off `MODULE_TYPELESS_PACKAGE_JSON` before Node
-flushed it — the warning is emitted asynchronously. The check now sets `process.exitCode` and lets
-the process drain. A probe that could not fail would have recorded "clean" for the one variant
-whose entire purpose is to warn.
+**What this POC does not establish** — stated because the spec cites it and the boundary matters:
 
-It also serves **both route files with the canonical route exports** (`runtime = "nodejs"`,
-`dynamic = "force-dynamic"`) rather than a hand-made bare route, because an earlier version
-exercised a shape the spec does not specify.
-
-**What this does not prove:** that `force-dynamic` prevents response buffering. That is Next's
-documented behaviour and it needs a real streamed model response to observe — §10's goal check
-owns it, by requiring the response to render *incrementally*. This probe establishes only that
-the specified route shape builds and serves the config module.
+- **That `force-dynamic` prevents response buffering.** It needs a real streamed model response
+  to observe. §10's goal check owns it, by requiring the response to render *incrementally*.
+- **That `--agents-md` is on by default.** The invocation passes it explicitly, as the spec
+  requires of every flag, so nothing here speaks to the default. What is asserted is that
+  `create-next-app` still writes `AGENTS.md` **when asked** — which is what the design rests on.
+- **That `next dev` re-creates a missing `AGENTS.md` block.** Next's block is present before the
+  server starts, so the check proves it was left alone, not that it would be restored.
+- **Whether a provider SDK that `@flow-state-dev/core` imports dynamically by package name
+  resolves inside the Next.js server bundle.** `createModelResolver` carries a `directLoadFailed`
+  fallback for exactly this case, so it is a known hazard. Only a real run with a real key
+  reaches it — §10's goal check does, through the mounted route rather than through `fsdev run`.
 
 ## What it settled
 
 | Variant | `next build` | native `import()` | verdict |
 |---|---|---|---|
-| `fsdev.config.mts`, imported as `../fsdev.config.mts` | Turbopack compiles; **TypeScript fails** — `TS5097: An import path can only end with a '.mts' extension when 'allowImportingTsExtensions' is enabled` | clean | needs a `tsconfig.json` edit |
-| `fsdev.config.mts`, imported as `../fsdev.config` | **module not found** — Turbopack does not resolve extensionless to `.mts` | clean | dead |
-| `fsdev.config.mts` + `allowImportingTsExtensions: true` | passes | clean | works, costs two edits to files `create-next-app` wrote |
+| `fsdev.config.mts`, imported as `../fsdev.config.mts` | fails — `TS5097: An import path can only end with a '.mts' extension when 'allowImportingTsExtensions' is enabled` | clean | needs a `tsconfig.json` edit |
+| `fsdev.config.mts`, imported as `../fsdev.config` | fails — `Module not found`; Turbopack does not resolve extensionless to `.mts` | clean | dead |
+| `fsdev.config.mts`, with `allowImportingTsExtensions: true` added to the tsconfig | passes | clean | works, at the cost of both edits this row names |
 | **`fsdev.config.ts` + `"type": "module"` in the manifest** | **passes** | **clean, no warning** | **chosen (§6 decision 4)** |
-| `fsdev.config.ts`, no `type` field | passes | loads, but emits `MODULE_TYPELESS_PACKAGE_JSON` on every CLI command | rejected |
+| `fsdev.config.ts`, no `type` field | passes | loads, but emits `MODULE_TYPELESS_PACKAGE_JSON` | rejected |
 
-The chosen variant is also run end to end against the shape the spec specifies: `next dev` serves
-both `GET /api/flows` (the bare route) and `GET /api/flows/sessions/abc` (the catch-all), and each
-returns this run's unique marker, proving the config module that loaded is the one this run wrote.
+The chosen variant is also run end to end against the shape the spec specifies — both route
+files, with the canonical `runtime = "nodejs"` and `dynamic = "force-dynamic"` exports. `next dev`
+serves `GET /api/flows` (the bare route) and `GET /api/flows/sessions/abc` (the catch-all), and
+each returns this run's unique marker, proving the config module that answered is the one this
+run wrote rather than a stale server.
 
-## Four things it found that nothing in the epic or the sibling specs knew
+## What it found that nothing in the epic or the sibling specs knew
 
-All four are **asserted, and asserted before this script writes anything** — not printed for a
-reader to eyeball. Ordering is the whole point: the probe later appends its own FSD section to
-`AGENTS.md`, and `next dev` restores Next's block, so a check placed at the end would report
-green exactly when the pinned scaffolder had stopped writing these files. Finding 1 especially,
-because the spec's append-not-create design rests on it.
+Asserted **before the script writes anything**, because the checks are otherwise self-concealing:
+the script later appends its own section to `AGENTS.md`, so a check at the end would go green
+exactly when the pinned scaffolder had stopped producing these files.
 
-1. **`create-next-app@16` writes `AGENTS.md` itself**, with its own delimited block
-   (`<!-- BEGIN:nextjs-agent-rules -->`), and **`next dev` re-adds that block on every run**. So
-   the greenfield Next path is an *append* to an existing `AGENTS.md`, never a create — the case
-   everyone assumed was brownfield-only. An appended FSD section survived a `next dev` run intact.
-2. **`create-next-app@16` also writes `CLAUDE.md`.**
-3. **Its `.gitignore` already contains `.env*`**, so the credential-ignore entry the template
-   depends on is supplied by the host scaffold — a fact to *assert*, not to assume, because it is
-   someone else's file.
-4. **`--agents-md` defaults on and the tool says so** (`Using defaults for unprovided options`).
-   `create-next-app` persists saved preferences between runs, so any flag we leave off can resolve
-   differently on a machine that has run it before. Every flag has to be passed explicitly;
-   `--yes` is not a substitute.
-
-## Not settled here
-
-Whether a provider SDK that `@flow-state-dev/core` imports **dynamically by package name**
-resolves inside the Next.js server bundle. `createModelResolver` carries a `directLoadFailed`
-fallback for exactly this case, so it is a known hazard. Only a real run with a real key reaches
-it — §10's goal check does, through the mounted route rather than through `fsdev run`.
+1. **`create-next-app@16.3.1` writes `AGENTS.md`**, carrying its own delimited block
+   (`<!-- BEGIN:nextjs-agent-rules -->`). So the greenfield Next path is an **append to an
+   existing file, never a create** — the case everyone had filed as brownfield-only. Our appended
+   FSD section is still intact after a `next dev` run, and so is Next's block.
+2. **It also writes `CLAUDE.md`.**
+3. **Git ignores `.env.local` in a fresh scaffold.** Asserted with `git check-ignore`, not by
+   grepping `.gitignore` — a text match on `^\.env` also passes for a file that only lists
+   `.env.example`, which would leave `.env.local` publishable. The credential stop (spec
+   decision 7) rests on this, so it is checked the way the real command has to check it: ask git
+   about the path, before the key is written.
+4. **`create-next-app` fills unprovided options from saved preferences**, printing
+   `Using defaults for unprovided options`. This is why the spec requires every flag to be passed
+   explicitly and rules out `--yes`: an option we leave off can resolve differently on a machine
+   that has run the tool before. *(Observed in the tool's output and documented in its `--help`;
+   this script passes every flag, so it does not re-establish it.)*
