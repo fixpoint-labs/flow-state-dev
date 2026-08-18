@@ -51,7 +51,14 @@ they are stated once there rather than twice here.
 - *FIX-1159, mounted-route path* — an agent adds FSD to an existing Next.js app, a real model
   streams back **over the mounted HTTP route** (theme 9 (b): a `fsdev run` check passes while the
   bundled route is broken), the app's own routes still answer, and nothing the developer wrote has
-  changed.
+  changed. **And the same request without the credential is refused, with no model invocation** —
+  the negative half is not optional here, because **this is the one path where the credential is
+  the only control.** Greenfield has the loopback bind and the second-process path has its own
+  rail; the mounted route has nothing else. If the generated wiring omits or misconfigures the
+  resolver, `defaultBodyUserIdPrincipalResolver` accepts the request and streams happily, so the
+  positive check passes **identically whether the wiring is correct or entirely absent**.
+  Asserting no model invocation is the second half that matters: a 200 carrying an error body
+  would otherwise read as a refusal.
 - *FIX-1159, second-process path* — the same against an existing plain-Node project: the printed
   command starts FSD, a call to it **carrying the generated credential** streams a real model
   response, and the project's own server keeps running. **A call without it is refused** — that
@@ -63,9 +70,14 @@ they are stated once there rather than twice here.
   yields a streamed model response from the chat page the template ships, with the provider key
   supplied at the prompt the way a real user supplies it. **The same run must assert that
   `create-next-app`'s own `AGENTS.md` block and its `CLAUDE.md` survive the scaffold**, and that
-  `.env.local` is genuinely ignored. **This too must not be dropped:** a streaming chat page proves
-  nothing about what the scaffolder overwrote on the way there, and greenfield is the path where we
-  author both sides, so it is the one place theme 6's guarantee is exercised end to end.
+  `.env.local` is genuinely ignored (`git check-ignore`, not a read of the file). **This too must
+  not be dropped:** a streaming chat page proves nothing about what the scaffolder overwrote on the
+  way there, and greenfield is the path where we author both sides, so it is the one place theme
+  6's guarantee is exercised end to end. **And the loopback bind is asserted negatively — a request
+  from a non-loopback address must fail to connect.** Found by sweeping for the same defect as the
+  mounted-route one: the bind is greenfield's *only* control (theme 8), and a chat page streaming
+  over `localhost` proves nothing about it, because the page streams identically whether the dev
+  script carries the flag or the exception was never implemented at all.
 - *FIX-1160* — one recorded run covering **both halves of the pack**: the plugin installed from its
   published source and a packaged skill invoked, then an assistant in a fresh project, given a
   stated feature goal and nothing else, produces a flow that runs. A single observation, stated as
@@ -303,7 +315,10 @@ call.
      the serious one — **an unset variable makes a naive equality accept everyone**, because a
      request carrying no credential compares equal to an absent expected value, so the flow reads
      as secured while being open. Refusing at startup is what makes that unrepresentable, rather
-     than a thing the reader has to remember.
+     than a thing the reader has to remember. **And that refusal is itself asserted** — with the
+     variable unset, the config must fail to start — because a mitigation nobody exercises is the
+     defect it was written to prevent, wearing a fix's clothes. Found by the same sweep that added
+     the two negative assertions in §1.
    - **`fsdev run` is unaffected**, on both branches: it calls `runAction` in-process with its own
      `cli-user` identity and never resolves a principal, so it does not cross the secured surface.
    - **The second-process branch's own call does cross it.** `fsdev serve` starts a real HTTP
@@ -333,6 +348,23 @@ call.
    about that, no review reported it, and no check in the epic would have caught it; it surfaced
    only because the commands were walked one by one. A control that removes another control is not
    a rare shape, and running what we print is the cheapest thing that sees it.
+
+   **The companion rule, which cost us three more findings before it was written down: every
+   control is proved by its own absence, not by its presence.** A check that only exercises the
+   protected case passes identically whether the control is installed or missing — so the scenario
+   that motivated the control is exactly the scenario the check cannot fail in. Each control this
+   epic claims therefore carries a negative assertion: the mounted route refuses an uncredentialed
+   request **and invokes no model** (a 200 with an error body is not a refusal); the greenfield dev
+   server refuses a non-loopback connection; the generated config refuses to start with the
+   credential variable unset.
+
+   **And the timing is the part worth keeping: adding a control creates a new opportunity to
+   under-prove it, and the round that adds the control is the round least likely to notice** —
+   the author has just convinced themselves it works, and writes the check that shows it working.
+   Every one of the six findings of this shape this epic has had was caught by a reader rather
+   than by the author; three of them landed on fixes made in the same session, not on old text.
+   Treat a newly added control as **unproven until its negative case exists**, however convinced
+   the round that added it happens to be.
 
    **A printed command is checked against the CLI's actual flags before it ships.** Twice now a
    command in this document could not have done what it appeared to: `fsdev run` takes the caller
@@ -409,10 +441,32 @@ call.
      only ever *narrows* a bind, breaks nothing, and is a one-word revert the developer can make.
      **It does not reach brownfield**, where the script is theirs, the project is theirs, and theme
      6's promise is the one the objective actually sells.
-   - **Refuse rather than write a credential into a tracked file.** If `.env.local` is already
-     tracked, the run stops short of writing the key, says why, and tells the developer what to
-     do instead. A provider key committed to version control is the one failure a diff review
-     would not reliably catch, because it looks like every other appended line.
+   - **No credential is written until the path is verifiably ignored — a precondition, not a
+     report.** Before writing anything secret, the run asks **git** whether the target path is
+     effectively ignored (`git check-ignore`). If it is, write. If it is not, **append the rule**
+     (an append to `.gitignore`, which this theme already permits) and re-verify, or **refuse the
+     run** with remediation. Refusing on an already-tracked `.env.local` remains part of this — a
+     tracked file cannot be rescued by an ignore rule — but it is now the narrow case rather than
+     the whole guard.
+
+     **Why the previous shape was unsafe, and why it matters more than when it was written.** It
+     asked only whether `.env.local` was *already tracked*. In a repo where the file does not exist
+     and no rule matches it, that check passes and the run creates an ordinary **untracked**
+     file — and untracked is not ignored, so the next `git add .` commits it. **The file now holds
+     two secrets, not one**: the developer's provider key, and since theme 8 the bearer secret we
+     generate. A diff review does not reliably catch either, because they look like every other
+     appended line.
+
+     **The shape, because this is the third guard on this one file to be wrong: each checked a
+     *proxy* for the property.** Tracked-ness, then delimiter position, now existence — none of
+     them is "will git ignore this path", and only git can answer that. Inspecting `.gitignore`
+     text is the same mistake one level down: a later negation pattern can re-include a path an
+     earlier line excluded, so the file's contents do not settle it either. **Ask the tool that
+     owns the answer.**
+
+     **Negative-tested, both paths.** A fixture repo with no `.env.local` rule at all must fail
+     before the fix and pass after. Greenfield asserts the same property with `git check-ignore`
+     rather than trusting that `create-next-app`'s `.gitignore` covers it.
    - **Install through the project's own package manager, never write a lockfile directly.**
      Declaring dependencies is not the same as making them available, and theme 5 forbids
      printing a command the project cannot run — so a run installs, and the project's own tool
@@ -796,19 +850,36 @@ survived from FIX-1159's spec unchanged throughout is everything it *verified* a
 packages (`serve()` binds all interfaces and reads no `.env`; the bare `/api/flows` is a real
 endpoint needing its own file); those are facts about the code, not consequences of the command.
 
-**Dependencies.** FIX-1160 depends on FIX-1159 — it packages content that issue authors.
-FIX-1159 lands before FIX-548, for the shared next-steps block (theme 5) **and the wiring
-contract the template conforms to (theme 9)** — a firmer edge than the next-steps block alone,
-since it constrains the template's own files rather than what it prints. **FIX-1160 now also lands
-before FIX-548** (theme 9): it authors the agent-instructions content the template ships, and
-without that edge a template landing first ships a draft that then drifts. That makes FIX-548 the
-last of the four, on a `FIX-1159 → FIX-1160 → FIX-548` critical path. **The
-FIX-1162 → FIX-548 edge has narrowed but not gone**: the name no longer blocks speccing or
-building, and a publishing identity that can write every package the quickstarts install is still
-a hard prerequisite for release (theme 1). None of these is an
-accepted deferral; each is a real ordering constraint on merge, and each pair can be specced in
-parallel. **The cut Node template is the one thing here that *is* a deferral** — it is not
-blocked on anything and nothing starts when something else lands; v1 simply does not ship it.
+**Dependencies — and these are two different kinds of thing, so they are listed separately.** A
+reader scanning one list cannot tell a **merge-order edge** from a **release gate**, and conflating
+them is how an issue gets blocked from merging on an operation that only its release needs. That
+has now happened twice: once here, and once at issue altitude where FIX-1186 was wired to block
+FIX-548's *implementation* rather than its release.
+
+**Merge-order edges — these gate merge, and nothing else.**
+
+- **FIX-1159 → FIX-1160.** FIX-1160 packages content FIX-1159 authors.
+- **FIX-1159 → FIX-548**, for the shared next-steps block (theme 5) **and the wiring contract the
+  template conforms to (theme 9)** — firmer than the block alone, since it constrains the
+  template's own files rather than only what it prints.
+- **FIX-1160 → FIX-548** (theme 9): FIX-1160 authors the agent-instructions content the template
+  ships, and without that edge a template landing first ships a draft that drifts.
+
+That makes FIX-548 the last of the four, on a `FIX-1159 → FIX-1160 → FIX-548` critical path. **None
+of these is an accepted deferral** — each is a real constraint on merge, and each pair can be
+specced in parallel.
+
+**Release gates — these gate *shipping*, and block no issue's spec, build, or merge.**
+
+- **The publishing identity can write every package the quickstarts install** (theme 1). **FIX-1162
+  is not a merge-order edge on FIX-548 and must not be treated as one**: the names are held,
+  nothing waits on a decision, and neither FIX-1162's spec approval nor its completion gates
+  FIX-548's build or merge. What it gates is the release, and it is an owner credential operation.
+
+**And one accepted deferral, which is neither:** the cut Node template. Nothing blocks it and
+nothing starts when something else lands — v1 simply does not ship it. It appears here only
+because a dependency column cannot distinguish "blocked by X" from "deliberately not built", and
+they mean opposite things.
 
 **Folded this pass — the naming record, kept because two wrong names were in this document and
 one of them is somebody else's package.** The scaffolder is **`create-flow-state`**, invoked as
@@ -1239,3 +1310,28 @@ the themes and decisions above — it is not repeated here.
   the proof-strength consequence is the **coordinator's** reading of that change, recommended and
   never put to them. Re-filed as an **open item**, marked reversible, with the cost of reversing it
   stated (a maintained fixture repo per host shape). It blocks nothing.
+- **The credential guard was checking a proxy, and every control got a negative case.** The
+  `.env.local` rule asked only whether the file was *already tracked* — which says nothing about a
+  file that does not exist yet in a repo with no matching ignore rule, so the run would create an
+  ordinary **untracked** file holding **two** secrets (the provider key, and since theme 8 the
+  bearer secret) for the next `git add .` to commit. Now a **precondition**: before any credential
+  is written, `git check-ignore` must confirm the path is effectively ignored, else append the rule
+  and re-verify or refuse. **Third guard on this one file to check a proxy** — tracked-ness, then
+  delimiter position, now existence; the property is "will git ignore this path" and only git
+  answers it, since even reading `.gitignore` misses a later negation.
+- **Sixth finding of the "rule with nothing checking it" shape, and the first to land on a fix made
+  the same day.** The mounted-route proof exercised only the authenticated request — on the one path
+  where the credential is the **only** control, and where a missing resolver means
+  `defaultBodyUserIdPrincipalResolver` accepts and streams, so the positive check passed identically
+  whether the wiring was right or absent. Now refuses an uncredentialed request **and asserts no
+  model invocation**. Sweeping for the same defect found **two more**: the greenfield loopback bind
+  (its only control, previously proved only by a page streaming over localhost) and the
+  refuse-on-missing-credential rule added earlier the same evening. Theme 5 now states the rule —
+  **every control is proved by its own absence** — and its timing: *adding a control creates a new
+  opportunity to under-prove it, and the round that adds it is the round least likely to notice.*
+- **Merge-order edges and release gates split into separate lists.** The dependency summary called
+  the FIX-1162 edge "a real ordering constraint on merge" while theme 1 said it gates release only —
+  enough for a coordinator to block FIX-548's merge on an owner credential operation. The same
+  defect had already occurred at issue altitude (FIX-1186 wired to block FIX-548's implementation).
+  A dependency column cannot distinguish "blocked by X" from "gates the release" from "deliberately
+  not built", so all three are now listed apart and labelled.
