@@ -186,6 +186,31 @@ describe("createWorkRecorder — file operations", () => {
     });
   });
 
+  it("keeps the unfinished call's kind while its outcome is still pending", async () => {
+    // Metadata and outcome must describe the SAME call. A Write and an Edit
+    // overlap on one path; the Write settles first. The outcome correctly stays
+    // `pending` for the Edit — so letting the Write's `created` overwrite the
+    // kind leaves a row whose outcome refers to one call and whose kind refers
+    // to another, and a run that ends there records exactly that.
+    const { files, recorder } = harness();
+    const path = "/work/src/checkout.ts";
+    recorder.observe(fileCall(path, "call_write"));
+    recorder.observe({
+      kind: "file_op_observed",
+      callId: "call_edit",
+      path,
+      op: "edited",
+      outcome: "pending",
+    });
+    recorder.observe(fileSettled(path, "applied", "call_write"));
+    await recorder.stop();
+
+    expect(files.rows.get(`${RUN}/work/src/checkout.ts`)).toMatchObject({
+      lastKind: "edited",
+      outcome: "pending",
+    });
+  });
+
   it("settles once the last in-flight call on a path comes back", async () => {
     const { files, recorder } = harness();
     const path = "/work/src/checkout.ts";
@@ -363,6 +388,80 @@ describe("createWorkRecorder — plan items", () => {
     expect(row).toMatchObject({ status: "pending" });
     // …and no transition is invented from a move that did not happen.
     expect(row).not.toHaveProperty("previousStatus");
+  });
+
+  it("does not derive a transition while another call on the item is in flight", async () => {
+    // Deriving `previousStatus` assumes the statuses this recorder saw arrived
+    // in the order they happened. Concurrent updates do not guarantee that, so
+    // settling two out of order would assert a move backwards — one the harness
+    // never described. When the ordering is unknowable, record no transition.
+    const { plan, recorder } = harness();
+    recorder.observe({
+      kind: "plan_item_observed",
+      callId: "call_a",
+      itemId: "5",
+      outcome: "pending",
+    });
+    recorder.observe({
+      kind: "plan_item_observed",
+      callId: "call_b",
+      itemId: "5",
+      outcome: "pending",
+    });
+    // `call_b` comes back first, with no `statusChange` to settle the question.
+    recorder.observe({
+      kind: "plan_item_observed",
+      callId: "call_b",
+      itemId: "5",
+      status: "completed",
+      outcome: "applied",
+    });
+    recorder.observe({
+      kind: "plan_item_observed",
+      callId: "call_a",
+      itemId: "5",
+      status: "in_progress",
+      outcome: "applied",
+    });
+    await recorder.stop();
+
+    const row = plan.rows.get(`${RUN}/5`);
+    // The current status is still recorded — the harness confirmed it.
+    expect(row).toMatchObject({ status: "in_progress" });
+    // …but no transition is invented from an arrival order we cannot trust.
+    expect(row).not.toHaveProperty("previousStatus");
+  });
+
+  it("still derives a transition when the harness reports the move itself", async () => {
+    // The authoritative `from` describes the transition, not the arrival order,
+    // so concurrency does not disqualify it.
+    const { plan, recorder } = harness();
+    recorder.observe({
+      kind: "plan_item_observed",
+      callId: "call_a",
+      itemId: "5",
+      outcome: "pending",
+    });
+    recorder.observe({
+      kind: "plan_item_observed",
+      callId: "call_b",
+      itemId: "5",
+      outcome: "pending",
+    });
+    recorder.observe({
+      kind: "plan_item_observed",
+      callId: "call_b",
+      itemId: "5",
+      status: "completed",
+      previousStatus: "in_progress",
+      outcome: "applied",
+    });
+    await recorder.stop();
+
+    expect(plan.rows.get(`${RUN}/5`)).toMatchObject({
+      status: "completed",
+      previousStatus: "in_progress",
+    });
   });
 
   it("does not invent a transition when a status is merely re-confirmed", async () => {
@@ -592,6 +691,28 @@ describe("createWorkRecorder — watching the work never breaks the work", () =>
       at: 1_700_000_000_000,
     });
     expect(String(gaps.rows.get(`${RUN}/000001`)?.reason)).toContain("could not be keyed");
+  });
+
+  it("says which record each gap stands in for, structurally", async () => {
+    // A reader correlating tool activity against these records has to know
+    // whether a gap accounts for a missing file row or a missing plan row. The
+    // pathless cases carry no `rawPath` to infer it from, and recovering it by
+    // matching words in `reason` would be grading by substring.
+    const { gaps, recorder } = harness();
+    recorder.observe(fileCall(BAD_PATH));
+    recorder.observe({
+      kind: "work_gap_observed",
+      subject: "plan",
+      reason: "a plan item was created and its id could not be read from the result",
+    });
+    recorder.observe({
+      kind: "work_gap_observed",
+      subject: "run",
+      reason: "confirmation arrived for a batch and could not be attributed",
+    });
+    await recorder.stop();
+
+    expect([...gaps.rows.values()].map((r) => r.kind)).toEqual(["file", "plan", "run"]);
   });
 
   it("records one gap row per skip, in the order they happened", async () => {

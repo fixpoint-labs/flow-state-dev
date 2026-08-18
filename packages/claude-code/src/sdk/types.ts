@@ -10,7 +10,7 @@
 import { z } from "zod";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { remoteAgentTaskHandleSchema, type RemoteAgentTaskHandle } from "../shared/handle";
-import type { ObservedFileOpKind, ObservedOutcome } from "./work-collections";
+import type { ObservedFileOpKind, ObservedGapKind, ObservedOutcome } from "./work-collections";
 
 /** Terminal result subtype reported by the SDK's `result` message. */
 export type SdkResultSubtype =
@@ -249,7 +249,17 @@ export type TranslatedEvent =
    * A tool we never claimed to record does NOT produce one of these: absence
    * there is the designed answer, and calling it a gap would bury the real ones.
    */
-  | { kind: "work_gap_observed"; reason: string; rawPath?: string }
+  | {
+      kind: "work_gap_observed";
+      /**
+       * Which record this gap stands in for. Named `subject` here only because
+       * `kind` is the union's discriminant; it lands on the row AS `kind`,
+       * which is what a reader keys off.
+       */
+      subject: ObservedGapKind;
+      reason: string;
+      rawPath?: string;
+    }
   /** A transient system/lifecycle notice (init, compaction). */
   | { kind: "status"; message: string }
   /** A terminal error outcome from the SDK result. */

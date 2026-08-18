@@ -287,6 +287,7 @@ export function drainUnsettledObservations(state: TranslateState): TranslatedEve
   for (const [, create] of state.openPlanCreates) {
     events.push({
       kind: "work_gap_observed",
+      subject: "plan",
       reason:
         `a plan item was being created when the run ended, so it never got an id to be ` +
         `recorded under${create.title !== null ? ` ("${create.title}")` : ""}`,
@@ -408,6 +409,7 @@ function observeToolCall(
     if (path === null) {
       events.push({
         kind: "work_gap_observed",
+        subject: "file",
         reason: "a file mutation arrived with no path to record it under",
       });
       return;
@@ -431,6 +433,7 @@ function observeToolCall(
     if (itemId === null) {
       events.push({
         kind: "work_gap_observed",
+        subject: "plan",
         reason: "a plan update arrived naming no item",
       });
       return;
@@ -490,6 +493,26 @@ function observeToolResult(
     // recorder knows it. A real divergence becomes a gap, never a silent
     // mis-keying.
     const resolved = readString(structured, "filePath");
+    // With an approval seam installed the executed `file_path` can differ from
+    // the call we saw, and this row is KEYED by the call-time path. When the
+    // result confirms a path we compare them and gap on divergence — but when
+    // it reports none, there is nothing to compare and settling anyway marks
+    // the original path `applied` while the harness may have written elsewhere.
+    // That is the worst version of this defect: not merely a wrong row, but a
+    // SILENT one, with the file actually written omitted entirely and no gap
+    // pointing at either. The attempt stays `pending`, which is what we know.
+    if (!isError && resolved === null && state.inputsMayBeRevised) {
+      events.push({
+        kind: "work_gap_observed",
+        subject: "file",
+        reason:
+          `a file mutation settled without the harness naming the path it wrote, and an ` +
+          `approval seam may have revised what was asked for, so the attempt could not be ` +
+          `confirmed against any path`,
+        rawPath: fileOp.path,
+      });
+      return true;
+    }
     // The harness knows whether the path already existed; the tool name does
     // not. Prefer what it reports, and fall back to the call-time kind when it
     // reports nothing — including on a failure, where there is no outcome to
@@ -518,6 +541,7 @@ function observeToolResult(
       // gap, not an absence: later updates naming it will also record nothing.
       events.push({
         kind: "work_gap_observed",
+        subject: "plan",
         reason: "a plan item was created and its id could not be read from the result",
       });
       return true;
@@ -573,6 +597,7 @@ function observeToolResult(
       // move this item and cannot confirm what became of it.
       events.push({
         kind: "work_gap_observed",
+        subject: "plan",
         reason:
           `a plan update was attempted on item ${update.itemId} and the harness reported ` +
           `updating ${reportedId} instead, so nothing was settled for either`,
@@ -621,6 +646,7 @@ function observeToolResult(
     if (unreadable.length > 0) {
       events.push({
         kind: "work_gap_observed",
+        subject: "plan",
         reason:
           `the harness changed ${unreadable.join(" and ")} on plan item ${update.itemId} ` +
           `without reporting the new value, and an approval seam may have revised what was ` +
@@ -691,6 +717,7 @@ function translateUser(
   if (discardedConfirmation && settledRecordedWork) {
     events.push({
       kind: "work_gap_observed",
+      subject: "run",
       reason:
         `${resultCount} tool results arrived in one message carrying a single structured ` +
         `result, so it could not be attributed to any of them — the settlements in that ` +

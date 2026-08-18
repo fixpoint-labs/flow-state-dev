@@ -128,7 +128,7 @@ resource collections and writes into them as it goes:
 |----------|---------------|
 | `observed-file-ops` | path the run's file-writing/editing tools touched — `lastKind`, `outcome` (`pending`/`applied`/`failed`), `lastTouchedAt`. Paths, never contents |
 | `observed-plan` | to-do item the run kept — `title`, `status`, `previousStatus`, `lastOutcome` |
-| `observed-gaps` | mutation the recorder understood and could not record, with the reason and the raw path |
+| `observed-gaps` | mutation the recorder understood and could not record — `kind` (`file`/`plan`/`run`) says which record it stands in for, plus the reason and the raw path |
 
 ```ts
 claudeCodeAgent({ sessionState: false, recordWork: true });

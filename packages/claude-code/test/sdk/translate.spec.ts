@@ -378,6 +378,54 @@ describe("translateSdkMessage — observed work", () => {
     ]);
   });
 
+  it("will not confirm a path the harness never named, under an approval seam", () => {
+    // The worst version of this defect: not a wrong row but a SILENT one. With
+    // an approval seam the executed `file_path` can differ from the call, and
+    // this row is keyed by the call. When the result names a path we compare
+    // and gap on divergence — but when it names none there is nothing to
+    // compare, and settling anyway marks the original path `applied` while the
+    // file actually written is omitted entirely, with no gap pointing at either.
+    const state = createTranslateState({ partialMessages: false, inputsMayBeRevised: true });
+    const events = [
+      writeCall,
+      {
+        type: "user" as const,
+        message: {
+          content: [{ type: "tool_result" as const, tool_use_id: "toolu_w", content: "ok" }],
+        },
+      },
+    ].flatMap((m) => translateSdkMessage(m, state));
+
+    // The attempt stays pending — no `applied` claiming the call-time path.
+    const fileEvents = events.filter((e) => e.kind === "file_op_observed");
+    expect(fileEvents).toHaveLength(1);
+    expect(fileEvents[0]).toMatchObject({ outcome: "pending" });
+    const gaps = events.filter((e) => e.kind === "work_gap_observed");
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]).toMatchObject({ subject: "file", rawPath: "/work/notes.txt" });
+  });
+
+  it("settles normally without an approval seam, where the path cannot have moved", () => {
+    // Without the seam the SDK executes exactly the input we saw, so a result
+    // that names no path confirms nothing about WHERE only because there was
+    // never a question. Gapping here would fire on every ordinary run.
+    const state = createTranslateState({ partialMessages: false, inputsMayBeRevised: false });
+    const events = [
+      writeCall,
+      {
+        type: "user" as const,
+        message: {
+          content: [{ type: "tool_result" as const, tool_use_id: "toolu_w", content: "ok" }],
+        },
+      },
+    ].flatMap((m) => translateSdkMessage(m, state));
+
+    expect(events.filter((e) => e.kind === "file_op_observed")[1]).toMatchObject({
+      outcome: "applied",
+    });
+    expect(events.filter((e) => e.kind === "work_gap_observed")).toEqual([]);
+  });
+
   it("settles under the CALL-TIME path, so one operation stays one row", () => {
     // The row's key is fixed when the call is seen. Settling under a different
     // path cannot update that row — it writes a second one, leaving a permanent
@@ -722,6 +770,10 @@ describe("translateSdkMessage — observed work", () => {
     expect(events.filter((e) => e.kind === "work_gap_observed")).toEqual([
       {
         kind: "work_gap_observed",
+        // Says WHICH record it stands in for. A pathless gap carries no
+        // `rawPath` to infer that from, so without this a reader has to match
+        // words in the reason to learn what was lost.
+        subject: "file",
         reason: "a file mutation arrived with no path to record it under",
       },
     ]);

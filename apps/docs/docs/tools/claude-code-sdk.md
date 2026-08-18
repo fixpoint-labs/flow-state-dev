@@ -166,7 +166,7 @@ framework stores and serves for you — and writes into them as the run goes:
 |---|---|
 | `observed-file-ops` | path the run's file-writing and file-editing tools touched: how it was touched, when, and whether the attempt applied |
 | `observed-plan` | item on the run's own to-do list: its wording, its current status, and the status before that |
-| `observed-gaps` | thing the recorder understood and could not record, with the reason |
+| `observed-gaps` | thing the recorder understood and could not record, with the reason and which record it stands in for |
 
 Entries are keyed as `<requestId>/<invocation>`. A workstream can host several
 runs over its life, and a single request can itself run the agent more than once
@@ -220,6 +220,11 @@ reason and the raw path where there was one.
 That collection is the difference between "this file was never touched" and "we
 saw it and could not record it". Read it alongside the other two whenever a
 record looks thinner than you expected.
+
+Each gap row carries a `kind` — `file`, `plan`, or `run` — saying which record
+it stands in for. Match on that rather than on the wording of `reason`: a gap
+for a mutation with nothing to key on has no path to identify it by, and the
+reason text is prose meant for a person.
 
 ### The plan is not a work queue
 

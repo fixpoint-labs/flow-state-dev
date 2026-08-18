@@ -27,7 +27,11 @@
  */
 import { resolve as resolvePath } from "node:path";
 import { normalizeResourcePath } from "@flow-state-dev/core/types";
-import type { ObservedFileOpKind, ObservedOutcome } from "./work-collections";
+import type {
+  ObservedFileOpKind,
+  ObservedGapKind,
+  ObservedOutcome,
+} from "./work-collections";
 import type { TranslatedEvent } from "./types";
 
 /**
@@ -120,7 +124,12 @@ export function canonicalFilePathKey(rawPath: string): string {
 
 /** One buffered file row, merged across every touch inside a flush window. */
 interface PendingFileEntry {
-  lastKind: ObservedFileOpKind;
+  /**
+   * Absent when a settlement is being held for another call still open on this
+   * path — the upsert then leaves the row's existing kind alone, so kind and
+   * outcome never describe different calls.
+   */
+  lastKind?: ObservedFileOpKind;
   outcome: ObservedOutcome;
   lastTouchedAt: number;
 }
@@ -177,6 +186,19 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
    * on this subject is unresolved, the honest outcome is "unresolved".
    */
   const outstandingCalls = new Map<string, Set<string>>();
+  /**
+   * Rows that have had two calls open at once.
+   *
+   * Deriving a previous status assumes the statuses this recorder saw arrived
+   * in the order they happened. One overlap breaks that for the REST of the
+   * row's life, not just while the overlap lasts: the last call to settle reads
+   * `confirmedStatus` written by an out-of-order sibling, so suppressing the
+   * derivation only during the overlap still lets the final settlement assert a
+   * move backwards. Once the ordering is unknowable it stays unknowable, and
+   * the harness's own `from` is the only thing that can speak to a transition
+   * afterwards.
+   */
+  const orderingUnknowable = new Set<string>();
 
   /**
    * Fold this event's outcome together with any other calls still in flight on
@@ -189,6 +211,7 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
   ): ObservedOutcome => {
     if (outcome === "pending") {
       const open = outstandingCalls.get(key) ?? new Set<string>();
+      if (open.size > 0 && !open.has(callId)) orderingUnknowable.add(key);
       open.add(callId);
       outstandingCalls.set(key, open);
       return "pending";
@@ -233,10 +256,11 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
     }
   };
 
-  const gap = (reason: string, rawPath?: string): void => {
+  const gap = (kind: ObservedGapKind, reason: string, rawPath?: string): void => {
     report(reason);
     gapOrdinal += 1;
     pendingGaps.set(`${runId}/${String(gapOrdinal).padStart(6, "0")}`, {
+      kind,
       reason,
       ...(rawPath !== undefined ? { rawPath } : {}),
       at: now(),
@@ -259,11 +283,16 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
    * write reject a window later — is what lets the gap row carry the raw value
    * that could not be keyed, which is the whole point of the gap record.
    */
-  const keyFor = (kind: string, segment: string, rawPath?: string): string | null => {
+  const keyFor = (
+    subject: ObservedGapKind,
+    label: string,
+    segment: string,
+    rawPath?: string,
+  ): string | null => {
     try {
       return normalizeResourcePath(`${runId}/${segment}`);
     } catch (err) {
-      gap(`a ${kind} could not be keyed: ${(err as Error).message}`, rawPath);
+      gap(subject, `a ${label} could not be keyed: ${(err as Error).message}`, rawPath);
       return null;
     }
   };
@@ -285,17 +314,28 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
       // have been touched. The attempt keeps the `pending` row it already has,
       // which is the honest state: asked for, not confirmed.
       gap(
+        "file",
         `a file mutation was attempted on the path the run named and the harness reported ` +
           `writing "${event.resolvedPath}" instead, so nothing was settled for either`,
         event.path,
       );
       return;
     }
-    const key = keyFor("file operation", canonical, event.path);
+    const key = keyFor("file", "file operation", canonical, event.path);
     if (key === null) return;
+    const outcome = settleAgainstOpenCalls(key, event.callId, event.outcome);
+    // A settlement HELD at `pending` because another call is still open on this
+    // path describes that other call, not this one — so this call's kind must
+    // not ride along with it. Overwriting left a row whose outcome referred to
+    // the unfinished Edit and whose kind said `created` from the Write that
+    // finished first, which is metadata and outcome describing different calls.
+    // Omitting the field leaves the upsert to keep whatever the row already
+    // had: the kind of the attempt still in flight.
+    const heldForAnotherCall = event.outcome !== "pending" && outcome === "pending";
     pendingFiles.set(key, {
-      lastKind: event.op,
-      outcome: settleAgainstOpenCalls(key, event.callId, event.outcome),
+      ...pendingFiles.get(key),
+      ...(heldForAnotherCall ? {} : { lastKind: event.op }),
+      outcome,
       lastTouchedAt: now(),
     });
     armTimer();
@@ -304,7 +344,7 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
   const observePlanItem = (
     event: Extract<TranslatedEvent, { kind: "plan_item_observed" }>,
   ): void => {
-    const key = keyFor("plan item", event.itemId);
+    const key = keyFor("plan", "plan item", event.itemId);
     if (key === null) return;
     const settled = settleAgainstOpenCalls(key, event.callId, event.outcome);
     const merged: PendingPlanEntry = {
@@ -318,7 +358,17 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
       // Deriving is a fallback, not the design: on an item's FIRST move there
       // is nothing to derive from — the create carried no status — so a derived
       // `previousStatus` is null for a transition the harness described in full.
-      const prior = event.previousStatus ?? confirmedStatus.get(event.itemId);
+      //
+      // And the fallback is ABANDONED while other calls are open on this item.
+      // Deriving assumes the statuses this recorder saw arrived in the order
+      // they happened, which concurrent updates do not guarantee: settle two
+      // out of order and the row asserts a transition backwards — a move the
+      // harness never described, in a record whose whole job is to assert only
+      // what it did. The harness's own `from` stays authoritative here, because
+      // it describes the transition rather than the arrival order.
+      const prior =
+        event.previousStatus ??
+        (orderingUnknowable.has(key) ? undefined : confirmedStatus.get(event.itemId));
       // The CURRENT status is recorded unconditionally, because the harness
       // confirmed it whether or not it changed. Gating this on a change left a
       // no-op update (`pending` → `pending`) with `status: null`, since a create
@@ -343,15 +393,17 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
   const drain = async (
     collection: UpsertableCollection,
     buffer: Map<string, Record<string, unknown>>,
-    kind: string,
-    recordFailureAsGap: boolean,
+    subject: ObservedGapKind | null,
+    label: string,
   ): Promise<void> => {
     for (const [key, update] of buffer) {
       try {
         await collection.upsert(key, update);
       } catch (err) {
-        const reason = `a ${kind} entry for "${key}" could not be written: ${(err as Error).message}`;
-        if (recordFailureAsGap) gap(reason);
+        const reason = `a ${label} entry for "${key}" could not be written: ${(err as Error).message}`;
+        // A gap row's OWN failure has nowhere left to go and would loop if it
+        // tried, so it reports rather than raising another gap.
+        if (subject !== null) gap(subject, reason);
         else report(reason);
       }
     }
@@ -371,14 +423,14 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
     if (fileBatch.size === 0 && planBatch.size === 0 && pendingGaps.size === 0) return;
 
     writing = writing.then(async () => {
-      await drain(files, fileBatch, "file operation", true);
-      await drain(plan, planBatch, "plan item", true);
+      await drain(files, fileBatch, "file", "file operation");
+      await drain(plan, planBatch, "plan", "plan item");
       // Gaps LAST, so a gap raised by the two drains above is in this batch
       // rather than waiting for the next window — and, at the final flush,
       // rather than never being written at all.
       const gapBatch = new Map(pendingGaps);
       pendingGaps.clear();
-      if (gaps !== undefined) await drain(gaps, gapBatch, "gap", false);
+      if (gaps !== undefined) await drain(gaps, gapBatch, null, "gap");
     });
     await writing;
   };
@@ -388,9 +440,13 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
       try {
         if (event.kind === "file_op_observed") observeFileOp(event);
         else if (event.kind === "plan_item_observed") observePlanItem(event);
-        else if (event.kind === "work_gap_observed") gap(event.reason, event.rawPath);
+        else if (event.kind === "work_gap_observed")
+          gap(event.subject, event.reason, event.rawPath);
       } catch (err) {
-        gap(`an observed ${event.kind} could not be buffered: ${(err as Error).message}`);
+        gap(
+          event.kind === "plan_item_observed" ? "plan" : "file",
+          `an observed ${event.kind} could not be buffered: ${(err as Error).message}`,
+        );
       }
     },
     flush,

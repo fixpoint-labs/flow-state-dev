@@ -779,8 +779,30 @@ describe("claudeCodeAgent — recordWork", () => {
     // construction, so a constant is honest — and must stay stable, or every
     // run would land in a different namespace.
     const ctx = { request: { identity: { id: "req_x" } } };
-    expect(runNamespace(ctx as never)).toBe("req_x/0");
+    expect(runNamespace(ctx as never)).toBe("req_x/0#0");
     expect(runNamespace(ctx as never)).toBe(runNamespace(ctx as never));
+  });
+
+  it("separates the ATTEMPTS of a retried block, which re-enter at one path", async () => {
+    // `executeBlock`'s retry loop increments an attempt counter and rebuilds the
+    // instance id from `(request, path, attempt)` while leaving the PATH
+    // untouched — so a retried run re-enters at the same path, opens a second
+    // recorder, and restarts its gap ordinals at 1. Keying on the path alone
+    // used two thirds of the framework's own invocation identity, and the
+    // earlier attempt's rows lost to the later one.
+    const atPath = (attempt: number) =>
+      runNamespace({
+        request: { identity: { id: "req_retry" } },
+        _blockIdentity: { blockPath: "root/tool(claude-code-agent,0:call_a)", attempt },
+      } as never);
+
+    expect(atPath(0)).not.toBe(atPath(1));
+    // Both still begin with the request id, so one prefix still reads
+    // everything that request did — retries included.
+    for (const ns of [atPath(0), atPath(1)]) {
+      expect(ns.startsWith("req_retry/")).toBe(true);
+      expect(ns.split("/")).toHaveLength(2);
+    }
   });
 
   it("records an interrupted plan create as a gap rather than losing it", async () => {

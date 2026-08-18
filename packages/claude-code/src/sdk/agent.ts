@@ -247,15 +247,23 @@ export function forwardSignalToController(
  * impossible to correlate back to the request that caused it.
  */
 export function runNamespace(ctx: BlockContext): string {
-  const path = (ctx as { _blockIdentity?: { blockPath?: string } })
-    ._blockIdentity?.blockPath;
+  const identity = (
+    ctx as { _blockIdentity?: { blockPath?: string; attempt?: number } }
+  )._blockIdentity;
+  const path = identity?.blockPath;
   // A context without a block identity (a direct `execute`, a mock) has exactly
   // one invocation by construction, so a constant is the honest discriminator.
-  const invocation =
-    typeof path === "string" && path.length > 0
-      ? path.replace(/\//g, ".")
-      : "0";
-  return `${ctx.request.identity.id}/${invocation}`;
+  const step =
+    typeof path === "string" && path.length > 0 ? path.replace(/\//g, ".") : "0";
+  // …and the ATTEMPT, because a retried block re-enters at the SAME path.
+  // `executeBlock`'s retry loop increments an attempt counter and rebuilds the
+  // instance id from `(request, path, attempt)` while leaving the path
+  // untouched — so the framework's own invocation identity has three parts and
+  // this had two. Two attempts of one retried run would otherwise share a
+  // namespace: paths overwritten, and gap ordinals (which restart at 1 per
+  // recorder) clobbering the earlier attempt's outright.
+  const attempt = identity?.attempt ?? (ctx as { attempt?: number }).attempt ?? 0;
+  return `${ctx.request.identity.id}/${step}#${attempt}`;
 }
 
 function openWorkRecorder(ctx: BlockContext): WorkRecorder | null {

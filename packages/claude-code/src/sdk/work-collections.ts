@@ -141,6 +141,20 @@ export const observedGapsCollection = defineResourceCollection({
   scope: "session",
   prefetchMode: "lazy",
   stateSchema: z.object({
+    /**
+     * WHICH record this gap stands in for — a closed set, deliberately.
+     *
+     * A reader correlating a run's tool activity against these records has to
+     * know whether a gap accounts for a missing file row or a missing plan row,
+     * and the pathless cases (a mutation with nothing to key on) carry no
+     * `rawPath` to infer it from. Recovering that by matching words in `reason`
+     * would be grading by substring — the exact failure this record exists to
+     * make unnecessary — so it is a field with three values rather than prose.
+     *
+     * `run` covers a gap that belongs to neither record specifically, such as
+     * confirmation arriving for a batch of calls with no way to attribute it.
+     */
+    kind: z.enum(["file", "plan", "run"]).nullable().default(null),
     /** What could not be recorded, in framework vocabulary. */
     reason: z.string().nullable().default(null),
     /** The path as the run addressed it, when the gap concerns one. */
@@ -150,9 +164,12 @@ export const observedGapsCollection = defineResourceCollection({
   }),
   client: {
     state: { read: true },
-    expose: ["reason", "rawPath", "at"],
+    expose: ["kind", "reason", "rawPath", "at"],
   },
 });
+
+/** Which record a gap stands in for. See the collection's `kind` field. */
+export type ObservedGapKind = "file" | "plan" | "run";
 
 /** The run's own to-do list. See {@link observedFileOpsCollection} for the pattern/prefetch note. */
 export const observedPlanCollection = defineResourceCollection({
