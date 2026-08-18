@@ -297,9 +297,10 @@ watching for exactly that.**
 
 - *"The written-down class entry is what stops the fifth."* The fifth arrived one round later,
   produced by the fourth's own repair.
-- *"Self-inflicted regression is a closed category with one member."* Here is the second, from the
-  same repair lineage — round 10's per-mutation spelling test, which fixed the fifth and opened
-  the seventh.
+- *"Self-inflicted regression is a closed category with one member."* Falsified **three times in
+  the round it was written** — the seventh gap direction from round 10's per-mutation spelling
+  test, the tie over-rejection from the aggregate-row repair, and ground truth discarded by the
+  indeterminate-`Write` repair. A bound of one, wrong by three, inside a single round.
 - And one placed here rather than by the coordinator: *"every remaining finding lives in a branch
   the real runs do not reach."* Falsified this round by two assertions that cannot fire at all —
   a cell the criterion did not have.
