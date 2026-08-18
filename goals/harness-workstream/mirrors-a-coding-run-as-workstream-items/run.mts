@@ -112,7 +112,7 @@ const AGENT_BLOCK_NAME = "claude-code-agent";
 /** The one assignee this board routes to. */
 const ASSIGNEE = "implement";
 const USER_ID = "goal-user";
-const PARENT_SESSION_ID = `sess_lab133_${Date.now()}`;
+const PARENT_SESSION_ID = `sess_harness_coding_${Date.now()}`;
 
 /** How long to wait for the workstream to stop being `active`. */
 const RUN_TIMEOUT_MS = Number(process.env.GOAL_RUN_TIMEOUT_MS ?? 300_000);
@@ -188,7 +188,7 @@ await runGoal(async () => {
   // The run writes a real file. It goes to a throwaway directory addressed by
   // absolute path, never the repo — and the goal never reads it back, because
   // reading the working tree is exactly the anti-game this check forbids.
-  const workDir = mkdtempSync(join(tmpdir(), "lab133-"));
+  const workDir = mkdtempSync(join(tmpdir(), "harness-coding-"));
   const dbFile = join(workDir, "goal.sqlite");
   const targetPath = join(workDir, fixture.outputFileName);
 

@@ -824,6 +824,126 @@ describe("claudeCodeAgent — recordWork", () => {
     expect(String(gapRows[0].state.reason)).toContain("Create the file");
   });
 
+  it("delivers a whole translated message to the recorder even if emission throws", async () => {
+    // Translation consumes a message and clears its correlation maps for every
+    // call in it, so the events are then the only record of what those calls
+    // did. Delivering them one at a time, interleaved with the emission await,
+    // made every event after the first conditional on item persistence
+    // succeeding — one rejection and a settled `TaskCreate` vanished from
+    // `observed-plan` AND `observed-gaps`, because the end-of-run drain finds
+    // no open create either.
+    //
+    // The script puts a settled create SECOND in one message, and emission of
+    // the first event rejects.
+    const batched: SdkMessageLike[] = [
+      {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_c",
+              name: "TaskCreate",
+              input: { subject: "Create the file", description: "…", activeForm: "Creating" },
+            },
+          ],
+        },
+      },
+      {
+        type: "user",
+        tool_use_result: { task: { id: "5", subject: "Create the file" } },
+        message: {
+          content: [
+            { type: "tool_result", tool_use_id: "toolu_c", content: "Task #5 created" },
+          ],
+        },
+      },
+      RESULT_OK,
+    ];
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery(batched),
+      recordWork: true,
+      includePartialMessages: false,
+    });
+    const runtime = await createTestContext({ declaredResources: block.declaredResources });
+
+    const realEmit = runtime.ctx.response.emit.bind(runtime.ctx.response);
+    (runtime.ctx.response as { emit: unknown }).emit = async (event: {
+      type?: string;
+      item?: { type?: string };
+    }) => {
+      // Reject on the tool_output the settling message emits FIRST, so the
+      // plan event behind it in the same batch would be stranded.
+      if (event?.type === "item.done" && event.item?.type === "tool_output") {
+        throw new Error("the request record rejected the tool item");
+      }
+      return realEmit(event as never);
+    };
+
+    await expect(
+      block.config.execute?.({ prompt: "go" }, runtime.ctx as never),
+    ).rejects.toThrow();
+
+    const resources = runtime.ctx.resources as unknown as Record<
+      string,
+      { list(): Promise<Array<{ path: string; state: Record<string, unknown> }>> }
+    >;
+    // The create is in the record. Without batch-first delivery it is in
+    // neither collection.
+    const planRows = await resources["observed-plan"].list();
+    expect(planRows).toHaveLength(1);
+    expect(planRows[0].state).toMatchObject({ title: "Create the file" });
+  });
+
+  it("marks inputs revisable exactly when an approval seam is installed", async () => {
+    // The translation layer's `inputsMayBeRevised` is only as good as the wire
+    // that sets it, and the flag is invisible from outside — so the WIRING gets
+    // its own guard, at the level where the option lives.
+    const rewording: SdkMessageLike[] = [
+      {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_u",
+              name: "TaskUpdate",
+              input: { taskId: "5", subject: "What the run asked for" },
+            },
+          ],
+        },
+      },
+      {
+        type: "user",
+        tool_use_result: { success: true, taskId: "5", updatedFields: ["subject"] },
+        message: {
+          content: [{ type: "tool_result", tool_use_id: "toolu_u", content: "Updated task #5" }],
+        },
+      },
+      RESULT_OK,
+    ];
+    const gapsFor = async (options: Partial<Parameters<typeof claudeCodeAgent>[0]>) => {
+      const block = claudeCodeAgent({
+        resolveClaudeAgent: scriptedQuery(rewording),
+        recordWork: true,
+        includePartialMessages: false,
+        ...options,
+      });
+      const runtime = await createTestContext({ declaredResources: block.declaredResources });
+      await block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+      const resources = runtime.ctx.resources as unknown as Record<
+        string,
+        { list(): Promise<Array<{ path: string; state: Record<string, unknown> }>> }
+      >;
+      return resources["observed-gaps"].list();
+    };
+
+    // With the seam, the executed input may differ from the call we saw.
+    expect(await gapsFor({ onToolApproval: async () => ({ decision: "allow" }) })).toHaveLength(1);
+    // Without it, the call-time value IS what ran.
+    expect(await gapsFor({})).toHaveLength(0);
+  });
+
   it("still shuts the recorder down when item finalization throws", async () => {
     // The third variation on one theme: the durability machinery is fine and
     // something UPSTREAM of it stops it running. Shutdown is in a `finally` for

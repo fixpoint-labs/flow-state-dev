@@ -195,6 +195,15 @@ export type TranslatedEvent =
   | {
       kind: "file_op_observed";
       /**
+       * The tool call this belongs to. The RECORD is keyed by subject (the
+       * path), but mutations are per call, and two calls can be in flight on
+       * one path at once. Without this the recorder cannot tell whose
+       * settlement it is holding, and the earlier call's result settles a row
+       * that a later, still-unfinished call is also using — hiding an
+       * unresolved mutation behind an `applied`.
+       */
+      callId: string;
+      /**
        * The path as the run addressed it AT CALL TIME; the recorder
        * canonicalizes it into the row's key. Stable across the attempt and its
        * settlement, which is what keeps one operation to one row.
@@ -218,6 +227,8 @@ export type TranslatedEvent =
    */
   | {
       kind: "plan_item_observed";
+      /** The tool call this belongs to. See `file_op_observed`'s `callId`. */
+      callId: string;
       itemId: string;
       title?: string;
       status?: string;

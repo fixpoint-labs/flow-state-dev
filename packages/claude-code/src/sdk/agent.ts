@@ -390,6 +390,10 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
 
       const translateState = createTranslateState({
         partialMessages: includePartialMessages,
+        // Only this seam can hand the SDK an input other than the one the
+        // `tool_use` block showed, so it is the only reason a call-time value
+        // might not be what actually executed.
+        inputsMayBeRevised: onToolApproval !== undefined,
       });
       const emitState = createEmitState();
       const recorder = recordWork ? openWorkRecorder(ctx) : null;
@@ -425,8 +429,20 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
             if (typeof sid === "string" && sid !== "") newSessionId = sid;
 
             const events = translateSdkMessage(message, translateState);
+            // DELIVERY IS STRUCTURAL, like shutdown. Translation consumed this
+            // whole message and cleared its correlation maps for every call in
+            // it, so the events are now the only remaining record of what those
+            // calls did. Interleaving delivery with the emission `await` below
+            // made every event after the first one conditional on item
+            // persistence succeeding: one rejection and the rest were lost with
+            // nothing left to reconstruct them from — a settled `TaskCreate`
+            // would vanish from `observed-plan` AND `observed-gaps`, because the
+            // end-of-run drain finds no open create either.
+            //
+            // `observe` is synchronous and never throws, so handing it the whole
+            // batch first closes the window rather than guarding it.
+            for (const event of events) recorder?.observe(event);
             for (const event of events) {
-              recorder?.observe(event);
               await emitTranslatedEvent(event, ctx, emitState, name);
               if (event.kind === "result") {
                 resultSubtype = event.subtype;

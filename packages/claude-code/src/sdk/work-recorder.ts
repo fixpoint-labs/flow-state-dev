@@ -163,6 +163,44 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
    * exists to avoid, and the recorder is the only writer of these rows.
    */
   const confirmedStatus = new Map<string, string>();
+  /**
+   * Unsettled call ids per row key.
+   *
+   * A row is keyed by its SUBJECT — a path, a task id — while mutations are per
+   * CALL, and two calls can be in flight on one subject at once. Without this,
+   * the first result to arrive settles the row that the second call is still
+   * using, so an interrupted second call leaves an `applied` row and its
+   * unresolved mutation disappears from the readback entirely.
+   *
+   * A row therefore only leaves `pending` when nothing is still outstanding on
+   * it. That is the same can't-tell rule as everywhere else: while a mutation
+   * on this subject is unresolved, the honest outcome is "unresolved".
+   */
+  const outstandingCalls = new Map<string, Set<string>>();
+
+  /**
+   * Fold this event's outcome together with any other calls still in flight on
+   * the same row. Returns what the row's outcome should actually become.
+   */
+  const settleAgainstOpenCalls = (
+    key: string,
+    callId: string,
+    outcome: ObservedOutcome,
+  ): ObservedOutcome => {
+    if (outcome === "pending") {
+      const open = outstandingCalls.get(key) ?? new Set<string>();
+      open.add(callId);
+      outstandingCalls.set(key, open);
+      return "pending";
+    }
+    const open = outstandingCalls.get(key);
+    open?.delete(callId);
+    // Someone else is still mid-flight on this subject, so the row is not
+    // settled however this particular call ended.
+    if (open !== undefined && open.size > 0) return "pending";
+    outstandingCalls.delete(key);
+    return outcome;
+  };
 
   let timer: ReturnType<typeof setTimeout> | null = null;
   /** Serializes flushes so a timer flush and the final flush cannot interleave. */
@@ -257,7 +295,7 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
     if (key === null) return;
     pendingFiles.set(key, {
       lastKind: event.op,
-      outcome: event.outcome,
+      outcome: settleAgainstOpenCalls(key, event.callId, event.outcome),
       lastTouchedAt: now(),
     });
     armTimer();
@@ -268,9 +306,10 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
   ): void => {
     const key = keyFor("plan item", event.itemId);
     if (key === null) return;
+    const settled = settleAgainstOpenCalls(key, event.callId, event.outcome);
     const merged: PendingPlanEntry = {
       ...pendingPlan.get(key),
-      lastOutcome: event.outcome,
+      lastOutcome: settled,
       lastTouchedAt: now(),
     };
     if (event.title !== undefined) merged.title = event.title;

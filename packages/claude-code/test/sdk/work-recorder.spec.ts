@@ -82,14 +82,26 @@ function harness(overrides: { runId?: string; flushIntervalMs?: number } = {}) {
   return { files, plan, gaps, notes, recorder };
 }
 
-const fileCall = (path: string): TranslatedEvent => ({
+/**
+ * One call's attempt on a path. `callId` defaults to the path, so a fixture
+ * that does not care about concurrency still gets ONE stable identity per
+ * subject — and a fixture that does care can name two calls on one path, which
+ * is the case the recorder has to keep apart.
+ */
+const fileCall = (path: string, callId = `call:${path}`): TranslatedEvent => ({
   kind: "file_op_observed",
+  callId,
   path,
   op: "created",
   outcome: "pending",
 });
-const fileSettled = (path: string, outcome: "applied" | "failed"): TranslatedEvent => ({
+const fileSettled = (
+  path: string,
+  outcome: "applied" | "failed",
+  callId = `call:${path}`,
+): TranslatedEvent => ({
   kind: "file_op_observed",
+  callId,
   path,
   op: "created",
   outcome,
@@ -155,6 +167,39 @@ describe("createWorkRecorder — file operations", () => {
     await recorder.stop();
   });
 
+  it("keeps a row unsettled while another call on the same path is in flight", async () => {
+    // The record is keyed by SUBJECT (the path); mutations are per CALL. Two
+    // calls can be open on one path at once, and the first result to arrive
+    // must not settle the row the second is still using — otherwise an
+    // interrupted second call leaves an `applied` row and its unresolved
+    // mutation disappears from the readback entirely.
+    const { files, recorder } = harness();
+    const path = "/work/src/checkout.ts";
+    recorder.observe(fileCall(path, "call_a"));
+    recorder.observe(fileCall(path, "call_b"));
+    recorder.observe(fileSettled(path, "applied", "call_a"));
+    await recorder.stop();
+
+    // `call_b` never came back, so the path still has an unresolved mutation.
+    expect(files.rows.get(`${RUN}/work/src/checkout.ts`)).toMatchObject({
+      outcome: "pending",
+    });
+  });
+
+  it("settles once the last in-flight call on a path comes back", async () => {
+    const { files, recorder } = harness();
+    const path = "/work/src/checkout.ts";
+    recorder.observe(fileCall(path, "call_a"));
+    recorder.observe(fileCall(path, "call_b"));
+    recorder.observe(fileSettled(path, "applied", "call_a"));
+    recorder.observe(fileSettled(path, "applied", "call_b"));
+    await recorder.stop();
+
+    expect(files.rows.get(`${RUN}/work/src/checkout.ts`)).toMatchObject({
+      outcome: "applied",
+    });
+  });
+
   it("keeps two runs in one workstream apart", async () => {
     // A workstream session is REUSED across runs, so without the run id in the
     // key the second run's entry would merge into the first run's row by path
@@ -209,12 +254,14 @@ describe("canonicalFilePathKey", () => {
 describe("createWorkRecorder — plan items", () => {
   const created = (itemId: string, title: string): TranslatedEvent => ({
     kind: "plan_item_observed",
+    callId: `call:create:${itemId}`,
     itemId,
     title,
     outcome: "applied",
   });
   const moved = (itemId: string, status: string): TranslatedEvent => ({
     kind: "plan_item_observed",
+    callId: `call:move:${itemId}:${status}`,
     itemId,
     status,
     outcome: "applied",
@@ -259,6 +306,7 @@ describe("createWorkRecorder — plan items", () => {
     recorder.observe(created("5", "Create the file"));
     recorder.observe({
       kind: "plan_item_observed",
+      callId: "call:inline",
       itemId: "5",
       status: "in_progress",
       previousStatus: "pending",
@@ -278,6 +326,7 @@ describe("createWorkRecorder — plan items", () => {
     await recorder.flush();
     recorder.observe({
       kind: "plan_item_observed",
+      callId: "call:inline",
       itemId: "5",
       status: "completed",
       // The harness disagrees with what this recorder last saw. It is the one
@@ -302,6 +351,7 @@ describe("createWorkRecorder — plan items", () => {
     recorder.observe(created("5", "Create the file"));
     recorder.observe({
       kind: "plan_item_observed",
+      callId: "call:inline",
       itemId: "5",
       status: "pending",
       previousStatus: "pending",
@@ -430,6 +480,7 @@ describe("createWorkRecorder — watching the work never breaks the work", () =>
     recorder.observe(fileCall("/work/notes.txt"));
     recorder.observe({
       kind: "file_op_observed",
+      callId: "call:inline",
       path: "/work/notes.txt",
       resolvedPath: "/work/elsewhere/notes.txt",
       op: "created",
@@ -451,6 +502,7 @@ describe("createWorkRecorder — watching the work never breaks the work", () =>
     const { gaps, recorder } = harness();
     recorder.observe({
       kind: "file_op_observed",
+      callId: "call:inline",
       path: "/work/./notes.txt",
       resolvedPath: "/work/notes.txt",
       op: "created",

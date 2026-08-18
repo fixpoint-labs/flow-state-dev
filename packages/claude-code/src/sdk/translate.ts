@@ -185,6 +185,20 @@ export interface TranslateState {
    * `assistant` message must NOT re-emit them — it only closes the open items.
    */
   readonly partialMessages: boolean;
+  /**
+   * Whether a tool's input can differ from the call we saw.
+   *
+   * Only an `onToolApproval` seam does that: it becomes the SDK's `canUseTool`,
+   * which may return an `updatedInput`, and the tool then executes something
+   * the `tool_use` block never showed. Without that seam the call-time input IS
+   * what ran, so a call-time value is confirmed by construction.
+   *
+   * The distinction matters where the harness confirms that a field CHANGED
+   * without reporting what to — `updatedFields` does exactly that. With no
+   * approval seam the requested value is the answer; with one, it is a guess,
+   * and a guess is not something this record is allowed to label as confirmed.
+   */
+  readonly inputsMayBeRevised: boolean;
   /** File mutations whose call was seen, awaiting the result that settles them. */
   readonly openFileOps: Map<string, { path: string; op: ObservedFileOpKind }>;
   /**
@@ -205,6 +219,8 @@ export interface TranslateState {
 export interface TranslateStateOptions {
   /** Mirrors the SDK's `includePartialMessages`. Default `true`. */
   partialMessages?: boolean;
+  /** See {@link TranslateState.inputsMayBeRevised}. Default `false`. */
+  inputsMayBeRevised?: boolean;
 }
 
 /** Create a fresh, empty {@link TranslateState} for one run. */
@@ -213,6 +229,7 @@ export function createTranslateState(options: TranslateStateOptions = {}): Trans
     openTools: new Set<string>(),
     openSubagents: new Set<string>(),
     partialMessages: options.partialMessages ?? true,
+    inputsMayBeRevised: options.inputsMayBeRevised ?? false,
     openFileOps: new Map<string, { path: string; op: ObservedFileOpKind }>(),
     openPlanCreates: new Map<string, { title: string | null }>(),
     openPlanUpdates: new Map<
@@ -396,7 +413,13 @@ function observeToolCall(
       return;
     }
     state.openFileOps.set(block.id, { path, op: fileOp });
-    events.push({ kind: "file_op_observed", path, op: fileOp, outcome: "pending" });
+    events.push({
+      kind: "file_op_observed",
+      callId: block.id,
+      path,
+      op: fileOp,
+      outcome: "pending",
+    });
     return;
   }
   if (block.name === PLAN_CREATE_TOOL) {
@@ -426,7 +449,7 @@ function observeToolCall(
     // Attempted, not applied: the harness may still refuse the transition, and
     // writing the requested status now would be recording a move that never
     // happened.
-    events.push({ kind: "plan_item_observed", itemId, outcome: "pending" });
+    events.push({ kind: "plan_item_observed", callId: block.id, itemId, outcome: "pending" });
   }
 }
 
@@ -476,6 +499,7 @@ function observeToolResult(
       : FILE_OUTPUT_KINDS.get(readString(structured, "type") ?? "");
     events.push({
       kind: "file_op_observed",
+      callId,
       path: fileOp.path,
       op: reportedKind ?? fileOp.op,
       outcome: isError ? "failed" : "applied",
@@ -506,6 +530,7 @@ function observeToolResult(
     const title = readNestedString(structured, "task", "subject") ?? create.title;
     events.push({
       kind: "plan_item_observed",
+      callId,
       itemId,
       ...(title !== null ? { title } : {}),
       outcome: "applied",
@@ -523,7 +548,12 @@ function observeToolResult(
     if (isError || readBool(structured, "success") === false) {
       // Neither the status nor the wording is carried: claiming a move the
       // harness refused is worse than recording nothing about it.
-      events.push({ kind: "plan_item_observed", itemId: update.itemId, outcome: "failed" });
+      events.push({
+        kind: "plan_item_observed",
+        callId,
+        itemId: update.itemId,
+        outcome: "failed",
+      });
       return true;
     }
 
@@ -557,14 +587,50 @@ function observeToolResult(
     const movedFrom = readNestedString(structured, "statusChange", "from");
     const movedTo = readNestedString(structured, "statusChange", "to");
     const applied = readAppliedFields(structured);
+    /**
+     * `updatedFields` establishes THAT a field changed, never WHAT it changed
+     * to. When the input could have been revised on the way to the tool, the
+     * requested value is therefore not the confirmed one — the harness has told
+     * us the field moved and left us unable to say where. Recording the request
+     * would be the round-6 rule applied one notch too far: a stale value under
+     * a confirmed label.
+     */
+    const changedButUnreadable = (field: string): boolean =>
+      state.inputsMayBeRevised && applied?.has(field) === true;
+
     // With no `statusChange` and no opinion from `updatedFields`, the requested
     // status is the best available answer. With an explicit opinion that status
     // was NOT among the applied fields, the right answer is to record none.
-    const status = movedTo ?? (applied?.has("status") === false ? null : update.status);
-    const title = applied?.has("subject") === false ? null : update.title;
+    const status =
+      movedTo ??
+      (applied?.has("status") === false || changedButUnreadable("status")
+        ? null
+        : update.status);
+    const title =
+      applied?.has("subject") === false || changedButUnreadable("subject")
+        ? null
+        : update.title;
+
+    // Uncertain is fine; uncertain-while-looking-certain is not. The row keeps
+    // whatever wording it already had, which we now know is out of date, so the
+    // gap is what stops a reader trusting it.
+    const unreadable = [
+      ...(changedButUnreadable("subject") ? ["its wording"] : []),
+      ...(movedTo === null && changedButUnreadable("status") ? ["its status"] : []),
+    ];
+    if (unreadable.length > 0) {
+      events.push({
+        kind: "work_gap_observed",
+        reason:
+          `the harness changed ${unreadable.join(" and ")} on plan item ${update.itemId} ` +
+          `without reporting the new value, and an approval seam may have revised what was ` +
+          `asked for, so the recorded item is out of date`,
+      });
+    }
 
     events.push({
       kind: "plan_item_observed",
+      callId,
       itemId: update.itemId,
       ...(title !== null ? { title } : {}),
       ...(status !== null ? { status } : {}),

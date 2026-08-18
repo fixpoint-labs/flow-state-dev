@@ -361,8 +361,20 @@ describe("translateSdkMessage — observed work", () => {
       (e) => e.kind === "file_op_observed",
     );
     expect(events).toEqual([
-      { kind: "file_op_observed", path: "/work/notes.txt", op: "created", outcome: "pending" },
-      { kind: "file_op_observed", path: "/work/notes.txt", op: "created", outcome: "applied" },
+      {
+        kind: "file_op_observed",
+        callId: "toolu_w",
+        path: "/work/notes.txt",
+        op: "created",
+        outcome: "pending",
+      },
+      {
+        kind: "file_op_observed",
+        callId: "toolu_w",
+        path: "/work/notes.txt",
+        op: "created",
+        outcome: "applied",
+      },
     ]);
   });
 
@@ -488,8 +500,20 @@ describe("translateSdkMessage — observed work", () => {
       },
     ]).filter((e) => e.kind === "file_op_observed");
     expect(events).toEqual([
-      { kind: "file_op_observed", path: "/work/notes.txt", op: "edited", outcome: "pending" },
-      { kind: "file_op_observed", path: "/work/notes.txt", op: "edited", outcome: "applied" },
+      {
+        kind: "file_op_observed",
+        callId: "toolu_e",
+        path: "/work/notes.txt",
+        op: "edited",
+        outcome: "pending",
+      },
+      {
+        kind: "file_op_observed",
+        callId: "toolu_e",
+        path: "/work/notes.txt",
+        op: "edited",
+        outcome: "applied",
+      },
     ]);
   });
 
@@ -512,6 +536,7 @@ describe("translateSdkMessage — observed work", () => {
     ]).filter((e) => e.kind === "file_op_observed");
     expect(events[1]).toEqual({
       kind: "file_op_observed",
+      callId: "toolu_w",
       path: "/work/notes.txt",
       op: "created",
       outcome: "failed",
@@ -621,7 +646,13 @@ describe("translateSdkMessage — observed work", () => {
       },
     ]).filter((e) => e.kind === "plan_item_observed");
     expect(events).toEqual([
-      { kind: "plan_item_observed", itemId: "5", title: "Create notes.txt", outcome: "applied" },
+      {
+        kind: "plan_item_observed",
+        callId: "toolu_c",
+        itemId: "5",
+        title: "Create notes.txt",
+        outcome: "applied",
+      },
     ]);
   });
 
@@ -642,7 +673,13 @@ describe("translateSdkMessage — observed work", () => {
       },
     ]).filter((e) => e.kind === "plan_item_observed");
     expect(events).toEqual([
-      { kind: "plan_item_observed", itemId: "5", title: "Create notes.txt", outcome: "applied" },
+      {
+        kind: "plan_item_observed",
+        callId: "toolu_c",
+        itemId: "5",
+        title: "Create notes.txt",
+        outcome: "applied",
+      },
     ]);
   });
 
@@ -734,9 +771,10 @@ describe("translateSdkMessage — observed work", () => {
       },
     ]).filter((e) => e.kind === "plan_item_observed");
     expect(events).toEqual([
-      { kind: "plan_item_observed", itemId: "5", outcome: "pending" },
+      { kind: "plan_item_observed", callId: "toolu_u", itemId: "5", outcome: "pending" },
       {
         kind: "plan_item_observed",
+        callId: "toolu_u",
         itemId: "5",
         status: "in_progress",
         // BOTH ends of the move, because the fixture carries both.
@@ -815,7 +853,12 @@ describe("translateSdkMessage — observed work", () => {
         },
       },
     ]).filter((e) => e.kind === "plan_item_observed");
-    expect(events[1]).toEqual({ kind: "plan_item_observed", itemId: "5", outcome: "failed" });
+    expect(events[1]).toEqual({
+      kind: "plan_item_observed",
+      callId: "toolu_u",
+      itemId: "5",
+      outcome: "failed",
+    });
   });
 
   it("records the status the harness MOVED TO, not the one that was requested", () => {
@@ -856,6 +899,77 @@ describe("translateSdkMessage — observed work", () => {
       previousStatus: "in_progress",
       outcome: "applied",
     });
+  });
+
+  it("will not label a re-wording confirmed when the value is unreadable", () => {
+    // `updatedFields` establishes THAT the subject changed, never WHAT to. With
+    // an approval seam in play the requested value is not the executed one, so
+    // recording it would be a stale value under a confirmed label. Uncertain is
+    // the honest answer, and the gap is what stops a reader trusting the
+    // wording the row still carries.
+    const state = createTranslateState({ partialMessages: false, inputsMayBeRevised: true });
+    const script: SdkMessageLike[] = [
+      {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_u",
+              name: "TaskUpdate",
+              input: { taskId: "5", subject: "What the run asked for" },
+            },
+          ],
+        },
+      },
+      {
+        type: "user",
+        tool_use_result: { success: true, taskId: "5", updatedFields: ["subject"] },
+        message: {
+          content: [{ type: "tool_result", tool_use_id: "toolu_u", content: "Updated task #5" }],
+        },
+      },
+    ];
+    const events = script.flatMap((m) => translateSdkMessage(m, state));
+    const settled = events.filter((e) => e.kind === "plan_item_observed")[1];
+    expect(settled).not.toHaveProperty("title");
+    const gaps = events.filter((e) => e.kind === "work_gap_observed");
+    expect(gaps).toHaveLength(1);
+    expect((gaps[0] as { reason: string }).reason).toContain("its wording");
+  });
+
+  it("treats the requested value as confirmed when nothing can revise it", () => {
+    // Without an approval seam the SDK executes exactly the input the
+    // `tool_use` block showed, so the call-time value IS the confirmed one —
+    // and refusing to record it would lose real information for no reason.
+    const state = createTranslateState({ partialMessages: false, inputsMayBeRevised: false });
+    const script: SdkMessageLike[] = [
+      {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_u",
+              name: "TaskUpdate",
+              input: { taskId: "5", subject: "What the run asked for" },
+            },
+          ],
+        },
+      },
+      {
+        type: "user",
+        tool_use_result: { success: true, taskId: "5", updatedFields: ["subject"] },
+        message: {
+          content: [{ type: "tool_result", tool_use_id: "toolu_u", content: "Updated task #5" }],
+        },
+      },
+    ];
+    const events = script.flatMap((m) => translateSdkMessage(m, state));
+    expect(events.filter((e) => e.kind === "plan_item_observed")[1]).toMatchObject({
+      title: "What the run asked for",
+    });
+    expect(events.filter((e) => e.kind === "work_gap_observed")).toEqual([]);
   });
 
   it("does not record a re-wording the harness left unapplied", () => {
@@ -954,7 +1068,9 @@ describe("translateSdkMessage — observed work", () => {
     ]);
     // The attempt stays pending; no `applied` event carries item 9's data.
     const plan = events.filter((e) => e.kind === "plan_item_observed");
-    expect(plan).toEqual([{ kind: "plan_item_observed", itemId: "5", outcome: "pending" }]);
+    expect(plan).toEqual([
+      { kind: "plan_item_observed", callId: "toolu_u", itemId: "5", outcome: "pending" },
+    ]);
     expect(events.filter((e) => e.kind === "work_gap_observed")).toHaveLength(1);
   });
 
@@ -1141,7 +1257,12 @@ describe("translateSdkMessage — observed work", () => {
         },
       },
     ]).filter((e) => e.kind === "plan_item_observed");
-    expect(events[1]).toEqual({ kind: "plan_item_observed", itemId: "5", outcome: "failed" });
+    expect(events[1]).toEqual({
+      kind: "plan_item_observed",
+      callId: "toolu_u",
+      itemId: "5",
+      outcome: "failed",
+    });
     expect(events[1]).not.toHaveProperty("title");
   });
 
@@ -1174,7 +1295,12 @@ describe("translateSdkMessage — observed work", () => {
         },
       },
     ]).filter((e) => e.kind === "plan_item_observed");
-    expect(events[1]).toEqual({ kind: "plan_item_observed", itemId: "5", outcome: "failed" });
+    expect(events[1]).toEqual({
+      kind: "plan_item_observed",
+      callId: "toolu_u",
+      itemId: "5",
+      outcome: "failed",
+    });
     expect(events[1]).not.toHaveProperty("status");
   });
 
@@ -1260,7 +1386,13 @@ describe("translateSdkMessage — observed work", () => {
       },
     ]).filter((e) => e.kind === "file_op_observed");
     expect(events).toEqual([
-      { kind: "file_op_observed", path: "/work/sub.txt", op: "created", outcome: "pending" },
+      {
+        kind: "file_op_observed",
+        callId: "toolu_w2",
+        path: "/work/sub.txt",
+        op: "created",
+        outcome: "pending",
+      },
     ]);
   });
 });
