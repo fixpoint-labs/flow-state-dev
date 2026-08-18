@@ -14,9 +14,18 @@ else in that project points people at a front door that is not there.
 **Public Launch**.*
 
 **Outcome.** Someone who has never used FSD gets a working AI feature streaming from a real
-model inside their own project — new or existing — in one step, without cloning our repository
-or reading our source; and the coding assistant they work with writes FSD code that runs rather
-than code that merely looks right.
+model inside their own project — new or existing — without cloning our repository or reading our
+source; and the coding assistant they work with writes FSD code that runs rather than code that
+merely looks right.
+
+**What "getting there" costs them, stated exactly, because the Proof below is the precise
+version and this line used to overclaim against it.** Greenfield is **one scaffolding command
+plus the dev command it prints**. The scaffolder does not start the app and does not open a
+browser — no comparable tool does (`create-next-app`, `create-vite` both stop at printed next
+steps), and a command that leaves a server running behind a finished prompt is worse ergonomics,
+not better. Brownfield is **one agent run the developer reviews before accepting**, which is a
+diff review by construction and cannot be one unattended step. Neither path is "one step", and
+the epic does not promise one.
 
 **The two entry paths are different kinds of thing, and that is the epic's central call.**
 Starting a new project is a command: one shape, no host to detect, nothing to merge. Adding FSD
@@ -50,14 +59,14 @@ Deterministic *mutation* is what goes. Carried by themes 1, 5, 6 and 8.
   project**, seeded and checked the same way: the printed command starts FSD, a call to it
   returns a streamed model response, the project's own server still runs. **Theme 8 makes this
   a different shape, not the same check twice** — a different host, and a second process rather
-  than a mounted route — so the Next.js run above does not cover it, and FIX-548's Node run
-  exercises the *template* rather than a repo that already exists. Without this one, Node
-  detection and the second-process instruction can be entirely broken while every other listed
-  proof passes.
-- *FIX-548* — in an empty directory, the npx command followed by the printed dev command yields
-  a streamed model response **from the surface that template ships** — the chat page for
-  Next.js, the API for Node. The provider key goes in at the prompt, the way a real user
-  supplies it, rather than being pre-exported. Run once per template.
+  than a mounted route — so the Next.js run above does not cover it. **With the Node template
+  cut (theme 2), this is the epic's only Node coverage of any kind**, which makes it load-bearing
+  rather than merely non-redundant: without it, Node detection and the second-process instruction
+  can be entirely broken while every other listed proof passes.
+- *FIX-548* — in an empty directory, `npm create flow-state my-app` **followed by the dev command
+  it prints** yields a streamed model response from the surface the template ships — the chat
+  page. The provider key goes in at the prompt, the way a real user supplies it, rather than
+  being pre-exported. Run once; there is one template.
 - *FIX-1160* — one recorded run covering **both halves of the pack**: the Claude plugin
   installed from its published source and one of its packaged skills invoked, and then a coding
   assistant in a freshly scaffolded project, given a stated feature goal and nothing else,
@@ -84,19 +93,24 @@ the install skill's content, and the shared next-steps block, which is the knowl
 brownfield path is made of. **FIX-548 is stronger than it was**: it is now the only
 deterministic path to a running app, and the two-command alternative that used to undercut it
 (`npx create-next-app && npx …init`) no longer exists, because there is no brownfield command
-to run second. What is left of the case against it is the saved command and the package name.
+to run second. **The package-name half of the case against it is now settled** —
+`create-flow-state` is unregistered and available (verified against `registry.npmjs.org`), so
+the headline command is a name we can have rather than a hope. What is left of the case against
+it is the saved command alone.
 
 **One deterministic writer, one reference shape.** The old boundary — the wrapper owns demo
 content, init owns scaffolding — existed to stop two deterministic writers duplicating
 scaffolding logic. There is only one such writer now, so that line is gone and FIX-548 owns its
-templates end to end: host wiring, config, flows, demo content, the agent-instructions file.
+template end to end: host wiring, config, flows, demo content, the agent-instructions file.
 The replacement tripwire is **drift**: the template is the reference shape, and the install
 skill's instructions point at it rather than restating its contents (theme 1).
 
 **FIX-1162 (npm name registration) is a fourth issue but not a fourth workstream.** npm short
-names are first-come and unrecoverable, and the objective promises a single step — which needs
-a name we own. It serves FIX-548's headline command; see §4 for a correction its own spec has
-raised and this document has not yet folded.
+names are first-come and unrecoverable, and the objective promises a scaffolding command a
+stranger can type — which needs a name we can publish under. It serves FIX-548's headline
+command. **That name is settled: `create-flow-state`, invoked as `npm create flow-state
+my-app`** — §4 records what it corrected. What remains open in FIX-1162 is larger and
+separate: whether the `@flow-state-dev/` npm scope is ours at all.
 
 **Not doing.**
 
@@ -107,7 +121,8 @@ raised and this document has not yet folded.
   CLI already carries the actions." It no longer does — the brownfield actions are a skill, not
   CLI code — so the conclusion is kept on reasoning that survives the split.)*
 - A block / plugin / component registry (FIX-147 remains independent).
-- Any template beyond the two agreed.
+- **Any template beyond the Next.js chat app.** v1 ships one. The framework-neutral Node API
+  template is cut — theme 2 records why, and adding it later is additive and strands nobody.
 - Hosted or cloud onboarding, accounts, deploy buttons.
 - The docs-site IA revamp, brand pass, and pre-launch docs sweep (FIX-601 / FIX-551 / FIX-550
   are separate Public Launch issues). This epic writes only the docs its own deliverables
@@ -123,9 +138,10 @@ call.
 ## 2. Themes & long-horizon direction
 
 1. **Two entry paths, and they are different kinds of thing: greenfield is a deterministic
-   command, brownfield is an agent skill.** `create-fsdev-app` starts from an empty directory —
-   one shape, no host to detect, nothing to merge — and stays a command that owns its templates
-   end to end. Adding FSD to an existing repo is an **install skill**: the agent reads the repo
+   command, brownfield is an agent skill.** `create-flow-state` (`npm create flow-state my-app`)
+   starts from an empty directory — one shape, no host to detect, nothing to merge — and stays a
+   command that owns its template end to end. Adding FSD to an existing repo is an **install
+   skill**: the agent reads the repo
    in front of it instead of enumerating the repos it might meet, and the developer reviews the
    diff before accepting it. **Detection stays deterministic** — which package manager, App
    Router vs pages, whether a config already exists, whether `.env.local` is tracked — and
@@ -143,18 +159,39 @@ call.
    the shape FIX-1159's instructions describe. An instruction that restates the template's
    contents instead of pointing at them is the signal.
 
+   **"Owns its template end to end" means checked-in files, not assembled at runtime** —
+   confirming the reading FIX-548 took and asked about, because the tripwire above only works
+   under it: an instruction can point at a shape a person can read, and cannot point at one that
+   exists only after a generator has run. So the config, the mount pair, the flow and the page
+   are files in the repository.
+
    **Sequencing.** FIX-1159 lands before FIX-548, but for a narrower reason than before — the
    wrapper relationship is gone, and what remains is the shared next-steps block (theme 5), so
    the two can now proceed in parallel further than they could. **FIX-1160 now depends on
-   FIX-1159**: it packages content that issue authors. FIX-1162 gates FIX-548's headline
-   command; see §4 for a pending correction to that.
+   FIX-1159**: it packages content that issue authors. **FIX-1162 no longer gates FIX-548's
+   spec or its build** — the name is chosen and available, so nothing is waiting on a decision.
+   What it still gates is the *release*: `npm create flow-state` resolves only to an unscoped
+   published `create-flow-state`, so that publish is a hard prerequisite, and it is an owner
+   operation rather than agent work.
 
-2. **Two templates, and only two: a Next.js chat app and a framework-neutral Node API.** The
-   accepted cost is two starters to keep green on machines we do not control, which is why
-   FIX-548's proof runs once per template rather than once. An issue that wants a third
-   template has hit a cross-cutting question — comment up on this PR rather than adding it.
-   *(FIX-548's spec has raised the opposite case — dropping the Node template — and it is
-   recorded in §4 as raised, not folded.)*
+2. **One template: the Next.js chat app. The framework-neutral Node API template is cut.**
+   This reverses the earlier "two templates, and only two"; the reversal is the owner's, and the
+   argument is what the other decisions did to the Node template's contents. Once a plain-Node
+   host gets no generated server entrypoint (theme 8) and no `fsdev` package script, the Node
+   template's entire remaining delta over `npm init -y` is a `package.json`, a `tsconfig.json`
+   and a better-named demo flow. The accepted cost that bought it — two starters to keep green
+   on machines we do not control — did not shrink with it.
+
+   **The deciding point is the asymmetry, not the file count.** Adding `node-api` later is
+   additive and strands nobody; removing a published template later breaks invocations that
+   exist. So the cheap direction is to ship one and add the second when something points
+   backend developers at a Node starter by name.
+
+   **What follows for the issues below.** FIX-548's proof runs once, not once per template.
+   Whether v1 therefore ships no `--template` flag at all is FIX-548's call, not this
+   document's — a flag with one legal value is a local design question. An issue that wants a
+   second template has hit a cross-cutting question: comment up on this PR rather than adding
+   it.
 
 3. **Agent help is a file plus a plugin, never a server — and the plugin now carries the
    install path, not only authoring help.** A universal agent-instructions file lands in the
@@ -192,12 +229,11 @@ call.
    hard is the brownfield one: **a next-steps block must not print a command the project cannot
    run**, and greenfield can always run what it just wrote.
 
-6. **A brownfield run is additive, and the developer's diff review — not an enumerated file
-   list — is what makes it safe.** This is a brownfield theme: greenfield writes only new files
-   into an empty directory, so it has nothing to be additive over. The old boundary was a fixed
-   four files plus the lockfile, and §1 records why it kept growing. **What survives is the
-   guarantee, not the list.** The skill is instructed to hold it, detection reports what it
-   found, and the developer reads the diff before accepting it:
+6. **A run is additive over files it did not author, and the developer's diff review — not an
+   enumerated file list — is what makes it safe.** The old boundary was a fixed four files plus
+   the lockfile, and §1 records why it kept growing. **What survives is the guarantee, not the
+   list.** The skill is instructed to hold it, detection reports what it found, and the
+   developer reads the diff before accepting it:
 
    - **Never overwrite a file it did not write, and never rewrite content it did not author.**
      Where a file already exists, add a delimited FSD section and leave everything else exactly
@@ -215,6 +251,19 @@ call.
      touched" line printed after appending to a tracked `AGENTS.md` is the failure this theme
      exists to prevent.
 
+   **This is no longer a brownfield-only theme, and the correction matters more than it
+   sounds.** It used to say greenfield "writes only new files into an empty directory, so it has
+   nothing to be additive over." That is false. `create-next-app@16` writes its own `AGENTS.md`
+   — with its own delimited block, re-added on every `next dev` run — and a `CLAUDE.md`, before
+   our template lands. **So the greenfield Next path appends to an existing agent-instructions
+   file; it never creates one.** Its `.gitignore` already carries `.env*`, which means the
+   credential-ignore entry on that path comes from someone else's file and is a fact to assert,
+   not assume. Measured, not reasoned: `spec-poc/FIX-548-next-template-shape/` on the FIX-548
+   spec branch (`bash probe.sh`), which also confirmed an appended FSD section survives a
+   `next dev` run intact. The guarantee is unchanged and better exercised — it now runs on both
+   entry paths rather than one — and the file that made it look brownfield-only is exactly the
+   file §5 Q1 chose.
+
    **§1's proof checks the guarantee two ways**, because an open boundary cannot be checked by
    asserting a closed list survived: seeded content in the files a brownfield run touches in
    practice, *and* the run's own report compared against the actual diff.
@@ -231,33 +280,39 @@ call.
    there, started by our own CLI rather than by a file generated into the customer's repo.
    Both are legitimate; what is not legitimate is leaving the developer to work out which they
    got. **Greenfield and brownfield must mean the same thing by "wire FSD into your project"** —
-   the Node *template* and the brownfield Node path deliver the same process model, described in
-   the same words. This binds FIX-548 (what the template ships) and FIX-1159 (what the skill is
-   instructed to do), which is why it is a theme rather than either issue's local call. **The
+   the Next.js *template* and the brownfield Next path deliver the same mounted-route shape,
+   described in the same words. This binds FIX-548 (what the template ships) and FIX-1159 (what
+   the skill is instructed to do), which is why it is a theme rather than either issue's local
+   call. **The Node half of that parity requirement is gone with the Node template (theme 2)**:
+   the second-process shape now appears in exactly one place, the brownfield Node path, so
+   there is no second description to keep in step — and §1's second-process proof is its only
+   check, which is why that proof got harder to cut, not easier. **The
    move to a skill does not soften this into a per-run judgement call:** the agent reads the
    host, but the *rule* is fixed here, and detection reports which host it found rather than the
    agent re-deciding what "knowable" means each time. **§1's proof runs this path directly**,
-   because the other checks cover the Next.js path and the Node *template*, and neither touches
-   the brownfield Node behaviour this theme commits to.
+   because the other checks cover the Next.js path only, and nothing else touches the brownfield
+   Node behaviour this theme commits to.
 
 ## 3. Shape of the whole
 
-**Built:** an end-state sketch, inline below — the file tree a developer ends up with for each
+**Built:** an end-state sketch, inline below — the file tree a developer ends up with from the
 template, the file-tree diff a brownfield run produces against an existing Next.js app and
 against an existing plain-Node app, and the terminal transcript of each path end to end.
 
 **See it:** this section. Deliberately not a runnable POC: what this epic actually ships is
 *what a developer sees and what files land in their repo*, and whether that is right is judged
 by reading it. **Everything below is rough and illustrative** — names, wording, and layout are
-the owning issues' to settle, and the exact package name and invocation form are pending
-FIX-1162's fold (§4). Review the shape and the scoping it reveals, not the polish.
+the owning issues' to settle. Review the shape and the scoping it reveals, not the polish.
 
-**Showed:** three things. First, the two templates share almost nothing except
-`fsdev.config.ts`, `flows/`, `.env.local`, and the agent-instructions file. That common set was
-originally the argument for a shared deterministic primitive; after the greenfield/brownfield
-split it is something better — **the reference shape the install skill's instructions point
-at** (theme 1). The division into issues holds, and the boundary moved rather than broke:
-FIX-548 owns its templates end to end, FIX-1159 owns the knowledge a brownfield run applies.
+**Showed:** three things. First, drawn when there were two templates, the pair shared almost
+nothing except `fsdev.config.ts`, `flows/`, `.env.local`, and the agent-instructions file. That
+common set was originally the argument for a shared deterministic primitive; after the
+greenfield/brownfield split it became something better — **the reference shape the install
+skill's instructions point at** (theme 1). **The second template has since been cut (theme 2),
+which does not retract the finding but changes what carries it**: the reference shape is now
+simply the one template, and it is a shape someone reads rather than a set intersection someone
+derives. The division into issues holds, and the boundary moved rather than broke: FIX-548 owns
+its template end to end, FIX-1159 owns the knowledge a brownfield run applies.
 Second, the next-steps block has to name **two** servers with different jobs (the app on its own
 port, the DevTool on 4200); printing both without saying which is which is how a first-hour user
 lands on a blank page, and both entry paths print it. Third, an asymmetry the prose hid: in a
@@ -273,23 +328,29 @@ was visible in prose. Both survived the greenfield/brownfield split with their g
 intact and their mechanism changed — which is the clearest evidence that what the diffs
 surfaced was a property of the *situation* rather than of the command that used to implement it.
 
-### Template A — Next.js chat app *(FIX-548, greenfield)*
+### The template — Next.js chat app *(FIX-548, greenfield)*
+
+`~` marks a file `create-next-app` wrote that the scaffolder then appends to. There are three of
+them, which is why theme 6's never-overwrite guarantee is not a brownfield-only property.
 
 ```
 my-app/
-  app/
-    api/flows/route.ts             the bare mount — serves list_flows on GET /
-    api/flows/[...path]/route.ts   createNextHandler(<default export of fsdev.config.ts>)
-    page.tsx                       chat UI, @flow-state-dev/react
-    layout.tsx
-  flows/
-    chat.ts                        defineFlow — one action, one generator
-  fsdev.config.ts                  default-exports createFlowState({ flows, stores })
-  .env.local                       OPENAI_API_KEY=…
-  AGENTS.md                        the agent-instructions file (§5 Q1 — decided)
-  package.json                     next, react, @flow-state-dev/{core,engine,next,react,cli,devtool}
-  next.config.ts
-  tsconfig.json
++   app/
++     api/flows/route.ts             the bare mount — serves list_flows on GET /
++     api/flows/[...path]/route.ts   createNextHandler(<default export of fsdev.config.ts>)
+~     page.tsx                       chat UI, @flow-state-dev/react — replaces the stock page
+      layout.tsx                     create-next-app's, untouched
++   flows/
++     chat.ts                        defineFlow — one action, one generator
++   fsdev.config.ts                  default-exports createFlowState({ flows, stores })
++   .env.local                       OPENAI_API_KEY=…
+~   AGENTS.md                        create-next-app writes this first, with its own delimited
+                                     block — the FSD section is APPENDED (§5 Q1, theme 6)
+    CLAUDE.md                        create-next-app's, untouched
+~   .gitignore                       already carries .env* — asserted, not added
+~   package.json                     +next, react, @flow-state-dev/{core,engine,next,react,cli,devtool}
+    next.config.ts                   create-next-app's, untouched
+    tsconfig.json                    create-next-app's
 ```
 
 *The mount is two files, not one: the engine registers `list_flows` as `GET /` on the mount
@@ -297,26 +358,11 @@ base and `client.listFlows()` requests it, while a required catch-all needs at l
 segment and would 404 there. Both in-repo mounts already pair the two, and the published
 Next.js and Vercel guides teach the same shape.*
 
-### Template B — framework-neutral Node API *(FIX-548, greenfield)*
+*Overwriting `page.tsx` is permitted where appending is not: it is a stock placeholder in a
+directory this command created seconds ago, which is the one case theme 6's rule does not
+reach. `AGENTS.md` is the opposite case and is appended.*
 
-```
-my-api/
-  flows/
-    assistant.ts                   defineFlow — one action, one generator
-  fsdev.config.ts                  default-exports createFlowState({ flows, stores })
-  .env.local
-  AGENTS.md
-  package.json                     @flow-state-dev/{core,engine,node,cli,devtool}
-  tsconfig.json
-```
-
-*No generated server entrypoint. FSD starts through our own CLI, which is where the network
-bind guard and `.env` loading live — `serve()` in `@flow-state-dev/node` defaults its host to
-all interfaces and reads no `.env` itself, so a generated three-line entrypoint would expose
-the demo flow on the local network and then fail on a missing provider key. Theme 8 is
-satisfied either way: FSD is a second process here, and the run says so.*
-
-**The generated config declares a store profile, in both templates and in what a brownfield run
+**The generated config declares a store profile, in the template and in what a brownfield run
 writes.** `stores` is a required option and needs at least one named profile, so
 `createFlowState({ flows })` alone does not typecheck and does not initialize — which would
 block every command the next-steps block prints. Which profile ships, and how it is labelled as
@@ -356,21 +402,34 @@ a development default, is the owning issue's call.
                                     (theme 8: so FSD arrives here as a second process)
 ```
 
+*No server entrypoint is generated here either. FSD starts through our own CLI, which is where
+the network bind guard and `.env` loading live — `serve()` in `@flow-state-dev/node` defaults
+its host to all interfaces and reads no `.env` itself, so a generated three-line entrypoint
+would expose the demo flow on the local network and then fail on a missing provider key. This
+reasoning used to sit under the Node template; the template is cut (theme 2) and the reasoning
+is not, because it is what makes the brownfield Node path a second process rather than a file
+in someone else's repo.*
+
 *Neither list is a boundary the way the old four-file list was. It is what these two repos
 needed; another repo needs something else, which is the whole reason the brownfield path reads
 the repo instead of enumerating cases. The guarantee is theme 6's, and the proof is the
 report-versus-diff check in §1.*
 
-### Transcript — greenfield, Next.js template
+### Transcript — greenfield
+
+There is one template, so there is no template prompt and one transcript.
 
 ```
-$ npx create-fsdev-app@latest my-app
+$ npm create flow-state my-app
 
-? Template ›  Next.js chat app
 ? Model provider ›  OpenAI
 ? OPENAI_API_KEY ›  sk-••••••••
 
-  Scaffolding my-app …
+  Creating my-app with create-next-app …
+  Writing the chat template …
+
+  Appended  AGENTS.md   (FSD section — create-next-app wrote this file)
+  Wrote     .env.local  (already ignored by create-next-app's .gitignore)
   Installing dependencies …
 
   Next steps
@@ -387,23 +446,12 @@ $ npx create-fsdev-app@latest my-app
   Docs: https://flow-state.dev/docs/getting-started
 ```
 
-### Transcript — greenfield, Node API template
-
-```
-$ npx create-fsdev-app@latest my-api --template node-api
-
-  Scaffolding my-api …  Installing dependencies …
-
-  Next steps
-
-    cd my-api
-    npx fsdev serve    your flows, served as their own process  → http://localhost:8787
-    npx fsdev dev      the FSD DevTool                          → http://localhost:4200
-
-    npx fsdev run assistant ask --input '{"userId":"u1","question":"hello"}'
-
-  AGENTS.md tells your coding assistant how to write FSD flows.
-```
+*The command stops here. It does not start the app and does not open a browser — the objective's
+proof is this command **plus the `npm run dev` it printed**, which is where §1's Outcome was
+corrected to match. The Node API transcript that used to follow is gone with the Node template
+(theme 2); it printed `fsdev serve → http://localhost:8787`, and `fsdev serve` binds
+`$HOST ?? 0.0.0.0` on `$PORT ?? 3000` — so it was wrong on the port, and wrong on the host in
+the stronger sense that the CLI's bind guard refuses that host for an unauthenticated demo flow.*
 
 ### Transcript — the install skill, run against an existing Next.js app
 
@@ -442,39 +490,47 @@ $ npx create-fsdev-app@latest my-api --template node-api
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| FIX-1159 | The brownfield knowledge — deterministic detection scripts, the install skill's **content**, and the shared next-steps block | spec | [#1310](https://github.com/fixpoint-labs/flow-state-dev/pull/1310) | — | Spec approved, **now superseded** — #1310 designs `fsdev init` as a deterministic command; needs re-spec against this fold |
+| FIX-1159 | The brownfield knowledge — deterministic detection scripts, the install skill's **content**, and the shared next-steps block | spec | [#1310](https://github.com/fixpoint-labs/flow-state-dev/pull/1310) | — | In spec review — re-shaped against this fold (greenfield command + brownfield skill); the earlier approval was retracted with the direction change |
 | FIX-1162 | Register the npm names the launch needs — the short CLI entry name and the scaffolding name | spec | [#1313](https://github.com/fixpoint-labs/flow-state-dev/pull/1313) | — | In spec review — the npm operations themselves still sit with the owner |
-| FIX-548 | `create-fsdev-app` — the deterministic greenfield path; two templates, owned end to end | spec | [#1312](https://github.com/fixpoint-labs/flow-state-dev/pull/1312) | — | In spec review, **needs revision** — #1312 specs a thin wrapper over `fsdev init` |
+| FIX-548 | `create-flow-state` — the deterministic greenfield path; **one** template (Next.js chat app), owned end to end | spec | [#1312](https://github.com/fixpoint-labs/flow-state-dev/pull/1312) | — | In spec review — re-drafted against this fold; no longer a wrapper over `fsdev init` |
 | FIX-1160 | The authoring pack **and the plugin that distributes the install skill** — agent-instructions file, authoring skills, install skill | spec | [#1311](https://github.com/fixpoint-labs/flow-state-dev/pull/1311) | — | In spec review, **scope grew** — it is now the brownfield path's only delivery channel |
 
-**The greenfield/brownfield split lands on top of specs that were already written, and two of
-them no longer describe what the epic builds.** FIX-1159's approved spec is a design for a
-deterministic `fsdev init`; the direction change removes that command's brownfield role, so the
-approval stands on a document whose central deliverable is gone. FIX-548's spec is written as a
-thin wrapper over it. Both need to go back through spec before either is implemented — that is
-this fold's largest downstream cost and it is stated here rather than discovered later. What
-survives from FIX-1159's spec unchanged is everything it *verified* about our own packages
-(`serve()` binds all interfaces and reads no `.env`; the bare `/api/flows` is a real endpoint
-needing its own file); those are facts about the code, not consequences of the command.
+**The greenfield/brownfield split landed on top of two specs that were already written, and both
+have since been re-drafted against it.** FIX-1159's spec described a deterministic `fsdev init`
+that owned brownfield; its approval was retracted with the direction change and it is back in
+spec review as a command for greenfield and a skill for brownfield. FIX-548's was a thin wrapper
+over that command; it now specs `create-flow-state` writing the template as checked-in files.
+That re-spec was this fold's largest downstream cost and it has been paid, not deferred. What
+survived from FIX-1159's spec unchanged throughout is everything it *verified* about our own
+packages (`serve()` binds all interfaces and reads no `.env`; the bare `/api/flows` is a real
+endpoint needing its own file); those are facts about the code, not consequences of the command.
 
 **Dependencies.** FIX-1160 now depends on FIX-1159 — it packages content that issue authors.
-FIX-1159 still lands before FIX-548, now only for the shared next-steps block (theme 5). None
-of these is an accepted deferral; each is a real ordering constraint on merge, and each pair can
-be specced in parallel.
+FIX-1159 still lands before FIX-548, now only for the shared next-steps block (theme 5). **The
+FIX-1162 → FIX-548 edge has narrowed but not gone**: the name no longer blocks speccing or
+building, and the unscoped publish is still a hard prerequisite for release. None of these is an
+accepted deferral; each is a real ordering constraint on merge, and each pair can be specced in
+parallel. **The cut Node template is the one thing here that *is* a deferral** — it is not
+blocked on anything and nothing starts when something else lands; v1 simply does not ship it.
+
+**Folded this pass — the naming record, kept because two wrong names were in this document and
+one of them is somebody else's package.** The scaffolder is **`create-flow-state`**, invoked as
+`npm create flow-state my-app`. It replaces `create-fsdev-app` (a compromise adopted while the
+short name was believed unobtainable) and, before that, `create-fsd-app`.
+**`create-fsd-app` is not ours and never will be:** `create-fsd-app@1.1.2` is a React/Vite
+starter published 2024-10-18 by an unrelated maintainer (`keyready`), verified against
+`registry.npmjs.org`. Any sentence implying we hold or will hold it is false. `create-flow-state`
+returns 404 — unregistered and available — which is the fact the choice rests on, and it is not
+the same fact as owning it. Publishing unscoped is load-bearing rather than cosmetic:
+`npm create <name>` resolves only to the unscoped `create-<name>`.
 
 **Raised up but not folded here** — each belongs to a separate pass, and none is a gap in this
 one:
 
-- **FIX-1162 has verified that `create-fsd-app` is unobtainable** (an unrelated project has held
-  it since 2024) and proposes `create-fsdev-app`. This document now uses `create-fsdev-app`,
-  because writing a name we cannot have into freshly drafted prose is a defect on its own. The
-  larger half of that spec's finding is **untouched**: whether the `@flow-state-dev/` npm scope
-  is even ours (unverified — nothing under it has ever been published), and whether the headline
-  command a stranger types is the short name or the scoped one. §3's transcripts are illustrative
-  on that point and are not a decision.
-- **FIX-548's spec recommends dropping the `node-api` template** now that the Node path
-  generates no server file. Theme 2 still says two templates; the recommendation is recorded, not
-  adopted.
+- **Whether the `@flow-state-dev/` npm scope is ours at all** is untouched and is the larger
+  half of FIX-1162's finding: nothing under it has ever been published, and an npm scope belongs
+  to whoever registers the matching organization first. Two sibling specs lean on it as a safe
+  fallback. Unlike the scaffolder name, this one is not settled by anything in this fold.
 - **FIX-1160's POC established that Claude Code has no bare-URL plugin install** — the path is
   `plugin marketplace add <source>` then `plugin install`, so a marketplace manifest is a
   required distribution artifact rather than a public listing. Consistent with §5 Q2 as written;
@@ -488,7 +544,7 @@ and blocks nothing: it exists because the split changed what an already-made dec
 ### ~~Q1 — What filename do the agent instructions go to, and what happens when one is already there?~~ — decided: `AGENTS.md`
 
 *Raised while drawing §3's diffs; it touches all three workstreams (FIX-1160 authors the
-content, FIX-1159's skill places it, FIX-548 ships it in both templates), so no single issue can
+content, FIX-1159's skill places it, FIX-548 ships it in the template), so no single issue can
 settle it.*
 
 **Plain terms.** Adding FSD to a stranger's repository drops in a file telling their coding
@@ -518,7 +574,15 @@ alternative to it** — so it is managed, not avoided. **Behaviour required: app
 FSD section, never overwrite, and leave any pre-existing content untouched.** That guarantee is
 carried by **theme 6**; this entry is the record of why. The greenfield/brownfield split does
 not touch it — the guarantee is now the skill's instruction rather than a command's code path,
-and the filename is the same either way. **Closed — not reopenable by an issue.**
+and the filename is the same either way.
+
+**One thing did change, and it strengthens the resolution.** This entry assumed the collision was
+a brownfield problem and that greenfield would simply create the file. It will not:
+`create-next-app` writes its own `AGENTS.md` before our template lands, so **both** entry paths
+append (theme 6, measured on the FIX-548 POC). The append-never-overwrite behaviour is therefore
+exercised on the path we control end to end, rather than only where a stranger's repo is
+involved — which is a better place to find out it is wrong. **Closed — not reopenable by an
+issue.**
 
 ### ~~Q2 — Is the Claude Code plugin publicly listed at launch, or install-by-URL only?~~ — decided: install-by-URL only
 
@@ -610,8 +674,9 @@ noisiest period we will have, which is the cost you already declined once.
 
 - **Epic drafted** — three issues under one outcome: a stranger reaches a streaming AI feature
   in their own project from one command, and their coding assistant writes FSD code that runs.
-  Scoped `create-fsd-app` down to a thin wrapper over `fsdev init`, and recorded the accepted
-  cost of shipping two templates instead of one.
+  Scoped the scaffolder down to a thin wrapper over `fsdev init`, and recorded the accepted cost
+  of shipping two templates instead of one. *(The name it used at drafting, `create-fsd-app`,
+  was later found to belong to an unrelated project — see the naming record in §4.)*
 - **After the inline end-state sketch** — added theme 5's one-next-steps-block clause and
   theme 6 (init is additive over its named in-place edits), because drawing the two diffs made
   visible what the prose had not: both entry paths print the same block, and the risky half of
@@ -674,8 +739,29 @@ noisiest period we will have, which is the cost you already declined once.
   owner whether install-by-URL still holds now that the plugin is the brownfield path's only
   channel — the decision they made priced a different thing. Two corrections travelled with this
   pass because the surrounding prose was being re-drafted anyway and leaving them would have
-  written known-false text: the greenfield package is `create-fsdev-app` (FIX-1162 verified
-  `create-fsd-app` unobtainable since 2024), and the Node paths generate no server entrypoint
+  written known-false text: the greenfield package is `create-fsdev-app` *(superseded by the
+  entry below — the name is `create-flow-state`)*, and the Node paths generate no server entrypoint
   (FIX-1159 verified `serve()` binds all interfaces and reads no `.env`). The rest of FIX-1162's
   naming finding, FIX-548's proposal to drop the Node template, and FIX-1160's marketplace-
   manifest mechanism are recorded in §4 as raised, not folded.
+- **Owner decisions folded, post-convergence — one template, and the name** (not a review round;
+  four of the five items were factual corrections). **The Node API template is cut**, so theme 2
+  now reads as one template and no longer invites a "third"; §1's *Not doing* names the cut;
+  FIX-548's proof runs once; theme 8 lost the Node half of its greenfield/brownfield parity
+  clause, which makes §1's second-process check the epic's only Node coverage of any kind; and
+  §3's Node template tree and Node transcript are gone — the transcript taking the
+  `fsdev serve → :8787` error with it (`fsdev serve` binds `$HOST ?? 0.0.0.0` on `$PORT ?? 3000`,
+  verified in `packages/cli/src/commands/serve.ts` and `packages/node/src/serve.ts`; the host was
+  the worse half, since the CLI's bind guard refuses it for an unauthenticated flow). **The
+  scaffolder is `create-flow-state`** (`npm create flow-state my-app`), replacing every
+  `create-fsdev-app` and `create-fsd-app` in this document — `create-fsd-app` belongs to an
+  unrelated maintainer and is not ours, verified against the registry, so §4 now carries a
+  standing naming record rather than a raised-not-folded entry. **§1's Outcome no longer promises
+  "one step"**, because §1's own FIX-548 proof says "the npx command followed by the printed dev
+  command" and the precise statement is the one that stays: the scaffolder does not start or open
+  the app, and no comparable tool does. **Theme 6 stopped being a brownfield-only theme** —
+  `create-next-app` writes its own `AGENTS.md` and `CLAUDE.md`, so the greenfield Next path
+  appends to an agent-instructions file rather than creating one (measured:
+  `spec-poc/FIX-548-next-template-shape/`), which also corrects §5 Q1's assumption and §3's
+  Template A tree. Theme 1 gained one clarification FIX-548 asked for: *owns its template end to
+  end* means checked-in files, since the drift tripwire only works if a person can read the shape.
