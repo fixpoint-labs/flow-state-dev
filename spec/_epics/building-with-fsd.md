@@ -260,8 +260,8 @@ call.
    **The rendered output is deliberately not byte-identical, and requiring that was a defect.**
    Greenfield prints `npm run dev` / `npx fsdev dev`; a brownfield run against a pnpm repo must
    print `pnpm dev` / `pnpm exec fsdev dev`, because detection found pnpm. A literally shared
-   rendering is wrong for at least one supported context, and §3's own transcripts have always
-   shown the two differing — the word "verbatim" contradicted the document's own illustrations.
+   rendering is wrong for at least one supported context, and the end-state sketch's transcripts
+   always showed the two differing — the word "verbatim" contradicted our own illustrations.
    **What must not vary is the authored text**, which is why theme 9 makes both forms of variation
    declared: the package-manager values, and the host-topology conditional. **The process list is
    not invariant** — a mounted-route host and a second-process host genuinely run different
@@ -375,6 +375,29 @@ call.
      where the template needs it. Lockfiles are the extreme case and are never written directly at
      all. `tsconfig.json` is **not** in the edit set for the chosen template shape, so it needs no
      rule here; an issue that finds it does has hit a cross-cutting question.
+
+     **(c) The stock `dev` script, greenfield only, narrowed to loopback.** `create-next-app`
+     writes `scripts.dev`; the template rewrites its value to bind `127.0.0.1` (theme 8). **This is
+     a third exception, stated as one rather than smuggled into (a) or (b), because it fits
+     neither** — the script's purpose is to be *run*, not replaced, so (a) does not reach it, and
+     (b) is exactly the rule it breaks, since we are changing the value of a key we do not own.
+     Pretending otherwise would turn (a) into "anything `create-next-app` wrote that we find
+     inconvenient", and the tightness of this set is the whole reason it is trustworthy.
+
+     **What justifies it is that no other control exists on this path.** The greenfield demo is a
+     **browser** page calling the mounted route, so the credential that protects brownfield cannot
+     protect greenfield: any token the page can use is a token anyone who can load the page can
+     read, and on an exposed dev server the attacker can load the page. **Loopback is the only
+     control that works when the client is a browser.** Against that, the alternatives are worse:
+     printing `npm run dev -- --hostname 127.0.0.1` leaves the plain `npm run dev` that
+     `create-next-app` itself advertises live and exposed, and adding a second script under a key
+     we own does the same while also putting two dev commands in a four-second-old project.
+
+     **The exception is deliberately narrow.** Greenfield only — a project we created, holding no
+     developer content yet. One key, whose stock value we caused to exist seconds earlier. The edit
+     only ever *narrows* a bind, breaks nothing, and is a one-word revert the developer can make.
+     **It does not reach brownfield**, where the script is theirs, the project is theirs, and theme
+     6's promise is the one the objective actually sells.
    - **Refuse rather than write a credential into a tracked file.** If `.env.local` is already
      tracked, the run stops short of writing the key, says why, and tells the developer what to
      do instead. A provider key committed to version control is the one failure a diff review
@@ -460,11 +483,22 @@ call.
    stated once, here: a path that generates an unauthenticated flow must also generate the thing
    that keeps it off the network, and "the CLI does it" is only true of the CLI.**
 
-   **Greenfield binds loopback; brownfield ships an actual control.** FIX-548 authors the
-   template's own `package.json`, so its `dev` script binds loopback (`next dev --hostname
-   127.0.0.1`) and the printed command is unchanged — the developer still types `npm run dev`. The
-   cost is that testing the new app from a phone on the same wifi needs the flag removed, a
-   one-word edit in a file we just wrote them. **Brownfield cannot be fixed the same way** — theme
+   **Greenfield binds loopback; brownfield ships a credential. The two paths need *different*
+   controls, and neither substitutes for the other.** The template rewrites `scripts.dev` to bind
+   `127.0.0.1`, so the printed command is unchanged — the developer still types `npm run dev`. That
+   is an edit to a key `create-next-app` authored, so it is **theme 6 exception (c)**, enumerated
+   there rather than assumed here; an earlier round of this document wrongly claimed the script was
+   ours to begin with. The cost is that testing the new app from a phone on the same wifi needs the
+   flag removed, a one-word edit in a file we just wrote them.
+
+   **Why greenfield cannot simply use brownfield's credential — the finding that decides the
+   exception.** The greenfield demo is a **browser** page calling the mounted route. Any credential
+   that page can present is one an attacker can read by loading the same page, and on a dev server
+   bound to every interface they can load it. **A credential is not a control when the client is a
+   browser**, so loopback is not the cheaper option there, it is the only one. The mirror holds
+   too: brownfield's demo is exercised from the CLI and direct calls rather than a shipped page, so
+   a server-side secret genuinely protects it — which is why the two paths land on different rails
+   rather than one being a weaker copy of the other. **Brownfield cannot be fixed the same way** — theme
    6 forbids rewriting a `dev` script the developer authored, and printing a flag does not reach
    someone who starts their server from memory. **So the brownfield run configures a non-default
    principal resolver on what it generates.** That is the condition
@@ -541,14 +575,32 @@ call.
    | Agent-instructions block | FIX-1160 | source block | FIX-548's `AGENTS.md` · FIX-1159's skill, **embedded by FIX-1160 at packaging** — see (c) | FIX-1160 |
    | Next-steps block | FIX-1159 | source block | FIX-548's scaffolder · FIX-1159's skill | FIX-1159 |
 
-   **(a) The check belongs to the author, and that is what keeps the mechanics out of this
-   document.** The normalization, the comparison, the placeholder syntax and the test itself are
-   **one implementation per artifact, owned by the issue that owns canonical** — so two shippers
-   cannot drift apart on a normalization neither of them implements. Those mechanics were written
-   out here across five rounds because that is where the defects were being found, not because they
-   span issues; an epic-spec is a coordination artifact, and a renderer's syntax is not
-   coordination. **What stays is the invariant, because it binds a shipper that does not own the
-   check.**
+   **(a) The author owns the comparison; each shipper runs it when it lands.** The normalization,
+   the placeholder syntax and the comparison itself are **one implementation per artifact, owned by
+   the issue that owns canonical** — so two shippers cannot drift apart on a normalization neither
+   of them implements. Those mechanics were written out here across five rounds because that is
+   where the defects were being found, not because they span issues; an epic-spec is a coordination
+   artifact, and a renderer's syntax is not coordination. **What stays is the invariant, because it
+   binds a shipper that does not own the check.**
+
+   **But ownership of the comparison is not ownership of the *invocation*, and conflating them left
+   the invariant unenforceable.** Authors land **before** their shippers — FIX-1159 and FIX-1160
+   both precede FIX-548 — so an author-run check over a shipper's copy is impossible to write
+   correctly: demanding the copy fails while FIX-548 has not landed, and tolerating its absence
+   passes forever if FIX-548 never ships it. Neither can distinguish *not yet* from *never*.
+   **Resolved by splitting the two: the author exports the comparison, and every shipper invokes it
+   against its own embedded copy as part of its own test suite.** The check then lands exactly when
+   the copy does, and a shipper that never embeds the block has no passing suite to hide behind,
+   because the assertion ships with the thing it asserts on.
+
+   **It must fail on a trimmed branch, not merely a missing file** — so the shipper's assertion is
+   normalized **equality over the whole block**, every conditional branch included, never a
+   presence or substring check. A dropped `second-process` branch changes the text and fails the
+   comparison; a check that only asked "is the block here?" would pass on exactly the shipper-side
+   damage rule 2 exists to prevent. **This adds no dependency between packages of the kind this
+   theme rejects**: the comparison is a test-time import inside this monorepo, which is where every
+   shipper already lives, and the alternative — each shipper reimplementing normalization — is
+   precisely the drift the single implementation exists to stop.
 
    **The invariant, for source blocks.** A shipper embeds the canonical text **verbatim**, and its
    embedded copy is identical to canonical after the author's normalization. Everything that varies
@@ -583,7 +635,16 @@ call.
    existing repo requires" is the knowledge it holds; **FIX-548 remains the set's only deterministic
    writer**, and writing the shape and specifying it are different jobs. It covers:
 
-   - the Next.js mount pair, and `fsdev.config.ts`'s shape including its store profile;
+   - **the Next.js mount pair — two files, not one.** The engine registers `list_flows` as `GET /`
+     on the mount base and `client.listFlows()` requests it, while a required catch-all needs at
+     least one segment and would 404 there. Both in-repo mounts already pair the two and the
+     published Next.js and Vercel guides teach the same shape, so a single-file mount is a third
+     shape at odds with our own docs.
+   - **`fsdev.config.ts`'s shape, including a declared store profile.** `stores` is a required
+     option needing at least one named profile: `createFlowState({ flows })` alone does not
+     typecheck and does not initialize, which would break every command the next-steps block
+     prints. Which profile ships, and how it is labelled a development default, is the owning
+     issue's call.
    - **a statically imported provider, passed as a pre-built `modelResolver` — not the `models`
      shorthand.** `createModelResolver` resolves providers through `createRequire` and a dynamic
      `import()`, and **Next bundles server code, which breaks that path**; our own published guide
@@ -659,213 +720,34 @@ call.
 
 ## 3. Shape of the whole
 
-**Built:** an end-state sketch, inline below — the file tree a developer ends up with from the
-template, the file-tree diff a brownfield run produces against an existing Next.js app and
-against an existing plain-Node app, and the terminal transcript of each path end to end.
+**Built:** an end-state sketch — the file tree a developer ends up with from the template, the
+file-tree diffs a brownfield run produces against an existing Next.js app and an existing
+plain-Node app, and a terminal transcript of each path end to end. Drawn, not run: what this epic
+ships is *what a developer sees and what files land in their repo*, and whether that is right is
+judged by reading it.
 
-**See it:** this section. Deliberately not a runnable POC: what this epic actually ships is
-*what a developer sees and what files land in their repo*, and whether that is right is judged
-by reading it. **Everything below is rough and illustrative** — names, wording, and layout are
-the owning issues' to settle. Review the shape and the scoping it reveals, not the polish.
+**See it:** the sketch is no longer reproduced here. It was ~200 lines of file trees, config
+detail and transcripts owned by FIX-548 and FIX-1159, in a section the objective gate signs off —
+the same accumulation theme 9 and §1 were both cut for. Everything it established that binds more
+than one issue has been moved to the theme that owns it: the **two-file mount** and the **required
+store profile** to theme 9 (b), the **no-generated-Node-entrypoint** reasoning and the bind guard
+to theme 8, the **printed-command** rules to theme 5. The per-issue file lists live in the child
+specs, which are where they can be kept true.
 
-**Showed:** three things. First, drawn when there were two templates, the pair shared almost
-nothing except `fsdev.config.ts`, `flows/`, `.env.local`, and the agent-instructions file. That
-common set was originally the argument for a shared deterministic primitive. The split replaced
-that primitive with the template itself as the reference shape (theme 1), and **that was the
-wrong carrier — the brownfield skill can never reach the template, which is what theme 9 now
-fixes** by making the shared shape a contract FIX-1159 authors. The original finding was sounder
-than the answer it first got: what the paths share really is a small common set, and it is
-smaller than the one surviving template (theme 2), which carries a chat page and a demo flow no
-brownfield run writes. The division into issues holds, and the boundary moved rather than broke:
-FIX-548 owns its template end to end, FIX-1159 owns the knowledge a brownfield run applies —
-including the specification of the shape both produce.
-Second, the next-steps block has to name **two** servers with different jobs (the app on its own
-port, the DevTool on 4200); printing both without saying which is which is how a first-hour user
-lands on a blank page, and both entry paths print it. Third, an asymmetry the prose hid: in a
-Next.js app FSD can be mounted as a real route, because App Router conventions make the location
-knowable, but in a plain-Node app nothing may edit an entrypoint it did not write — so FSD
-arrives there as a **second process**, not an integrated route. That third finding is
-**theme 8**, which is where it binds; it sat here as an observation with no owner until epic
-review pointed out that §3 is explicitly non-binding.
+**Showed:** three things, each of which became binding elsewhere rather than staying an
+observation here. The two templates shared almost nothing but `fsdev.config.ts`, `flows/`,
+`.env.local` and the agent-instructions file — a common set smaller than either template, which is
+why the shared shape became a **contract FIX-1159 authors** (theme 9) rather than a template the
+brownfield skill can never reach. The next-steps block has to name **two servers with different
+jobs** and say which is which, or a first-hour user lands on a blank page (theme 5). And in a
+Next.js app FSD can be a real mounted route while a plain-Node app gets a **second process**,
+because nothing may edit an entrypoint it did not write — an asymmetry the prose had hidden, now
+**theme 8**.
 
-**Changed:** originally added theme 5's second half (one next-steps block) and theme 6 (a
-brownfield run is additive over what it touches). Both came out of drawing the diffs; neither
-was visible in prose. Both survived the greenfield/brownfield split with their guarantees
-intact and their mechanism changed — which is the clearest evidence that what the diffs
+**Changed:** it added theme 5's one-next-steps-block clause and theme 6 (a run is additive over
+what it touches); neither was visible in prose. Both survived the greenfield/brownfield split with
+their guarantees intact and their mechanism replaced — the clearest evidence that what the diffs
 surfaced was a property of the *situation* rather than of the command that used to implement it.
-
-### The template — Next.js chat app *(FIX-548, greenfield)*
-
-`~` marks a file `create-next-app` wrote before our template lands, so the scaffolder never
-creates it. **What happens to each differs, which is theme 6's point rather than an
-inconsistency here:** `AGENTS.md` is appended to, `package.json` has only our own keys changed
-(exception (b)), `app/page.tsx` is replaced (exception (a)), and `.gitignore` is asserted rather
-than edited. None is overwritten wholesale — which is why theme 6's never-overwrite guarantee is
-not a brownfield-only property.
-
-```
-my-app/
-+   app/
-+     api/flows/route.ts             the bare mount — serves list_flows on GET /
-+     api/flows/[...path]/route.ts   createNextHandler(<default export of fsdev.config.ts>)
-~     page.tsx                       chat UI, @flow-state-dev/react — replaces the stock page
-      layout.tsx                     create-next-app's, untouched
-+   flows/
-+     chat.ts                        defineFlow — one action, one generator
-+   fsdev.config.ts                  default-exports createFlowState({ flows, stores })
-+   .env.local                       OPENAI_API_KEY=…
-~   AGENTS.md                        create-next-app writes this first, with its own delimited
-                                     block — the FSD section is APPENDED (§5 Q1, theme 6)
-    CLAUDE.md                        create-next-app's, untouched
-~   .gitignore                       already carries .env* — asserted, not added
-~   package.json                     +next, react, @flow-state-dev/{core,engine,next,react,cli,devtool}
-                                     zod, and the selected provider's SDK, e.g. @ai-sdk/openai
-                                     — every package the generated files import (theme 9)
-    next.config.ts                   create-next-app's, untouched
-    tsconfig.json                    create-next-app's
-```
-
-*The mount is two files, not one: the engine registers `list_flows` as `GET /` on the mount
-base and `client.listFlows()` requests it, while a required catch-all needs at least one
-segment and would 404 there. Both in-repo mounts already pair the two, and the published
-Next.js and Vercel guides teach the same shape.*
-
-*Replacing `page.tsx` while appending to `AGENTS.md` is **theme 6 exception (a)**, not a local
-call this sketch is making — the rule and its boundary live there, because §3 binds nothing.*
-
-**The generated config declares a store profile, in the template and in what a brownfield run
-writes.** `stores` is a required option and needs at least one named profile, so
-`createFlowState({ flows })` alone does not typecheck and does not initialize — which would
-block every command the next-steps block prints. Which profile ships, and how it is labelled as
-a development default, is the owning issue's call.
-
-### Diff — an install-skill run against an existing Next.js app
-
-```
-  my-existing-app/
-+   app/api/flows/route.ts          the bare mount
-+   app/api/flows/[...path]/route.ts
-+   flows/hello.ts                  a runnable demo flow, so the next-steps block has something to run
-+   fsdev.config.ts
-~   AGENTS.md        +FSD section, delimited   (created if absent, appended if present)
-~   package.json     deps +@flow-state-dev/{core,engine,next,react,cli,devtool}
-                          + zod + the selected provider's SDK, e.g. @ai-sdk/openai
-                            — every package the generated files import (theme 9)
-~   .gitignore       +FSD ignore entries
-~   .env.local       +OPENAI_API_KEY=   (created if absent, appended if present;
-                                         REFUSED if the file is already tracked — theme 6)
-~   pnpm-lock.yaml   rewritten by your package manager when the run installs (theme 6)
-    app/api/billing/route.ts        untouched
-    app/page.tsx                    untouched — the developer wrote it, so theme 6 exception (a)
-                                    does not reach it (it reaches placeholders, not content)
-    next.config.ts                  untouched
-```
-
-### Diff — an install-skill run against an existing plain-Node app
-
-```
-  my-existing-api/
-+   flows/hello.ts
-+   fsdev.config.ts
-~   AGENTS.md                       +FSD section, delimited  (created if absent, appended if present)
-~   package.json                    deps +@flow-state-dev/{core,engine,node,cli,devtool}
-                                    + zod + the selected provider's SDK, e.g. @ai-sdk/openai
-                                      — every package the generated files import (theme 9)
-~   .gitignore                      +FSD ignore entries
-~   .env.local                      +OPENAI_API_KEY=
-~   package-lock.json               rewritten by your package manager when the run installs
-    src/index.ts                    untouched — nothing edits an entrypoint it did not write
-                                    (theme 8: so FSD arrives here as a second process)
-```
-
-*No server entrypoint is generated here either. FSD starts through our own CLI, which is where
-the network bind guard and `.env` loading live — `serve()` in `@flow-state-dev/node` defaults
-its host to all interfaces and reads no `.env` itself, so a generated three-line entrypoint
-would expose the demo flow on the local network and then fail on a missing provider key. This
-reasoning used to sit under the Node template; the template is cut (theme 2) and the reasoning
-is not, because it is what makes the brownfield Node path a second process rather than a file
-in someone else's repo.*
-
-*Neither list is a boundary the way the old four-file list was. It is what these two repos
-needed; another repo needs something else, which is the whole reason the brownfield path reads
-the repo instead of enumerating cases. The guarantee is theme 6's, and so is the
-report-versus-diff check that proves it.*
-
-### Transcript — greenfield
-
-There is one template, so there is no template prompt and one transcript.
-
-```
-$ npm create flow-state my-app
-
-? Model provider ›  OpenAI
-? OPENAI_API_KEY ›  sk-••••••••
-
-  Creating my-app with create-next-app …
-  Writing the chat template …
-
-  Created   app/api/flows/route.ts · app/api/flows/[...path]/route.ts
-            flows/chat.ts · fsdev.config.ts
-  Replaced  app/page.tsx   (create-next-app's stock page — theme 6 exception (a))
-  Appended  AGENTS.md      (FSD section — create-next-app wrote this file)
-  Wrote     .env.local     (already ignored by create-next-app's .gitignore)
-  Changed   package.json   (dependency keys only — theme 6 exception (b))
-  Installing dependencies … package-lock.json rewritten by npm
-
-  Next steps
-
-    cd my-app
-    npm run dev        your app           → http://localhost:3000
-    npx fsdev dev      the FSD DevTool    → http://localhost:4200
-                       run flows, inspect traces, replay a request
-
-    npx fsdev run chat send --input '{"message":"hello"}'
-                       run a flow from the terminal, no browser needed
-
-  AGENTS.md tells your coding assistant how to write FSD flows.
-  Docs: https://flow-state.dev/docs/getting-started
-```
-
-*The command stops here. It does not start the app and does not open a browser — the objective's
-proof is this command **plus the `npm run dev` it printed**, which is where §1's Outcome was
-corrected to match. The Node API transcript that used to follow is gone with the Node template
-(theme 2); it printed `fsdev serve → http://localhost:8787`, and `fsdev serve` binds
-`$HOST ?? 0.0.0.0` on `$PORT ?? 3000` — so it was wrong on the port, and wrong on the host in
-the stronger sense that the CLI's bind guard refuses that host for an unauthenticated demo flow.*
-
-### Transcript — the install skill, run against an existing Next.js app
-
-```
-> add FSD to this project
-
-  Running FSD detection …
-
-  Detected  Next.js 15 (App Router)  ·  package manager: pnpm  ·  no existing fsdev.config
-            .env.local present and untracked  ·  AGENTS.md present (1.2 kB)
-  Adapter   @flow-state-dev/next
-
-? Model provider ›  OpenAI
-? OPENAI_API_KEY ›  found in .env.local — using it
-
-  I'll create   app/api/flows/route.ts   app/api/flows/[...path]/route.ts
-                flows/hello.ts           fsdev.config.ts
-  and append to .gitignore · AGENTS.md   (delimited FSD section, nothing else changed)
-  and add dependencies to package.json    (only those keys — theme 6 exception (b))
-  Installing with pnpm will rewrite pnpm-lock.yaml.
-
-  Nothing already in those files will be changed. Review the diff before you accept it.
-
-  [ diff shown · accepted ]
-
-  Next steps
-
-    pnpm dev             your app, now serving /api/flows/*  → http://localhost:3000
-    pnpm exec fsdev dev  the FSD DevTool                     → http://localhost:4200
-
-    pnpm exec fsdev run hello send --input '{"message":"hi"}'
-
-  AGENTS.md tells your coding assistant how to write FSD flows.
-```
 
 ## 4. Running index
 
@@ -1293,3 +1175,22 @@ the themes and decisions above — it is not repeated here.
   **refuses to start** when it is absent. Also recorded: the second-process alternative for
   brownfield Next is **rejected** — it trades the epic's headline integration for defence in depth
   over a control that already works (coordinator decision, not the owner's).
+- **Greenfield's rail turned out to cost something, and the earlier claim that it was free was
+  wrong.** `create-next-app` writes `package.json` *before* the template lands, so `scripts.dev` is
+  a key we do not own and theme 6 (b) forbids changing its value — the previous round asserted the
+  script was ours. It is now **theme 6 exception (c)**, stated as a third exception rather than
+  stretched into (a), whose "stock placeholder meant to be replaced" does not describe a script
+  meant to be *run*. What justifies it: the greenfield demo is a **browser** page, so any credential
+  it can present is readable by anyone who can load the page — **a credential is not a control when
+  the client is a browser**, which makes loopback the only rail available there, and makes the two
+  paths' different controls a necessity rather than an inconsistency.
+- **The author-owned check could not enforce its own invariant, because authors land first.** An
+  upstream check over a downstream copy either demands a copy that has not landed or tolerates one
+  that never will — it cannot tell *not yet* from *never*. Split the comparison from its invocation:
+  **the author exports it, each shipper invokes it against its own copy in its own suite**, so the
+  assertion lands exactly when the copy does. It asserts normalized **equality over the whole
+  block**, so a trimmed conditional branch fails rather than passing a presence check.
+- **§3 cut from ~210 lines to four.** It had become child-owned file trees, config detail and
+  transcripts inside the gated section — the third length finding of the same shape. Moved rather
+  than deleted: the two-file mount and the required store profile to theme 9 (b), and the sketch's
+  three findings were already binding in themes 5, 8 and 9.
