@@ -76,6 +76,8 @@ type SlotName = "instructions" | "grounding" | "tail";
 interface Capture {
   messages: unknown[];
   slots: Partial<Record<SlotName, unknown>>;
+  /** Step-method invocations this pass. Must be exactly 1 — see `assemble`. */
+  calls: number;
 }
 
 /** The changing half: this issue, this pull request, this diff. */
@@ -115,7 +117,7 @@ async function assemble(
   grounding: (w: World) => unknown,
   passLabel: string,
 ): Promise<Capture> {
-  const capture: Capture = { messages: [], slots: {} };
+  const capture: Capture = { messages: [], slots: {}, calls: 0 };
   const record = <T,>(slot: SlotName, value: T): T => {
     capture.slots[slot] = value;
     return value;
@@ -136,6 +138,7 @@ async function assemble(
     // a legacy path either: `canStream` also requires `stream` or `streamStep` to
     // exist, and neither does.
     async generateStep(options: GeneratorModelCallOptions) {
+      capture.calls += 1;
       capture.messages = options.messages;
       return { text: "", finishReason: "stop" };
     },
@@ -171,7 +174,18 @@ async function assemble(
     } as never,
   });
   if (result.error) throw new Error(`assembly run failed: ${result.error.message}`);
-  if (capture.messages.length === 0) throw new Error("the model stub was never called");
+  // Exactly one, not "at least one". Each invocation OVERWRITES `capture.messages`,
+  // so on a second call every earlier handoff is silently discarded and the checks
+  // below grade only the last one — a malformed or pass-dependent first brief would
+  // be invisible. This recipe is tool-free and terminal at step 0, so a second call
+  // is a regression by definition: asserting it is both the guard and the canary.
+  if (capture.calls !== 1) {
+    throw new Error(
+      `the model stub was called ${capture.calls} time(s), expected exactly 1. The capture keeps ` +
+        `only the last handoff, so every brief graded below would be the final call rather than ` +
+        `the one the recipe assembled. The capture is void.`,
+    );
+  }
   return capture;
 }
 
@@ -253,15 +267,43 @@ const standingContributions = (): Leaf[] => [
 /** Contributions one issue's changing half claims to carry. */
 const changingContributions = (id: string): Leaf[] => leaves(issueOf(WORLD, id), `issue(${id})`);
 
+/**
+ * How a field is PLACED in the brief, for the fields whose bare value cannot
+ * identify them. Mirrors the labels in `renderTail` — keep the two together.
+ *
+ * Presence alone grades the wrong thing here: swap `linesAdded` and
+ * `linesRemoved` and every leaf is still somewhere in the tail, so a brief
+ * reporting the wrong metrics passes. A held-out world with two equal numbers
+ * hides an omitted field the same way. Grading the labelled fragment ties each
+ * value to the field it was rendered for. Leaves absent from this list are
+ * distinctive prose and are graded on their text.
+ */
+const PLACED: Array<[string, (v: string) => string]> = [
+  ["pullRequest.number", (v) => `#${v}`],
+  ["pullRequest.filesChanged", (v) => `${v} files`],
+  ["pullRequest.linesAdded", (v) => `+${v}`],
+  ["pullRequest.linesRemoved", (v) => `−${v}`],
+];
+
+const expectedFragment = (leaf: Leaf): string => {
+  const placed = PLACED.find(([suffix]) => leaf.path.endsWith(suffix));
+  return placed === undefined ? leaf.text : placed[1](leaf.text);
+};
+
 /** Context values are XML-escaped on the way into the system message; prompt and
  *  user values are not. Accept either form so the check works for both slots. */
 const escapeXml = (s: string): string =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-const carries = (haystack: string, leaf: string): boolean =>
-  haystack.includes(leaf) || haystack.includes(escapeXml(leaf));
+const carries = (haystack: string, fragment: string): boolean =>
+  haystack.includes(fragment) || haystack.includes(escapeXml(fragment));
 
 const missingFrom = (haystack: string, expected: Leaf[]): string[] =>
-  expected.filter((l) => !carries(haystack, l.text)).map((l) => l.path);
+  expected
+    .filter((l) => !carries(haystack, expectedFragment(l)))
+    .map((l) => {
+      const fragment = expectedFragment(l);
+      return fragment === l.text ? l.path : `${l.path} (expected ${JSON.stringify(fragment)})`;
+    });
 
 // --- identity, for the leak check and the setup guard ----------------------
 
@@ -498,8 +540,10 @@ await runGoal(async () => {
       `${PASSES} passes of the review recipe, each over a fresh copy of the fixture world, handed the ` +
       `model a byte-identical brief (${renderBrief(a.messages).length} bytes, standing half ` +
       `${standingHalf(a).length}); the boundary precondition held (exactly one leading system ` +
-      `message); all ${graded} contributions the brief claims to carry were present, derived by ` +
-      `walking the fixture rather than hand-listed; assembling ${ISSUE_B} instead left the standing ` +
+      `message); each pass called the model exactly once, so no handoff was overwritten; all ` +
+      `${graded} contributions the brief claims to carry were present, derived by walking the ` +
+      `fixture rather than hand-listed and graded on their rendered placement, not bare presence, ` +
+      `so a value under the wrong label fails; assembling ${ISSUE_B} instead left the standing ` +
       `half unchanged while the changing half differed, carried its own contributions and none of ` +
       `${ISSUE_A}'s identity. The comparator is proved able to fire: the same named comparator over ` +
       `a grounding that appends a per-call counter returned false, and localization attributed ` +
