@@ -1,0 +1,114 @@
+{
+  "_comment": "A known FSD state, as the real routes return it. The reader must derive known-account.json from this EXACTLY, model-free, before the goal spends a coding run. Shaped to carry the awkward cases on purpose: itemIndex with a gap (2 is missing) and duplicates (three items at 4); a two-page file-op collection so the cursor must be followed; a sub-agent's mutation nested under ownedBy, which activity must see and the run's own narrative must not; a stream mutation with no row that a gap row accounts for; an outcome of failed, which is settled; and my-alpha.txt, whose name ends with alpha.txt — a still-pending row that a substring match would drag into alpha.txt's grading and fail on, so whole-segment matching is a guard that can actually fire.",
+  "workstreamId": "sess_calibration",
+  "runId": "req_cal_1",
+  "requests": {
+    "requests": [
+      {
+        "id": "req_cal_1",
+        "status": "completed",
+        "items": [
+          { "type": "message", "itemIndex": 0, "content": [{ "text": "Starting on the three files." }] },
+          {
+            "type": "tool_output",
+            "itemIndex": 1,
+            "status": "completed",
+            "toolCall": { "name": "Write", "arguments": "{\"file_path\":\"/work/repo/alpha.txt\",\"content\":\"a\"}" }
+          },
+          {
+            "type": "tool_output",
+            "itemIndex": 3,
+            "status": "completed",
+            "toolCall": { "name": "Write", "arguments": "{\"file_path\":\"/work/repo/epsilon.txt\",\"content\":\"e\"}" }
+          },
+          {
+            "type": "tool_output",
+            "itemIndex": 4,
+            "status": "completed",
+            "toolCall": { "name": "Edit", "arguments": "{\"file_path\":\"/work/repo/beta.txt\",\"old_string\":\"x\",\"new_string\":\"y\"}" }
+          },
+          {
+            "type": "tool_output",
+            "itemIndex": 4,
+            "status": "failed",
+            "toolCall": { "name": "Write", "arguments": "{\"file_path\":\"/work/repo/gamma.txt\",\"content\":\"g\"}" }
+          },
+          {
+            "type": "tool_output",
+            "itemIndex": 4,
+            "status": "completed",
+            "toolCall": { "name": "Write", "arguments": "{\"file_path\":\"/work/repo/my-alpha.txt\",\"content\":\"m\"}" }
+          },
+          {
+            "type": "tool_output",
+            "itemIndex": 5,
+            "status": "completed",
+            "toolCall": { "name": "Bash", "arguments": "{\"command\":\"ls -1\"}" }
+          },
+          { "type": "message", "itemIndex": 6, "content": [{ "text": "Wrote the files and checked the directory." }] },
+          {
+            "type": "tool_output",
+            "itemIndex": 7,
+            "status": "completed",
+            "ownedBy": "container_sub_1",
+            "toolCall": { "name": "Write", "arguments": "{\"file_path\":\"/work/repo/delta.txt\",\"content\":\"d\"}" }
+          }
+        ]
+      }
+    ]
+  },
+  "collections": {
+    "observed-file-ops": [
+      {
+        "items": [
+          {
+            "topic": "req_cal_1/inv_a/work/repo/alpha.txt",
+            "storageKey": "observed-file-ops/req_cal_1/inv_a/work/repo/alpha.txt",
+            "clientData": { "lastKind": "created", "outcome": "applied", "lastTouchedAt": 1000 }
+          },
+          {
+            "topic": "req_cal_1/inv_a/work/repo/beta.txt",
+            "storageKey": "observed-file-ops/req_cal_1/inv_a/work/repo/beta.txt",
+            "clientData": { "lastKind": "edited", "outcome": "applied", "lastTouchedAt": 1001 }
+          }
+        ],
+        "nextCursor": "observed-file-ops/req_cal_1/inv_a/work/repo/beta.txt"
+      },
+      {
+        "items": [
+          {
+            "topic": "req_cal_1/inv_a/work/repo/delta.txt",
+            "storageKey": "observed-file-ops/req_cal_1/inv_a/work/repo/delta.txt",
+            "clientData": { "lastKind": "created", "outcome": "applied", "lastTouchedAt": 1003 }
+          },
+          {
+            "topic": "req_cal_1/inv_a/work/repo/gamma.txt",
+            "storageKey": "observed-file-ops/req_cal_1/inv_a/work/repo/gamma.txt",
+            "clientData": { "lastKind": "created", "outcome": "failed", "lastTouchedAt": 1002 }
+          },
+          {
+            "topic": "req_cal_1/inv_a/work/repo/my-alpha.txt",
+            "storageKey": "observed-file-ops/req_cal_1/inv_a/work/repo/my-alpha.txt",
+            "clientData": { "lastKind": "created", "outcome": "pending", "lastTouchedAt": 1005 }
+          }
+        ]
+      }
+    ],
+    "observed-gaps": [
+      {
+        "items": [
+          {
+            "topic": "req_cal_1/inv_a/000001",
+            "storageKey": "observed-gaps/req_cal_1/inv_a/000001",
+            "clientData": {
+              "reason": "a file operation could not be keyed: the path is not addressable",
+              "rawPath": "/work/repo/epsilon.txt",
+              "at": 1004
+            }
+          }
+        ]
+      }
+    ],
+    "observed-plan": [{ "items": [] }]
+  }
+}
