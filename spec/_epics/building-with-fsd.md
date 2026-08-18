@@ -279,8 +279,20 @@ call.
      `bearerToken`. The mechanism exists for exactly this case (its own comment: *"Injected into
      the DevTool page by serve() so a secured flow is debuggable without hand-editing DevTool
      settings"*), so **the generated config declares `devtool` from the same source as the
-     resolver** — the same environment variable, never a second copy of the value. Both topology
-     branches print `fsdev dev`, so this binds both.
+     resolver**. Both topology branches print `fsdev dev`, so this binds both.
+
+     **"Same environment variable" is not sufficient, and the audit of it found a worse failure
+     than a rename.** The generated config **reads the credential once into a single binding, and
+     both the resolver and the `devtool` block reference that binding** — never two independent
+     `process.env` reads — **and refuses to start when it is missing or empty.** Four ways the two
+     sides diverge otherwise, all silent: a rename in one place; a `??` fallback on one side; a
+     **partial declaration**, since `DevToolConnectionConfig` makes both fields optional and
+     `fsdev dev` gates on `userId` **or** `bearerToken` being non-empty, so a config with an
+     identity and an absent token passes the gate and then fails auth looking like a bad key; and
+     the serious one — **an unset variable makes a naive equality accept everyone**, because a
+     request carrying no credential compares equal to an absent expected value, so the flow reads
+     as secured while being open. Refusing at startup is what makes that unrepresentable, rather
+     than a thing the reader has to remember.
    - **`fsdev run` is unaffected**, on both branches: it calls `runAction` in-process with its own
      `cli-user` identity and never resolves a principal, so it does not cross the secured surface.
    - **The second-process branch's own call does cross it.** `fsdev serve` starts a real HTTP
@@ -292,10 +304,24 @@ call.
      network bind that was previously blocked. The printed command keeps the flag; the point is
      that the rail stopped being the backstop the moment we stopped relying on it.
 
-   **The rule this leaves:** when a decision changes the `FlowState`, the next-steps block is
-   re-walked line by line rather than patched where the failure was noticed — securing the route
-   broke the tool the very next printed line tells the developer to open, and only one of the two
-   was reported.
+   **So the printed block is under a standing goal check, not a rule that fires when someone
+   notices.** Every command the block prints is run against the emitted project, on **both**
+   topology branches, and asserted on **real behaviour rather than exit status** — the DevTool page
+   answers an authenticated API call, the printed flow invocation returns a streamed model
+   response, the second-process call is accepted with the credential and refused without it. It is
+   a standing check because "re-walk the block whenever a decision changes the `FlowState`" is
+   itself a rule waiting on someone spotting the trigger, which is the failure class this epic has
+   now hit four times, one level up. **The standing check subsumes that trigger, so the trigger is
+   gone rather than kept alongside it** — two rules covering one hazard is how the weaker one
+   becomes the one people rely on.
+
+   **The finding that earns it, stated as the reason rather than as a fixed bug: securing the flow
+   silently removed a rail.** `fsdev serve` calls `assertNetworkBindIsAuthenticated`, which refuses
+   a network bind *while the resolver is the default*. Configuring a resolver satisfies it, so
+   adding a control **took one away** — a bind that had been refused is now permitted. Nobody asked
+   about that, no review reported it, and no check in the epic would have caught it; it surfaced
+   only because the commands were walked one by one. A control that removes another control is not
+   a rare shape, and running what we print is the cheapest thing that sees it.
 
    **A printed command is checked against the CLI's actual flags before it ships.** Twice now a
    command in this document could not have done what it appeared to: `fsdev run` takes the caller
@@ -472,9 +498,20 @@ call.
    therefore ends up strictly stronger than brownfield**: it has both the loopback bind and the
    credential, and brownfield has only the credential. That asymmetry is a consequence of theme 6
    — we author greenfield's dev script and must not touch theirs — and it is disclosed rather than
-   engineered away, because the alternative that would close it (refusing to mount a route at all
-   and running brownfield Next as a second process) trades the epic's headline integration for
-   defence in depth over a control that already works.
+   engineered away.
+
+   **The one option that would close it was considered and rejected, and the rejection is recorded
+   here so the next person who notices the LAN gap finds an answer instead of reopening it.** That
+   option is to stop mounting a route in a brownfield Next app at all and run it as a second
+   process like the Node path, which would put it behind the CLI's loopback bind. **Rejected: it
+   trades the epic's headline integration for defence in depth over a control that already
+   works.** The mounted route is what makes brownfield feel like FSD is *in* their app rather than
+   beside it, theme 8's greenfield/brownfield parity is built on it, and the credential already
+   refuses the attack the gap describes — an unauthenticated caller gets nothing. Paying the
+   product's most visible property to add a second layer over a working first one is the wrong
+   trade. **Decided by the coordinator, not the product owner**, because both horns are engineering
+   consequences of decisions the objective already made; it is recorded rather than escalated for
+   the same reason Q5 resolved rather than escalating.
 
 9. **Three shared artifacts, one seam: author, kind, carrier, check.** Three times this epic has an
    artifact authored by one issue and shipped by another — the wiring contract, the
@@ -1088,9 +1125,10 @@ already works.
 
 **It also broke the next line of its own next-steps block, which is recorded here because the
 lesson generalizes.** Securing the `FlowState` meant `fsdev dev` opened a DevTool whose API calls
-failed authentication — the command the developer is told to run immediately after. Theme 5 now
-requires the whole printed block to be re-walked under a changed `FlowState`, both topology
-branches, rather than patched at the point a reviewer noticed.
+failed authentication — the command the developer is told to run immediately after — and, less
+visibly, it satisfied `assertNetworkBindIsAuthenticated` and so **removed** a rail that had been
+refusing `fsdev serve` a network bind. Theme 5 now keeps the printed block under a **standing**
+goal check on both topology branches rather than a trigger someone has to notice.
 
 **What this costs, so the owner sees it rather than discovers it.** The brownfield first run is
 unchanged for the printed CLI command, which runs in-process and never crosses HTTP. It changes for
@@ -1234,8 +1272,24 @@ the themes and decisions above — it is not repeated here.
   now uses it, reading the same environment variable as the resolver rather than copying a value.
   Walking the rest of the block found two more: `fsdev run` is unaffected (in-process, never
   resolves a principal), and `fsdev serve` **stops being refused** on a network host, because
-  `assertNetworkBindIsAuthenticated` only refuses while the resolver is the default. **Theme 5 now
-  requires the whole block re-walked on both topology branches whenever a decision changes the
-  `FlowState`.** Q5 also states the property plainly: the credential refuses unauthenticated
+  `assertNetworkBindIsAuthenticated` only refuses while the resolver is the default — **adding a
+  control took one away**, which nothing in the epic would have caught. **Theme 5 now puts the
+  printed block under a standing goal check** — every command, both branches, asserted on real
+  behaviour — rather than a rule that fires when someone notices a trigger, since that is the same
+  failure class one level up. Q5 also states the property plainly: the credential refuses unauthenticated
   callers, but the port still listens, so greenfield (loopback **and** credential) is strictly
   stronger than brownfield (credential only) — disclosed, not engineered away.
+- **The walk became a standing check, and the credential wiring got an audit.** "Re-walk the block
+  whenever a decision changes the `FlowState`" was itself a rule waiting on someone noticing the
+  trigger — the failure class of the evening, one level up — so the printed block is now under a
+  **standing** goal check: every command, both topology branches, against the emitted project,
+  asserted on real behaviour rather than exit status. The conditional trigger is deleted rather
+  than kept beside it. **The reason it earns its place is the `fsdev serve` finding: securing the
+  flow satisfied `assertNetworkBindIsAuthenticated` and so removed a rail that had been refusing a
+  network bind — adding a control took one away**, unasked and uncaught. Auditing the shared
+  credential then found four silent divergences between the resolver and the `devtool` block, the
+  worst being that an **unset** variable makes a naive equality accept every caller while the flow
+  reads as secured; so the config reads it **once into a single binding** both sides reference and
+  **refuses to start** when it is absent. Also recorded: the second-process alternative for
+  brownfield Next is **rejected** — it trades the epic's headline integration for defence in depth
+  over a control that already works (coordinator decision, not the owner's).
