@@ -292,6 +292,48 @@ load-bearing rather than tidy — proven, not asserted, inside the fix for the c
 
 `goal.md`'s class entry now leads with this lineage instead of the count.
 
+**The sixth belongs to no single repair, which is why it is a different kind of member.** Comparing
+tied candidates by serialized identity rather than by verdict only became wrong once a `null` kind
+meant *no claim* — **two repairs, both right, one defect between them.** Five entries each trace to
+one repair; this one traces to the seam between two. The count is **six** and stops there.
+
+**A seventh was proposed and rejected on analysis, by the implementer, against the coordinator.**
+Round 12 found that a fresh target written twice, recorded `created`, passed both A1 and A2 — the
+check certifying the exact recorder regression its harness ground truth was added to catch. I
+routed it as a probable seventh. It is not one: **before the ground-truth fix that world passed
+too**, because nothing compared a row's kind against what the harness knew. The repair improved one
+direction and left the mirror unwritten. That is the **half-applied rule** — the oldest class in
+this file — landing on a repair a single round old, not a new member of the newest class.
+
+---
+
+## The closing exhibit — a principle, and its own twin, three lines apart
+
+**Round 13 is the best single illustration this epic produced, and it was found after the work had
+stopped.** The ground-truth check reads:
+
+```
+if (existed && entry.kind === "created")            -> a1-kind-impossible   (no outcome guard)
+if (!existed && entry.kind !== null) ... && naming[0].outcome === "applied"
+```
+
+Between them sits the author's own statement of the rule: *"a call that failed created nothing.
+Asserting past either would fail faithful state, which is the failure mode this whole file is
+about."* **The principle is written in a comment, and applied to one of the two branches it
+governs.**
+
+It is reachable. `translate.ts` maps `["Write", "created"]` at call time and falls back to that
+kind on failure — its comment says so outright: *"fall back to the call-time kind when it reports
+nothing — including on a failure, where there is no outcome to read a kind from."* So a failed
+`Write` against a seeded file produces `kind: "created"`, `outcome: "failed"` — **faithful state,
+recorded exactly as designed, failing A1.** Verified on both sides directly rather than relayed.
+
+**Not folded, and that is the deliberate call.** Fixing it would improve one prototype's grader by
+one clause and delete the clearest evidence the epic has. A rule half-applied *three lines from
+where its own principle is written down* is not an argument that people should be more careful — it
+is the argument that care is not the mechanism. It goes to LAB-137 as the exhibit, not to a
+fourteenth round as a patch.
+
 ---
 
 ## `false-red` — the check rejects faithful state
@@ -338,7 +380,7 @@ a *state*, the fix belongs in the calibration pair.**
 
 ---
 
-## Coordinator errors — 9, and 3 distinct shapes
+## Coordinator errors — five shapes, and how they were caught
 
 Recorded because the coordinator ran the same defect classes it was routing.
 
@@ -385,7 +427,25 @@ verified before it was built. **That labelling is doing more work than any rule 
 the mechanism was plausible, I had just read the code, and I was the most confident I had been all
 epic.
 
-**How they were caught: worker pushback ×5, restraint pass ×1, stale review ×1, POC ×1, self ×2.
+**Shape E — a finding classified before it was analysed (1).** Round 12's defect confirmed exactly
+as reported; **my classification of it did not.** I routed it as a probable seventh self-inflicted
+regression and the implementer showed it was a half-applied rule, on the test that a regression
+requires a repair to have made something worse. I had also written that holding the count was *"the
+fourth time holding was right"* — it was not: six was correct when first offered, and this finding
+never threatened it. **The policy held while the justification for it was refuted.** Fifth refuted
+prediction of the epic, after the `request_events` ordering lead, *"the class entry stops the
+fifth"*, *"self-inflicted regression is a closed category"*, and *"round 6 is the last round"*.
+
+The implementer's framing is better than mine and is why this is its own shape rather than a
+variant of A:
+
+> *"Classify-before-analysing is the file's oldest class seen from the process side — a rule applied
+> at the wrong extent, where the extent is how much you know yet."*
+
+**That symmetry means the structural recommendation is not only about code review.**
+
+**How they were caught: worker pushback ×6, restraint pass ×1, stale review ×1, POC ×1, self ×2 —
+no total stated, see Counting.
 Never by re-reading my own message.**
 
 ---
@@ -433,6 +493,43 @@ is a preference for one more fix wearing a rule's clothes.** The third extension
 bounded to a single *subtraction* (a vestigial `topLevelTools` count that no assertion reads and
 that fails faithful delegated runs), with the instruction to **name it rather than fix it** if it
 turned out not to be a deletion.
+
+---
+
+## Counting — computed, appended, remembered
+
+**Found by counting rather than reading, which is why it was missed for eleven rounds.** Sweeping
+`goal.md` for quantities turned up **seven stale counts** in its narrative body, against a file
+whose entire argument is that remembered rules rot.
+
+Three populations of number in one document, and only one rotted:
+
+- **Computed** — the runtime evidence line reads `GUARD_CASES.length + ACCOUNT_CASES.length`. Right
+  at every value from 53 through 81, never touched.
+- **Appended** — each verdict-table row froze at write time. *67 guards* at `74d628367` is still
+  correct **for that row**. Never touched.
+- **Remembered** — seven drifted.
+
+**Fixed by subtracting, not updating**: *"every guard case"*, *"every PASS in the log below"*,
+*"unproduced by any graded run"*. Correcting a remembered number by remembering harder resets the
+drift clock; removing it stops the clock. The narrative body now carries no quantity at all.
+
+**Three instances of the class landed inside the round that was correcting it**, which is the part
+worth keeping:
+
+1. One count (*"answered thirty-three times"*) was **independently verified as current by the
+   coordinator**, and went stale before the round finished — the thirty-fourth run happened while
+   the correction was being written. *Verified current* is a claim with a shelf life.
+2. The implementer's hand-count of `ACCOUNT_CASES` returned 4, because the grep caught
+   `because: string` in the type annotation. **The computed number was right and the human count
+   was wrong, on the first try, in the round whose subject is that.**
+3. **This section of this file carried three disagreeing totals of its own** — the heading said 9
+   coordinator errors, the enumerated shapes summed to 8, the catch-attribution summed to 10. Found
+   while correcting the same defect elsewhere. **The totals were removed rather than reconciled**,
+   on the rule above.
+
+**The levels kept going**: guard → fixture → store → the scans written to close two classes → the
+prose describing all of them, which nothing checks at all.
 
 ---
 

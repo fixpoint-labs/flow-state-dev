@@ -858,6 +858,22 @@ arrived within the hour** (a permitted shell command that mutated a file and the
 read as never having run, because the harness collapses refusal and execute-then-fail into one
 status), which meets the trigger that implementer set for asking the question at all.
 
+**And then the clause proved itself on its own author, unlooked for — which is the evidence this
+recommendation was missing.** Folding a later finding, the implementer restructured a branch and
+dropped the `entry.kind !== "created"` guard off the original rule. The single-write case — *the
+ordinary shape of every real run's two create targets* — began failing. **The must-pass neighbour
+caught it on the first table run, inside the fold that created it.** Nobody was looking for it; it
+was shipped as a stand-down against a different degradation. Every other argument in this ledger for
+the guard table is retrospective, constructed after knowing the answer. This one is not, and it is
+the reason the clause is not decoration: **a table of broken worlds catches the regression its own
+repair introduces, in the round that introduces it.**
+
+The class total settled at **six** self-inflicted regressions, not seven. A candidate seventh was
+proposed by the coordinator and rejected on analysis by the implementer — a regression requires a
+repair to have made something worse, and the world in question passed before the repair too. It is
+the **half-applied rule** landing on a repair one round old. Recorded because the correction ran
+against the coordinator, which is the direction that matters.
+
 **Proposed upstream fix, put to the owner rather than taken:** promote the guard-table pattern from
 one goal's internal practice to the documented standard for goal checks — a table of broken worlds,
 each naming the branch it must reach, run before any dispatch, extended whenever a mutation stays
