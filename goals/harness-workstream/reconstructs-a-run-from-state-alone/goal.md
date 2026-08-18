@@ -529,7 +529,12 @@ real store and reads them back: sorted means this disclosure stands; **as-writte
 changed, A3 has teeth on the real path again, and the goal fails saying so** — the disclosure is
 wrong in the generous direction and must not sit there quietly under-reporting itself. A7's half
 is computed from the run instead of asserted: every run's evidence line reports how many cursors
-it actually followed, so the sentence corrects itself the first time a collection pages.
+it actually followed, and its **wording branches on that count**, so the first run where a
+collection pages says *"A7 graded a real read — the entry in goal.md no longer holds"* instead of
+repeating this paragraph. **That second branch has never executed**, and in a file about checks
+that certify what they never measured, saying so is not optional: it is an evidence string rather
+than a graded assertion, so nothing rides on it, but it is exactly the shape that has been wrong
+here before.
 
 **Assertion 5 has reported UNMEASURED on every run**, and that is the finding rather than a
 footnote. Through the in-process Agent SDK path the run invokes no plan tool at all — it writes

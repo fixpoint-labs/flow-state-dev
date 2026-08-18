@@ -1906,6 +1906,12 @@ await runGoal(async () => {
 PLAN ARM: ${planFinding?.status.toUpperCase()} — ${planFinding?.message}`);
 
     const graded = failuresOf(findings);
+    // How many cursors A7 actually had to follow: one page per collection means
+    // none were offered, and A7 graded a claim nothing could falsify.
+    const cursorsFollowed = COLLECTIONS.reduce(
+      (n, c) => n + Math.max(0, (view.reads[c]?.pages ?? 1) - 1),
+      0,
+    );
     return {
       failures: graded,
       evidence:
@@ -1928,15 +1934,21 @@ PLAN ARM: ${planFinding?.status.toUpperCase()} — ${planFinding?.message}`);
         `purpose and observed. ` +
         `Store adapter: @flow-state-dev/store-sqlite. Settlement not asserted (FIX-1182); the ` +
         `run's prose, the files' contents and the working tree were never read. ` +
-        // A3 and A7 are structurally satisfied on this path and certify nothing
-        // about this run — see goal.md's verdict section. A7's half is COMPUTED
-        // rather than asserted: it followed as many cursors as the route
-        // offered, and on a run this size that is none. The moment a collection
-        // does page, this sentence says so and A7 starts meaning something.
-        `Two of the eight assertions certify nothing about this run: A3 grades a field the store ` +
-        `returns sorted by, and A7 followed ` +
-        `${COLLECTIONS.reduce((n, c) => n + Math.max(0, (view.reads[c]?.pages ?? 1) - 1), 0)} ` +
-        `cursor(s) because every collection fitted in one page.`,
+        // A3 is structurally satisfied on this path and certifies nothing about
+        // this run — see goal.md's verdict section. A7's half is COMPUTED rather
+        // than asserted, and the wording BRANCHES on the count: it followed as
+        // many cursors as the route offered, which on a run this size is none.
+        // The moment a collection does page, this sentence stops saying two and
+        // starts reporting the cursors A7 actually followed — which is the only
+        // form of disclosure that cannot go stale while the log fills with green.
+        (cursorsFollowed === 0
+          ? `Two of the eight assertions certify nothing about this run: A3 grades a field the ` +
+            `store returns sorted by, and A7 followed 0 cursor(s) because every collection fitted ` +
+            `in one page.`
+          : `One of the eight assertions certifies nothing about this run: A3 grades a field the ` +
+            `store returns sorted by. A7 followed ${cursorsFollowed} cursor(s) on this run, so it ` +
+            `graded a real read — the structural satisfaction recorded in goal.md no longer holds ` +
+            `and that entry needs revisiting.`),
     };
   } finally {
     await host.close();
