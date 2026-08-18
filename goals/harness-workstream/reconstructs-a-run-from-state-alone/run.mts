@@ -233,6 +233,12 @@ export function describeReadFailure(status: number, path: string, body: string):
   return { kind: "other", message: `GET ${path} returned ${status}: ${body.slice(0, 300)}` };
 }
 
+/** The slice of a fixture item precondition 1c-ter reads. */
+interface StoredCalItem {
+  itemIndex?: number;
+  ownedBy?: string;
+}
+
 /** The calibration state fixture, shaped as the real routes answer. */
 interface KnownState {
   workstreamId: string;
@@ -454,6 +460,42 @@ const GUARD_CASES: GuardCase[] = [
     name: "A2 — a stream mutation has no row but a gap row carries its path",
     mutate: (v) => {
       v.did = v.did.filter((d) => !d.topic.endsWith("gamma.txt"));
+      v.gaps.push({ kind: "file", reason: "skipped", rawPath: "/work/repo/gamma.txt" });
+    },
+    because: "a2-ok",
+    id: "A2",
+    want: "pass",
+  },
+  {
+    // The ambiguity rule's THIRD direction, and the one that stayed open after
+    // the other two were closed: one mutation, no row, and two gaps that could
+    // each be the one covering it. The run names the file relatively — the
+    // ordinary way a shorter spelling matches more than one candidate — so
+    // consuming the first would excuse this loss with a row that may belong to
+    // a different one. Two-or-more is unresolvable here exactly as it is when
+    // the many-side is rows or mutations.
+    name: "A2 — two gap rows could each be the one covering a lost mutation",
+    mutate: (v) => {
+      v.did = v.did.filter((d) => !d.topic.endsWith("gamma.txt"));
+      for (const m of v.streamMutations) {
+        if (m.path.endsWith("gamma.txt")) m.path = "gamma.txt";
+      }
+      v.gaps.push({ kind: "file", reason: "skipped", rawPath: "/work/repo/gamma.txt" });
+      v.gaps.push({ kind: "file", reason: "skipped", rawPath: "/work/vendor/gamma.txt" });
+    },
+    because: "a2-ambiguous-gap",
+    id: "A2",
+    want: "fail",
+  },
+  {
+    // And the world it MUST accept, so the new branch is not simply "more than
+    // one gap fails": the same relative spelling with ONE gap that matches.
+    name: "A2 — a relatively-named lost mutation answered by a single matching gap",
+    mutate: (v) => {
+      v.did = v.did.filter((d) => !d.topic.endsWith("gamma.txt"));
+      for (const m of v.streamMutations) {
+        if (m.path.endsWith("gamma.txt")) m.path = "gamma.txt";
+      }
       v.gaps.push({ kind: "file", reason: "skipped", rawPath: "/work/repo/gamma.txt" });
     },
     because: "a2-ok",
@@ -1179,6 +1221,41 @@ await runGoal(async () => {
             `still reach a pooled value`,
         );
       }
+    }
+  }
+
+  // ══ Precondition 1c-ter — the ordering set covers the SUB-AGENTS ══════════
+  // A3 says the request's stream is in order. It was measured over the
+  // top-level projection until a review caught it, so a nested pair arriving
+  // `3, 2` between two in-order messages passed. The fix is in the reader —
+  // which items feed `indices` — and a guard case cannot reach it, because a
+  // case is handed a view whose array is already built.
+  //
+  // So the pin lives here, and it is checked rather than assumed: the fixture
+  // carries a nested item, and its position must appear in the derived set.
+  // Without this, deleting that one item from the fixture would silently
+  // retire the only thing holding the broader scope in place.
+  const calibrationItems =
+    (state.requests as { requests?: Array<{ id?: string; items?: StoredCalItem[] }> }).requests
+      ?.find((r) => r.id === CALIBRATION_RUN_ID)?.items ?? [];
+  const nested = calibrationItems.filter(
+    (i) => i.ownedBy !== undefined && i.ownedBy !== null && typeof i.itemIndex === "number",
+  );
+  if (nested.length === 0) {
+    failures.push(
+      `CALIBRATION FAILED — the calibration state carries no positioned sub-agent item, so ` +
+        `nothing holds A3's set open past the top-level thread`,
+    );
+  } else {
+    const missing = nested.filter(
+      (i) => !gradedKnownRun.order.indices.includes(i.itemIndex as number),
+    );
+    if (missing.length > 0) {
+      failures.push(
+        `CALIBRATION FAILED — ${missing.length} sub-agent item(s) at position(s) ` +
+          `${missing.map((i) => i.itemIndex).join(", ")} are absent from the ordering set, so A3 ` +
+          `would certify an order over a subset of the stream it names`,
+      );
     }
   }
 

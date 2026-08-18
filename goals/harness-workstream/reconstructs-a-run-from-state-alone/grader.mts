@@ -354,6 +354,9 @@ function compareSemantics(mutation: StreamMutation, entry: DidEntry): Finding[] 
  * Gaps are **consumed**, not matched. The recorder writes one row per
  * unrecordable mutation, so one gap excuses one loss; `.find()` would hand the
  * same row to two mutations sharing a path and certify a state that lost one.
+ * And the pairing must be UNIQUE in both directions — many rows for one
+ * mutation, many mutations for one gap, and many gaps for one mutation are the
+ * same defect approached from three sides, each caught by its own branch here.
  */
 function gradeAgreement(view: GradeableView): Finding[] {
   const findings: Finding[] = [];
@@ -401,9 +404,30 @@ function gradeAgreement(view: GradeableView): Finding[] {
       findings.push(...compareSemantics(mutation, rows[0]));
       continue;
     }
-    const gapIndex = namedGaps.findIndex((g) => sameFile(g.rawPath as string, mutation.path));
-    if (gapIndex !== -1) {
-      namedGaps.splice(gapIndex, 1);
+    // The SAME ambiguity rule, in its third direction. Round 1 caught one
+    // mutation naming many rows; round 3 caught many mutations consuming one
+    // gap; this is one mutation matched by many gaps. `findIndex` took the
+    // first and reported the loss excused, while the state cannot say which
+    // gap covers this mutation — and an exemption that cannot be tied to its
+    // case is the blanket amnesty this assertion exists to refuse.
+    const candidates = namedGaps
+      .map((g, at) => ({ g, at }))
+      .filter(({ g }) => sameFile(g.rawPath as string, mutation.path));
+    if (candidates.length > 1) {
+      findings.push({
+        id: "A2",
+        status: "fail",
+        because: "a2-ambiguous-gap",
+        message:
+          `"${mutation.path}" has no row in the file record and ${candidates.length} gap rows ` +
+          `could be the one covering it ` +
+          `(${candidates.map(({ g }) => g.rawPath).join(", ")}) — consuming either would excuse ` +
+          `this loss with a row that may belong to a different one`,
+      });
+      continue;
+    }
+    if (candidates.length === 1) {
+      namedGaps.splice(candidates[0].at, 1);
       accounted += 1;
       continue;
     }
@@ -486,6 +510,13 @@ function gradeAgreement(view: GradeableView): Finding[] {
  * gap, both legitimate. An unreadable index is a failure, not a skip — guarding
  * on "did we read any numbers" is what let the predecessor's ordering assertion
  * pass having measured nothing.
+ *
+ * Over EVERY item of the request, sub-agents included. The set is the reader's
+ * to choose and it chose the top-level projection until a review caught the
+ * mismatch: the claim said the request's stream was ordered, the check covered
+ * the parent thread, and a nested pair arriving `3, 2` between two top-level
+ * messages passed. A claim narrower than its own name is the same defect as a
+ * rule applied to one case and not its twin — it just fails in prose first.
  */
 function gradeOrder(view: GradeableView): Finding[] {
   const run = view.order;
@@ -496,7 +527,7 @@ function gradeOrder(view: GradeableView): Finding[] {
         status: "fail",
         because: "a3-unreadable",
         message:
-          `${run.unreadable} of ${run.unreadable + run.indices.length} top-level items carry no ` +
+          `${run.unreadable} of ${run.unreadable + run.indices.length} items of this request carry no ` +
           `numeric itemIndex, so there is no evidence for the in-order claim`,
       },
     ];
@@ -529,7 +560,7 @@ function gradeOrder(view: GradeableView): Finding[] {
       id: "A3",
       status: "pass",
       because: "a3-ok",
-      message: `non-decreasing across ${run.indices.length} top-level item(s) at ${distinct} distinct position(s)`,
+      message: `non-decreasing across ${run.indices.length} item(s) of this request, sub-agents included, at ${distinct} distinct position(s)`,
     },
   ];
 }
@@ -550,8 +581,9 @@ function gradeCausality(view: GradeableView): Finding[] {
 
   // UNEVALUABLE, therefore a FAILURE: `lastMutationAt` was computed from the
   // positions that could be read, so a dropped one means the comparison
-  // describes a smaller set than it claims. A sub-agent's mutation is not
-  // top-level, so A3's `unreadable` does not cover this.
+  // describes a smaller set than it claims. A3's `unreadable` now covers the
+  // same items, and this stays anyway: A4 must fail on its own evidence rather
+  // than on a neighbour failing first.
   if (run.unreadableMutationPositions > 0) {
     return [
       {
@@ -565,10 +597,9 @@ function gradeCausality(view: GradeableView): Finding[] {
     ];
   }
   // NOT APPLICABLE, decided explicitly: a MESSAGE whose position cannot be read
-  // would shrink `lastMessageAt` the same way, but messages are top-level and
-  // A3's `unreadable` already fails on any top-level item without an index. A
-  // sub-agent's mutation is not top-level, which is why that one needed its own
-  // count above.
+  // would shrink `lastMessageAt` the same way, and A3's `unreadable` fails on
+  // any item of this request without an index — messages included. The count
+  // above is kept separate regardless, for the reason stated there.
   const last = run.lastMutationAt;
   const word = run.lastMessageAt;
   if (last === null || word === null) {

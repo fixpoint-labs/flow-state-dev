@@ -26,7 +26,9 @@ it reads is empty.
    stream never showed. Where the two DO pair up, the record must agree about what happened —
    an `Edit` stored as `created`, or a failed call stored as `applied`, fails. And a pairing
    that is not unique is an ambiguity, never a match
-3. Order is non-decreasing over `itemIndex`, per request, across at least two distinct positions
+3. Order is non-decreasing over `itemIndex` across at least two distinct positions, over **every
+   item the request holds, sub-agents included** — the set the positions assertion 4 compares are
+   drawn from, and the set the claim names
 4. The run's **last** file mutation precedes its final report — a write after the closing word
    leaves a row in the record the report never covered. A **tie** is unevaluable, not a pass:
    `itemIndex` carries duplicates, so equal positions say nothing about which came first
@@ -89,11 +91,17 @@ generator actions. The calibration and every guard case are **model-free** and r
 ## The preconditions, and why they run every time
 
 The reader derives the known account from the known state **exactly**, a deliberately lossy copy
-of that state is caught by assertion 2, and 58 guard cases each break one assertion on purpose
+of that state is caught by assertion 2, and 60 guard cases each break one assertion on purpose
 and confirm it reaches the verdict it is supposed to. All of it is model-free, so it runs on
 every invocation rather than sitting in this log as a one-time claim — and if any of it fails,
 no coding run is dispatched at all. An instrument is sanity-checked against a case whose answer
 is known before its sweep is trusted.
+
+**Two preconditions check the FIXTURE rather than the code**, because the fixture is what holds
+open the sets the reader derives, and a fixture can retire a check silently. It must hold two
+runs (so the per-run partition is exercised) and a positioned sub-agent item whose position
+reaches the ordering set (so assertion 3's scope is exercised). Delete either from the fixture
+and a precondition says so instead of the coverage quietly disappearing.
 
 **The broken world is handed in rather than provoked**, and that is the point. Mutating a grader
 and re-running a real check has a blind spot congruent with the defects it is meant to catch: a
@@ -165,6 +173,18 @@ be produced at all.
 - The plan arm was combined **in the reader**, where the guard cases — which feed the grader
   synthetic accounts — could not reach it. Regressing it to pooled rows ran green, and that green
   is what moved the judgement to the grader. The reader observes per run; the grader decides.
+- **Assertion 3 measured a projection of the set it named.** The claim was that the request's
+  stream is ordered; the check read the top-level thread, so `message@0, owned Write@3, owned
+  Read@2, message@4` passed while the request's own index sequence went backwards — and the
+  positions assertion 4 grades were drawn from the whole set all along. The ordering set now
+  covers every item. This one is reader-side, so **no guard case can reach it**: the pin is a
+  precondition that requires the calibration fixture to carry a positioned sub-agent item and
+  that item's position to appear in the derived set. Both of its branches were watched red.
+- **Assertion 2's gap exemption could be satisfied by an ambiguous gap.** One relatively-named
+  mutation with no record row and two gaps whose paths both end in it: `findIndex` took the first
+  and reported the loss excused. That is the third direction of one rule — one mutation naming
+  many rows (round 1), many mutations consuming one gap (round 3), many gaps offered for one
+  mutation (round 7). Each direction was closed correctly and the next stayed open.
 
 One masking relationship among the preconditions themselves was removed for the same reason: a
 failed lossy-calibration used to return early and hide the entire guard table. All preconditions
@@ -172,10 +192,18 @@ now report together.
 
 ## What is closed by construction, and what is still a grid
 
-Six review rounds produced 19 reported findings. The concepts stopped being new around round 3;
-the **instances never stopped arriving** — 3, 2, 3, 3, 4, 4 per round. Those are different
+Seven review rounds produced 21 reported findings. The concepts stopped being new around round 3;
+the **instances never stopped arriving** — 3, 2, 3, 3, 4, 4, 2 per round. Those are different
 questions, and only the second says whether the work is done. Recording both is the point of this
 section.
+
+**The two rules that kept coming back are the same rule.** *An input that cannot determine an
+answer must not produce one* — the ambiguity rule and the null rule are both spellings of it.
+Ambiguity was wrong in three directions (rows, mutations, gaps) and null in two (outcome, kind).
+Each was applied correctly the first time it was found, and each time the *next* direction was
+still open, because what was fixed was the instance in front of us. That is the case for the
+guard table in one sentence: a rule is remembered, and remembering is what failed five times; a
+table executes, and it has never once been half-applied.
 
 **Closed by construction — the shape cannot be written:**
 
@@ -191,8 +219,8 @@ section.
 
 **Still enumerable — a grid, and honestly so.** The remaining family is *an assertion certifying
 on evidence that does not cover its case*, over roughly `field × surface × presence`. Round 6
-filled four cells; these are cells nobody has reported and that this check does not currently
-grade:
+filled four cells and round 7 two; these are cells nobody has reported and that this check does
+not currently grade:
 
 - `lastTouchedAt` on a row is read into no comparison, so a record may carry any timestamp.
 - `previousStatus` on a plan row is derived and never graded.
@@ -201,10 +229,17 @@ grade:
 - A row's `storageKey` and its `topic` are never checked against each other.
 - A gap's `reason` and `at` are carried and never graded.
 
+**One round-7 finding did not live in that grid, and saying otherwise would repeat the defect it
+was.** Assertion 3's scope was not a cell of `field × surface × presence` — it was *which set a
+derivation reads*, one level up from any field. That axis has exactly one other inhabitant, and
+it is deliberate rather than open: narrative is top-level by choice, and it says so in three
+places. The grid above describes the family this check has repeatedly produced; it is not a proof
+that no other axis exists, and nothing here should be read as one.
+
 Filling those buys those. **Every one lives in a branch the graded runs do not reach** — they need
 an incidental file outside the expectation, an unreadable vendor field, or a plan half that
 reports UNMEASURED on every real run. That is the stopping line for a Proof: the question this
-issue exists to answer has been answered fifteen times, and precision on unreached edges is worth
+issue exists to answer has been answered nineteen times, and precision on unreached edges is worth
 bounding rather than grinding.
 
 The residual belongs beside **LAB-137**, not inside it. LAB-137 is recorder-side — *confirm only
@@ -255,6 +290,10 @@ live, and the branch that would call the whole run inconclusive sits behind them
 
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-08-18 | working tree at `fca81252b`, pre-commit (round 7 folded) | Agent SDK default | PASS | Eighteenth consecutive real run. **60 guards**. A3 now reads *"non-decreasing across 30 item(s) of this request, sub-agents included, at 26 distinct position(s)"* — and on this run that is the same 30 items, because the run spawned no sub-agent. The broader scope is exercised model-free by the calibration fixture, not by the graded run |
+| 2026-08-18 | working tree at `fca81252b`, pre-commit | — | FAIL *(deliberate)* | A2's gap exemption regressed to `findIndex`. *"'A2 — two gap rows could each be the one covering a lost mutation' did not reach A2/a2-ambiguous-gap with a fail; it produced ["a2-ok=pass"]"* — the ambiguity rule's third direction, reproducing the reported false green exactly |
+| 2026-08-18 | working tree at `fca81252b`, pre-commit | — | FAIL *(deliberate)* | The ordering set narrowed back to the top-level thread. Calibration red before dispatch; in isolation the world the review reported — `0,1,2,3,4,4,4,5,6,5,7,8` with the nested pair reversed — grades `a3-out-of-order=fail` now and graded `a3-ok=pass` under the old scope |
+| 2026-08-18 | working tree at `fca81252b`, pre-commit | — | FAIL *(deliberate)* | The fixture's sub-agent item **retired the way a tidy-up would** — item and the row it produced both removed, account regenerated, so calibration itself stays green. Precondition 1c-ter is what speaks: *"the calibration state carries no positioned sub-agent item, so nothing holds A3's set open past the top-level thread"*. Two guard cases keyed to that row go red beside it |
 | 2026-08-18 | **`358957f4e`** | Agent SDK default | **PASS — the verdict** | Seventeenth consecutive real run, on the committed tree, round 6 folded and final. 3 of 3 held-out paths `created`/`edited` and `applied`; 3 stream mutations and 3 rows naming the same files; non-decreasing across 30 top-level items at 25 distinct positions; mutations 17–22, last word at 24; 1 shell call, 0 of them ran. 58 guards proven first. Plan arm UNMEASURED |
 | 2026-08-18 | working tree at `91ca856c0`, pre-commit (round 6 folded) | Agent SDK default | PASS | Sixteenth consecutive real run. **58 guards** |
 | 2026-08-18 | working tree at `91ca856c0`, pre-commit | — | FAIL *(deliberate)* | The half-applied kind rule re-applied — null kind skipping while null outcome fails, exactly as found. *"'a paired row cannot say how its file was touched' did not reach A2/a2-row-kind-missing"* |

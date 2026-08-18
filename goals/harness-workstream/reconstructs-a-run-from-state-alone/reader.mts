@@ -33,7 +33,12 @@
  *   nest under `ownedBy` and the recorder does not filter on that, so a
  *   top-level-only scan would see a collection row whose mutation "is missing
  *   from the stream" and report the graph as having invented a write.
- * - **Narrative and order** are top-level only: the run's own thread.
+ * - **Order** is scanned over every item too, and for the same reason as
+ *   activity: `itemIndex` is one counter per request, the positions the
+ *   causality claim compares are drawn from the whole set, and an ordering
+ *   claim narrower than the set it describes is an overclaim. It was top-level
+ *   only until a review caught it certifying `0, 3, 2, 4` as in order.
+ * - **Narrative** is top-level only: the run's own thread, not a sub-agent's.
  *
  * ## Two field traps, both measured
  *
@@ -219,9 +224,17 @@ export interface PageReport {
 
 /** One run's stream positions, for the ordering and causality claims. */
 export interface OrderRun {
-  /** `itemIndex` of every top-level item, in the order the stream returned them. */
+  /**
+   * `itemIndex` of every item of the request — sub-agents INCLUDED — in the
+   * order the stream returned them.
+   *
+   * Not the top-level projection. The ordering claim has to cover the set the
+   * positions are drawn from, and `lastMutationAt` below is drawn from every
+   * item; a top-level-only sequence certified an order over a subset of the
+   * stream it claimed to describe.
+   */
   indices: number[];
-  /** Top-level items carrying no numeric `itemIndex`. Non-zero means no evidence. */
+  /** Items carrying no numeric `itemIndex`. Non-zero means no evidence. */
   unreadable: number;
   /** Where this run first changed a file. */
   firstMutationAt: number | null;
@@ -238,8 +251,13 @@ export interface OrderRun {
   /**
    * Mutations whose position could not be read. Dropping them silently would
    * compute `lastMutationAt` from a subset and certify an order over a set
-   * smaller than the one being described — and a sub-agent's mutation is not
-   * top-level, so `unreadable` above does not cover it.
+   * smaller than the one being described.
+   *
+   * `unreadable` above now covers the same items, and the overlap is kept on
+   * purpose: A4 must fail on its own evidence rather than lean on A3 having
+   * failed first. An assertion that is only sound while its neighbour runs is
+   * an assertion that goes quiet the moment the neighbour is rescoped — which
+   * is exactly what happened to this pair.
    */
   unreadableMutationPositions: number;
 }
@@ -442,7 +460,7 @@ export async function readAccount(read: Read, workstreamId: string): Promise<Acc
         !(i.toolCall?.name === PLAN_CREATE_TOOL && i.status === "failed"),
     ).length;
 
-    // Narrative and order: this run's own top-level thread.
+    // Narrative: this run's own top-level thread.
     const messages = topLevel.filter((i) => i.type === "message");
     const topLevelTools = topLevel.filter((i) => i.type === "tool_output");
     const spoken = messages
@@ -450,7 +468,14 @@ export async function readAccount(read: Read, workstreamId: string): Promise<Acc
       .filter((m) => m.text.length > 0);
     const said: SaidEntry[] = spoken;
     const messagesWithoutText = messages.length - spoken.length;
-    const indices = topLevel
+    // Order: EVERY item of the request, sub-agents included — not the top-level
+    // thread. `itemIndex` is one counter per request (a child emit context
+    // closes over the parent's), so the nested items are positions in the same
+    // sequence, and the positions A4 grades come from that whole set. Scoped to
+    // the top-level projection, A3 certified an order over a subset of the
+    // stream it named, and `message@0, owned Write@3, owned Read@2, message@4`
+    // passed while the request's own index sequence went backwards.
+    const indices = items
       .map((i) => i.itemIndex)
       .filter((v): v is number => typeof v === "number");
     // Positions come from the messages that actually said something, so A4
@@ -516,7 +541,7 @@ export async function readAccount(read: Read, workstreamId: string): Promise<Acc
       plan: { rows: planRows, toolCalls: planToolCalls },
       order: {
         indices,
-        unreadable: topLevel.length - indices.length,
+        unreadable: items.length - indices.length,
         firstMutationAt: mutationPositions.length > 0 ? Math.min(...mutationPositions) : null,
         lastMutationAt: mutationPositions.length > 0 ? Math.max(...mutationPositions) : null,
         lastMessageAt: messagePositions.length > 0 ? Math.max(...messagePositions) : null,
