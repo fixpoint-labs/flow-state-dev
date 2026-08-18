@@ -255,6 +255,7 @@ live, and the branch that would call the whole run inconclusive sits behind them
 
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-08-18 | **`358957f4e`** | Agent SDK default | **PASS — the verdict** | Seventeenth consecutive real run, on the committed tree, round 6 folded and final. 3 of 3 held-out paths `created`/`edited` and `applied`; 3 stream mutations and 3 rows naming the same files; non-decreasing across 30 top-level items at 25 distinct positions; mutations 17–22, last word at 24; 1 shell call, 0 of them ran. 58 guards proven first. Plan arm UNMEASURED |
 | 2026-08-18 | working tree at `91ca856c0`, pre-commit (round 6 folded) | Agent SDK default | PASS | Sixteenth consecutive real run. **58 guards** |
 | 2026-08-18 | working tree at `91ca856c0`, pre-commit | — | FAIL *(deliberate)* | The half-applied kind rule re-applied — null kind skipping while null outcome fails, exactly as found. *"'a paired row cannot say how its file was touched' did not reach A2/a2-row-kind-missing"* |
 | 2026-08-18 | working tree at `91ca856c0`, pre-commit | — | FAIL *(deliberate)* | A raw `entry.kind !== mutation.kind` written beside the combinator. *"A FIELD IS COMPARED OUTSIDE compareField"* — the scan that makes half-application unwritable |
