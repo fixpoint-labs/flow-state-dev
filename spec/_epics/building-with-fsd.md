@@ -331,26 +331,60 @@ call.
      settings"*), so **the generated config declares `devtool` from the same source as the
      resolver**. Both topology branches print `fsdev dev`, so this binds both.
 
-     **And the resolver is installed at *both* levels — per-flow and host-level — as a requirement,
-     not a preference.** Two engine mechanisms read different objects and neither sees the other's:
-     **`assertNetworkBindIsAuthenticated` reads per-flow only** (theme 8), so a host-level resolver
-     leaves the bind guard refusing as if nothing were configured; while **host-scoped
-     `GET /api/flows/sessions` reads host-level only** — with no host resolver, `pickPrincipalResolver`
-     falls back to the default and the route takes its anonymous branch, computing the flows that do
-     *not* authenticate and **withholding every row belonging to a flow that does**
-     (`unauthenticatedFlowKinds` in `packages/engine/src/routes/route-auth.ts`, filtered in
-     `handleListSessions`). So a per-flow-only resolver leaves the session list **empty for exactly
-     the flow we just secured**, and that route is what both the DevTool and `@flow-state-dev/react`'s
-     `useFlow` refresh through (`packages/client/src/session-client/sessions.ts` → `/api/flows/sessions`).
+     **Where the resolver is installed depends on who wrote the config, and that is not a
+     refinement — the earlier "install at both levels, always" rule broke theme 6 in someone else's
+     repository.** Three constraints meet here, all verified in the engine rather than reasoned
+     about:
 
-     **The two constraints do not conflict; they are jointly satisfiable and only jointly.**
-     Per-flow satisfies the bind guard and `authentication.md`'s governing-flow guard; host-level
-     makes management routes authenticate the caller rather than fall back, so listing filters by
-     principal instead of withholding. **Declaring one and not the other fails silently in opposite
-     directions** — host-only reads as unauthenticated to the bind guard, per-flow-only reads as an
-     empty session list to the developer, and neither surfaces as an authentication error.
-     *Greenfield is unaffected: it configures no resolver, so its flow is in the anonymous set and
-     its rows stay visible. This is a brownfield-path requirement.*
+     1. **`assertNetworkBindIsAuthenticated` reads per-flow only.** It inspects each served flow's
+        own `flow.authentication?.resolvePrincipal` and **does not go through
+        `pickPrincipalResolver`** — so a host-level resolver is invisible to it. *(Worth noting as
+        an engine observation rather than an epic decision: `pickPrincipalResolver`'s own docstring
+        names two callers that "must never disagree", and the bind guard is a third reader of the
+        same question that bypasses it.)*
+     2. **Host-scoped `GET /api/flows/sessions` reads host-level only.** With no host resolver it
+        takes the anonymous branch and **withholds every row belonging to a flow that
+        authenticates** (`unauthenticatedFlowKinds` → `handleListSessions`).
+     3. **A host-level resolver is inherited by every flow that has no override.**
+        `pickPrincipalResolver` returns `flow?.authentication?.resolvePrincipal ?? hostResolver`.
+        In a project that already runs FSD, that is **not an empty slot** — it is the default the
+        developer's existing flows are already relying on.
+
+     **Constraint 3 is the one that was missed, and it is live in a supported path rather than a
+     corner case.** FIX-1159 explicitly proceeds when the project has its own `fsdev.config.*`:
+     *"Not a collision — proceed. Write no config, write everything else, and hand back the one line
+     that registers the new flow in theirs."* So instructing that developer to add a host-level
+     resolver would make ours effective for **their** override-less flows, whose browser and HTTP
+     clients carry none of our credential — **their working app starts returning 401s, silently,
+     because we were invited in.** That is theme 6's promise broken directly.
+
+     **And no host-level resolver can avoid it.** The obvious escape — install a host resolver that
+     branches on `flowKind` and leaves other flows as they were — **is not available**, because the
+     guard branches on resolver *identity*: `isDefaultBodyUserIdPrincipalResolver` is a brand check,
+     and the default resolver's behaviour at this layer is *not to run the guard at all*. Any real
+     function we install flips every override-less flow out of the no-enforcement branch, whatever
+     it does internally. Checked before choosing, because a third remedy would have been better than
+     either of the two obvious ones.
+
+     **So the rule is keyed on authorship — the same boundary theme 6 already uses:**
+
+     - **When the run writes the config (no existing one):** install at **both** levels. Ours is the
+       only flow, so the host level harms nothing, the bind guard is satisfied, and session listing
+       works.
+     - **When the config is the developer's:** install **per-flow only**, in the flow file we
+       author, and **never add a host-level resolver to a config we did not write.** The bind guard
+       is satisfied (our flow authenticates); their flows keep exactly the behaviour they had.
+
+     **What that costs, disclosed rather than engineered around:** in the guest case the DevTool's
+     session list will not show our demo flow's sessions, because constraint 2 withholds them while
+     the host level stays theirs. The DevTool still runs the flow and shows its trace; the *listing*
+     is the degraded surface. **That is the right trade** — a cosmetic gap in our own tooling
+     against a stranger's working app returning 401. *One forward-looking note for the config we do
+     write: its host-level resolver governs every flow added later that has no override, and the
+     generated file says so, since the developer who adds the second flow is the one it surprises.*
+
+     *Greenfield is unaffected throughout: it configures no resolver at all, so its flow stays in
+     the anonymous set and its rows stay visible. All of this is a brownfield-path requirement.*
 
      **"Same environment variable" is not sufficient, and the audit of it found a worse failure
      than a rename.** The generated config **reads the credential once into a single binding, and
@@ -360,6 +394,16 @@ call.
      **partial declaration**, since `DevToolConnectionConfig` makes both fields optional and
      `fsdev dev` gates on `userId` **or** `bearerToken` being non-empty, so a config with an
      identity and an absent token passes the gate and then fails auth looking like a bad key; and
+     **And in the guest case the `devtool` block is not ours to write either**, since it lives in
+     the config we deliberately do not touch. Traced rather than assumed: securing our flow per-flow
+     while leaving their config alone would open a DevTool that cannot invoke our demo flow at all —
+     worse than the empty session list, and the same class of "we secured it and broke the next
+     printed line" that theme 5 exists to catch. **So the guest case hands the developer two lines
+     for their own config** — the one that registers the flow, which FIX-1159 already prints, and
+     the `devtool` block beside it — rather than writing either. Their diff review is the consent
+     surface, exactly as it is for every other write; what changes is that these two are applied by
+     them rather than by us.
+
      the serious one — **an unset variable makes a naive equality accept everyone**, because a
      request carrying no credential compares equal to an absent expected value, so the flow reads
      as secured while being open. Refusing at startup is what makes that unrepresentable, rather
@@ -468,7 +512,18 @@ call.
    the skill's instruction, with detection reporting what it found and the developer reading the
    diff before accepting. Greenfield has no diff review, so it holds it in the template's
    checked-in contents and in the report the command prints — which is why §1's greenfield proof
-   compares that report against the actual diff. The rules below are the same on both:
+   compares that report against the actual diff.
+
+   **And the guarantee is about *behaviour*, not only files — a distinction that cost a P1.** A run
+   can satisfy every file rule here and still break the project: instructing a developer to add one
+   host-level resolver line to their own config would leave every file boundary intact while
+   turning their existing flows' working clients into 401s, because an override-less flow inherits
+   the host resolver (theme 5 traces it). **A change we merely *recommend* into a file we do not
+   write is still our change** where its effect is concerned. So the test is not "did we write
+   outside our files" but **"does anything the project already had behave differently after this
+   run"** — and where the honest answer is yes, it is a stated exception or it does not ship.
+
+   The rules below are the same on both:
 
    - **Never overwrite a file it did not author, and never rewrite content it did not author.**
      Where a file already exists, add a delimited FSD section and leave everything else exactly
@@ -1162,7 +1217,11 @@ mechanism and never as a value:** the run generates a random secret at install t
 the `.env.local` it already touches (never to a tracked file — theme 6 refuses that outright), and
 the generated config reads it **by environment-variable name** in both the principal resolver —
 declared **per-flow** on the demo flow, which is what the bind guard actually inspects (theme 8) —
-and the `devtool` block. No literal secret appears in this document, in the template, in a printed
+and the `devtool` block. **Where each lands depends on who wrote the config** (theme 5): when the
+run writes it, both go in, plus a host-level resolver; when the config is the developer's, only the
+per-flow resolver is written — into our own flow file — and the two config lines are handed to them
+rather than applied, because a host-level resolver in *their* config would be inherited by *their*
+flows and 401 their working app. No literal secret appears in this document, in the template, in a printed
 command, or in any committed file. **The mechanism is FIX-1159's** within that constraint;
 greenfield does **not** also take a credential — its demo is a browser page, so a token it could
 present is one an attacker can read from the same page; loopback is its whole control, and theme 8
@@ -1310,5 +1369,6 @@ those narratives now live in
 - **Length and sibling sweep** — §3 cut to four lines, §4 to its table, this log rebuilt; the reopened Q6's stale deferral entry corrected, and the bind guard's predicate stated once after a paraphrase got it wrong.
 - **Q6's substitute struck, and the recommendation re-derived** — `mkdir && <brownfield run>` does not exist: brownfield modifies an existing project, and FIX-1159 refuses the empty case at its `dev command` gate. Cutting the Node starter costs backend developers **no path**, not a worse one, so the recommendation changed from "ship one" to **(b) ship one *and* specify a minimal-project brownfield path, else (a) ship two**. Same turn: exception (c) widened to `start` after the sibling script went unchecked, theme 8's rule completed adapter-independently (the config refuses to serve a default-resolver flow outside development), and §3's citation to a non-existent POC withdrawn.
 - **§1 stopped answering Q6, and the production guard got a negative case** — gated §1 named "v1 ships one, the Node template is cut" as a *non-goal*, so approving the epic would have ratified Q6's least-recommended option without the reader knowing they were deciding it. Removed and swept by premise: theme 2's heading, its superseded asymmetry argument, and two residuals inside Q6 itself (including the struck substitute resurfacing in its cost line). **The adapter-independent production refusal — added one round earlier to close a security exposure — had nothing able to detect its absence**, the seventh instance of that defect; §1's greenfield proof and theme 5's negative list now require it to fire before any model invocation. And the brownfield credential must be declared at **both** resolver levels: the bind guard reads per-flow only, while host-scoped session listing reads host-level only and withholds rows for per-flow-authenticated flows — jointly satisfiable, and silently broken in opposite directions if only one is set.
+- **The two-level resolver fix broke the additive promise in someone else's repo, and the fix was mine.** A host-level resolver is inherited by every flow with no override (`pickPrincipalResolver`), and FIX-1159 *proceeds* when the project has its own config — so instructing that developer to add one would 401 their working flows, silently. No host-level resolver can avoid it: the guard branches on resolver **identity** (`isDefaultBodyUserIdPrincipalResolver` is a brand check) and the default's behaviour is *not to run the guard at all*, so any real function flips every override-less flow out of the no-enforcement branch — checked before choosing, because a third remedy would have beaten both offered ones. **Resolution is keyed on authorship**, the boundary theme 6 already uses: when the run writes the config, install at both levels; when the config is theirs, per-flow only in our own flow file, and the two config lines are *handed over* rather than applied. Cost, disclosed: the DevTool's session list will not show our flow in the guest case. Theme 6 also gained the general form — **the guarantee is about behaviour, not only files**, since every file rule can hold while a recommended one-line config change breaks their app.
 - **Status-claim sweep, after the answer-claim sweep missed a whole sentence shape** — §5's summary still read "Q4 is the only one open" one paragraph below the text establishing Q6 as open and blocking. The earlier sweep was keyed on Q6's *answer* (one/two, cut, ships one) and could not match a sentence about its *status*. Widened to anything asserting what is open, blocking, settled, or clear to proceed, and it found a second cluster the first shape would never have caught: **three places said Q6 blocks FIX-548's *re-approval*** when the corrected position is that the re-approval is safe and the *implementation* is what waits — a status error pointing the opposite way, capable of withholding an approval that was ready. Also narrowed Q5's "FIX-1159 is unblocked", too broad a claim for one question to make.
 - **Attribution sweep** — every "the owner's" / "your call" line checked against an artifact. Q2's and Q3's decisions evidenced (epic PR comment, 2026-08-14) and now cite it; Q1 marked as the coordinator's from the objective; the brownfield direction change evidenced (2026-08-15); the one-template cut unevidenced and already reopened as Q6. No further claims reopened — three clean, two already corrected.
