@@ -255,9 +255,35 @@ call.
    list.** The skill is instructed to hold it, detection reports what it found, and the
    developer reads the diff before accepting it:
 
-   - **Never overwrite a file it did not write, and never rewrite content it did not author.**
+   - **Never overwrite a file it did not author, and never rewrite content it did not author.**
      Where a file already exists, add a delimited FSD section and leave everything else exactly
      as it was. That is what makes taking the shared `AGENTS.md` filename safe (§5 Q1).
+
+     **The rule has exactly two exceptions, and they are enumerated here because a binding rule
+     cannot have its exceptions living in §3, which binds nothing.** (This epic has made that
+     mistake once already — theme 8 exists because a constraint sat in §3 unowned.)
+
+     **(a) A stock placeholder the scaffolder itself just wrote, whose purpose is to be
+     replaced.** `create-next-app` writes `app/page.tsx`; the greenfield template replaces it
+     with the chat page, and that replacement *is* the deliverable — without it the command ends
+     on a stock welcome screen. **The boundary is authorship and intent, not location:** a file
+     the developer wrote is never replaceable, not even in a directory we created seconds ago.
+     The neighbouring case proves the line is real — `create-next-app` writes `AGENTS.md` just as
+     recently, and it is still **appended**, because its content is meant to persist (it carries
+     its own delimited block, re-added on every `next dev`) and it is the file §5 Q1 chose for
+     exactly that reason. Placeholder-meant-to-be-thrown-away is replaceable; content-meant-to-
+     persist is not.
+
+     **(b) Formats that cannot carry a delimiter.** `package.json` is JSON and has no comment
+     syntax, so no delimited FSD section is possible — yet both the template and a brownfield run
+     must add dependencies to it. There the invariant is **structural preservation**: change only
+     the keys we own (the dependency entries, and `"type": "module"` where the template needs
+     it), and leave every other key, every value, and the file's existing formatting as they
+     were. Prefer delegation, which is the bullet below — the project's own package manager
+     already does exactly this, which is why installing through it is required rather than
+     merely tidy. Lockfiles are the extreme case and are never written directly at all.
+     `tsconfig.json` is **not** in the edit set for the chosen template shape, so it needs no
+     rule here; an issue that finds it does has hit a cross-cutting question.
    - **Refuse rather than write a credential into a tracked file.** If `.env.local` is already
      tracked, the run stops short of writing the key, says why, and tells the developer what to
      do instead. A provider key committed to version control is the one failure a diff review
@@ -381,9 +407,8 @@ base and `client.listFlows()` requests it, while a required catch-all needs at l
 segment and would 404 there. Both in-repo mounts already pair the two, and the published
 Next.js and Vercel guides teach the same shape.*
 
-*Overwriting `page.tsx` is permitted where appending is not: it is a stock placeholder in a
-directory this command created seconds ago, which is the one case theme 6's rule does not
-reach. `AGENTS.md` is the opposite case and is appended.*
+*Replacing `page.tsx` while appending to `AGENTS.md` is **theme 6 exception (a)**, not a local
+call this sketch is making — the rule and its boundary live there, because §3 binds nothing.*
 
 **The generated config declares a store profile, in the template and in what a brownfield run
 writes.** `stores` is a required option and needs at least one named profile, so
@@ -406,7 +431,8 @@ a development default, is the owning issue's call.
                                          REFUSED if the file is already tracked — theme 6)
 ~   pnpm-lock.yaml   rewritten by your package manager when the run installs (theme 6)
     app/api/billing/route.ts        untouched
-    app/page.tsx                    untouched — nothing overwrites a file it did not write
+    app/page.tsx                    untouched — the developer wrote it, so theme 6 exception (a)
+                                    does not reach it (it reaches placeholders, not content)
     next.config.ts                  untouched
 ```
 
@@ -492,7 +518,8 @@ the stronger sense that the CLI's bind guard refuses that host for an unauthenti
 
   I'll create   app/api/flows/route.ts   app/api/flows/[...path]/route.ts
                 flows/hello.ts           fsdev.config.ts
-  and append to package.json · .gitignore · AGENTS.md
+  and append to .gitignore · AGENTS.md   (delimited FSD section, nothing else changed)
+  and add dependencies to package.json    (only those keys — theme 6 exception (b))
   Installing with pnpm will rewrite pnpm-lock.yaml.
 
   Nothing already in those files will be changed. Review the diff before you accept it.
@@ -801,3 +828,19 @@ noisiest period we will have, which is the cost you already declined once.
   the caveats. Nothing about the Node second-process behaviour changed: theme 2 cut the Node
   *template* (greenfield), not the brownfield Node path, which theme 8 still owns and §1's
   second-process check still proves.
+- **After epic review, round 2 — theme 6's contract is not absolute, and now says so.** Both
+  findings were the same defect as the greenfield-proof gap: the contract was widened to cover
+  greenfield without walking what it then covered. **Its two exceptions are now enumerated in
+  theme 6 itself.** (a) A **stock placeholder the scaffolder just wrote, whose purpose is to be
+  replaced** — `create-next-app`'s `app/page.tsx`, which the template must replace to deliver the
+  chat UI at all. The binding rule had forbidden the deliverable, and the exception existed only
+  in §3, which the document explicitly says binds nothing — the same failure that created theme
+  8. The boundary is **authorship and intent, not location**: `AGENTS.md` is written just as
+  recently and is still appended, because its content is meant to persist. (b) **Formats that
+  cannot carry a delimiter** — `package.json` is JSON, so "add a delimited FSD section" was
+  unsatisfiable while both paths must add dependencies to it; the invariant there is
+  **structural preservation**, which is also why installing through the project's own package
+  manager is required rather than merely tidy. Lockfiles are never written directly;
+  `tsconfig.json` is not in the edit set for the chosen template shape. §3's stranded note now
+  points at theme 6 instead of holding the rule, and the install-skill transcript distinguishes
+  appending from adding keys.
