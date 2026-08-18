@@ -11,12 +11,36 @@ Run it: `bash probe.sh` (needs network; ~2 minutes). It scaffolds a real `create
 project, drops each candidate config shape in, and runs `next build`, `next dev`, and a native
 `import()` against each.
 
-**The exit status is the evidence** — `0` the served-route and `AGENTS.md` claims held, `1` one
-of them failed, `2` it could not be checked. The variant table below is printed output you read;
-the final section is an assertion the script fails on. It uses a fresh marker per run on a port
-it proves free first, because an earlier version of this probe reported green by reaching a stale
-dev server left over from a previous run — a result from a neighbour of the claim, which is the
-whole failure it exists to catch.
+**The exit status is the evidence, and every claim below feeds it** — `0` every row of the table
+behaved as documented *and* the served-route and `AGENTS.md` assertions held, `1` something
+disagreed with what this file claims, `2` the run could not be completed. Each variant declares
+the outcome this README claims for it, so **"the build failed" is not automatically a probe
+failure** — two variants are supposed to fail — but "the build did something other than what we
+documented" is.
+
+Two earlier versions of this probe could report green for claims they had not proved, which is
+why the status is wired this way:
+
+- it reached a **stale dev server** left over from a previous run, so it now uses a fresh marker
+  per run on a port it proves free first;
+- it **discarded `next build`'s status** through a pipeline and let a rejected `import()` resolve,
+  so those two — the exact claims the spec cites this POC for — sat outside the exit code.
+
+Wiring those in immediately earned its keep: the first run of the accumulating version exited `1`
+on the `.ts, no type field` row, and the cause was the probe, not the finding. Its `import()` check
+called `process.exit(0)` in the `.then()`, which cut off `MODULE_TYPELESS_PACKAGE_JSON` before Node
+flushed it — the warning is emitted asynchronously. The check now sets `process.exitCode` and lets
+the process drain. A probe that could not fail would have recorded "clean" for the one variant
+whose entire purpose is to warn.
+
+It also serves **both route files with the canonical route exports** (`runtime = "nodejs"`,
+`dynamic = "force-dynamic"`) rather than a hand-made bare route, because an earlier version
+exercised a shape the spec does not specify.
+
+**What this does not prove:** that `force-dynamic` prevents response buffering. That is Next's
+documented behaviour and it needs a real streamed model response to observe — §10's goal check
+owns it, by requiring the response to render *incrementally*. This probe establishes only that
+the specified route shape builds and serves the config module.
 
 ## What it settled
 
@@ -28,8 +52,9 @@ whole failure it exists to catch.
 | **`fsdev.config.ts` + `"type": "module"` in the manifest** | **passes** | **clean, no warning** | **chosen (§6 decision 4)** |
 | `fsdev.config.ts`, no `type` field | passes | loads, but emits `MODULE_TYPELESS_PACKAGE_JSON` on every CLI command | rejected |
 
-The chosen variant was also run end to end: `next dev` served `GET /api/flows`, and the route
-returned the marker proving the config module was the one that loaded.
+The chosen variant is also run end to end against the shape the spec specifies: `next dev` serves
+both `GET /api/flows` (the bare route) and `GET /api/flows/sessions/abc` (the catch-all), and each
+returns this run's unique marker, proving the config module that loaded is the one this run wrote.
 
 ## Four things it found that nothing in the epic or the sibling specs knew
 
