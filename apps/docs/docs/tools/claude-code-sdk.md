@@ -115,16 +115,33 @@ outside the request that started it. If you dispatch the agent into one, set
 const agent = claudeCodeAgent({ sessionState: false });
 ```
 
-Each job is then one run. The agent starts fresh every time, no session id is
-stored, and no prior SDK conversation is resumed — a second job addressed to the
-same workstream begins a new agent run. What the run did is still recorded: the
-workstream's own item stream holds its messages, reasoning, and tool calls in
-order, which is what you read the run back from.
+Each job is then one run. Nothing is written to session state, and no prior SDK
+conversation is resumed — a second job addressed to the same workstream begins a
+new agent run. What the run did is still recorded: the workstream's own item
+stream holds its messages, reasoning, and tool calls in order, which is what you
+read the run back from.
+
+**The session id does not disappear.** The option governs session state and
+automatic resume, not the run's own result: the handle the block returns still
+carries the SDK `sessionId` it observed. When the agent runs as a task-board
+worker, that handle is the worker's output, and the board writes the output onto
+the task when it settles — so the id is persisted there. Worth knowing if you are
+reasoning about data retention, or if you plan to resume a run by hand later.
 
 The option is also required rather than optional there. Background workers share
 one flow, so two of them declaring the same session-state key would overwrite
-each other; the task board refuses to build a background worker that declares
-session state at all, and this is how the agent satisfies it.
+each other, and the task board refuses to build a background worker that declares
+session state.
+
+That refusal sees the worker block and the blocks composed inside it. It does
+**not** see a session-state schema contributed by a capability, which reaches a
+block through a separate channel that leaves no mark on the block itself. So a
+worker can be accepted while still carrying session state that way. If you attach
+this agent as a capability, pass the option there too — it takes the same one:
+
+```ts
+createClaudeCodeAgentCapability({ sessionState: false });
+```
 
 See [Background work](../server/background-work.md) for how a workstream is set
 up and read back.
