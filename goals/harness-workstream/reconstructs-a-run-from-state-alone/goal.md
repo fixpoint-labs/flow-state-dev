@@ -41,6 +41,15 @@ Two arms report rather than fail, and neither may pass silently: assertion 5's U
 assertion 1's per-path unmeasured. If **every** expected path lands unmeasured the run proved
 nothing and the goal is inconclusive, which is a failure.
 
+**A per-run judgement cannot reach a pooled value — structurally, not by filtering.** Five
+separate defects were one sentence: a pooled value consumed inside a per-run judgement, so one
+run's evidence excused another run's absence. Each was fixed by scoping the read, and the next
+review found another. The account is now a **list of per-run views**, and every per-run assertion
+is handed one view — the other runs are not in scope, so a pooled read is a compile error rather
+than an oversight. The reader partitions; only the entry point sees across runs, and it makes no
+per-run claim. The boundary is itself scanned over the grader's source, because a guard that
+cannot reach the code it guards looks exactly like one that passes.
+
 **Every exemption is tied to the specific thing it excuses.** A gap row covers *this* missing
 record — not any missing record, not another run's, not a different kind of skip. So gaps are
 **consumed** one-to-one rather than matched (one gap excuses one loss, because the recorder writes
@@ -80,7 +89,7 @@ generator actions. The calibration and every guard case are **model-free** and r
 ## The preconditions, and why they run every time
 
 The reader derives the known account from the known state **exactly**, a deliberately lossy copy
-of that state is caught by assertion 2, and 44 guard cases each break one assertion on purpose
+of that state is caught by assertion 2, and 47 guard cases each break one assertion on purpose
 and confirm it reaches the verdict it is supposed to. All of it is model-free, so it runs on
 every invocation rather than sitting in this log as a one-time claim — and if any of it fails,
 no coding run is dispatched at all. An instrument is sanity-checked against a case whose answer
@@ -152,16 +161,15 @@ Three things this check states rather than proves, so none of them is a silent g
 
 - **The plan half is UNMEASURED on every run** (FIX-1185), so its ROWS branch has never executed
   against real data. Every part of it is exercised by directly-fed worlds instead.
-- **Two runs in one workstream are never produced end to end.** This goal dispatches one run per
-  invocation, so the reused-workstream shapes — per-run pairing, a run losing its plan rows beside
-  a sibling that didn't, another run's gap being offered as evidence — are fed to the grader
-  directly. The *reader's* own per-run derivation is exercised only by the single-run calibration
-  fixture. Proving it end to end needs a second real run, which is the predecessor goal's ground.
-- **A gap row does not say which KIND of skip it was.** It carries `reason`, `rawPath` and `at`,
-  so a plan gap and an unkeyable-file gap are indistinguishable without parsing prose. The
-  pathless check is therefore a counting bound — the run wrote at least as many pathless gaps as
-  it had pathless mutations — not proof that the specific skip was recorded. Sharpening it needs a
-  `kind` field on the gap row, which belongs to the recorder.
+- **Two runs in one workstream are never produced by a real dispatch.** This goal dispatches one
+  run per invocation. The reader's per-run partition is covered model-free by a two-run
+  calibration fixture — which it has to be, since the guard cases feed `gradeRun` a single view
+  and nothing they build can reach reader-side derivation. Producing two real runs is the
+  predecessor goal's ground.
+- **Two runs in one workstream are never GRADED.** The expectation belongs to the run this goal
+  dispatched, and a workstream holding more than one request has runs no expectation can be
+  attributed to — so the goal aborts rather than picking one. The reader's per-run partition is
+  still exercised on every invocation, because the calibration fixture holds two runs.
 
 ## What this deliberately does not re-assert
 
@@ -191,6 +199,8 @@ live, and the branch that would call the whole run inconclusive sits behind them
 
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-08-18 | working tree at `8b01b39a8` (rebased base), pre-commit | Agent SDK default | PASS | Twelfth consecutive real run, and the **first against the per-run structure**. 47 guards. Calibration now derives a TWO-run state and asserts no view holds another run's rows |
+| 2026-08-18 | working tree at `8b01b39a8`, pre-commit | — | FAIL *(deliberate)* | The per-run boundary reopened — `gradePaths` given the whole account alongside its view, which is the shape all five pooled defects had. *"THE PER-RUN BOUNDARY IS OPEN — gradePaths takes a run view AND an account-wide value"*, before any run was dispatched |
 | 2026-08-18 | working tree at `05c6d3125`, pre-commit (round 3 folded) | Agent SDK default | PASS | Eleventh consecutive real run. **44 guards** |
 | 2026-08-18 | working tree at `05c6d3125`, pre-commit | — | FAIL *(deliberate)* | Gaps matched without being consumed. *"'A2 — one gap row is made to excuse two lost mutations' did not reach A2/a2-unaccounted"* |
 | 2026-08-18 | working tree at `05c6d3125`, pre-commit | — | FAIL *(deliberate)* | The pathless branch counting the account's gaps globally. Both new cases red — another run's gap, and a named-path gap offered for a pathless skip |

@@ -36,8 +36,15 @@ import {
 import { defineTaskCollection, type TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { fixturePath, loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
-import { readAccount, type Account, type Read } from "./reader.mts";
-import { failuresOf, grade, type Expectation, type Finding, type FindingStatus } from "./grader.mts";
+import { readAccount, type Account, type Read, type RunView } from "./reader.mts";
+import {
+  failuresOf,
+  grade,
+  gradeRun,
+  type Expectation,
+  type Finding,
+  type FindingStatus,
+} from "./grader.mts";
 
 interface Fixture {
   topic: string;
@@ -65,6 +72,9 @@ const COLLECTIONS = [OBSERVED_FILE_OPS, OBSERVED_GAPS, OBSERVED_PLAN];
  * else, node builtins above all, is a failure: an allowlist rather than a deny
  * list, so a module nobody thought to forbid is still caught.
  */
+/** The grader, scanned for the per-run boundary (not for deprivation). */
+const GRADER_SOURCE = fileURLToPath(new URL("./grader.mts", import.meta.url));
+
 const DEPRIVED_MODULES: Array<{ file: string; mayImport: string[] }> = [
   { file: "reader.mts", mayImport: ["@flow-state-dev/claude-code/sdk", "./paths.mts"] },
   { file: "paths.mts", mayImport: [] },
@@ -109,6 +119,36 @@ export function importsOf(source: string): string[] {
     for (const match of code.matchAll(pattern)) found.add(match[1]);
   }
   return [...found].sort();
+}
+
+/**
+ * Functions that take a single run's view AND something account-wide.
+ *
+ * The pooled-vs-per-run class was five separate defects with one sentence: a
+ * pooled value consumed inside a per-run judgement, so one run's evidence
+ * excused another run's absence. Each was fixed by scoping the read, and the
+ * next review found another — a fix aimed at the right defect at the wrong
+ * extent.
+ *
+ * The extent that actually closes it is REACHABILITY: a per-run function is
+ * handed one view and the other runs are not in scope, so a pooled read is a
+ * compile error rather than an oversight. TypeScript enforces that as written —
+ * but an edit can dissolve it by adding a parameter, and the whole lesson of
+ * this issue is that a guard which cannot reach the code it guards looks
+ * exactly like one that passes. So the boundary is checked over the source.
+ */
+export function boundaryBreaches(source: string): string[] {
+  const code = codeOf(source);
+  const breaches: string[] = [];
+  // Signatures, from `function name(` to the closing `)` of its parameter list.
+  for (const match of code.matchAll(/function\s+(\w+)\s*\(([^)]*)\)/g)) {
+    const [, name, params] = match;
+    if (!/\bGradeableView\b/.test(params)) continue;
+    if (/\bGradeableAccount\b|\bAccount\b/.test(params)) {
+      breaches.push(`${name} takes a run view AND an account-wide value`);
+    }
+  }
+  return breaches;
 }
 
 /**
@@ -170,9 +210,12 @@ export function describeReadFailure(status: number, path: string, body: string):
 /** The calibration state fixture, shaped as the real routes answer. */
 interface KnownState {
   workstreamId: string;
+  /** The run this check grades. The fixture holds a second one so the reader's
+   *  per-run partition is exercised; only this one is put to the grader. */
   runId: string;
   requests: unknown;
-  collections: Record<string, Array<{ items?: unknown[]; nextCursor?: string }>>;
+  /** collection -> runId -> pages, so a read is served for the run that asked. */
+  collections: Record<string, Record<string, Array<{ items?: unknown[]; nextCursor?: string }>>>;
 }
 
 /**
@@ -194,22 +237,29 @@ function calibrationRead(state: KnownState): Read {
       throw new Error(`the calibration state has no route for ${path}`);
     }
     const name = match[2];
-    const pages = state.collections[name];
-    if (pages === undefined) {
+    const byRun = state.collections[name];
+    if (byRun === undefined) {
       throw new Error(describeReadFailure(404, path, `Unknown resource "${name}"`).message);
     }
     const prefix = new URLSearchParams(query).get("topicPrefix");
-    if (prefix !== `${name}/${state.runId}/`) {
+    const scoped = /^([^/]+)\/([^/]+)\/$/.exec(prefix ?? "");
+    if (scoped === null || scoped[1] !== name) {
       throw new Error(
-        `the reader read "${name}" with topicPrefix ${JSON.stringify(prefix)}; the run's ` +
-          `namespace is "${name}/${state.runId}/" — an unscoped read returns another run's rows`,
+        `the reader read "${name}" with topicPrefix ${JSON.stringify(prefix)} — an unscoped read ` +
+          `returns another run's rows, so the fixture refuses to serve it`,
       );
     }
-    const n = served.get(name) ?? 0;
-    served.set(name, n + 1);
+    const runId = scoped[2];
+    const pages = byRun[runId];
+    if (pages === undefined) {
+      throw new Error(`the fixture has no "${name}" pages for run "${runId}"`);
+    }
+    const key = `${name}/${runId}`;
+    const n = served.get(key) ?? 0;
+    served.set(key, n + 1);
     const page = pages[n];
     if (page === undefined) {
-      throw new Error(`the reader asked "${name}" for page ${n + 1}; the fixture holds ${pages.length}`);
+      throw new Error(`the reader asked "${key}" for page ${n + 1}; the fixture holds ${pages.length}`);
     }
     return page;
   };
@@ -218,8 +268,8 @@ function calibrationRead(state: KnownState): Read {
 /** One assertion the grader must be able to reach, and how. */
 interface GuardCase {
   name: string;
-  /** Mutate a clone of the known account, or return a replacement. */
-  mutate: (account: Account) => Account | void;
+  /** Mutate a clone of the known run's view, or return a replacement. */
+  mutate: (view: RunView) => RunView | void;
   id: string;
   /**
    * The exact branch this world must reach.
@@ -228,7 +278,7 @@ interface GuardCase {
    * cautious: deleting A4's missing-report condition let the ordering
    * comparison handle that case instead, `null` coerced in the comparison, and
    * the resulting failure satisfied a status-only assertion. The guard reported
-   * itself proven while the branch it names had been removed.
+   * itself proven while the branch it named had been removed.
    */
   because: string;
   want: FindingStatus;
@@ -241,35 +291,34 @@ interface GuardCase {
  * `goal.md`; the short version is that a mutation inside a branch no run reaches
  * never executes, and that green is identical to a working guard's.
  *
- * **Each world isolates ONE half.** Where an assertion has two conditions that
- * could carry each other, both get a case in which the other is satisfied —
- * otherwise weakening one changes nothing and the pair reports itself proven.
- * And where an assertion compares two sides, the world must make them
- * DISAGREE: a case built from a coherent record exercises no comparison at all.
+ * **These feed `gradeRun`, which is the whole per-run surface.** A case can
+ * therefore reach every per-run assertion. What it CANNOT reach is anything the
+ * reader derives — that is covered by the two-run calibration fixture instead,
+ * and the distinction is not academic: a regression to the pooled plan arm once
+ * ran green here precisely because the judgement was still reader-side.
  *
- * Each case names the exact branch it must reach, not merely the verdict. A
- * guard satisfied by the wrong branch is indistinguishable from one that works.
+ * **Each world isolates ONE half.** Where an assertion has two conditions that
+ * could carry each other, both get a case in which the other is satisfied. And
+ * where an assertion compares two sides, the world must make them DISAGREE: a
+ * case built from a coherent record exercises no comparison at all.
  */
 const GUARD_CASES: GuardCase[] = [
+  // ── A1 ──────────────────────────────────────────────────────────────────
   {
     // Whole-segment matching narrows the collision but does not remove it: a
-    // run that names a file relatively, or a sub-agent touching a path the
-    // fixture never named, can leave two rows that both end in the same
-    // segments. Picking one would assign the wrong record; this must be a
-    // can't-tell instead.
+    // run naming a file relatively, or a sub-agent touching a path the fixture
+    // never named, can leave two rows ending in the same segments.
     name: "A1 — an expected path could be either of two rows",
-    mutate: (a) => {
-      a.did.push({
-        runId: a.runIds[0],
-        topic: `${a.runIds[0]}/inv_a/work/other/alpha.txt`,
+    mutate: (v) => {
+      v.did.push({
+        topic: `${v.runId}/inv_a/work/other/alpha.txt`,
         path: "/work/other/alpha.txt",
         kind: "created",
         outcome: "applied",
         firstAt: 9,
         namedBy: 1,
       });
-      a.streamMutations.push({
-        runId: a.runIds[0],
+      v.streamMutations.push({
         path: "/work/other/alpha.txt",
         tool: "Write",
         at: 9,
@@ -283,13 +332,223 @@ const GUARD_CASES: GuardCase[] = [
     want: "fail",
   },
   {
-    // The sharp one: a mutation whose record is genuinely MISSING, hiding
-    // behind a different row that shares its tail. Accepting the match is A2
-    // passing on exactly the loss it exists to catch.
+    name: "A1 — an expected path is absent and the run made no shell call",
+    mutate: (v) => {
+      v.did = v.did.filter((d) => !d.topic.endsWith("alpha.txt"));
+      v.streamMutations = v.streamMutations.filter((m) => !m.path.endsWith("alpha.txt"));
+      v.shell = { called: false, calls: 0, succeeded: 0 };
+    },
+    because: "a1-missing-no-shell",
+    id: "A1",
+    want: "fail",
+  },
+  {
+    // Between the two: the run reached for the shell and was REFUSED. A call
+    // that never ran cannot have made the change — measured on a real run.
+    name: "A1 — an expected path is absent and every shell call was refused",
+    mutate: (v) => {
+      v.did = v.did.filter((d) => !d.topic.endsWith("alpha.txt"));
+      v.streamMutations = v.streamMutations.filter((m) => !m.path.endsWith("alpha.txt"));
+      v.shell = { called: true, calls: 2, succeeded: 0 };
+    },
+    because: "a1-missing-shell-denied",
+    id: "A1",
+    want: "fail",
+  },
+  {
+    name: "A1 — an expected path is absent and the run DID run a shell command",
+    mutate: (v) => {
+      v.did = v.did.filter((d) => !d.topic.endsWith("alpha.txt"));
+      v.streamMutations = v.streamMutations.filter((m) => !m.path.endsWith("alpha.txt"));
+    },
+    because: "a1-missing-with-shell",
+    id: "A1",
+    want: "unmeasured",
+  },
+  {
+    name: "A1 — every expected path unmeasured, so the run proved nothing",
+    mutate: (v) => {
+      v.did = [];
+      v.streamMutations = [];
+    },
+    because: "a1-all-unmeasured",
+    id: "A1",
+    want: "fail",
+  },
+  {
+    name: "A1 — a write is still pending after the run finished",
+    mutate: (v) => {
+      v.did[0].outcome = "pending";
+    },
+    because: "a1-unsettled",
+    id: "A1",
+    want: "fail",
+  },
+  {
+    name: "A1 — the outcome field was projected away entirely",
+    mutate: (v) => {
+      v.did[0].outcome = null;
+    },
+    because: "a1-no-outcome",
+    id: "A1",
+    want: "fail",
+  },
+  {
+    name: "A1 — a row records no kind",
+    mutate: (v) => {
+      v.did[0].kind = null;
+    },
+    because: "a1-no-kind",
+    id: "A1",
+    want: "fail",
+  },
+
+  // ── A2 ──────────────────────────────────────────────────────────────────
+  {
+    name: "A2 — neither surface shows a mutation",
+    mutate: (v) => {
+      v.did = [];
+      v.streamMutations = [];
+      v.shell = { called: false, calls: 0, succeeded: 0 };
+    },
+    because: "a2-both-empty",
+    id: "A2",
+    want: "fail",
+  },
+  {
+    name: "A2 — a stream mutation has no row and no gap accounts for it",
+    mutate: (v) => {
+      v.did = v.did.filter((d) => !d.topic.endsWith("gamma.txt"));
+    },
+    because: "a2-unaccounted",
+    id: "A2",
+    want: "fail",
+  },
+  {
+    name: "A2 — a stream mutation has no row but a gap row carries its path",
+    mutate: (v) => {
+      v.did = v.did.filter((d) => !d.topic.endsWith("gamma.txt"));
+      v.gaps.push({ kind: "file", reason: "skipped", rawPath: "/work/repo/gamma.txt" });
+    },
+    because: "a2-ok",
+    id: "A2",
+    want: "pass",
+  },
+  {
+    // The neighbouring world A2 must NOT accept: a gap exists, for a different
+    // path. "Some gap was written" is not an account of THIS loss.
+    name: "A2 — a gap row accounts for a different path than the one that went missing",
+    mutate: (v) => {
+      v.did = v.did.filter((d) => !d.topic.endsWith("gamma.txt"));
+      v.gaps.push({ kind: "file", reason: "skipped", rawPath: "/work/repo/somewhere-else.txt" });
+    },
+    because: "a2-unaccounted",
+    id: "A2",
+    want: "fail",
+  },
+  {
+    name: "A2 — the only gap row carries no path",
+    mutate: (v) => {
+      v.did = v.did.filter((d) => !d.topic.endsWith("gamma.txt"));
+      v.gaps.push({ kind: "file", reason: "skipped", rawPath: null });
+    },
+    because: "a2-unaccounted",
+    id: "A2",
+    want: "fail",
+  },
+  {
+    // A gap exists, for this exact path, in this run — and it says it covers a
+    // PLAN skip. It is not evidence about a mutation. `kind` is a closed set on
+    // the row, so this is a field comparison rather than a guess.
+    name: "A2 — a plan gap is offered for a lost file mutation",
+    mutate: (v) => {
+      v.did = v.did.filter((d) => !d.topic.endsWith("gamma.txt"));
+      v.gaps.push({ kind: "plan", reason: "skipped", rawPath: "/work/repo/gamma.txt" });
+    },
+    because: "a2-unaccounted",
+    id: "A2",
+    want: "fail",
+  },
+  {
+    // And a gap that names no subject at all — an older row, or the field
+    // projected away. Absence is not evidence, so the exemption does not apply.
+    name: "A2 — a gap naming no subject is offered for a lost file mutation",
+    mutate: (v) => {
+      v.did = v.did.filter((d) => !d.topic.endsWith("gamma.txt"));
+      v.gaps.push({ kind: null, reason: "skipped", rawPath: "/work/repo/gamma.txt" });
+    },
+    because: "a2-unaccounted",
+    id: "A2",
+    want: "fail",
+  },
+  {
+    // The same rule on the pathless side: a plan skip does not stand in for a
+    // file skip just because neither carries a path.
+    name: "A2 — a plan gap is offered for a pathless file skip",
+    mutate: (v) => {
+      v.mutationsWithNoPath = 1;
+      v.gaps = [{ kind: "plan", reason: "a plan update arrived naming no item", rawPath: null }];
+      v.streamMutations = v.streamMutations.filter((m) => !m.path.endsWith("epsilon.txt"));
+    },
+    because: "a2-pathless-no-gap",
+    id: "A2",
+    want: "fail",
+  },
+  {
+    // And the world it MUST accept, so the rule is not simply "always fail":
+    // a pathless file skip with a pathless file gap beside it.
+    name: "A2 — a pathless file skip answered by a pathless file gap",
+    mutate: (v) => {
+      v.mutationsWithNoPath = 1;
+      v.gaps = [
+        { kind: "file", reason: "a file mutation arrived with no path", rawPath: null },
+        { kind: "file", reason: "could not be keyed", rawPath: "/work/repo/epsilon.txt" },
+      ];
+    },
+    because: "a2-ok",
+    id: "A2",
+    want: "pass",
+  },
+  {
+    // ONE gap, TWO mutations on the same path with no row. `.find()` hands the
+    // same row to both and certifies a state that lost one of them.
+    name: "A2 — one gap row is made to excuse two lost mutations",
+    mutate: (v) => {
+      v.did = v.did.filter((d) => !d.topic.endsWith("gamma.txt"));
+      v.streamMutations.push({
+        path: "/work/repo/gamma.txt",
+        tool: "Write",
+        at: 9,
+        status: "completed",
+        kind: "created",
+        outcome: "applied",
+      });
+      v.gaps.push({ kind: "file", reason: "skipped", rawPath: "/work/repo/gamma.txt" });
+    },
+    because: "a2-unaccounted",
+    id: "A2",
+    want: "fail",
+  },
+  {
+    name: "A2 — the record claims an operation the stream does not show",
+    mutate: (v) => {
+      v.did.push({
+        topic: `${v.runId}/inv_a/work/repo/zeta.txt`,
+        path: null,
+        kind: "created",
+        outcome: "applied",
+        firstAt: null,
+        namedBy: 0,
+      });
+    },
+    because: "a2-row-without-stream",
+    id: "A2",
+    want: "fail",
+  },
+  {
     name: "A2 — a mutation could be either of two rows, so a lost record could hide",
-    mutate: (a) => {
-      a.streamMutations.push({
-        runId: a.runIds[0],
+    mutate: (v) => {
+      v.streamMutations.push({
         path: "alpha.txt",
         tool: "Write",
         at: 9,
@@ -297,9 +556,8 @@ const GUARD_CASES: GuardCase[] = [
         kind: "created",
         outcome: "applied",
       });
-      a.did.push({
-        runId: a.runIds[0],
-        topic: `${a.runIds[0]}/inv_a/work/other/alpha.txt`,
+      v.did.push({
+        topic: `${v.runId}/inv_a/work/other/alpha.txt`,
         path: "/work/other/alpha.txt",
         kind: "created",
         outcome: "applied",
@@ -312,13 +570,11 @@ const GUARD_CASES: GuardCase[] = [
     want: "fail",
   },
   {
-    // Built from the ARRAYS, not by setting the count: a second mutation that
-    // also names the first row. Setting `namedBy` alone would test a field the
-    // grader deliberately no longer reads.
+    // Built from the ARRAYS, not by setting a count: a second mutation that
+    // also names the first row.
     name: "A2 — a row is named by two different mutations",
-    mutate: (a) => {
-      a.streamMutations.push({
-        runId: a.runIds[0],
+    mutate: (v) => {
+      v.streamMutations.push({
         path: "alpha.txt",
         tool: "Write",
         at: 9,
@@ -332,14 +588,10 @@ const GUARD_CASES: GuardCase[] = [
     want: "fail",
   },
   {
-    // A DISAGREEMENT, not merely a well-formed record: the row says the file
-    // was created, the stream shows an Edit. A guard built from a coherent
-    // world exercises none of this comparison. LAB-134 shipped this defect.
+    // A DISAGREEMENT, not merely a well-formed record. LAB-134 shipped this.
     name: "A2 — the record says created and the stream shows an edit",
-    mutate: (a) => {
-      // The row whose stream mutation is an Edit now claims the file was
-      // created. One side changed, so the two genuinely disagree.
-      const row = a.did.find((d) => d.kind === "edited");
+    mutate: (v) => {
+      const row = v.did.find((d) => d.kind === "edited");
       if (row !== undefined) row.kind = "created";
     },
     because: "a2-kind-disagrees",
@@ -347,29 +599,9 @@ const GUARD_CASES: GuardCase[] = [
     want: "fail",
   },
   {
-    // A gap sitting next to a settlement can disguise the settlement being
-    // wrong: the gap explains the discrepancy, so an exemption checked before
-    // the comparison accepts a row that asserts a mutation nobody confirmed.
-    // Present row + present gap + contradicting semantics is that world.
-    name: "A2 — a gap row is present AND the file row contradicts the stream",
-    mutate: (a) => {
-      const row = a.did.find((d) => d.kind === "edited");
-      if (row !== undefined) {
-        row.kind = "created";
-        a.gaps.push({ runId: a.runIds[0], reason: "skipped", rawPath: row.path });
-      }
-    },
-    because: "a2-kind-disagrees",
-    id: "A2",
-    want: "fail",
-  },
-  {
-    // The other shipped defect: the settled outcome reusing the call-time value
-    // instead of the harness's confirmed result. The stream says the call
-    // failed; the record says it applied.
     name: "A2 — the record says applied and the stream shows the call failed",
-    mutate: (a) => {
-      const row = a.did.find((d) => d.outcome === "failed");
+    mutate: (v) => {
+      const row = v.did.find((d) => d.outcome === "failed");
       if (row !== undefined) row.outcome = "applied";
     },
     because: "a2-outcome-disagrees",
@@ -377,324 +609,63 @@ const GUARD_CASES: GuardCase[] = [
     want: "fail",
   },
   {
-    name: "A1 — an expected path is absent and the run made no shell call",
-    mutate: (a) => {
-      a.did = a.did.filter((d) => !d.topic.endsWith("alpha.txt"));
-      a.streamMutations = a.streamMutations.filter((m) => !m.path.endsWith("alpha.txt"));
-      a.shell = { called: false, calls: 0, succeeded: 0 };
+    // The blind-check shape, inside the check built to detect it: the stream's
+    // terminal status is unreadable, so it says nothing about how the mutation
+    // ended — and the row's `applied` stands on no corroboration. Skipping the
+    // comparison certifies; this must fail.
+    name: "A2 — the stream cannot say how a mutation ended and the row claims applied",
+    mutate: (v) => {
+      v.streamMutations[0].status = "in_progress";
+      v.streamMutations[0].outcome = null;
     },
-    because: "a1-missing-no-shell",
-    id: "A1",
-    want: "fail",
-  },
-  {
-    name: "A1 — an expected path is absent and the run DID call the shell",
-    mutate: (a) => {
-      a.did = a.did.filter((d) => !d.topic.endsWith("alpha.txt"));
-      a.streamMutations = a.streamMutations.filter((m) => !m.path.endsWith("alpha.txt"));
-    },
-    because: "a1-missing-with-shell",
-    id: "A1",
-    want: "unmeasured",
-  },
-  {
-    // Between the two worlds above: the run reached for the shell and was
-    // REFUSED. A call that never ran cannot have made the change, so this must
-    // stay a failure — measured on a real run, where the agent tried `Bash`,
-    // was denied, and said so in its own words.
-    name: "A1 — an expected path is absent and every shell call was refused",
-    mutate: (a) => {
-      a.did = a.did.filter((d) => !d.topic.endsWith("alpha.txt"));
-      a.streamMutations = a.streamMutations.filter((m) => !m.path.endsWith("alpha.txt"));
-      a.shell = { called: true, calls: 2, succeeded: 0 };
-    },
-    id: "A1",
-    because: "a1-missing-shell-denied",
-    want: "fail",
-  },
-  {
-    name: "A1 — every expected path unmeasured, so the run proved nothing",
-    mutate: (a) => {
-      a.did = [];
-      a.streamMutations = [];
-    },
-    because: "a1-all-unmeasured",
-    id: "A1",
-    want: "fail",
-  },
-  {
-    name: "A1 — a write is still pending after the run finished",
-    mutate: (a) => {
-      a.did[0].outcome = "pending";
-    },
-    because: "a1-unsettled",
-    id: "A1",
-    want: "fail",
-  },
-  {
-    name: "A1 — the outcome field was projected away entirely",
-    mutate: (a) => {
-      a.did[0].outcome = null;
-    },
-    because: "a1-no-outcome",
-    id: "A1",
-    want: "fail",
-  },
-  {
-    name: "A1 — a row records no kind",
-    mutate: (a) => {
-      a.did[0].kind = null;
-    },
-    because: "a1-no-kind",
-    id: "A1",
-    want: "fail",
-  },
-  {
-    name: "A2 — a stream mutation has no row and no gap accounts for it",
-    mutate: (a) => {
-      a.did = a.did.filter((d) => !d.topic.endsWith("gamma.txt"));
-    },
-    because: "a2-unaccounted",
+    because: "a2-outcome-unevaluable",
     id: "A2",
     want: "fail",
   },
   {
-    name: "A2 — a stream mutation has no row but a gap row carries its path",
-    mutate: (a) => {
-      a.did = a.did.filter((d) => !d.topic.endsWith("gamma.txt"));
-      a.gaps.push({ runId: a.runIds[0], reason: "skipped", rawPath: "/work/repo/gamma.txt" });
+    // A gap beside a settlement can disguise the settlement being wrong: the
+    // gap explains the discrepancy, so an exemption checked before the
+    // comparison accepts a row asserting a mutation nobody confirmed.
+    name: "A2 — a gap row is present AND the file row contradicts the stream",
+    mutate: (v) => {
+      const row = v.did.find((d) => d.kind === "edited");
+      if (row !== undefined) {
+        row.kind = "created";
+        v.gaps.push({ kind: "file", reason: "skipped", rawPath: row.path });
+      }
     },
-    because: "a2-ok",
-    id: "A2",
-    want: "pass",
-  },
-  {
-    // The neighbouring world A2 must NOT accept: a gap row exists, but for a
-    // different path. "Some gap was written" is not an account of THIS loss,
-    // and an implementation that only counted gaps would pass here.
-    name: "A2 — a gap row accounts for a different path than the one that went missing",
-    mutate: (a) => {
-      a.did = a.did.filter((d) => !d.topic.endsWith("gamma.txt"));
-      a.gaps.push({ runId: a.runIds[0], reason: "skipped", rawPath: "/work/repo/somewhere-else.txt" });
-    },
-    because: "a2-unaccounted",
-    id: "A2",
-    want: "fail",
-  },
-  {
-    // And the world where the gap names nothing at all. A null path cannot
-    // account for a specific mutation, however many such rows there are.
-    name: "A2 — the only gap row carries no path",
-    mutate: (a) => {
-      a.did = a.did.filter((d) => !d.topic.endsWith("gamma.txt"));
-      a.gaps.push({ runId: a.runIds[0], reason: "skipped", rawPath: null });
-    },
-    because: "a2-unaccounted",
-    id: "A2",
-    want: "fail",
-  },
-  {
-    name: "A2 — the record claims an operation the stream does not show",
-    mutate: (a) => {
-      a.did.push({
-        runId: a.runIds[0],
-        topic: `${a.runIds[0]}/inv_a/work/repo/zeta.txt`,
-        path: null,
-        kind: "created",
-        outcome: "applied",
-        firstAt: null,
-        namedBy: 0,
-      });
-    },
-    because: "a2-row-without-stream",
+    because: "a2-kind-disagrees",
     id: "A2",
     want: "fail",
   },
   {
     name: "A2 — a mutation carried no path and nothing was written down",
-    mutate: (a) => {
-      // Set on the PER-RUN map the grader reads, not on the pooled count beside
-      // it. Setting the total alone is a world the assertion no longer looks at
-      // — which is how this very case stopped expressing its condition when the
-      // grader moved to per-run evidence, and said so instead of passing.
-      a.counts.mutationsWithNoPath = 1;
-      a.mutationsWithNoPathByRun = { [a.runIds[0]]: 1 };
-      a.gaps = [];
-      a.streamMutations = a.streamMutations.filter((m) => !m.path.endsWith("epsilon.txt"));
+    mutate: (v) => {
+      v.mutationsWithNoPath = 1;
+      v.gaps = [];
+      v.streamMutations = v.streamMutations.filter((m) => !m.path.endsWith("epsilon.txt"));
     },
     because: "a2-pathless-no-gap",
     id: "A2",
     want: "fail",
   },
   {
-    // The false red the per-run scoping exists to prevent: a workstream reused
-    // by two runs that each touched the same path and each recorded it
-    // faithfully. Matched against the combined set, every row reads as named
-    // twice and A2 fails on a perfectly good record. This case must PASS.
-    name: "A2 — two runs touched the same path and both records are faithful",
-    mutate: (a) => {
-      const second = "req_cal_2";
-      a.runIds.push(second);
-      a.did.push({
-        runId: second,
-        topic: `${second}/inv_b/work/repo/alpha.txt`,
-        path: "/work/repo/alpha.txt",
-        kind: "created",
-        outcome: "applied",
-        firstAt: 1,
-        namedBy: 1,
-      });
-      a.streamMutations.push({
-        runId: second,
-        path: "/work/repo/alpha.txt",
-        tool: "Write",
-        at: 1,
-        status: "completed",
-        kind: "created",
-        outcome: "applied",
-      });
-      a.order.runs.push({
-        runId: second,
-        indices: [0, 1, 2],
-        unreadable: 0,
-        firstMutationAt: 1,
-        lastMutationAt: 1,
-        lastMessageAt: 2,
-      });
-    },
-    because: "a2-ok",
-    id: "A2",
-    want: "pass",
-  },
-  {
-    // And the same world seen by A1: the expected path now has a row under each
-    // run. Two faithful answers, not an unresolvable one.
-    name: "A1 — two runs each recorded the expected path",
-    mutate: (a) => {
-      const second = "req_cal_2";
-      a.runIds.push(second);
-      a.did.push({
-        runId: second,
-        topic: `${second}/inv_b/work/repo/alpha.txt`,
-        path: "/work/repo/alpha.txt",
-        kind: "created",
-        outcome: "applied",
-        firstAt: 1,
-        namedBy: 1,
-      });
-      a.streamMutations.push({
-        runId: second,
-        path: "/work/repo/alpha.txt",
-        tool: "Write",
-        at: 1,
-        status: "completed",
-        kind: "created",
-        outcome: "applied",
-      });
-      a.order.runs.push({
-        runId: second,
-        indices: [0, 1, 2],
-        unreadable: 0,
-        firstMutationAt: 1,
-        lastMutationAt: 1,
-        lastMessageAt: 2,
-      });
-    },
-    because: "a1-ok",
-    id: "A1",
-    want: "pass",
-  },
-  {
-    // The POC measured itemIndex carrying duplicates, so this is the ordinary
-    // shape rather than a synthetic one: the last mutation and the last word
-    // share a position. Nothing in the data says which came first, so A4 must
-    // decline rather than certify.
-    name: "A4 — the report and the last mutation share a stream position",
-    mutate: (a) => {
-      a.order.runs[0].lastMutationAt = 6;
-      a.order.runs[0].lastMessageAt = 6;
-    },
-    because: "a4-tied",
-    id: "A4",
-    want: "fail",
-  },
-  {
-    // ONE gap, TWO mutations on the same path with no row. `.find()` hands the
-    // same row to both and reports the pair accounted for — certifying a state
-    // that lost one of them. The recorder writes one gap per unrecordable
-    // mutation, so a gap excuses one loss and not two.
-    name: "A2 — one gap row is made to excuse two lost mutations",
-    mutate: (a) => {
-      a.did = a.did.filter((d) => !d.topic.endsWith("gamma.txt"));
-      a.streamMutations.push({
-        runId: a.runIds[0],
-        path: "/work/repo/gamma.txt",
-        tool: "Write",
-        at: 9,
-        status: "completed",
-        kind: "created",
-        outcome: "applied",
-      });
-      a.gaps.push({ runId: a.runIds[0], reason: "skipped", rawPath: "/work/repo/gamma.txt" });
-    },
-    because: "a2-unaccounted",
-    id: "A2",
-    want: "fail",
-  },
-  {
-    // A pathless mutation in one run, and the only pathless gap belongs to
-    // ANOTHER. Counting the account's gaps globally accepted this, so A2 passed
-    // with no evidence that this run's own skip was ever recorded.
-    name: "A2 — the pathless skip's only gap belongs to a different run",
-    mutate: (a) => {
-      a.counts.mutationsWithNoPath = 1;
-      a.mutationsWithNoPathByRun = { [a.runIds[0]]: 1 };
-      a.gaps.push({ runId: "req_cal_other", reason: "skipped elsewhere", rawPath: null });
-    },
-    because: "a2-pathless-no-gap",
-    id: "A2",
-    want: "fail",
-  },
-  {
-    // A named-path gap is not evidence for a PATHLESS skip either: different
-    // evidence class, same run. The pools are disjoint on purpose.
+    // A named-path gap is not evidence for a PATHLESS skip: different evidence
+    // class, and the two pools are disjoint on purpose.
     name: "A2 — a named-path gap is offered for a pathless skip",
-    mutate: (a) => {
-      a.counts.mutationsWithNoPath = 1;
-      a.mutationsWithNoPathByRun = { [a.runIds[0]]: 1 };
+    mutate: (v) => {
+      v.mutationsWithNoPath = 1;
     },
     because: "a2-pathless-no-gap",
     id: "A2",
     want: "fail",
   },
-  {
-    // A reused workstream where one run lost every plan row and the other
-    // recorded fine. Pooled, `rows.length > 0` selects ROWS and the first run's
-    // LOST disappears behind the second run's success.
-    //
-    // NOT producible from a real run here: this goal dispatches one run per
-    // invocation, so the reused-workstream shape is fed directly and the
-    // end-to-end path stays a named limit rather than a silent one.
-    name: "A5 — one run lost its plan rows and a sibling recorded fine",
-    mutate: (a) => {
-      const second = "req_cal_2";
-      a.runIds.push(second);
-      a.planned = {
-        rows: [{ runId: second, title: "the sibling's item", status: "completed", previousStatus: null }],
-        perRun: [
-          { runId: a.runIds[0], arm: "LOST", rows: 0, toolCalls: 4 },
-          { runId: second, arm: "ROWS", rows: 1, toolCalls: 2 },
-        ],
-      };
-    },
-    because: "a5-lost",
-    id: "A5",
-    want: "fail",
-  },
+
+  // ── A3 ──────────────────────────────────────────────────────────────────
   {
     name: "A3 — the stream is out of order",
-    mutate: (a) => {
-      a.order.runs[0].indices = [5, 1, 2];
+    mutate: (v) => {
+      v.order.indices = [5, 1, 2];
     },
     because: "a3-out-of-order",
     id: "A3",
@@ -702,8 +673,8 @@ const GUARD_CASES: GuardCase[] = [
   },
   {
     name: "A3 — an item carries no readable itemIndex",
-    mutate: (a) => {
-      a.order.runs[0].unreadable = 2;
+    mutate: (v) => {
+      v.order.unreadable = 2;
     },
     because: "a3-unreadable",
     id: "A3",
@@ -711,32 +682,33 @@ const GUARD_CASES: GuardCase[] = [
   },
   {
     name: "A3 — only one distinct position, so ordering is unverifiable",
-    mutate: (a) => {
-      a.order.runs[0].indices = [4, 4, 4];
+    mutate: (v) => {
+      v.order.indices = [4, 4, 4];
     },
     because: "a3-too-few-positions",
     id: "A3",
     want: "fail",
   },
   {
-    name: "A3 — no request carried a stream at all",
-    mutate: (a) => {
-      a.order.runs = [];
+    name: "A3 — the stream carried no readable position at all",
+    mutate: (v) => {
+      v.order.indices = [];
     },
-    because: "a3-no-stream",
+    because: "a3-too-few-positions",
     id: "A3",
     want: "fail",
   },
+
+  // ── A4 ──────────────────────────────────────────────────────────────────
   {
-    // The world a first-activity comparison ACCEPTS: the run acted, reported,
-    // and then acted again. The report covers none of the work that followed
-    // it, and every other assertion is content — A1 and A2 see the settled
-    // write, A3 stays ordered. Only the last-activity comparison rejects it.
+    // The world a first-activity comparison ACCEPTS: acted, reported, acted
+    // again. Every other assertion is content; only the last-mutation
+    // comparison rejects it.
     name: "A4 — the run wrote another file after its final report",
-    mutate: (a) => {
-      a.order.runs[0].firstMutationAt = 1;
-      a.order.runs[0].lastMessageAt = 2;
-      a.order.runs[0].lastMutationAt = 3;
+    mutate: (v) => {
+      v.order.firstMutationAt = 1;
+      v.order.lastMessageAt = 2;
+      v.order.lastMutationAt = 3;
     },
     because: "a4-activity-after-report",
     id: "A4",
@@ -744,44 +716,65 @@ const GUARD_CASES: GuardCase[] = [
   },
   {
     name: "A4 — every mutation follows the report",
-    mutate: (a) => {
-      a.order.runs[0].firstMutationAt = 9;
-      a.order.runs[0].lastMutationAt = 9;
-      a.order.runs[0].lastMessageAt = 2;
+    mutate: (v) => {
+      v.order.firstMutationAt = 9;
+      v.order.lastMutationAt = 9;
+      v.order.lastMessageAt = 2;
     },
     because: "a4-activity-after-report",
     id: "A4",
     want: "fail",
   },
   {
+    // The POC measured itemIndex carrying duplicates, so this is the ordinary
+    // shape: nothing in the data says which came first.
+    name: "A4 — the report and the last mutation share a stream position",
+    mutate: (v) => {
+      v.order.lastMutationAt = 6;
+      v.order.lastMessageAt = 6;
+    },
+    because: "a4-tied",
+    id: "A4",
+    want: "fail",
+  },
+  {
     name: "A4 — there is no mutation to place the report against",
-    mutate: (a) => {
-      a.order.runs[0].firstMutationAt = null;
-      a.order.runs[0].lastMutationAt = null;
+    mutate: (v) => {
+      v.order.firstMutationAt = null;
+      v.order.lastMutationAt = null;
     },
     because: "a4-unevaluable",
     id: "A4",
     want: "fail",
   },
   {
-    // The other half of A4's can't-tell branch, standing alone. Testing only
-    // the activity half would leave this one able to be broken silently: the
-    // two conditions sit in one `if`, and either can carry the other.
-    name: "A4 — there is no report to place against the activity",
-    mutate: (a) => {
-      a.order.runs[0].lastMessageAt = null;
+    // The other half of A4's can't-tell branch, standing alone.
+    name: "A4 — there is no report to place against the mutations",
+    mutate: (v) => {
+      v.order.lastMessageAt = null;
     },
     because: "a4-unevaluable",
     id: "A4",
     want: "fail",
   },
+  {
+    // A sub-agent's mutation is not top-level, so A3's `unreadable` does not
+    // cover it — and `lastMutationAt` computed from the readable subset would
+    // assert an order over a smaller set than it describes.
+    name: "A4 — a mutation carries no readable stream position",
+    mutate: (v) => {
+      v.order.unreadableMutationPositions = 1;
+    },
+    because: "a4-unreadable-mutation",
+    id: "A4",
+    want: "fail",
+  },
+
+  // ── A5 ──────────────────────────────────────────────────────────────────
   {
     name: "A5 — the plan tools fired and nothing was recorded",
-    mutate: (a) => {
-      a.planned = {
-        rows: [],
-        perRun: [{ runId: a.runIds[0], arm: "LOST", rows: 0, toolCalls: 3 }],
-      };
+    mutate: (v) => {
+      v.plan = { rows: [], toolCalls: 3 };
     },
     because: "a5-lost",
     id: "A5",
@@ -789,10 +782,10 @@ const GUARD_CASES: GuardCase[] = [
   },
   {
     name: "A5 — a plan row exists with no wording",
-    mutate: (a) => {
-      a.planned = {
-        rows: [{ runId: a.runIds[0], title: null, status: "completed", previousStatus: null }],
-        perRun: [{ runId: a.runIds[0], arm: "ROWS", rows: 1, toolCalls: 2 }],
+    mutate: (v) => {
+      v.plan = {
+        rows: [{ title: null, status: "completed", previousStatus: null }],
+        toolCalls: 2,
       };
     },
     because: "a5-untitled",
@@ -800,22 +793,17 @@ const GUARD_CASES: GuardCase[] = [
     want: "fail",
   },
   {
-    // The isolating world for A5's other half: every row is worded, and not one
-    // carries a status. Without this, the wording check alone would satisfy the
-    // suite and the status check could be broken without anything noticing.
-    //
-    // This whole branch is unreachable from a real run on this driver — the plan
-    // tools never fire, so the ROWS arm never executes — which is exactly why it
-    // is fed directly here. A mutation that cannot execute is not a mutation
-    // that was rejected, and the green looks identical.
+    // The isolating world for A5's other half: every row worded, not one with a
+    // status. Unreachable from a real run on this driver, which is why it is
+    // fed directly — a mutation that cannot execute is not one that was rejected.
     name: "A5 — plan rows are worded but none carries a status",
-    mutate: (a) => {
-      a.planned = {
+    mutate: (v) => {
+      v.plan = {
         rows: [
-          { runId: a.runIds[0], title: "write the ledger", status: null, previousStatus: null },
-          { runId: a.runIds[0], title: "edit the notes", status: null, previousStatus: null },
+          { title: "write the ledger", status: null, previousStatus: null },
+          { title: "edit the notes", status: null, previousStatus: null },
         ],
-        perRun: [{ runId: a.runIds[0], arm: "ROWS", rows: 2, toolCalls: 2 }],
+        toolCalls: 2,
       };
     },
     because: "a5-no-status",
@@ -824,10 +812,10 @@ const GUARD_CASES: GuardCase[] = [
   },
   {
     name: "A5 — plan rows carry a wording and a status",
-    mutate: (a) => {
-      a.planned = {
-        rows: [{ runId: a.runIds[0], title: "write the ledger", status: "completed", previousStatus: "in_progress" }],
-        perRun: [{ runId: a.runIds[0], arm: "ROWS", rows: 1, toolCalls: 2 }],
+    mutate: (v) => {
+      v.plan = {
+        rows: [{ title: "write the ledger", status: "completed", previousStatus: "in_progress" }],
+        toolCalls: 2,
       };
     },
     because: "a5-ok",
@@ -841,44 +829,42 @@ const GUARD_CASES: GuardCase[] = [
     id: "A5",
     want: "unmeasured",
   },
+
+  // ── A6 ──────────────────────────────────────────────────────────────────
   {
-    // Emptied at the SET, not at the count beside it: A6 has to notice that the
-    // rows A1 and A2 iterate are gone, not merely that a number says so.
+    // Emptied at the SET, not at a count beside it.
     name: "A6 — the file record's rows are gone",
-    mutate: (a) => {
-      a.did = [];
+    mutate: (v) => {
+      v.did = [];
     },
     because: "a6-empty:fileRows",
     id: "A6",
     want: "fail",
   },
   {
-    // The count still says four while the array holds none. An A6 that read the
-    // count would report "fine" about a set nothing else could see.
-    name: "A6 — the count disagrees with the set it describes",
-    mutate: (a) => {
-      a.did = [];
-      a.counts.fileRows = 4;
+    name: "A6 — the run said nothing",
+    mutate: (v) => {
+      v.said = [];
     },
-    because: "a6-empty:fileRows",
+    because: "a6-empty:messages",
     id: "A6",
     want: "fail",
   },
   {
-    name: "A6 — the account is empty end to end",
-    mutate: (a) => {
-      for (const key of Object.keys(a.counts)) a.counts[key as keyof Account["counts"]] = 0;
-      a.did = [];
-      a.said = [];
+    name: "A6 — the item stream is empty",
+    mutate: (v) => {
+      v.counts.items = 0;
     },
-    because: "a6-empty:requests",
+    because: "a6-empty:items",
     id: "A6",
     want: "fail",
   },
+
+  // ── A7 ──────────────────────────────────────────────────────────────────
   {
     name: "A7 — a collection page was left unfollowed",
-    mutate: (a) => {
-      a.reads[OBSERVED_FILE_OPS].truncated = true;
+    mutate: (v) => {
+      v.reads[OBSERVED_FILE_OPS].truncated = true;
     },
     because: "a7-truncated",
     id: "A7",
@@ -886,8 +872,8 @@ const GUARD_CASES: GuardCase[] = [
   },
   {
     name: "A7 — a collection was never read at all",
-    mutate: (a) => {
-      delete a.reads[OBSERVED_PLAN];
+    mutate: (v) => {
+      delete v.reads[OBSERVED_PLAN];
     },
     because: "a7-never-read",
     id: "A7",
@@ -1006,11 +992,23 @@ await runGoal(async () => {
   const calibrationExpectation: Expectation = {
     paths: ["alpha.txt", "beta.txt", "gamma.txt"],
   };
+  const CALIBRATION_RUN_ID = state.runId;
+  const gradedKnownRun = knownAccount.runs.find((r) => r.runId === CALIBRATION_RUN_ID);
+  if (gradedKnownRun === undefined) {
+    return {
+      failures: [
+        `CALIBRATION FAILED — the known account holds no view for "${CALIBRATION_RUN_ID}", so ` +
+          `there is nothing to calibrate the grader against`,
+      ],
+      evidence: "",
+    };
+  }
+  const knownRuns = [gradedKnownRun];
   // Every precondition below reports into `failures` rather than returning, so
   // one of them failing cannot hide the others. An early return here would have
   // meant a lossy-calibration failure masking the whole guard table — the same
   // shape as the assertion halves that mask each other, one level up.
-  const baseline = grade(knownAccount, calibrationExpectation, COLLECTIONS);
+  const baseline = grade(knownAccount, calibrationExpectation, COLLECTIONS, CALIBRATION_RUN_ID);
   const baselineFailures = failuresOf(baseline);
   if (baselineFailures.length > 0) {
     failures.push(
@@ -1021,23 +1019,49 @@ await runGoal(async () => {
 
   // ══ Precondition 1c — a lossy state must be caught, not merely differ ═════
   const lossy = structuredClone(state);
-  lossy.collections[OBSERVED_FILE_OPS][1].items?.splice(0, 1);
+  lossy.collections[OBSERVED_FILE_OPS][lossy.runId][1].items?.splice(0, 1);
   const lossyAccount = await readAccount(calibrationRead(lossy), lossy.workstreamId);
-  const lossyFindings = grade(lossyAccount, calibrationExpectation, COLLECTIONS);
+  const lossyFindings = grade(lossyAccount, calibrationExpectation, COLLECTIONS, CALIBRATION_RUN_ID);
+  const lossyRows = lossyAccount.runs.find((r) => r.runId === CALIBRATION_RUN_ID)?.did.length ?? 0;
   if (!lossyFindings.some((f) => f.id === "A2" && f.status === "fail")) {
     failures.push(
       `CALIBRATION FAILED — a state with one file-op row deliberately removed produced no A2 ` +
-        `failure. The reader derived ${lossyAccount.counts.fileRows} row(s) against the known ` +
-        `${knownAccount.counts.fileRows}, and the graph losing a mutation is the one thing this ` +
+        `failure. The reader derived ${lossyRows} row(s) against the known ` +
+        `${knownRuns[0].did.length}, and the graph losing a mutation is the one thing this ` +
         `check exists to catch`,
     );
   }
 
+  // ══ Precondition 1c-bis — the reader PARTITIONS by run ════════════════════
+  // The calibration state holds two runs, so this is exercised model-free on
+  // every invocation. It has to be: the guard cases feed `gradeRun` a single
+  // view, so nothing they build can reach the reader's own per-run derivation —
+  // and a regression to a pooled plan arm once ran green for exactly that
+  // reason. A view leaking another run's rows is the whole pooled-value class
+  // coming back in through the door the assertions can no longer open.
+  if (knownAccount.runs.length !== 2) {
+    failures.push(
+      `CALIBRATION FAILED — the calibration state holds two runs and the reader derived ` +
+        `${knownAccount.runs.length} view(s), so the per-run partition is not under test`,
+    );
+  } else {
+    for (const view of knownAccount.runs) {
+      const foreign = view.did.filter((d) => !d.topic.startsWith(`${view.runId}/`));
+      if (foreign.length > 0) {
+        failures.push(
+          `CALIBRATION FAILED — run ${view.runId}'s view holds ${foreign.length} row(s) keyed to ` +
+            `another run (${foreign.map((f) => f.topic).join(", ")}), so a per-run judgement can ` +
+            `still reach a pooled value`,
+        );
+      }
+    }
+  }
+
   // ══ Precondition 1d — every guard broken on purpose, and observed ═════════
   for (const guard of GUARD_CASES) {
-    const clone = structuredClone(knownAccount);
+    const clone = structuredClone(knownRuns[0]);
     const mutated = guard.mutate(clone) ?? clone;
-    const findings = grade(mutated, calibrationExpectation, COLLECTIONS);
+    const findings = gradeRun(mutated, calibrationExpectation, COLLECTIONS);
     if (
       !findings.some(
         (f) => f.id === guard.id && f.status === guard.want && f.because === guard.because,
@@ -1051,6 +1075,29 @@ await runGoal(async () => {
           `different branch than the world names has not been watched either`,
       );
     }
+  }
+
+  // ══ Precondition 1d-bis — the per-run boundary still holds ════════════════
+  // Proved before it is trusted, like the import scanner.
+  const boundaryCases: Array<[string, string, boolean]> = [
+    ["a per-run function handed the account too", "function gradeX(view: GradeableView, all: GradeableAccount) {}", true],
+    ["a clean per-run function", "function gradeX(view: GradeableView, e: Expectation) {}", false],
+    ["the account-level entry point", "function grade(account: GradeableAccount, e: Expectation) {}", false],
+  ];
+  for (const [what, source, shouldSee] of boundaryCases) {
+    if ((boundaryBreaches(source).length > 0) !== shouldSee) {
+      failures.push(
+        `the per-run boundary scanner ${shouldSee ? "cannot see" : "falsely reports"} ${what}`,
+      );
+    }
+  }
+  const breaches = boundaryBreaches(readFileSync(GRADER_SOURCE, "utf8"));
+  if (breaches.length > 0) {
+    failures.push(
+      `THE PER-RUN BOUNDARY IS OPEN — ${breaches.join("; ")}. A per-run judgement that can see ` +
+        `across runs is how one run's evidence comes to excuse another run's absence, five times ` +
+        `over; the fix is that the other runs are not in scope, not that each read is filtered`,
+    );
   }
 
   // ══ Precondition 1e — a 403 and a 404 do not read alike ═══════════════════
@@ -1078,9 +1125,11 @@ await runGoal(async () => {
   }
 
   console.log(
-    `CALIBRATED — the reader derived the known account exactly from a ${knownAccount.counts.items}-item ` +
-      `state across ${knownAccount.reads[OBSERVED_FILE_OPS].pages} file-op page(s); a lossy copy was ` +
-      `caught by A2; ${GUARD_CASES.length} guard(s) broken on purpose and each observed; ` +
+    `CALIBRATED — the reader derived the known account exactly from a ` +
+      `${knownAccount.counts.requests}-run state (${knownRuns[0].counts.items} items in the graded ` +
+      `run, across ${knownRuns[0].reads[OBSERVED_FILE_OPS].pages} file-op page(s)), partitioned ` +
+      `per run with no view holding another's rows; a lossy copy was caught by A2; ` +
+      `${GUARD_CASES.length} guard(s) broken on purpose and each observed; ` +
       `${a8.status.toUpperCase()} on A8 (${a8.message}).`,
   );
 
@@ -1281,22 +1330,37 @@ await runGoal(async () => {
     // The reader has never seen `expectation`, and from here nothing else
     // touches the routes.
     const account = await readAccount(read, workstream.id);
+    // This check grades ONE run, and names which. The expectation was given to
+    // the run this goal dispatched; a workstream holding more than one request
+    // has runs no expectation can be attributed to, and grading it anyway would
+    // be a claim wider than the measurement.
+    if (account.counts.requests !== 1) {
+      return {
+        failures: [
+          `the workstream holds ${account.counts.requests} request(s) and this check grades one ` +
+            `run — the held-out expectation belongs to the run it dispatched and cannot be ` +
+            `attributed across several, so this aborts rather than picking one`,
+        ],
+        evidence: "",
+      };
+    }
+    const view = account.runs[0];
     const expectation: Expectation = { paths: expectedNames };
-    const findings: Finding[] = [...grade(account, expectation, COLLECTIONS), a8];
+    const findings: Finding[] = [...grade(account, expectation, COLLECTIONS, view.runId), a8];
 
     // The account, printed whole — this IS the artifact, and a reader of the
     // log should be able to see what the state said without re-running.
-    console.log(`\nACCOUNT — workstream ${workstream.id}, run(s) ${account.runIds.join(", ")}`);
-    for (const entry of account.did) {
+    console.log(`\nACCOUNT — workstream ${workstream.id}, run ${view.runId}`);
+    for (const entry of view.did) {
       console.log(
         `  did      ${entry.path ?? `(key ${entry.topic})`}  ${entry.kind ?? "(no kind)"}  ` +
           `${entry.outcome ?? "(no outcome)"}  first at ${entry.firstAt ?? "(never named)"}`,
       );
     }
-    for (const gap of account.gaps) {
+    for (const gap of view.gaps) {
       console.log(`  gap      ${gap.reason ?? "(no reason)"}${gap.rawPath === null ? "" : `  path ${gap.rawPath}`}`);
     }
-    for (const said of account.said) {
+    for (const said of view.said) {
       console.log(`  said     [${said.at}] ${said.text.replace(/\s+/g, " ").slice(0, 160)}`);
     }
     const planFinding = findings.find((f) => f.id === "A5");
@@ -1305,14 +1369,16 @@ await runGoal(async () => {
         `${planFinding?.message ?? "(not graded)"}`,
     );
     console.log(
-      `  shell    ${account.shell.calls} call(s), ${account.shell.succeeded} of them ran; ` +
-        `tools seen: ${account.toolNamesSeen.join(", ") || "(none)"}`,
+      `  shell    ${view.shell.calls} call(s), ${view.shell.succeeded} of them ran; ` +
+        `tools seen: ${view.toolNamesSeen.join(", ") || "(none)"}`,
     );
     console.log(
-      `  counts   ${Object.entries(account.counts).map(([k, v]) => `${k} ${v}`).join(" · ")}`,
+      `  counts   ${Object.entries(view.counts).map(([k, n]) => `${k} ${n}`).join(" · ")} · ` +
+        `fileRows ${view.did.length} · gapRows ${view.gaps.length} · planRows ${view.plan.rows.length} · ` +
+        `streamMutations ${view.streamMutations.length} · pathless ${view.mutationsWithNoPath}`,
     );
     console.log(
-      `  pages    ${COLLECTIONS.map((c) => `${c} ${account.reads[c]?.pages ?? 0}`).join(" · ")}`,
+      `  pages    ${COLLECTIONS.map((c) => `${c} ${view.reads[c]?.pages ?? 0}`).join(" · ")}`,
     );
     console.log("\nVERDICTS");
     for (const finding of findings) {
@@ -1339,12 +1405,11 @@ PLAN ARM: ${planFinding?.status.toUpperCase()} — ${planFinding?.message}`);
         `"${workstream.status}") and reconstructed from FSD state alone — the requests route with ` +
         `include_items=true, and the three session-scoped collections over the resource route, ` +
         `each scoped by topicPrefix to the run's own namespace and paged to exhaustion ` +
-        `(${COLLECTIONS.map((c) => `${c}: ${account.reads[c].pages} page(s)/${account.reads[c].rows} row(s)`).join(", ")}). ` +
-        `The account: ${account.counts.fileRows} file row(s), ${account.counts.gapRows} gap row(s), ` +
-        `${account.counts.planRows} plan row(s), ${account.counts.messages} top-level message(s), ` +
-        `${account.counts.toolOutputs} top-level tool_output(s), ${account.counts.streamMutations} ` +
-        `stream mutation(s), ${account.shell.calls} shell call(s) of which ` +
-        `${account.shell.succeeded} ran. ` +
+        `(${COLLECTIONS.map((c) => `${c}: ${view.reads[c].pages} page(s)/${view.reads[c].rows} row(s)`).join(", ")}). ` +
+        `The account for run ${view.runId}: ${view.did.length} file row(s), ${view.gaps.length} gap ` +
+        `row(s), ${view.plan.rows.length} plan row(s), ${view.said.length} top-level message(s), ` +
+        `${view.counts.toolOutputs} top-level tool_output(s), ${view.streamMutations.length} ` +
+        `stream mutation(s), ${view.shell.calls} shell call(s) of which ${view.shell.succeeded} ran. ` +
         `${findings.filter((f) => f.status === "pass").length} assertion(s) passed` +
         (notes.length === 0 ? "" : `; ${notes.length} reported unmeasured: ${notes.join(" | ")}`) +
         `. Derived before comparing: the reader never saw the expectation ` +
