@@ -3,7 +3,7 @@
 ---
 
 `claudeCodeAgent` and `createClaudeCodeAgentCapability` take `sessionState: false`,
-so the agent can run as background work on a task board.
+so the agent can run as background work on a task board (LAB-133).
 
 The agent normally keeps two things in session state: the SDK session id it
 resumes on the next request, and a log of the run handles it has returned. A
