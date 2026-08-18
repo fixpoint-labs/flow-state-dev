@@ -838,6 +838,26 @@ guard could not reach reader-side code, and a guard case that silently retired w
 grew past its array index. **Rules were half-applied six times this epic; the table never was,
 because it is not remembered — it executes.**
 
+**And the proposal needs one specific clause, identified by #1334's implementer on the way out.**
+
+> *"The no-cap rule is now the load-bearing part of the process, and it has no mechanism behind it.
+> The guard table catches regressions in the **check**; nothing catches a repair that over-rejects
+> the world next to the one it was shown — that has been found by review three times, all three by
+> Codex."*
+
+**That is this cycle's own conclusion turned on its own remedy.** The finding is that structural
+beats remembered; the rule now carrying the most weight — *a defect our own repair introduced folds,
+however many times* — is **remembered**, and every instance of it was caught by an external
+reviewer rather than by the table.
+
+So the adoption should carry its clause: **make "both directions, including a neighbouring world
+that must pass" a requirement of adding a case, not a habit.** Every fold in #1334's last rounds
+shipped stand-downs precisely so the fix could not degrade into a blanket rejection — and that
+discipline held only because one implementer kept choosing it. **A fifth self-inflicted regression
+arrived within the hour** (a permitted shell command that mutated a file and then exited nonzero,
+read as never having run, because the harness collapses refusal and execute-then-fail into one
+status), which meets the trigger that implementer set for asking the question at all.
+
 **Proposed upstream fix, put to the owner rather than taken:** promote the guard-table pattern from
 one goal's internal practice to the documented standard for goal checks — a table of broken worlds,
 each naming the branch it must reach, run before any dispatch, extended whenever a mutation stays
