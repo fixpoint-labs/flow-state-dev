@@ -12,9 +12,7 @@
  * `onToolApproval` seam adapts onto `canUseTool` and notes its decision via a
  * status item. Sub-agents surface as container items (see `emit.ts`).
  *
- * `sessionState: false` turns the conversation-state half off for runs
- * dispatched as detached background work, where nothing reads it back and the
- * task board refuses a worker that declares it. See the option's own docs.
+ * `sessionState: false` turns the conversation-state half off — see the option.
  */
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
@@ -95,6 +93,8 @@ export interface ClaudeCodeAgentOptions {
    * handle and the `sdkAgentRuns` log. Default `true`, which is the behaviour
    * every existing caller has.
    *
+   * **This is the canonical explanation; everywhere else links here.**
+   *
    * Set `false` to run the agent as **detached background work** (a task board
    * worker dispatched into a Workstream). The board refuses a detached worker
    * whose block authors a `sessionStateSchema`, because every detached worker
@@ -111,9 +111,10 @@ export interface ClaudeCodeAgentOptions {
    * custom provider cannot hand back a saved id that silently resumes a prior
    * conversation.
    *
-   * The consequence, deliberately: a second task addressed to the same
-   * workstream starts the agent fresh. The workstream's own item history
-   * continues as normal.
+   * Everything else is identical: the items the run emits, the handle it
+   * returns, and how failures surface. The one deliberate consequence is that a
+   * second task addressed to the same workstream starts the agent fresh, while
+   * the workstream's own item history continues as normal.
    */
   sessionState?: boolean;
   /** Block name. Default `"claude-code-agent"`. */
@@ -157,10 +158,7 @@ export function forwardSignalToController(signal: AbortSignal | undefined): Abor
  * wrapped in {@link ClaudeAgentRunError}, surfaced as an error item, and
  * rethrown.
  *
- * With {@link ClaudeCodeAgentOptions.sessionState} set to `false` the block
- * declares no session state, performs none of those session reads or writes,
- * and hands the SDK no `resume`. Everything else — the items it emits, the
- * handle it returns, and how failures surface — is identical.
+ * See {@link ClaudeCodeAgentOptions.sessionState} for the background-work mode.
  */
 export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
   const {
@@ -186,10 +184,9 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       "Run the Claude Code Agent SDK in-process, translating its streamed messages into FSD items.",
     inputSchema,
     outputSchema: sdkAgentHandleSchema,
-    // Conditional, and it has to be decided HERE rather than at run time: the
-    // task board inspects this static definition (`assertDetachedBoardSupported`)
-    // and rejects the board before any `execute` callback ever receives a
-    // context, so there is no runtime moment early enough to branch in.
+    // Decided HERE rather than at run time, and that is forced: the task board
+    // inspects this static definition (`assertDetachedBoardSupported`) and
+    // rejects the board before any `execute` callback receives a context.
     ...(sessionState ? { sessionStateSchema: claudeAgentSessionStateSchema } : {}),
     execute: async (input, ctx): Promise<SdkAgentHandle> => {
       const promptText = (pickPrompt ? pickPrompt(input, ctx) : input.prompt)?.trim();
@@ -197,7 +194,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         throw new ClaudeAgentRunError("claudeCodeAgent requires a non-empty prompt.");
       }
 
-      // With conversation state off, the provider is not consulted at all —
+      // With conversation state off, the provider is NOT CONSULTED AT ALL —
       // not merely handed an empty key. Resolving anyway is the hole that
       // hides: a provider whose `resolve("")` returns a saved session would
       // become the SDK's `resume` below, so the run would resume a prior
@@ -310,10 +307,9 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         costUsd,
       };
 
-      // Skipped wholesale when conversation state is off: writing under a key
-      // the block did not declare is a silent corruption, not a smaller
-      // version of the same behaviour. The handle is still RETURNED — that is
-      // this block's output, and a different thing from persisted state.
+      // Skipped wholesale when conversation state is off — a value written
+      // under an undeclared key is a silent corruption. The handle is still
+      // RETURNED; that is this block's output, not persisted state.
       if (sessionState) {
         if (newSessionId !== null) {
           await ctx.session.patchState(SDK_SESSION_ID_KEY, () => newSessionId);

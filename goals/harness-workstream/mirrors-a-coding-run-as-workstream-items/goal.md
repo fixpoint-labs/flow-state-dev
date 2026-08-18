@@ -12,17 +12,27 @@ correct implementation.
 **Signal:** A workstream row appears under the originating session (`{ workstreams: [...] }`,
 carrying the held-out topic and a different session id), and
 `GET /sessions/:childId/requests?include_items=true` returns that run's top-level `message` and
-`tool_output` items, in non-decreasing sequence, with the run's activity preceding the report it
-wrote about that activity, and naming the held-out file somewhere in what the run said **or** did
-(the tool call's own arguments count — keying this on the closing sentence alone grades the
-model's phrasing rather than the mirror, and did fail a run that had mirrored the job perfectly).
-The same read *without*
-`include_items=true` must return no items — otherwise the adapter is ignoring the flag and the
-readback proves nothing. The originating request's own stream must carry none of the run's
-mirrored items (`message` / `reasoning` / `tool_output` / `container`, or anything attributed to
-the agent block). Asserted on item kind, not on marker text: the marker is part of the job the
-conversation wrote, so it legitimately appears in the parent's stream when the board publishes
-the filed row.
+`tool_output` items, non-decreasing on `itemIndex` per request, with the run's activity preceding
+the report it wrote about that activity, and naming the held-out file somewhere in what the run
+said **or** did. The same read *without* `include_items=true` must return no items — otherwise the
+adapter is ignoring the flag and the readback proves nothing. The originating request's own stream
+must carry none of the run's mirrored items (`message` / `reasoning` / `tool_output` /
+`container`, or anything attributed to the agent block).
+
+Three of those readings are worded against a mistake this goal actually made, so they are pinned
+rather than paraphrased:
+
+- **`itemIndex`, and a missing field is a FAIL.** The first version read `seq`, which does not
+  exist on a stored item — so the numeric filter produced an empty array, monotonicity was
+  vacuously true, and the goal printed "in non-decreasing sequence" having measured nothing. The
+  two orderings are meant to be independent readings and only the coarse one was live; a
+  regression scrambling intermediate items would have sailed through.
+- **The file name may be named by the run's activity, not only its prose.** Keying it on the
+  closing sentence grades the model's phrasing rather than the mirror, and failed a run that had
+  mirrored the job perfectly.
+- **The leak check is on item kind, not marker text.** The marker is part of the job the
+  conversation wrote, so it legitimately appears in the parent's stream when the board publishes
+  the filed row.
 **Anti-game:** Must not read the SDK transcript, the working tree (including the file the run was
 asked to write), or git. Must not assert on whether the coding agent did a **good** job — that is
 LAB-135's question. Must not assert on **how the run was settled** — the task row's status, the
@@ -38,7 +48,12 @@ on an adapter that branches on the flag.
 **Run:** `pnpm tsx goals/harness-workstream/mirrors-a-coding-run-as-workstream-items/run.mts`
 
 ## Verdict log
+
+Two earlier PASS rows were **deleted rather than relabelled**. They cited the PR's base commit
+rather than the implementing one, and — the reason relabelling would not have been enough — they
+both attested "non-decreasing sequence", which is the one claim the blind `seq` check never made.
+A wrong claim does not become right by correcting the commit beside it.
+
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
-| 2026-08-18 | f56c6b216 | claude-sonnet-5 (SDK default) | PASS | 21 items read back with `include_items=true` and 0 without; 1 top-level message, 2 top-level tool_outputs, non-decreasing sequence, naming the held-out file; the originating request carried none of the run's mirrored items |
-| 2026-08-18 | f56c6b216 | claude-sonnet-5 (SDK default) | PASS | second consecutive run, same shape |
+
