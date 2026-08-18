@@ -745,6 +745,54 @@ describe("claudeCodeAgent — recordWork", () => {
     });
   });
 
+  it("leaves ONE row for one write, even when the harness resolves a different path", async () => {
+    // The defect this pins is only visible where translate and the recorder
+    // compose: the attempt is keyed at call time and the settlement arrived
+    // under the resolved path, so a single write produced a permanent `pending`
+    // row beside an `applied` one.
+    const divergent: SdkMessageLike[] = [
+      {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_w",
+              name: "Write",
+              input: { file_path: "/work/notes.txt", content: "HELLO" },
+            },
+          ],
+        },
+      },
+      {
+        type: "user",
+        tool_use_result: { type: "create", filePath: "/work/elsewhere/notes.txt" },
+        message: {
+          content: [{ type: "tool_result", tool_use_id: "toolu_w", content: "ok" }],
+        },
+      },
+      RESULT_OK,
+    ];
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery(divergent),
+      recordWork: true,
+      includePartialMessages: false,
+    });
+    const runtime = await createTestContext({ declaredResources: block.declaredResources });
+    await block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+
+    const resources = runtime.ctx.resources as unknown as Record<
+      string,
+      { list(): Promise<Array<{ path: string; state: Record<string, unknown> }>> }
+    >;
+    const fileRows = await resources["observed-file-ops"].list();
+    expect(fileRows).toHaveLength(1);
+    expect(fileRows[0].state).toMatchObject({ outcome: "applied" });
+    // …and the divergence is visible rather than swallowed.
+    const gapRows = await resources["observed-gaps"].list();
+    expect(gapRows).toHaveLength(1);
+  });
+
   it("writes nothing when the option is off, on the same script", async () => {
     // The contrast that makes the assertion above able to fail. Declaring the
     // resources here would be the only way to read them back, and the point is

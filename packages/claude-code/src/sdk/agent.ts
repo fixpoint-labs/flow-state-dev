@@ -131,7 +131,7 @@ export interface ClaudeCodeAgentOptions {
    *
    * **This is the canonical explanation; everywhere else links here.**
    *
-   * Set `true` and the block declares two session-scoped resource collections
+   * Set `true` and the block declares three session-scoped resource collections
    * and writes into them as the run goes:
    *
    * - `observed-file-ops` — one entry per path the run's file-writing and
@@ -145,9 +145,9 @@ export interface ClaudeCodeAgentOptions {
    *   could not record, so a missing row is never confused with a mutation that
    *   never happened.
    *
-   * Both are readable over the resource route that already ships, keyed under
-   * the run's own request id so a workstream reused across runs answers "what
-   * did this run do" rather than "what has this workstream ever done".
+   * All three are readable over the resource route that already ships, keyed
+   * under the run's own request id so a workstream reused across runs answers
+   * "what did this run do" rather than "what has this workstream ever done".
    *
    * **What the file record is, precisely.** It is a log of the file operations
    * the run's file TOOLS performed, not an index of everything that changed on
@@ -156,7 +156,9 @@ export interface ClaudeCodeAgentOptions {
    * the file does not appear.
    *
    * Recording never fails the run: anything the recorder cannot handle is
-   * skipped and noted as a status item.
+   * skipped, written to `observed-gaps`, and noted as a status item. The gap
+   * ROW is the durable half — a status note dedupes on its own message and
+   * renders into a latest-wins slot, so two identical skips collapse to one.
    */
   recordWork?: boolean;
   /** Block name. Default `"claude-code-agent"`. */
@@ -190,14 +192,20 @@ export function forwardSignalToController(signal: AbortSignal | undefined): Abor
 }
 
 /**
- * Open a {@link WorkRecorder} against the two collections the block declared,
- * or return `null` with a status note when they are not on the context.
+ * Open a {@link WorkRecorder} against the three collections the block declared,
+ * or return `null` with a status note when the two records are not on the
+ * context.
  *
  * The absent case is real rather than defensive: the declaration and the run
  * are wired at different layers, and a flow that reaches this block without the
  * refs registered would otherwise throw here — killing a coding run over
  * bookkeeping, which is the one thing this feature must never do. A note makes
  * the gap visible; the run continues unrecorded.
+ *
+ * `observed-gaps` is the one that may be absent without stopping recording: a
+ * run whose file and plan records still land is worth having, and the skips
+ * degrade to status notes alone. The two records are not optional that way —
+ * without them there is nothing to record into.
  *
  * Every entry is keyed under the run's request id. That is the run's own
  * identity, and it is what keeps a reused workstream's runs apart.

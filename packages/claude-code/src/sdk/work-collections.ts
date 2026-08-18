@@ -110,7 +110,9 @@ export const observedFileOpsCollection = defineResourceCollection({
 });
 
 /**
- * One row per mutation the recorder RECOGNISED and then could not record.
+ * One row per mutation the recorder RECOGNISED and then could not record
+ * faithfully — whether it recorded nothing, or recorded it under a key the
+ * harness disagrees with.
  *
  * Without this a skip is indistinguishable from a mutation that never happened,
  * which is the exact blindness the rest of this feature exists to remove: a

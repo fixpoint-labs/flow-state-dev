@@ -167,12 +167,27 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
    * a path that cannot be a key — as a value, a control character is just a
    * character.
    */
-  const gap = (reason: string, rawPath?: string): void => {
+  /**
+   * Call the caller's reporting hook, swallowing anything it throws.
+   *
+   * **A reporting hook that throws must not become the failure it reports.**
+   * Every call to `onSkipped` goes through here, and that is the point rather
+   * than tidiness: the reporting path is the one place nobody defends, because
+   * it is the thing that reports failures — and an unguarded call inside the
+   * serialized flush chain rejects `flush()`/`stop()`, turning a successful
+   * coding run into a bookkeeping failure. That is exactly the outcome this
+   * whole module exists to make impossible.
+   */
+  const report = (reason: string): void => {
     try {
       onSkipped?.(reason);
     } catch {
-      // A reporting hook that throws must not become the failure it reports.
+      // Deliberately empty: see above.
     }
+  };
+
+  const gap = (reason: string, rawPath?: string): void => {
+    report(reason);
     gapOrdinal += 1;
     pendingGaps.set(`${runId}/${String(gapOrdinal).padStart(6, "0")}`, {
       reason,
@@ -207,7 +222,21 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
   };
 
   const observeFileOp = (event: Extract<TranslatedEvent, { kind: "file_op_observed" }>): void => {
-    const key = keyFor("file operation", canonicalFilePathKey(event.path), event.path);
+    const canonical = canonicalFilePathKey(event.path);
+    // The harness named a different path, and canonicalization did not
+    // reconcile them — so the row about to be written is keyed under a path the
+    // harness says it did not touch. Recording the operation is still right (it
+    // happened), but a reader must be able to see that the key is contested,
+    // or a later comparison against the run's tool activity reads this as the
+    // record having lost a write.
+    if (event.resolvedPath !== undefined && canonicalFilePathKey(event.resolvedPath) !== canonical) {
+      gap(
+        `a file mutation was recorded under the path the run named, which is not the path ` +
+          `the harness reported ("${event.resolvedPath}")`,
+        event.path,
+      );
+    }
+    const key = keyFor("file operation", canonical, event.path);
     if (key === null) return;
     pendingFiles.set(key, {
       lastKind: event.op,
@@ -260,7 +289,7 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
       } catch (err) {
         const reason = `a ${kind} entry for "${key}" could not be written: ${(err as Error).message}`;
         if (recordFailureAsGap) gap(reason);
-        else onSkipped?.(reason);
+        else report(reason);
       }
     }
   };

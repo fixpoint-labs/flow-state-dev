@@ -86,10 +86,15 @@ function resultProse(content: unknown): string {
 
 /**
  * Recover a created item's id from the result prose ("Task #5 created
- * successfully: …") when the structured Output is absent. The structured field
- * IS present at the version measured, so this is the fallback rather than the
- * path — but a run that yields no id at all must degrade to recording nothing
- * (§9), and that only stays true if the cheaper source is tried first.
+ * successfully: …") when the structured Output is absent.
+ *
+ * **Scope of what was measured, because this fallback keeps being read as dead
+ * code.** On `claude` 2.1.234 — the CLI version `@anthropic-ai/claude-agent-sdk@0.3.234`
+ * pins — one probe run showed `tool_use_result.task.id` present on 2 of 2
+ * `TaskCreate` calls. That is a single run on a single pinned version, not a
+ * guarantee for every version or every call: the same probe is why we know this
+ * vendor renamed its whole to-do surface between versions while its shipped type
+ * declarations still described the old one. Keep the fallback.
  */
 function recoverItemIdFromProse(content: unknown): string | null {
   const match = /task\s*#\s*([A-Za-z0-9_.-]+)/i.exec(resultProse(content));
@@ -122,7 +127,10 @@ export interface TranslateState {
    */
   readonly openPlanCreates: Map<string, { title: string | null }>;
   /** Plan updates whose call was seen, awaiting confirmation or rejection. */
-  readonly openPlanUpdates: Map<string, { itemId: string; status: string | null }>;
+  readonly openPlanUpdates: Map<
+    string,
+    { itemId: string; status: string | null; title: string | null }
+  >;
 }
 
 /** Options controlling how messages are interpreted across a run. */
@@ -139,7 +147,10 @@ export function createTranslateState(options: TranslateStateOptions = {}): Trans
     partialMessages: options.partialMessages ?? true,
     openFileOps: new Map<string, { path: string; op: ObservedFileOpKind }>(),
     openPlanCreates: new Map<string, { title: string | null }>(),
-    openPlanUpdates: new Map<string, { itemId: string; status: string | null }>(),
+    openPlanUpdates: new Map<
+      string,
+      { itemId: string; status: string | null; title: string | null }
+    >(),
   };
 }
 
@@ -258,8 +269,15 @@ function translateAssistant(
  * the one whose record matters most, and a result that never arrives would
  * otherwise erase it.
  *
- * A call whose input carries nothing to key on is skipped silently: the run is
- * unaffected, and the empty result is what the goal check grades.
+ * A call whose input carries nothing to key on is **not** skipped silently: it
+ * emits `work_gap_observed`, which becomes a durable row. That row is the whole
+ * point — we recognised the tool and still recorded nothing, so without it a
+ * later comparison of the run's tool activity against the file record cannot
+ * tell "we could not key this" from "the record lost a write". Do not simplify
+ * the gap emission away on the grounds that the run is unaffected; the run is
+ * unaffected either way, and the reader is not.
+ *
+ * A tool we never claimed to record is different, and correctly stays silent.
  */
 function observeToolCall(
   block: { id: string; name: string; input?: unknown },
@@ -293,9 +311,16 @@ function observeToolCall(
       });
       return;
     }
+    // An update can re-word the item, not just move it. Dropping the new
+    // wording leaves `observed-plan` holding the CREATE-time title forever
+    // while claiming to be the run's current plan — the collection's own claim,
+    // falsified by a stale field. Declared on `TaskUpdateInput` in the pinned
+    // SDK's types; only the status path has been observed on a live run, which
+    // is why both are read the same tolerant way and neither is required.
     state.openPlanUpdates.set(block.id, {
       itemId,
       status: readString(block.input, "status"),
+      title: readString(block.input, "subject"),
     });
     // Attempted, not applied: the harness may still refuse the transition, and
     // writing the requested status now would be recording a move that never
@@ -323,14 +348,27 @@ function observeToolResult(
   const fileOp = state.openFileOps.get(callId);
   if (fileOp !== undefined) {
     state.openFileOps.delete(callId);
-    // Prefer the path the harness resolved (the structured Output's own
-    // `filePath`) over the one the model asked for; fall back to the input.
-    const path = readString(structured, "filePath") ?? fileOp.path;
+    // Settle under the CALL-TIME path, not the harness's resolved one.
+    //
+    // Recording at call time fixes the row's key at call time, so settling
+    // under a different path cannot update that row — it writes a SECOND one,
+    // leaving a permanent `pending` row beside an `applied` one for a single
+    // operation. A phantom unresolved mutation is worse than a slightly less
+    // canonical key: it is indistinguishable from the record having lost a
+    // write, which is the one confusion this whole feature exists to remove.
+    //
+    // The harness's own path still rides along so the recorder can compare the
+    // two AFTER canonicalization — which is where that comparison belongs,
+    // since `notes.txt` and `/work/notes.txt` are the same key and only the
+    // recorder knows it. A real divergence becomes a gap, never a silent
+    // mis-keying.
+    const resolved = readString(structured, "filePath");
     events.push({
       kind: "file_op_observed",
-      path,
+      path: fileOp.path,
       op: fileOp.op,
       outcome: isError ? "failed" : "applied",
+      ...(resolved !== null && resolved !== fileOp.path ? { resolvedPath: resolved } : {}),
     });
     return;
   }
@@ -368,9 +406,13 @@ function observeToolResult(
       events.push({ kind: "plan_item_observed", itemId: update.itemId, outcome: "failed" });
       return;
     }
+    // Both the new wording and the new status land only HERE, on a confirmed
+    // update — the same rule for both, because a re-wording the harness refused
+    // is as wrong to record as a transition it refused.
     events.push({
       kind: "plan_item_observed",
       itemId: update.itemId,
+      ...(update.title !== null ? { title: update.title } : {}),
       ...(update.status !== null ? { status: update.status } : {}),
       outcome: "applied",
     });

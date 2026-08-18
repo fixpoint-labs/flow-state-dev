@@ -194,8 +194,19 @@ export type TranslatedEvent =
    */
   | {
       kind: "file_op_observed";
-      /** The path as the run addressed it; the recorder canonicalizes it. */
+      /**
+       * The path as the run addressed it AT CALL TIME; the recorder
+       * canonicalizes it into the row's key. Stable across the attempt and its
+       * settlement, which is what keeps one operation to one row.
+       */
       path: string;
+      /**
+       * The path the harness reported instead, present on a settlement only
+       * when it differs from {@link path} as a raw string. Not a second key —
+       * the recorder canonicalizes both and, if they still differ, records the
+       * divergence as a gap rather than silently keying under either.
+       */
+      resolvedPath?: string;
       op: ObservedFileOpKind;
       outcome: ObservedOutcome;
     }

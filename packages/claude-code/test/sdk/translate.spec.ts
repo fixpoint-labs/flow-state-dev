@@ -362,12 +362,35 @@ describe("translateSdkMessage — observed work", () => {
     ]);
   });
 
-  it("prefers the path the harness resolved over the one the model asked for", () => {
+  it("settles under the CALL-TIME path, so one operation stays one row", () => {
+    // The row's key is fixed when the call is seen. Settling under a different
+    // path cannot update that row — it writes a second one, leaving a permanent
+    // `pending` beside an `applied` for a single write. A phantom unresolved
+    // mutation is indistinguishable from the record having lost a write.
     const events = translateScript([
       writeCall,
       { ...writeResult, tool_use_result: { type: "create", filePath: "/work/resolved/notes.txt" } },
     ]).filter((e) => e.kind === "file_op_observed");
-    expect(events[1]).toMatchObject({ path: "/work/resolved/notes.txt", outcome: "applied" });
+    expect(events.map((e) => (e as { path: string }).path)).toEqual([
+      "/work/notes.txt",
+      "/work/notes.txt",
+    ]);
+  });
+
+  it("carries the harness's differing path alongside, rather than dropping it", () => {
+    // Not a second key — the recorder canonicalizes both and only calls it a
+    // divergence if they still differ. Silently keying under one of two paths
+    // the harness and the model disagree on is the failure this avoids.
+    const events = translateScript([
+      writeCall,
+      { ...writeResult, tool_use_result: { type: "create", filePath: "/work/resolved/notes.txt" } },
+    ]).filter((e) => e.kind === "file_op_observed");
+    expect(events[1]).toMatchObject({ resolvedPath: "/work/resolved/notes.txt" });
+    // …and stays absent when the two agree, so the recorder has nothing to weigh.
+    const agreed = translateScript([writeCall, writeResult]).filter(
+      (e) => e.kind === "file_op_observed",
+    );
+    expect(agreed[1]).not.toHaveProperty("resolvedPath");
   });
 
   it("maps Edit to an edit, keeping the input path when no structured output arrives", () => {
@@ -583,6 +606,74 @@ describe("translateSdkMessage — observed work", () => {
       { kind: "plan_item_observed", itemId: "5", outcome: "pending" },
       { kind: "plan_item_observed", itemId: "5", status: "in_progress", outcome: "applied" },
     ]);
+  });
+
+  it("carries a re-wording an update applied, so the plan does not go stale", () => {
+    // `TaskUpdate` can change an item's wording as well as its status. Keeping
+    // only the create-time title leaves `observed-plan` claiming to be the run's
+    // current plan while holding a title the run has since replaced.
+    const events = translateScript([
+      {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_u",
+              name: "TaskUpdate",
+              input: { taskId: "5", subject: "Create the file, then verify it" },
+            },
+          ],
+        },
+      },
+      {
+        type: "user",
+        tool_use_result: { success: true, taskId: "5", updatedFields: ["subject"] },
+        message: {
+          content: [{ type: "tool_result", tool_use_id: "toolu_u", content: "Updated task #5" }],
+        },
+      },
+    ]).filter((e) => e.kind === "plan_item_observed");
+    expect(events[1]).toMatchObject({
+      itemId: "5",
+      title: "Create the file, then verify it",
+      outcome: "applied",
+    });
+  });
+
+  it("does NOT carry a re-wording the harness refused", () => {
+    // Same rule as the status: a re-wording the harness rejected is as wrong to
+    // record as a transition it rejected.
+    const events = translateScript([
+      {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_u",
+              name: "TaskUpdate",
+              input: { taskId: "5", subject: "Never applied" },
+            },
+          ],
+        },
+      },
+      {
+        type: "user",
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "toolu_u",
+              content: "No task with id 5",
+              is_error: true,
+            },
+          ],
+        },
+      },
+    ]).filter((e) => e.kind === "plan_item_observed");
+    expect(events[1]).toEqual({ kind: "plan_item_observed", itemId: "5", outcome: "failed" });
+    expect(events[1]).not.toHaveProperty("title");
   });
 
   it("records a REJECTED update as failed and never carries the status it asked for", () => {

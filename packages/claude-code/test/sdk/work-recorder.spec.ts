@@ -328,6 +328,68 @@ describe("createWorkRecorder — watching the work never breaks the work", () =>
     expect([...gaps.rows.keys()]).toEqual([`${RUN}/000001`]);
   });
 
+  it("does not let a THROWING report hook fail the run", async () => {
+    // The hole this closes is in the reporting path — the one place nobody
+    // defends, because it is the thing that reports failures. An unguarded
+    // callback here rejects the serialized flush chain, so `stop()` throws and
+    // a successful coding run is turned into a bookkeeping failure: exactly the
+    // outcome the recorder exists to make impossible.
+    const exploding: UpsertableCollection = {
+      async upsert() {
+        throw new Error("store is down");
+      },
+    };
+    const recorder = createWorkRecorder({
+      runId: RUN,
+      files: exploding,
+      plan: fakeCollection(),
+      gaps: exploding,
+      onSkipped: () => {
+        throw new Error("the reporting hook itself is broken");
+      },
+    });
+
+    recorder.observe(fileCall("/work/src/checkout.ts"));
+    await expect(recorder.flush()).resolves.toBeUndefined();
+    await expect(recorder.stop()).resolves.toBeUndefined();
+  });
+
+  it("records a divergence when the harness names a different path", async () => {
+    // The operation IS recorded — it happened — but under a path the harness
+    // says it did not touch. A reader comparing the run's tool activity against
+    // this record has to be able to see that the key is contested.
+    const { files, gaps, recorder } = harness();
+    recorder.observe({
+      kind: "file_op_observed",
+      path: "/work/notes.txt",
+      resolvedPath: "/work/elsewhere/notes.txt",
+      op: "created",
+      outcome: "applied",
+    });
+    await recorder.stop();
+
+    expect([...files.rows.keys()]).toEqual([`${RUN}/work/notes.txt`]);
+    expect([...gaps.rows.values()]).toHaveLength(1);
+    expect(String([...gaps.rows.values()][0].reason)).toContain("the harness reported");
+  });
+
+  it("stays quiet when canonicalization reconciles the two paths", async () => {
+    // `notes.txt` and the absolute path it resolves to are the SAME key, so
+    // comparing raw strings would raise a divergence that does not exist. This
+    // is why the comparison lives here rather than in the translation layer.
+    const { gaps, recorder } = harness();
+    recorder.observe({
+      kind: "file_op_observed",
+      path: "/work/./notes.txt",
+      resolvedPath: "/work/notes.txt",
+      op: "created",
+      outcome: "applied",
+    });
+    await recorder.stop();
+
+    expect([...gaps.rows.values()]).toHaveLength(0);
+  });
+
   it("keeps working without a gaps collection at all", async () => {
     const notes: string[] = [];
     const recorder = createWorkRecorder({
