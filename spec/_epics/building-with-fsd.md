@@ -53,8 +53,9 @@ they are stated once there rather than twice here.
   bundled route is broken), the app's own routes still answer, and nothing the developer wrote has
   changed.
 - *FIX-1159, second-process path* — the same against an existing plain-Node project: the printed
-  command starts FSD, a call to it streams a real model response, and the project's own server
-  keeps running. **This must not be dropped as redundant with the run above.** It is a different
+  command starts FSD, a call to it **carrying the generated credential** streams a real model
+  response, and the project's own server keeps running. **A call without it is refused** — that
+  negative half is what makes this a check of theme 8's control rather than of the happy path. **This must not be dropped as redundant with the run above.** It is a different
   host and a different shape (theme 8), and **with the Node template cut it is the epic's only Node
   coverage of any kind** — without it, Node detection and the second-process instruction can be
   entirely broken while every other proof here passes.
@@ -268,6 +269,34 @@ call.
    whichever servers the host ends up with, the block says what each is for, which port it lands
    on, and the caveats that go with it.
 
+   **Securing the endpoint changes what the printed commands do, so the whole block is walked
+   under the secured config — both topology branches, every line.** Theme 8's credential is not a
+   change to one route; it changes the `FlowState` every printed command loads. Walked end to end:
+
+   - **`fsdev dev` breaks unless the generated config says so.** The DevTool page loads, and its
+     API actions then fail authentication, because `packages/cli/src/commands/dev.ts` injects
+     **only** the fields a config explicitly declares under `devtool` — a `userId` and a
+     `bearerToken`. The mechanism exists for exactly this case (its own comment: *"Injected into
+     the DevTool page by serve() so a secured flow is debuggable without hand-editing DevTool
+     settings"*), so **the generated config declares `devtool` from the same source as the
+     resolver** — the same environment variable, never a second copy of the value. Both topology
+     branches print `fsdev dev`, so this binds both.
+   - **`fsdev run` is unaffected**, on both branches: it calls `runAction` in-process with its own
+     `cli-user` identity and never resolves a principal, so it does not cross the secured surface.
+   - **The second-process branch's own call does cross it.** `fsdev serve` starts a real HTTP
+     server, so the example call the block prints — and §1's proof of that path — carries the
+     credential.
+   - **And securing the flow *unlocks* a bind the rail used to refuse.** `fsdev serve` calls
+     `assertNetworkBindIsAuthenticated`, which refuses a network host while the resolver is the
+     default. Configuring one satisfies it, so a developer who drops `--host 127.0.0.1` now gets a
+     network bind that was previously blocked. The printed command keeps the flag; the point is
+     that the rail stopped being the backstop the moment we stopped relying on it.
+
+   **The rule this leaves:** when a decision changes the `FlowState`, the next-steps block is
+   re-walked line by line rather than patched where the failure was noticed — securing the route
+   broke the tool the very next printed line tells the developer to open, and only one of the two
+   was reported.
+
    **A printed command is checked against the CLI's actual flags before it ships.** Twice now a
    command in this document could not have done what it appeared to: `fsdev run` takes the caller
    identity as its own parameter (hard-coded `cli-user`) and **not** from `--input`, so a `userId`
@@ -426,9 +455,26 @@ call.
    handler receives a web `Request`, and `NextRequest` in `next@16.3.1` exposes no peer address
    (`ip` is gone; `connection()` from `next/server` returns `Promise<void>` and is a prerendering
    signal). The only remaining inputs are headers, and a guard keyed on `x-forwarded-for` or `host`
-   is bypassed by setting a header — worse than no guard, because it reads as protection. **The
-   rule this leaves is the general one: a path that cannot obtain a trustworthy peer address has to
-   close the hole with a credential instead of a network position.**
+   is bypassed by setting a header — worse than no guard, because it reads as protection. **It died
+   on signal availability alone.** The other objections to it — that it would break Docker, WSL,
+   devcontainers and phone testing without a deliberate opt-out; that it must key on the resolver
+   rather than `NODE_ENV` so a deployed app is not loopback-only; that it needs a negative test from
+   a non-loopback peer — were all answerable, and none was reached. **Anyone proposing it again
+   needs a trustworthy peer address first; the design was never the problem.** **The rule this
+   leaves is the general one: a path that cannot obtain a trustworthy peer address has to close the
+   hole with a credential instead of a network position.**
+
+   **Be exact about the property this buys, because it is not the property loopback buys.** With
+   the credential, an unauthenticated caller is **refused**: no model call, no key spend, no acting
+   as another user. What it does **not** do is stop the port listening — the developer's `next dev`
+   still binds every interface, so the endpoint stays reachable and probeable by anyone on the
+   network, and what protects it is the secret rather than the absence of a route. **Greenfield
+   therefore ends up strictly stronger than brownfield**: it has both the loopback bind and the
+   credential, and brownfield has only the credential. That asymmetry is a consequence of theme 6
+   — we author greenfield's dev script and must not touch theirs — and it is disclosed rather than
+   engineered away, because the alternative that would close it (refusing to mount a route at all
+   and running brownfield Next as a second process) trades the epic's headline integration for
+   defence in depth over a control that already works.
 
 9. **Three shared artifacts, one seam: author, kind, carrier, check.** Three times this epic has an
    artifact authored by one issue and shipped by another — the wiring contract, the
@@ -1021,10 +1067,30 @@ is worse than none because it looks like protection.
 
 **Resolution — the brownfield run configures a non-default principal resolver on what it
 generates.** That is exactly the condition the framework guard keys on, so it is a rail rather than
-a notice, and it does not depend on a peer address we cannot obtain. The expected shape is the cheap
-one: a locally generated secret written to the `.env.local` the run already touches, checked by a
-small resolver in the generated config. **The mechanism is FIX-1159's**, within that constraint.
-Greenfield keeps the loopback bind (theme 8) — it is a second layer there, not a substitute.
+a notice, and it does not depend on a peer address we cannot obtain. **The mechanism, stated as a
+mechanism and never as a value:** the run generates a random secret at install time, writes it to
+the `.env.local` it already touches (never to a tracked file — theme 6 refuses that outright), and
+the generated config reads it **by environment-variable name** in both the principal resolver and
+the `devtool` block. No literal secret appears in this document, in the template, in a printed
+command, or in any committed file. **The mechanism is FIX-1159's** within that constraint;
+greenfield keeps the loopback bind (theme 8) as a second layer, not a substitute.
+
+**What this closed and what it did not.** Closed: an unauthenticated caller is refused, so a
+stranger on the same network cannot spend the developer's provider key or act as another user.
+Not closed: the port still listens on every interface, because it is their dev server and theme 6
+forbids us editing it. The endpoint remains reachable and probeable; the secret is what stands
+between a caller and the flow, rather than the absence of a route. **The question this section
+asked is answered — yes, we require a credential — while the guarantee is narrower than
+greenfield's, which has both layers.** That is disclosed in theme 8 rather than treated as an open
+fork, because the only option that would close it is refusing to mount a route in a brownfield Next
+app at all, which trades the epic's headline integration for defence in depth over a control that
+already works.
+
+**It also broke the next line of its own next-steps block, which is recorded here because the
+lesson generalizes.** Securing the `FlowState` meant `fsdev dev` opened a DevTool whose API calls
+failed authentication — the command the developer is told to run immediately after. Theme 5 now
+requires the whole printed block to be re-walked under a changed `FlowState`, both topology
+branches, rather than patched at the point a reviewer noticed.
 
 **What this costs, so the owner sees it rather than discovers it.** The brownfield first run is
 unchanged for the printed CLI command, which runs in-process and never crosses HTTP. It changes for
@@ -1162,3 +1228,14 @@ the themes and decisions above — it is not repeated here.
   mounted-route proofs required to go **through the HTTP route** rather than `fsdev run`; and the
   **devtool `react ^19` peer** was ruled a theme 6 violation, fixed in our own manifest since the
   served assets never needed the consumer's React.
+- **Securing the endpoint broke the tool the next printed line opens.** `fsdev dev` injects only
+  the `devtool` fields a config explicitly declares, so a secured `FlowState` yields a DevTool whose
+  API actions fail auth — the CLI has the mechanism precisely for this case and the generated config
+  now uses it, reading the same environment variable as the resolver rather than copying a value.
+  Walking the rest of the block found two more: `fsdev run` is unaffected (in-process, never
+  resolves a principal), and `fsdev serve` **stops being refused** on a network host, because
+  `assertNetworkBindIsAuthenticated` only refuses while the resolver is the default. **Theme 5 now
+  requires the whole block re-walked on both topology branches whenever a decision changes the
+  `FlowState`.** Q5 also states the property plainly: the credential refuses unauthenticated
+  callers, but the port still listens, so greenfield (loopback **and** credential) is strictly
+  stronger than brownfield (credential only) — disclosed, not engineered away.
