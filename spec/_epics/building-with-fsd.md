@@ -43,62 +43,32 @@ it, which is also strictly safer than a tool mutating their repo unattended. Wha
 deterministic is **detection** (cheap, checkable, no merge logic) and the whole greenfield path.
 Deterministic *mutation* is what goes. Carried by themes 1, 5, 6 and 8.
 
-**Proof** — carried by the issues' own goal checks, no new measurement apparatus:
+**Proof** — what a person observes, carried by the issues' own goal checks with no new measurement
+apparatus. **Each issue owns how its check is built**; the conditions those checks must satisfy are
+theme 9's (the dependency rule and the runtime floor) and theme 6's (the additive guarantee), so
+they are stated once there rather than twice here.
 
-- *FIX-1159, mounted-route path* — a fresh `create-next-app` **on pnpm**, then an agent runs the
-  install skill against it, then `fsdev run` returns a streamed model response from a real model,
-  and a route that existed before the run still responds. **pnpm is load-bearing here, not
-  incidental:** its strict isolation is the only thing that fails an undeclared direct dependency,
-  and theme 9's dependency set is a rule rather than a list precisely because two review rounds
-  each found a missing member. npm's flat `node_modules` would hoist them and let the run pass on
-  an incomplete `package.json`. **This covers the brownfield manifest only** — the greenfield
-  manifest is a separate emitted file and gets its own pnpm install, under FIX-548 below. **Distinctive content is seeded before the
-  run into each of the files a brownfield run touches in practice** — `package.json`,
-  `.gitignore`, `.env.local`, `AGENTS.md` — and is still there afterwards; **and the run's own
-  report is compared against the actual diff**, so a file it touched but did not name is a
-  failure. A surviving route proves the app works, not that the run was additive, because that
-  route sits outside everything the run edits. The report-versus-diff half is what replaces the
-  fixed file list theme 6 used to carry, and it is the stronger of the two: it catches a file
-  nobody thought to seed.
-- *FIX-1159, second-process path* — the same skill run against an **existing plain-Node
-  project**, seeded and checked the same way: the printed command starts FSD, a call to it
-  returns a streamed model response, the project's own server still runs. **Theme 8 makes this
-  a different shape, not the same check twice** — a different host, and a second process rather
-  than a mounted route — so the Next.js run above does not cover it. **With the Node template
-  cut (theme 2), this is the epic's only Node coverage of any kind**, which makes it load-bearing
-  rather than merely non-redundant: without it, Node detection and the second-process instruction
-  can be entirely broken while every other listed proof passes.
-- *FIX-548* — in an empty directory, `npm create flow-state my-app` **followed by the dev command
-  it prints** yields a streamed model response from the surface the template ships — the chat
-  page. The provider key goes in at the prompt, the way a real user supplies it, rather than
-  being pre-exported. Run once; there is one template. **And the same run asserts the additive
-  guarantee on the greenfield side**, because theme 6 now binds this path too and a streaming
-  chat page proves nothing about it: `create-next-app`'s own `AGENTS.md` block is still present
-  alongside the appended FSD section, its `CLAUDE.md` is untouched, `.env.local` is actually
-  ignored (`git check-ignore`, since that entry comes from the host scaffold and is asserted
-  rather than added), and **the run's report is compared against the actual diff** — the same
-  check the brownfield runs make, for the same reason. Without these, the scaffolder could
-  overwrite an agent-instructions file it did not author, or leave a provider key untracked by
-  `.gitignore`, and every other listed check would still pass. **A second run on an unsupported
-  runtime asserts the refusal** (theme 9): on Node 20.9–21 the command must fail before invoking
-  `create-next-app` and name Node 22, because Next 16 accepts those versions while every FSD
-  package requires `>=22` and npm's engines check only warns — so the success path alone would
-  pass while the command hands a developer an app that cannot run. **And a third run installs the
-  emitted template's own manifest with pnpm and runs the generated flow from it** (theme 9). The
-  `npm create` run cannot fail an incomplete `package.json` — npm's flat `node_modules` hoists
-  transitives — so without this step FIX-548 could omit `zod` or the provider SDK and every other
-  check listed here would stay green. **This is the same dependency rule §1's mounted-route proof
-  checks for brownfield, and it was being asserted of the greenfield manifest without being run
-  against it.** A static import-versus-manifest scan is not a substitute: the provider SDK is
-  resolved at run time, never statically imported.
-- *FIX-1160* — one recorded run covering **both halves of the pack**: the Claude plugin
-  installed from its published source and one of its packaged skills invoked, and then a coding
-  assistant in a freshly scaffolded project, given a stated feature goal and nothing else,
-  produces a flow that passes `fsdev run`. A single observation, stated as such, not a metric.
-  **The plugin is inside the run because it is now the brownfield path's delivery channel**, not
-  only an authoring aid — a check the scaffolded `AGENTS.md` satisfies on its own would pass
-  while the plugin's manifest, install source, and packaged skills sat unexercised until a
-  stranger tried them.
+- *FIX-1159, mounted-route path* — an agent adds FSD to an existing Next.js app, a real model
+  streams back, the app's own routes still answer, and nothing the developer wrote has changed.
+- *FIX-1159, second-process path* — the same against an existing plain-Node project: the printed
+  command starts FSD, a call to it streams a real model response, and the project's own server
+  keeps running. **This must not be dropped as redundant with the run above.** It is a different
+  host and a different shape (theme 8), and **with the Node template cut it is the epic's only Node
+  coverage of any kind** — without it, Node detection and the second-process instruction can be
+  entirely broken while every other proof here passes.
+- *FIX-548* — in an empty directory, `npm create flow-state my-app` plus the dev command it prints
+  yields a streamed model response from the chat page the template ships, with the provider key
+  supplied at the prompt the way a real user supplies it. **The same run must assert that
+  `create-next-app`'s own `AGENTS.md` block and its `CLAUDE.md` survive the scaffold**, and that
+  `.env.local` is genuinely ignored. **This too must not be dropped:** a streaming chat page proves
+  nothing about what the scaffolder overwrote on the way there, and greenfield is the path where we
+  author both sides, so it is the one place theme 6's guarantee is exercised end to end.
+- *FIX-1160* — one recorded run covering **both halves of the pack**: the plugin installed from its
+  published source and a packaged skill invoked, then an assistant in a fresh project, given a
+  stated feature goal and nothing else, produces a flow that runs. A single observation, stated as
+  such, not a metric. **The plugin is inside the run because it is the brownfield path's delivery
+  channel** — a check the scaffolded `AGENTS.md` satisfies on its own would pass while the plugin's
+  manifest and install source sat unexercised until a stranger tried them.
 
 **Two of these are now agent runs, and that changes what they are worth.** A seeded-sentinel
 check on an agent run is one observation, not a guarantee — the same shape FIX-1160's proof
@@ -359,12 +329,16 @@ call.
    entry paths rather than one — and the file that made it look brownfield-only is exactly the
    file §5 Q1 chose.
 
-   **§1's proof checks the guarantee two ways on both paths**, because an open boundary cannot
-   be checked by asserting a closed list survived: seeded content in the files a run touches in
-   practice, *and* the run's own report compared against the actual diff. **Extending this theme
-   to greenfield extended its proof with it** — FIX-548's check asserts `create-next-app`'s
-   `AGENTS.md` block, its `CLAUDE.md`, and the `.env.local` ignore survive the scaffold. A
-   guarantee this document makes and no listed check exercises is worse than one it never made.
+   **This guarantee is checked two ways on both paths, and the requirement is this theme's** —
+   an open boundary cannot be checked by asserting a closed list survived, so every path's goal
+   check seeds distinctive content into the files a run touches in practice *and* compares the
+   run's own report against the actual diff. The report-versus-diff half is the stronger one: it
+   catches a file nobody thought to seed. **Extending this theme to greenfield extended the
+   requirement with it** — FIX-548's check asserts `create-next-app`'s `AGENTS.md` block, its
+   `CLAUDE.md`, and the `.env.local` ignore survive the scaffold, which §1 restates because it is
+   the one place the guarantee is exercised on a path we author end to end. A guarantee this
+   document makes and no check exercises is worse than one it never made, which is why the
+   requirement lives here rather than in the issues that implement it.
 
 7. **No separate docs issue.** End-user functionality is documented in the change set that
    ships it — which now includes documenting the install skill as the brownfield path. The
@@ -392,6 +366,36 @@ call.
    agent re-deciding what "knowable" means each time. **§1's proof runs this path directly**,
    because the other checks cover the Next.js path only, and nothing else touches the brownfield
    Node behaviour this theme commits to.
+
+   **Neither arrival may put an unauthenticated flow on a network interface — and the rail that
+   used to guarantee that does not reach the path we kept.** `docs/architecture/authentication.md`
+   is explicit that an app on the framework default resolver
+   (`defaultBodyUserIdPrincipalResolver`) trusts a caller-supplied `body.userId` and is protected
+   only by "the loopback-bind rail in `@flow-state-dev/node`, which refuses to expose them on a
+   network interface at all"; the rail and the guard are "a pair". **Everything this epic generates
+   runs on the default resolver, and the mounted-route path never goes through
+   `@flow-state-dev/node`** — it is `createNextHandler` inside the developer's own Next server,
+   started by their own `next dev`, which binds `0.0.0.0` by default (verified in `next@16.3.1`'s
+   CLI: `-H, --hostname <hostname>` … *default: 0.0.0.0*). The result is a demo flow that will call
+   a real model with the developer's provider key, reachable by anyone on whatever network they
+   are on.
+
+   **The generalization, which is the part worth carrying forward:** the loopback rail is a
+   property of **one host adapter**, not of FSD, so *any* path that reaches a flow through a
+   different adapter loses it silently. We cut the Node template partly over this exposure and it
+   survived in the path we kept, wearing a different adapter — which is the second time a safety
+   property has been reasoned about per-template rather than per-adapter. **The rule is therefore
+   stated once, here: a path that generates an unauthenticated flow must also generate the thing
+   that keeps it off the network, and "the CLI does it" is only true of the CLI.**
+
+   **Greenfield is decided; brownfield is §5 Q5.** FIX-548 authors the template's own
+   `package.json`, so its `dev` script binds loopback (`next dev --hostname 127.0.0.1`) and the
+   printed command is unchanged — the developer still types `npm run dev`. The cost is that
+   testing the new app from a phone on the same wifi needs the flag removed, which is a one-word
+   edit in a file we just wrote them. **Brownfield cannot be fixed the same way** — theme 6 forbids
+   rewriting a `dev` script the developer authored, and printing a flag does not help someone who
+   runs their own script from memory — so what protects that path is a product decision rather than
+   an engineering one.
 
 9. **Three shared artifacts, one seam: author, kind, carrier, check.** Three times this epic has an
    artifact authored by one issue and shipped by another — the wiring contract, the
@@ -467,8 +471,14 @@ call.
    - **the dependency set, which is a rule rather than a list**: *every package the generated files
      import directly is a direct dependency.* Two review rounds each found one missing member, which
      is why it is a rule. Today it reaches `zod` and the AI SDK for the selected provider.
-   - **the runtime floor** — every FSD package requires Node `>=22`, so **both entry paths check
-     before they write anything** and refuse rather than hand over an app that cannot run.
+   - **the runtime floor, which is `22.18` and not `22`.** Every FSD package declares
+     `"engines": {"node": ">=22"}`, but that is not the binding number: both paths emit an
+     `fsdev.config.ts`, and the CLI loads it with a native `import()` that needs **Node 22.18+**
+     for type stripping (`packages/cli/src/load-config.ts`, whose own error text names 22.18). So
+     **Node 22.0–22.17 passes a `>=22` check and then fails every printed command at config load**
+     — the same failure shape as the Node 20.9–21 case, one interval higher. **Both entry paths
+     check 22.18 before they write anything, and the guidance names 22.18.** A `.mjs`/`.js` config
+     is the documented escape, but a path that emits `.ts` does not get to rely on it.
 
    **Both manifests are proved by an isolated (pnpm) install, and neither issue may substitute a
    static scan.** npm's flat `node_modules` hoists transitives, so an npm-only proof passes on an
@@ -642,8 +652,8 @@ in someone else's repo.*
 
 *Neither list is a boundary the way the old four-file list was. It is what these two repos
 needed; another repo needs something else, which is the whole reason the brownfield path reads
-the repo instead of enumerating cases. The guarantee is theme 6's, and the proof is the
-report-versus-diff check in §1.*
+the repo instead of enumerating cases. The guarantee is theme 6's, and so is the
+report-versus-diff check that proves it.*
 
 ### Transcript — greenfield
 
@@ -725,7 +735,7 @@ the stronger sense that the CLI's bind guard refuses that host for an unauthenti
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| FIX-1159 | The brownfield knowledge — deterministic detection scripts, the install skill's **content**, the shared next-steps block, and **the wiring contract both entry paths satisfy** (theme 9) | spec | [#1310](https://github.com/fixpoint-labs/flow-state-dev/pull/1310) | — | In spec review — re-shaped against this fold to **brownfield only, no command of its own**; the earlier approval was retracted with the direction change |
+| FIX-1159 | The brownfield knowledge — deterministic detection scripts, the install skill's **content**, the shared next-steps block, and **the wiring contract both entry paths satisfy** (theme 9) | spec | [#1310](https://github.com/fixpoint-labs/flow-state-dev/pull/1310) | — | In spec review — re-shaped to **brownfield only, no command of its own**; the earlier approval was retracted with the direction change. **Now waiting on §5 Q5**, which decides whether the generated brownfield endpoint requires authentication |
 | FIX-1162 | Register the npm names the launch needs — the short CLI entry name and the scaffolding name | spec | [#1313](https://github.com/fixpoint-labs/flow-state-dev/pull/1313) | — | In spec review — **both names now registered at `0.0.0` to a personal account**; what remains is the publishing identity's write access (`npm owner add` / transfer) and the unproven `@flow-state-dev` scope. Owner operations, not agent work |
 | FIX-548 | `create-flow-state` — the deterministic greenfield path; **one** template (Next.js chat app), owned end to end | spec | [#1312](https://github.com/fixpoint-labs/flow-state-dev/pull/1312) | — | Spec complete, approved at `404e82c` — **approval needs re-taking**: theme 9 now requires a pnpm-isolated install of the emitted template in its goal check (posted to #1312; its spec is not edited by the epic) |
 | FIX-1160 | The authoring pack **and the plugin that distributes the install skill** — agent-instructions file, authoring skills, install skill | spec | [#1311](https://github.com/fixpoint-labs/flow-state-dev/pull/1311) | — | Spec complete, approved at `dd9b656` — **approval needs re-taking**: theme 9 (d) hands it the agent-instructions block's normalization and equality check (posted to #1311). Scope had already grown: it is the brownfield path's only delivery channel |
@@ -787,8 +797,10 @@ one:
 
 ## 5. Open cross-cutting questions
 
-Q1–Q3 are **decided** and stay here with their answers, so no issue reopens them. **Q4 is open**
-and blocks nothing: it exists because the split changed what an already-made decision costs.
+Q1–Q3 are **decided** and stay here with their answers, so no issue reopens them. **Two are open.**
+Q4 blocks nothing — it exists because the split changed what an already-made decision costs. **Q5
+does block**: it decides what the brownfield run generates, so FIX-1159 cannot finish the install
+skill's content without it, and it is the only question here with a security consequence.
 
 ### ~~Q1 — What filename do the agent instructions go to, and what happens when one is already there?~~ — decided: `AGENTS.md`
 
@@ -917,6 +929,43 @@ by people who read far enough, during the weeks that matter most — recoverable
 is a listing you did not want to own yet. Wrong on listing: a public entry to keep green in the
 noisiest period we will have, which is the cost you already declined once.
 
+### Q5 — A brownfield run adds an open endpoint to a server the developer already exposes. Do we ask them to log in on day one? — **open, and it gates the brownfield proof**
+
+*Raised by review against `docs/architecture/authentication.md` and verified in `next@16.3.1`.
+Greenfield is already decided (theme 8: our template's own `dev` script binds loopback). This is
+the half we cannot fix that way, and it is a product call rather than an engineering one.*
+
+**Plain terms.** When our agent adds FSD to a Next.js app someone already has, it writes a working
+demo endpoint into *their* server. They start that server the way they always do, and Next's dev
+server listens on every network interface by default. So on shared wifi — a café, a co-working
+floor, a corporate LAN — anyone who can reach their laptop can call that endpoint, and every call
+spends **their** provider key against a real model. Nothing is stolen; it is billed and used.
+
+**The trade-off.** Requiring a login on the generated demo closes it, and costs the thing the epic
+is actually selling: the first run stops ending at "it works" and starts ending at "now configure
+authentication". Leaving it open keeps the first hour intact and ships a default that is only safe
+on a trusted network. **We cannot split the difference by printing a warning** — theme 6 forbids us
+rewriting a `dev` script they authored, and someone who types their own start command never sees
+our printed flag.
+
+**My recommendation: ship it open, and make the run say so out loud** — one line in the diff the
+developer reviews before accepting, naming the endpoint, that it is unauthenticated, and the
+one-line change that binds it to loopback. The reasoning is that this is a **development-time
+default on a machine the developer controls**, in the same family as the file store we already
+label as development-only; and the diff review is a consent surface a command would not have had.
+The alternative spends the epic's headline outcome to protect a case the developer can see and fix.
+
+**What would change my mind:** if we expect a meaningful share of brownfield users to be on
+untrusted shared networks, or to run this against something other than a laptop — a shared dev box,
+a cloud workspace with a public hostname. Then the exposure is not "their own machine" and the
+default is wrong.
+
+**Cost of being wrong.** Wrong on open: a stranger's key gets spent, or their demo flow answers
+someone else's prompts, and it happened because of a run we told them was additive and safe. That
+is the worst kind of wrong for this epic specifically, because the whole brownfield pitch is *we
+will not damage your repo*. Wrong on closed: the brownfield first run is meaningfully worse than
+the greenfield one, and we lose the symmetry theme 8 exists to protect.
+
 ---
 
 ## Epic evolution
@@ -1013,3 +1062,17 @@ the themes and decisions above — it is not repeated here.
   strings that exist and ones that do not, so the cheap proof is publishing one scoped package.
   Also: `fsdev run` takes caller identity as its own parameter, not from `--input`, so both printed
   commands dropped the `userId` key they could never have set.
+- **A security finding, and the runtime floor I broke in the previous turn.** The generated demo
+  runs on the default resolver, whose only protection is the loopback rail in
+  `@flow-state-dev/node` — an adapter the mounted-route path never uses, since it is
+  `createNextHandler` inside the developer's own `next dev`, which binds `0.0.0.0`. **The rule is
+  now stated per *adapter* rather than per template** (theme 8), because we cut the Node template
+  partly over this exposure and it survived in the path we kept. Greenfield is decided (our own
+  `dev` script binds loopback, printed command unchanged); brownfield is **Q5**, since theme 6
+  forbids rewriting a script the developer authored. **And the runtime floor: the rule had said
+  "the higher of `>=22` and 22.18", but §1's only refusal check exercised 20.9–21, so the 22.18
+  half never had one — then last turn's theme 9 compression dropped that half from the rule
+  outright.** Restored as a single number, 22.18, with why it is not 22. §1's Proof block also cut
+  from ~894 words to ~290: user-level observations only, with the two assertions nothing else
+  carries — greenfield `AGENTS.md`/`CLAUDE.md` survival and the second-process Node coverage —
+  kept as explicit must-not-drop sentences.
