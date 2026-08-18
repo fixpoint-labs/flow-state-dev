@@ -45,9 +45,13 @@ Deterministic *mutation* is what goes. Carried by themes 1, 5, 6 and 8.
 
 **Proof** — carried by the issues' own goal checks, no new measurement apparatus:
 
-- *FIX-1159, mounted-route path* — a fresh `create-next-app`, then an agent runs the install
-  skill against it, then `fsdev run` returns a streamed model response from a real model, and a
-  route that existed before the run still responds. **Distinctive content is seeded before the
+- *FIX-1159, mounted-route path* — a fresh `create-next-app` **on pnpm**, then an agent runs the
+  install skill against it, then `fsdev run` returns a streamed model response from a real model,
+  and a route that existed before the run still responds. **pnpm is load-bearing here, not
+  incidental:** its strict isolation is the only thing in the epic that fails an undeclared direct
+  dependency, and theme 9's dependency set is a rule rather than a list precisely because two
+  review rounds each found a missing member. npm's flat `node_modules` would hoist them and let
+  the run pass on an incomplete `package.json`. **Distinctive content is seeded before the
   run into each of the files a brownfield run touches in practice** — `package.json`,
   `.gitignore`, `.env.local`, `AGENTS.md` — and is still there afterwards; **and the run's own
   report is compared against the actual diff**, so a file it touched but did not name is a
@@ -379,29 +383,68 @@ call.
    including its store profile; and the dependency set, which now has to name one thing it never
    did.
 
-   **The provider SDK belongs to the dependency set, keyed to the provider the prompt selected.**
-   Choosing OpenAI and entering a key installed no `@ai-sdk/openai`: `@flow-state-dev/core` carries
-   it as a **devDependency only** (verified in `packages/core/package.json` — absent from
-   `dependencies` and `peerDependencies`), and `createModelResolver` resolves provider packages
-   from the consumer's own `node_modules`. With it absent the direct path is unavailable and there
-   is no configured gateway to fall through to, so the first chat request throws `No provider
-   available for "openai"` — and **every real-model proof in §1 fails with it.** The contract names
-   the package per provider (`openai` → `@ai-sdk/openai`, `anthropic` → `@ai-sdk/anthropic`,
-   `google` → `@ai-sdk/google`), never a fixed one, because the prompt offers a choice. A gateway
-   key is the alternative the resolver accepts; choosing between them is the owning issues' call,
-   shipping neither is not.
+   **The dependency set is a rule, not a list: every package the generated files import directly
+   is a direct dependency.** Two review rounds have each found one member missing, so the rule is
+   what closes the class. **pnpm's strict isolation does not expose a dependency's own
+   dependencies for direct import**, so "core already depends on it" never satisfies a consumer's
+   `import`. Our own reference app already shows the shape — `examples/hello-chat` declares the
+   `@flow-state-dev/*` packages, `zod` and `@ai-sdk/openai` as direct dependencies, and its flow
+   opens `import { z } from "zod"` beside its `@flow-state-dev/core` import. Under the template as
+   specified today the set is those three groups:
 
-   **(ii) The agent-instructions content — FIX-1160 authors it, FIX-548's template ships it.** §5
-   Q1 assigns the content to FIX-1160 and theme 3 has the template ship it, but no edge ordered
-   them: in a merge order where FIX-548 lands first, the template ships an absent or copied draft
-   that then drifts from FIX-1160's version. Same shape as (i), same fix — **FIX-1160 lands before
-   FIX-548**, and the template consumes that content rather than drafting its own.
+   - **`zod`.** The generated `chat.ts` / `hello.ts` need an input schema, and every public example
+     imports `z` from `zod` directly. `@flow-state-dev/core` carries `zod` in its own
+     `dependencies`, which does nothing for a consumer under pnpm. Without it the **pnpm brownfield
+     proof fails while importing the generated flow** — before `fsdev run` reaches a model at all.
+   - **The AI SDK package for the provider the prompt selected**, never a fixed one, because the
+     prompt offers a choice: `openai` → `@ai-sdk/openai`, `anthropic` → `@ai-sdk/anthropic`,
+     `google` → `@ai-sdk/google`. `@flow-state-dev/core` carries `@ai-sdk/openai` as a
+     **devDependency only** (verified in `packages/core/package.json` — absent from `dependencies`
+     and `peerDependencies`), and `createModelResolver` resolves provider packages from the
+     consumer's own `node_modules`. With it absent the direct path is unavailable and there is no
+     configured gateway to fall through to, so the first request throws `No provider available for
+     "openai"`. A gateway key is the alternative the resolver accepts; choosing between them is the
+     owning issues' call, shipping neither is not.
 
-   **The drift tripwire, re-aimed.** It used to point from the skill at the template; it now points
-   from both at whatever the named author wrote, and the signal is a template file or an
-   instruction that restates shared content instead of citing it. The check for (i) is **theme 8's
-   parity requirement** — both paths deliver the same mounted-route shape — and for the provider
-   SDK it is §1's real-model proofs, which only now genuinely exercise it.
+   **What makes the rule checkable: the proofs must run on pnpm.** §1's checks already fail on this
+   class — an undeclared import fails at load, a missing provider package on the first request —
+   but only under strict isolation. **npm hoists transitive packages into a flat `node_modules`, so
+   a greenfield proof run with npm can pass with an incomplete `package.json`** and hide every
+   member of this class. The brownfield pnpm run is what actually guards it.
+
+   **(ii) The agent-instructions content — FIX-1160 authors it, FIX-548's template ships a copy,
+   and a version marker catches drift.** §5 Q1 assigns the content to FIX-1160 and theme 3 has the
+   template ship it, but no edge ordered them: in a merge order where FIX-548 lands first, the
+   template ships an absent or copied draft that then drifts. **FIX-1160 lands before FIX-548** —
+   but the ordering edge alone left *"consumes rather than re-authors"* undefined, because nothing
+   said how the template obtains the content, and the alternatives were a duplicate that can drift,
+   a build-time reach into another package, or a shared artifact.
+
+   **Decided: the template checks in its own copy, and drift is caught rather than prevented.** The
+   copy carries a **version marker inside the delimited FSD block theme 6 already requires** —
+   `<!-- fsd:agent-instructions v<n> -->` — and a monorepo test asserts every shipped copy carries
+   the marker FIX-1160 currently publishes. Change the canonical content without updating a
+   shipper and CI fails, naming the stale copy. **FIX-1160 owns the canonical content, the marker,
+   and the check; FIX-548 conforms.** No new artifact: the marker rides inside a delimiter this
+   epic already mandates.
+
+   **Why not a build-time copy, which is the obvious mechanism.** It presumes the two copies are
+   byte-identical, and this epic has already been wrong about exactly that: theme 5 required the
+   next-steps block be "reused verbatim" and **that was recorded as a defect**, because detection
+   exists precisely so the printed commands match the host. The same pressure applies here — a
+   template that just wrote `flows/chat.ts` can name it, a brownfield run against a stranger's repo
+   cannot. **A marker check asserts currency, which is the property that actually matters, and it
+   holds whether or not the two renderings are identical. A copy step asserts equality, which is a
+   property we are not sure we want.** It also avoids the seam a copy would need: `create-flow-state`
+   reaching into FIX-1160's source at build time, which undeclared is worse than declared, and
+   declared is a new dependency between packages.
+
+   **Every guarantee here has a check, which is the half theme 1's tripwire never had.** (i)'s
+   wiring shape rests on **theme 8's parity requirement** — both paths deliver the same
+   mounted-route shape. The dependency set rests on §1's proofs **run under pnpm**, since npm's
+   hoisting hides the whole class. (ii) rests on the marker test. The tripwire that remains a
+   judgement call is the authoring one: a template file or an instruction that restates shared
+   content instead of citing it is the signal a person looks for in review.
 
    **Rejected — the plugin ships a copy of the template.** It makes FIX-1160 a second writer of the
    shape and needs the plugin's packaging to pull FIX-548's template, a build-time dependency
@@ -475,7 +518,8 @@ my-app/
     CLAUDE.md                        create-next-app's, untouched
 ~   .gitignore                       already carries .env* — asserted, not added
 ~   package.json                     +next, react, @flow-state-dev/{core,engine,next,react,cli,devtool}
-                                     and the selected provider's SDK, e.g. @ai-sdk/openai (theme 9)
+                                     zod, and the selected provider's SDK, e.g. @ai-sdk/openai
+                                     — every package the generated files import (theme 9)
     next.config.ts                   create-next-app's, untouched
     tsconfig.json                    create-next-app's
 ```
@@ -504,7 +548,8 @@ a development default, is the owning issue's call.
 +   fsdev.config.ts
 ~   AGENTS.md        +FSD section, delimited   (created if absent, appended if present)
 ~   package.json     deps +@flow-state-dev/{core,engine,next,react,cli,devtool}
-                          + the selected provider's SDK, e.g. @ai-sdk/openai (theme 9)
+                          + zod + the selected provider's SDK, e.g. @ai-sdk/openai
+                            — every package the generated files import (theme 9)
 ~   .gitignore       +FSD ignore entries
 ~   .env.local       +OPENAI_API_KEY=   (created if absent, appended if present;
                                          REFUSED if the file is already tracked — theme 6)
@@ -523,7 +568,8 @@ a development default, is the owning issue's call.
 +   fsdev.config.ts
 ~   AGENTS.md                       +FSD section, delimited  (created if absent, appended if present)
 ~   package.json                    deps +@flow-state-dev/{core,engine,node,cli,devtool}
-                                    + the selected provider's SDK, e.g. @ai-sdk/openai (theme 9)
+                                    + zod + the selected provider's SDK, e.g. @ai-sdk/openai
+                                      — every package the generated files import (theme 9)
 ~   .gitignore                      +FSD ignore entries
 ~   .env.local                      +OPENAI_API_KEY=
 ~   package-lock.json               rewritten by your package manager when the run installs
