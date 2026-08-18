@@ -48,10 +48,11 @@ Deterministic *mutation* is what goes. Carried by themes 1, 5, 6 and 8.
 - *FIX-1159, mounted-route path* — a fresh `create-next-app` **on pnpm**, then an agent runs the
   install skill against it, then `fsdev run` returns a streamed model response from a real model,
   and a route that existed before the run still responds. **pnpm is load-bearing here, not
-  incidental:** its strict isolation is the only thing in the epic that fails an undeclared direct
-  dependency, and theme 9's dependency set is a rule rather than a list precisely because two
-  review rounds each found a missing member. npm's flat `node_modules` would hoist them and let
-  the run pass on an incomplete `package.json`. **Distinctive content is seeded before the
+  incidental:** its strict isolation is the only thing that fails an undeclared direct dependency,
+  and theme 9's dependency set is a rule rather than a list precisely because two review rounds
+  each found a missing member. npm's flat `node_modules` would hoist them and let the run pass on
+  an incomplete `package.json`. **This covers the brownfield manifest only** — the greenfield
+  manifest is a separate emitted file and gets its own pnpm install, under FIX-548 below. **Distinctive content is seeded before the
   run into each of the files a brownfield run touches in practice** — `package.json`,
   `.gitignore`, `.env.local`, `AGENTS.md` — and is still there afterwards; **and the run's own
   report is compared against the actual diff**, so a file it touched but did not name is a
@@ -82,7 +83,14 @@ Deterministic *mutation* is what goes. Carried by themes 1, 5, 6 and 8.
   runtime asserts the refusal** (theme 9): on Node 20.9–21 the command must fail before invoking
   `create-next-app` and name Node 22, because Next 16 accepts those versions while every FSD
   package requires `>=22` and npm's engines check only warns — so the success path alone would
-  pass while the command hands a developer an app that cannot run.
+  pass while the command hands a developer an app that cannot run. **And a third run installs the
+  emitted template's own manifest with pnpm and runs the generated flow from it** (theme 9). The
+  `npm create` run cannot fail an incomplete `package.json` — npm's flat `node_modules` hoists
+  transitives — so without this step FIX-548 could omit `zod` or the provider SDK and every other
+  check listed here would stay green. **This is the same dependency rule §1's mounted-route proof
+  checks for brownfield, and it was being asserted of the greenfield manifest without being run
+  against it.** A static import-versus-manifest scan is not a substitute: the provider SDK is
+  resolved at run time, never statically imported.
 - *FIX-1160* — one recorded run covering **both halves of the pack**: the Claude plugin
   installed from its published source and one of its packaged skills invoked, and then a coding
   assistant in a freshly scaffolded project, given a stated feature goal and nothing else,
@@ -387,58 +395,102 @@ call.
        must produce the same observable shape;
      - a **source block**, where one canonical text with **declared substitution points** is
        embedded **verbatim, placeholders unrendered**, in every shipper's own source and
-       substituted at emit time, so the check is a **digest**.
+       substituted at emit time, so the check is **text equality**.
    - **Carrier** — how it reaches its shippers. Both carriers already exist and neither is new:
      shippers live in this monorepo beside their authors, and the brownfield shipper is skill
      content, which reaches a stranger through the plugin FIX-1160 packages.
    - **Check** — per kind above, and subject to the two rules below.
 
-   **Rule 1: both sides of a comparison are recomputed from content, and neither hash includes
-   itself.** The digest covers the delimited block **with the marker line removed**, and the test
-   recomputes it from the canonical source *and* from each shipper's embedded block before
-   comparing. Nothing is hand-maintained anywhere in the loop, because **a check whose failure
-   depends on someone remembering to update it is not a check** — and nothing hashes the value it
-   is about to write, because that value can never match itself.
+   **Rule 1: the check compares the two texts themselves, and nothing is stored in the shipped
+   copy.** The canonical block and each shipper's embedded block are both read at test time,
+   normalized identically, and compared. Nothing is hand-maintained anywhere in the loop, because
+   **a check whose failure depends on someone remembering to update it is not a check.**
 
-   **The normalization is part of the rule, not the implementer's to invent** — "exclude the
-   marker" is exactly the instruction two implementations satisfy differently. **The hashed body
-   is derived identically on the canonical side and every shipped copy:**
+   **The stored `sha256` marker is gone. The question it failed is recorded here so it is not
+   reintroduced: does the marker have a job the comparison does not already do?** It does not. A
+   marker could only earn its place by letting something verify the block *without* the canonical
+   text in hand — a shipper self-checking against a source it cannot reach. **No shipper is in
+   that position:** all three artifacts' canonical texts and every embedded copy live in this
+   monorepo, and the test holds both sides. The delimiters theme 6 already requires are what
+   *locate* the block; the comparison is what *validates* it; the marker did neither. Nothing in
+   this epic reads it, and a value nothing reads cannot fail — it can only be wrong.
+
+   **That is also the diagnosis of all five defects, which were one defect.** A hand-incremented
+   label (passes when someone forgets to increment); a canonical-only digest (passes when a
+   shipper's body is stale, since its body was never hashed); a whole-block digest (can never
+   pass, because writing the value changes the bytes being hashed); the marker-stripping
+   normalization that third fix required; and finally a stripped marker nothing validates. **Every
+   one of them is a defect in a *stored value*, not in the comparison.** Four fixes went into
+   defending the field and each opened the next hole. Remove the stored value and four of the five
+   cannot be written down again. What survives is the single real requirement — that both sides are
+   read from content rather than trusted — and equality satisfies it directly.
+
+   **The hashing goes with the marker.** Both texts are in hand at test time, so `sha256` was only
+   ever a way to compare two strings we already had, and the word *digest* is what kept summoning a
+   stored value to compare against. Direct comparison is the same check with a better failure
+   message: a diff of the two blocks rather than two unequal hex strings.
+
+   **The normalization stays, because it is still not the implementer's to invent.** The compared
+   text is derived identically on the canonical side and every shipped copy:
 
    1. take the bytes between the opening and closing FSD delimiters, exclusive;
-   2. **delete every line matching the marker pattern** `<!-- fsd:<artifact> sha256:... -->` — a
-      no-op on the canonical side, which carries no marker, and the step that breaks the
-      self-reference on a shipper's side;
-   3. normalize line endings to `\n`, strip trailing whitespace from each line, and strip leading
-      and trailing blank lines;
-   4. `sha256` over the resulting UTF-8 bytes.
+   2. normalize line endings to `\n`, strip trailing whitespace from each line, and strip leading
+      and trailing blank lines.
 
-   A current copy therefore hashes to exactly what canonical hashes to, and the marker it carries
-   is excluded from both. **This mechanism has now been wrong three times, each time because the
-   fix for one hole opened another** — a hand-incremented label (passes when someone forgets to
-   increment), a canonical-only digest (passes when a shipper's body is stale, since its body was
-   never hashed), and a whole-block digest (can never pass, because writing the value changes the
-   bytes being hashed). The shape that holds keeps **both** properties at once: both sides
-   recomputed, neither hash covering itself.
+   A current copy is therefore byte-identical to canonical after normalization.
 
    **Rule 2: everything that varies is a declared substitution or lives outside the delimiters.**
-   The delimited block is byte-identical to canonical everywhere it is embedded, apart from the
-   marker line rule 1 strips before hashing; per-host prose goes outside it, and per-host values go
-   in named placeholders. **This is what separates the two
+   The delimited block is byte-identical to canonical everywhere it is embedded; per-host prose
+   goes outside it, and per-host values go in named placeholders. **This is what separates the two
    objects that three rounds kept conflating: the *file* varies, the *block* does not.** Theme 5's
    "not byte-identical" was always about the printed output — the block's text was never the thing
    that had to differ. A block that needs undeclared variation is not a source block, and that is
    a cross-cutting question rather than a shipper's local call.
+
+   **Declared variation has two forms, not one — because package-manager substitution could not
+   express the difference theme 8 makes.**
+
+   - **(a) Value substitutions** — named placeholders replaced with a detected value. Today:
+     `{{dev}}`, `{{exec}}` and their siblings, the package-manager commands.
+   - **(b) Conditional sections** — a named region rendered only under one of theme 8's two
+     topologies, `mounted-route` or `second-process`. **The key set is closed and lives here:**
+     theme 8 fixes exactly two topologies and detection reports which one it found, so a block
+     wanting a third key raises the same cross-cutting question undeclared variation does. This is
+     a conditional *region* — no expressions, no nesting, no iteration. Not a template language.
+
+   **Why this is widened here rather than left to a shipper.** The next-steps block must print a
+   **different process list per topology**: a mounted-route host runs its own dev server and FSD
+   answers inside it, while a second-process host starts `fsdev serve` *alongside* the server
+   already there. `{{dev}}` and `{{exec}}` vary the words of a command, not how many processes
+   there are. Rule 2's other escape does not help either — moving the process list outside the
+   delimiters puts the block's whole payload back into unowned per-host prose, which is exactly
+   what theme 5 created a single authored source to prevent. Under the contract as it stood, one
+   invariant block had to print a wrong process list for at least one host, or be edited outside
+   the declared substitutions and break its own check.
+
+   **Every shipper embeds every branch; each renders only its own.** FIX-548's scaffolder ships
+   greenfield Next.js and will never render `second-process`; FIX-1159's skill renders whichever
+   detection reported. The unrendered branch still sits in the shipper's source byte-identical to
+   canonical, because that is what rule 1's comparison reads. **A shipper that trims a branch it
+   cannot reach breaks the check** — stated explicitly because trimming it looks like tidying.
+
+   **This is the epic's to declare, and FIX-1159 adds no parallel mechanism.** The same defect was
+   raised against FIX-1159's next-steps renderer, where it reads as one issue's problem. It is not:
+   the block has **two** shippers, so any mechanism FIX-1159 invented locally would have to be
+   honoured by FIX-548's scaffolder to keep the comparison green — which is the definition of
+   cross-cutting, and what this theme's own rule already says about a block needing undeclared
+   variation. FIX-1159 implements against the contract above.
 
    **The three artifacts.**
 
    | Artifact | Author | Kind | Shippers | Check |
    |---|---|---|---|---|
    | Wiring contract | FIX-1159 | specification | FIX-548's template · FIX-1159's skill | theme 8 parity + the dependency rule, under pnpm |
-   | Agent-instructions block | FIX-1160 | source block (no substitutions expected) | FIX-548's `AGENTS.md` · FIX-1159's skill, **embedded by FIX-1160 at packaging** — see (ii) | digest |
-   | Next-steps block | FIX-1159 | source block (substitutions: the package-manager commands) | FIX-548's scaffolder · FIX-1159's skill | digest |
+   | Agent-instructions block | FIX-1160 | source block (no substitutions expected) | FIX-548's `AGENTS.md` · FIX-1159's skill, **embedded by FIX-1160 at packaging** — see (ii) | text equality |
+   | Next-steps block | FIX-1159 | source block (values: package-manager commands · conditional: host topology) | FIX-548's scaffolder · FIX-1159's skill | text equality |
 
-   **(i) The wiring contract is a specification, not a block, and that is why it alone has no
-   digest.** Theme 1 used to make FIX-548's template the reference shape and have the install skill
+   **(i) The wiring contract is a specification, not a block, and that is why it alone is checked
+   behaviourally.** Theme 1 used to make FIX-548's template the reference shape and have the install skill
    point at it; the skill can never reach it, since theme 4 forbids an instruction that reads our
    monorepo and the template ships inside the published scaffolder — neither in the plugin nor one
    of its artifacts. It is FIX-1159's by theme 1's own rule, since "what wiring FSD into an existing
@@ -469,9 +521,25 @@ call.
      alternative the resolver accepts; choosing between them is the owning issues' call, shipping
      neither is not.
 
-   **The dependency rule is only checkable under pnpm.** npm hoists transitives into a flat
-   `node_modules`, so a proof run with npm passes on an incomplete `package.json` and hides the
-   entire class. §1's mounted-route proof runs on pnpm for exactly this reason.
+   **The dependency rule is only checkable under pnpm — and it has to be checked on *both* emitted
+   manifests.** npm hoists transitives into a flat `node_modules`, so a proof run with npm passes
+   on an incomplete `package.json` and hides the entire class. §1's mounted-route proof runs on
+   pnpm for exactly this reason — but that proof exercises **FIX-1159's brownfield output only**,
+   while FIX-548 emits a `package.json` of its own whose proof is an `npm create` run. This
+   contract names FIX-548's template as a shipper, so it was promising a check the listed proofs
+   did not make: **FIX-548 could omit `zod` and every stated check would still pass.** So FIX-548's
+   proof gains a **pnpm-isolated install of the emitted template** — install the scaffolded app's
+   manifest with pnpm and run the generated flow. The headline command stays
+   `npm create flow-state my-app`, because that is the advertised UX and not the thing under test.
+
+   **A static import-versus-manifest assertion would not have closed this**, which is worth stating
+   because it is the cheaper fix and it is the wrong one. The provider SDK is **never statically
+   imported**: `createModelResolver` resolves it at run time through `createRequire` against the
+   consumer's working directory (verified in `packages/core/src/models/createModelResolver.ts` —
+   `createRequire`, a dynamic `await import()`, and the `No provider available for "…"` throw). No
+   scan of the generated files' `import` statements can see `@ai-sdk/openai`. That is one of
+   exactly two members this rule names, and the one a review round already missed once. Only an
+   isolated install that actually runs the flow reaches it.
 
    **The runtime floor is part of the contract too, and a path refuses rather than produces an app
    that cannot run.** Every FSD package declares `"engines": { "node": ">=22" }` (verified across
@@ -489,15 +557,15 @@ call.
    one artifact that flows against the epic's dependency direction.** §5 Q1 assigns the content to
    FIX-1160 and theme 3 has the template ship it, but nothing ordered or connected them, so a
    template landing first would ship a draft that drifts. **FIX-1160 lands before FIX-548**, and
-   the template embeds the canonical block verbatim inside the delimiters theme 6 already requires,
-   carrying `<!-- fsd:agent-instructions sha256:<digest> -->`.
+   the template embeds the canonical block verbatim inside the delimiters theme 6 already requires
+   — and nothing else: no marker, per rule 1.
 
    **The second shipper created a cycle, and co-location resolves it.** FIX-1159's install skill
    must also emit this block — but FIX-1159 lands *before* FIX-1160, because FIX-1160 packages the
    skill. Requiring FIX-1159 to embed FIX-1160's canonical block demands a source that has not
    landed, and reversing the edge breaks packaging instead. **Decided: FIX-1160 owns the content
    *and* the embedding. FIX-1159's skill carries a named placeholder, and FIX-1160 substitutes the
-   canonical block — with its digest marker — when it packages the plugin.** Nothing new is
+   canonical block when it packages the plugin.** Nothing new is
    invented: a placeholder filled by the packager is rule 2's declared-substitution mechanism
    applied one level up, and it runs along the existing FIX-1159 → FIX-1160 edge rather than
    against it. The alternative — splitting FIX-1160 so the block lands ahead of the skill content
@@ -519,10 +587,13 @@ call.
    **(iii) The next-steps block — FIX-1159 authors, FIX-548 and FIX-1159's skill ship it.** Theme 5
    declared the single authored source and left it there: no carrier, no renderer, no check, so the
    two issues would have implemented independently and either duplicated the block or invented an
-   unowned dependency. It is a **source block whose substitutions are the package-manager
-   commands** — `{{dev}}`, `{{exec}}` and their siblings — so what is shared and digested is the
-   *template text with placeholders intact*, and what differs is only the rendered output, which is
-   exactly what theme 5 always required.
+   unowned dependency. It is a **source block with both forms of declared variation** — the
+   package-manager values (`{{dev}}`, `{{exec}}` and their siblings) and the host-topology
+   conditional rule 2 adds — so what is shared and compared is the *template text with placeholders
+   and both branches intact*, and what differs is only the rendered output, which is exactly what
+   theme 5 always required. **The topology conditional is what lets one authored source serve a
+   mounted-route host and a second-process host without either being wrong**; it is declared in
+   rule 2 rather than here, because it binds FIX-548's scaffolder too.
 
    **This dissolves FIX-1159's renderer problem rather than answering it.** A Markdown skill has no
    callable interface and cannot invoke a shared renderer — which is why "one authored source" kept
@@ -534,9 +605,10 @@ call.
    dependency between packages); the plugin shipping a copy of the template (it makes FIX-1160 a
    second writer of the shape); and the skill reading the published `create-flow-state` at run time
    (legal under theme 4, since npm is not our monorepo, but it makes the greenfield demo app the
-   authority for brownfield wiring). **No new package and no new dependency between packages**:
-   `node:crypto` computes the digests and the comparisons run at test time. Had the mechanism
-   needed either, it would have gone to the owner instead of into this theme.
+   authority for brownfield wiring). **No new package and no new dependency between packages** —
+   and with rule 1 reduced to text equality, no library at all: the comparisons read two files and
+   compare two strings at test time. Had the mechanism needed either, it would have gone to the
+   owner instead of into this theme.
 
 ## 3. Shape of the whole
 
@@ -754,7 +826,7 @@ the stronger sense that the CLI's bind guard refuses that host for an unauthenti
 |---|---|---|---|---|---|
 | FIX-1159 | The brownfield knowledge — deterministic detection scripts, the install skill's **content**, the shared next-steps block, and **the wiring contract both entry paths satisfy** (theme 9) | spec | [#1310](https://github.com/fixpoint-labs/flow-state-dev/pull/1310) | — | In spec review — re-shaped against this fold to **brownfield only, no command of its own**; the earlier approval was retracted with the direction change |
 | FIX-1162 | Register the npm names the launch needs — the short CLI entry name and the scaffolding name | spec | [#1313](https://github.com/fixpoint-labs/flow-state-dev/pull/1313) | — | In spec review — the npm operations themselves still sit with the owner |
-| FIX-548 | `create-flow-state` — the deterministic greenfield path; **one** template (Next.js chat app), owned end to end | spec | [#1312](https://github.com/fixpoint-labs/flow-state-dev/pull/1312) | — | In spec review — re-drafted against this fold; no longer a wrapper over `fsdev init` |
+| FIX-548 | `create-flow-state` — the deterministic greenfield path; **one** template (Next.js chat app), owned end to end | spec | [#1312](https://github.com/fixpoint-labs/flow-state-dev/pull/1312) | — | Spec complete, approved at `404e82c` — **approval needs re-taking**: theme 9 now requires a pnpm-isolated install of the emitted template in its goal check (posted to #1312; its spec is not edited by the epic) |
 | FIX-1160 | The authoring pack **and the plugin that distributes the install skill** — agent-instructions file, authoring skills, install skill | spec | [#1311](https://github.com/fixpoint-labs/flow-state-dev/pull/1311) | — | In spec review, **scope grew** — it is now the brownfield path's only delivery channel |
 
 **The greenfield/brownfield split landed on top of two specs that were already written, and both
@@ -996,8 +1068,8 @@ the themes and decisions above — it is not repeated here.
   shipper's body was never hashed, and dissolves FIX-1159's renderer problem: a Markdown skill
   embeds the block and substitutes, so there is nothing to call.
 - **Four fixes that made theme 9 implementable** — the whole-block digest was self-referential
-  (writing the value changed the bytes hashed), so the hashed body is now the block **with the
-  marker line stripped**, normalized identically on both sides and spelled out step by step; the
+  (writing the value changed the bytes hashed), so the hashed body became the block **with the
+  marker line stripped** (superseded — see the entry below); the
   agent-instructions block created an **ownership cycle** (FIX-1160 authors it, but FIX-1159's
   skill ships it and lands first), resolved by **co-location** — FIX-1160 embeds it at packaging
   into a placeholder the skill carries, which runs with the existing edge instead of against it;
@@ -1005,3 +1077,15 @@ the themes and decisions above — it is not repeated here.
   before writing and FIX-548's goal check exercises the refusal; and theme 6's `package.json`
   guarantee promised untouched **formatting**, which the mandatory package-manager install
   rewrites, so it now promises semantic key/value preservation as exception (b) always said.
+- **The digest mechanism was deleted rather than fixed a fifth time** — the stripped marker was
+  never compared to anything, so any stale or arbitrary value passed. Asked what job the marker
+  did that the comparison did not, the answer was none: every shipper's canonical text is in this
+  monorepo, so no shipper ever self-checks without it. **All five defects were defects in a
+  *stored value*, not in the comparison**, so the value and the hashing both go and the check is
+  normalized text equality (`node:crypto` no longer needed). Two other P2s in the same batch:
+  rule 2 gained **conditional sections keyed on theme 8's two host topologies**, because
+  package-manager substitution cannot turn a mounted-route process list into a second-process one
+  and the block has two shippers — the epic's to widen, not FIX-1159's to work around; and
+  **FIX-548's goal check gained a pnpm-isolated install of the emitted template**, since the
+  dependency rule was asserted of the greenfield manifest while only the brownfield one was ever
+  installed strictly.
