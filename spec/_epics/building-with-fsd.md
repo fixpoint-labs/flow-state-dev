@@ -155,11 +155,13 @@ call.
    Router vs pages, whether a config already exists, whether `.env.local` is tracked — and
    ships as scripts the skill calls. **Deterministic *mutation* is what goes**; §1 records why.
 
-   **Ownership (decided).** FIX-1159 authors the detection scripts and the install skill's
-   *content*; FIX-1160 packages and distributes it alongside the authoring skills. That is the
-   same content-versus-delivery split those two issues already use for the agent-instructions
-   file, with the roles assigned by which issue holds the knowledge: FIX-1159 knows what wiring
-   FSD into an existing repo requires, FIX-1160 knows how to package and ship a Claude skill.
+   **Ownership (decided).** **FIX-548 owns the greenfield command and its template — it is the
+   only command in the set.** FIX-1159 authors the detection scripts and the install skill's
+   *content* and ships **no command of its own**; FIX-1160 packages and distributes it alongside
+   the authoring skills. That is the same content-versus-delivery split those two issues already
+   use for the agent-instructions file, with the roles assigned by which issue holds the
+   knowledge: FIX-1159 knows what wiring FSD into an existing repo requires, FIX-1160 knows how
+   to package and ship a Claude skill.
 
    **The template is the reference shape; the skill's instructions point at it rather than
    restating it.** With one deterministic writer left, "no scaffolding logic in two places" has
@@ -249,11 +251,14 @@ call.
    always run what it just wrote. That constraint is precisely why rendering has to vary and
    content must not.
 
-6. **A run is additive over files it did not author, and the developer's diff review — not an
-   enumerated file list — is what makes it safe.** The old boundary was a fixed four files plus
+6. **A run is additive over files it did not author, and what makes that safe is review of what
+   actually changed — not an enumerated file list.** The old boundary was a fixed four files plus
    the lockfile, and §1 records why it kept growing. **What survives is the guarantee, not the
-   list.** The skill is instructed to hold it, detection reports what it found, and the
-   developer reads the diff before accepting it:
+   list — and it binds both entry paths; only the enforcement differs.** Brownfield holds it as
+   the skill's instruction, with detection reporting what it found and the developer reading the
+   diff before accepting. Greenfield has no diff review, so it holds it in the template's
+   checked-in contents and in the report the command prints — which is why §1's greenfield proof
+   compares that report against the actual diff. The rules below are the same on both:
 
    - **Never overwrite a file it did not author, and never rewrite content it did not author.**
      Where a file already exists, add a delimited FSD section and leave everything else exactly
@@ -379,8 +384,12 @@ surfaced was a property of the *situation* rather than of the command that used 
 
 ### The template — Next.js chat app *(FIX-548, greenfield)*
 
-`~` marks a file `create-next-app` wrote that the scaffolder then appends to. There are three of
-them, which is why theme 6's never-overwrite guarantee is not a brownfield-only property.
+`~` marks a file `create-next-app` wrote before our template lands, so the scaffolder never
+creates it. **What happens to each differs, which is theme 6's point rather than an
+inconsistency here:** `AGENTS.md` is appended to, `package.json` has only our own keys changed
+(exception (b)), `app/page.tsx` is replaced (exception (a)), and `.gitignore` is asserted rather
+than edited. None is overwritten wholesale — which is why theme 6's never-overwrite guarantee is
+not a brownfield-only property.
 
 ```
 my-app/
@@ -477,9 +486,13 @@ $ npm create flow-state my-app
   Creating my-app with create-next-app …
   Writing the chat template …
 
-  Appended  AGENTS.md   (FSD section — create-next-app wrote this file)
-  Wrote     .env.local  (already ignored by create-next-app's .gitignore)
-  Installing dependencies …
+  Created   app/api/flows/route.ts · app/api/flows/[...path]/route.ts
+            flows/chat.ts · fsdev.config.ts
+  Replaced  app/page.tsx   (create-next-app's stock page — theme 6 exception (a))
+  Appended  AGENTS.md      (FSD section — create-next-app wrote this file)
+  Wrote     .env.local     (already ignored by create-next-app's .gitignore)
+  Changed   package.json   (dependency keys only — theme 6 exception (b))
+  Installing dependencies … package-lock.json rewritten by npm
 
   Next steps
 
@@ -548,8 +561,10 @@ the stronger sense that the CLI's bind guard refuses that host for an unauthenti
 **The greenfield/brownfield split landed on top of two specs that were already written, and both
 have since been re-drafted against it.** FIX-1159's spec described a deterministic `fsdev init`
 that owned brownfield; its approval was retracted with the direction change and it is back in
-spec review as a command for greenfield and a skill for brownfield. FIX-548's was a thin wrapper
-over that command; it now specs `create-flow-state` writing the template as checked-in files.
+spec review **scoped to brownfield only** — detection scripts, the install skill's content, and
+the shared next-steps block, and **no command of its own**. The set's one greenfield command is
+FIX-548's, per theme 1. FIX-548's spec was a thin wrapper over `fsdev init`; it now specs
+`create-flow-state` writing the template as checked-in files.
 That re-spec was this fold's largest downstream cost and it has been paid, not deferred. What
 survived from FIX-1159's spec unchanged throughout is everything it *verified* about our own
 packages (`serve()` binds all interfaces and reads no `.env`; the bare `/api/flows` is a real
@@ -844,3 +859,18 @@ noisiest period we will have, which is the cost you already declined once.
   `tsconfig.json` is not in the edit set for the chosen template shape. §3's stranded note now
   points at theme 6 instead of holding the rule, and the install-skill transcript distinguishes
   appending from adding keys.
+- **After review of that fold — one stale attribution and three surfaces the exceptions had
+  outrun** (factual corrections, not a review round). §4's dependency summary said FIX-1159 was
+  back in spec review "as a command for greenfield and a skill for brownfield", which
+  contradicted theme 1's ownership decision and the index: **FIX-1159 is brownfield-only and
+  ships no command**, and an implementer reading that line could have duplicated or reclaimed
+  FIX-548's scaffolder scope. Theme 1's ownership paragraph now names FIX-548's greenfield
+  command explicitly rather than leaving it to be inferred from the surrounding prose. Three
+  surfaces still described theme 6 as it read *before* its exceptions were enumerated: its own
+  heading and bullet preamble made the developer's diff review the thing that makes a run safe,
+  which is true of brownfield and impossible on greenfield — where the guarantee is held by the
+  template's checked-in contents and the printed report §1 compares against the diff; §3's
+  greenfield transcript reported only `AGENTS.md` and `.env.local`, omitting the replaced
+  `page.tsx` (exception (a)), the changed `package.json` (exception (b)) and the lockfile, so the
+  epic's own report-versus-diff check would have failed on its own illustration; and §3's
+  template caption called all four `~` files appends and counted three.
