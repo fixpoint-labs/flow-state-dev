@@ -874,6 +874,27 @@ repair to have made something worse, and the world in question passed before the
 the **half-applied rule** landing on a repair one round old. Recorded because the correction ran
 against the coordinator, which is the direction that matters.
 
+**A second upstream fix, and it outranks the one below.** The owner asked why this epic was the
+right thing to build. Applying this cycle's own discipline to the objective answers it: a guard
+case must name the world it fails in, and **the epic's Proof line could not name one.** *"A run is
+reconstructed from FSD state alone"* fails if recording breaks and passes if the recording is
+flawless and useless — so thirty-four green runs said nothing about whether to continue. The
+blind-check class, in the objective, above the fourteen instances the epic catalogued.
+
+> **A Proof line must name the world in which it fails. If the only such world is "the mechanism
+> broke", it is a capability check, not a proof.**
+
+Paired with one re-ask: **at the first issue's goal proof, re-answer the Proof question once.**
+That is the earliest point real evidence exists about what the work yields and the last point it
+can still steer the remaining issues. The restraint pass cuts scope *inside* an objective; nothing
+in the process reopens the objective, and a Proof that cannot fail guarantees nothing ever will.
+
+**Cost of not fixing it, measured on this cycle:** the Outcome named *which files it changed · what
+it thought its job was · where it stalled or failed*. Thirteen review rounds went to the first and
+weakest. In the graded run, 4 of 33 items were file mutations. Meanwhile the reasoning stream —
+already captured since LAB-133 — was never read, and the epic's most valuable artifact, the wrap,
+was written by hand from reasoning that the machinery cannot see.
+
 **Proposed upstream fix, put to the owner rather than taken:** promote the guard-table pattern from
 one goal's internal practice to the documented standard for goal checks — a table of broken worlds,
 each naming the branch it must reach, run before any dispatch, extended whenever a mutation stays

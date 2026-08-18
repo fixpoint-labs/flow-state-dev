@@ -496,6 +496,53 @@ turned out not to be a deletion.
 
 ---
 
+## The objective was a blind check, and nothing in the process could say so
+
+**Written after the owner asked why this was the most important thing to build. It is the largest
+finding in this file and it is about the epic, not the code.**
+
+The Proof we gated on: *"a real coding run is reconstructed from FSD state alone, without reading
+the harness transcript."* Apply this file's own test to it — **name the world in which it fails.**
+
+It fails in exactly one: recording is broken. **It does not fail in the world where the recording
+is perfect and worthless.** So it could not distinguish "this was worth building" from "this was
+not," and it returned PASS thirty-four consecutive times without ever being able to speak to the
+question. That is the dominant class of this epic — *a check that cannot see what it claims to
+measure* — sitting in the objective, one level above the fourteen instances catalogued below, and
+nobody caught it because everything downstream was busy passing.
+
+**The evidence was in the artifact the whole time.** The most valuable thing this epic produced is
+this document: refuted beliefs, discovered constraints, classified errors. Every line of it came
+from reasoning and argument. **Not one line came from a file-operation record.** The machinery we
+built could not have written the output we are proud of, and both were produced in the same room
+without anyone noticing they were unrelated.
+
+The Outcome line named three things — *"which files it changed, what it thought its job was, where
+it stalled or failed."* The first is the weakest and took thirteen review rounds. The third is the
+strongest and took almost none. **In the graded run, 33 items; 4 were file mutations.** The rounds
+went to the 4.
+
+### The process gap
+
+**The objective is gated exactly once, at the moment of least information.** Everything after it is
+scope-cutting *inside* the objective — the restraint pass cuts issues, never the goal. There is no
+step that re-asks *"is this the right thing"* at the point we know most, and the Proof's blindness
+guaranteed nothing would ever force the question: a green light every round is indistinguishable
+from a green light that means nothing.
+
+**Smallest upstream fix — the guard-table clause, applied one level up.** Every guard case on
+#1334 had to name the world it fails in and carry a neighbour that must pass. We never asked that
+of the Proof itself. So:
+
+> **A Proof line must name the world in which it fails. If the only world is "the mechanism
+> broke", it is a capability check, not a proof, and it cannot tell you whether to continue.**
+
+And one re-ask, cheaply placed: **when the first issue's goal check passes**, re-answer the Proof
+question once — that is the first moment real evidence exists about what the work actually yields,
+and it is early enough to change the remaining issues. Not at the wrap, which is too late to steer.
+
+---
+
 ## Counting — computed, appended, remembered
 
 **Found by counting rather than reading, which is why it was missed for eleven rounds.** Sweeping
