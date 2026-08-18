@@ -334,7 +334,7 @@ the honest statement is that the grid's cells are named and the axes are not clo
 Filling those buys those. **Every one lives in a branch the graded runs do not reach** — they need
 an incidental file outside the expectation, an unreadable vendor field, or a plan half that
 reports UNMEASURED on every real run. That is the stopping line for a Proof: the question this
-issue exists to answer has been answered twenty-four times, and precision on unreached edges is worth
+issue exists to answer has been answered twenty-six times, and precision on unreached edges is worth
 bounding rather than grinding.
 
 The residual belongs beside **LAB-137**, not inside it. LAB-137 is recorder-side — *confirm only
@@ -385,6 +385,9 @@ live, and the branch that would call the whole run inconclusive sits behind them
 
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-08-18 | **`7570fac56`** | Agent SDK default | **PASS — the verdict** | Twenty-sixth consecutive real run, on the committed tree, round 10 folded. 3 of 3 held-out paths `created`/`edited` and `applied`; 3 stream mutations and 3 rows naming the same files; non-decreasing across 32 items of the request at 28 distinct positions; mutations 19–24, last word at 26; 2 shell calls, 0 of them ran. **67 guards** proven first. Plan arm UNMEASURED |
+| 2026-08-18 | working tree at `5fb92957b`, pre-commit | — | FAIL *(deliberate)* | Candidate gaps counted rather than distinguished — the round-7 repair as it stood. *"'A2 — two interchangeable gaps account for two attempts at one path' did not reach A2/a2-ok with a pass; it produced `["a2-ambiguous-gap=fail","a2-ambiguous-gap=fail"]`"*. The over-rejection a fix of ours introduced |
+| 2026-08-18 | working tree at `5fb92957b`, pre-commit | — | FAIL *(deliberate)* | The ambiguity branch loosened away entirely — what "stop failing on two candidates" looks like if done carelessly. *"'A2 — two gap rows could each be the one covering a lost mutation' did not reach A2/a2-ambiguous-gap with a fail; it produced `["a2-ok=pass"]`"* — the round-7 hole, reopened |
 | 2026-08-18 | **`c0e56d379`** | Agent SDK default | **PASS — the verdict** | Twenty-fourth consecutive real run, on the committed tree, round 9 folded. 3 of 3 held-out paths `created`/`edited` and `applied`; 3 stream mutations and 3 rows naming the same files; non-decreasing across 31 items of the request at 26 distinct positions; mutations 18–23, last word at 25; 1 shell call, 0 of them ran. **65 guards** proven first. Plan arm UNMEASURED |
 | 2026-08-18 | working tree at `46da7d212`, pre-commit | — | FAIL *(deliberate)* | A6's top-level tool-output requirement restored. *"'A6 — the run delegated every tool call to a sub-agent' did not reach A6/a6-ok with a pass; it produced `["a6-empty:toolOutputs=fail"]`"* — a run that did everything asked of it, failed for reporting without doing anything |
 | 2026-08-18 | **`2a6c3892b`** | Agent SDK default | **PASS — the verdict** | Twenty-second consecutive real run, on the committed tree, round 8 folded. 3 of 3 held-out paths `created`/`edited` and `applied`; 3 stream mutations and 3 rows naming the same files; non-decreasing across 31 items of the request at 26 distinct positions; mutations 16–23, last word at 25; 1 shell call, 0 of them ran. **64 guards** proven first, over a fixture that now carries a path written and then edited. Plan arm UNMEASURED |
