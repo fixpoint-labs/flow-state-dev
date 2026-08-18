@@ -470,48 +470,12 @@ await runGoal(async () => {
     };
   }
 
-  // S0b — anchor collision, the other way fixture content can break this check's
-  // own slicing. Regions are located with `indexOf`, so a fixture that contains
-  // one of the labels would send the search to the embedded occurrence, cut the
-  // regions at the wrong offsets, and report a leaf missing from a perfectly
-  // correct recipe. Same class as the overlap guard above, so it is rejected the
-  // same way rather than left to surface as a confusing miss.
-  //
-  // Only the UNESCAPED renders need this, which is why the list is asymmetric:
-  // grounding and objective values reach the standing half through
-  // `renderTaggedContext`, which escapes `<` and `>`, so a value containing
-  // `<project>` cannot collide with a tag. The prompt and the whole tail are
-  // written verbatim, and those are what is checked.
-  const anchorCollisions = [
-    ...leaves(WORLD.phase, "phase").flatMap((l) =>
-      GROUNDING_TAGS.filter((t) => l.text.includes(`<${t}>`)).map(
-        (t) => `${JSON.stringify(`<${t}>`)} inside ${l.path}`,
-      ),
-    ),
-    // Checked against the RENDERED tail, not against leaves. The collision is a
-    // property of the joined text and neither per-leaf test is exact: matching a
-    // bare `PR #` rejects a body that merely mentions "PR #123" mid-sentence,
-    // which cannot move a boundary, while matching the newline-prefixed anchor
-    // against a leaf misses a body that *starts* with it and picks the newline up
-    // from the join. An anchor appearing exactly once is the precise condition,
-    // and `renderTail` is a pure function of the fixture, so setup can just ask.
-    ...WORLD.issues.flatMap((issue) => {
-      const rendered = renderTail(WORLD, issue.id);
-      return TAIL_ANCHORS.filter((a) => rendered.indexOf(a) !== rendered.lastIndexOf(a)).map(
-        (a) => `${JSON.stringify(a)} occurs more than once in ${issue.id}'s tail`,
-      );
-    }),
-  ];
-  if (anchorCollisions.length > 0) {
-    return {
-      failures: [
-        `setup invalid: fixture content contains a label the region slicing anchors on, so the ` +
-          `regions would be cut at the wrong offset and a correct recipe would be reported as ` +
-          `missing a contribution: ${anchorCollisions.join("; ")}`,
-      ],
-      evidence: "",
-    };
-  }
+  // NOT guarded here, deliberately: a fixture whose CONTENT contains one of the
+  // region labels. Two attempts at that guard over-rejected valid worlds in
+  // opposite directions, and it was never protecting anything — the collision it
+  // describes is one instance of a broader limit (see `goal.md` → coverage): this
+  // check grades by substring over rendered text, and every guard bolted onto
+  // that is a patch on the approach rather than a fix. Tracked as its own issue.
 
   // S1 — eight passes over the same issue, each on a fresh copy of the world.
   const eight: Capture[] = [];
