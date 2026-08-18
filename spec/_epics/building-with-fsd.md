@@ -49,7 +49,9 @@ theme 9's (the dependency rule and the runtime floor) and theme 6's (the additiv
 they are stated once there rather than twice here.
 
 - *FIX-1159, mounted-route path* — an agent adds FSD to an existing Next.js app, a real model
-  streams back, the app's own routes still answer, and nothing the developer wrote has changed.
+  streams back **over the mounted HTTP route** (theme 9 (b): a `fsdev run` check passes while the
+  bundled route is broken), the app's own routes still answer, and nothing the developer wrote has
+  changed.
 - *FIX-1159, second-process path* — the same against an existing plain-Node project: the printed
   command starts FSD, a call to it streams a real model response, and the project's own server
   keeps running. **This must not be dropped as redundant with the run above.** It is a different
@@ -232,7 +234,22 @@ call.
    therefore two things, not one: the DevTool has to be made **resolvable** as well as
    **known**. Greenfield satisfies it by declaring it in the template; the brownfield skill is
    instructed to add it, and detection reports whether it is already there. Neither becomes an
-   issue of its own. **There is one next-steps block: one authored source in FIX-1159, embedded by
+   issue of its own. **And making it resolvable must not force a React major on a repo we were
+   invited into.** `@flow-state-dev/devtool` declares `react`/`react-dom` as `^19` with no
+   `peerDependenciesMeta`, while `@flow-state-dev/react` supports `^18.0.0 || ^19.0.0` — so a
+   brownfield run against a React 18 app hits an npm `ERESOLVE` failure or a duplicated React under
+   pnpm. **That is theme 6's line exactly**: upgrading a developer-owned dependency is not additive,
+   and we do not get to do it to reach our own DevTool. **The peer is also unnecessary for what this
+   epic promises.** The package ships *pre-built assets* that `fsdev dev` serves out of process; the
+   consumer's React renders none of it. React is only load-bearing for the package's separate
+   `./react` subpath — an embeddable component **no path in this epic uses and no next-steps block
+   mentions**. So the fix is to stop demanding it of every consumer: mark those peers optional (or
+   widen them to match `@flow-state-dev/react`), which is a manifest change in our own package
+   rather than a change to what brownfield promises. **The promise is unchanged either way** — the
+   DevTool a first-hour developer is told about is `fsdev dev` on `:4200`, and that never needed
+   their React. It sits with FIX-1159 under this theme's "resolvable as well as known".
+
+   **There is one next-steps block: one authored source in FIX-1159, embedded by
    both shippers and rendered per host** — the same steps, in the same order, saying the same
    things, with the commands rendered for the manager and topology the path is actually running
    against. A second *authored* copy is how the two entry paths start telling people different
@@ -388,14 +405,30 @@ call.
    stated once, here: a path that generates an unauthenticated flow must also generate the thing
    that keeps it off the network, and "the CLI does it" is only true of the CLI.**
 
-   **Greenfield is decided; brownfield is §5 Q5.** FIX-548 authors the template's own
-   `package.json`, so its `dev` script binds loopback (`next dev --hostname 127.0.0.1`) and the
-   printed command is unchanged — the developer still types `npm run dev`. The cost is that
-   testing the new app from a phone on the same wifi needs the flag removed, which is a one-word
-   edit in a file we just wrote them. **Brownfield cannot be fixed the same way** — theme 6 forbids
-   rewriting a `dev` script the developer authored, and printing a flag does not help someone who
-   runs their own script from memory — so what protects that path is a product decision rather than
-   an engineering one.
+   **Greenfield binds loopback; brownfield ships an actual control.** FIX-548 authors the
+   template's own `package.json`, so its `dev` script binds loopback (`next dev --hostname
+   127.0.0.1`) and the printed command is unchanged — the developer still types `npm run dev`. The
+   cost is that testing the new app from a phone on the same wifi needs the flag removed, a
+   one-word edit in a file we just wrote them. **Brownfield cannot be fixed the same way** — theme
+   6 forbids rewriting a `dev` script the developer authored, and printing a flag does not reach
+   someone who starts their server from memory. **So the brownfield run configures a non-default
+   principal resolver on what it generates.** That is the condition
+   `docs/architecture/authentication.md` keys the framework guard on, so it is a real rail rather
+   than a notice; the mechanism is FIX-1159's, and §5 Q5 records why nothing cheaper is available.
+
+   **A disclosure is not a control, and an in-handler loopback guard is not available.** Both were
+   examined and both are ruled out here so neither is re-proposed. *Warning only:* rejected — the
+   architecture doc makes the loopback rail the protection for default-resolver apps, not an
+   advisory, and a note in a diff does not stop a request. *A guard inside `createNextHandler`* —
+   refusing a non-loopback peer when the default resolver is in play — was the more promising idea,
+   because that handler is ours and it would have closed every adapter at once with no product
+   decision. **It fails on availability of the signal, not on design:** a Next App Router route
+   handler receives a web `Request`, and `NextRequest` in `next@16.3.1` exposes no peer address
+   (`ip` is gone; `connection()` from `next/server` returns `Promise<void>` and is a prerendering
+   signal). The only remaining inputs are headers, and a guard keyed on `x-forwarded-for` or `host`
+   is bypassed by setting a header — worse than no guard, because it reads as protection. **The
+   rule this leaves is the general one: a path that cannot obtain a trustworthy peer address has to
+   close the hole with a credential instead of a network position.**
 
 9. **Three shared artifacts, one seam: author, kind, carrier, check.** Three times this epic has an
    artifact authored by one issue and shipped by another — the wiring contract, the
@@ -468,6 +501,18 @@ call.
    writer**, and writing the shape and specifying it are different jobs. It covers:
 
    - the Next.js mount pair, and `fsdev.config.ts`'s shape including its store profile;
+   - **a statically imported provider, passed as a pre-built `modelResolver` — not the `models`
+     shorthand.** `createModelResolver` resolves providers through `createRequire` and a dynamic
+     `import()`, and **Next bundles server code, which breaks that path**; our own published guide
+     already says so and shows the fix (`apps/docs/guides/deploying-to-vercel.md`: *"Next.js bundles
+     server code, breaking the model resolver's dynamic `require()` path. Pass a pre-built
+     `modelResolver` with static provider imports"*). **Both entry paths mount into Next, so this
+     binds both.** It is in the contract rather than either issue because it is the same wiring on
+     both sides and neither can discover it from the other. **The failure it prevents is the reason
+     it is stated here at all: the dependency rule can be fully satisfied — the provider package
+     installed, the manifest complete, an isolated install green — and the first browser request
+     still fails with `No provider available`.** Installing a package and being able to reach it
+     through a bundler are two different claims, and only one of them had a check.
    - **the dependency set, which is a rule rather than a list**: *every package the generated files
      import directly is a direct dependency.* Two review rounds each found one missing member, which
      is why it is a rule. Today it reaches `zod` and the AI SDK for the selected provider.
@@ -487,6 +532,14 @@ call.
    FIX-1159's brownfield manifest and FIX-548's greenfield manifest each need their own isolated
    install — and that symmetry is why the requirement is here while the reasoning behind it is each
    issue's to record.
+
+   **Every mounted-route path is proved through the HTTP route, never through `fsdev run` alone.**
+   The CLI runs in-process and resolves providers through the dynamic path that works there, so a
+   CLI-only check passes with the product's actual path broken — which is exactly how the static
+   provider wiring above could go missing while every other check stayed green. FIX-548's spec
+   already reached this conclusion for its own goal check; **stating it in the contract is what
+   makes it bind the brownfield Next path too**, whose proof would otherwise be a `fsdev run`
+   command and nothing else.
 
    **(c) Ordering, and the one artifact that flows against it.** FIX-1160 authors the
    agent-instructions content the template ships, so **FIX-1160 lands before FIX-548**; without that
@@ -735,7 +788,7 @@ the stronger sense that the CLI's bind guard refuses that host for an unauthenti
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| FIX-1159 | The brownfield knowledge — deterministic detection scripts, the install skill's **content**, the shared next-steps block, and **the wiring contract both entry paths satisfy** (theme 9) | spec | [#1310](https://github.com/fixpoint-labs/flow-state-dev/pull/1310) | — | In spec review — re-shaped to **brownfield only, no command of its own**; the earlier approval was retracted with the direction change. **Now waiting on §5 Q5**, which decides whether the generated brownfield endpoint requires authentication |
+| FIX-1159 | The brownfield knowledge — deterministic detection scripts, the install skill's **content**, the shared next-steps block, and **the wiring contract both entry paths satisfy** (theme 9) | spec | [#1310](https://github.com/fixpoint-labs/flow-state-dev/pull/1310) | — | In spec review — re-shaped to **brownfield only, no command of its own**; the earlier approval was retracted with the direction change. **Unblocked — Q5 resolved by constraint**: the run configures a non-default principal resolver, mechanism this issue's. Also gains the devtool peer fix (theme 5) and the mounted-route proof (theme 9 (b)) |
 | FIX-1162 | Register the npm names the launch needs — the short CLI entry name and the scaffolding name | spec | [#1313](https://github.com/fixpoint-labs/flow-state-dev/pull/1313) | — | In spec review — **both names now registered at `0.0.0` to a personal account**; what remains is the publishing identity's write access (`npm owner add` / transfer) and the unproven `@flow-state-dev` scope. Owner operations, not agent work |
 | FIX-548 | `create-flow-state` — the deterministic greenfield path; **one** template (Next.js chat app), owned end to end | spec | [#1312](https://github.com/fixpoint-labs/flow-state-dev/pull/1312) | — | Spec complete, approved at `404e82c` — **approval needs re-taking**: theme 9 now requires a pnpm-isolated install of the emitted template in its goal check (posted to #1312; its spec is not edited by the epic) |
 | FIX-1160 | The authoring pack **and the plugin that distributes the install skill** — agent-instructions file, authoring skills, install skill | spec | [#1311](https://github.com/fixpoint-labs/flow-state-dev/pull/1311) | — | Spec complete, approved at `dd9b656` — **approval needs re-taking**: theme 9 (d) hands it the agent-instructions block's normalization and equality check (posted to #1311). Scope had already grown: it is the brownfield path's only delivery channel |
@@ -797,10 +850,11 @@ one:
 
 ## 5. Open cross-cutting questions
 
-Q1–Q3 are **decided** and stay here with their answers, so no issue reopens them. **Two are open.**
-Q4 blocks nothing — it exists because the split changed what an already-made decision costs. **Q5
-does block**: it decides what the brownfield run generates, so FIX-1159 cannot finish the install
-skill's content without it, and it is the only question here with a security consequence.
+Q1–Q3 and Q5 are **decided** and stay here with their answers, so no issue reopens them. **Q4 is
+the only one open**, and it blocks nothing — it exists because the split changed what an
+already-made decision costs. **Q5 was raised as a product fork and resolved as an engineering
+one**, because both of the cheaper options turned out to be unavailable rather than merely
+unattractive; it is kept in full so neither is proposed again.
 
 ### ~~Q1 — What filename do the agent instructions go to, and what happens when one is already there?~~ — decided: `AGENTS.md`
 
@@ -929,42 +983,59 @@ by people who read far enough, during the weeks that matter most — recoverable
 is a listing you did not want to own yet. Wrong on listing: a public entry to keep green in the
 noisiest period we will have, which is the cost you already declined once.
 
-### Q5 — A brownfield run adds an open endpoint to a server the developer already exposes. Do we ask them to log in on day one? — **open, and it gates the brownfield proof**
+### ~~Q5 — A brownfield run adds an open endpoint to a server the developer already exposes. Do we ask them to log in on day one?~~ — resolved by constraint: **close it, with a credential**
 
-*Raised by review against `docs/architecture/authentication.md` and verified in `next@16.3.1`.
-Greenfield is already decided (theme 8: our template's own `dev` script binds loopback). This is
-the half we cannot fix that way, and it is a product call rather than an engineering one.*
+*Raised by review against `docs/architecture/authentication.md` and verified in `next@16.3.1`. It
+was put here as a product fork — accept the exposure or pay for authentication — and it is no
+longer one, because **both cheaper options were eliminated on engineering grounds rather than on
+taste.** Recorded in full so nothing re-proposes them.*
 
-**Plain terms.** When our agent adds FSD to a Next.js app someone already has, it writes a working
-demo endpoint into *their* server. They start that server the way they always do, and Next's dev
-server listens on every network interface by default. So on shared wifi — a café, a co-working
-floor, a corporate LAN — anyone who can reach their laptop can call that endpoint, and every call
-spends **their** provider key against a real model. Nothing is stolen; it is billed and used.
+**The exposure.** When the agent adds FSD to a Next.js app someone already has, it writes a demo
+endpoint into *their* server, which they start the way they always do. Next's dev server listens on
+every interface by default (`next@16.3.1`: `-H, --hostname` … *default: 0.0.0.0*). Everything this
+epic generates runs on `defaultBodyUserIdPrincipalResolver`, which
+`authentication.md:122-132` protects **only** via the loopback rail in `@flow-state-dev/node` — an
+adapter the mounted path never uses.
 
-**The trade-off.** Requiring a login on the generated demo closes it, and costs the thing the epic
-is actually selling: the first run stops ending at "it works" and starts ending at "now configure
-authentication". Leaving it open keeps the first hour intact and ships a default that is only safe
-on a trusted network. **We cannot split the difference by printing a warning** — theme 6 forbids us
-rewriting a `dev` script they authored, and someone who types their own start command never sees
-our printed flag.
+**This is not the same class of risk as the development-only file store, and the comparison was
+withdrawn.** The file store risks the developer's own data, on their own disk, under their own
+control. This spends **their provider credentials** at the request of anyone who can reach their
+laptop, and because the default resolver trusts a caller-supplied `body.userId` there is no tenant
+boundary either — a caller picks whose session they act as. Same machine, different order of
+seriousness.
 
-**My recommendation: ship it open, and make the run say so out loud** — one line in the diff the
-developer reviews before accepting, naming the endpoint, that it is unauthenticated, and the
-one-line change that binds it to loopback. The reasoning is that this is a **development-time
-default on a machine the developer controls**, in the same family as the file store we already
-label as development-only; and the diff review is a consent surface a command would not have had.
-The alternative spends the epic's headline outcome to protect a case the developer can see and fix.
+**Eliminated 1 — ship it open with a warning in the diff.** This was the recommendation here for one
+round and it was wrong. Two independent reviews and our own architecture doc agree that the rail is
+the protection for default-resolver apps, not an advisory. A disclosure informs; it does not stop a
+request. There is no reading under which a note in a diff is "another actual network rail".
 
-**What would change my mind:** if we expect a meaningful share of brownfield users to be on
-untrusted shared networks, or to run this against something other than a laptop — a shared dev box,
-a cloud workspace with a public hostname. Then the exposure is not "their own machine" and the
-default is wrong.
+**Eliminated 2 — a loopback guard inside `createNextHandler`, which is code we own.** The better
+idea, and the one worth recording because it *should* work: when the default resolver is in play,
+refuse any request whose peer is not loopback, and return a 403 naming what to configure. It would
+close every adapter at once, need no change to the developer's `dev` script, and violate nothing in
+theme 6. **It dies on the signal, not the design.** A Next App Router route handler receives a web
+`Request`; `NextRequest` in `next@16.3.1` exposes no peer address (`ip` was removed, and
+`connection()` returns `Promise<void>` — a prerendering signal, not a socket). The only inputs left
+are headers, and a guard keyed on `x-forwarded-for` or `host` is defeated by sending a header, which
+is worse than none because it looks like protection.
 
-**Cost of being wrong.** Wrong on open: a stranger's key gets spent, or their demo flow answers
-someone else's prompts, and it happened because of a run we told them was additive and safe. That
-is the worst kind of wrong for this epic specifically, because the whole brownfield pitch is *we
-will not damage your repo*. Wrong on closed: the brownfield first run is meaningfully worse than
-the greenfield one, and we lose the symmetry theme 8 exists to protect.
+**Resolution — the brownfield run configures a non-default principal resolver on what it
+generates.** That is exactly the condition the framework guard keys on, so it is a rail rather than
+a notice, and it does not depend on a peer address we cannot obtain. The expected shape is the cheap
+one: a locally generated secret written to the `.env.local` the run already touches, checked by a
+small resolver in the generated config. **The mechanism is FIX-1159's**, within that constraint.
+Greenfield keeps the loopback bind (theme 8) — it is a second layer there, not a substitute.
+
+**What this costs, so the owner sees it rather than discovers it.** The brownfield first run is
+unchanged for the printed CLI command, which runs in-process and never crosses HTTP. It changes for
+anyone who calls the mounted route directly — a `curl`, or their own UI — who now needs the value
+from `.env.local`. That is a real if small tax on the first hour, and it is the price of the
+endpoint not being open. **Not a gate**: no issue waits on it, and FIX-1159 is unblocked.
+
+**If this turns out wrong**, it is wrong in the direction of friction rather than exposure: a
+developer hits a 401 on their own machine and has to look in `.env.local`. The alternative was
+wrong in the direction of a stranger spending their credits, which is the failure this epic's whole
+brownfield pitch — *we will not damage your repo* — cannot survive.
 
 ---
 
@@ -1076,3 +1147,18 @@ the themes and decisions above — it is not repeated here.
   from ~894 words to ~290: user-level observations only, with the two assertions nothing else
   carries — greenfield `AGENTS.md`/`CLAUDE.md` survival and the second-process Node coverage —
   kept as explicit must-not-drop sentences.
+- **Q5 killed as a fork, not softened — and two more checks that could not fail.** The proposal to
+  put the loopback guard in `createNextHandler` (code we own) instead of the bind (which we do not)
+  was the right instinct and **fails on the signal**: a Next App Router handler gets a web
+  `Request`, and `NextRequest` in `next@16.3.1` exposes no peer address, so the only inputs are
+  spoofable headers. With ship-open-and-warn independently rejected — a disclosure is not a control
+  — both cheap options were gone, so **Q5 resolves rather than escalates: the brownfield run
+  configures a non-default principal resolver**, which is the condition the framework guard keys
+  on. The withdrawn part of the earlier framing: comparing this to the development-only file store,
+  which risks the developer's own data on their own disk, when this spends their provider
+  credentials for anyone on the network and has no tenant boundary. Alongside it, **static provider
+  wiring** entered the contract (Next bundles server code and breaks the resolver's dynamic
+  `require()`, so the dependency rule can pass while the first browser request fails), with
+  mounted-route proofs required to go **through the HTTP route** rather than `fsdev run`; and the
+  **devtool `react ^19` peer** was ruled a theme 6 violation, fixed in our own manifest since the
+  served assets never needed the consumer's React.
