@@ -24,11 +24,31 @@ POC — rounds of "this check cannot fail the thing it is cited for," including 
 earlier version of this very contract, which claimed everything below it was asserted while an
 externally-sourced fact sat in the asserted list.
 
+### `probe.sh` is frozen. The README is the only moving part.
+
+**Do not edit `probe.sh` again** — not for a finding, not for a cleanup, whoever you are. The
+design question this POC existed to answer was settled three rounds ago; every round since has
+been about the script's evidence quality, on a throwaway attached to a PR that never merges.
+
+So the rule from here: **any further finding is answered by narrowing a claim in this README to
+what the frozen script actually proves — never by changing the script.** Move the claim into
+*What this POC does not establish*, or delete it.
+
+The reasoning, not just the rule: a probe that keeps earning review rounds is a probe asserting
+more than its job requires. The cheapest way to end that loop is to stop claiming so much, which
+is the same move that closed round 3 — and unlike growing the script, it cannot introduce a new
+check that fails for its own reasons.
+
 Exit status: `0` every asserted claim held · `1` one of them did not · `2` the run could not be
-completed (scaffold or install failed, no free port, workdir occupied, dev server never bound).
-The `1`/`2` split is load-bearing: a machine too slow to have bound the port yet is not a
-disproved claim, and the script polls for the bind against a deadline rather than sleeping a
-fixed interval so it cannot report one as the other.
+completed (scaffold or install failed, no free port, workdir occupied, dev server never bound, a
+request that never completed). The `1`/`2` split is load-bearing: a machine too slow to have
+bound the port, or a request that died in transport, is not a disproved claim. The script polls
+for the bind against a deadline instead of sleeping a fixed interval, and checks `curl`'s exit
+status before comparing any body, so neither can be reported as the other.
+
+"Clean" in the table below means **nothing on stdout or stderr**, asserted as an empty log rather
+than as the absence of the one warning we expected — otherwise a new loader or deprecation
+warning would be silently classified clean.
 
 Each variant asserts both its **outcome** and its **diagnostic**, so "the build failed" is not
 automatically a pass for a row documented as failing — a route-file typo, a dependency problem,

@@ -182,15 +182,26 @@ variant() {
     }).catch(e=>{console.error('IMPORT THREW: '+e.message);process.exitCode=3})" > import.log 2>&1
   local import_status=$?
   local got_import
+  # `clean` means NOTHING on stdout or stderr — not merely "no MODULE_TYPELESS".
+  # Testing only for the one warning we expect classifies any NEW diagnostic (a
+  # future loader or deprecation warning) as clean, so the probe would exit 0
+  # while the README says "clean, no warning". Measured: a healthy run of this
+  # import writes 0 bytes, so empty is the honest bar. Anything else is `noisy`,
+  # which matches no documented row and therefore fails.
   if [ $import_status -ne 0 ]; then
     got_import=error
+  elif [ ! -s import.log ]; then
+    got_import=clean
   elif grep -q MODULE_TYPELESS_PACKAGE_JSON import.log; then
     got_import=warn
   else
-    got_import=clean
+    got_import=noisy
   fi
   echo "  native import: $got_import (expected $want_import)"
-  [ "$got_import" = "$want_import" ] || fail "$label: import $got_import, README claims $want_import"
+  if [ "$got_import" != "$want_import" ]; then
+    fail "$label: import $got_import, README claims $want_import"
+    sed 's/^/      /' import.log
+  fi
 }
 
 set_pkg_type none
@@ -266,13 +277,38 @@ echo "  next dev bound port $PORT after ${SECONDS}s"
 
 # Generous per-request timeout: the bind precedes compilation, and the FIRST
 # request is what triggers Turbopack to compile the route.
-BARE=$(curl -s --max-time 120 --noproxy '*' "http://127.0.0.1:$PORT/api/flows")
-echo "  GET /api/flows          -> $BARE"
-[ "$BARE" = "$MARKER:200" ] || fail "bare route: expected $MARKER:200"
+#
+# CHECK CURL'S STATUS BEFORE COMPARING THE BODY. Polling the bind fixed only half
+# of this: a first compile that outruns the timeout, or a connection that drops
+# after the bind, leaves an empty or partial body, and comparing that to the marker
+# records a TRANSPORT failure as a DISPROVED CLAIM (1) when it is an incomplete
+# probe (2). Both requests go through here so the two paths cannot drift apart.
+#
+# Assigns to a global instead of echoing into $( ) on purpose: command substitution
+# runs in a subshell, so an `exit 2` inside one would end only that subshell and
+# the caller would carry on with an empty body — reintroducing the exact
+# misclassification this exists to prevent.
+REQ_BODY=""
+request() { # $1 = path · $2 = label
+  local rc
+  REQ_BODY=$(curl -sS --max-time 120 --noproxy '*' "http://127.0.0.1:$PORT$1" 2>curl.err)
+  rc=$?
+  if [ $rc -ne 0 ]; then
+    echo "  GET $1 -> curl exit $rc — CANNOT VERIFY ($2 is untested, not disproved)"
+    sed 's/^/    /' curl.err
+    tail -20 dev.log | sed 's/^/    /'
+    kill "$DEV_PID" 2>/dev/null; wait "$DEV_PID" 2>/dev/null
+    exit 2
+  fi
+}
 
-CATCH=$(curl -s --max-time 120 --noproxy '*' "http://127.0.0.1:$PORT/api/flows/sessions/abc")
-echo "  GET /api/flows/sessions/abc -> $CATCH"
-[ "$CATCH" = "$MARKER:catchall:sessions/abc:200" ] || fail "catch-all route: expected $MARKER:catchall:sessions/abc:200"
+request /api/flows "the bare route"
+echo "  GET /api/flows          -> $REQ_BODY"
+[ "$REQ_BODY" = "$MARKER:200" ] || fail "bare route: expected $MARKER:200"
+
+request /api/flows/sessions/abc "the catch-all route"
+echo "  GET /api/flows/sessions/abc -> $REQ_BODY"
+[ "$REQ_BODY" = "$MARKER:catchall:sessions/abc:200" ] || fail "catch-all route: expected $MARKER:catchall:sessions/abc:200"
 
 # SURVIVAL, not restoration. Next's block was already present before the server
 # started, so this proves it was left alone — it does not prove `next dev` would
