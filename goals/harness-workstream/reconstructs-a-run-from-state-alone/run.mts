@@ -1511,6 +1511,93 @@ await runGoal(async () => {
     }
   }
 
+  // ══ Precondition 1f — A3's disclosed toothlessness is still the truth ═════
+  // A3 says the request's stream is in order. The list it reads arrives from
+  // `store.request.list({ withItems: true })`, and this store returns items
+  // ORDER BY the very field A3 grades — so on the real path A3 is satisfied
+  // before the run is consulted, and its contribution to every PASS in the
+  // verdict log is zero. That is stated in `goal.md`'s verdict section.
+  //
+  // It is EXECUTED here rather than remembered, because the claim lives one
+  // level below anything a guard case or the calibration fixture can reach:
+  // both are handed state directly, so everything between the emitter and the
+  // grader — including the sort — is stubbed out. That invisibility is how the
+  // defect survived twenty-six PASSes, and prose about it would decay the same
+  // way for the same reason.
+  //
+  // Both directions are live, which is the point of writing it as a check at
+  // all. Sorted means the disclosure stands. UNSORTED means the storage layer
+  // changed under us, A3 has teeth on the real path again, and the verdict
+  // section is now understating what the run proves — so it fails and says so,
+  // rather than letting the goal quietly go on under-reporting itself.
+  const sortProbeDir = mkdtempSync(join(tmpdir(), "state-readback-sortprobe-"));
+  try {
+    const { sqliteStores: probeStores } = await import("@flow-state-dev/store-sqlite");
+    const adapter = probeStores({ filename: join(sortProbeDir, "sort-probe.sqlite") });
+    const registry = (await adapter.resolve(["primary"])) as unknown as {
+      request: {
+        set(id: string, value: unknown, expected: "any"): Promise<unknown>;
+        persistItems(id: string, items: unknown[]): void;
+        flushItems(id: string): Promise<void>;
+        list(options: { withItems: true }): Promise<Array<{ items?: Array<{ itemIndex?: number }> }>>;
+      };
+    };
+    const probeId = "req_sort_probe";
+    const now = Date.now();
+    await registry.request.set(
+      probeId,
+      {
+        id: probeId,
+        state: {},
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+        flowKind: FLOW_KIND,
+        actionName: "sort-probe",
+        userId: USER_ID,
+        source: "http",
+        status: "completed",
+        startedAtMs: now,
+      },
+      "any",
+    );
+    // Written in the order `1, 0` — the shape a broken emitter produces, and
+    // the one A3 exists to catch.
+    //
+    // The IDS matter and are chosen deliberately: the write path sorts each
+    // batch by `item.id`, so ids whose alphabetical order agrees with the index
+    // would leave the rows already in index order on disk, and this probe would
+    // report the disclosure holding on the strength of insertion order rather
+    // than of the read's ORDER BY. `a` carries the later index so the two
+    // orderings contradict, and only the sort on the way out can produce `0, 1`.
+    // Caught by running the probe's other direction: with agreeing ids it went
+    // silent against a read that did no sorting at all.
+    registry.request.persistItems(probeId, [
+      { id: "item_probe_a", type: "message", status: "completed", requestId: probeId, itemIndex: 1, ts: now },
+      { id: "item_probe_b", type: "message", status: "completed", requestId: probeId, itemIndex: 0, ts: now },
+    ]);
+    await registry.request.flushItems(probeId);
+    const readBack = (await registry.request.list({ withItems: true }))[0]?.items ?? [];
+    const positions = readBack.map((i) => i.itemIndex);
+    const asWritten = positions.length === 2 && positions[0] === 1 && positions[1] === 0;
+    if (asWritten) {
+      failures.push(
+        `THE A3 DISCLOSURE IS STALE — items written out of order (1, 0) read back as written, so ` +
+          `the store no longer sorts them and A3 CAN fail on the real path. goal.md's verdict ` +
+          `section says its contribution to every PASS is zero; that is now understating the run`,
+      );
+    } else if (!(positions.length === 2 && positions[0] === 0 && positions[1] === 1)) {
+      failures.push(
+        `the item-order probe read back ${JSON.stringify(positions)} from a two-item write, which ` +
+          `is neither the written order nor the sorted one — A3's disclosure cannot be checked ` +
+          `against a store whose read path is doing something else entirely`,
+      );
+    }
+    adapter.dispose?.();
+  } finally {
+    rmSync(sortProbeDir, { recursive: true, force: true });
+  }
+
   if (failures.length > 0) {
     return {
       failures: [
@@ -1833,7 +1920,16 @@ PLAN ARM: ${planFinding?.status.toUpperCase()} — ${planFinding?.message}`);
         `account is known, with ${GUARD_CASES.length + ACCOUNT_CASES.length} guard(s) broken on ` +
         `purpose and observed. ` +
         `Store adapter: @flow-state-dev/store-sqlite. Settlement not asserted (FIX-1182); the ` +
-        `run's prose, the files' contents and the working tree were never read.`,
+        `run's prose, the files' contents and the working tree were never read. ` +
+        // A3 and A7 are structurally satisfied on this path and certify nothing
+        // about this run — see goal.md's verdict section. A7's half is COMPUTED
+        // rather than asserted: it followed as many cursors as the route
+        // offered, and on a run this size that is none. The moment a collection
+        // does page, this sentence says so and A7 starts meaning something.
+        `Two of the eight assertions certify nothing about this run: A3 grades a field the store ` +
+        `returns sorted by, and A7 followed ` +
+        `${COLLECTIONS.reduce((n, c) => n + Math.max(0, (view.reads[c]?.pages ?? 1) - 1), 0)} ` +
+        `cursor(s) because every collection fitted in one page.`,
     };
   } finally {
     await host.close();

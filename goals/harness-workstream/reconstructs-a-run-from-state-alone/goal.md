@@ -31,7 +31,9 @@ it reads is empty.
    terminal call that cannot be identified
 3. Order is non-decreasing over `itemIndex` across at least two distinct positions, over **every
    item the request holds, sub-agents included** — the set the positions assertion 4 compares are
-   drawn from, and the set the claim names
+   drawn from, and the set the claim names. **Structurally satisfied on the real path**: the store
+   returns the item list sorted by `itemIndex`, so this proves ordering only against a state that
+   is handed in. See the verdict section before reading a PASS here as evidence about a run
 4. The run's **last** file mutation precedes its final report — a write after the closing word
    leaves a row in the record the report never covered. A **tie** is unevaluable, not a pass:
    `itemIndex` carries duplicates, so equal positions say nothing about which came first
@@ -41,7 +43,9 @@ it reads is empty.
    UNMEASURED whatever rows exist** — rows with no call behind them are reported, not certified,
    which is the same reading the predecessor goal's truth table already used
 6. Every set an assertion iterates is non-empty, failing by name
-7. Every `nextCursor` was followed, on all three collections
+7. Every `nextCursor` was followed, on all three collections. **Structurally satisfied on the real
+   path** for the same reason in a different layer — the route pages at 50 and these runs write
+   three rows, so no cursor is ever offered to follow
 8. The reader's own source imports nothing but the collection accessor keys
 
 Two arms report rather than fail, and neither may pass silently: assertion 5's UNMEASURED, and
@@ -429,7 +433,15 @@ three levels this same failure has now appeared at. A guard case proves an asser
 world; it cannot prove the world reaches the assertion, because everything between the emitter and
 the grader is stubbed out. So the sweep that found A7 is the one worth repeating: **for every
 assertion, name the field it reads and ask what the persistence layer does to that field on the
-way out.** Preconditions 1f and 1g below execute the two answers rather than remembering them.
+way out.**
+
+Both halves of the disclosure are **executed rather than remembered**, because a paragraph is
+exactly the artifact that decayed here. Precondition 1f writes two items out of order through a
+real store and reads them back: sorted means this disclosure stands; **as-written means the store
+changed, A3 has teeth on the real path again, and the goal fails saying so** — the disclosure is
+wrong in the generous direction and must not sit there quietly under-reporting itself. A7's half
+is computed from the run instead of asserted: every run's evidence line reports how many cursors
+it actually followed, so the sentence corrects itself the first time a collection pages.
 
 **Assertion 5 has reported UNMEASURED on every run**, and that is the finding rather than a
 footnote. Through the in-process Agent SDK path the run invokes no plan tool at all — it writes
