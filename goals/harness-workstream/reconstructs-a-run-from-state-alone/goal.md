@@ -214,6 +214,7 @@ live, and the branch that would call the whole run inconclusive sits behind them
 
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-08-18 | **`8dcfcd945`** | Agent SDK default | **PASS — the verdict** | Fifteenth consecutive real run, on the committed tree, with round 5 folded. 3 of 3 held-out paths `created`/`edited` and `applied`; 3 stream mutations and 3 rows naming the same files; non-decreasing across 30 top-level items at 26 distinct positions; mutations 17–22, last word at 24; 1 shell call, 0 of them ran. 53 guards proven first, over a two-run calibration state carrying a pathless write and a failed plan create. Plan arm UNMEASURED |
 | 2026-08-18 | working tree at `247725355`, pre-commit (round 5 folded) | Agent SDK default | PASS | Fourteenth consecutive real run. **53 guards** |
 | 2026-08-18 | working tree at `247725355`, pre-commit | — | FAIL *(deliberate)* | The `Write → created` table restored. Calibration red — the reader no longer derives the known account. **The only defect this epic found that fails red on truth AND green on the defect** |
 | 2026-08-18 | working tree at `247725355`, pre-commit | — | FAIL *(deliberate)* | The indeterminacy removed from the comparison only, so the reader still derives correctly. *"'A2 — a Write recorded as an edit is faithful' did not reach A2/a2-ok with a pass; it produced ["a2-kind-disagrees=fail"]"* — the false-red direction, caught. The false-green direction stays covered by the `Edit`-mislabelled case |
