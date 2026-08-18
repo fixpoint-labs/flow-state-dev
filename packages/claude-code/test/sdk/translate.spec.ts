@@ -397,6 +397,76 @@ describe("translateSdkMessage — observed work", () => {
     expect(agreed[1]).not.toHaveProperty("resolvedPath");
   });
 
+  it("records an overwriting Write as an EDIT, not a create", () => {
+    // The tool name is a guess at the kind: `Write` to an existing path
+    // overwrites it, which is an edit however the tool is spelled. The harness
+    // knows which it was and says so; recording `created` there would be the
+    // record asserting something about the run that did not happen.
+    const events = translateScript([
+      writeCall,
+      { ...writeResult, tool_use_result: { type: "update", filePath: "/work/notes.txt" } },
+    ]).filter((e) => e.kind === "file_op_observed");
+    expect(events[0]).toMatchObject({ op: "created", outcome: "pending" });
+    expect(events[1]).toMatchObject({ op: "edited", outcome: "applied" });
+  });
+
+  it("keeps the call-time kind when the harness reports none", () => {
+    // `Edit`'s structured output carries no `type` at all, so the tool name
+    // stays the fallback rather than the exception.
+    const events = translateScript([
+      writeCall,
+      { ...writeResult, tool_use_result: { filePath: "/work/notes.txt" } },
+    ]).filter((e) => e.kind === "file_op_observed");
+    expect(events[1]).toMatchObject({ op: "created", outcome: "applied" });
+  });
+
+  it("keeps the ATTEMPTED kind on a failure, even if the output names one", () => {
+    // The isolating world: a failed result that still carries a `type`. On a
+    // failure nothing was created or updated, so a completion kind read off the
+    // output would contradict the `failed` outcome sitting beside it. What the
+    // row means there is what was ATTEMPTED. Without the structured field this
+    // case is indistinguishable from the fallback, which is why it is spelled
+    // out rather than left to the plain error result below.
+    const events = translateScript([
+      writeCall,
+      {
+        type: "user",
+        tool_use_result: { type: "update", filePath: "/work/notes.txt" },
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "toolu_w",
+              content: "EACCES",
+              is_error: true,
+            },
+          ],
+        },
+      },
+    ]).filter((e) => e.kind === "file_op_observed");
+    expect(events[1]).toMatchObject({ op: "created", outcome: "failed" });
+  });
+
+  it("keeps the call-time kind on a failure that reports nothing at all", () => {
+    const events = translateScript([
+      writeCall,
+      {
+        type: "user",
+        message: {
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "toolu_w",
+              content: "EACCES",
+              is_error: true,
+            },
+          ],
+        },
+      },
+    ]).filter((e) => e.kind === "file_op_observed");
+    expect(events[1]).toMatchObject({ op: "created", outcome: "failed" });
+  });
+
   it("maps Edit to an edit, keeping the input path when no structured output arrives", () => {
     const events = translateScript([
       {

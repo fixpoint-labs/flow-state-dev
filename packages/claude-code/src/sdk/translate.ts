@@ -36,6 +36,22 @@ const FILE_MUTATION_TOOLS = new Map<string, ObservedFileOpKind>([
 ]);
 
 /**
+ * The kind a file tool's own structured output reports, when it reports one.
+ *
+ * The tool NAME is only a guess at the kind: `Write` to an existing path
+ * overwrites it, which is an edit however the tool is spelled. Recording that as
+ * `created` is the same family of error as everything else this record guards —
+ * the record asserting something about the run that did not happen. The measured
+ * `Write` output carries `type: "create" | "update"`; `Edit`'s carries no `type`
+ * at all, which is why the call-time kind stays the fallback rather than the
+ * exception.
+ */
+const FILE_OUTPUT_KINDS = new Map<string, ObservedFileOpKind>([
+  ["create", "created"],
+  ["update", "edited"],
+]);
+
+/**
  * The to-do surface, which is `TaskCreate`/`TaskUpdate` and NOT the `TodoWrite`
  * the vendor's own `sdk-tools.d.ts` still declares — the shipped binary does not
  * offer that tool at all. The two are not spellings of one thing: `TodoWrite`
@@ -396,10 +412,17 @@ function observeToolResult(
     // recorder knows it. A real divergence becomes a gap, never a silent
     // mis-keying.
     const resolved = readString(structured, "filePath");
+    // The harness knows whether the path already existed; the tool name does
+    // not. Prefer what it reports, and fall back to the call-time kind when it
+    // reports nothing — including on a failure, where there is no outcome to
+    // read a kind from.
+    const reportedKind = isError
+      ? undefined
+      : FILE_OUTPUT_KINDS.get(readString(structured, "type") ?? "");
     events.push({
       kind: "file_op_observed",
       path: fileOp.path,
-      op: fileOp.op,
+      op: reportedKind ?? fileOp.op,
       outcome: isError ? "failed" : "applied",
       ...(resolved !== null && resolved !== fileOp.path ? { resolvedPath: resolved } : {}),
     });

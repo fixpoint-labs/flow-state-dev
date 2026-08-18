@@ -824,6 +824,58 @@ describe("claudeCodeAgent — recordWork", () => {
     expect(String(gapRows[0].state.reason)).toContain("Create the file");
   });
 
+  it("still shuts the recorder down when item finalization throws", async () => {
+    // The third variation on one theme: the durability machinery is fine and
+    // something UPSTREAM of it stops it running. Shutdown is in a `finally` for
+    // exactly this reason — if it were another statement on the happy path,
+    // every step added before it would be a new way to skip it.
+    //
+    // A response emitter that rejects on the finalizing `item.done` reproduces
+    // it: the run fails, and the file the run already wrote must still be in the
+    // record.
+    // A settled Write (so there is something to record), then a tool call whose
+    // result never arrives — so stream end leaves an open tool and
+    // `finalizeOpenItems` has an `incomplete` item to persist.
+    const openAtEnd: SdkMessageLike[] = [
+      ...RECORDING_SCRIPT.slice(0, -1),
+      {
+        type: "assistant",
+        message: {
+          content: [{ type: "tool_use", id: "toolu_never", name: "Read", input: { path: "a" } }],
+        },
+      },
+      RESULT_OK,
+    ];
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery(openAtEnd),
+      recordWork: true,
+      includePartialMessages: false,
+    });
+    const runtime = await createTestContext({ declaredResources: block.declaredResources });
+
+    const realEmit = runtime.ctx.response.emit.bind(runtime.ctx.response);
+    (runtime.ctx.response as { emit: unknown }).emit = async (event: {
+      type?: string;
+      item?: { status?: string };
+    }) => {
+      if (event?.type === "item.done" && event.item?.status === "incomplete") {
+        throw new Error("the request record rejected the incomplete item");
+      }
+      return realEmit(event as never);
+    };
+
+    await expect(
+      block.config.execute?.({ prompt: "go" }, runtime.ctx as never),
+    ).rejects.toThrow("the request record rejected the incomplete item");
+
+    const resources = runtime.ctx.resources as unknown as Record<
+      string,
+      { list(): Promise<Array<{ path: string; state: Record<string, unknown> }>> }
+    >;
+    // The record survived the failure. Without the `finally` this is empty.
+    expect((await resources["observed-file-ops"].list()).length).toBeGreaterThan(0);
+  });
+
   it("leaves ONE row for one write, even when the harness resolves a different path", async () => {
     // The defect this pins is only visible where translate and the recorder
     // compose: the attempt is keyed at call time and the settlement arrived
