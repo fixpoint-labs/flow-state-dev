@@ -32,4 +32,22 @@ describe("createClaudeCodeAgentCapability", () => {
     const parsed = cap.sessionStateSchema.parse({});
     expect(parsed).toMatchObject({ sdkSessionId: null, sdkAgentRuns: [] });
   });
+
+  it("honours sessionState: false and declares no session-state schema", () => {
+    // The half that fails SILENTLY if missed. A capability contributes its
+    // `sessionStateSchema` through a channel the task board's block walk cannot
+    // see, so a capability still declaring it would re-add the very key the
+    // block just stopped declaring — and the board would accept the worker
+    // while the collision it refuses is back.
+    const cap = createClaudeCodeAgentCapability({ sessionState: false }) as unknown as {
+      sessionStateSchema?: unknown;
+      __presetDefs: { tools: { tools: Array<{ config?: { sessionStateSchema?: unknown } }> } };
+    };
+
+    expect(cap.sessionStateSchema).toBeUndefined();
+    // …and the option reaches the block it wraps, rather than only the
+    // capability's own declaration.
+    const [tool] = cap.__presetDefs.tools.tools;
+    expect(tool.config?.sessionStateSchema).toBeUndefined();
+  });
 });

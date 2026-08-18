@@ -95,6 +95,24 @@ type ClaudeRemoteHandle = {
 A later request reads `ctx.session.state.claudeRemoteTasks` to reference prior
 dispatches.
 
+### Turning session state off (`/sdk`)
+
+The SDK agent keeps its own session state — `sdkSessionId` (the run it resumes)
+and `sdkAgentRuns` (the handles it has returned). Pass `sessionState: false` to
+switch that off:
+
+```ts
+claudeCodeAgent({ sessionState: false });
+```
+
+Nothing is declared, read, or written, and the SDK is handed no `resume`, so each
+run starts fresh. Use it when the agent runs as background work on a task board:
+those workers share one flow, so the board refuses one that declares session
+state at all. The run's own history is the workstream's item stream instead.
+
+`createClaudeCodeAgentCapability({ sessionState: false })` does the same, and has
+to — the capability declares that schema separately from the block.
+
 ## Limitations
 
 - No headless polling/streaming of cloud-task progress (CLI limitation).
@@ -138,6 +156,7 @@ for the full surface.
 | Auth | claude.ai subscription | Anthropic credentials |
 | Progress | Watch via `/tasks`, claude.ai, mobile | Streamed live as flow-state-dev items |
 | Session | Cloud session handle | Persistent, resumed across requests |
+| As background work | Already fire-and-forget | Task-board worker with `sessionState: false`; the workstream's item stream is the run's record |
 | Reach for it when | Offloading long autonomous work | A real agent in the loop, observed step by step |
 
 ## Running tests
