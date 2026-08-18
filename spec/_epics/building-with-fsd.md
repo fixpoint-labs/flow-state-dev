@@ -73,8 +73,11 @@ they are stated once there rather than twice here.
   `.env.local` is genuinely ignored (`git check-ignore`, not a read of the file). **This too must
   not be dropped:** a streaming chat page proves nothing about what the scaffolder overwrote on the
   way there, and greenfield is the path where we author both sides, so it is the one place theme
-  6's guarantee is exercised end to end. **And the loopback bind is asserted negatively — a request
-  from a non-loopback address must fail to connect.** Found by sweeping for the same defect as the
+  6's guarantee is exercised end to end. **And two negative assertions, because the controls on this path
+  are otherwise proved only by the happy case.** A request from a non-loopback address must fail to
+  connect (the dev bind). **And with the app built and started in production mode on the default
+  resolver, a request to the mounted route is refused before any model invocation** — the
+  adapter-independent guard theme 8 requires, which no listed check exercised when it was added. Found by sweeping for the same defect as the
   mounted-route one: the bind is greenfield's *only* control (theme 8), and a chat page streaming
   over `localhost` proves nothing about it, because the page streams identically whether the dev
   script carries the flag or the exception was never implemented at all.
@@ -144,8 +147,12 @@ separate: whether the `@flow-state-dev/` npm scope is ours at all.
   CLI already carries the actions." It no longer does — the brownfield actions are a skill, not
   CLI code — so the conclusion is kept on reasoning that survives the split.)*
 - A block / plugin / component registry (FIX-147 remains independent).
-- **Any template beyond the Next.js chat app.** v1 ships one. The framework-neutral Node API
-  template is cut — theme 2 records why, and adding it later is additive and strands nobody.
+- A second template **is not settled here either way — §5 Q6 is open and this section does not
+  answer it.** *This entry previously read "v1 ships one; the Node API template is cut", which
+  stated Q6's answer as a non-goal inside the section the objective gate signs off. Approving the
+  epic would then have ratified one of Q6's three options — the one no longer recommended —
+  without the reader knowing they were deciding it.* What **is** out of scope regardless of Q6:
+  any template beyond the two under discussion.
 - Hosted or cloud onboarding, accounts, deploy buttons.
 - The docs-site IA revamp, brand pass, and pre-launch docs sweep (FIX-601 / FIX-551 / FIX-550
   are separate Public Launch issues). This epic writes only the docs its own deliverables
@@ -211,7 +218,7 @@ call.
 
    **Two naming facts this gate rests on, kept here because nothing else carries them.** **`create-fsd-app` is not ours and never will be** — `create-fsd-app@1.1.2` is a React/Vite starter published 2024-10-18 by an unrelated maintainer (`keyready`), verified against `registry.npmjs.org`; any sentence implying we hold it is false. And **the `@flow-state-dev/` scope is not verified as ours**: nothing under it has ever been published, an npm scope belongs to whoever registers the matching organization first, and the obvious check cannot settle it — `/-/org/<name>/package` returns 200 with an empty body for scopes that exist and scopes that do not alike. **The cheap proof is publishing one scoped package at `0.0.0`**; until then two sibling specs lean on it as a fallback that may not be there.
 
-2. **One template: the Next.js chat app. The framework-neutral Node API template is cut.**
+2. **Template count — open (§5 Q6). Recommended: one Next.js chat app *plus* a minimal-project brownfield path; fallback: both templates.**
    **This reverses the earlier "two templates, and only two", and the reversal is *recommended,
    not yet decided* — it is the owner's call and they have not given it.** An earlier revision of
    this document recorded it as theirs. That was wrong, and the correction matters because an
@@ -234,12 +241,15 @@ call.
    and a better-named demo flow. The accepted cost that bought it — two starters to keep green
    on machines we do not control — did not shrink with it.
 
-   **The deciding point is the asymmetry, not the file count.** Adding `node-api` later is
-   additive and strands nobody; removing a published template later breaks invocations that
-   exist. So the cheap direction is to ship one and add the second when something points
-   backend developers at a Node starter by name.
+   **The asymmetry argument is real but no longer decisive, and Q6 records why.** Adding `node-api`
+   later is additive and strands nobody; removing a published template later breaks invocations
+   that exist. That still holds — but it answers *"is deferring cheap?"*, and once the
+   `mkdir && <brownfield run>` substitute was struck, deferring stopped meaning "a lesser path
+   later" and started meaning **no first-party path at all for backend developers in v1**. The
+   file count was never the point and the asymmetry is not the whole of it either; **§5 Q6 carries
+   the current derivation and its three options.**
 
-   **What follows for the issues below.** FIX-548's proof runs once, not once per template.
+   **What follows for the issues below, *if* Q6 lands on one.** FIX-548's proof runs once, not once per template.
    Whether v1 therefore ships no `--template` flag at all is FIX-548's call, not this
    document's — a flag with one legal value is a local design question. An issue that wants a
    second template has hit a cross-cutting question: comment up on this PR rather than adding
@@ -321,6 +331,27 @@ call.
      settings"*), so **the generated config declares `devtool` from the same source as the
      resolver**. Both topology branches print `fsdev dev`, so this binds both.
 
+     **And the resolver is installed at *both* levels — per-flow and host-level — as a requirement,
+     not a preference.** Two engine mechanisms read different objects and neither sees the other's:
+     **`assertNetworkBindIsAuthenticated` reads per-flow only** (theme 8), so a host-level resolver
+     leaves the bind guard refusing as if nothing were configured; while **host-scoped
+     `GET /api/flows/sessions` reads host-level only** — with no host resolver, `pickPrincipalResolver`
+     falls back to the default and the route takes its anonymous branch, computing the flows that do
+     *not* authenticate and **withholding every row belonging to a flow that does**
+     (`unauthenticatedFlowKinds` in `packages/engine/src/routes/route-auth.ts`, filtered in
+     `handleListSessions`). So a per-flow-only resolver leaves the session list **empty for exactly
+     the flow we just secured**, and that route is what both the DevTool and `@flow-state-dev/react`'s
+     `useFlow` refresh through (`packages/client/src/session-client/sessions.ts` → `/api/flows/sessions`).
+
+     **The two constraints do not conflict; they are jointly satisfiable and only jointly.**
+     Per-flow satisfies the bind guard and `authentication.md`'s governing-flow guard; host-level
+     makes management routes authenticate the caller rather than fall back, so listing filters by
+     principal instead of withholding. **Declaring one and not the other fails silently in opposite
+     directions** — host-only reads as unauthenticated to the bind guard, per-flow-only reads as an
+     empty session list to the developer, and neither surfaces as an authentication error.
+     *Greenfield is unaffected: it configures no resolver, so its flow is in the anonymous set and
+     its rows stay visible. This is a brownfield-path requirement.*
+
      **"Same environment variable" is not sufficient, and the audit of it found a worse failure
      than a rename.** The generated config **reads the credential once into a single binding, and
      both the resolver — declared **per-flow**, per theme 8's statement of what the bind guard reads —
@@ -394,7 +425,21 @@ call.
    epic claims therefore carries a negative assertion: the mounted route refuses an uncredentialed
    request **and invokes no model** (a 200 with an error body is not a refusal); the greenfield dev
    server refuses a non-loopback connection; the generated config refuses to start with the
-   credential variable unset.
+   credential variable unset; and **the production refusal fires** — with the app built and started
+   in production mode on the default resolver, a request to the mounted route is **refused before
+   any model invocation**, returning an error that names the missing authentication rather than a
+   stream.
+
+   **That last one was missing when the control shipped, one round ago, and it is the seventh
+   instance of this defect** — the round that added an adapter-independent production guard wrote
+   no check that could detect its absence, so the guard could have been entirely absent with every
+   mandatory check still green. **The standing test, stated as a procedure because "prove the
+   negative" was evidently not operative enough:** name the scenario that motivated the control,
+   say what the check returns *in that scenario*, and if the answer is "pass", the check is wrong.
+   Applied here — scenario: the generated app is deployed with no authentication configured;
+   returns: a refusal naming the missing authentication, and no model call. Applied to the version
+   that shipped: the scenario returned "pass", because nothing ran the app in production mode at
+   all.
 
    **And the timing is the part worth keeping: adding a control creates a new opportunity to
    under-prove it, and the round that adds the control is the round least likely to notice** —
@@ -1199,9 +1244,11 @@ to is worth more than the files it writes, and that is a business fact no spec h
 
 **Cost of being wrong.** Ship one *without* (b) and be wrong: backend developers have no
 first-party way to start a new FSD project at all during launch — recoverable by a later release,
-but it is an audience meeting a closed door rather than a plain one. Ship two and be wrong: a starter kept permanently
-green, proved on every release, for a path the brownfield run already proves. **And one live
-consequence either way** — with the Node template cut, §1's brownfield second-process check is the
+but it is an audience meeting a closed door rather than a plain one. Ship two and be wrong: a
+starter kept permanently green and proved on every release, for an audience that would have been
+served by (b) at a fraction of the standing cost. *(An earlier draft of this line said "for a path
+the brownfield run already proves" — that is the struck substitute, and it does not prove it.)*
+**And one live consequence if Q6 lands on one** — §1's brownfield second-process check becomes the
 epic's *only* Node coverage of any kind, so it can no longer be dropped as redundant.
 
 **What is waiting on this.** FIX-548's re-approval. Everything else the epic asks it to re-take is
@@ -1243,4 +1290,5 @@ those narratives now live in
 - **Attribution audit** — the one-template cut was recorded as the owner's without evidence and is reopened as **Q6**; Q2's rationale re-marked as the coordinator's; Q4 stopped pre-arguing from words the owner never said.
 - **Length and sibling sweep** — §3 cut to four lines, §4 to its table, this log rebuilt; the reopened Q6's stale deferral entry corrected, and the bind guard's predicate stated once after a paraphrase got it wrong.
 - **Q6's substitute struck, and the recommendation re-derived** — `mkdir && <brownfield run>` does not exist: brownfield modifies an existing project, and FIX-1159 refuses the empty case at its `dev command` gate. Cutting the Node starter costs backend developers **no path**, not a worse one, so the recommendation changed from "ship one" to **(b) ship one *and* specify a minimal-project brownfield path, else (a) ship two**. Same turn: exception (c) widened to `start` after the sibling script went unchecked, theme 8's rule completed adapter-independently (the config refuses to serve a default-resolver flow outside development), and §3's citation to a non-existent POC withdrawn.
+- **§1 stopped answering Q6, and the production guard got a negative case** — gated §1 named "v1 ships one, the Node template is cut" as a *non-goal*, so approving the epic would have ratified Q6's least-recommended option without the reader knowing they were deciding it. Removed and swept by premise: theme 2's heading, its superseded asymmetry argument, and two residuals inside Q6 itself (including the struck substitute resurfacing in its cost line). **The adapter-independent production refusal — added one round earlier to close a security exposure — had nothing able to detect its absence**, the seventh instance of that defect; §1's greenfield proof and theme 5's negative list now require it to fire before any model invocation. And the brownfield credential must be declared at **both** resolver levels: the bind guard reads per-flow only, while host-scoped session listing reads host-level only and withholds rows for per-flow-authenticated flows — jointly satisfiable, and silently broken in opposite directions if only one is set.
 - **Attribution sweep** — every "the owner's" / "your call" line checked against an artifact. Q2's and Q3's decisions evidenced (epic PR comment, 2026-08-14) and now cite it; Q1 marked as the coordinator's from the objective; the brownfield direction change evidenced (2026-08-15); the one-template cut unevidenced and already reopened as Q6. No further claims reopened — three clean, two already corrected.
