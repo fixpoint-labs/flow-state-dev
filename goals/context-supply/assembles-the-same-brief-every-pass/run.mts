@@ -463,6 +463,43 @@ await runGoal(async () => {
     };
   }
 
+  // S0b — anchor collision, the other way fixture content can break this check's
+  // own slicing. Regions are located with `indexOf`, so a fixture that contains
+  // one of the labels would send the search to the embedded occurrence, cut the
+  // regions at the wrong offsets, and report a leaf missing from a perfectly
+  // correct recipe. Same class as the overlap guard above, so it is rejected the
+  // same way rather than left to surface as a confusing miss.
+  //
+  // Only the UNESCAPED renders need this, which is why the list is asymmetric:
+  // grounding and objective values reach the standing half through
+  // `renderTaggedContext`, which escapes `<` and `>`, so a value containing
+  // `<project>` cannot collide with a tag. The prompt and the whole tail are
+  // written verbatim, and those are what is checked.
+  const anchorCollisions = [
+    ...leaves(WORLD.phase, "phase").flatMap((l) =>
+      GROUNDING_TAGS.filter((t) => l.text.includes(`<${t}>`)).map(
+        (t) => `${JSON.stringify(`<${t}>`)} inside ${l.path}`,
+      ),
+    ),
+    ...WORLD.issues.flatMap((issue) =>
+      leaves(issue, "issue").flatMap((l) =>
+        TAIL_ANCHORS.map((a) => a.replace(/^\n/, ""))
+          .filter((a) => l.text.includes(a))
+          .map((a) => `${JSON.stringify(a)} inside ${l.path} of ${issue.id}`),
+      ),
+    ),
+  ];
+  if (anchorCollisions.length > 0) {
+    return {
+      failures: [
+        `setup invalid: fixture content contains a label the region slicing anchors on, so the ` +
+          `regions would be cut at the wrong offset and a correct recipe would be reported as ` +
+          `missing a contribution: ${anchorCollisions.join("; ")}`,
+      ],
+      evidence: "",
+    };
+  }
+
   // S1 — eight passes over the same issue, each on a fresh copy of the world.
   const eight: Capture[] = [];
   for (let i = 0; i < PASSES; i += 1) {
