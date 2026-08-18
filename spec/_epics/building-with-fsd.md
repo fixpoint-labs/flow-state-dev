@@ -78,7 +78,11 @@ Deterministic *mutation* is what goes. Carried by themes 1, 5, 6 and 8.
   rather than added), and **the run's report is compared against the actual diff** — the same
   check the brownfield runs make, for the same reason. Without these, the scaffolder could
   overwrite an agent-instructions file it did not author, or leave a provider key untracked by
-  `.gitignore`, and every other listed check would still pass.
+  `.gitignore`, and every other listed check would still pass. **A second run on an unsupported
+  runtime asserts the refusal** (theme 9): on Node 20.9–21 the command must fail before invoking
+  `create-next-app` and name Node 22, because Next 16 accepts those versions while every FSD
+  package requires `>=22` and npm's engines check only warns — so the success path alone would
+  pass while the command hands a developer an app that cannot run.
 - *FIX-1160* — one recorded run covering **both halves of the pack**: the Claude plugin
   installed from its published source and one of its packaged skills invoked, and then a coding
   assistant in a freshly scaffolded project, given a stated feature goal and nothing else,
@@ -296,13 +300,15 @@ call.
 
      **(b) Formats that cannot carry a delimiter.** `package.json` is JSON and has no comment
      syntax, so no delimited FSD section is possible — yet both the template and a brownfield run
-     must add dependencies to it. There the invariant is **structural preservation**: change only
-     the keys we own (the dependency entries, and `"type": "module"` where the template needs
-     it), and leave every other key, every value, and the file's existing formatting as they
-     were. Prefer delegation, which is the bullet below — the project's own package manager
-     already does exactly this, which is why installing through it is required rather than
-     merely tidy. Lockfiles are the extreme case and are never written directly at all.
-     `tsconfig.json` is **not** in the edit set for the chosen template shape, so it needs no
+     must add dependencies to it. There the invariant is **structural preservation, which is
+     semantic and not textual**: every key we do not own keeps its value, and no key is removed or
+     reordered in a way that changes meaning. **It explicitly does not promise the file's existing
+     formatting**, because it cannot: the bullet below *requires* installing through the project's
+     own package manager, and `pnpm add` and its siblings normalize whitespace and key layout while
+     preserving every key and value. A guarantee of untouched formatting would forbid the very
+     mechanism this theme mandates. What we own is the dependency entries, and `"type": "module"`
+     where the template needs it. Lockfiles are the extreme case and are never written directly at
+     all. `tsconfig.json` is **not** in the edit set for the chosen template shape, so it needs no
      rule here; an issue that finds it does has hit a cross-cutting question.
    - **Refuse rather than write a credential into a tracked file.** If `.env.local` is already
      tracked, the run stops short of writing the key, says why, and tells the developer what to
@@ -387,18 +393,37 @@ call.
      content, which reaches a stranger through the plugin FIX-1160 packages.
    - **Check** — per kind above, and subject to the two rules below.
 
-   **Rule 1: both sides of a comparison are recomputed from content.** A digest covers the
-   **delimited block itself**, and the test recomputes it from the canonical source *and* from each
-   shipper's embedded block before comparing. Nothing is hand-maintained anywhere in the loop,
-   because **a check whose failure depends on someone remembering to update it is not a check.**
-   This document has now got that wrong twice: a hand-incremented version label (which passes when
-   someone forgets to increment) and a digest of the canonical side only (which passes when a
-   shipper's body is stale or arbitrary, since its body was never hashed). Both failed the same
-   way — the check could not fail for the thing it guarded.
+   **Rule 1: both sides of a comparison are recomputed from content, and neither hash includes
+   itself.** The digest covers the delimited block **with the marker line removed**, and the test
+   recomputes it from the canonical source *and* from each shipper's embedded block before
+   comparing. Nothing is hand-maintained anywhere in the loop, because **a check whose failure
+   depends on someone remembering to update it is not a check** — and nothing hashes the value it
+   is about to write, because that value can never match itself.
+
+   **The normalization is part of the rule, not the implementer's to invent** — "exclude the
+   marker" is exactly the instruction two implementations satisfy differently. **The hashed body
+   is derived identically on the canonical side and every shipped copy:**
+
+   1. take the bytes between the opening and closing FSD delimiters, exclusive;
+   2. **delete every line matching the marker pattern** `<!-- fsd:<artifact> sha256:... -->` — a
+      no-op on the canonical side, which carries no marker, and the step that breaks the
+      self-reference on a shipper's side;
+   3. normalize line endings to `\n`, strip trailing whitespace from each line, and strip leading
+      and trailing blank lines;
+   4. `sha256` over the resulting UTF-8 bytes.
+
+   A current copy therefore hashes to exactly what canonical hashes to, and the marker it carries
+   is excluded from both. **This mechanism has now been wrong three times, each time because the
+   fix for one hole opened another** — a hand-incremented label (passes when someone forgets to
+   increment), a canonical-only digest (passes when a shipper's body is stale, since its body was
+   never hashed), and a whole-block digest (can never pass, because writing the value changes the
+   bytes being hashed). The shape that holds keeps **both** properties at once: both sides
+   recomputed, neither hash covering itself.
 
    **Rule 2: everything that varies is a declared substitution or lives outside the delimiters.**
-   The delimited block is byte-identical to canonical everywhere it is embedded; per-host prose
-   goes outside it, and per-host values go in named placeholders. **This is what separates the two
+   The delimited block is byte-identical to canonical everywhere it is embedded, apart from the
+   marker line rule 1 strips before hashing; per-host prose goes outside it, and per-host values go
+   in named placeholders. **This is what separates the two
    objects that three rounds kept conflating: the *file* varies, the *block* does not.** Theme 5's
    "not byte-identical" was always about the printed output — the block's text was never the thing
    that had to differ. A block that needs undeclared variation is not a source block, and that is
@@ -409,7 +434,7 @@ call.
    | Artifact | Author | Kind | Shippers | Check |
    |---|---|---|---|---|
    | Wiring contract | FIX-1159 | specification | FIX-548's template · FIX-1159's skill | theme 8 parity + the dependency rule, under pnpm |
-   | Agent-instructions block | FIX-1160 | source block (no substitutions expected) | FIX-548's `AGENTS.md` · FIX-1159's skill | digest |
+   | Agent-instructions block | FIX-1160 | source block (no substitutions expected) | FIX-548's `AGENTS.md` · FIX-1159's skill, **embedded by FIX-1160 at packaging** — see (ii) | digest |
    | Next-steps block | FIX-1159 | source block (substitutions: the package-manager commands) | FIX-548's scaffolder · FIX-1159's skill | digest |
 
    **(i) The wiring contract is a specification, not a block, and that is why it alone has no
@@ -448,16 +473,48 @@ call.
    `node_modules`, so a proof run with npm passes on an incomplete `package.json` and hides the
    entire class. §1's mounted-route proof runs on pnpm for exactly this reason.
 
-   **(ii) The agent-instructions block — FIX-1160 authors, FIX-548 and FIX-1159's skill ship it.**
-   §5 Q1 assigns the content to FIX-1160 and theme 3 has the template ship it, but nothing ordered
-   or connected them, so a template landing first would ship a draft that drifts. **FIX-1160 lands
-   before FIX-548**, and both shippers embed the canonical block verbatim inside the delimiters
-   theme 6 already requires, carrying `<!-- fsd:agent-instructions sha256:<digest> -->`. *I claimed
-   in an earlier round that this block must vary — that a template which just wrote `flows/chat.ts`
-   can name it while a brownfield run cannot. That was asserted, not established, and it is what
-   pushed the check away from the block and into a canonical-only digest. Theme 3 calls this file
-   universal; the block is treated as invariant until a shipper demonstrates otherwise, and if one
-   does, the variation becomes a declared substitution rather than free prose.*
+   **The runtime floor is part of the contract too, and a path refuses rather than produces an app
+   that cannot run.** Every FSD package declares `"engines": { "node": ">=22" }` (verified across
+   `core`, `engine`, `cli`, `next`), but **Next 16 accepts Node 20.9+ and npm's engines check only
+   warns** — so on Node 20.9–21 the advertised command completes and hands the developer an app
+   whose dependencies cannot run. **One rule, stated once so the next reader does not find two:**
+   the effective floor is the higher of `>=22` and the Node 22.18 boundary FIX-548 already handles
+   for its own path, and **both entry paths check it before they write anything** — greenfield
+   fails *before* invoking `create-next-app`, with guidance naming Node 22; brownfield detection
+   reports the host's version and the run refuses on the same boundary. **FIX-548's goal check
+   exercises the refusal**, not only the success path: a scaffold that completes on an unsupported
+   runtime is the failure this rule exists to prevent, and nothing else in the epic would catch it.
+
+   **(ii) The agent-instructions block — FIX-1160 authors it, and also embeds it, because it is the
+   one artifact that flows against the epic's dependency direction.** §5 Q1 assigns the content to
+   FIX-1160 and theme 3 has the template ship it, but nothing ordered or connected them, so a
+   template landing first would ship a draft that drifts. **FIX-1160 lands before FIX-548**, and
+   the template embeds the canonical block verbatim inside the delimiters theme 6 already requires,
+   carrying `<!-- fsd:agent-instructions sha256:<digest> -->`.
+
+   **The second shipper created a cycle, and co-location resolves it.** FIX-1159's install skill
+   must also emit this block — but FIX-1159 lands *before* FIX-1160, because FIX-1160 packages the
+   skill. Requiring FIX-1159 to embed FIX-1160's canonical block demands a source that has not
+   landed, and reversing the edge breaks packaging instead. **Decided: FIX-1160 owns the content
+   *and* the embedding. FIX-1159's skill carries a named placeholder, and FIX-1160 substitutes the
+   canonical block — with its digest marker — when it packages the plugin.** Nothing new is
+   invented: a placeholder filled by the packager is rule 2's declared-substitution mechanism
+   applied one level up, and it runs along the existing FIX-1159 → FIX-1160 edge rather than
+   against it. The alternative — splitting FIX-1160 so the block lands ahead of the skill content
+   flowing the other way — creates a partly-landed deliverable to buy an ordering we do not need.
+
+   **Only this artifact has the cycle, and the diagnosis generalizes: an artifact authored against
+   the epic's dependency direction cannot be embedded by an issue upstream of its author.** The
+   wiring contract and the next-steps block are both authored by FIX-1159 and shipped by FIX-548
+   and FIX-1159's own skill — with the grain, so neither needs this treatment. Checked rather than
+   assumed, since expectation is what produced the cycle in the first place.
+
+   *One retraction: I claimed in an earlier round that this block must vary — that a template which
+   just wrote `flows/chat.ts` can name it while a brownfield run cannot. That was asserted, not
+   established, and it is what pushed the check away from the block and into a canonical-only
+   digest. Theme 3 calls this file universal; the block is treated as invariant until a shipper
+   demonstrates otherwise, and if one does, the variation becomes a declared substitution rather
+   than free prose.*
 
    **(iii) The next-steps block — FIX-1159 authors, FIX-548 and FIX-1159's skill ship it.** Theme 5
    declared the single authored source and left it there: no carrier, no renderer, no check, so the
@@ -938,3 +995,13 @@ the themes and decisions above — it is not repeated here.
   *block* does not. Fixes the canonical-only digest, which passed for a stale shipper because the
   shipper's body was never hashed, and dissolves FIX-1159's renderer problem: a Markdown skill
   embeds the block and substitutes, so there is nothing to call.
+- **Four fixes that made theme 9 implementable** — the whole-block digest was self-referential
+  (writing the value changed the bytes hashed), so the hashed body is now the block **with the
+  marker line stripped**, normalized identically on both sides and spelled out step by step; the
+  agent-instructions block created an **ownership cycle** (FIX-1160 authors it, but FIX-1159's
+  skill ships it and lands first), resolved by **co-location** — FIX-1160 embeds it at packaging
+  into a placeholder the skill carries, which runs with the existing edge instead of against it;
+  a **Node 20.9–21 scaffold** completed and left an unrunnable app, so both paths now refuse
+  before writing and FIX-548's goal check exercises the refusal; and theme 6's `package.json`
+  guarantee promised untouched **formatting**, which the mandatory package-manager install
+  rewrites, so it now promises semantic key/value preservation as exception (b) always said.
