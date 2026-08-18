@@ -210,8 +210,23 @@ call.
    and does not duplicate the mechanism.**
 
 2. **One template: the Next.js chat app. The framework-neutral Node API template is cut.**
-   This reverses the earlier "two templates, and only two"; the reversal is the owner's, and the
-   argument is what the other decisions did to the Node template's contents. Once a plain-Node
+   **This reverses the earlier "two templates, and only two", and the reversal is *recommended,
+   not yet decided* — it is the owner's call and they have not given it.** An earlier revision of
+   this document recorded it as theirs. That was wrong, and the correction matters because an
+   approval is being requested downstream: **FIX-548's spec is right to still carry it as its open
+   ask, and this document was the one out of step.** The last written state anywhere is the
+   cross-issue note of 2026-08-18 — *"the template ask is still open, and re-argued"* — and no
+   record of an answer exists in any comment, unlike §5 Q2 and Q3, which were both recorded as
+   owner decisions when they were made. **Everything below is written against the recommendation
+   because the set has to be described some way; it is not evidence the question is closed.**
+
+   *How it went wrong is worth one line, because the shape recurs: the evolution log entry bundled
+   this with the scaffolder name — "Owner decisions folded — one template, and the name" — and the
+   name half **was** verified. A verified attribution carried an unverified one beside it, and the
+   pair read as equally settled.*
+
+   The argument for the recommendation is what the other decisions did to the Node template's
+   contents. Once a plain-Node
    host gets no generated server entrypoint (theme 8) and no `fsdev` package script, the Node
    template's entire remaining delta over `npm init -y` is a `package.json`, a `tsconfig.json`
    and a better-named demo flow. The accepted cost that bought it — two starters to keep green
@@ -835,7 +850,7 @@ surfaced was a property of the *situation* rather than of the command that used 
 |---|---|---|---|---|---|
 | FIX-1159 | The brownfield knowledge — deterministic detection scripts, the install skill's **content**, the shared next-steps block, and **the wiring contract both entry paths satisfy** (theme 9) | spec | [#1310](https://github.com/fixpoint-labs/flow-state-dev/pull/1310) | — | In spec review — re-shaped to **brownfield only, no command of its own**; the earlier approval was retracted with the direction change. **Unblocked — Q5 resolved by constraint**: the run configures a non-default principal resolver, mechanism this issue's. Also gains the devtool peer fix (theme 5) and the mounted-route proof (theme 9 (b)) |
 | FIX-1162 | Register the npm names the launch needs — the short CLI entry name and the scaffolding name | spec | [#1313](https://github.com/fixpoint-labs/flow-state-dev/pull/1313) | — | In spec review — **both names now registered at `0.0.0` to a personal account**; what remains is the publishing identity's write access (`npm owner add` / transfer) and the unproven `@flow-state-dev` scope. Owner operations, not agent work |
-| FIX-548 | `create-flow-state` — the deterministic greenfield path; **one** template (Next.js chat app), owned end to end | spec | [#1312](https://github.com/fixpoint-labs/flow-state-dev/pull/1312) | — | Spec complete, approved at `404e82c` — **approval needs re-taking**: theme 9 now requires a pnpm-isolated install of the emitted template in its goal check (posted to #1312; its spec is not edited by the epic) |
+| FIX-548 | `create-flow-state` — the deterministic greenfield path; template count pending **§5 Q6**, written against one (Next.js chat app), owned end to end | spec | [#1312](https://github.com/fixpoint-labs/flow-state-dev/pull/1312) | — | Spec complete, approved at `404e82c` — **approval needs re-taking**: theme 9 now requires a pnpm-isolated install of the emitted template in its goal check (posted to #1312; its spec is not edited by the epic) |
 | FIX-1160 | The authoring pack **and the plugin that distributes the install skill** — agent-instructions file, authoring skills, install skill | spec | [#1311](https://github.com/fixpoint-labs/flow-state-dev/pull/1311) | — | Spec complete, approved at `dd9b656` — **approval needs re-taking**: theme 9 (d) hands it the agent-instructions block's normalization and equality check (posted to #1311). Scope had already grown: it is the brownfield path's only delivery channel |
 
 **The greenfield/brownfield split landed on top of two specs that were already written, and both
@@ -912,6 +927,10 @@ one:
 
 ## 5. Open cross-cutting questions
 
+**Q6 is open and an approval is waiting on it** — the one-template cut was recorded here as the
+owner's without evidence, and FIX-548 has been carrying it as its open ask all along. It is the
+one question in this section a downstream re-approval currently depends on.
+
 Q1–Q3 and Q5 are **decided** and stay here with their answers, so no issue reopens them. **Q4 is
 the only one open**, and it blocks nothing — it exists because the split changed what an
 already-made decision costs. **Q5 was raised as a product fork and resolved as an engineering
@@ -985,14 +1004,18 @@ later.
 — fully recoverable. Wrong on listing, and we own a public entry we may not be ready to keep
 green during the noisiest period we will have.
 
-**Resolution — install-by-URL only at launch.** Decided by the product owner, on reasoning that
-goes past the recommendation above: a public listing is a **support commitment in the week we
-can least afford one**, and the asymmetry is what settles it — a listing is trivially added
-afterwards, while delisting later reads as abandonment. No public directory listing during the
-launch window. **FIX-1160 is scoped accordingly — the plugin still ships; only its distribution
-channel is narrowed.** Because the channel is singular, **§1's proof runs through it**. Carried
-by theme 3. **Closed — not reopenable by an issue**, but see **Q4**: the split has changed what
-this decision costs, which only the owner can weigh.
+**Resolution — install-by-URL only at launch. No public directory listing during the launch
+window.** **The decision is the product owner's.** *The rationale that used to appear here —
+"a support commitment in the week we can least afford one", with the add-later/delist-later
+asymmetry settling it — is the **coordinator's reconstruction**, not words the owner is recorded
+as saying. It is verbatim the recommendation two paragraphs above, and presenting it as reasoning
+that "goes past the recommendation" dressed our own argument in their authority.* The decision
+stands exactly as given; only the account of why is marked as ours.
+
+**FIX-1160 is scoped accordingly — the plugin still ships; only its distribution channel is
+narrowed.** Because the channel is singular, **§1's proof runs through it**. Carried by theme 3.
+**Closed — not reopenable by an issue**, but see **Q4**: the split has changed what this decision
+costs, which only the owner can weigh.
 
 ### ~~Q3 — FSD ships a runtime concept called `skills`, and FIX-1160 ships Claude `skills`. Rename ours, rename theirs, or ship the collision?~~ — decided: no rename, qualify instead
 
@@ -1022,18 +1045,20 @@ In practice "install-by-URL" means our docs carry the source and they add it fro
 question is really: is our documentation a good enough front door for the epic's headline
 capability during launch week?
 
-**The trade-off.** Holding URL-only keeps the launch's public surface exactly as small as you
-decided it should be, and the docs are where the launch sends people anyway — the install source
-sits on the getting-started page and in the README. Listing puts the brownfield path where
-people browse, and takes on the support commitment you declined, in the week you declined it
-for.
+**The trade-off.** Holding URL-only keeps the launch's public surface as small as Q2 set it, and
+the docs are where the launch sends people anyway — the install source sits on the getting-started
+page and in the README. Listing puts the brownfield path where people browse, and takes on a
+standing support commitment during launch week.
 
-**My recommendation: hold URL-only, and make the docs carry it properly.** Your asymmetry
-argument survives the change — a listing is still trivially added afterwards and delisting still
-reads as abandonment — and the launch's own traffic goes through the docs, so the channel is not
-as narrow in practice as "URL-only" sounds. What I would add is a requirement rather than a
-listing: the install source is on the getting-started page and in the root README, not only in
-FIX-1160's own docs, so a stranger meets it on the first page they read.
+**My recommendation: hold URL-only, and make the docs carry it properly.** The add-later /
+delist-later asymmetry still holds after the change — a listing is trivially added afterwards,
+while delisting reads as abandonment — and the launch's own traffic goes through the docs, so the
+channel is not as narrow in practice as "URL-only" sounds. **Stated as my argument rather than
+yours:** that asymmetry is the coordinator's reasoning, recorded under Q2 as a reconstruction, not
+something you are on record as saying — so it is offered here for you to weigh, not returned to
+you as your own settled view. What I would add is a requirement rather than a listing: the install
+source is on the getting-started page and in the root README, not only in FIX-1160's own docs, so
+a stranger meets it on the first page they read.
 
 **What would change my mind:** if the launch plan expects developers to arrive with an existing
 repo *first* and read docs second — an announcement aimed at "add this to your app" rather than
@@ -1122,6 +1147,42 @@ developer hits a 401 on their own machine and has to look in `.env.local`. The a
 wrong in the direction of a stranger spending their credits, which is the failure this epic's whole
 brownfield pitch — *we will not damage your repo* — cannot survive.
 
+### Q6 — Does v1 ship one template or two? — **open, and FIX-548's re-approval depends on it**
+
+*Not a new question: it was raised from FIX-548's spec, recorded here as "raised, not adopted",
+re-argued, and then written into theme 2 as an owner decision that was never given. Restored to
+open. **FIX-548's spec is the accurate record** — it has carried this as its §6 decision 2 ask
+throughout, and the epic is what drifted.*
+
+**Plain terms.** We ship a starter that creates a new project. The question is whether v1 ships
+one — a Next.js app that ends at a chat page you can type into — or also a second for backend
+developers, which ends at a server with no screen.
+
+**The trade-off.** Since a plain-Node host now gets no generated server file and no package
+script, everything the Node starter would ship is a `package.json`, a `tsconfig.json` and a demo
+flow with a better name — and `mkdir && <brownfield run>` already produces that on a path §1's
+proof exercises with a real model. Against that, every template is proved per advertised provider
+on every release, on machines we do not control, forever.
+
+**My recommendation: ship one.** The deciding point is asymmetry rather than file count — adding
+`node-api` later is additive and strands nobody, while removing a published template later breaks
+invocations that already exist. Two independent reviewers agreed when FIX-548 raised it.
+
+**What would change my mind:** if the launch plan points backend developers at a Node starter *by
+name* — a landing page, a comparison table, an announcement. A template that exists to be linked
+to is worth more than the files it writes, and that is a business fact no spec here has.
+
+**Cost of being wrong.** Ship one and be wrong: a later additive release, and backend developers
+meet no starter aimed at them during launch. Ship two and be wrong: a starter kept permanently
+green, proved on every release, for a path the brownfield run already proves. **And one live
+consequence either way** — with the Node template cut, §1's brownfield second-process check is the
+epic's *only* Node coverage of any kind, so it can no longer be dropped as redundant.
+
+**What is waiting on this.** FIX-548's re-approval. Everything else the epic asks it to re-take is
+narrow and mechanical; this is the one item that would change what it builds. If the answer is
+"one", FIX-548's §6 decision 2 becomes stale rather than open and its ask shrinks to the mechanical
+set. If it is "two", decision 2b (no `--template` flag) reopens with it.
+
 ---
 
 ## Epic evolution
@@ -1152,9 +1213,13 @@ the themes and decisions above — it is not repeated here.
   deterministic init kept growing a branch per host shape with no round at which they stop, so
   detection stays deterministic and mutation goes. Themes 1, 5, 6 and 8 re-drafted; §1's proof
   gained the report-versus-diff check; new Q4.
-- **Owner decisions folded — one template, and the name.** Node API template cut (theme 2); the
-  scaffolder is `create-flow-state`; §1's Outcome stopped promising "one step"; theme 6 stopped
-  being brownfield-only, since `create-next-app` writes its own `AGENTS.md`.
+- **The name settled; the template cut folded *alongside* it and was never actually decided.** The
+  scaffolder is `create-flow-state` — verified against the registry, genuinely settled. The Node
+  template cut (theme 2) was written up in the same entry as an owner decision **and is not
+  evidenced**: the last record anywhere says the ask is still open, and unlike Q2 and Q3 no comment
+  records an answer. Reopened as **Q6**; theme 2 now marks it recommended-not-decided. Also this
+  turn: §1's Outcome stopped promising "one step", and theme 6 stopped being brownfield-only since
+  `create-next-app` writes its own `AGENTS.md`.
 - **Epic review of that fold** — §1's greenfield proof now asserts the additive guarantee it had
   extended without checking, and theme 5's "verbatim" became one authored source rendered per
   package manager.
@@ -1335,3 +1400,16 @@ the themes and decisions above — it is not repeated here.
   defect had already occurred at issue altitude (FIX-1186 wired to block FIX-548's implementation).
   A dependency column cannot distinguish "blocked by X" from "gates the release" from "deliberately
   not built", so all three are now listed apart and labelled.
+- **An attribution audit found two coordinator judgements wearing the owner's authority.** §5 Q2's
+  *decision* is theirs and stands; the **rationale** recorded under it was verbatim the
+  coordinator's own recommendation from two paragraphs above, presented as reasoning that "goes
+  past" it — now marked as a reconstruction. That mattered beyond tidiness because **open Q4 then
+  told the owner "*your* asymmetry argument survives"**, arguing a question that is explicitly
+  theirs to price back at them from words they never said; Q4 now offers the argument as the
+  coordinator's. And **the one-template cut was recorded in theme 2 as the owner's reversal with no
+  evidence anywhere** — the last written record says the ask is still open, and unlike Q2 and Q3 no
+  comment records an answer. Reopened as **Q6**, with FIX-548 credited as the accurate record: it
+  carried the ask correctly throughout while this document drifted. **The mechanism was bundling** —
+  one evolution entry folded the template cut together with the scaffolder name, and the name half
+  was genuinely verified, so a verified attribution carried an unverified one beside it and both
+  read as settled.
