@@ -23,9 +23,12 @@ it reads is empty.
    named **unmeasured for that path**
 2. Every mutation the item stream shows and the file record lacks is accounted for by a gap row
    **carrying that path**; a difference nothing accounts for fails, and so does a record row the
-   stream never showed
+   stream never showed. Where the two DO pair up, the record must agree about what happened —
+   an `Edit` stored as `created`, or a failed call stored as `applied`, fails. And a pairing
+   that is not unique is an ambiguity, never a match
 3. Order is non-decreasing over `itemIndex`, per request, across at least two distinct positions
-4. The run's activity precedes the report it wrote about that activity
+4. The run's **last** file mutation precedes its final report — a write after the closing word
+   leaves a row in the record the report never covered
 5. The plan half resolves to rows, or to UNMEASURED with its reason named — never to LOST
 6. Every set an assertion iterates is non-empty, failing by name
 7. Every `nextCursor` was followed, on all three collections
@@ -34,6 +37,14 @@ it reads is empty.
 Two arms report rather than fail, and neither may pass silently: assertion 5's UNMEASURED, and
 assertion 1's per-path unmeasured. If **every** expected path lands unmeasured the run proved
 nothing and the goal is inconclusive, which is a failure.
+
+**A pairing that is not unique is not a pairing.** The two surfaces spell a path differently, so
+they are compared by whole trailing path segments rather than by re-implementing the recorder's
+canonicalization — which would couple this check to a storage-key layout that is not a contract,
+and which already gained a segment mid-build. The cost: when one side is short, the comparison can
+be true of more than one candidate. No caller resolves that. The reader leaves the derived path
+and position null; the grader fails by name. A wrong assignment would let assertion 2 pass while a
+mutation record is genuinely missing, which is the exact failure it exists to catch.
 
 **Anti-game:** Must not read the harness transcript, the working tree — including any file the
 run wrote — or git. The reader's deprivation is a **parameter shape**: its only input is a bound
@@ -54,7 +65,7 @@ generator actions. The calibration and every guard case are **model-free** and r
 ## The preconditions, and why they run every time
 
 The reader derives the known account from the known state **exactly**, a deliberately lossy copy
-of that state is caught by assertion 2, and 30 guard cases each break one assertion on purpose
+of that state is caught by assertion 2, and 36 guard cases each break one assertion on purpose
 and confirm it reaches the verdict it is supposed to. All of it is model-free, so it runs on
 every invocation rather than sitting in this log as a one-time claim — and if any of it fails,
 no coding run is dispatched at all. An instrument is sanity-checked against a case whose answer
@@ -69,8 +80,7 @@ broken worlds cannot be produced by a correct system at all. So each case follow
 not two: name the broken world · check the assertion rejects **that** world · check the world can
 be produced at all.
 
-**Four cases exist because a mutation did not go red**, which is a result rather than a
-formality:
+**Cases exist because a mutation did not go red**, which is a result rather than a formality:
 
 - Whole-segment path matching was unreachable until `known-state.json` gained `my-alpha.txt` — a
   still-pending row whose name ends with `alpha.txt`. Until then a naive `endsWith` derived the
@@ -86,6 +96,17 @@ formality:
   reached for `Bash`, was **refused**, and said so — a call that never ran cannot have made the
   change, so counting it would have turned a lost write into an inconclusive. Only a shell call
   the harness actually ran softens the verdict now.
+
+- Assertion 2 accepted a path pairing without comparing what happened, so a record saying
+  `created` about an edit passed. Both halves of that are defects the recorder actually shipped.
+  The comparison is **preference-shaped** — it only has teeth where the two sides disagree — so
+  its cases carry a real disagreement rather than a merely well-formed record.
+- Assertion 4 compared the report against the run's *first* activity, so `write, report, write`
+  passed: it rejected the world where all activity follows the report and accepted the one where
+  only some does. It now grades the last mutation.
+- Assertion 8 checked module specifiers only, and `process.cwd()` names no module. It now also
+  scans for bare globals and computed dynamic imports, over the shared `paths.mts` as well as the
+  reader.
 
 One masking relationship among the preconditions themselves was removed for the same reason: a
 failed lossy-calibration used to return early and hide the entire guard table. All preconditions
@@ -119,6 +140,11 @@ live, and the branch that would call the whole run inconclusive sits behind them
 
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-08-18 | working tree at `238f71137`, pre-commit (round 1 folded) | Agent SDK default | PASS | Seventh consecutive real run, with the round-1 fixes in. 31 items at 28 distinct positions; mutations 18–23, last word at 25; 1 shell call, 0 of them ran. **36 guards**, up from 30 |
+| 2026-08-18 | working tree at `238f71137`, pre-commit | — | FAIL *(deliberate)* | Assertion 2's semantic comparison removed entirely. Both new cases red: *"did not reach A2/a2-kind-disagrees … it produced ["a2-ok=pass"]"*, same for `a2-outcome-disagrees`. The world where a record says `created` about an `Edit` |
+| 2026-08-18 | working tree at `238f71137`, pre-commit | — | FAIL *(deliberate)* | Assertion 2 regressed to **silently picking the first candidate** — the reviewer's P1 verbatim. *"did not reach A2/a2-ambiguous-mutation"*. This is the mutation that would have let a lost record hide behind a row sharing its tail |
+| 2026-08-18 | working tree at `238f71137`, pre-commit | — | FAIL *(deliberate)* | Assertion 4 regressed to the **first** mutation. *"'A4 — the run wrote another file after its final report' did not reach A4/a4-activity-after-report"*. The `write, report, write` world a first-activity comparison certifies |
+| 2026-08-18 | working tree at `238f71137`, pre-commit | — | FAIL *(deliberate)* | `const here = process.cwd();` added to the reader — **no import at all**. A8: *"reader.mts reaches `process`"*. The half a module allowlist cannot see |
 | 2026-08-18 | working tree at `d513bc512`, pre-commit (behaviour-identical; only a parenthesisation and a flattened conditional changed after) | Agent SDK default | PASS | Sixth consecutive real run. 30 items at 26 distinct positions; 1 shell call, 0 of them ran |
 | 2026-08-18 | `1067fa7ac` | Agent SDK default | PASS | Fifth consecutive real run, on the committed tree. 3 of 3 held-out paths present with a kind and a settled outcome; 3 stream mutations and 3 rows naming the same files; non-decreasing across 31 top-level items at 27 distinct positions; activity at 14 before the last word at 25; 0 gap rows. **1 shell call, 0 of them ran** — the refused-`Bash` case again, on the very next run after the fix for it. All paths were present, so nothing went unmeasured on that account. Plan arm UNMEASURED. 30 guards proven first |
 | 2026-08-18 | working tree at `4f2f63d37`, pre-commit | Agent SDK default | PASS | First real run. 3 of 3 held-out paths `created`/`edited` and `applied`; 3 stream mutations and 3 rows naming the same files; non-decreasing across 30 top-level items at 25 distinct positions; activity at 13 before the last word at 24; 0 gap rows; 1 shell call. Plan arm UNMEASURED — 0 plan tool calls; tools used `Bash`, `Edit`, `Read`, `Write` |

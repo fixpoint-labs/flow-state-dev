@@ -46,6 +46,7 @@
  * is a JSON string carrying the tool's real input.
  */
 import { OBSERVED_FILE_OPS, OBSERVED_GAPS, OBSERVED_PLAN } from "@flow-state-dev/claude-code/sdk";
+import { namespaceFor, sameFile } from "./paths.mts";
 
 /**
  * The reader's whole world: one bound route reader for one host.
@@ -69,7 +70,14 @@ export type Read = (path: string) => Promise<unknown>;
  * Used for exactly two things: the stream-versus-collection agreement check,
  * and the shell-call flag. Nothing else here knows a tool name.
  */
-export const FILE_MUTATION_TOOLS = ["Write", "Edit"] as const;
+export const FILE_MUTATION_TOOLS: Record<string, string> = { Write: "created", Edit: "edited" };
+
+/**
+ * How a settled tool result maps to the outcome a row should carry. Framework
+ * vocabulary on both sides; an item status we do not list yields no expectation
+ * rather than a wrong one.
+ */
+const OUTCOME_OF_STATUS: Record<string, string> = { completed: "applied", failed: "failed" };
 /** The shell. Its edits are invisible to the recorder by design, not by defect. */
 export const SHELL_TOOL = "Bash";
 /**
@@ -79,26 +87,6 @@ export const SHELL_TOOL = "Bash";
  * prohibition is on the harness transcript.
  */
 export const PLAN_TOOLS = ["TaskCreate", "TaskUpdate"] as const;
-
-/**
- * THE ONE PLACE a collection's per-run namespace is spelled.
- *
- * `topicPrefix` is matched against the STORAGE key, so it carries the
- * collection prefix as well as the request id. A row's full key is
- * `<collection>/<requestId>/<invocation>/…` — the invocation segment separates
- * repeat calls of the agent inside one request — so this prefix selects
- * everything one request did, which here is exactly one run.
- *
- * Nothing else in this module composes a key, and nothing anywhere DECOMPOSES
- * one: a row's identity is its topic, carried verbatim and compared by trailing
- * path segments. Parsing the key to recover a path would couple this check to a
- * storage-key layout that is not a contract — the layout has already gained a
- * segment once, and a reader that counted segments would have gone quietly
- * wrong rather than loudly.
- */
-export function namespaceFor(collection: string, runId: string): string {
-  return `${collection}/${runId}/`;
-}
 
 /** One page of a collection, as the list-collection-state route returns it. */
 interface CollectionPage {
@@ -131,6 +119,16 @@ export interface StreamMutation {
   at: number | null;
   /** `completed` / `failed` as the item recorded it. Never parsed from prose. */
   status: string | null;
+  /**
+   * What the record SHOULD say about this mutation, translated here so no
+   * assertion has to know a tool name. The grader compares these against the
+   * row's own `kind` and `outcome`: a record that stores an `Edit` as `created`,
+   * or a failed result as `applied`, is wrong about what happened even though
+   * every field is populated and settled. Both were real defects in the recorder.
+   */
+  kind: string;
+  /** Null when the item carries no terminal status, so nothing is claimed. */
+  outcome: string | null;
 }
 
 /** One path the file-op collection says the run touched. */
@@ -152,8 +150,14 @@ export interface DidEntry {
   kind: string | null;
   /** `pending` / `applied` / `failed`, or null when not carried. */
   outcome: string | null;
-  /** First `itemIndex` in the stream naming this row; null when it never did. */
+  /** First `itemIndex` in the stream naming this row; null unless exactly one did. */
   firstAt: number | null;
+  /**
+   * How many stream mutations name this row. Anything but 1 is unresolvable and
+   * is graded, never silently picked — see `paths.mts`. `path` and `firstAt`
+   * stay null unless this is exactly 1.
+   */
+  namedBy: number;
 }
 
 /** One thing the recorder recognised and could not record. */
@@ -197,8 +201,21 @@ export interface OrderRun {
   indices: number[];
   /** Top-level items carrying no numeric `itemIndex`. Non-zero means no evidence. */
   unreadable: number;
-  /** Where this run first did something. Null when it carries no readable tool activity. */
-  firstToolOutputAt: number | null;
+  /** Where this run first changed a file. Null when it mutated nothing readable. */
+  firstMutationAt: number | null;
+  /**
+   * Where this run LAST changed a file — the position assertion 4 grades.
+   *
+   * The FIRST is not enough: `write@1, report@2, write@3` has activity preceding
+   * a report, and a report describing none of the work after it. Comparing the
+   * last rejects that world too.
+   *
+   * Mutations rather than all tool calls, deliberately. A `Read` after the
+   * closing word changes nothing, so the report is not wrong about it; a WRITE
+   * after the closing word leaves a row in the record the report never covered,
+   * which is the case worth failing on.
+   */
+  lastMutationAt: number | null;
   /** Where this run last said something. Null when it carries no readable message. */
   lastMessageAt: number | null;
 }
@@ -293,37 +310,6 @@ function str(data: Record<string, unknown>, field: string): string | null {
   return typeof value === "string" ? value : null;
 }
 
-/** Split a path into non-empty segments. */
-function segmentsOf(path: string): string[] {
-  return path.split("/").filter((s) => s.length > 0);
-}
-
-/**
- * Do two spellings of a path name the same file?
- *
- * True when one's segment list is a suffix of the other's, so
- * `/tmp/run-1/src/a.ts` matches the recorder's `tmp/run-1/src/a.ts` and a bare
- * `a.ts` matches both. WHOLE segments only — `notes.txt` must not match
- * `my-notes.txt`, which a plain `endsWith` would.
- *
- * The looseness is deliberate: the two surfaces spell a path differently (the
- * collection canonicalizes against the run's working directory, the stream
- * carries the raw tool input), and canonicalizing the stream side identically
- * would couple this check to a storage-key format that is not a contract. The
- * cost is that ambiguity is possible, which is why distinct basenames are a
- * setup precondition rather than a hope.
- */
-export function sameFile(a: string, b: string): boolean {
-  const sa = segmentsOf(a);
-  const sb = segmentsOf(b);
-  const n = Math.min(sa.length, sb.length);
-  if (n === 0) return false;
-  for (let i = 1; i <= n; i += 1) {
-    if (sa[sa.length - i] !== sb[sb.length - i]) return false;
-  }
-  return true;
-}
-
 /** The `file_path` a tool call named, from its JSON argument string. */
 function pathOfCall(item: StoredItem): string | null {
   const raw = item.toolCall?.arguments;
@@ -369,7 +355,7 @@ export async function readAccount(read: Read, workstreamId: string): Promise<Acc
   const toolItems = allItems.filter((i) => i.type === "tool_output");
 
   // Activity: every item, sub-agents included — see the header.
-  const mutationTools = new Set<string>(FILE_MUTATION_TOOLS);
+  const mutationTools = new Set<string>(Object.keys(FILE_MUTATION_TOOLS));
   const mutationItems = toolItems.filter((i) => mutationTools.has(i.toolCall?.name ?? ""));
   const streamMutations: StreamMutation[] = [];
   let mutationsWithNoPath = 0;
@@ -379,11 +365,15 @@ export async function readAccount(read: Read, workstreamId: string): Promise<Acc
       mutationsWithNoPath += 1;
       continue;
     }
+    const tool = item.toolCall?.name ?? "";
+    const status = typeof item.status === "string" ? item.status : null;
     streamMutations.push({
       path,
-      tool: item.toolCall?.name ?? "",
+      tool,
       at: typeof item.itemIndex === "number" ? item.itemIndex : null,
-      status: typeof item.status === "string" ? item.status : null,
+      status,
+      kind: FILE_MUTATION_TOOLS[tool],
+      outcome: status === null ? null : (OUTCOME_OF_STATUS[status] ?? null),
     });
   }
 
@@ -417,13 +407,20 @@ export async function readAccount(read: Read, workstreamId: string): Promise<Acc
       const indices = own
         .map((i) => i.itemIndex)
         .filter((v): v is number => typeof v === "number");
-      const toolPositions = positionsOf(own, "tool_output");
+      // Mutations span EVERY item of the request, sub-agents included: a write a
+      // sub-agent makes after the run's closing word is still work the report
+      // does not cover. The report is the run's own thread, so top-level only.
+      const mutationPositions = (r.items ?? [])
+        .filter((i) => i.type === "tool_output" && mutationTools.has(i.toolCall?.name ?? ""))
+        .map((i) => i.itemIndex)
+        .filter((v): v is number => typeof v === "number");
       const messagePositions = positionsOf(own, "message");
       return {
         runId: r.id as string,
         indices,
         unreadable: own.length - indices.length,
-        firstToolOutputAt: toolPositions.length > 0 ? Math.min(...toolPositions) : null,
+        firstMutationAt: mutationPositions.length > 0 ? Math.min(...mutationPositions) : null,
+        lastMutationAt: mutationPositions.length > 0 ? Math.max(...mutationPositions) : null,
         lastMessageAt: messagePositions.length > 0 ? Math.max(...messagePositions) : null,
       };
     });
@@ -451,17 +448,18 @@ export async function readAccount(read: Read, workstreamId: string): Promise<Acc
     for (const row of files.rows) {
       const data = payload(row);
       const topic = row.topic ?? "";
+      // Exactly one naming mutation, or none of its details are derived. Two
+      // candidates is an ambiguity the grader reports, never a choice made here.
       const naming = streamMutations.filter((m) => sameFile(m.path, topic));
-      const positions = naming
-        .map((m) => m.at)
-        .filter((v): v is number => typeof v === "number");
+      const unique = naming.length === 1 ? naming[0] : undefined;
       did.push({
         runId,
         topic,
-        path: naming[0]?.path ?? null,
+        path: unique?.path ?? null,
         kind: str(data, "lastKind"),
         outcome: str(data, "outcome"),
-        firstAt: positions.length > 0 ? Math.min(...positions) : null,
+        firstAt: typeof unique?.at === "number" ? unique.at : null,
+        namedBy: naming.length,
       });
     }
 

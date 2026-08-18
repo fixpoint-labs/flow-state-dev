@@ -1,5 +1,7 @@
 {
-  "runIds": ["req_cal_1"],
+  "runIds": [
+    "req_cal_1"
+  ],
   "did": [
     {
       "runId": "req_cal_1",
@@ -7,7 +9,8 @@
       "path": "/work/repo/alpha.txt",
       "kind": "created",
       "outcome": "applied",
-      "firstAt": 1
+      "firstAt": 1,
+      "namedBy": 1
     },
     {
       "runId": "req_cal_1",
@@ -15,7 +18,8 @@
       "path": "/work/repo/beta.txt",
       "kind": "edited",
       "outcome": "applied",
-      "firstAt": 4
+      "firstAt": 4,
+      "namedBy": 1
     },
     {
       "runId": "req_cal_1",
@@ -23,15 +27,17 @@
       "path": "/work/repo/gamma.txt",
       "kind": "created",
       "outcome": "failed",
-      "firstAt": 4
+      "firstAt": 4,
+      "namedBy": 1
     },
     {
       "runId": "req_cal_1",
       "topic": "req_cal_1/inv_a/work/repo/my-alpha.txt",
       "path": "/work/repo/my-alpha.txt",
       "kind": "created",
-      "outcome": "pending",
-      "firstAt": 4
+      "outcome": "applied",
+      "firstAt": 4,
+      "namedBy": 1
     },
     {
       "runId": "req_cal_1",
@@ -39,7 +45,8 @@
       "path": "/work/repo/delta.txt",
       "kind": "created",
       "outcome": "applied",
-      "firstAt": 7
+      "firstAt": 6,
+      "namedBy": 1
     }
   ],
   "gaps": [
@@ -50,35 +57,101 @@
     }
   ],
   "said": [
-    { "at": 0, "text": "Starting on the three files." },
-    { "at": 6, "text": "Wrote the files and checked the directory." }
+    {
+      "at": 0,
+      "text": "Starting on the three files."
+    },
+    {
+      "at": 8,
+      "text": "Wrote the files and checked the directory."
+    }
   ],
   "planned": {
     "arm": "UNMEASURED",
     "reason": "the run invoked no plan tool in its own item stream, so nothing was measured about the plan half. Tools it did use: Bash, Edit, Write",
     "rows": []
   },
-  "shell": { "called": true, "calls": 1, "succeeded": 1 },
+  "shell": {
+    "called": true,
+    "calls": 1,
+    "succeeded": 1
+  },
   "streamMutations": [
-    { "path": "/work/repo/alpha.txt", "tool": "Write", "at": 1, "status": "completed" },
-    { "path": "/work/repo/epsilon.txt", "tool": "Write", "at": 3, "status": "completed" },
-    { "path": "/work/repo/beta.txt", "tool": "Edit", "at": 4, "status": "completed" },
-    { "path": "/work/repo/gamma.txt", "tool": "Write", "at": 4, "status": "failed" },
-    { "path": "/work/repo/my-alpha.txt", "tool": "Write", "at": 4, "status": "completed" },
-    { "path": "/work/repo/delta.txt", "tool": "Write", "at": 7, "status": "completed" }
+    {
+      "path": "/work/repo/alpha.txt",
+      "tool": "Write",
+      "at": 1,
+      "status": "completed",
+      "kind": "created",
+      "outcome": "applied"
+    },
+    {
+      "path": "/work/repo/epsilon.txt",
+      "tool": "Write",
+      "at": 3,
+      "status": "completed",
+      "kind": "created",
+      "outcome": "applied"
+    },
+    {
+      "path": "/work/repo/beta.txt",
+      "tool": "Edit",
+      "at": 4,
+      "status": "completed",
+      "kind": "edited",
+      "outcome": "applied"
+    },
+    {
+      "path": "/work/repo/gamma.txt",
+      "tool": "Write",
+      "at": 4,
+      "status": "failed",
+      "kind": "created",
+      "outcome": "failed"
+    },
+    {
+      "path": "/work/repo/my-alpha.txt",
+      "tool": "Write",
+      "at": 4,
+      "status": "completed",
+      "kind": "created",
+      "outcome": "applied"
+    },
+    {
+      "path": "/work/repo/delta.txt",
+      "tool": "Write",
+      "at": 6,
+      "status": "completed",
+      "kind": "created",
+      "outcome": "applied"
+    }
   ],
   "order": {
     "runs": [
       {
         "runId": "req_cal_1",
-        "indices": [0, 1, 3, 4, 4, 4, 5, 6],
+        "indices": [
+          0,
+          1,
+          3,
+          4,
+          4,
+          4,
+          5,
+          8
+        ],
         "unreadable": 0,
-        "firstToolOutputAt": 1,
-        "lastMessageAt": 6
+        "firstMutationAt": 1,
+        "lastMutationAt": 6,
+        "lastMessageAt": 8
       }
     ]
   },
-  "toolNamesSeen": ["Bash", "Edit", "Write"],
+  "toolNamesSeen": [
+    "Bash",
+    "Edit",
+    "Write"
+  ],
   "counts": {
     "requests": 1,
     "items": 9,
@@ -93,8 +166,20 @@
     "planToolCalls": 0
   },
   "reads": {
-    "observed-file-ops": { "pages": 2, "rows": 5, "truncated": false },
-    "observed-gaps": { "pages": 1, "rows": 1, "truncated": false },
-    "observed-plan": { "pages": 1, "rows": 0, "truncated": false }
+    "observed-file-ops": {
+      "pages": 2,
+      "rows": 5,
+      "truncated": false
+    },
+    "observed-gaps": {
+      "pages": 1,
+      "rows": 1,
+      "truncated": false
+    },
+    "observed-plan": {
+      "pages": 1,
+      "rows": 0,
+      "truncated": false
+    }
   }
 }

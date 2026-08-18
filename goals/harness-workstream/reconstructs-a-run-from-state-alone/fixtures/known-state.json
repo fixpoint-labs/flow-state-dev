@@ -1,5 +1,5 @@
 {
-  "_comment": "A known FSD state, as the real routes return it. The reader must derive known-account.json from this EXACTLY, model-free, before the goal spends a coding run. Shaped to carry the awkward cases on purpose: itemIndex with a gap (2 is missing) and duplicates (three items at 4); a two-page file-op collection so the cursor must be followed; a sub-agent's mutation nested under ownedBy, which activity must see and the run's own narrative must not; a stream mutation with no row that a gap row accounts for; an outcome of failed, which is settled; and my-alpha.txt, whose name ends with alpha.txt — a still-pending row that a substring match would drag into alpha.txt's grading and fail on, so whole-segment matching is a guard that can actually fire.",
+  "_comment": "A known FSD state, as the real routes return it. The reader must derive known-account.json from this EXACTLY, model-free, before the goal spends a coding run. Shaped to carry the awkward cases on purpose: itemIndex with a gap (2 is missing) and duplicates (three items at 4); a two-page file-op collection so the cursor must be followed; a sub-agent's mutation nested under ownedBy, which activity must see and the run's own narrative must not; a stream mutation with no row that a gap row accounts for; an outcome of failed, which is settled; the sub-agent's write placed BEFORE the closing word, because a mutation landing after the report is a failure this fixture must not itself contain; and my-alpha.txt, whose name ends with alpha.txt — a second row a substring match would drag into alpha.txt's grading, making that an ambiguity — so whole-segment matching is a guard that can actually fire. Its own fields agree with its stream mutation, because the record-versus-stream comparison only has teeth where the two disagree and the baseline must not.",
   "workstreamId": "sess_calibration",
   "runId": "req_cal_1",
   "requests": {
@@ -45,14 +45,14 @@
             "status": "completed",
             "toolCall": { "name": "Bash", "arguments": "{\"command\":\"ls -1\"}" }
           },
-          { "type": "message", "itemIndex": 6, "content": [{ "text": "Wrote the files and checked the directory." }] },
           {
             "type": "tool_output",
-            "itemIndex": 7,
+            "itemIndex": 6,
             "status": "completed",
             "ownedBy": "container_sub_1",
             "toolCall": { "name": "Write", "arguments": "{\"file_path\":\"/work/repo/delta.txt\",\"content\":\"d\"}" }
-          }
+          },
+          { "type": "message", "itemIndex": 8, "content": [{ "text": "Wrote the files and checked the directory." }] }
         ]
       }
     ]
@@ -89,7 +89,7 @@
           {
             "topic": "req_cal_1/inv_a/work/repo/my-alpha.txt",
             "storageKey": "observed-file-ops/req_cal_1/inv_a/work/repo/my-alpha.txt",
-            "clientData": { "lastKind": "created", "outcome": "pending", "lastTouchedAt": 1005 }
+            "clientData": { "lastKind": "created", "outcome": "applied", "lastTouchedAt": 1005 }
           }
         ]
       }

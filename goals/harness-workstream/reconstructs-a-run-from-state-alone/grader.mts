@@ -44,8 +44,8 @@
  * rule someone has to remember. The anti-game forbids asserting on the run's
  * wording, on any file's contents, and on how the run was settled.
  */
-import type { Account, DidEntry } from "./reader.mts";
-import { sameFile } from "./reader.mts";
+import type { Account, DidEntry, StreamMutation } from "./reader.mts";
+import { sameFile } from "./paths.mts";
 
 /** What the run was asked to touch. Held out — the reader never sees it. */
 export interface Expectation {
@@ -131,6 +131,20 @@ function gradePaths(account: GradeableAccount, expectation: Expectation): Findin
   let unmeasured = 0;
   for (const path of expectation.paths) {
     const entries = entriesFor(account, path);
+    if (entries.length > 1) {
+      // Two rows could be this path. Grading both would grade a file the job
+      // never named; grading either would be a guess. Neither is evidence.
+      findings.push({
+        id: "A1",
+        status: "fail",
+        because: "a1-ambiguous",
+        message:
+          `"${path}" matches ${entries.length} rows in the file record ` +
+          `(${entries.map((e) => e.topic).join(", ")}) — the record cannot be resolved to one ` +
+          `file, so nothing can be said about whether this path was recorded`,
+      });
+      continue;
+    }
     if (entries.length === 0) {
       if (account.shell.succeeded > 0) {
         unmeasured += 1;
@@ -251,7 +265,26 @@ function gradeAgreement(account: GradeableAccount): Finding[] {
 
   let accounted = 0;
   for (const mutation of account.streamMutations) {
-    if (account.did.some((d) => sameFile(d.topic, mutation.path))) continue;
+    const rows = account.did.filter((d) => sameFile(d.topic, mutation.path));
+    if (rows.length > 1) {
+      // Accepting any one of them would let a genuinely missing record hide
+      // behind a different row that happens to share a tail — the exact failure
+      // this assertion exists to catch.
+      findings.push({
+        id: "A2",
+        status: "fail",
+        because: "a2-ambiguous-mutation",
+        message:
+          `"${mutation.path}" could be ${rows.length} different rows ` +
+          `(${rows.map((r) => r.topic).join(", ")}) — the two surfaces cannot be paired, so ` +
+          `whether this mutation was recorded is unresolvable rather than fine`,
+      });
+      continue;
+    }
+    if (rows.length === 1) {
+      findings.push(...compareSemantics(mutation, rows[0]));
+      continue;
+    }
     const gap = account.gaps.find((g) => g.rawPath !== null && sameFile(g.rawPath, mutation.path));
     if (gap !== undefined) {
       accounted += 1;
@@ -269,7 +302,18 @@ function gradeAgreement(account: GradeableAccount): Finding[] {
   }
 
   for (const entry of account.did) {
-    if (account.streamMutations.some((m) => sameFile(m.path, entry.topic))) continue;
+    if (entry.namedBy > 1) {
+      findings.push({
+        id: "A2",
+        status: "fail",
+        because: "a2-ambiguous-row",
+        message:
+          `the row keyed "${entry.topic}" is named by ${entry.namedBy} stream mutations — which ` +
+          `operation it records is unresolvable, so it cannot corroborate any of them`,
+      });
+      continue;
+    }
+    if (entry.namedBy === 1) continue;
     findings.push({
       id: "A2",
       status: "fail",
@@ -301,6 +345,52 @@ function gradeAgreement(account: GradeableAccount): Finding[] {
         `${account.streamMutations.length} stream mutation(s) and ${account.did.length} recorded ` +
         `row(s) name the same files` +
         (accounted > 0 ? `; ${accounted} difference(s) accounted for by a gap row` : ""),
+    });
+  }
+  return findings;
+}
+
+/**
+ * The record must be right about WHAT happened, not merely populated.
+ *
+ * A1 requires a kind and a settled outcome; neither says the record agrees with
+ * the operation the stream shows. Both halves are defects the recorder has
+ * actually shipped: `Write` classified as `created` whatever it did to an
+ * existing file, and a settled outcome reusing the call-time value rather than
+ * the harness's confirmed result. Under a populated-fields check alone, a record
+ * saying "created" about an edit passes.
+ *
+ * This is a **preference-shaped** assertion — it only has teeth where the two
+ * sides disagree, so a guard case built from a coherent record exercises none of
+ * it. The cases carry a real disagreement for exactly that reason.
+ *
+ * The expectations are translated in the reader, so nothing here knows a tool
+ * name. A field the record does not carry is absence, which A1 grades where the
+ * path was expected and §9 reports rather than fails where it was not — so only
+ * a populated field that DISAGREES is a failure.
+ */
+function compareSemantics(mutation: StreamMutation, entry: DidEntry): Finding[] {
+  const findings: Finding[] = [];
+  if (entry.kind !== null && entry.kind !== mutation.kind) {
+    findings.push({
+      id: "A2",
+      status: "fail",
+      because: "a2-kind-disagrees",
+      message:
+        `the record says "${nameOf(entry)}" was ${JSON.stringify(entry.kind)}, but the item ` +
+        `stream shows a ${mutation.tool}, which is ${JSON.stringify(mutation.kind)} — the ` +
+        `record is wrong about what the run did to this file`,
+    });
+  }
+  if (mutation.outcome !== null && entry.outcome !== null && entry.outcome !== mutation.outcome) {
+    findings.push({
+      id: "A2",
+      status: "fail",
+      because: "a2-outcome-disagrees",
+      message:
+        `the record settled "${nameOf(entry)}" as ${JSON.stringify(entry.outcome)}, but the item ` +
+        `stream shows the call ${mutation.status}, which is ` +
+        `${JSON.stringify(mutation.outcome)} — the record is wrong about how it turned out`,
     });
   }
   return findings;
@@ -375,7 +465,15 @@ function gradeOrder(account: GradeableAccount): Finding[] {
 }
 
 /**
- * A4 — the run acted before it reported on the acting.
+ * A4 — the run reported on the acting, and nothing followed the report.
+ *
+ * Graded on the LAST mutation, not the first. `write@1, report@2, write@3` has
+ * activity preceding a report and a report covering none of the work after it,
+ * and a first-activity comparison certifies it — rejecting the world where ALL
+ * activity follows the report while accepting the one where only some does.
+ *
+ * Mutations rather than every tool call: a `Read` after the closing word changes
+ * nothing, so failing on it would be a false red on an ordinary run.
  *
  * The two can't-tell conditions are tested BEFORE the comparison and reported
  * under their own branch, because folding them lets `null` coerce to `0` in the
@@ -396,27 +494,27 @@ function gradeCausality(account: GradeableAccount): Finding[] {
   }
   const findings: Finding[] = [];
   for (const run of account.order.runs) {
-    const first = run.firstToolOutputAt;
-    const last = run.lastMessageAt;
-    if (first === null || last === null) {
+    const lastActivity = run.lastMutationAt;
+    const lastWord = run.lastMessageAt;
+    if (lastActivity === null || lastWord === null) {
       findings.push({
         id: "A4",
         status: "fail",
         because: "a4-unevaluable",
         message:
-          `run ${run.runId} carries ${first === null ? "no tool activity" : "no message"} at a ` +
-          `readable position, so "activity preceded the report" could not be evaluated`,
+          `run ${run.runId} carries ${lastActivity === null ? "no file mutation" : "no message"} ` +
+          `at a readable position, so "activity preceded the report" could not be evaluated`,
       });
       continue;
     }
-    if (first > last) {
+    if (lastActivity > lastWord) {
       findings.push({
         id: "A4",
         status: "fail",
-        because: "a4-out-of-order",
+        because: "a4-activity-after-report",
         message:
-          `run ${run.runId} mirrors its final message at position ${last}, before the first tool ` +
-          `call it describes at ${first} — the stream is not in the order the run produced it`,
+          `run ${run.runId} last changed a file at position ${lastActivity}, AFTER its final ` +
+          `message at ${lastWord} — the record holds a mutation the report never covered`,
       });
     }
   }
@@ -426,7 +524,11 @@ function gradeCausality(account: GradeableAccount): Finding[] {
       status: "pass",
       because: "a4-ok",
       message: account.order.runs
-        .map((r) => `run ${r.runId}: first activity at ${r.firstToolOutputAt}, last word at ${r.lastMessageAt}`)
+        .map(
+          (r) =>
+            `run ${r.runId}: mutations ${r.firstMutationAt}-${r.lastMutationAt}, last word at ` +
+            `${r.lastMessageAt}`,
+        )
         .join("; "),
     });
   }

@@ -6,47 +6,17 @@
  * the account exists is it compared, field by field, against the expectation
  * the run was given.
  *
- * That inversion is the point. The two checks we already have know the file the
- * run was told to write and search the stored record for that name, so a record
- * that kept a FRACTION of a run passes — the fraction it kept is the part they
- * asked about. Here nothing is searched for: `reader.mts` never sees the
- * expectation, and `grader.mts` never sees the routes.
+ * That inversion is the point: `reader.mts` never sees the expectation, and
+ * `grader.mts` never sees the routes.
  *
- * ## Two preconditions, both of which abort rather than grade
+ * **`goal.md` is the contract** — the outcome, the eight assertions, the
+ * anti-game, what this deliberately does not re-assert, and the verdict log.
+ * This file holds the mechanism and the reasons a reader of the CODE needs, and
+ * does not restate it.
  *
- * 1. **Calibration, model-free.** The reader derives the account for a
- *    checked-in state fixture whose correct account is known, exactly; a
- *    deliberately lossy copy of that state must produce a different account AND
- *    be caught; and every grader assertion is shown to fire. An instrument is
- *    sanity-checked against a known case before its sweep is trusted, and this
- *    costs no model call, so it runs on every invocation rather than once.
- * 2. **The run finished and the routes answered.** A failed dispatch, a
- *    workstream still active, or a 403 stops before grading. Assertions over a
- *    half-finished run are not evidence.
- *
- * ## What this deliberately does not re-assert
- *
- * That the workstream is a child session carrying the held-out topic; that
- * `include_items=true` is load-bearing on this adapter; that the originating
- * request's stream carries none of the run's items; that the dispatching
- * board's task collection stayed clean; and that the collections declare client
- * state reads. Each is the predecessor goal's, and duplicating it would inflate
- * this one's PASS into a claim about theirs.
- *
- * ## Anti-game
- *
- * The harness transcript is never opened, the working tree is never read — not
- * even the files the run wrote — and git is never consulted. Nothing grades
- * whether the run did a GOOD job: no assertion touches the run's prose, any
- * file's contents, or whether the change would compile. Nothing asserts how the
- * run was settled (a stated gap, FIX-1182). An account that comes back empty is
- * a FAIL that names which emptiness it hit.
- *
- * **Expect the plan half to report UNMEASURED.** Through the in-process SDK
- * path the agent invokes the plan tools zero times and writes its to-do list as
- * prose; measured across eight consecutive runs, and filed as FIX-1185. That is
- * reported, logged, and explicitly not counted as a pass — and it is why the
- * kill line does not ride on it.
+ * Two preconditions abort rather than grade: the model-free calibration below,
+ * which includes every guard case so a broken grader costs no coding run; and
+ * the run having actually finished with the routes answering.
  *
  * Run: pnpm tsx goals/harness-workstream/reconstructs-a-run-from-state-alone/run.mts
  */
@@ -82,19 +52,23 @@ interface Fixture {
 /** The three collections the reader must read. A2 and A7 both depend on all three. */
 const COLLECTIONS = [OBSERVED_FILE_OPS, OBSERVED_GAPS, OBSERVED_PLAN];
 
-/** The reader module whose deprivation assertion 8 grades, over its own source. */
-const READER_SOURCE = fileURLToPath(new URL("./reader.mts", import.meta.url));
-
 /**
- * The only module specifier the reader may import.
+ * The deprived surface assertion 8 grades, and what each file may import.
  *
- * The three collection accessor keys — the route addresses it reads. Sharing
- * them with the package that writes them is correct; a second copy would answer
- * 404 the day one is renamed. Everything else, and node builtins above all, is
- * a failure: an allowlist rather than a deny list, so a module nobody thought
- * to forbid is still caught.
+ * **Both files, not just the reader.** A local module the reader imports is a
+ * second way to reach the filesystem, so `paths.mts` is held to a stricter rule
+ * than the reader: it may import nothing at all.
+ *
+ * The reader's one allowance is the three collection accessor keys — the route
+ * addresses it reads. Sharing them with the package that writes them is
+ * correct; a second copy would answer 404 the day one is renamed. Everything
+ * else, node builtins above all, is a failure: an allowlist rather than a deny
+ * list, so a module nobody thought to forbid is still caught.
  */
-const READER_MAY_IMPORT = ["@flow-state-dev/claude-code/sdk"];
+const DEPRIVED_MODULES: Array<{ file: string; mayImport: string[] }> = [
+  { file: "reader.mts", mayImport: ["@flow-state-dev/claude-code/sdk", "./paths.mts"] },
+  { file: "paths.mts", mayImport: [] },
+];
 
 const BOARD_ID = "harness-coding";
 const FLOW_KIND = "harness-coding";
@@ -110,18 +84,21 @@ type WorkstreamRow = { id: string; parentSessionId?: string; topic?: string; sta
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** Strip comments so the scanner reads code, never the prose about the code. */
+function codeOf(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+}
+
 /**
  * Every module specifier a source file's own code imports, comments stripped.
  *
- * Comment-stripping is load-bearing, not tidiness: the reader's header
- * discusses what it must not import, and a scanner that read prose would be
+ * Comment-stripping is load-bearing, not tidiness: the deprived files' headers
+ * discuss what they must not import, and a scanner that read prose would be
  * permanently red for the wrong reason — which is how a guard gets deleted.
  * Covers `from "x"`, bare `import "x"`, dynamic `import("x")` and `require("x")`.
  */
 export function importsOf(source: string): string[] {
-  const code = source
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  const code = codeOf(source);
   const found = new Set<string>();
   for (const pattern of [
     /\bfrom\s*["']([^"']+)["']/g,
@@ -135,25 +112,59 @@ export function importsOf(source: string): string[] {
 }
 
 /**
- * Turn a non-2xx route answer into a message that says what actually went
- * wrong. 403 and 404 mean different things here and must not read alike: a
- * wrong collection ref is our mistake in this file, a 403 is the collection
- * declining to publish its state and is the predecessor's assertion, not ours.
+ * The ways out that are NOT an import statement, which an allowlist of module
+ * specifiers cannot see.
+ *
+ * A list of permitted module names is only half a deprivation guard.
+ * `process.cwd()` needs no import at all, and a dynamic import whose specifier
+ * is a template literal or a concatenation carries no string for the scanner to
+ * match. Either would be a reader reaching the filesystem while assertion 8
+ * reported it clean — this epic's exact failure class, in the check that exists
+ * to rule it out.
  */
-export function describeReadFailure(status: number, path: string, body: string): string {
+export function escapesOf(source: string): string[] {
+  const code = codeOf(source);
+  const found = new Set<string>();
+  for (const name of ["process", "globalThis", "require", "eval"]) {
+    if (new RegExp(`\\b${name}\\b`).test(code)) found.add(name);
+  }
+  // `import(` not followed by a quoted literal: the specifier is computed, so
+  // no allowlist can say what it resolves to.
+  if (/\bimport\s*\(\s*[^"'\s)]/.test(code)) found.add("import(<computed>)");
+  return [...found].sort();
+}
+
+/**
+ * Why a route read failed, as a **kind** rather than a sentence.
+ *
+ * 403 and 404 mean opposite things — the collection declining to publish its
+ * state, versus a reference this file got wrong — and a reader who is handed the
+ * wrong one chases the wrong thing. The kind is what the self-check asserts on:
+ * an earlier version matched the substring `"permission"` against a message that
+ * reads *"NOT a permission problem"*, so the check was true of every input. A
+ * check that passes regardless of what it examines, inside the layer whose job
+ * is catching checks that pass regardless of what they examine.
+ */
+export type ReadFailure = { kind: "permission" | "wrong-reference" | "other"; message: string };
+
+export function describeReadFailure(status: number, path: string, body: string): ReadFailure {
   if (status === 403) {
-    return (
-      `GET ${path} returned 403 — the collection does not declare client state reads, so the ` +
-      `reader cannot work at all. Aborting before grading rather than reading it as "no rows"`
-    );
+    return {
+      kind: "permission",
+      message:
+        `GET ${path} returned 403 — the collection does not declare client state reads, so the ` +
+        `reader cannot work at all. Aborting before grading rather than reading it as "no rows"`,
+    };
   }
   if (status === 404) {
-    return (
-      `GET ${path} returned 404 — no such collection or session on this flow. This is a wrong ` +
-      `reference, NOT a permission problem: ${body.slice(0, 200)}`
-    );
+    return {
+      kind: "wrong-reference",
+      message:
+        `GET ${path} returned 404 — no such collection or session on this flow. A reference this ` +
+        `check got wrong, not a visibility declaration that is missing: ${body.slice(0, 200)}`,
+    };
   }
-  return `GET ${path} returned ${status}: ${body.slice(0, 300)}`;
+  return { kind: "other", message: `GET ${path} returned ${status}: ${body.slice(0, 300)}` };
 }
 
 /** The calibration state fixture, shaped as the real routes answer. */
@@ -184,7 +195,9 @@ function calibrationRead(state: KnownState): Read {
     }
     const name = match[2];
     const pages = state.collections[name];
-    if (pages === undefined) throw new Error(describeReadFailure(404, path, `Unknown resource "${name}"`));
+    if (pages === undefined) {
+      throw new Error(describeReadFailure(404, path, `Unknown resource "${name}"`).message);
+    }
     const prefix = new URLSearchParams(query).get("topicPrefix");
     if (prefix !== `${name}/${state.runId}/`) {
       throw new Error(
@@ -224,35 +237,115 @@ interface GuardCase {
 /**
  * Every guard, broken on purpose and observed — **before any run is dispatched**.
  *
- * ## Why the broken world is handed in rather than provoked
+ * Why the broken world is handed in rather than provoked by a real run is in
+ * `goal.md`; the short version is that a mutation inside a branch no run reaches
+ * never executes, and that green is identical to a working guard's.
  *
- * Mutating the grader and re-running a real check has a blind spot congruent
- * with the defects it is meant to catch: a mutation inside a branch no run
- * reaches never executes, and *"the mutation was rejected"* and *"the mutation
- * never ran"* produce the identical green. This goal is full of such branches
- * by construction — the plan half's ROWS arm never executes on this driver, and
- * most of assertion 2's broken worlds (both surfaces empty, a gap accounting
- * for the wrong path, a record row the stream never showed) cannot be produced
- * by a correct system at all. Feeding each world in directly is the only way
- * those assertions are verifiable today rather than whenever a run finally
- * happens to produce the shape they grade.
+ * **Each world isolates ONE half.** Where an assertion has two conditions that
+ * could carry each other, both get a case in which the other is satisfied —
+ * otherwise weakening one changes nothing and the pair reports itself proven.
+ * And where an assertion compares two sides, the world must make them
+ * DISAGREE: a case built from a coherent record exercises no comparison at all.
  *
- * So the procedure each case follows is three steps, not two: name the broken
- * world · check the assertion rejects **that** world · check the world can be
- * produced at all. The third is what a self-check supplies and a real run cannot.
- *
- * ## Each world isolates ONE half
- *
- * Where an assertion has two conditions that could carry each other, both get a
- * case in which the other is satisfied — A4's missing activity AND its missing
- * report, A5's untitled rows AND its statusless ones, A2's two directions, A6's
- * empty set AND its count disagreeing with that set. Two halves that only ever
- * fail together mask each other, and weakening one changes nothing.
- *
- * Model-free, so this runs on every invocation rather than once in a verdict
- * log, and a failure here stops the goal before it spends a coding run.
+ * Each case names the exact branch it must reach, not merely the verdict. A
+ * guard satisfied by the wrong branch is indistinguishable from one that works.
  */
 const GUARD_CASES: GuardCase[] = [
+  {
+    // Whole-segment matching narrows the collision but does not remove it: a
+    // run that names a file relatively, or a sub-agent touching a path the
+    // fixture never named, can leave two rows that both end in the same
+    // segments. Picking one would assign the wrong record; this must be a
+    // can't-tell instead.
+    name: "A1 — an expected path could be either of two rows",
+    mutate: (a) => {
+      a.did.push({
+        runId: a.runIds[0],
+        topic: `${a.runIds[0]}/inv_a/work/other/alpha.txt`,
+        path: "/work/other/alpha.txt",
+        kind: "created",
+        outcome: "applied",
+        firstAt: 9,
+        namedBy: 1,
+      });
+      a.streamMutations.push({
+        path: "/work/other/alpha.txt",
+        tool: "Write",
+        at: 9,
+        status: "completed",
+        kind: "created",
+        outcome: "applied",
+      });
+    },
+    because: "a1-ambiguous",
+    id: "A1",
+    want: "fail",
+  },
+  {
+    // The sharp one: a mutation whose record is genuinely MISSING, hiding
+    // behind a different row that shares its tail. Accepting the match is A2
+    // passing on exactly the loss it exists to catch.
+    name: "A2 — a mutation could be either of two rows, so a lost record could hide",
+    mutate: (a) => {
+      a.streamMutations.push({
+        path: "alpha.txt",
+        tool: "Write",
+        at: 9,
+        status: "completed",
+        kind: "created",
+        outcome: "applied",
+      });
+      a.did.push({
+        runId: a.runIds[0],
+        topic: `${a.runIds[0]}/inv_a/work/other/alpha.txt`,
+        path: "/work/other/alpha.txt",
+        kind: "created",
+        outcome: "applied",
+        firstAt: 10,
+        namedBy: 1,
+      });
+    },
+    because: "a2-ambiguous-mutation",
+    id: "A2",
+    want: "fail",
+  },
+  {
+    name: "A2 — a row is named by two different mutations",
+    mutate: (a) => {
+      a.did[0].namedBy = 2;
+    },
+    because: "a2-ambiguous-row",
+    id: "A2",
+    want: "fail",
+  },
+  {
+    // A DISAGREEMENT, not merely a well-formed record: the row says the file
+    // was created, the stream shows an Edit. A guard built from a coherent
+    // world exercises none of this comparison. LAB-134 shipped this defect.
+    name: "A2 — the record says created and the stream shows an edit",
+    mutate: (a) => {
+      // The row whose stream mutation is an Edit now claims the file was
+      // created. One side changed, so the two genuinely disagree.
+      const row = a.did.find((d) => d.kind === "edited");
+      if (row !== undefined) row.kind = "created";
+    },
+    because: "a2-kind-disagrees",
+    id: "A2",
+    want: "fail",
+  },
+  {
+    // The other shipped defect: the settled outcome reusing the call-time value
+    // instead of the harness's confirmed result. The stream says the call
+    // failed; the record says it applied.
+    name: "A2 — the record says applied and the stream shows the call failed",
+    mutate: (a) => {
+      const row = a.did.find((d) => d.outcome === "failed");
+      if (row !== undefined) row.outcome = "applied";
+    },
+    because: "a2-outcome-disagrees",
+    id: "A2",
+    want: "fail",
+  },
   {
     name: "A1 — an expected path is absent and the run made no shell call",
     mutate: (a) => {
@@ -380,6 +473,7 @@ const GUARD_CASES: GuardCase[] = [
         kind: "created",
         outcome: "applied",
         firstAt: null,
+        namedBy: 0,
       });
     },
     because: "a2-row-without-stream",
@@ -434,19 +528,36 @@ const GUARD_CASES: GuardCase[] = [
     want: "fail",
   },
   {
-    name: "A4 — the report is mirrored before the activity it describes",
+    // The world a first-activity comparison ACCEPTS: the run acted, reported,
+    // and then acted again. The report covers none of the work that followed
+    // it, and every other assertion is content — A1 and A2 see the settled
+    // write, A3 stays ordered. Only the last-activity comparison rejects it.
+    name: "A4 — the run wrote another file after its final report",
     mutate: (a) => {
-      a.order.runs[0].firstToolOutputAt = 9;
+      a.order.runs[0].firstMutationAt = 1;
       a.order.runs[0].lastMessageAt = 2;
+      a.order.runs[0].lastMutationAt = 3;
     },
-    because: "a4-out-of-order",
+    because: "a4-activity-after-report",
     id: "A4",
     want: "fail",
   },
   {
-    name: "A4 — there is no activity to place the report against",
+    name: "A4 — every mutation follows the report",
     mutate: (a) => {
-      a.order.runs[0].firstToolOutputAt = null;
+      a.order.runs[0].firstMutationAt = 9;
+      a.order.runs[0].lastMutationAt = 9;
+      a.order.runs[0].lastMessageAt = 2;
+    },
+    because: "a4-activity-after-report",
+    id: "A4",
+    want: "fail",
+  },
+  {
+    name: "A4 — there is no mutation to place the report against",
+    mutate: (a) => {
+      a.order.runs[0].firstMutationAt = null;
+      a.order.runs[0].lastMutationAt = null;
     },
     because: "a4-unevaluable",
     id: "A4",
@@ -623,26 +734,51 @@ await runGoal(async () => {
       );
     }
   }
+  // The half an import allowlist cannot see. Each of these reaches the
+  // filesystem while naming no module, so a specifier-only scanner reports the
+  // reader clean — this epic's failure class inside its own guard.
+  const escapeCases: Array<[string, string, boolean]> = [
+    ["a bare process reference", "const here = process.cwd();", true],
+    ["a globalThis hop", "const p = globalThis.process;", true],
+    ["a computed dynamic import", "const m = await import(specifier);", true],
+    ["a template-literal import", "const m = await import(`node:${name}`);", true],
+    ["an ordinary literal import", 'const m = await import("./paths.mts");', false],
+    ["prose mentioning the process", "/* never touch the process here */", false],
+  ];
+  for (const [what, source, shouldSee] of escapeCases) {
+    if ((escapesOf(source).length > 0) !== shouldSee) {
+      failures.push(
+        `the escape scanner ${shouldSee ? "cannot see" : "falsely reports"} ${what} — ` +
+          `assertion 8 checks module specifiers, and this is not one`,
+      );
+    }
+  }
 
-  // ══ Assertion 8 — the reader's own source, read mechanically ══════════════
-  const readerImports = importsOf(readFileSync(READER_SOURCE, "utf8"));
-  const forbidden = readerImports.filter((spec) => !READER_MAY_IMPORT.includes(spec));
+  // ══ Assertion 8 — the deprived sources, read mechanically ═════════════════
+  const a8Problems: string[] = [];
+  const a8Seen: string[] = [];
+  for (const { file, mayImport } of DEPRIVED_MODULES) {
+    const source = readFileSync(fileURLToPath(new URL(`./${file}`, import.meta.url)), "utf8");
+    const imports = importsOf(source);
+    a8Seen.push(`${file} imports ${imports.map((i) => `"${i}"`).join(", ") || "nothing"}`);
+    for (const spec of imports.filter((i) => !mayImport.includes(i))) {
+      a8Problems.push(`${file} imports "${spec}"`);
+    }
+    for (const escape of escapesOf(source)) {
+      a8Problems.push(`${file} reaches \`${escape}\``);
+    }
+  }
   const a8: Finding =
-    forbidden.length > 0
+    a8Problems.length > 0
       ? {
           id: "A8",
           status: "fail",
           because: "a8-forbidden-import",
           message:
-            `the reader imports ${forbidden.map((f) => `"${f}"`).join(", ")} — its deprivation is a ` +
-            `parameter shape, and an import is a second way in`,
+            `${a8Problems.join("; ")} — the deprivation is a parameter shape, and an import or a ` +
+            `bare global is a second way in`,
         }
-      : {
-          id: "A8",
-          status: "pass",
-          because: "a8-ok",
-          message: `the reader imports only ${readerImports.map((i) => `"${i}"`).join(", ") || "nothing"}`,
-        };
+      : { id: "A8", status: "pass", because: "a8-ok", message: a8Seen.join("; ") };
 
   // ══ Precondition 1b — calibration against a state whose account is known ══
   const state = JSON.parse(readFileSync(fixturePath(import.meta.url, "known-state.json"), "utf8")) as KnownState;
@@ -718,18 +854,17 @@ await runGoal(async () => {
   }
 
   // ══ Precondition 1e — a 403 and a 404 do not read alike ═══════════════════
-  // Opposite diagnoses: a 403 is the collection declining to publish its state
-  // and the reader cannot work at all; a 404 is a wrong reference, which is our
-  // mistake in this file. Both abort, so neither is graded — but a reader who
-  // gets the wrong one chases the wrong thing.
-  if (!describeReadFailure(403, "/x", "").includes("does not declare client state reads")) {
-    failures.push("a 403 is not reported as the collection declining to publish its state");
-  }
-  if (!describeReadFailure(404, "/x", "").includes("NOT a permission problem")) {
-    failures.push(
-      "a 404 does not say it is NOT a permission problem — a wrong collection ref would be " +
-        "chased as a visibility declaration that is in fact present",
-    );
+  // Asserted on the KIND, not on words in the message. Both abort, so neither
+  // is graded — but a reader handed the wrong diagnosis chases the wrong thing.
+  for (const [status, want] of [
+    [403, "permission"],
+    [404, "wrong-reference"],
+    [500, "other"],
+  ] as const) {
+    const actual = describeReadFailure(status, "/x", "").kind;
+    if (actual !== want) {
+      failures.push(`a ${status} is classified as "${actual}", not "${want}"`);
+    }
   }
 
   if (failures.length > 0) {
@@ -879,7 +1014,7 @@ await runGoal(async () => {
     } catch (err) {
       throw new Error(`GET ${path} could not reach the host: ${(err as Error).message}`);
     }
-    if (!res.ok) throw new Error(describeReadFailure(res.status, path, await res.text()));
+    if (!res.ok) throw new Error(describeReadFailure(res.status, path, await res.text()).message);
     try {
       return await res.json();
     } catch (err) {
@@ -1009,7 +1144,8 @@ await runGoal(async () => {
         (notes.length === 0 ? "" : `; ${notes.length} reported unmeasured: ${notes.join(" | ")}`) +
         `. Derived before comparing: the reader never saw the expectation ` +
         `(${expectation.paths.map((p) => basename(p)).join(", ")}), and imports only ` +
-        `${READER_MAY_IMPORT.join(", ")}. Calibrated first against a checked-in state whose ` +
+        `what ${DEPRIVED_MODULES.length} scanned module(s) may (${a8.message}). Calibrated ` +
+        `first against a checked-in state whose ` +
         `account is known, with ${GUARD_CASES.length} guard(s) broken on purpose and observed. ` +
         `Store adapter: @flow-state-dev/store-sqlite. Settlement not asserted (FIX-1182); the ` +
         `run's prose, the files' contents and the working tree were never read.`,
