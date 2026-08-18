@@ -1,11 +1,32 @@
 /**
- * Goal check — harness-workstream › it mirrors a coding run as workstream items.
+ * Goal check — harness-workstream › it mirrors a coding run as workstream items,
+ * and records what that run DID.
  *
- * Dispatches a REAL Claude Code run into a workstream (a child session) through
- * the real task board, then reconstructs what the run did by reading ONLY FSD
- * state over the real HTTP routes: the workstream listing, and that workstream's
- * own request history with `include_items=true`. The harness transcript is never
- * opened, the working tree is never read, and git is never consulted.
+ * Dispatches REAL Claude Code runs into a workstream (a child session) through
+ * the real task board, then reconstructs what the runs did by reading ONLY FSD
+ * state over the real HTTP routes: the workstream listing, that workstream's own
+ * request history with `include_items=true`, and the two records the runs wrote
+ * as they worked (`observed-file-ops` / `observed-plan`, plus `observed-gaps`)
+ * over the list-collection-state route. The harness transcript is never opened,
+ * the working tree is never read, the files the runs wrote are never opened, and
+ * git is never consulted.
+ *
+ * ## Reading the two records, and the three ways that read goes blind
+ *
+ * - **A row's payload is on `clientData`, not `state`.** The route builds each
+ *   row as `{ topic, storageKey, clientData }`. Reading `state` returns
+ *   `undefined` after a perfectly valid 200 — the same shape as the `seq` bug
+ *   below, where a check reads a field the payload never carries and reports
+ *   "no data" instead of failing.
+ * - **`topicPrefix` is matched against the STORAGE key.** Records are namespaced
+ *   per run and the workstream is reused across runs, so an unscoped read
+ *   returns the first page of the collection's whole sorted key space — which
+ *   can be another run's rows entirely. And `nextCursor` has to be followed:
+ *   the default page is 50.
+ * - **403 is the default.** A collection is invisible to clients unless it
+ *   declares `client.state.read`, so these reads being 200 is under test rather
+ *   than assumed — `getJson` throws on a non-2xx rather than reading it as
+ *   "no rows".
  *
  * ## What is real here, and what the goal would prove nothing without
  *
@@ -53,7 +74,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
-import { claudeCodeAgent } from "@flow-state-dev/claude-code/sdk";
+import {
+  claudeCodeAgent,
+  OBSERVED_FILE_OPS,
+  OBSERVED_GAPS,
+  OBSERVED_PLAN,
+} from "@flow-state-dev/claude-code/sdk";
 import { defineTaskCollection, type TaskWorker } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/orchestration/task-board";
 import { loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
@@ -63,7 +89,19 @@ interface Fixture {
   outputFileName: string;
   marker: string;
   secondLine: string;
+  /** The file the SECOND run is asked to write, so the two runs are separable. */
+  secondRunFileName: string;
+  /** How many to-do items the job asks the run to keep. */
+  planItemCount: number;
 }
+
+/** One row as the list-collection-state route returns it. */
+type CollectionRow = {
+  topic: string;
+  storageKey: string;
+  /** The PROJECTED payload. There is no `state` key on a row — see the header. */
+  clientData?: Record<string, unknown>;
+};
 
 /** Stable board id — hashed into the workstream's session id. */
 const BOARD_ID = "harness-coding";
@@ -158,6 +196,63 @@ await runGoal(async () => {
   const { sqliteStores } = await import("@flow-state-dev/store-sqlite");
   const { serve } = await import("@flow-state-dev/node");
 
+  /**
+   * The real SQLite stores, with `resourceState.getByPrefix` counted.
+   *
+   * A prefix read is the observable signature of a collection loading its WHOLE
+   * key space. The two recorded collections are namespaced per run and the
+   * workstream is reused across runs, so an eagerly-prefetched collection would
+   * bulk-load every previous run's rows before this run touched one of its own
+   * keys — cost that grows with the workstream's lifetime, on exactly the
+   * long-run shape whose item persistence is already quadratic (FIX-1180).
+   *
+   * Counted at the STORE, not at a flag on the config: a `prefetchMode: "lazy"`
+   * assertion on the declaration only proves what we wrote down. This proves
+   * what the engine did with it.
+   */
+  const baseAdapter = sqliteStores({ filename: dbFile });
+  const prefixReads: string[] = [];
+  /** The resolved registry, kept so the board ledger can be read from it too. */
+  let registry: any;
+  let counting: any;
+  const stores = {
+    capabilities: baseAdapter.capabilities,
+    async resolve(slots: readonly any[]) {
+      if (counting === undefined) {
+        registry = await baseAdapter.resolve(slots);
+        // A Proxy rather than a spread: the store's methods may be bound, and a
+        // spread that silently dropped `this` would fail as a broken run rather
+        // than as a broken instrument.
+        const inner = registry.resourceState;
+        counting = {
+          ...registry,
+          resourceState: new Proxy(inner, {
+            get(target: any, prop: string | symbol) {
+              const value = Reflect.get(target, prop);
+              if (typeof value !== "function") return value;
+              if (prop === "getByPrefix") {
+                return (scopeType: string, scopeId: string, prefix: string) => {
+                  prefixReads.push(prefix);
+                  return value.call(target, scopeType, scopeId, prefix);
+                };
+              }
+              return value.bind(target);
+            },
+          }),
+        };
+      }
+      return counting;
+    },
+    dispose() {
+      baseAdapter.dispose?.();
+    },
+  };
+  /** Prefix reads of the recorded collections, at a moment in time. */
+  const recordedPrefixReads = (): number =>
+    prefixReads.filter((p) =>
+      [OBSERVED_FILE_OPS, OBSERVED_PLAN, OBSERVED_GAPS].some((c) => p.startsWith(`${c}/`)),
+    ).length;
+
   /** The durable ledger the conversation and its workstream share. */
   const codingTasks = defineTaskCollection({ id: BOARD_ID, scope: "user" });
 
@@ -192,16 +287,37 @@ await runGoal(async () => {
     .step(
       claudeCodeAgent({
         sessionState: false,
+        // The half LAB-134 adds: record what the run DID, not only what it said.
+        recordWork: true,
         // Bounded on purpose: a small, deterministic job, not an open-ended one.
-        allowedTools: ["Write", "Read"],
+        //
+        // The plan tools are named HERE and nowhere else in this file, and they
+        // have to be: the job asks the run to keep a to-do list, so a list that
+        // omitted them would be asking for something the run may have been
+        // forbidden — and §10's INCONCLUSIVE arm would then fire on our own
+        // configuration while reporting "the harness declined to plan". The
+        // first real run of this check did exactly that.
+        allowedTools: ["Write", "Read", "TaskCreate", "TaskUpdate"],
         // `acceptEdits`, NOT `bypassPermissions`: the latter maps to
         // `--dangerously-skip-permissions`, which the CLI refuses outright when
         // the process has root privileges — and the refusal arrives as a bare
         // `process exited with code 1`, which reads like a broken dispatch.
         permissionMode: "acceptEdits",
-        maxTurns: 8,
+        // Raised from 8 once the job started asking for a to-do list: keeping a
+        // two-item list and acting on it is seven tool calls before the run has
+        // said anything, so the old budget made planning something a run had to
+        // give up in order to finish.
+        //
+        // It did NOT change the outcome. Measured: eight consecutive runs
+        // through this path invoked no plan tools, at 8 turns and at 16, with
+        // the plan tools in `allowedTools` and without. Both of our own
+        // configuration suspects are therefore ruled out, which is what makes
+        // the INCONCLUSIVE arm below a statement about the harness rather than
+        // about this file. Left at 16 because it matches what the job asks for.
+        maxTurns: 16,
         systemPrompt:
-          "You are a coding agent doing one small file-writing job. Do it, then say what you did in one sentence.",
+          "You are a coding agent doing one small file-writing job. Keep a to-do list as you " +
+          "work. Do the job, then say what you did in one sentence.",
       }),
     ) as unknown as TaskWorker;
 
@@ -263,7 +379,7 @@ await runGoal(async () => {
     modelResolver: Object.assign(neverResolvesAModel, {
       resolveId: neverResolvesAModel,
     }) as never,
-    stores: { prod: { primary: sqliteStores({ filename: dbFile }) } },
+    stores: { prod: { primary: stores } },
     defaultProfile: "prod",
     // THE FINDING, not a workaround (§9). The default is 30 s, tuned to a
     // serverless SIGTERM grace period rather than to a coding run — an
@@ -303,13 +419,40 @@ await runGoal(async () => {
     }
   };
 
-  try {
-    // The job. Everything an assertion keys on comes from the fixture.
-    const goalText =
-      `Create the file at the absolute path ${targetPath}. It must contain exactly two lines: ` +
-      `the first line ${fixture.marker}, and the second line "${fixture.secondLine}". ` +
-      `Then reply in one sentence naming the file you wrote.`;
+  /**
+   * Read one collection's rows for ONE run, scoped and paged.
+   *
+   * Both halves are load-bearing. `topicPrefix` is matched against the STORAGE
+   * key, not the bare topic — so the value passed is the run's full namespace,
+   * `<collection>/<runId>/`. Without it the route returns the first page of the
+   * collection's whole sorted key space, which after enough reused-workstream
+   * runs can be entirely somebody else's rows. And `nextCursor` has to be
+   * followed, because the default page is 50: a run that touched more files
+   * than that would come back truncated and the assertion would grade a
+   * fragment while reporting on the whole.
+   */
+  const readRun = async (
+    sessionId: string,
+    collection: string,
+    runId: string,
+  ): Promise<CollectionRow[]> => {
+    const namespace = `${collection}/${runId}/`;
+    const rows: CollectionRow[] = [];
+    let cursor: string | undefined;
+    for (;;) {
+      const query = new URLSearchParams({ topicPrefix: namespace });
+      if (cursor !== undefined) query.set("cursor", cursor);
+      const body = (await getJson(
+        `/sessions/${sessionId}/resources/${collection}?${query.toString()}`,
+      )) as { items?: CollectionRow[]; nextCursor?: string };
+      rows.push(...(body.items ?? []));
+      if (body.nextCursor === undefined) return rows;
+      cursor = body.nextCursor;
+    }
+  };
 
+  /** Dispatch one coding job into the board and return once it is not `active`. */
+  const dispatchAndWait = async (goalText: string): Promise<WorkstreamRow[]> => {
     const dispatchRes = await fetch(`${base}/${FLOW_KIND}/actions/dispatch`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -320,27 +463,39 @@ await runGoal(async () => {
       }),
     });
     if (dispatchRes.status >= 400) {
-      return {
-        failures: [`dispatch failed with ${dispatchRes.status}: ${await dispatchRes.text()}`],
-        evidence: "",
-      };
+      throw new Error(`dispatch failed with ${dispatchRes.status}: ${await dispatchRes.text()}`);
     }
+    const deadline = Date.now() + RUN_TIMEOUT_MS;
+    let rows: WorkstreamRow[] = [];
+    while (Date.now() < deadline) {
+      const body = await getJson(`/sessions/${PARENT_SESSION_ID}/workstreams`);
+      // The envelope: rows are under `workstreams`, not at the top level.
+      rows = (body?.workstreams ?? []) as WorkstreamRow[];
+      if (rows.length > 0 && rows.every((r) => r.status !== "active")) break;
+      await sleep(POLL_INTERVAL_MS);
+    }
+    return rows;
+  };
 
+  /** The job for one run. Everything an assertion keys on comes from the fixture. */
+  const jobFor = (path: string): string =>
+    `Create the file at the absolute path ${path}. It must contain exactly two lines: ` +
+    `the first line ${fixture.marker}, and the second line "${fixture.secondLine}". ` +
+    `Keep a to-do list of exactly ${fixture.planItemCount} items while you do it, and mark ` +
+    `each one in progress and then completed. ` +
+    `Then reply in one sentence naming the file you wrote.`;
+
+  try {
     // ── Hop 1: which background jobs did this conversation start? ────────────
     // Poll until the workstream exists AND has stopped being `active`. The
     // originating request cannot observe its own hand-off settling — the board
     // view it hydrated never sees the workstream's write — so polling from the
     // outside is the only shape that works.
-    const deadline = Date.now() + RUN_TIMEOUT_MS;
-    let workstream: WorkstreamRow | undefined;
-    while (Date.now() < deadline) {
-      const body = await getJson(`/sessions/${PARENT_SESSION_ID}/workstreams`);
-      // The envelope: rows are under `workstreams`, not at the top level.
-      const rows = (body?.workstreams ?? []) as WorkstreamRow[];
-      workstream = rows[0];
-      if (workstream !== undefined && workstream.status !== "active") break;
-      await sleep(POLL_INTERVAL_MS);
-    }
+    const afterFirst = await dispatchAndWait(jobFor(targetPath));
+    const workstream: WorkstreamRow | undefined = afterFirst[0];
+    // Snapshot BEFORE any readback: the read route reads by prefix too, so
+    // counting after it would blame the route for the run's loading.
+    const prefixReadsDuringFirstRun = recordedPrefixReads();
 
     if (workstream === undefined) {
       return {
@@ -522,6 +677,299 @@ await runGoal(async () => {
       );
     }
 
+    // ═══ LAB-134 — what the run DID, read from state alone ═══════════════════
+    //
+    // Everything above reconstructs what the run SAID. Everything below reads
+    // the two records the run wrote as it worked, over the same resource route
+    // any client would use. The transcript is still never opened, the working
+    // tree is still never read, and the file the run wrote is still never
+    // opened — a record that quotes the file it is describing proves nothing.
+
+    /** The run ids of the runs in this workstream, in the order they appear. */
+    const runIdsOf = (reqs: StoredRequest[]): string[] =>
+      reqs.map((r) => r.id).filter((id): id is string => typeof id === "string");
+
+    const firstRunIds = runIdsOf(requests);
+    if (firstRunIds.length !== requests.length) {
+      failures.push(
+        `the workstream's request history does not carry an id on every request ` +
+          `(${firstRunIds.length} of ${requests.length}) — the per-run namespace cannot be ` +
+          `addressed, so nothing below could be read for the right run`,
+      );
+    }
+
+    // ── A SECOND run into the same workstream ────────────────────────────────
+    // The board reuses a workstream for the same board / worker / topic, so
+    // without a per-run namespace the second run's file entries would merge
+    // into the first's by path. This is the only assertion that can catch that,
+    // and it costs a second real coding run.
+    const secondTarget = join(workDir, fixture.secondRunFileName);
+    const afterSecond = await dispatchAndWait(jobFor(secondTarget));
+    const prefixReadsAfterSecondRun = recordedPrefixReads();
+
+    const reusedWorkstream = afterSecond.length === 1 && afterSecond[0]?.id === workstream.id;
+    const secondBody = (await getJson(
+      `/sessions/${workstream.id}/requests?include_items=true`,
+    )) as { requests?: StoredRequest[] };
+    const allRequests = secondBody?.requests ?? [];
+    const allRunIds = runIdsOf(allRequests);
+
+    // ── Nothing bulk-loaded the collections during either run ────────────────
+    // Counted at the store, before any readback. `0` is the whole claim: a lazy
+    // collection serves an upsert with a single-key read, and only `list()` or
+    // `count()` — which the recorder never calls — would sweep the prefix.
+    if (prefixReadsAfterSecondRun > 0) {
+      failures.push(
+        `the recorded collections were bulk-loaded by prefix ${prefixReadsAfterSecondRun} ` +
+          `time(s) during the runs (${prefixReadsDuringFirstRun} during the first) — they are ` +
+          `namespaced per run in a workstream that is reused, so a full-prefix load costs every ` +
+          `previous run's rows on every later run`,
+      );
+    }
+
+    // ── The two records, per run, scoped and paged ───────────────────────────
+    const fileRowsByRun = new Map<string, CollectionRow[]>();
+    const planRowsByRun = new Map<string, CollectionRow[]>();
+    const gapRowsByRun = new Map<string, CollectionRow[]>();
+    for (const runId of allRunIds) {
+      // A 403 here throws out of `getJson` rather than reading as "no rows":
+      // the client-visibility declaration is under test, not assumed.
+      fileRowsByRun.set(runId, await readRun(workstream.id, OBSERVED_FILE_OPS, runId));
+      planRowsByRun.set(runId, await readRun(workstream.id, OBSERVED_PLAN, runId));
+      gapRowsByRun.set(runId, await readRun(workstream.id, OBSERVED_GAPS, runId));
+    }
+    const allFileRows = [...fileRowsByRun.values()].flat();
+    const allPlanRows = [...planRowsByRun.values()].flat();
+    const allGapRows = [...gapRowsByRun.values()].flat();
+
+    /** A row's payload is on `clientData` — there is no `state` key on a row. */
+    const clientData = (row: CollectionRow): Record<string, unknown> => row.clientData ?? {};
+
+    // ── The file half, graded hard ───────────────────────────────────────────
+    // An empty file list is a FAIL, never an inconclusive: every run writes
+    // files, so nothing legitimate produces one — and because the recorder
+    // never throws, a recorder that silently skipped everything looks exactly
+    // like a run that did nothing. The gap rows are what tell those apart, so
+    // they are reported either way.
+    if (allFileRows.length === 0) {
+      failures.push(
+        `the observed-file-ops record is empty across ${allRunIds.length} run(s) — the runs ` +
+          `wrote files and nothing recorded them` +
+          (allGapRows.length > 0
+            ? `; ${allGapRows.length} gap row(s) say why: ` +
+              allGapRows.map((r) => String(clientData(r).reason)).join(" | ")
+            : `, and NO gap rows were written either, so the recorder was never fed at all`),
+      );
+    }
+    for (const [name, runId] of [
+      [fixture.outputFileName, allRunIds[0]],
+      [fixture.secondRunFileName, allRunIds[1]],
+    ] as const) {
+      if (runId === undefined) continue;
+      const owning = allRunIds.filter((id) =>
+        (fileRowsByRun.get(id) ?? []).some((r) => r.topic.endsWith(`/${name}`)),
+      );
+      if (owning.length === 0) {
+        failures.push(
+          `no run's file record names the held-out file "${name}" — reading state alone does ` +
+            `not say which files the run touched`,
+        );
+      } else if (owning.length > 1) {
+        failures.push(
+          `the held-out file "${name}" appears under ${owning.length} run namespaces ` +
+            `(${owning.join(", ")}) — the records are not keyed per run`,
+        );
+      }
+      for (const row of allFileRows.filter((r) => r.topic.endsWith(`/${name}`))) {
+        const data = clientData(row);
+        // The job creates a file, so `created` is the kind it implies. `edited`
+        // is exercised at unit level: forcing a real run to reach for Edit
+        // rather than a second Write is not something a job can guarantee.
+        if (data.lastKind !== "created") {
+          failures.push(
+            `the record for "${name}" says it was ${JSON.stringify(data.lastKind)}, but the ` +
+              `job only asked for it to be created`,
+          );
+        }
+        if (data.outcome !== "applied") {
+          failures.push(
+            `the record for "${name}" settled as ${JSON.stringify(data.outcome)} rather than ` +
+              `"applied" — the run reported success and the record disagrees`,
+          );
+        }
+      }
+    }
+
+    // ── Two runs in one workstream stay separate ─────────────────────────────
+    if (!reusedWorkstream) {
+      // NOT a skip. If the board did not reuse the workstream, the rows landed
+      // in different sessions and the per-run namespace was never the thing
+      // keeping them apart — so this check measured nothing, and saying so is
+      // the only honest verdict available.
+      failures.push(
+        `the second dispatch did not reuse the workstream (${afterSecond.length} workstream(s) ` +
+          `for this conversation), so the per-run namespacing assertion was NOT exercised — ` +
+          `this check has no evidence either way, which is not a pass`,
+      );
+    } else if (allRunIds.length < 2) {
+      failures.push(
+        `the reused workstream carries ${allRunIds.length} request(s) after two dispatches, so ` +
+          `the two runs could not be compared`,
+      );
+    } else {
+      const overlap = (fileRowsByRun.get(allRunIds[0]) ?? [])
+        .map((r) => r.topic)
+        .filter((t) => (fileRowsByRun.get(allRunIds[1]) ?? []).some((r) => r.topic === t));
+      if (overlap.length > 0) {
+        failures.push(
+          `two runs in one workstream share ${overlap.length} file record key(s) — the records ` +
+            `are not namespaced per run`,
+        );
+      }
+    }
+
+    // ── The plan half: PASS / FAIL / INCONCLUSIVE, and it must say which ─────
+    // The two empties need opposite verdicts and are distinguishable from state
+    // alone: the run's own item stream carries a tool_output for every tool it
+    // called, including the plan tools. Reading our own item stream is not the
+    // anti-game — the prohibition is on the harness transcript.
+    const PLAN_TOOL_NAMES = new Set(["TaskCreate", "TaskUpdate"]);
+    const toolItems = allRequests
+      .flatMap((r) => r.items ?? [])
+      .filter((i) => i.type === "tool_output");
+    const planToolCalls = toolItems.filter((i) => PLAN_TOOL_NAMES.has(i.toolCall?.name ?? ""));
+    /**
+     * Every tool name the runs actually used.
+     *
+     * Reported with an INCONCLUSIVE verdict, because the arm's own failure mode
+     * is a detector that cannot see the thing it is deciding about: if the
+     * harness renamed its plan tools, "no plan tools fired" and "we no longer
+     * recognise the plan tools" look identical from here, and only this list
+     * separates them.
+     */
+    const toolNamesSeen = [
+      ...new Set(toolItems.map((i) => i.toolCall?.name ?? "(unnamed)")),
+    ].sort();
+
+    let planArm: "PASS" | "FAIL" | "INCONCLUSIVE";
+    let planWhy: string;
+    if (planToolCalls.length === 0) {
+      planArm = "INCONCLUSIVE";
+      planWhy =
+        "the runs invoked no plan tools at all, so nothing was measured about the plan half " +
+        "(this is the harness declining to plan, not a recorder failure). The tools they DID " +
+        `use: ${toolNamesSeen.join(", ") || "(none)"} — if a plan tool is in that list, this ` +
+        "arm is wrong and the detector's name table is stale";
+      failures.push(`INCONCLUSIVE — ${planWhy}`);
+    } else if (allPlanRows.length === 0) {
+      planArm = "FAIL";
+      planWhy = `the plan tools fired ${planToolCalls.length} time(s) and NOTHING was recorded`;
+      failures.push(
+        `${planWhy} — our bug` +
+          (allGapRows.length > 0
+            ? `; ${allGapRows.length} gap row(s) say why: ` +
+              allGapRows.map((r) => String(clientData(r).reason)).join(" | ")
+            : `, and no gap rows explain it`),
+      );
+    } else {
+      planArm = "PASS";
+      planWhy = `${allPlanRows.length} plan row(s) from ${planToolCalls.length} plan tool call(s)`;
+      // Graded at WORDING and STATUS, not on a sequence of transitions, so the
+      // check goes red for our bugs rather than every time the vendor adjusts
+      // a field.
+      const untitled = allPlanRows.filter((r) => {
+        const t = clientData(r).title;
+        return typeof t !== "string" || t.length === 0;
+      });
+      if (untitled.length > 0) {
+        failures.push(
+          `${untitled.length} of ${allPlanRows.length} plan rows carry no wording — the record ` +
+            `says an item existed without saying what the run thought it was`,
+        );
+      }
+      if (!allPlanRows.some((r) => typeof clientData(r).status === "string")) {
+        failures.push(
+          `no plan row carries a status — the record cannot answer whether any item moved`,
+        );
+      }
+      const moved = allPlanRows.filter((r) => {
+        const d = clientData(r);
+        return typeof d.status === "string" && d.previousStatus !== d.status;
+      });
+      if (moved.length === 0) {
+        failures.push(
+          `no plan row shows a move (a status differing from its previous one) — the run marked ` +
+            `items in progress and completed, so a record with no movement lost the transitions`,
+        );
+      }
+      // Per-run, the job asks for a fixed number of items.
+      for (const runId of allRunIds) {
+        const rows = planRowsByRun.get(runId) ?? [];
+        const calledPlanTools = (
+          allRequests.find((r) => r.id === runId)?.items ?? []
+        ).some((i) => i.type === "tool_output" && PLAN_TOOL_NAMES.has(i.toolCall?.name ?? ""));
+        if (calledPlanTools && rows.length !== fixture.planItemCount) {
+          failures.push(
+            `run ${runId} kept ${rows.length} plan item(s); the job asked for ` +
+              `${fixture.planItemCount}`,
+          );
+        }
+      }
+    }
+
+    // ── Decision 1: the run's to-dos did NOT become queued work ──────────────
+    // Read through the store adapter rather than the route: the board's task
+    // collection deliberately declares no client visibility, so there is no
+    // route to read it over and asking for one would be widening a surface to
+    // suit a test.
+    const boardRows = (await registry.resourceState.getByPrefix(
+      "user",
+      USER_ID,
+      `${BOARD_ID}/`,
+    )) as Record<string, unknown>;
+    const boardKeys = Object.keys(boardRows ?? {});
+    if (boardKeys.length === 0) {
+      // The instrument, sanity-checked against a case we know: two dispatches
+      // filed two rows, so an empty read means this read is wrong, not that the
+      // board is empty. Grading it as "no queued work" would be a green result
+      // from a check that cannot see what it claims to measure.
+      failures.push(
+        `the board ledger read returned no rows at all, but two jobs were filed — this read ` +
+          `cannot see the ledger, so it proves nothing about whether the runs' to-dos became ` +
+          `queued work`,
+      );
+    } else if (boardKeys.length !== 2) {
+      failures.push(
+        `the board holds ${boardKeys.length} task rows after two dispatches — the runs' own ` +
+          `to-do items became queued work, which is exactly what keeping the plan off the ` +
+          `board exists to prevent`,
+      );
+    }
+
+    // Printed on EVERY run, pass or fail. The verdict protocol prints evidence
+    // only on a pass, and the arm each run took is the thing the goal's verdict
+    // log has to carry — a drift toward never measuring the plan half has to be
+    // visible rather than comfortable.
+    const planLine = `PLAN ARM: ${planArm} — ${planWhy}`;
+    console.log(
+      `RECORDS: ${allFileRows.length} file row(s), ${allPlanRows.length} plan row(s), ` +
+        `${allGapRows.length} gap row(s) across ${allRunIds.length} run namespace(s) in ` +
+        `workstream ${workstream.id}${reusedWorkstream ? " (reused by both runs)" : ""}; ` +
+        `${planToolCalls.length} plan tool call(s) in the item stream; ` +
+        `${prefixReadsAfterSecondRun} full-prefix load(s) of the recorded collections during ` +
+        `the runs; board ledger holds ${boardKeys.length} task row(s)`,
+    );
+    for (const row of allFileRows) {
+      console.log(`  file  ${row.topic} -> ${JSON.stringify(clientData(row))}`);
+    }
+    for (const row of allPlanRows) {
+      console.log(`  plan  ${row.topic} -> ${JSON.stringify(clientData(row))}`);
+    }
+    for (const row of allGapRows) {
+      console.log(`  gap   ${row.topic} -> ${JSON.stringify(clientData(row))}`);
+    }
+    console.log(planLine);
+
     return {
       failures,
       evidence:
@@ -531,7 +979,15 @@ await runGoal(async () => {
         `${bareItems.length} without, of which ${messages.length} top-level messages and ` +
         `${tools.length} top-level tool_outputs, non-decreasing on ${orderSpan}, naming the ` +
         `held-out file "${fixture.outputFileName}"; the originating request's own stream ` +
-        `carried none of the run's mirrored items. Store adapter: @flow-state-dev/store-sqlite. ` +
+        `carried none of the run's mirrored items. ` +
+        `Then, over the resource route: ${allFileRows.length} file row(s) and ` +
+        `${allPlanRows.length} plan row(s) across ${allRunIds.length} run namespace(s), read ` +
+        `with topicPrefix + cursor paging, 200 not 403, each row's payload on clientData; ` +
+        `${allGapRows.length} gap row(s); ${prefixReadsAfterSecondRun} full-prefix load(s) of ` +
+        `the recorded collections during the runs (counted at the store, before any readback — ` +
+        `the read route itself reads by prefix); the board ledger holds ${boardKeys.length} task ` +
+        `row(s) — the runs' to-dos did not become queued work. ${planLine}. ` +
+        `Store adapter: @flow-state-dev/store-sqlite. ` +
         `Settlement not asserted — board defaults, no retry allowance, lost runs written off ` +
         `(FIX-1182).`,
     };

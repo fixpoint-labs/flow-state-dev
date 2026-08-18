@@ -24,6 +24,13 @@ import {
   finalizeOpenItems,
 } from "./emit";
 import { createTranslateState, translateSdkMessage } from "./translate";
+import { createWorkRecorder, type UpsertableCollection, type WorkRecorder } from "./work-recorder";
+import {
+  OBSERVED_FILE_OPS,
+  OBSERVED_GAPS,
+  OBSERVED_PLAN,
+  workRecorderResources,
+} from "./work-collections";
 import { defaultResolveClaudeAgent } from "./sdk-client";
 import { createClaudeAgentSessionProvider, type ClaudeAgentSession } from "./session";
 import { ClaudeAgentRunError } from "./errors";
@@ -117,6 +124,41 @@ export interface ClaudeCodeAgentOptions {
    * the workstream's own item history continues as normal.
    */
   sessionState?: boolean;
+  /**
+   * Record what the run DID, alongside the items that record what it said.
+   * Default `false`, which is byte-identical to the behaviour every existing
+   * caller has: nothing recorded, no resources declared.
+   *
+   * **This is the canonical explanation; everywhere else links here.**
+   *
+   * Set `true` and the block declares two session-scoped resource collections
+   * and writes into them as the run goes:
+   *
+   * - `observed-file-ops` — one entry per path the run's file-writing and
+   *   file-editing tools touched: how, when, and how the attempt settled. Not
+   *   the contents.
+   * - `observed-plan` — one entry per item on the run's own to-do list,
+   *   carrying its wording and its current and previous status. Deliberately
+   *   NOT the work queue that dispatched the run, so a run that decides to do
+   *   five more things cannot start five more jobs by writing a to-do list.
+   * - `observed-gaps` — one entry per mutation the recorder recognised and
+   *   could not record, so a missing row is never confused with a mutation that
+   *   never happened.
+   *
+   * Both are readable over the resource route that already ships, keyed under
+   * the run's own request id so a workstream reused across runs answers "what
+   * did this run do" rather than "what has this workstream ever done".
+   *
+   * **What the file record is, precisely.** It is a log of the file operations
+   * the run's file TOOLS performed, not an index of everything that changed on
+   * disk. A run that edits a file through the shell — a `sed -i`, a redirect, a
+   * `mv`, a formatter — performs no file-tool call, so nothing is recorded and
+   * the file does not appear.
+   *
+   * Recording never fails the run: anything the recorder cannot handle is
+   * skipped and noted as a status item.
+   */
+  recordWork?: boolean;
   /** Block name. Default `"claude-code-agent"`. */
   name?: string;
 }
@@ -148,6 +190,48 @@ export function forwardSignalToController(signal: AbortSignal | undefined): Abor
 }
 
 /**
+ * Open a {@link WorkRecorder} against the two collections the block declared,
+ * or return `null` with a status note when they are not on the context.
+ *
+ * The absent case is real rather than defensive: the declaration and the run
+ * are wired at different layers, and a flow that reaches this block without the
+ * refs registered would otherwise throw here — killing a coding run over
+ * bookkeeping, which is the one thing this feature must never do. A note makes
+ * the gap visible; the run continues unrecorded.
+ *
+ * Every entry is keyed under the run's request id. That is the run's own
+ * identity, and it is what keeps a reused workstream's runs apart.
+ */
+function openWorkRecorder(ctx: BlockContext): WorkRecorder | null {
+  const resources = (ctx as { resources?: Record<string, unknown> }).resources;
+  const upsertable = (accessor: string): UpsertableCollection | undefined => {
+    const ref = resources?.[accessor] as UpsertableCollection | undefined;
+    return typeof ref?.upsert === "function" ? ref : undefined;
+  };
+  const files = upsertable(OBSERVED_FILE_OPS);
+  const plan = upsertable(OBSERVED_PLAN);
+  const gaps = upsertable(OBSERVED_GAPS);
+  if (files === undefined || plan === undefined) {
+    ctx.emit.status(
+      `Claude Code agent is not recording this run's work: the "${OBSERVED_FILE_OPS}" and ` +
+        `"${OBSERVED_PLAN}" collections are not registered on this flow.`,
+      { transient: false },
+    );
+    return null;
+  }
+  return createWorkRecorder({
+    runId: ctx.request.identity.id,
+    files,
+    plan,
+    ...(gaps !== undefined ? { gaps } : {}),
+    // Non-transient so the note survives into the request record. It is still
+    // only a note: `emit.status` dedupes on the message and renders into a
+    // latest-wins slot, so the durable record of a skip is the gap ROW.
+    onSkipped: (message) => ctx.emit.status(message, { transient: false }),
+  });
+}
+
+/**
  * Create the in-process Agent SDK handler block.
  *
  * On success it appends an {@link SdkAgentHandle} to
@@ -175,6 +259,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     includePartialMessages = true,
     onToolApproval,
     sessionState = true,
+    recordWork = false,
     name = "claude-code-agent",
   } = options;
 
@@ -188,6 +273,11 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     // inspects this static definition (`assertDetachedBoardSupported`) and
     // rejects the board before any `execute` callback receives a context.
     ...(sessionState ? { sessionStateSchema: claudeAgentSessionStateSchema } : {}),
+    // Also static, and for a related reason: `defineFlow` collects declared
+    // resources off block definitions at build time. A collection nobody
+    // declared is not registered on the flow, so `findResourceConfig` misses and
+    // the read route answers 404 — at read time, on a build that succeeded.
+    ...(recordWork ? { resources: workRecorderResources } : {}),
     execute: async (input, ctx): Promise<SdkAgentHandle> => {
       const promptText = (pickPrompt ? pickPrompt(input, ctx) : input.prompt)?.trim();
       if (!promptText) {
@@ -234,6 +324,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
 
       const translateState = createTranslateState({ partialMessages: includePartialMessages });
       const emitState = createEmitState();
+      const recorder = recordWork ? openWorkRecorder(ctx) : null;
 
       let resultSubtype: SdkResultSubtype | null = null;
       let finalMessage: string | null = null;
@@ -251,6 +342,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
 
           const events = translateSdkMessage(message, translateState);
           for (const event of events) {
+            recorder?.observe(event);
             await emitTranslatedEvent(event, ctx, emitState, name);
             if (event.kind === "result") {
               resultSubtype = event.subtype;
@@ -269,6 +361,10 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         }
       } catch (err) {
         await finalizeOpenItems(ctx, emitState, name);
+        // A run that failed mid-stream is one of the two cases the record exists
+        // for — it may have written files before it died — so the last window's
+        // buffer is written out here as well as on the success path.
+        await recorder?.stop();
         // Persist the session id even on failure so the next request can resume
         // the conversation the SDK actually created.
         if (sessionState && newSessionId !== null) {
@@ -288,6 +384,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       }
 
       await finalizeOpenItems(ctx, emitState, name);
+      await recorder?.stop();
 
       // Prefer the coalesced/whole assistant text the emitter tracked; fall
       // back to the SDK result's text.

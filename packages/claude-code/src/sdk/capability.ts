@@ -15,6 +15,7 @@ import {
   claudeAgentSessionStateSchema,
   type ClaudeCodeAgentOptions,
 } from "./agent";
+import { workRecorderResources } from "./work-collections";
 
 /**
  * Create the Claude Code Agent SDK capability. Forwards all agent options
@@ -23,7 +24,7 @@ import {
  * declares the session-state schema the block depends on.
  */
 export function createClaudeCodeAgentCapability(options: ClaudeCodeAgentOptions = {}) {
-  const { sessionState = true } = options;
+  const { sessionState = true, recordWork = false } = options;
   const agent = claudeCodeAgent(options);
 
   return defineCapability({
@@ -40,6 +41,26 @@ export function createClaudeCodeAgentCapability(options: ClaudeCodeAgentOptions 
     // cannot check, and the board accepts a detached worker carrying exactly
     // the collision that refusal exists to prevent.
     ...(sessionState ? { sessionStateSchema: claudeAgentSessionStateSchema } : {}),
+    // Declared HERE, not inherited from the agent block below — and forwarding
+    // the option alone is NOT enough, which is the failure this comment exists
+    // to prevent recurring. The block sits in the capability's `tools` preset,
+    // and three things line up against a tool's resources reaching the flow:
+    // `mergeSurfaceInto` merges a capability surface's `resources` and never
+    // reads `surface.tools` for them; `collectBlockResources` gathers
+    // `declaredResources` from ACTION blocks, and a tool block is not one; and
+    // `defineFlow`'s own comment settles it — "a generator is a leaf that
+    // bubbles none of its tools' rails by design."
+    //
+    // So a capability whose only contribution is a resource-declaring block in
+    // `tools` contributes NO resource declarations. The flow never registers the
+    // refs, `findResourceConfig` misses, and the route answers 404 — at read
+    // time, on a build that succeeded and tests that passed.
+    //
+    // This is the mirror of the asymmetry noted above for `sessionStateSchema`:
+    // there a capability contributes through a channel the task board's walk
+    // cannot see, here its tools contribute through a channel the flow's
+    // collector cannot see. Both directions of that seam now carry a note.
+    ...(recordWork ? { resources: workRecorderResources } : {}),
     presets: {
       tools: {
         tools: [agent],

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { testBlock } from "@flow-state-dev/testing";
+import { testBlock, createTestContext } from "@flow-state-dev/testing";
 import {
   claudeCodeAgent,
   forwardSignalToController,
@@ -585,5 +585,200 @@ describe("claudeCodeAgent — sessionState: false", () => {
     });
     await testBlock(enabled, { input: { prompt: "go" } });
     expect(spy.mock.calls[1][0].options?.resume).toBe("sess_saved");
+  });
+});
+
+/**
+ * `recordWork` — the option that turns "what the run did" into ordinary state.
+ *
+ * The end-to-end readback runs the block against a real test context rather than
+ * through `testBlock`, because the artifact under test is the CONTENT of two
+ * resource collections and `testBlock` returns items and scope state, not
+ * resource rows.
+ */
+describe("claudeCodeAgent — recordWork", () => {
+  /** A real run's shapes, trimmed to what the recorder consumes. */
+  const RECORDING_SCRIPT: SdkMessageLike[] = [
+    { type: "system", subtype: "init", session_id: "sess_new" },
+    {
+      type: "assistant",
+      message: {
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu_c",
+            name: "TaskCreate",
+            input: { subject: "Create the file", description: "…", activeForm: "Creating" },
+          },
+        ],
+      },
+    },
+    {
+      type: "user",
+      tool_use_result: { task: { id: "5", subject: "Create the file" } },
+      message: {
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "toolu_c",
+            content: "Task #5 created successfully: Create the file",
+          },
+        ],
+      },
+    },
+    {
+      type: "assistant",
+      message: {
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu_u",
+            name: "TaskUpdate",
+            input: { taskId: "5", status: "in_progress" },
+          },
+        ],
+      },
+    },
+    {
+      type: "user",
+      tool_use_result: { success: true, taskId: "5" },
+      message: {
+        content: [{ type: "tool_result", tool_use_id: "toolu_u", content: "Updated task #5 status" }],
+      },
+    },
+    {
+      type: "assistant",
+      message: {
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu_w",
+            name: "Write",
+            input: { file_path: "/work/notes.txt", content: "HELLO" },
+          },
+        ],
+      },
+    },
+    {
+      type: "user",
+      tool_use_result: { type: "create", filePath: "/work/notes.txt" },
+      message: {
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "toolu_w",
+            content: "File created successfully at: /work/notes.txt",
+          },
+        ],
+      },
+    },
+    RESULT_OK,
+  ];
+
+  it("is off by default and declares nothing", () => {
+    const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery([RESULT_OK]) });
+    expect(block.declaredResources).toBeUndefined();
+  });
+
+  it("declares all three collections when on", () => {
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK]),
+      recordWork: true,
+    });
+    expect(Object.keys(block.declaredResources ?? {}).sort()).toEqual([
+      "observed-file-ops",
+      "observed-gaps",
+      "observed-plan",
+    ]);
+  });
+
+  it("declares EVERY collection readable by clients, or the read route answers 403", () => {
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK]),
+      recordWork: true,
+    });
+    for (const config of Object.values(block.declaredResources ?? {})) {
+      expect((config as { client?: { state?: { read?: boolean } } }).client?.state?.read).toBe(true);
+    }
+  });
+
+  it("declares every collection lazily prefetched", () => {
+    // Rows are namespaced per run and a workstream is reused across runs, so an
+    // eager collection would bulk-load every historical run's rows before this
+    // run touched one of its own keys.
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK]),
+      recordWork: true,
+    });
+    for (const config of Object.values(block.declaredResources ?? {})) {
+      expect((config as { prefetchMode?: string }).prefetchMode).toBe("lazy");
+    }
+  });
+
+  it("records the run's file operations and plan into the two collections", async () => {
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery(RECORDING_SCRIPT),
+      recordWork: true,
+      includePartialMessages: false,
+    });
+    const runtime = await createTestContext({ declaredResources: block.declaredResources });
+    await block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+
+    const runId = runtime.ctx.request.identity.id;
+    const resources = runtime.ctx.resources as unknown as Record<
+      string,
+      { list(): Promise<Array<{ path: string; state: Record<string, unknown> }>> }
+    >;
+
+    const fileRows = await resources["observed-file-ops"].list();
+    expect(fileRows.map((r) => r.path)).toEqual([
+      `observed-file-ops/${runId}/work/notes.txt`,
+    ]);
+    expect(fileRows[0].state).toMatchObject({ lastKind: "created", outcome: "applied" });
+
+    const planRows = await resources["observed-plan"].list();
+    expect(planRows.map((r) => r.path)).toEqual([`observed-plan/${runId}/5`]);
+    expect(planRows[0].state).toMatchObject({
+      title: "Create the file",
+      status: "in_progress",
+      lastOutcome: "applied",
+    });
+  });
+
+  it("writes nothing when the option is off, on the same script", async () => {
+    // The contrast that makes the assertion above able to fail. Declaring the
+    // resources here would be the only way to read them back, and the point is
+    // that the OFF block declares none — so the absence is asserted on the
+    // declaration, and the run is asserted to complete unchanged.
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery(RECORDING_SCRIPT),
+      includePartialMessages: false,
+    });
+    const { output, error } = await testBlock(block, { input: { prompt: "go" } });
+    expect(error).toBeNull();
+    expect((output as SdkAgentHandle).status).toBe("completed");
+    expect(block.declaredResources).toBeUndefined();
+  });
+
+  it("keeps running, with a visible note, when the collections are not registered", async () => {
+    // Watching the work must never break the work: a flow that reaches this
+    // block without the refs registered gets an unrecorded run and a status
+    // item, not a killed coding run.
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery(RECORDING_SCRIPT),
+      recordWork: true,
+      includePartialMessages: false,
+    });
+    // Deliberately NOT passing `declaredResources`, so `ctx.resources` is empty.
+    const runtime = await createTestContext({});
+    const handle = await block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+
+    expect((handle as SdkAgentHandle).status).toBe("completed");
+    const notes = runtime
+      .getItems()
+      .filter((i) => i.type === "status")
+      .map((i) => (i as { message?: string }).message ?? "")
+      .join(" ");
+    expect(notes).toContain("not recording this run's work");
   });
 });

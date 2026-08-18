@@ -146,6 +146,95 @@ createClaudeCodeAgentCapability({ sessionState: false });
 See [Background work](../server/background-work.md) for how a workstream is set
 up and read back.
 
+## Recording what the run did
+
+The item stream tells you what the agent said. `recordWork: true` also records
+what it did, as ordinary state you can query afterwards.
+
+```ts
+const agent = claudeCodeAgent({
+  sessionState: false,
+  recordWork: true,
+});
+```
+
+It is off by default. Turned on, the agent declares three **resource
+collections** — a resource collection is a keyed set of small state records the
+framework stores and serves for you — and writes into them as the run goes:
+
+| Collection | One entry per |
+|---|---|
+| `observed-file-ops` | path the run's file-writing and file-editing tools touched: how it was touched, when, and whether the attempt applied |
+| `observed-plan` | item on the run's own to-do list: its wording, its current status, and the status before that |
+| `observed-gaps` | thing the recorder understood and could not record, with the reason |
+
+Entries are keyed under the run's own request id. A workstream can host several
+runs over its life, so this is what keeps one run's answer from becoming the
+whole workstream's history.
+
+### Reading it back
+
+Both records come back over the resource route, one page at a time. Scope the
+read to the run you care about with `topicPrefix`, and follow `nextCursor` while
+one is returned:
+
+```
+GET /sessions/<workstreamId>/resources/observed-file-ops?topicPrefix=observed-file-ops/<runId>/
+
+{ "items": [
+  { "topic": "<runId>/work/repo/src/checkout.ts",
+    "storageKey": "observed-file-ops/<runId>/work/repo/src/checkout.ts",
+    "clientData": { "lastKind": "edited", "outcome": "applied",
+                    "lastTouchedAt": 1787021400123 } }
+] }
+```
+
+Each row's payload is on `clientData`. `outcome` has three values, not two:
+`pending` while a mutation has been seen and not yet settled, then `applied` or
+`failed`. A run that is killed mid-flight leaves its unsettled entries as
+`pending`, which is the honest answer about a write nobody confirmed.
+
+The plan record reads the same way, from `observed-plan`. A to-do item's status
+is the harness's own word for it, and stays empty until the harness reports one.
+
+### What the file record is, and what it isn't
+
+It is a log of the file operations you saw the agent's file tools perform. It is
+not an index of everything that changed on disk. A run that edits a file through
+the shell — a `sed -i`, a redirect, a `mv`, a formatter — makes no file-tool
+call, so nothing is recorded and that file does not appear. If you need an
+authoritative list of what changed, compare the working tree yourself.
+
+Paths are recorded, contents are not. The record points at your source; it does
+not hold a second copy of it.
+
+### Gaps
+
+Recording never interferes with the run. Anything the recorder cannot handle is
+skipped, the run carries on, and the skip lands in `observed-gaps` with the
+reason and the raw path where there was one.
+
+That collection is the difference between "this file was never touched" and "we
+saw it and could not record it". Read it alongside the other two whenever a
+record looks thinner than you expected.
+
+### The plan is not a work queue
+
+A run's to-do list goes into its own record, deliberately separate from the task
+board that dispatched the run. An agent that decides mid-run to do five more
+things writes five to-do items and starts nothing. Picking one up is a separate,
+deliberate act.
+
+Attaching the agent as a capability takes the same option, and needs it — the
+capability declares the collections itself:
+
+```ts
+createClaudeCodeAgentCapability({ sessionState: false, recordWork: true });
+```
+
+See [Resource collections](../resources/collections.md) for how collections are
+stored, paged, and made visible to clients.
+
 ## Tool approval
 
 By default the agent governs its own tools through the SDK's `permissionMode`. To

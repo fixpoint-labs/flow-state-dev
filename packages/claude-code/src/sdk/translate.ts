@@ -14,9 +14,87 @@
  *   present when `includePartialMessages` is on).
  */
 import type { SdkMessageLike, SdkResultSubtype, TranslatedEvent } from "./types";
+import type { ObservedFileOpKind } from "./work-collections";
 
 /** The SDK tool names that denote a sub-agent spawn (alias pair). */
 const SUBAGENT_TOOL_NAMES = new Set(["Agent", "Task"]);
+
+/**
+ * THE VENDOR MAPPING. Every tool name this package understands lives in this
+ * block and nowhere else — a second site that also knows what `Edit` means is
+ * how the next harness rename breaks half the recording while the tests for the
+ * other half stay green.
+ *
+ * The table starts at `Write` and `Edit` because those are the two a real run
+ * has been observed using. A tool we do not list records nothing, which is the
+ * designed outcome (§9) rather than a gap — add a name once a run is seen using
+ * it, not because a type declaration mentions it.
+ */
+const FILE_MUTATION_TOOLS = new Map<string, ObservedFileOpKind>([
+  ["Write", "created"],
+  ["Edit", "edited"],
+]);
+
+/**
+ * The to-do surface, which is `TaskCreate`/`TaskUpdate` and NOT the `TodoWrite`
+ * the vendor's own `sdk-tools.d.ts` still declares — the shipped binary does not
+ * offer that tool at all. The two are not spellings of one thing: `TodoWrite`
+ * took a whole-list snapshot with no ids, this one is per-item CRUD with ids, so
+ * code written for either is silently inert against the other.
+ */
+const PLAN_CREATE_TOOL = "TaskCreate";
+const PLAN_UPDATE_TOOL = "TaskUpdate";
+
+/** Read a string field off an untyped tool input/output. `null` when absent. */
+function readString(source: unknown, field: string): string | null {
+  if (typeof source !== "object" || source === null) return null;
+  const value = (source as Record<string, unknown>)[field];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+/**
+ * Read the created item's id off the structured create Output
+ * (`{ task: { id } }`). Accepts a number as well as a string — the id is an
+ * opaque handle we key on, so its wire type is the vendor's business.
+ */
+function readCreatedItemId(structured: unknown): string | null {
+  if (typeof structured !== "object" || structured === null) return null;
+  const task = (structured as { task?: unknown }).task;
+  if (typeof task !== "object" || task === null) return null;
+  const id = (task as { id?: unknown }).id;
+  if (typeof id === "string" && id.length > 0) return id;
+  if (typeof id === "number" && Number.isFinite(id)) return String(id);
+  return null;
+}
+
+/**
+ * Flatten a tool result's `content` to a searchable string. It arrives as a
+ * bare string on the shape measured, but the block type is `unknown` and an
+ * array of text blocks is the other shape this content field takes, so both are
+ * tolerated and anything else reads as empty.
+ */
+function resultProse(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => (typeof part === "object" && part !== null ? readString(part, "text") : null))
+      .filter((text): text is string => text !== null)
+      .join(" ");
+  }
+  return "";
+}
+
+/**
+ * Recover a created item's id from the result prose ("Task #5 created
+ * successfully: …") when the structured Output is absent. The structured field
+ * IS present at the version measured, so this is the fallback rather than the
+ * path — but a run that yields no id at all must degrade to recording nothing
+ * (§9), and that only stays true if the cheaper source is tried first.
+ */
+function recoverItemIdFromProse(content: unknown): string | null {
+  const match = /task\s*#\s*([A-Za-z0-9_.-]+)/i.exec(resultProse(content));
+  return match?.[1] ?? null;
+}
 
 /**
  * Mutable bookkeeping carried across a single run's messages. Created once per
@@ -34,6 +112,17 @@ export interface TranslateState {
    * `assistant` message must NOT re-emit them — it only closes the open items.
    */
   readonly partialMessages: boolean;
+  /** File mutations whose call was seen, awaiting the result that settles them. */
+  readonly openFileOps: Map<string, { path: string; op: ObservedFileOpKind }>;
+  /**
+   * Plan creates whose call was seen. Nothing is emitted at call time because
+   * the item has no id yet — the id only exists once the harness answers, and
+   * inferring it from call order is exactly the mistake the ids being
+   * non-positional makes possible.
+   */
+  readonly openPlanCreates: Map<string, { title: string | null }>;
+  /** Plan updates whose call was seen, awaiting confirmation or rejection. */
+  readonly openPlanUpdates: Map<string, { itemId: string; status: string | null }>;
 }
 
 /** Options controlling how messages are interpreted across a run. */
@@ -48,6 +137,9 @@ export function createTranslateState(options: TranslateStateOptions = {}): Trans
     openTools: new Set<string>(),
     openSubagents: new Set<string>(),
     partialMessages: options.partialMessages ?? true,
+    openFileOps: new Map<string, { path: string; op: ObservedFileOpKind }>(),
+    openPlanCreates: new Map<string, { title: string | null }>(),
+    openPlanUpdates: new Map<string, { itemId: string; status: string | null }>(),
   };
 }
 
@@ -152,10 +244,137 @@ function translateAssistant(
           arguments: stringifyArgs(block.input),
           ...withParent,
         });
+        observeToolCall(block, state, events);
       }
     }
   }
   return events;
+}
+
+/**
+ * A tool call the work recorder cares about: remember what settles it, and emit
+ * the attempt. Recording at CALL time rather than at result time is what keeps a
+ * killed run's record — a run that wrote files and was then cancelled is exactly
+ * the one whose record matters most, and a result that never arrives would
+ * otherwise erase it.
+ *
+ * A call whose input carries nothing to key on is skipped silently: the run is
+ * unaffected, and the empty result is what the goal check grades.
+ */
+function observeToolCall(
+  block: { id: string; name: string; input?: unknown },
+  state: TranslateState,
+  events: TranslatedEvent[],
+): void {
+  const fileOp = FILE_MUTATION_TOOLS.get(block.name);
+  if (fileOp !== undefined) {
+    const path = readString(block.input, "file_path");
+    if (path === null) {
+      events.push({
+        kind: "work_gap_observed",
+        reason: "a file mutation arrived with no path to record it under",
+      });
+      return;
+    }
+    state.openFileOps.set(block.id, { path, op: fileOp });
+    events.push({ kind: "file_op_observed", path, op: fileOp, outcome: "pending" });
+    return;
+  }
+  if (block.name === PLAN_CREATE_TOOL) {
+    state.openPlanCreates.set(block.id, { title: readString(block.input, "subject") });
+    return;
+  }
+  if (block.name === PLAN_UPDATE_TOOL) {
+    const itemId = readString(block.input, "taskId");
+    if (itemId === null) {
+      events.push({
+        kind: "work_gap_observed",
+        reason: "a plan update arrived naming no item",
+      });
+      return;
+    }
+    state.openPlanUpdates.set(block.id, {
+      itemId,
+      status: readString(block.input, "status"),
+    });
+    // Attempted, not applied: the harness may still refuse the transition, and
+    // writing the requested status now would be recording a move that never
+    // happened.
+    events.push({ kind: "plan_item_observed", itemId, outcome: "pending" });
+  }
+}
+
+/**
+ * Settle a recorder-relevant tool call from its result.
+ *
+ * `structured` is the message-level `tool_use_result` when it can be attributed
+ * to THIS call — see {@link translateUser}. Everything here degrades rather than
+ * throws: an unrecognised call id, an absent structured field, a create with no
+ * recoverable id, all record nothing.
+ */
+function observeToolResult(
+  callId: string,
+  content: unknown,
+  isError: boolean,
+  structured: unknown,
+  state: TranslateState,
+  events: TranslatedEvent[],
+): void {
+  const fileOp = state.openFileOps.get(callId);
+  if (fileOp !== undefined) {
+    state.openFileOps.delete(callId);
+    // Prefer the path the harness resolved (the structured Output's own
+    // `filePath`) over the one the model asked for; fall back to the input.
+    const path = readString(structured, "filePath") ?? fileOp.path;
+    events.push({
+      kind: "file_op_observed",
+      path,
+      op: fileOp.op,
+      outcome: isError ? "failed" : "applied",
+    });
+    return;
+  }
+
+  const create = state.openPlanCreates.get(callId);
+  if (create !== undefined) {
+    state.openPlanCreates.delete(callId);
+    if (isError) return; // a create that failed created nothing to record
+    const itemId = readCreatedItemId(structured) ?? recoverItemIdFromProse(content);
+    if (itemId === null) {
+      // The harness DID create the item and we cannot address it. That is a
+      // gap, not an absence: later updates naming it will also record nothing.
+      events.push({
+        kind: "work_gap_observed",
+        reason: "a plan item was created and its id could not be read from the result",
+      });
+      return;
+    }
+    events.push({
+      kind: "plan_item_observed",
+      itemId,
+      ...(create.title !== null ? { title: create.title } : {}),
+      outcome: "applied",
+    });
+    return;
+  }
+
+  const update = state.openPlanUpdates.get(callId);
+  if (update !== undefined) {
+    state.openPlanUpdates.delete(callId);
+    if (isError) {
+      // A REJECTED transition. The status is deliberately omitted: writing the
+      // status the run asked for would claim a move the harness refused, which
+      // is the worst available outcome — worse than recording nothing.
+      events.push({ kind: "plan_item_observed", itemId: update.itemId, outcome: "failed" });
+      return;
+    }
+    events.push({
+      kind: "plan_item_observed",
+      itemId: update.itemId,
+      ...(update.status !== null ? { status: update.status } : {}),
+      outcome: "applied",
+    });
+  }
 }
 
 /**
@@ -169,7 +388,14 @@ function translateUser(
   const events: TranslatedEvent[] = [];
   const parentCallId = msg.parent_tool_use_id ?? undefined;
   const withParent = parentCallId ? { parentCallId } : {};
-  for (const block of msg.message?.content ?? []) {
+  const blocks = msg.message?.content ?? [];
+  // `tool_use_result` sits on the MESSAGE, while results sit on its blocks, so
+  // it can only be attributed when the message carries exactly one result. With
+  // two, there is no way to tell which one it describes, and guessing would put
+  // one tool's structured output onto another's record.
+  const structured =
+    blocks.filter((b) => b.type === "tool_result").length === 1 ? msg.tool_use_result : undefined;
+  for (const block of blocks) {
     if (block.type !== "tool_result") continue;
     const callId = block.tool_use_id;
     const isError = block.is_error === true;
@@ -179,6 +405,7 @@ function translateUser(
     } else {
       state.openTools.delete(callId);
       events.push({ kind: "tool_result", callId, output: block.content, isError, ...withParent });
+      observeToolResult(callId, block.content, isError, structured, state, events);
     }
   }
   return events;

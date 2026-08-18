@@ -10,6 +10,7 @@
 import { z } from "zod";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { remoteAgentTaskHandleSchema, type RemoteAgentTaskHandle } from "../shared/handle";
+import type { ObservedFileOpKind, ObservedOutcome } from "./work-collections";
 
 /** Terminal result subtype reported by the SDK's `result` message. */
 export type SdkResultSubtype =
@@ -94,6 +95,17 @@ export type SdkMessageLike =
       type: "user";
       session_id?: string;
       parent_tool_use_id?: string | null;
+      /**
+       * The tool's full structured Output object — a MESSAGE-level sibling of
+       * the content blocks below, not a field on one. The two carry different
+       * things and must not be conflated: `content[].tool_result.content` is the
+       * prose string shown to the model ("File created successfully at: …"),
+       * while this carries the declared Output (`filePath`, `structuredPatch`,
+       * `task.id`, …). Optional and untyped on purpose — it is absent on older
+       * messages and its shape is the vendor's, so every read of it is a
+       * tolerated probe rather than a contract (BP-030).
+       */
+      tool_use_result?: unknown;
       message?: {
         content?: Array<{
           type: "tool_result";
@@ -174,6 +186,41 @@ export type TranslatedEvent =
   | { kind: "subagent_open"; callId: string; name: string }
   /** A sub-agent finished. `callId` matches its `subagent_open`. */
   | { kind: "subagent_close"; callId: string; output: unknown; isError: boolean }
+  /**
+   * The run's file tools touched a path. Framework vocabulary: by the time this
+   * exists the tool names are gone, which is what keeps the vendor mapping to
+   * one site. Emitted twice per mutation — once when the call is seen
+   * (`outcome: "pending"`) and once when its result settles it.
+   */
+  | {
+      kind: "file_op_observed";
+      /** The path as the run addressed it; the recorder canonicalizes it. */
+      path: string;
+      op: ObservedFileOpKind;
+      outcome: ObservedOutcome;
+    }
+  /**
+   * The run's own to-do list moved. `itemId` is the harness's id for the item,
+   * recovered from its create result — never inferred from call order, because
+   * the ids are not positional. `title` rides the create; `status` rides an
+   * update the harness confirmed, and is deliberately absent on a rejected one.
+   */
+  | {
+      kind: "plan_item_observed";
+      itemId: string;
+      title?: string;
+      status?: string;
+      outcome: ObservedOutcome;
+    }
+  /**
+   * A mutation this package RECOGNISED and could not record. Emitted by
+   * translation when a known tool's call carries nothing to key on, and by the
+   * recorder when a key or a write fails.
+   *
+   * A tool we never claimed to record does NOT produce one of these: absence
+   * there is the designed answer, and calling it a gap would bury the real ones.
+   */
+  | { kind: "work_gap_observed"; reason: string; rawPath?: string }
   /** A transient system/lifecycle notice (init, compaction). */
   | { kind: "status"; message: string }
   /** A terminal error outcome from the SDK result. */

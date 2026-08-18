@@ -118,6 +118,36 @@ the result.
 and passing it is required rather than tidy: a capability declares the schema
 through a channel the board's refusal cannot see.
 
+### Recording what a run did (`/sdk`)
+
+`recordWork: true` records the run's file operations and its own to-do list as
+state you can read afterwards. Off by default; on, the agent declares three
+resource collections and writes into them as it goes:
+
+| Accessor | One entry per |
+|----------|---------------|
+| `observed-file-ops` | path the run's file-writing/editing tools touched — `lastKind`, `outcome` (`pending`/`applied`/`failed`), `lastTouchedAt`. Paths, never contents |
+| `observed-plan` | to-do item the run kept — `title`, `status`, `previousStatus`, `lastOutcome` |
+| `observed-gaps` | mutation the recorder understood and could not record, with the reason and the raw path |
+
+```ts
+claudeCodeAgent({ sessionState: false, recordWork: true });
+```
+
+Entries are keyed under the run's request id, so a workstream reused across runs
+answers per run. All three declare client state reads, so
+`GET /sessions/:id/resources/observed-file-ops?topicPrefix=observed-file-ops/<runId>/`
+returns them; each row's payload is on `clientData`. Follow `nextCursor` — the
+route pages.
+
+The file record covers tool-driven operations only. A run that edits through the
+shell makes no file-tool call, so nothing is recorded for it. Recording never
+fails the run: what it cannot handle becomes a gap row.
+
+`createClaudeCodeAgentCapability({ recordWork: true })` takes the same option and
+needs it — the capability declares the collections itself, because a block in a
+capability's `tools` contributes no resource declarations to the flow.
+
 ## Limitations
 
 - No headless polling/streaming of cloud-task progress (CLI limitation).

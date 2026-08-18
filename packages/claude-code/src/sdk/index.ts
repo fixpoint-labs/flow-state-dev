@@ -1,7 +1,8 @@
 /**
  * Public surface of `@flow-state-dev/claude-code/sdk`: the in-process Agent SDK
  * handler block, its opt-in capability, the resolver seam, the session-continuity
- * provider, the pure translation layer, handle/event types, and typed errors.
+ * provider, the pure translation layer, the work recorder and the two
+ * collections it writes, handle/event types, and typed errors.
  */
 export {
   claudeCodeAgent,
@@ -45,6 +46,26 @@ export {
   type ToolApprovalRequest,
   type ToolApprovalDecision,
 } from "./types";
+export {
+  OBSERVED_FILE_OPS,
+  OBSERVED_PLAN,
+  OBSERVED_GAPS,
+  observedFileOpsCollection,
+  observedPlanCollection,
+  observedGapsCollection,
+  observedFileOpStateSchema,
+  observedPlanItemStateSchema,
+  workRecorderResources,
+  type ObservedFileOpKind,
+  type ObservedOutcome,
+} from "./work-collections";
+export {
+  createWorkRecorder,
+  canonicalFilePathKey,
+  type WorkRecorder,
+  type WorkRecorderOptions,
+  type UpsertableCollection,
+} from "./work-recorder";
 export { ClaudeAgentSdkNotInstalledError, ClaudeAgentRunError } from "./errors";
 
 // Re-export the shared envelope so `/sdk` consumers don't need a second import.
