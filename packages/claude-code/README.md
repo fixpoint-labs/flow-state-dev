@@ -107,11 +107,16 @@ claudeCodeAgent({ sessionState: false });
 
 Nothing is declared, read, or written, and the SDK is handed no `resume`, so each
 run starts fresh. Use it when the agent runs as background work on a task board:
-those workers share one flow, so the board refuses one that declares session
-state at all. The run's own history is the workstream's item stream instead.
+those workers share one flow, so the board refuses one whose block declares
+session state. The run's own history is the workstream's item stream instead.
 
-`createClaudeCodeAgentCapability({ sessionState: false })` does the same, and has
-to — the capability declares that schema separately from the block.
+The returned handle still carries the SDK `sessionId`, and as a worker's output
+it is persisted with the task — the option governs session state and resume, not
+the result.
+
+`createClaudeCodeAgentCapability({ sessionState: false })` takes the same option,
+and passing it is required rather than tidy: a capability declares the schema
+through a channel the board's refusal cannot see.
 
 ## Limitations
 
