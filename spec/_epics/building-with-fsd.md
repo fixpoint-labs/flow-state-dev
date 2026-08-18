@@ -63,8 +63,8 @@ they are stated once there rather than twice here.
   command starts FSD, a call to it **carrying the generated credential** streams a real model
   response, and the project's own server keeps running. **A call without it is refused** — that
   negative half is what makes this a check of theme 8's control rather than of the happy path. **This must not be dropped as redundant with the run above.** It is a different
-  host and a different shape (theme 8), and **with the Node template cut it is the epic's only Node
-  coverage of any kind** — without it, Node detection and the second-process instruction can be
+  host and a different shape (theme 8), and **if Q6 lands on one template it is the epic's only Node
+  coverage of any kind** (and it is load-bearing either way) — without it, Node detection and the second-process instruction can be
   entirely broken while every other proof here passes.
 - *FIX-548* — in an empty directory, `npm create flow-state my-app` plus the dev command it prints
   yields a streamed model response from the chat page the template ships, with the provider key
@@ -209,6 +209,8 @@ call.
    work; **FIX-1162's worker is filing the `npm owner add` / transfer, so this theme states the gate
    and does not duplicate the mechanism.**
 
+   **Two naming facts this gate rests on, kept here because nothing else carries them.** **`create-fsd-app` is not ours and never will be** — `create-fsd-app@1.1.2` is a React/Vite starter published 2024-10-18 by an unrelated maintainer (`keyready`), verified against `registry.npmjs.org`; any sentence implying we hold it is false. And **the `@flow-state-dev/` scope is not verified as ours**: nothing under it has ever been published, an npm scope belongs to whoever registers the matching organization first, and the obvious check cannot settle it — `/-/org/<name>/package` returns 200 with an empty body for scopes that exist and scopes that do not alike. **The cheap proof is publishing one scoped package at `0.0.0`**; until then two sibling specs lean on it as a fallback that may not be there.
+
 2. **One template: the Next.js chat app. The framework-neutral Node API template is cut.**
    **This reverses the earlier "two templates, and only two", and the reversal is *recommended,
    not yet decided* — it is the owner's call and they have not given it.** An earlier revision of
@@ -321,8 +323,8 @@ call.
 
      **"Same environment variable" is not sufficient, and the audit of it found a worse failure
      than a rename.** The generated config **reads the credential once into a single binding, and
-     both the resolver and the `devtool` block reference that binding** — never two independent
-     `process.env` reads — **and refuses to start when it is missing or empty.** Four ways the two
+     both the resolver — declared **per-flow**, per theme 8's statement of what the bind guard reads —
+     and the `devtool` block reference that binding** — never two independent `process.env` reads — **and refuses to start when it is missing or empty.** Four ways the two
      sides diverge otherwise, all silent: a rename in one place; a `??` fallback on one side; a
      **partial declaration**, since `DevToolConnectionConfig` makes both fields optional and
      `fsdev dev` gates on `userId` **or** `bearerToken` being non-empty, so a config with an
@@ -339,11 +341,11 @@ call.
    - **The second-process branch's own call does cross it.** `fsdev serve` starts a real HTTP
      server, so the example call the block prints — and §1's proof of that path — carries the
      credential.
-   - **And securing the flow *unlocks* a bind the rail used to refuse.** `fsdev serve` calls
-     `assertNetworkBindIsAuthenticated`, which refuses a network host while the resolver is the
-     default. Configuring one satisfies it, so a developer who drops `--host 127.0.0.1` now gets a
-     network bind that was previously blocked. The printed command keeps the flag; the point is
-     that the rail stopped being the backstop the moment we stopped relying on it.
+   - **And what securing the flow does to the bind rail depends on *where* the resolver is
+     declared** — see theme 8's statement of the guard's predicate, which is the single place it is
+     written down. Declared per-flow, the guard sees it and a bind it used to refuse is now
+     permitted; declared only host-level, the guard does not see it and refuses exactly as before.
+     The printed command keeps `--host 127.0.0.1` either way.
 
    **So the printed block is under a standing goal check, not a rule that fires when someone
    notices.** Every command the block prints is run against the emitted project, on **both**
@@ -357,12 +359,33 @@ call.
    becomes the one people rely on.
 
    **The finding that earns it, stated as the reason rather than as a fixed bug: securing the flow
-   silently removed a rail.** `fsdev serve` calls `assertNetworkBindIsAuthenticated`, which refuses
-   a network bind *while the resolver is the default*. Configuring a resolver satisfies it, so
-   adding a control **took one away** — a bind that had been refused is now permitted. Nobody asked
-   about that, no review reported it, and no check in the epic would have caught it; it surfaced
-   only because the commands were walked one by one. A control that removes another control is not
-   a rare shape, and running what we print is the cheapest thing that sees it.
+   silently removed a rail.** Configuring a resolver **where the guard can see it** satisfies
+   `assertNetworkBindIsAuthenticated`, so adding a control **took one away** — a bind that had been
+   refused is now permitted. Nobody asked about that, no review reported it, and no check in the
+   epic would have caught it; it surfaced only because the commands were walked one by one. A
+   control that removes another control is not a rare shape, and running what we print is the
+   cheapest thing that sees it.
+
+   **The bind guard's predicate, stated once here because two findings now turn on it and a
+   paraphrase got one of them wrong.** `assertNetworkBindIsAuthenticated`
+   (`packages/node/src/bind-guard.ts`) returns early for a loopback host or an explicit override;
+   otherwise it resolves the runtime and inspects **each served flow's own
+   `flow.authentication?.resolvePrincipal`**, counting a flow as unauthenticated when that is
+   `undefined` **or** is the default body-`userId` resolver, and refusing the bind by naming those
+   flow kinds. **It is per-flow. A host-level resolver passed to `createFlowState` is not what it
+   reads.**
+
+   **Consequence, and the reason this is a correction rather than a note:** an earlier revision had
+   the generated credential configured host-level in `fsdev.config.ts` while also claiming the
+   guard would then permit a non-loopback bind. Both cannot hold. **So the generated resolver is
+   declared per-flow, on the demo flow itself** — which is independently the right place, since
+   `docs/architecture/authentication.md` keys its own guard on *the governing flow's* resolver too,
+   and it makes the two guards agree instead of disagreeing silently. **The direction of that error
+   is worth recording: it failed *safe*.** The guard would have refused where we said it would
+   permit, so a developer met an unexpected refusal rather than an unexpected exposure — the
+   opposite of every other defect this document has had, and the reason it survived unnoticed.
+   *Whether the per-flow requirement is itself the right design is not this document's question;
+   nothing here proposes relaxing that guard.*
 
    **The companion rule, which cost us three more findings before it was written down: every
    control is proved by its own absence, not by its presence.** A check that only exercises the
@@ -532,7 +555,7 @@ call.
    the skill is instructed to do), which is why it is a theme rather than either issue's local
    call — and **theme 9 is where that shared shape is written down and who writes it**; this
    theme states the requirement, theme 9 assigns the artifact. **The Node half of that parity
-   requirement is gone with the Node template (theme 2)**: the second-process shape now appears in
+   requirement goes with the Node template if Q6 cuts it (theme 2)**: the second-process shape now appears in
    exactly one place, the brownfield Node path, so there is no second description to keep in step
    — and §1's second-process proof is its only check, which is why that proof got harder to cut,
    not easier. **The move to a skill does not soften this into a per-run judgement call:** the
@@ -557,8 +580,8 @@ call.
 
    **The generalization, which is the part worth carrying forward:** the loopback rail is a
    property of **one host adapter**, not of FSD, so *any* path that reaches a flow through a
-   different adapter loses it silently. We cut the Node template partly over this exposure and it
-   survived in the path we kept, wearing a different adapter — which is the second time a safety
+   different adapter loses it silently. The exposure was part of the case for cutting the Node template (Q6, still open) and it
+   is present regardless in the path we keep, wearing a different adapter — which is the second time a safety
    property has been reasoned about per-template rather than per-adapter. **The rule is therefore
    stated once, here: a path that generates an unauthenticated flow must also generate the thing
    that keeps it off the network, and "the CLI does it" is only true of the CLI.**
@@ -853,77 +876,17 @@ surfaced was a property of the *situation* rather than of the command that used 
 | FIX-548 | `create-flow-state` — the deterministic greenfield path; template count pending **§5 Q6**, written against one (Next.js chat app), owned end to end | spec | [#1312](https://github.com/fixpoint-labs/flow-state-dev/pull/1312) | — | Spec complete, approved at `404e82c` — **approval needs re-taking**: theme 9 now requires a pnpm-isolated install of the emitted template in its goal check (posted to #1312; its spec is not edited by the epic) |
 | FIX-1160 | The authoring pack **and the plugin that distributes the install skill** — agent-instructions file, authoring skills, install skill | spec | [#1311](https://github.com/fixpoint-labs/flow-state-dev/pull/1311) | — | Spec complete, approved at `dd9b656` — **approval needs re-taking**: theme 9 (d) hands it the agent-instructions block's normalization and equality check (posted to #1311). Scope had already grown: it is the brownfield path's only delivery channel |
 
-**The greenfield/brownfield split landed on top of two specs that were already written, and both
-have since been re-drafted against it.** FIX-1159's spec described a deterministic `fsdev init`
-that owned brownfield; its approval was retracted with the direction change and it is back in
-spec review **scoped to brownfield only** — detection scripts, the install skill's content, and
-the shared next-steps block, and **no command of its own**. The set's one greenfield command is
-FIX-548's, per theme 1. FIX-548's spec was a thin wrapper over `fsdev init`; it now specs
-`create-flow-state` writing the template as checked-in files.
-That re-spec was this fold's largest downstream cost and it has been paid, not deferred. What
-survived from FIX-1159's spec unchanged throughout is everything it *verified* about our own
-packages (`serve()` binds all interfaces and reads no `.env`; the bare `/api/flows` is a real
-endpoint needing its own file); those are facts about the code, not consequences of the command.
+**Sequencing.** Three kinds, listed apart because a dependency column cannot tell them apart and
+they mean different things:
 
-**Dependencies — and these are two different kinds of thing, so they are listed separately.** A
-reader scanning one list cannot tell a **merge-order edge** from a **release gate**, and conflating
-them is how an issue gets blocked from merging on an operation that only its release needs. That
-has now happened twice: once here, and once at issue altitude where FIX-1186 was wired to block
-FIX-548's *implementation* rather than its release.
-
-**Merge-order edges — these gate merge, and nothing else.**
-
-- **FIX-1159 → FIX-1160.** FIX-1160 packages content FIX-1159 authors.
-- **FIX-1159 → FIX-548**, for the shared next-steps block (theme 5) **and the wiring contract the
-  template conforms to (theme 9)** — firmer than the block alone, since it constrains the
-  template's own files rather than only what it prints.
-- **FIX-1160 → FIX-548** (theme 9): FIX-1160 authors the agent-instructions content the template
-  ships, and without that edge a template landing first ships a draft that drifts.
-
-That makes FIX-548 the last of the four, on a `FIX-1159 → FIX-1160 → FIX-548` critical path. **None
-of these is an accepted deferral** — each is a real constraint on merge, and each pair can be
-specced in parallel.
-
-**Release gates — these gate *shipping*, and block no issue's spec, build, or merge.**
-
-- **The publishing identity can write every package the quickstarts install** (theme 1). **FIX-1162
-  is not a merge-order edge on FIX-548 and must not be treated as one**: the names are held,
-  nothing waits on a decision, and neither FIX-1162's spec approval nor its completion gates
-  FIX-548's build or merge. What it gates is the release, and it is an owner credential operation.
-
-**And one accepted deferral, which is neither:** the cut Node template. Nothing blocks it and
-nothing starts when something else lands — v1 simply does not ship it. It appears here only
-because a dependency column cannot distinguish "blocked by X" from "deliberately not built", and
-they mean opposite things.
-
-**Folded this pass — the naming record, kept because two wrong names were in this document and
-one of them is somebody else's package.** The scaffolder is **`create-flow-state`**, invoked as
-`npm create flow-state my-app`. It replaces `create-fsdev-app` (a compromise adopted while the
-short name was believed unobtainable) and, before that, `create-fsd-app`.
-**`create-fsd-app` is not ours and never will be:** `create-fsd-app@1.1.2` is a React/Vite
-starter published 2024-10-18 by an unrelated maintainer (`keyready`), verified against
-`registry.npmjs.org`. Any sentence implying we hold or will hold it is false. **`create-flow-state`
-and `fsdev` are now both registered at `0.0.0` to `jnhoffner`** — a personal account, which is the
-fact theme 1's release gate turns on, and it is not the same fact as CI being able to publish them.
-Publishing unscoped is load-bearing rather than cosmetic: `npm create <name>` resolves only to the
-unscoped `create-<name>`.
-
-**Raised up but not folded here** — each belongs to a separate pass, and none is a gap in this
-one:
-
-- **Whether the `@flow-state-dev/` npm scope is ours at all** is still open and is the larger half
-  of FIX-1162's finding: nothing under it has ever been published, and an npm scope belongs to
-  whoever registers the matching organization first. Two sibling specs lean on it as a safe
-  fallback. **It is explicitly *not* recorded as confirmed, because the obvious check cannot
-  establish it:** `/-/org/<name>/package` returns 200 with an empty body for scopes that exist and
-  scopes that do not alike, so a 200 there is not evidence. **The cheap proof is publishing any one
-  scoped package at `0.0.0`** — that is the check to run, and until it runs the scope is an
-  assumption. This matters more than it did, because theme 1's release gate now depends on the
-  publishing identity's write access across the whole `@flow-state-dev/*` set.
-- **FIX-1160's POC established that Claude Code has no bare-URL plugin install** — the path is
-  `plugin marketplace add <source>` then `plugin install`, so a marketplace manifest is a
-  required distribution artifact rather than a public listing. Consistent with §5 Q2 as written;
-  it sharpens Q4 rather than reopening Q2.
+- **Merge-order edges** (gate merge, nothing else): `FIX-1159 → FIX-1160 → FIX-548`. FIX-1160
+  packages content FIX-1159 authors; FIX-548 conforms to FIX-1159's wiring contract and ships
+  FIX-1160's agent-instructions block. Each pair can still be specced in parallel.
+- **Release gates** (gate shipping only — no issue's spec, build, or merge): the publishing identity
+  can write every package the quickstarts install (theme 1). **FIX-1162 is not a merge edge on
+  FIX-548 and must not be treated as one.**
+- **Undecided, not deferred**: the second template — **§5 Q6 is open.** Not an accepted deferral,
+  and FIX-548 must not be advanced on a one-template scope until it is answered.
 
 ## 5. Open cross-cutting questions
 
@@ -1016,6 +979,11 @@ stands exactly as given; only the account of why is marked as ours.
 narrowed.** Because the channel is singular, **§1's proof runs through it**. Carried by theme 3.
 **Closed — not reopenable by an issue**, but see **Q4**: the split has changed what this decision
 costs, which only the owner can weigh.
+
+*Mechanism note, from FIX-1160's POC: Claude Code has **no bare-URL plugin install** — the path is
+`plugin marketplace add <source>` then `plugin install`, so a marketplace manifest is a **required
+distribution artifact** rather than a public listing. Consistent with this resolution as written; it
+sharpens Q4 rather than reopening this.*
 
 ### ~~Q3 — FSD ships a runtime concept called `skills`, and FIX-1160 ships Claude `skills`. Rename ours, rename theirs, or ship the collision?~~ — decided: no rename, qualify instead
 
@@ -1111,8 +1079,9 @@ generates.** That is exactly the condition the framework guard keys on, so it is
 a notice, and it does not depend on a peer address we cannot obtain. **The mechanism, stated as a
 mechanism and never as a value:** the run generates a random secret at install time, writes it to
 the `.env.local` it already touches (never to a tracked file — theme 6 refuses that outright), and
-the generated config reads it **by environment-variable name** in both the principal resolver and
-the `devtool` block. No literal secret appears in this document, in the template, in a printed
+the generated config reads it **by environment-variable name** in both the principal resolver —
+declared **per-flow** on the demo flow, which is what the bind guard actually inspects (theme 8) —
+and the `devtool` block. No literal secret appears in this document, in the template, in a printed
 command, or in any committed file. **The mechanism is FIX-1159's** within that constraint;
 greenfield does **not** also take a credential — its demo is a browser page, so a token it could
 present is one an attacker can read from the same page; loopback is its whole control, and theme 8
@@ -1187,229 +1156,32 @@ set. If it is "two", decision 2b (no `--template` flag) reopens with it.
 
 ## Epic evolution
 
-One line per turn: what triggered it, what changed, why. The reasoning that still binds lives in
-the themes and decisions above — it is not repeated here.
+One line per turn: trigger, change, reason. **Reasoning that still binds lives in the themes and
+decisions above and is not repeated here** — a rule this section broke badly enough to be rebuilt,
+after review found it had grown into multi-paragraph defect narratives that could disagree with the
+themes they summarized. *Cause, recorded because it was not carelessness: the coordinator
+repeatedly asked for diagnoses to be recorded "in the evolution log", and an instruction to record
+something is not an instruction about where it belongs.* The transferable lessons extracted from
+those narratives now live in
+[`docs/internal/lessons-2026-08-18-epic-fix-1161.md`](../../docs/internal/lessons-2026-08-18-epic-fix-1161.md).
 
-- **Epic drafted** — three issues under one outcome; scaffolder scoped to a thin wrapper over
-  `fsdev init`, two templates accepted.
-- **After the inline end-state sketch** — added theme 5's one-next-steps-block clause and theme 6
-  (a run is additive over what it touches), because drawing the diffs showed what prose had not.
-- **Q1 answered — `AGENTS.md`** — theme 6 took on the append-never-overwrite guarantee for it,
-  since the spec recommended appending to a file theme 6 did not list.
-- **After epic review** — added theme 8 (mounted route where derivable, second process otherwise),
-  because §3 had surfaced the asymmetry in a section that binds nothing; corrected theme 5's
-  premise (devtool is an *optional peer* of the CLI).
-- **Q2 answered — install-by-URL only** — theme 3 took the plugin's distribution channel, so a
-  child issue reads it in a theme rather than only in §5.
-- **Q3 answered — no rename, qualify instead** — themes 3 and 4 write *Claude skills* for the
-  packaged kind; FSD's runtime `skills` keeps the bare word.
-- **Epic review, round 2** — theme 6's boundary named the lockfile; FIX-1162 added to the index.
-- **Epic review, round 3** — §1's FIX-1160 proof now runs *through the plugin*, which §5 Q2 had
-  just made the only channel.
-- **Two convergence passes (not review rounds)** — FIX-548's demo-content scope, §1's existing-Node
-  proof, the `.agents/skills/` path, the required store profile, and seeded sentinels in the files
-  a brownfield run edits.
-- **Owner direction change — brownfield becomes an agent skill, greenfield stays a command.** The
-  deterministic init kept growing a branch per host shape with no round at which they stop, so
-  detection stays deterministic and mutation goes. Themes 1, 5, 6 and 8 re-drafted; §1's proof
-  gained the report-versus-diff check; new Q4.
-- **The name settled; the template cut folded *alongside* it and was never actually decided.** The
-  scaffolder is `create-flow-state` — verified against the registry, genuinely settled. The Node
-  template cut (theme 2) was written up in the same entry as an owner decision **and is not
-  evidenced**: the last record anywhere says the ask is still open, and unlike Q2 and Q3 no comment
-  records an answer. Reopened as **Q6**; theme 2 now marks it recommended-not-decided. Also this
-  turn: §1's Outcome stopped promising "one step", and theme 6 stopped being brownfield-only since
-  `create-next-app` writes its own `AGENTS.md`.
-- **Epic review of that fold** — §1's greenfield proof now asserts the additive guarantee it had
-  extended without checking, and theme 5's "verbatim" became one authored source rendered per
-  package manager.
-- **Epic review, round 2** — theme 6's exceptions enumerated in theme 6 itself (two at the time; a
-  third was added later): a stock
-  placeholder the scaffolder just wrote, and formats that cannot carry a delimiter.
-- **Review of that fold** — §4's summary and index row corrected to FIX-1159 brownfield-only, and
-  three surfaces that still described theme 6 as it read before its exceptions.
-- **New theme 9 — shared content needs a named author and an ordering edge.** The split had
-  severed the install skill from the shape it produces: FIX-1159 authors the wiring contract,
-  FIX-548's template conforms.
-- **Theme 9 generalized, and a P1 caught with it** — the provider SDK (`@ai-sdk/openai` and
-  siblings) was in no dependency list though `@flow-state-dev/core` carries it only as a
-  devDependency, so every real-model proof would have failed; and the agent-instructions content
-  gained the same author-and-edge treatment (FIX-1160 before FIX-548). This section compressed to
-  one line per turn.
-- **Theme 9 became one mechanism for all three shared artifacts** — the wiring contract, the
-  agent-instructions block and the next-steps block (theme 5's source, which had no carrier or
-  check at all). Each declares author, kind, carrier and check; **kind** is *specification*
-  (conformance, checked behaviourally) or *source block* (canonical text with declared
-  substitutions, embedded verbatim, checked by digest). Two rules close the class the previous
-  attempts kept reopening: both sides of a comparison are recomputed from content, and everything
-  that varies is a declared substitution or lives outside the delimiters — the *file* varies, the
-  *block* does not. Fixes the canonical-only digest, which passed for a stale shipper because the
-  shipper's body was never hashed, and dissolves FIX-1159's renderer problem: a Markdown skill
-  embeds the block and substitutes, so there is nothing to call.
-- **Four fixes that made theme 9 implementable** — the whole-block digest was self-referential
-  (writing the value changed the bytes hashed), so the hashed body became the block **with the
-  marker line stripped** (superseded — see the entry below); the
-  agent-instructions block created an **ownership cycle** (FIX-1160 authors it, but FIX-1159's
-  skill ships it and lands first), resolved by **co-location** — FIX-1160 embeds it at packaging
-  into a placeholder the skill carries, which runs with the existing edge instead of against it;
-  a **Node 20.9–21 scaffold** completed and left an unrunnable app, so both paths now refuse
-  before writing and FIX-548's goal check exercises the refusal; and theme 6's `package.json`
-  guarantee promised untouched **formatting**, which the mandatory package-manager install
-  rewrites, so it now promises semantic key/value preservation as exception (b) always said.
-- **The digest mechanism was deleted rather than fixed a fifth time** — the stripped marker was
-  never compared to anything, so any stale or arbitrary value passed. Asked what job the marker
-  did that the comparison did not, the answer was none: every shipper's canonical text is in this
-  monorepo, so no shipper ever self-checks without it. **All five defects were defects in a
-  *stored value*, not in the comparison**, so the value and the hashing both go and the check is
-  normalized text equality (`node:crypto` no longer needed). Two other P2s in the same batch:
-  rule 2 gained **conditional sections keyed on theme 8's two host topologies**, because
-  package-manager substitution cannot turn a mounted-route process list into a second-process one
-  and the block has two shippers — the epic's to widen, not FIX-1159's to work around; and
-  **FIX-548's goal check gained a pnpm-isolated install of the emitted template**, since the
-  dependency rule was asserted of the greenfield manifest while only the brownfield one was ever
-  installed strictly.
-- **Theme 9 cut roughly in half, and the mechanics went to the issues that own them** — it had
-  reached 231 lines because five rounds of fixes each landed where the defect was found rather than
-  where it belonged, which is not a reason to keep them in a coordination artifact. **The check now
-  belongs to each artifact's author**, so normalization, placeholder syntax and the test are one
-  implementation per artifact and cannot drift between shippers. The epic keeps ownership, ordering,
-  and the invariant that binds a shipper who does not own the check — verbatim embedding, the two
-  declared forms of variation, the closed topology key set, "embed every branch", and the
-  isolated-install requirement on both manifests, which is here only because it binds the two issues
-  symmetrically. FIX-1160 and FIX-548 both need their approvals re-taken.
-- **The npm gate reframed, and a stale registry fact corrected** — `create-flow-state` and `fsdev`
-  are registered at `0.0.0`, but to a **personal** account, so the release gate is not "acquire the
-  name": it is that the identity CI publishes with can write every package the quickstarts install.
-  The `@flow-state-dev` scope stays **unconfirmed** — `/-/org/<name>/package` returns 200 for
-  strings that exist and ones that do not, so the cheap proof is publishing one scoped package.
-  Also: `fsdev run` takes caller identity as its own parameter, not from `--input`, so both printed
-  commands dropped the `userId` key they could never have set.
-- **A security finding, and the runtime floor I broke in the previous turn.** The generated demo
-  runs on the default resolver, whose only protection is the loopback rail in
-  `@flow-state-dev/node` — an adapter the mounted-route path never uses, since it is
-  `createNextHandler` inside the developer's own `next dev`, which binds `0.0.0.0`. **The rule is
-  now stated per *adapter* rather than per template** (theme 8), because we cut the Node template
-  partly over this exposure and it survived in the path we kept. Greenfield is decided (our own
-  `dev` script binds loopback, printed command unchanged); brownfield is **Q5**, since theme 6
-  forbids rewriting a script the developer authored. **And the runtime floor: the rule had said
-  "the higher of `>=22` and 22.18", but §1's only refusal check exercised 20.9–21, so the 22.18
-  half never had one — then last turn's theme 9 compression dropped that half from the rule
-  outright.** Restored as a single number, 22.18, with why it is not 22. §1's Proof block also cut
-  from ~894 words to ~290: user-level observations only, with the two assertions nothing else
-  carries — greenfield `AGENTS.md`/`CLAUDE.md` survival and the second-process Node coverage —
-  kept as explicit must-not-drop sentences.
-- **Q5 killed as a fork, not softened — and two more checks that could not fail.** The proposal to
-  put the loopback guard in `createNextHandler` (code we own) instead of the bind (which we do not)
-  was the right instinct and **fails on the signal**: a Next App Router handler gets a web
-  `Request`, and `NextRequest` in `next@16.3.1` exposes no peer address, so the only inputs are
-  spoofable headers. With ship-open-and-warn independently rejected — a disclosure is not a control
-  — both cheap options were gone, so **Q5 resolves rather than escalates: the brownfield run
-  configures a non-default principal resolver**, which is the condition the framework guard keys
-  on. The withdrawn part of the earlier framing: comparing this to the development-only file store,
-  which risks the developer's own data on their own disk, when this spends their provider
-  credentials for anyone on the network and has no tenant boundary. Alongside it, **static provider
-  wiring** entered the contract (Next bundles server code and breaks the resolver's dynamic
-  `require()`, so the dependency rule can pass while the first browser request fails), with
-  mounted-route proofs required to go **through the HTTP route** rather than `fsdev run`; and the
-  **devtool `react ^19` peer** was ruled a theme 6 violation, fixed in our own manifest since the
-  served assets never needed the consumer's React.
-- **Securing the endpoint broke the tool the next printed line opens.** `fsdev dev` injects only
-  the `devtool` fields a config explicitly declares, so a secured `FlowState` yields a DevTool whose
-  API actions fail auth — the CLI has the mechanism precisely for this case and the generated config
-  now uses it, reading the same environment variable as the resolver rather than copying a value.
-  Walking the rest of the block found two more: `fsdev run` is unaffected (in-process, never
-  resolves a principal), and `fsdev serve` **stops being refused** on a network host, because
-  `assertNetworkBindIsAuthenticated` only refuses while the resolver is the default — **adding a
-  control took one away**, which nothing in the epic would have caught. **Theme 5 now puts the
-  printed block under a standing goal check** — every command, both branches, asserted on real
-  behaviour — rather than a rule that fires when someone notices a trigger, since that is the same
-  failure class one level up. Q5 also states the property plainly: the credential refuses unauthenticated
-  callers, but the port still listens, so greenfield (loopback **and** credential) is strictly
-  stronger than brownfield (credential only) — disclosed, not engineered away.
-- **The walk became a standing check, and the credential wiring got an audit.** "Re-walk the block
-  whenever a decision changes the `FlowState`" was itself a rule waiting on someone noticing the
-  trigger — the failure class of the evening, one level up — so the printed block is now under a
-  **standing** goal check: every command, both topology branches, against the emitted project,
-  asserted on real behaviour rather than exit status. The conditional trigger is deleted rather
-  than kept beside it. **The reason it earns its place is the `fsdev serve` finding: securing the
-  flow satisfied `assertNetworkBindIsAuthenticated` and so removed a rail that had been refusing a
-  network bind — adding a control took one away**, unasked and uncaught. Auditing the shared
-  credential then found four silent divergences between the resolver and the `devtool` block, the
-  worst being that an **unset** variable makes a naive equality accept every caller while the flow
-  reads as secured; so the config reads it **once into a single binding** both sides reference and
-  **refuses to start** when it is absent. Also recorded: the second-process alternative for
-  brownfield Next is **rejected** — it trades the epic's headline integration for defence in depth
-  over a control that already works (coordinator decision, not the owner's).
-- **Greenfield's rail turned out to cost something, and the earlier claim that it was free was
-  wrong.** `create-next-app` writes `package.json` *before* the template lands, so `scripts.dev` is
-  a key we do not own and theme 6 (b) forbids changing its value — the previous round asserted the
-  script was ours. It is now **theme 6 exception (c)**, stated as a third exception rather than
-  stretched into (a), whose "stock placeholder meant to be replaced" does not describe a script
-  meant to be *run*. What justifies it: the greenfield demo is a **browser** page, so any credential
-  it can present is readable by anyone who can load the page — **a credential is not a control when
-  the client is a browser**, which makes loopback the only rail available there, and makes the two
-  paths' different controls a necessity rather than an inconsistency.
-- **The author-owned check could not enforce its own invariant, because authors land first.** An
-  upstream check over a downstream copy either demands a copy that has not landed or tolerates one
-  that never will — it cannot tell *not yet* from *never*. Split the comparison from its invocation:
-  **the author exports it, each shipper invokes it against its own copy in its own suite**, so the
-  assertion lands exactly when the copy does. It asserts normalized **equality over the whole
-  block**, so a trimmed conditional branch fails rather than passing a presence check.
-- **§3 cut from ~210 lines to four.** It had become child-owned file trees, config detail and
-  transcripts inside the gated section — the third length finding of the same shape. Moved rather
-  than deleted: the two-file mount and the required store profile to theme 9 (b), and the sketch's
-  three findings were already binding in themes 5, 8 and 9.
-- **Greenfield is loopback-only, settled against the template's real data path.** The chat page is
-  a `"use client"` component using `@flow-state-dev/react` over `@flow-state-dev/client`, which
-  fetches and streams `/api/flows/*` **from the browser** — no server component of ours holds a
-  secret in between, and a proxy layer would mean not using the React package. So a credential
-  there is readable by anyone who can load the page: **greenfield carries one control, the loopback
-  bind, not two.** The per-path property is now stated explicitly — greenfield's endpoint is
-  unreachable off-host but unguarded if the flag is removed; brownfield's is reachable but refuses
-  every caller without the secret. Also: theme 6's binding count corrected to **three** exceptions
-  after (c) was added — a stale closed-set count is worse than none, because implementers are told
-  to trust it.
-- **Attribution corrected on the proof-strength trade.** The epic had called the goal-check
-  downgrade — two of four proofs becoming single recorded agent runs — "the trade the owner made".
-  It was not. The owner changed the **delivery mechanism** (brownfield becomes an agent skill);
-  the proof-strength consequence is the **coordinator's** reading of that change, recommended and
-  never put to them. Re-filed as an **open item**, marked reversible, with the cost of reversing it
-  stated (a maintained fixture repo per host shape). It blocks nothing.
-- **The credential guard was checking a proxy, and every control got a negative case.** The
-  `.env.local` rule asked only whether the file was *already tracked* — which says nothing about a
-  file that does not exist yet in a repo with no matching ignore rule, so the run would create an
-  ordinary **untracked** file holding **two** secrets (the provider key, and since theme 8 the
-  bearer secret) for the next `git add .` to commit. Now a **precondition**: before any credential
-  is written, `git check-ignore` must confirm the path is effectively ignored, else append the rule
-  and re-verify or refuse. **Third guard on this one file to check a proxy** — tracked-ness, then
-  delimiter position, now existence; the property is "will git ignore this path" and only git
-  answers it, since even reading `.gitignore` misses a later negation.
-- **Sixth finding of the "rule with nothing checking it" shape, and the first to land on a fix made
-  the same day.** The mounted-route proof exercised only the authenticated request — on the one path
-  where the credential is the **only** control, and where a missing resolver means
-  `defaultBodyUserIdPrincipalResolver` accepts and streams, so the positive check passed identically
-  whether the wiring was right or absent. Now refuses an uncredentialed request **and asserts no
-  model invocation**. Sweeping for the same defect found **two more**: the greenfield loopback bind
-  (its only control, previously proved only by a page streaming over localhost) and the
-  refuse-on-missing-credential rule added earlier the same evening. Theme 5 now states the rule —
-  **every control is proved by its own absence** — and its timing: *adding a control creates a new
-  opportunity to under-prove it, and the round that adds it is the round least likely to notice.*
-- **Merge-order edges and release gates split into separate lists.** The dependency summary called
-  the FIX-1162 edge "a real ordering constraint on merge" while theme 1 said it gates release only —
-  enough for a coordinator to block FIX-548's merge on an owner credential operation. The same
-  defect had already occurred at issue altitude (FIX-1186 wired to block FIX-548's implementation).
-  A dependency column cannot distinguish "blocked by X" from "gates the release" from "deliberately
-  not built", so all three are now listed apart and labelled.
-- **An attribution audit found two coordinator judgements wearing the owner's authority.** §5 Q2's
-  *decision* is theirs and stands; the **rationale** recorded under it was verbatim the
-  coordinator's own recommendation from two paragraphs above, presented as reasoning that "goes
-  past" it — now marked as a reconstruction. That mattered beyond tidiness because **open Q4 then
-  told the owner "*your* asymmetry argument survives"**, arguing a question that is explicitly
-  theirs to price back at them from words they never said; Q4 now offers the argument as the
-  coordinator's. And **the one-template cut was recorded in theme 2 as the owner's reversal with no
-  evidence anywhere** — the last written record says the ask is still open, and unlike Q2 and Q3 no
-  comment records an answer. Reopened as **Q6**, with FIX-548 credited as the accurate record: it
-  carried the ask correctly throughout while this document drifted. **The mechanism was bundling** —
-  one evolution entry folded the template cut together with the scaffolder name, and the name half
-  was genuinely verified, so a verified attribution carried an unverified one beside it and both
-  read as settled.
+- **Epic drafted** — three issues under one outcome; scaffolder a thin wrapper over `fsdev init`, two templates accepted.
+- **After the end-state sketch** — added theme 5's one-next-steps-block clause and theme 6 (a run is additive), because drawing the diffs showed what prose had not.
+- **Q1 answered** — `AGENTS.md`; theme 6 took the append-never-overwrite guarantee.
+- **After epic review** — added theme 8 (mounted route where derivable, second process otherwise), because §3 had surfaced the asymmetry in a section that binds nothing.
+- **Q2, Q3 answered** — install-by-URL only; no rename for `skills`. Both carried by theme 3.
+- **Epic review, rounds 2–3** — theme 6's boundary named the lockfile; FIX-1162 added to the index; §1's FIX-1160 proof routed through the plugin.
+- **Two convergence passes** — FIX-548's demo-content scope, the existing-Node proof, the required store profile, seeded sentinels.
+- **Owner direction change** — brownfield becomes an agent skill, greenfield stays a command; deterministic mutation goes. Themes 1, 5, 6, 8 re-drafted; new Q4.
+- **Owner decision folded — the scaffolder name** (`create-flow-state`, verified against the registry). §1's Outcome stopped promising "one step".
+- **Epic review of that fold** — §1's greenfield proof gained the additive assertion it had extended without checking; theme 5's "verbatim" became one authored source rendered per package manager.
+- **New theme 9** — shared content needs a named author and an ordering edge; generalized to three artifacts with author/kind/carrier/check.
+- **Four fixes to theme 9** — self-referential digest, the FIX-1160→FIX-1159 ownership cycle, the Node 20.9–21 scaffold, theme 6's `package.json` formatting promise.
+- **The digest deleted rather than fixed a fifth time** — every defect was in a *stored value*, so the marker and the hashing both go; check is normalized text equality. Same batch: host-topology conditionals, and a pnpm-isolated install for the greenfield manifest.
+- **Theme 9 halved (231→117 lines)** — mechanics devolved to the issues that own them; the author exports the comparison, each shipper invokes it. FIX-1160 and FIX-548 need re-approval.
+- **npm gate reframed** — both names registered but to a personal account, so the gate is the publishing identity, not the name. `fsdev run` takes caller identity as its own parameter, so two printed commands dropped a `userId` that set nothing.
+- **Loopback exposure found on the mounted path** — the rail lives in one host adapter, so the rule is stated per adapter. Greenfield binds loopback; brownfield generates a credential (Q5). Runtime floor restored to 22.18 after a compression dropped it; §1's proofs cut to user-level.
+- **Q5 resolved by constraint** — an in-handler guard is impossible (no peer address in a Next route handler) and a warning is not a control. Static provider wiring and the devtool React peer folded the same turn.
+- **Credential wiring audited** — the DevTool needs the same secret; `git check-ignore` became a precondition before any credential is written; every control gained a negative case.
+- **Attribution audit** — the one-template cut was recorded as the owner's without evidence and is reopened as **Q6**; Q2's rationale re-marked as the coordinator's; Q4 stopped pre-arguing from words the owner never said.
+- **Length and sibling sweep** — §3 cut to four lines, §4 to its table, this log rebuilt; the reopened Q6's stale deferral entry corrected, and the bind guard's predicate stated once after a paraphrase got it wrong.
