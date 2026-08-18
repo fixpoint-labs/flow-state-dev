@@ -250,6 +250,49 @@ describe("createWorkRecorder — plan items", () => {
     });
   });
 
+  it("records the harness's own prior status on a FIRST move", async () => {
+    // The case a derived `previousStatus` cannot serve: an item's first move
+    // has nothing to derive from, because the create carried no status. The
+    // harness described the whole transition, so the row must show it rather
+    // than leaving `previousStatus` empty on data that was never missing.
+    const { plan, recorder } = harness();
+    recorder.observe(created("5", "Create the file"));
+    recorder.observe({
+      kind: "plan_item_observed",
+      itemId: "5",
+      status: "in_progress",
+      previousStatus: "pending",
+      outcome: "applied",
+    });
+    await recorder.stop();
+
+    expect(plan.rows.get(`${RUN}/5`)).toMatchObject({
+      status: "in_progress",
+      previousStatus: "pending",
+    });
+  });
+
+  it("prefers the harness's prior status over the one it derived itself", async () => {
+    const { plan, recorder } = harness();
+    recorder.observe(moved("5", "in_progress"));
+    await recorder.flush();
+    recorder.observe({
+      kind: "plan_item_observed",
+      itemId: "5",
+      status: "completed",
+      // The harness disagrees with what this recorder last saw. It is the one
+      // holding the item; we are only watching.
+      previousStatus: "blocked",
+      outcome: "applied",
+    });
+    await recorder.stop();
+
+    expect(plan.rows.get(`${RUN}/5`)).toMatchObject({
+      status: "completed",
+      previousStatus: "blocked",
+    });
+  });
+
   it("does not invent a transition when a status is merely re-confirmed", async () => {
     const { plan, recorder } = harness();
     recorder.observe(moved("5", "in_progress"));

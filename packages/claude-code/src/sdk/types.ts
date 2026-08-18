@@ -221,6 +221,13 @@ export type TranslatedEvent =
       itemId: string;
       title?: string;
       status?: string;
+      /**
+       * The status the harness says the item held BEFORE this move, when it
+       * reports one. Authoritative: it is the only source for the prior status
+       * on a first move, because a create result carries no status at all and
+       * a recorder deriving it from what it has seen can only produce nothing.
+       */
+      previousStatus?: string;
       outcome: ObservedOutcome;
     }
   /**

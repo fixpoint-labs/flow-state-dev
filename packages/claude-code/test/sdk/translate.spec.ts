@@ -735,8 +735,219 @@ describe("translateSdkMessage — observed work", () => {
     ]).filter((e) => e.kind === "plan_item_observed");
     expect(events).toEqual([
       { kind: "plan_item_observed", itemId: "5", outcome: "pending" },
-      { kind: "plan_item_observed", itemId: "5", status: "in_progress", outcome: "applied" },
+      {
+        kind: "plan_item_observed",
+        itemId: "5",
+        status: "in_progress",
+        // BOTH ends of the move, because the fixture carries both.
+        //
+        // This assertion previously stopped at `status` and dropped
+        // `previousStatus`, while the fixture beside it said
+        // `{ from: "pending", to: "in_progress" }` — so the test pinned the
+        // implementation's behaviour instead of the harness's contract, and
+        // the recorder went on producing `previousStatus: null` for a first
+        // move the harness had described in full.
+        //
+        // The fixture is copied from real measured output, which makes every
+        // field in it a claim about the contract. Asserting less than it
+        // carries is a decision to discard data, and has to be a deliberate
+        // one — not what falls out of writing the expectation from the code.
+        previousStatus: "pending",
+        outcome: "applied",
+      },
     ]);
+  });
+
+  it("records the subject the harness CREATED, not the one the run asked for", () => {
+    // An approval seam can hand the SDK an `updatedInput`, so the tool executes
+    // something other than the call we saw. The create result declares
+    // `subject` as a required field, so taking the request would leave the row
+    // stale the moment it was written.
+    const events = translateScript([
+      createCall,
+      {
+        type: "user",
+        tool_use_result: { task: { id: "5", subject: "Create notes.txt (revised on approval)" } },
+        message: {
+          content: [{ type: "tool_result", tool_use_id: "toolu_c", content: "Task #5 created" }],
+        },
+      },
+    ]).filter((e) => e.kind === "plan_item_observed");
+    expect(events[0]).toMatchObject({ title: "Create notes.txt (revised on approval)" });
+  });
+
+  it("falls back to the requested subject when the result omits one", () => {
+    const events = translateScript([
+      createCall,
+      {
+        type: "user",
+        tool_use_result: { task: { id: "5" } },
+        message: {
+          content: [{ type: "tool_result", tool_use_id: "toolu_c", content: "Task #5 created" }],
+        },
+      },
+    ]).filter((e) => e.kind === "plan_item_observed");
+    expect(events[0]).toMatchObject({ title: "Create notes.txt" });
+  });
+
+  it("treats an in-band `success: false` as a refusal, not an applied update", () => {
+    // A refusal arrives two ways. Reading only `is_error` records a transition
+    // the harness declined as though it had happened.
+    const events = translateScript([
+      {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_u",
+              name: "TaskUpdate",
+              input: { taskId: "5", status: "completed" },
+            },
+          ],
+        },
+      },
+      {
+        type: "user",
+        tool_use_result: { success: false, taskId: "5", updatedFields: [], error: "blocked" },
+        message: {
+          content: [{ type: "tool_result", tool_use_id: "toolu_u", content: "could not update" }],
+        },
+      },
+    ]).filter((e) => e.kind === "plan_item_observed");
+    expect(events[1]).toEqual({ kind: "plan_item_observed", itemId: "5", outcome: "failed" });
+  });
+
+  it("records the status the harness MOVED TO, not the one that was requested", () => {
+    // The isolating world: the two differ. Every other fixture here has the
+    // requested and reported status equal, which makes the preference
+    // invisible — a test that cannot tell the two apart is not testing the
+    // rule. (`in_review` is also a value our vocabulary does not know, which is
+    // why the field is a free string: an unknown status records as itself.)
+    const events = translateScript([
+      {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_u",
+              name: "TaskUpdate",
+              input: { taskId: "5", status: "completed" },
+            },
+          ],
+        },
+      },
+      {
+        type: "user",
+        tool_use_result: {
+          success: true,
+          taskId: "5",
+          updatedFields: ["status"],
+          statusChange: { from: "in_progress", to: "in_review" },
+        },
+        message: {
+          content: [{ type: "tool_result", tool_use_id: "toolu_u", content: "Updated task #5" }],
+        },
+      },
+    ]).filter((e) => e.kind === "plan_item_observed");
+    expect(events[1]).toMatchObject({
+      status: "in_review",
+      previousStatus: "in_progress",
+      outcome: "applied",
+    });
+  });
+
+  it("does not record a re-wording the harness left unapplied", () => {
+    // The title half of the applied-fields rule, isolated: the request carried
+    // a subject and `updatedFields` says only the status landed.
+    const events = translateScript([
+      {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_u",
+              name: "TaskUpdate",
+              input: { taskId: "5", status: "completed", subject: "Never applied" },
+            },
+          ],
+        },
+      },
+      {
+        type: "user",
+        tool_use_result: {
+          success: true,
+          taskId: "5",
+          updatedFields: ["status"],
+          statusChange: { from: "in_progress", to: "completed" },
+        },
+        message: {
+          content: [{ type: "tool_result", tool_use_id: "toolu_u", content: "Updated task #5" }],
+        },
+      },
+    ]).filter((e) => e.kind === "plan_item_observed");
+    expect(events[1]).toMatchObject({ status: "completed", outcome: "applied" });
+    expect(events[1]).not.toHaveProperty("title");
+  });
+
+  it("does not record a field the harness says it did not apply", () => {
+    const events = translateScript([
+      {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_u",
+              name: "TaskUpdate",
+              input: { taskId: "5", status: "completed", subject: "Rewritten" },
+            },
+          ],
+        },
+      },
+      {
+        type: "user",
+        // Only the subject landed; the status was not among the applied fields.
+        tool_use_result: { success: true, taskId: "5", updatedFields: ["subject"] },
+        message: {
+          content: [{ type: "tool_result", tool_use_id: "toolu_u", content: "Updated task #5" }],
+        },
+      },
+    ]).filter((e) => e.kind === "plan_item_observed");
+    expect(events[1]).toMatchObject({ title: "Rewritten", outcome: "applied" });
+    expect(events[1]).not.toHaveProperty("status");
+  });
+
+  it("reports an update the harness applied to a DIFFERENT item as a gap", () => {
+    // The id is a key, so it keeps its call-time value — but a result naming
+    // another item means this row describes work done to something else.
+    const events = translateScript([
+      {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_u",
+              name: "TaskUpdate",
+              input: { taskId: "5", status: "completed" },
+            },
+          ],
+        },
+      },
+      {
+        type: "user",
+        tool_use_result: { success: true, taskId: "9", updatedFields: ["status"] },
+        message: {
+          content: [{ type: "tool_result", tool_use_id: "toolu_u", content: "Updated task #9" }],
+        },
+      },
+    ]);
+    const gaps = events.filter((e) => e.kind === "work_gap_observed");
+    expect(gaps).toHaveLength(1);
+    expect((gaps[0] as { reason: string }).reason).toContain("9");
   });
 
   it("carries a re-wording an update applied, so the plan does not go stale", () => {

@@ -61,11 +61,63 @@ const FILE_OUTPUT_KINDS = new Map<string, ObservedFileOpKind>([
 const PLAN_CREATE_TOOL = "TaskCreate";
 const PLAN_UPDATE_TOOL = "TaskUpdate";
 
+/**
+ * THE RULE FOR EVERYTHING BELOW: **the record reflects what the harness
+ * confirms happened, not what the agent asked for.**
+ *
+ * A tool call and its result are two different claims. The call is the agent's
+ * *request*; the result is the harness's *report*. They diverge for ordinary
+ * reasons — an `onToolApproval` seam can hand the SDK an `updatedInput`, so the
+ * tool executes something other than the call we saw, and the harness resolves
+ * paths and prior states we never had. Populating a field from the call when the
+ * result confirms it is how the record ends up asserting something that did not
+ * happen, which is the one thing it exists not to do.
+ *
+ * Three separate review findings were instances of exactly this before it was
+ * written down. So, per field: prefer the result, fall back to the call, and
+ * where the call-time value cannot be abandoned, say why.
+ *
+ * **The considered exceptions, both KEYS.** A row's key is fixed when the call
+ * is seen, because that is when the attempt is recorded — so re-keying at
+ * settlement would not update the row, it would write a second one and leave a
+ * phantom `pending` beside it. The file path and the plan item id therefore keep
+ * their call-time value, and a result that names a different one is recorded as
+ * a GAP rather than silently followed.
+ */
+
 /** Read a string field off an untyped tool input/output. `null` when absent. */
 function readString(source: unknown, field: string): string | null {
   if (typeof source !== "object" || source === null) return null;
   const value = (source as Record<string, unknown>)[field];
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+/** Read a boolean field off an untyped tool output. `null` when absent. */
+function readBool(source: unknown, field: string): boolean | null {
+  if (typeof source !== "object" || source === null) return null;
+  const value = (source as Record<string, unknown>)[field];
+  return typeof value === "boolean" ? value : null;
+}
+
+/**
+ * Read a nested string off an untyped tool output (`{ a: { b: "…" } }`).
+ * `null` when any hop is absent or the wrong shape.
+ */
+function readNestedString(source: unknown, outer: string, inner: string): string | null {
+  if (typeof source !== "object" || source === null) return null;
+  return readString((source as Record<string, unknown>)[outer], inner);
+}
+
+/**
+ * Which fields the harness says it actually applied (`TaskUpdateOutput`'s
+ * `updatedFields`). `null` when absent — an older or unknown shape, where the
+ * tolerant reading is "no opinion", not "applied nothing" (BP-030).
+ */
+function readAppliedFields(structured: unknown): ReadonlySet<string> | null {
+  if (typeof structured !== "object" || structured === null) return null;
+  const value = (structured as Record<string, unknown>).updatedFields;
+  if (!Array.isArray(value)) return null;
+  return new Set(value.filter((v): v is string => typeof v === "string"));
 }
 
 /**
@@ -443,10 +495,16 @@ function observeToolResult(
       });
       return;
     }
+    // The subject the harness CREATED, not the one the run asked for. An
+    // approval seam can revise a tool's input before it executes, so the two
+    // differ for an ordinary reason, and the create result declares `subject`
+    // as a required field — so the row would be stale the moment it was
+    // written. Falls back to the request when the result omits it.
+    const title = readNestedString(structured, "task", "subject") ?? create.title;
     events.push({
       kind: "plan_item_observed",
       itemId,
-      ...(create.title !== null ? { title: create.title } : {}),
+      ...(title !== null ? { title } : {}),
       outcome: "applied",
     });
     return;
@@ -455,21 +513,50 @@ function observeToolResult(
   const update = state.openPlanUpdates.get(callId);
   if (update !== undefined) {
     state.openPlanUpdates.delete(callId);
-    if (isError) {
-      // A REJECTED transition. The status is deliberately omitted: writing the
-      // status the run asked for would claim a move the harness refused, which
-      // is the worst available outcome — worse than recording nothing.
+    // A refusal can arrive two ways: as a tool error, or IN BAND as
+    // `success: false` on an otherwise ordinary result. Reading only the first
+    // records a refused transition as applied — the worst available outcome,
+    // and the same mistake as trusting the request over the report.
+    if (isError || readBool(structured, "success") === false) {
+      // Neither the status nor the wording is carried: claiming a move the
+      // harness refused is worse than recording nothing about it.
       events.push({ kind: "plan_item_observed", itemId: update.itemId, outcome: "failed" });
       return;
     }
-    // Both the new wording and the new status land only HERE, on a confirmed
-    // update — the same rule for both, because a re-wording the harness refused
-    // is as wrong to record as a transition it refused.
+
+    // The harness reports the transition it performed, both ends of it. That
+    // `from` is the only source for the item's PRIOR status on a first move —
+    // the create result carries no status, so deriving it downstream can only
+    // produce null for a transition the harness described in full.
+    // The id is a KEY, so it keeps its call-time value for the same reason the
+    // file path does — but a result naming a different item means the row we
+    // are about to settle describes work done to something else, so it is
+    // reported rather than followed.
+    const reportedId = readString(structured, "taskId");
+    if (reportedId !== null && reportedId !== update.itemId) {
+      events.push({
+        kind: "work_gap_observed",
+        reason:
+          `a plan update was recorded against item ${update.itemId}, which is not the item ` +
+          `the harness reported updating (${reportedId})`,
+      });
+    }
+
+    const movedFrom = readNestedString(structured, "statusChange", "from");
+    const movedTo = readNestedString(structured, "statusChange", "to");
+    const applied = readAppliedFields(structured);
+    // With no `statusChange` and no opinion from `updatedFields`, the requested
+    // status is the best available answer. With an explicit opinion that status
+    // was NOT among the applied fields, the right answer is to record none.
+    const status = movedTo ?? (applied?.has("status") === false ? null : update.status);
+    const title = applied?.has("subject") === false ? null : update.title;
+
     events.push({
       kind: "plan_item_observed",
       itemId: update.itemId,
-      ...(update.title !== null ? { title: update.title } : {}),
-      ...(update.status !== null ? { status: update.status } : {}),
+      ...(title !== null ? { title } : {}),
+      ...(status !== null ? { status } : {}),
+      ...(movedFrom !== null ? { previousStatus: movedFrom } : {}),
       outcome: "applied",
     });
   }

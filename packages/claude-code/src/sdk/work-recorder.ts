@@ -267,7 +267,11 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
     };
     if (event.title !== undefined) merged.title = event.title;
     if (event.status !== undefined && event.outcome === "applied") {
-      const prior = confirmedStatus.get(event.itemId);
+      // The harness's own account of the move wins over anything derived here.
+      // Deriving is a fallback, not the design: on an item's FIRST move there
+      // is nothing to derive from — the create carried no status — so a derived
+      // `previousStatus` is null for a transition the harness described in full.
+      const prior = event.previousStatus ?? confirmedStatus.get(event.itemId);
       // Only a real change moves the pointer. Re-confirming the status an item
       // already holds is not a transition, and recording it as one would leave
       // `previousStatus === status` on a row that never moved.
