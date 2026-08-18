@@ -533,6 +533,58 @@ const GUARD_CASES: GuardCase[] = [
     want: "fail",
   },
   {
+    // THE SEVENTH DIRECTION, AND THE SECOND ONE CAUSED BY ONE OF OUR OWN
+    // REPAIRS — from the same lineage as the fifth.
+    //
+    // Round 10 made the discriminator "distinct spellings", counted PER
+    // MUTATION. That is locally true and globally wrong: one gap spelling can
+    // be a candidate for several DIFFERENT mutation spellings, and whichever
+    // mutation the loop reached first consumed one. Here two lost mutations —
+    // `gamma.txt` and `sub/gamma.txt` — sit beside two gaps BOTH spelled
+    // `/work/repo/sub/gamma.txt`. Each mutation saw exactly one spelling, each
+    // consumed a row, and A2 reported `a2-ok`. But those two gaps evidence two
+    // attempts on `sub/gamma.txt`, and the lost `gamma.txt` mutation has no gap
+    // at all.
+    //
+    // Before the round-10 repair this world FAILED — correctly, and by
+    // accident, because two candidates were called ambiguous. The repair turned
+    // a correct-by-accident reject into a false green, which is why "does the
+    // fix reintroduce the world the previous fix happened to cover?" is now
+    // part of the question rather than a nicety.
+    name: "A2 — one gap spelling offered to two differently-spelled lost mutations",
+    mutate: (v) => {
+      v.did = v.did.filter((d) => !d.topic.endsWith("gamma.txt"));
+      const gamma = v.streamMutations.find((m) => m.path.endsWith("gamma.txt"));
+      if (gamma !== undefined) {
+        gamma.path = "gamma.txt";
+        v.streamMutations.push({ ...gamma, path: "sub/gamma.txt", at: (gamma.at ?? 0) + 1 });
+      }
+      v.gaps.push({ kind: "file", reason: "skipped", rawPath: "/work/repo/sub/gamma.txt" });
+      v.gaps.push({ kind: "file", reason: "skipped", rawPath: "/work/repo/sub/gamma.txt" });
+    },
+    because: "a2-ambiguous-gap",
+    id: "A2",
+    want: "fail",
+  },
+  {
+    // And the direction that keeps the fix from being "two losses now fail":
+    // two lost mutations with DIFFERENT spellings, each answered by a gap only
+    // it can claim. Nothing here is unresolvable — every assignment is forced —
+    // so this must PASS. Without it, closing the seventh would look exactly
+    // like rejecting any run that lost more than one file.
+    name: "A2 — two distinct losses, each answered by a gap only it can claim",
+    mutate: (v) => {
+      v.did = v.did.filter(
+        (d) => !d.topic.endsWith("gamma.txt") && !d.topic.endsWith("delta.txt"),
+      );
+      v.gaps.push({ kind: "file", reason: "skipped", rawPath: "/work/repo/gamma.txt" });
+      v.gaps.push({ kind: "file", reason: "skipped", rawPath: "/work/repo/delta.txt" });
+    },
+    because: "a2-ok",
+    id: "A2",
+    want: "pass",
+  },
+  {
     // And the world it MUST accept, so the new branch is not simply "more than
     // one gap fails": the same relative spelling with ONE gap that matches.
     name: "A2 — a relatively-named lost mutation answered by a single matching gap",

@@ -248,13 +248,15 @@ questions, and only the second says whether the work is done. Recording both is 
 section.
 
 **Round 11 kept the arrival rate up and moved where they arrive from**, which is the more useful
-half. Six findings: two assertions that cannot fail on the real path (3 and 7), a field the reader
-drops before the grader sees it (`lastOutcome`), a successful create whose lost row leaves no
-trace on either surface, the ambiguity rule's sixth direction, and a pre-dispatch gate missing a
-failure it already held. **Not one of them is in an assertion's own logic.** Every previous
-round's instances were — that is where a reviewer reads, so that is where they were found — and
-the three levels this same failure has now appeared at (guard, fixture, store) were each
-invisible from the one below.
+half. Nine findings: two assertions that cannot fail on the real path (3 and 7), a field the
+reader drops before the grader sees it (`lastOutcome`), a successful create whose lost row leaves
+no trace on either surface, the ambiguity rule's sixth **and seventh** directions, a pre-dispatch
+gate missing a failure it already held, an A2 branch that reports the stream showed no mutation
+when it showed one, and a deprivation guard that checks the module rather than the binding.
+**Only one of the nine is in an assertion's own logic** — the seventh direction, and that one is
+a regression from our own repair. Every previous round's instances were, because that is where a
+reviewer reads; the three levels this same failure has now appeared at (guard, fixture, store)
+were each invisible from the one below.
 
 **Round 8 changed what the earlier PASSes are worth, and that belongs here rather than in a
 footnote.** Until it, assertion 2 rejected a run that edited a file it had already written — so
@@ -271,32 +273,59 @@ every invocation.
 
 **The two rules that kept coming back are the same rule.** *An input that cannot determine an
 answer must not produce one* — the ambiguity rule and the null rule are both spellings of it.
-Ambiguity has now been wrong in **six** directions (many rows for one mutation · many mutations
+Ambiguity has now been wrong in **seven** directions (many rows for one mutation · many mutations
 for one gap · many gaps for one mutation · surplus pathless gaps · interchangeable gaps counted
-as a choice · surplus *named* gaps) and null in two (outcome, kind). Each was applied correctly
+as a choice · surplus *named* gaps · **one gap spelling offered to several differently-spelled
+mutations**) and null in two (outcome, kind). Each was applied correctly
 the first time it was found, and each time the *next* direction was still open, because what was
 fixed was the instance in front of us. That is the case for the guard table in one sentence: a
 rule is remembered, and remembering is what failed; a table executes, and it has never once been
 half-applied.
 
-**Six, and the fifth was ours.** That count is the strongest single thing this file has to hand
-LAB-137, and it is worth more than any individual entry: a class that has generated six instances,
-**one of them produced by our own repair of a previous one**, is not a class that careful fixing
-terminates — the care is what produced the next instance. The sixth adds a second lesson beside
-it, because of *where* it was found. The pathless surplus was named in the limits list a round
-ago; its named-path twin sat one branch away and was not. **We half-applied a naming** — the same
-wrong-extent shape the rules keep taking, this time in the prose that tracks them rather than in
-the code they govern. A limits list is a check whose evidence is somebody rereading it, so it
-fails the way every remembered rule here has failed.
+**Seven, and two of them were ours.** The count is not the strongest thing this file has to hand
+LAB-137. **This is: every bound anyone has placed on this class has been falsified, including two
+placed by the coordinator who was watching for exactly that.**
 
-**The fifth direction was caused by repairing the fourth**, and that is the sharpest thing this
-file has to say about the class. Failing on "two or more candidate gaps" closed a real hole and
-opened a new one, because it counted candidates instead of distinguishing them — two attempts at
-one unkeyable path leave two gaps carrying the same `rawPath`, which is one claim twice rather
-than a choice, and a faithful record was rejected for it. A class that generates instances **from
-its own repairs** is a stronger argument for structural treatment than one that merely recurs: no
-amount of care at the point of fixing gets ahead of it, because the care is what produced the next
-instance. That is the evidence LAB-137 should carry.
+- *"The written-down class entry is what stops the fifth."* The fifth arrived one round later,
+  produced by the fourth's own repair.
+- *"Self-inflicted regression is a closed category with one member."* Here is the second, from the
+  same repair lineage — round 10's per-mutation spelling test, which fixed the fifth and opened
+  the seventh.
+- And one placed here rather than by the coordinator: *"every remaining finding lives in a branch
+  the real runs do not reach."* Falsified this round by two assertions that cannot fire at all —
+  a cell the criterion did not have.
+
+Three bounds, three falsifications, by three different people all of whom knew the class was
+recurring while they wrote them. That is a better argument than any count, because a count invites
+the reply *"so fix the remaining ones"* and this does not: **the thing that keeps being wrong is
+the belief that the set is now enumerable.** The operative rule is therefore not a cap but a
+standing obligation — *a defect our own repair introduced folds, however many times that
+happens* — because the evidence says a cap is exactly the part that fails.
+
+**The seventh is the sharpest illustration, and it is worth following in detail.** Round 7 failed
+on "two or more candidate gaps", which closed a real hole. Round 10 found that this rejected a
+faithful record — two attempts at one unkeyable path leave two gaps carrying the same `rawPath`,
+one claim twice rather than a choice — and repaired it by counting distinct **spellings** instead
+of rows. That repair was correct about the world it was shown and wrong one level up: it counted
+spellings **per mutation**, and one gap spelling can answer to several *different* mutation
+spellings. Two losses on `alpha.txt` and `sub/alpha.txt` beside two gaps both spelled
+`/work/sub/alpha.txt` each saw exactly one spelling, each consumed a row, and A2 said `a2-ok` —
+while those gaps evidence two attempts on one path and the other loss has no gap at all.
+
+**Note what that means about round 7's rule: it rejected this world correctly, by accident.**
+Fixing the over-rejection removed the accident along with the defect. So "does this repair also
+remove a reject that happened to be right?" is now part of the question, not a nicety — and it is
+not a question care answers reliably, which is the whole point above. Reconciliation is now
+**global**: both sides reduce to distinct spellings, an assignment is made only where nothing else
+could claim it, and the counts become the accounting only inside a forced 1:1 pair. Both directions
+have a case, including one that must still **pass** — two distinct losses each answered by a gap
+only they can claim — because "stop failing on two losses" would otherwise look like a fix.
+
+**The sixth carries a second lesson, because of *where* it was found.** The pathless surplus was
+named in the limits list a round ago; its named-path twin sat one branch away and was not. **We
+half-applied a naming** — the same wrong-extent shape the rules keep taking, this time in the
+prose that tracks them rather than in the code they govern. A limits list is a check whose only
+evidence is somebody rereading it, so it fails the way every remembered rule here has failed.
 
 **Closed by construction — the shape cannot be written:**
 
@@ -351,6 +380,38 @@ not currently grade:
   does.
 - A `tool_output` whose `toolCall.name` is unreadable matches no tool table and is invisible to
   A2 entirely — an existence cell, not a presence one.
+- **A2 reports that the stream showed NO mutation when it showed one it could not key — a false
+  red that asserts something untrue.** A run whose only file-tool call carries no readable
+  `file_path` produces an empty `streamMutations` and an empty record, so the early return fires
+  and emits `a2-both-empty`: *"the item stream carries no file-tool call"*. It did carry one. The
+  pathless call is counted on the view (`mutationsWithNoPath`) and the pathless branch would have
+  graded it, but the early return runs first and never reaches it. **Worth naming in those terms
+  rather than as a miss:** every other gap in this list is an assertion failing to *see*
+  something, and this one states a fact about the run that is false. Unreached — no real run has
+  produced a pathless mutation — which is the only reason it has never been read by anybody.
+- **A8 checks the module a binding came from, not the binding — so the deprivation guard does not
+  mechanically enforce the boundary it states.** The allowlist is a set of specifiers, and
+  membership is tested with `mayImport.includes(spec)`; nothing looks at *what* is imported. So
+  `import { createWorkRecorder }` or `import { canonicalFilePathKey }` from the already-permitted
+  `@flow-state-dev/claude-code/sdk` yields `a8-ok`, and the reader could reach the recorder's own
+  canonicalization — the exact coupling `paths.mts` exists to refuse.
+
+  **Be exact about what this does and does not mean, because the difference is the whole claim.**
+  The reader **is** compliant: it imports `OBSERVED_FILE_OPS`, `OBSERVED_GAPS` and `OBSERVED_PLAN`
+  and nothing else, which the evidence line prints on every run and which anyone can read in
+  twenty seconds. *"Reconstructed from FSD state alone"* holds for all twenty-nine runs. What is
+  weaker than stated is the **mechanical guarantee**: A8's own description of itself — *the
+  reader's source imports nothing but the collection accessor keys* — is enforced only down to the
+  module, so the property currently rests on **inspection rather than enforcement**. That is the
+  difference between *"the Proof is wrong"* and *"the Proof rests on a weaker mechanism than it
+  advertises"*, and only the second is true.
+
+  It is named rather than folded because folding it changes no verdict — the reader is already
+  compliant — and this round's bar was an assertion that cannot fail. **The fix is recorded so
+  nobody re-derives it:** either scan the imported *bindings* and allowlist the three key names,
+  or move the keys into a constants-only module, which makes the specifier check and the binding
+  check the same check. The second is the better shape by this file's own standard — it removes
+  the gap by construction rather than adding a rule that has to stay right.
 - A row's `storageKey` and its `topic` are never checked against each other.
 - A gap's `reason` and `at` are carried and never graded.
 - **Surplus pathless gap rows are accepted.** One pathless mutation and two `file`/`rawPath: null`

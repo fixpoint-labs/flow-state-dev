@@ -392,6 +392,11 @@ function gradeAgreement(view: GradeableView): Finding[] {
   // than a guess — a plan gap sitting in the same run is not evidence about a
   // mutation, and a gap that names no subject is not evidence about anything.
   const namedGaps = view.gaps.filter((g) => g.kind === "file" && g.rawPath !== null);
+
+  // Mutations with no row are NOT resolved here. They are collected and
+  // reconciled against the gaps GLOBALLY, below — see that block for why a
+  // per-mutation decision cannot be right.
+  const unrecorded: StreamMutation[] = [];
   for (const mutation of view.streamMutations) {
     const rows = view.did.filter((d) => sameFile(d.topic, mutation.path));
     if (rows.length > 1) {
@@ -421,56 +426,103 @@ function gradeAgreement(view: GradeableView): Finding[] {
       // describes each of them. It describes the last one.
       continue;
     }
-    // The SAME ambiguity rule, in its third direction. Round 1 caught one
-    // mutation naming many rows; round 3 caught many mutations consuming one
-    // gap; this is one mutation matched by many gaps. `findIndex` took the
-    // first and reported the loss excused, while the state cannot say which
-    // gap covers this mutation — and an exemption that cannot be tied to its
-    // case is the blanket amnesty this assertion exists to refuse.
-    //
-    // AND ITS FIFTH DIRECTION, WHICH THE FOURTH'S REPAIR CREATED. Rejecting
-    // "two or more candidates" did not distinguish candidates that are
-    // INTERCHANGEABLE from candidates that are DISTINGUISHABLE. Two attempts at
-    // one unkeyable path leave two gaps carrying the SAME `rawPath`; every
-    // mutation sees both, and there is no question of picking wrong, because
-    // the two are the same claim twice. Their count against the mutations' is a
-    // valid one-to-one accounting — and it was being failed. So the
-    // discriminator is the number of distinct SPELLINGS, exactly as it is on
-    // the row side, not the number of rows.
-    const candidates = namedGaps
-      .map((g, at) => ({ g, at }))
-      .filter(({ g }) => sameFile(g.rawPath as string, mutation.path));
-    const spellings = [...new Set(candidates.map(({ g }) => g.rawPath as string))];
-    if (spellings.length > 1) {
+    unrecorded.push(mutation);
+  }
+
+  // ── Mutation ↔ gap reconciliation, done ONCE over the whole run ───────────
+  //
+  // The SAME ambiguity rule, and this is where four of its seven directions
+  // live. Round 1 caught one mutation naming many rows; round 3, many mutations
+  // consuming one gap; round 7, one mutation matched by many gaps — `findIndex`
+  // took the first and called the loss excused. Round 10 caught the FIFTH,
+  // which round 7's own repair created: rejecting "two or more candidates" did
+  // not tell candidates that are INTERCHANGEABLE from candidates that are
+  // DISTINGUISHABLE, and two attempts at one unkeyable path leave two gaps
+  // carrying the SAME `rawPath` — one claim twice, not a choice. So the
+  // discriminator became distinct SPELLINGS rather than row count.
+  //
+  // **AND THE SEVENTH, WHICH THAT REPAIR CREATED IN ITS TURN.** Counting
+  // spellings PER MUTATION is locally true and globally wrong: one gap spelling
+  // can be a candidate for several DIFFERENT mutation spellings, and whichever
+  // mutation the loop reached first consumed it. Two lost mutations on
+  // `alpha.txt` and `sub/alpha.txt`, beside two gaps both spelled
+  // `/work/sub/alpha.txt`, each saw a single spelling, each consumed one, and
+  // A2 reported `a2-ok` — while those two gaps evidence two attempts on
+  // `sub/alpha.txt` and the lost `alpha.txt` mutation has no gap at all.
+  // Before the interchangeable repair this world FAILED, correctly and by
+  // accident (two candidates → ambiguous). The repair turned a correct-by-
+  // accident reject into a false green.
+  //
+  // So reconciliation is GLOBAL. Both sides are reduced to distinct spellings
+  // first, and an assignment is only made where nothing else could claim it:
+  // a gap spelling answering to more than one mutation spelling cannot say
+  // which loss it excuses, and a mutation spelling offered more than one gap
+  // spelling cannot say which gap is its own. Only inside a forced 1:1 pair do
+  // the COUNTS become the accounting.
+  //
+  // Deliberately NOT closed here: a gap spelling that answers to NO mutation is
+  // a stored claim the stream never evidenced. That is the sixth direction, it
+  // is named in `goal.md`, and folding it silently while touching this function
+  // would make that entry false.
+  const gapSpellings = [...new Set(namedGaps.map((g) => g.rawPath as string))];
+  const mutationSpellings = [...new Set(unrecorded.map((m) => m.path))];
+  const unresolvable = new Set<string>();
+
+  // Pass 1 — the GAP side. One gap spelling, several mutation spellings.
+  for (const gapSpelling of gapSpellings) {
+    const claimants = mutationSpellings.filter((m) => sameFile(gapSpelling, m));
+    if (claimants.length > 1) {
+      for (const claimant of claimants) unresolvable.add(claimant);
       findings.push({
         id: "A2",
         status: "fail",
         because: "a2-ambiguous-gap",
         message:
-          `"${mutation.path}" has no row in the file record and ${spellings.length} different ` +
-          `paths are offered as gaps covering it (${spellings.join(", ")}) — consuming either ` +
+          `the gap row(s) spelled "${gapSpelling}" could be covering ${claimants.length} ` +
+          `different lost mutations (${claimants.join(", ")}) — consuming one for each would ` +
+          `excuse every loss while the gaps may all belong to a single path`,
+      });
+    }
+  }
+
+  // Pass 2 — the MUTATION side, over the spellings pass 1 left resolvable.
+  for (const spelling of mutationSpellings) {
+    if (unresolvable.has(spelling)) continue;
+    const calls = unrecorded.filter((m) => m.path === spelling);
+    const candidates = gapSpellings.filter((g) => sameFile(g, spelling));
+    if (candidates.length > 1) {
+      findings.push({
+        id: "A2",
+        status: "fail",
+        because: "a2-ambiguous-gap",
+        message:
+          `"${spelling}" has no row in the file record and ${candidates.length} different ` +
+          `paths are offered as gaps covering it (${candidates.join(", ")}) — consuming either ` +
           `would excuse this loss with a row that may belong to a different one`,
       });
       continue;
     }
-    if (candidates.length >= 1) {
-      // Interchangeable by construction: one spelling, so which of them is
-      // consumed cannot matter. Consumption stays one-to-one, which is what
-      // turns the count into the accounting — a third mutation on this path
-      // with only two gaps beside it finds none left and is reported lost.
-      namedGaps.splice(candidates[0].at, 1);
-      accounted += 1;
-      continue;
+    // Interchangeable by construction: one spelling on each side and nothing
+    // else can claim it, so which row is consumed cannot matter. Consumption
+    // stays one-to-one, which is what turns the count into the accounting — a
+    // third call on this path with only two gaps beside it finds none left and
+    // is reported lost.
+    const available =
+      candidates.length === 1
+        ? namedGaps.filter((g) => g.rawPath === candidates[0]).length
+        : 0;
+    accounted += Math.min(available, calls.length);
+    for (const lost of calls.slice(available)) {
+      findings.push({
+        id: "A2",
+        status: "fail",
+        because: "a2-unaccounted",
+        message:
+          `"${lost.path}" appears in the item stream as a ${lost.tool}, has no row in the ` +
+          `file record, and no UNCONSUMED gap row accounts for it: the graph lost a tool-driven ` +
+          `mutation without admitting it`,
+      });
     }
-    findings.push({
-      id: "A2",
-      status: "fail",
-      because: "a2-unaccounted",
-      message:
-        `"${mutation.path}" appears in the item stream as a ${mutation.tool}, has no row in the ` +
-        `file record, and no UNCONSUMED gap row accounts for it: the graph lost a tool-driven ` +
-        `mutation without admitting it`,
-    });
   }
 
   for (const entry of view.did) {
