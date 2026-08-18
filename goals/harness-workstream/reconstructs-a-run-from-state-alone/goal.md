@@ -384,8 +384,17 @@ the honest statement is that the grid's cells are named and the axes are not clo
 Filling those buys those. **Every one lives in a branch the graded runs do not reach** — they need
 an incidental file outside the expectation, an unreadable vendor field, or a plan half that
 reports UNMEASURED on every real run. That is the stopping line for a Proof: the question this
-issue exists to answer has been answered twenty-six times, and precision on unreached edges is worth
-bounding rather than grinding.
+issue exists to answer has been answered twenty-seven times, and precision on unreached edges is
+worth bounding rather than grinding.
+
+**Round 11 falsified the framing of that stopping line, and the correction stays visible for the
+same reason the last one did.** The sentence sorts every residual finding into *unreached
+branches*, and assertions 3 and 7 are not that. They are assertions that **cannot fire at all** —
+a different thing and a worse one, because an unreached branch still means the assertion works and
+this run did not exercise it, while these two report a PASS about a run they never read. The
+criterion had no cell for that, which is precisely why nothing in ten rounds of applying it
+noticed. It still holds over the *named* findings above; it was never a statement about the ones
+nobody had looked for, and this is the second time this file has had to say so.
 
 The residual belongs beside **LAB-137**, not inside it. LAB-137 is recorder-side — *confirm only
 what the harness confirmed*. This is reader-side — *assert only what the state shows*. Siblings,
@@ -393,7 +402,12 @@ same disease, opposite ends of the same wire.
 
 ## Named limits
 
-Five things this check states rather than proves, so none of them is a silent gap:
+Three things this check states rather than proves, so none of them is a silent gap. **Assertions 3
+and 7 are deliberately NOT here** — an assertion that cannot fire is not a limit on what the check
+proves, it is a correction to what its PASSes have meant, and it lives in the verdict section
+below where the PASSes are recorded. (The heading said *five* over three bullets for several
+rounds. A miscount in the list this file uses to hold itself honest is a small thing that is
+exactly the wrong small thing.)
 
 - **The plan half is UNMEASURED on every run** (FIX-1185), so its ROWS branch has never executed
   against real data. Every part of it is exercised by directly-fed worlds instead.
