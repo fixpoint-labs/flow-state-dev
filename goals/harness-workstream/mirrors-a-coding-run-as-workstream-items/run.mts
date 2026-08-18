@@ -454,6 +454,151 @@ await runGoal(async () => {
     }
   };
 
+  // ── The graders, named — and sanity-checked before they are trusted ────────
+  //
+  // These are extracted rather than inlined for one reason: an assertion has to
+  // be checked against the specific broken world it exists to reject, and the
+  // only way to do that here is to hand it that world directly. Two of these
+  // were previously inline and both passed the world they were written to
+  // catch — see `selfCheck`.
+
+  /** Every run whose file record names this file. */
+  const runsNamingFile = (byRun: Map<string, CollectionRow[]>, name: string): string[] =>
+    [...byRun.keys()].filter((id) =>
+      (byRun.get(id) ?? []).some((r) => r.topic.endsWith(`/${name}`)),
+    );
+
+  /**
+   * Is this file recorded under the run that wrote it, and ONLY that run?
+   *
+   * Both halves are load-bearing, and the first one is what was missing. Asking
+   * only "does exactly one run own this file" passes when BOTH runs' rows land
+   * in a single namespace: each filename still has exactly one owner, and the
+   * other namespace is simply empty. That is precisely the collision per-run
+   * keying exists to prevent, so the check that proves the keying has to name
+   * the run it expects rather than count owners.
+   */
+  const attributionFailures = (
+    byRun: Map<string, CollectionRow[]>,
+    name: string,
+    expectedRunId: string,
+    otherRunIds: readonly string[],
+  ): string[] => {
+    const naming = runsNamingFile(byRun, name);
+    const out: string[] = [];
+    if (!naming.includes(expectedRunId)) {
+      out.push(
+        `the held-out file "${name}" is not in run ${expectedRunId}'s record — it was found ` +
+          `under ${naming.length > 0 ? naming.join(", ") : "no run at all"}`,
+      );
+    }
+    for (const other of otherRunIds) {
+      if (naming.includes(other)) {
+        out.push(
+          `the held-out file "${name}" also appears under run ${other}, which did not write ` +
+            `it — the records are not keyed per run`,
+        );
+      }
+    }
+    return out;
+  };
+
+  /**
+   * Does this plan row show a real MOVE between two observed states?
+   *
+   * `previousStatus` must be a STRING, not merely different. Its schema default
+   * is `null`, so `previousStatus !== status` is satisfied by a row that never
+   * recorded a previous state at all — meaning a recorder that kept only a
+   * final status would be graded as having preserved the transitions it threw
+   * away.
+   */
+  const showsAMove = (data: Record<string, unknown>): boolean =>
+    typeof data.status === "string" &&
+    typeof data.previousStatus === "string" &&
+    data.previousStatus !== data.status;
+
+  /**
+   * Hand each grader the broken world it exists to reject, before trusting it
+   * on a real run.
+   *
+   * This is not ceremony. The plan grader below cannot be exercised by a real
+   * run at all right now — it lives inside the plan half's PASS branch, and
+   * every measured run has taken the INCONCLUSIVE arm — so without this its
+   * correctness would rest on reading it. And the file grader's broken world
+   * (two runs merged into one namespace) is not reachable through the current
+   * recorder, so a real run cannot produce it either. A grader nobody has
+   * watched reject anything is not a grader.
+   */
+  const selfCheck = (): string[] => {
+    const problems: string[] = [];
+    const row = (topic: string): CollectionRow => ({ topic, storageKey: topic });
+    const expect = (ok: boolean, what: string): void => {
+      if (!ok) problems.push(`grader self-check failed: ${what}`);
+    };
+
+    const A = "runA";
+    const B = "runB";
+    const correct = new Map<string, CollectionRow[]>([
+      [A, [row(`${A}/i/one.txt`)]],
+      [B, [row(`${B}/i/two.txt`)]],
+    ]);
+    expect(
+      attributionFailures(correct, "one.txt", A, [B]).length === 0,
+      "a correctly attributed file was rejected",
+    );
+    // THE broken world: both runs' rows in one namespace. Every filename still
+    // has exactly one owner, which is why counting owners passed it.
+    const merged = new Map<string, CollectionRow[]>([
+      [A, [row(`${A}/i/one.txt`), row(`${A}/i/two.txt`)]],
+      [B, []],
+    ]);
+    expect(
+      attributionFailures(merged, "two.txt", B, [A]).length > 0,
+      "two runs merged into one namespace was accepted",
+    );
+    expect(
+      attributionFailures(new Map([[A, []], [B, []]]), "one.txt", A, [B]).length > 0,
+      "a file missing from every record was accepted",
+    );
+    // Each half must carry its own weight. With no forbidden runs supplied,
+    // only "the expected run owns this" can fire — so this is the world that
+    // tells "names the run it expects" apart from the weaker "somebody owns
+    // it", which the forbidden-runs half would otherwise mask.
+    expect(
+      attributionFailures(merged, "two.txt", B, []).length > 0,
+      "a file owned by the wrong run was accepted when no other run was named",
+    );
+    // A file under BOTH namespaces — the older shape of the same failure.
+    const duplicated = new Map<string, CollectionRow[]>([
+      [A, [row(`${A}/i/one.txt`)]],
+      [B, [row(`${B}/i/one.txt`)]],
+    ]);
+    expect(
+      attributionFailures(duplicated, "one.txt", A, [B]).length > 0,
+      "a file recorded under two runs was accepted",
+    );
+
+    expect(showsAMove({ status: "completed", previousStatus: "in_progress" }), "a real move");
+    // THE broken world: the recorder kept only a final status.
+    expect(
+      !showsAMove({ status: "completed", previousStatus: null }),
+      "a row with no previous status was counted as a move",
+    );
+    expect(
+      !showsAMove({ status: "completed" }),
+      "a row missing previousStatus entirely was counted as a move",
+    );
+    expect(
+      !showsAMove({ status: "in_progress", previousStatus: "in_progress" }),
+      "a row that never changed status was counted as a move",
+    );
+    expect(
+      !showsAMove({ status: null, previousStatus: "in_progress" }),
+      "a row with no current status was counted as a move",
+    );
+    return problems;
+  };
+
   /** Dispatch one coding job into the board and return once it is not `active`. */
   const dispatchAndWait = async (goalText: string): Promise<WorkstreamRow[]> => {
     const dispatchRes = await fetch(`${base}/${FLOW_KIND}/actions/dispatch`, {
@@ -489,6 +634,14 @@ await runGoal(async () => {
     `Then reply in one sentence naming the file you wrote.`;
 
   try {
+    // Before spending two real coding runs: are the graders able to reject the
+    // worlds they exist to reject? A broken instrument makes everything below
+    // it meaningless, so this is a hard stop rather than a warning.
+    const graderProblems = selfCheck();
+    if (graderProblems.length > 0) {
+      return { failures: graderProblems, evidence: "" };
+    }
+
     // ── Hop 1: which background jobs did this conversation start? ────────────
     // Poll until the workstream exists AND has stopped being `active`. The
     // originating request cannot observe its own hand-off settling — the board
@@ -764,23 +917,37 @@ await runGoal(async () => {
             : `, and NO gap rows were written either, so the recorder was never fed at all`),
       );
     }
-    for (const [name, runId] of [
-      [fixture.outputFileName, allRunIds[0]],
-      [fixture.secondRunFileName, allRunIds[1]],
-    ] as const) {
-      if (runId === undefined) continue;
-      const owning = allRunIds.filter((id) =>
-        (fileRowsByRun.get(id) ?? []).some((r) => r.topic.endsWith(`/${name}`)),
+    // Which run wrote which file, established by WHEN each request appeared
+    // rather than by the listing's order — the request that existed after the
+    // first dispatch is the first run, and the one that appeared after the
+    // second is the second. Ordering a listing is the route's business, not a
+    // fact this goal should assume.
+    const secondRunIds = allRunIds.filter((id) => !firstRunIds.includes(id));
+    const expectedOwner = new Map<string, string>();
+    if (firstRunIds.length === 1 && secondRunIds.length === 1) {
+      expectedOwner.set(fixture.outputFileName, firstRunIds[0]);
+      expectedOwner.set(fixture.secondRunFileName, secondRunIds[0]);
+    } else {
+      // Not a skip: without a one-to-one mapping the attribution below would be
+      // comparing against a guess, and a guess that happens to hold is not
+      // evidence.
+      failures.push(
+        `expected one request per dispatch, got ${firstRunIds.length} after the first and ` +
+          `${secondRunIds.length} new after the second — which file belongs to which run ` +
+          `cannot be established, so the per-run attribution below was NOT checked`,
       );
-      if (owning.length === 0) {
+    }
+
+    for (const name of [fixture.outputFileName, fixture.secondRunFileName]) {
+      const owner = expectedOwner.get(name);
+      if (owner !== undefined) {
         failures.push(
-          `no run's file record names the held-out file "${name}" — reading state alone does ` +
-            `not say which files the run touched`,
-        );
-      } else if (owning.length > 1) {
-        failures.push(
-          `the held-out file "${name}" appears under ${owning.length} run namespaces ` +
-            `(${owning.join(", ")}) — the records are not keyed per run`,
+          ...attributionFailures(
+            fileRowsByRun,
+            name,
+            owner,
+            allRunIds.filter((id) => id !== owner),
+          ),
         );
       }
       for (const row of allFileRows.filter((r) => r.topic.endsWith(`/${name}`))) {
@@ -895,14 +1062,12 @@ await runGoal(async () => {
           `no plan row carries a status — the record cannot answer whether any item moved`,
         );
       }
-      const moved = allPlanRows.filter((r) => {
-        const d = clientData(r);
-        return typeof d.status === "string" && d.previousStatus !== d.status;
-      });
+      const moved = allPlanRows.filter((r) => showsAMove(clientData(r)));
       if (moved.length === 0) {
         failures.push(
-          `no plan row shows a move (a status differing from its previous one) — the run marked ` +
-            `items in progress and completed, so a record with no movement lost the transitions`,
+          `no plan row shows a move between two observed statuses — the run marked items in ` +
+            `progress and then completed, so a record where no row carries both a status and ` +
+            `the status it held before lost the transitions it claims to keep`,
         );
       }
       // Per-run, the job asks for a fixed number of items.
