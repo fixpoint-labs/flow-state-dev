@@ -502,3 +502,88 @@ describe("claudeCodeAgent", () => {
   });
 
 });
+
+/**
+ * `sessionState: false` — the opt-out that lets the block run as detached
+ * background work.
+ *
+ * The task board refuses a detached worker whose block (or any block under it)
+ * authors a `sessionStateSchema`, because every detached worker in a flow
+ * becomes a route on one shared Workstream flow. A background job is one run in
+ * one workstream, so the conversation state this block keeps — a resume handle
+ * and a run log — has no reader on that path. The opt-out stops it being
+ * declared, stops the reads and writes that go with it, and stops the resume.
+ */
+describe("claudeCodeAgent — sessionState: false", () => {
+  /** The read the board's refusal performs, spelled the same way. */
+  function authoredSessionStateSchema(block: unknown): unknown {
+    return (block as { config?: { sessionStateSchema?: unknown } }).config?.sessionStateSchema;
+  }
+
+  it("still declares the conversation-state schema when the opt-out is absent", () => {
+    // BP-030. A caller who never heard of this option must be unaffected, and
+    // this is the assertion that fails if the default ever flips.
+    expect(authoredSessionStateSchema(claudeCodeAgent())).toBeDefined();
+    expect(authoredSessionStateSchema(claudeCodeAgent({ sessionState: true }))).toBeDefined();
+  });
+
+  it("declares no conversation-state schema when the opt-out is set", () => {
+    // The board's refusal reads exactly this field, on the block and on every
+    // block composed under it, before any context exists.
+    expect(authoredSessionStateSchema(claudeCodeAgent({ sessionState: false }))).toBeUndefined();
+  });
+
+  it("writes no session state when the opt-out is set", async () => {
+    // Suppressing only the DECLARATION would leave the writes landing under a
+    // key nothing declared — the silent-corruption shape the board's refusal
+    // exists to prevent, not a smaller version of the same behaviour.
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK]),
+      sessionState: false,
+    });
+    const { state, output, error } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(error).toBeNull();
+    expect(state.session[SDK_SESSION_ID_KEY]).toBeUndefined();
+    expect(state.session[SDK_AGENT_RUNS_KEY]).toBeUndefined();
+    // The run still happened and still reports what it observed — the handle is
+    // the return value, which is a different thing from persisted state.
+    expect((output as SdkAgentHandle).sessionId).toBe("sess_new");
+  });
+
+  it("hands the SDK no `resume`, even when a session provider returns a saved id", async () => {
+    // The hole this closes: suppressing the schema and the `ctx.session` read
+    // leaves the provider resolution intact, and a provider whose resolve("")
+    // returns a saved session then becomes the SDK's `resume` — a resumed run
+    // while every declared-schema assertion still passes. The default provider
+    // returns nothing for an empty key, which is exactly why it hides. So the
+    // assertion is on the OPTIONS HANDED TO THE SDK, not on the schema.
+    const spy = vi.fn();
+    const resumingProvider = {
+      async resolve() {
+        return { sdkSessionId: "sess_saved" };
+      },
+      async release() {},
+    };
+
+    const disabled = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
+      sessionProvider: resumingProvider,
+      sessionState: false,
+    });
+    await testBlock(disabled, {
+      input: { prompt: "go" },
+      session: { state: { [SDK_SESSION_ID_KEY]: "sess_prior" } },
+    });
+    expect(spy.mock.calls[0][0].options?.resume).toBeUndefined();
+
+    // The contrast that makes the assertion above able to fail: the SAME
+    // provider on the ordinary path DOES resume.
+    const enabled = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
+      sessionProvider: resumingProvider,
+    });
+    await testBlock(enabled, { input: { prompt: "go" } });
+    expect(spy.mock.calls[1][0].options?.resume).toBe("sess_saved");
+  });
+});

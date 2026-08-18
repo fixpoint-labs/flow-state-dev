@@ -105,6 +105,30 @@ a live handle across requests rather than a parallel store. The default provider
 is thin because the SDK resumes cheaply by id; pass your own to hold a heavier
 resource (an open connection, for example).
 
+### Turning it off for background work
+
+A **workstream** is a child session dedicated to one background job, running
+outside the request that started it. If you dispatch the agent into one, set
+`sessionState: false`:
+
+```ts
+const agent = claudeCodeAgent({ sessionState: false });
+```
+
+Each job is then one run. The agent starts fresh every time, no session id is
+stored, and no prior SDK conversation is resumed — a second job addressed to the
+same workstream begins a new agent run. What the run did is still recorded: the
+workstream's own item stream holds its messages, reasoning, and tool calls in
+order, which is what you read the run back from.
+
+The option is also required rather than optional there. Background workers share
+one flow, so two of them declaring the same session-state key would overwrite
+each other; the task board refuses to build a background worker that declares
+session state at all, and this is how the agent satisfies it.
+
+See [Background work](../server/background-work.md) for how a workstream is set
+up and read back.
+
 ## Tool approval
 
 By default the agent governs its own tools through the SDK's `permissionMode`. To
