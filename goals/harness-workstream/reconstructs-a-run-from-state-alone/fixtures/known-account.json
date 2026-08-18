@@ -145,6 +145,7 @@
         "succeeded": 1
       },
       "mutationsWithNoPath": 1,
+      "messagesWithoutText": 0,
       "toolNamesSeen": [
         "Bash",
         "Edit",
@@ -230,6 +231,7 @@
         "succeeded": 0
       },
       "mutationsWithNoPath": 0,
+      "messagesWithoutText": 0,
       "toolNamesSeen": [
         "Write"
       ],

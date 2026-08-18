@@ -264,6 +264,16 @@ export interface RunView {
   shell: { called: boolean; calls: number; succeeded: number };
   /** Mutations whose call carried no path to key them under. */
   mutationsWithNoPath: number;
+  /**
+   * Top-level `message` items carrying no readable text.
+   *
+   * They are NOT in `said`: an entry whose text is empty inflates the count A6
+   * reads and lends A4 a position, while the account can report nothing the run
+   * said at that point. Counting them separately keeps the set honest and lets
+   * the absence be graded — without reading the prose, which the anti-game
+   * forbids. Only presence is inspected here, never content.
+   */
+  messagesWithoutText: number;
   /** Every tool name this run's stream shows, sorted. */
   toolNamesSeen: string[];
   counts: {
@@ -435,15 +445,18 @@ export async function readAccount(read: Read, workstreamId: string): Promise<Acc
     // Narrative and order: this run's own top-level thread.
     const messages = topLevel.filter((i) => i.type === "message");
     const topLevelTools = topLevel.filter((i) => i.type === "tool_output");
-    const said: SaidEntry[] = messages.map((i) => ({
-      at: typeof i.itemIndex === "number" ? i.itemIndex : null,
-      text: textOf(i),
-    }));
+    const spoken = messages
+      .map((i) => ({ at: typeof i.itemIndex === "number" ? i.itemIndex : null, text: textOf(i) }))
+      .filter((m) => m.text.length > 0);
+    const said: SaidEntry[] = spoken;
+    const messagesWithoutText = messages.length - spoken.length;
     const indices = topLevel
       .map((i) => i.itemIndex)
       .filter((v): v is number => typeof v === "number");
-    const messagePositions = messages
-      .map((i) => i.itemIndex)
+    // Positions come from the messages that actually said something, so A4
+    // cannot place the report at a point where the account is silent.
+    const messagePositions = spoken
+      .map((m) => m.at)
       .filter((v): v is number => typeof v === "number");
 
     // The three records, for THIS run's namespace, scoped and paged.
@@ -515,6 +528,7 @@ export async function readAccount(read: Read, workstreamId: string): Promise<Acc
         succeeded: shellSucceeded,
       },
       mutationsWithNoPath,
+      messagesWithoutText,
       toolNamesSeen: [...new Set(toolItems.map((i) => i.toolCall?.name ?? "(unnamed)"))].sort(),
       counts: {
         items: items.length,

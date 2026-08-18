@@ -239,69 +239,108 @@ function gradePaths(view: GradeableView, expectation: Expectation): Finding[] {
  * **Preference-shaped**: it only has teeth where the two sides disagree, so a
  * guard case built from a coherent record exercises none of it.
  */
+/**
+ * What absence means for one side of one comparison.
+ *
+ * There is no default, and that is the whole point. Every field compared across
+ * the two surfaces has three outcomes, not one — the values differ, one side is
+ * silent, the other side is silent — and choosing "skip" for a silent side is a
+ * DECISION, not an omission. It kept being made by omission: null-outcome was
+ * given a failure in round 5 and null-kind was left skipping, the same rule half
+ * applied, and a reviewer found it a round later.
+ *
+ * `no-claim` requires a written `why`, so declining to compare costs a sentence
+ * and appears in the diff. `fail` is the other option. There is no third.
+ */
+type AbsenceRule =
+  | { kind: "fail"; because: string; message: string }
+  | { kind: "no-claim"; why: string };
+
+/**
+ * Compare one field across the two surfaces, having been told what silence
+ * means on each side.
+ *
+ * The signature is the guard: a caller cannot reach the comparison without
+ * supplying both absence rules, so "the field was null and we moved on" is not
+ * expressible. A source scan asserts that no raw cross-surface comparison
+ * exists outside this function, because the type only binds the calls that go
+ * through it.
+ */
+function compareField(spec: {
+  stream: string | null;
+  record: string | null;
+  whenStreamAbsent: AbsenceRule;
+  whenRecordAbsent: AbsenceRule;
+  whenDiffer: { because: string; message: string };
+}): Finding[] {
+  const absent = (rule: AbsenceRule): Finding[] =>
+    rule.kind === "fail"
+      ? [{ id: "A2", status: "fail", because: rule.because, message: rule.message }]
+      : [];
+  if (spec.record === null) return absent(spec.whenRecordAbsent);
+  if (spec.stream === null) return absent(spec.whenStreamAbsent);
+  if (spec.record === spec.stream) return [];
+  return [
+    { id: "A2", status: "fail", because: spec.whenDiffer.because, message: spec.whenDiffer.message },
+  ];
+}
+
 function compareSemantics(mutation: StreamMutation, entry: DidEntry): Finding[] {
-  const findings: Finding[] = [];
-
-  // NOT APPLICABLE, twice over and decided explicitly. A row carrying no kind
-  // is absence, which A1 fails on where the path was expected and §9 reports
-  // where it was not. And `mutation.kind === null` means the TOOL NAME does not
-  // determine the kind — a `Write` over an existing file is an edit — so the
-  // stream makes no claim to compare against. Inventing one would fail faithful
-  // state while passing a recorder that mislabels an overwrite.
-  if (entry.kind !== null && mutation.kind !== null && entry.kind !== mutation.kind) {
-    findings.push({
-      id: "A2",
-      status: "fail",
-      because: "a2-kind-disagrees",
-      message:
-        `the record says "${nameOf(entry)}" was ${JSON.stringify(entry.kind)}, but the item ` +
-        `stream shows a ${mutation.tool}, which is ${JSON.stringify(mutation.kind)} — the ` +
-        `record is wrong about what the run did to this file`,
-    });
-  }
-
-  // UNEVALUABLE, therefore a FAILURE. The item's terminal status could not be
-  // translated, so the stream says nothing about how this mutation ended — and
-  // skipping the comparison lets a row asserting `applied` stand on no
-  // corroboration at all. An empty input certifying instead of declaring itself
-  // unmeasured is the precise defect this check exists to detect, and it was
-  // sitting inside the check.
-  // UNEVALUABLE, therefore a FAILURE. A1 only looks at the held-out paths, so a
-  // file the run touched incidentally can pair with a row that cannot say how it
-  // ended and nothing else would notice. §9 says report rather than fail a file
-  // the fixture did not name — that is about its PRESENCE, not about a row that
-  // exists and is silent on its own outcome.
-  if (entry.outcome === null) {
-    findings.push({
-      id: "A2",
-      status: "fail",
-      because: "a2-row-outcome-missing",
-      message:
-        `the record holds a row for "${nameOf(entry)}" with no outcome at all, so state cannot ` +
-        `say how that mutation ended — and the path is not one A1 checks`,
-    });
-  } else if (mutation.outcome === null) {
-    findings.push({
-      id: "A2",
-      status: "fail",
-      because: "a2-outcome-unevaluable",
-      message:
-        `the item stream shows "${mutation.path}" ending as ${JSON.stringify(mutation.status)}, ` +
-        `which says nothing about how it settled — so the record's ` +
-        `${JSON.stringify(entry.outcome)} is a claim nothing corroborates`,
-    });
-  } else if (entry.outcome !== mutation.outcome) {
-    findings.push({
-      id: "A2",
-      status: "fail",
-      because: "a2-outcome-disagrees",
-      message:
-        `the record settled "${nameOf(entry)}" as ${JSON.stringify(entry.outcome)}, but the item ` +
-        `stream shows the call ${mutation.status}, which is ` +
-        `${JSON.stringify(mutation.outcome)} — the record is wrong about how it turned out`,
-    });
-  }
-  return findings;
+  const name = nameOf(entry);
+  return [
+    ...compareField({
+      stream: mutation.kind,
+      record: entry.kind,
+      // The TOOL NAME does not determine the kind: a `Write` over an existing
+      // file is an edit, and the item stream carries no field that tells the
+      // two apart. Inventing a claim here failed faithful state while passing a
+      // recorder that mislabels an overwrite.
+      whenStreamAbsent: {
+        kind: "no-claim",
+        why: "the tool name does not determine whether a write created or edited",
+      },
+      whenRecordAbsent: {
+        kind: "fail",
+        because: "a2-row-kind-missing",
+        message:
+          `the record holds a row for "${name}" with no kind at all, so state cannot say how ` +
+          `that file was touched — and A1 only inspects the held-out paths`,
+      },
+      whenDiffer: {
+        because: "a2-kind-disagrees",
+        message:
+          `the record says "${name}" was ${JSON.stringify(entry.kind)}, but the item stream ` +
+          `shows a ${mutation.tool}, which is ${JSON.stringify(mutation.kind)} — the record is ` +
+          `wrong about what the run did to this file`,
+      },
+    }),
+    ...compareField({
+      stream: mutation.outcome,
+      record: entry.outcome,
+      whenStreamAbsent: {
+        kind: "fail",
+        because: "a2-outcome-unevaluable",
+        message:
+          `the item stream shows "${mutation.path}" ending as ${JSON.stringify(mutation.status)}, ` +
+          `which says nothing about how it settled — so the record's ` +
+          `${JSON.stringify(entry.outcome)} is a claim nothing corroborates`,
+      },
+      whenRecordAbsent: {
+        kind: "fail",
+        because: "a2-row-outcome-missing",
+        message:
+          `the record holds a row for "${name}" with no outcome at all, so state cannot say how ` +
+          `that mutation ended — and A1 only inspects the held-out paths`,
+      },
+      whenDiffer: {
+        because: "a2-outcome-disagrees",
+        message:
+          `the record settled "${name}" as ${JSON.stringify(entry.outcome)}, but the item stream ` +
+          `shows the call ${mutation.status}, which is ${JSON.stringify(mutation.outcome)} — the ` +
+          `record is wrong about how it turned out`,
+      },
+    }),
+  ];
 }
 
 /**
@@ -593,12 +632,31 @@ function gradePlan(view: GradeableView): Finding[] {
   const { rows, toolCalls } = view.plan;
   if (rows.length === 0) {
     if (toolCalls > 0) {
+      // A plan gap is the recorder SAYING it could not record — the translator
+      // emits exactly that when a successful create's item id is unreadable. So
+      // a call with a gap beside it is a named absence, not a loss. Same rule
+      // the file side already follows, and it was applied there and not here.
+      const planGaps = view.gaps.filter((g) => g.kind === "plan").length;
+      if (planGaps < toolCalls) {
+        return [
+          {
+            id: "A5",
+            status: "fail",
+            because: "a5-lost",
+            message:
+              `the plan tools fired ${toolCalls} time(s) in this run, no row was recorded, and ` +
+              `only ${planGaps} plan gap(s) account for it — our bug`,
+          },
+        ];
+      }
       return [
         {
           id: "A5",
-          status: "fail",
-          because: "a5-lost",
-          message: `the plan tools fired ${toolCalls} time(s) in this run and no row was recorded — our bug`,
+          status: "unmeasured",
+          because: "a5-unmeasured",
+          message:
+            `this run's ${toolCalls} plan tool call(s) are each accounted for by a plan gap, so ` +
+            `the recorder said what it could not record rather than losing it`,
         },
       ];
     }
@@ -660,6 +718,19 @@ function gradeCounts(view: GradeableView): Finding[] {
     ["toolOutputs", view.counts.toolOutputs, "no top-level tool_output, so the run reported without doing anything"],
     ["fileRows", view.did.length, "this run's file record is empty, so A1 and A2 read an empty set"],
   ];
+  if (view.messagesWithoutText > 0) {
+    return [
+      {
+        id: "A6",
+        status: "fail",
+        because: "a6-message-without-text",
+        message:
+          `${view.messagesWithoutText} top-level message(s) carry no readable text, so the ` +
+          `account cannot report what the run said at those points — and counting them would ` +
+          `inflate the set A6 reads while lending A4 a position the account is silent at`,
+      },
+    ];
+  }
   const empty = required.filter(([, n]) => n === 0);
   if (empty.length > 0) {
     return empty.map(([name, , why]) => ({

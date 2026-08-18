@@ -89,7 +89,7 @@ generator actions. The calibration and every guard case are **model-free** and r
 ## The preconditions, and why they run every time
 
 The reader derives the known account from the known state **exactly**, a deliberately lossy copy
-of that state is caught by assertion 2, and 53 guard cases each break one assertion on purpose
+of that state is caught by assertion 2, and 58 guard cases each break one assertion on purpose
 and confirm it reaches the verdict it is supposed to. All of it is model-free, so it runs on
 every invocation rather than sitting in this log as a one-time claim — and if any of it fails,
 no coding run is dispatched at all. An instrument is sanity-checked against a case whose answer
@@ -170,9 +170,50 @@ One masking relationship among the preconditions themselves was removed for the 
 failed lossy-calibration used to return early and hide the entire guard table. All preconditions
 now report together.
 
+## What is closed by construction, and what is still a grid
+
+Six review rounds produced 19 reported findings. The concepts stopped being new around round 3;
+the **instances never stopped arriving** — 3, 2, 3, 3, 4, 4 per round. Those are different
+questions, and only the second says whether the work is done. Recording both is the point of this
+section.
+
+**Closed by construction — the shape cannot be written:**
+
+- **A pooled value reachable from a per-run judgement.** Five instances across three rounds, each
+  fixed by scoping one read, each followed by another. Ended when the account became a list of
+  per-run views: `gradeRun` receives one view, the other runs are not in scope, and a pooled read
+  is a compile error. A source scan guards the reintroduction path. **Instances since: zero.**
+- **A cross-surface field comparison that handles one silence and not the other.** Null-outcome
+  was given a failure and null-kind kept skipping — the same rule, half applied, found a round
+  apart. Ended when both went through `compareField`, whose signature requires an absence rule for
+  each side; declining to compare now costs a written `why` and appears in the diff. A scan
+  forbids raw `entry.x !== mutation.y` beside it.
+
+**Still enumerable — a grid, and honestly so.** The remaining family is *an assertion certifying
+on evidence that does not cover its case*, over roughly `field × surface × presence`. Round 6
+filled four cells; these are cells nobody has reported and that this check does not currently
+grade:
+
+- `lastTouchedAt` on a row is read into no comparison, so a record may carry any timestamp.
+- `previousStatus` on a plan row is derived and never graded.
+- A `tool_output` whose `toolCall.name` is unreadable matches no tool table and is invisible to
+  A2 entirely — an existence cell, not a presence one.
+- A row's `storageKey` and its `topic` are never checked against each other.
+- A gap's `reason` and `at` are carried and never graded.
+
+Filling those buys those. **Every one lives in a branch the graded runs do not reach** — they need
+an incidental file outside the expectation, an unreadable vendor field, or a plan half that
+reports UNMEASURED on every real run. That is the stopping line for a Proof: the question this
+issue exists to answer has been answered fifteen times, and precision on unreached edges is worth
+bounding rather than grinding.
+
+The residual belongs beside **LAB-137**, not inside it. LAB-137 is recorder-side — *confirm only
+what the harness confirmed*. This is reader-side — *assert only what the state shows*. Siblings,
+same disease, opposite ends of the same wire.
+
 ## Named limits
 
-Three things this check states rather than proves, so none of them is a silent gap:
+Five things this check states rather than proves, so none of them is a silent gap:
 
 - **The plan half is UNMEASURED on every run** (FIX-1185), so its ROWS branch has never executed
   against real data. Every part of it is exercised by directly-fed worlds instead.
@@ -214,6 +255,10 @@ live, and the branch that would call the whole run inconclusive sits behind them
 
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-08-18 | working tree at `91ca856c0`, pre-commit (round 6 folded) | Agent SDK default | PASS | Sixteenth consecutive real run. **58 guards** |
+| 2026-08-18 | working tree at `91ca856c0`, pre-commit | — | FAIL *(deliberate)* | The half-applied kind rule re-applied — null kind skipping while null outcome fails, exactly as found. *"'a paired row cannot say how its file was touched' did not reach A2/a2-row-kind-missing"* |
+| 2026-08-18 | working tree at `91ca856c0`, pre-commit | — | FAIL *(deliberate)* | A raw `entry.kind !== mutation.kind` written beside the combinator. *"A FIELD IS COMPARED OUTSIDE compareField"* — the scan that makes half-application unwritable |
+| 2026-08-18 | working tree at `91ca856c0`, pre-commit | — | FAIL *(deliberate)* | Plan gaps ignored when declaring LOST. *"'every plan call is accounted for by a plan gap' did not reach A5/a5-unmeasured"* — the false-red direction |
 | 2026-08-18 | **`8dcfcd945`** | Agent SDK default | **PASS — the verdict** | Fifteenth consecutive real run, on the committed tree, with round 5 folded. 3 of 3 held-out paths `created`/`edited` and `applied`; 3 stream mutations and 3 rows naming the same files; non-decreasing across 30 top-level items at 26 distinct positions; mutations 17–22, last word at 24; 1 shell call, 0 of them ran. 53 guards proven first, over a two-run calibration state carrying a pathless write and a failed plan create. Plan arm UNMEASURED |
 | 2026-08-18 | working tree at `247725355`, pre-commit (round 5 folded) | Agent SDK default | PASS | Fourteenth consecutive real run. **53 guards** |
 | 2026-08-18 | working tree at `247725355`, pre-commit | — | FAIL *(deliberate)* | The `Write → created` table restored. Calibration red — the reader no longer derives the known account. **The only defect this epic found that fails red on truth AND green on the defect** |

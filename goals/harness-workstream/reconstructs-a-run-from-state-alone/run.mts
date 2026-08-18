@@ -122,6 +122,32 @@ export function importsOf(source: string): string[] {
 }
 
 /**
+ * Raw comparisons between the two surfaces, made outside `compareField`.
+ *
+ * Every cross-surface field comparison has three outcomes — differ, stream
+ * silent, record silent — and a hand-written `a !== b` only expresses the
+ * first. The other two get decided by whichever `&& x !== null` guard the
+ * author happened to write, which is how null-outcome got a failure and
+ * null-kind got a skip: the same rule, half applied, one round apart.
+ *
+ * `compareField` takes both absence rules as required arguments, so silence
+ * cannot be handled by omission. This scan is what keeps the next comparison
+ * from being written beside it instead of through it — the type binds only the
+ * calls that already go through the door.
+ */
+export function rawCrossSurfaceComparisons(source: string): string[] {
+  const code = codeOf(source);
+  const found: string[] = [];
+  for (const match of code.matchAll(
+    /\b(entry|mutation)\.(\w+)\s*[!=]==\s*(entry|mutation)\.(\w+)/g,
+  )) {
+    const [whole, left, , right] = match;
+    if (left !== right) found.push(whole.trim());
+  }
+  return found;
+}
+
+/**
  * Functions that take a single run's view AND something account-wide.
  *
  * The pooled-vs-per-run class was five separate defects with one sentence: a
@@ -605,6 +631,69 @@ const GUARD_CASES: GuardCase[] = [
     because: "a2-ok",
     id: "A2",
     want: "pass",
+  },
+  {
+    // The half of the rule that was left un-applied: null OUTCOME failed from
+    // round 5, null KIND kept skipping. Both now go through `compareField`,
+    // which cannot be called without saying what each silence means.
+    name: "A2 — a paired row cannot say how its file was touched",
+    mutate: (v) => {
+      const row = v.did.find((d) => d.path?.endsWith("delta.txt") === true);
+      if (row !== undefined) row.kind = null;
+    },
+    because: "a2-row-kind-missing",
+    id: "A2",
+    want: "fail",
+  },
+  {
+    // A message the account cannot report. Presence only — the anti-game
+    // forbids reading the prose, and this never does.
+    name: "A6 — a message carries no readable text",
+    mutate: (v) => {
+      v.messagesWithoutText = 1;
+    },
+    because: "a6-message-without-text",
+    id: "A6",
+    want: "fail",
+  },
+  {
+    // A plan gap is the recorder saying what it could not record. Calls it
+    // accounts for are a named absence, not a loss — the file side already had
+    // this rule and the plan side did not.
+    name: "A5 — every plan call is accounted for by a plan gap",
+    mutate: (v) => {
+      v.plan = { rows: [], toolCalls: 2 };
+      v.gaps = [
+        { kind: "plan", reason: "a plan item id could not be read", rawPath: null },
+        { kind: "plan", reason: "a plan item id could not be read", rawPath: null },
+      ];
+    },
+    because: "a5-unmeasured",
+    id: "A5",
+    want: "unmeasured",
+  },
+  {
+    // And the shortfall, so the rule is not "any plan gap excuses everything".
+    name: "A5 — fewer plan gaps than plan calls is still a loss",
+    mutate: (v) => {
+      v.plan = { rows: [], toolCalls: 2 };
+      v.gaps = [{ kind: "plan", reason: "a plan item id could not be read", rawPath: null }];
+    },
+    because: "a5-lost",
+    id: "A5",
+    want: "fail",
+  },
+  {
+    // A FILE gap does not excuse a plan call, the mirror of the rule that a
+    // plan gap does not excuse a lost mutation.
+    name: "A5 — a file gap is offered for a missing plan row",
+    mutate: (v) => {
+      v.plan = { rows: [], toolCalls: 1 };
+      v.gaps = [{ kind: "file", reason: "could not be keyed", rawPath: "/work/repo/x.txt" }];
+    },
+    because: "a5-lost",
+    id: "A5",
+    want: "fail",
   },
   {
     // A row that exists and cannot say how its mutation ended. A1 only checks
@@ -1165,6 +1254,26 @@ await runGoal(async () => {
       );
     }
   }
+  const comparisonCases: Array<[string, string, boolean]> = [
+    ["a hand-written cross-surface comparison", "if (entry.kind !== mutation.kind) {}", true],
+    ["one written the other way round", "if (mutation.outcome === entry.outcome) {}", true],
+    ["a same-surface comparison", "if (entry.kind !== entry.outcome) {}", false],
+    ["a comparison routed through the combinator", "compareField({ stream: m.kind, record: e.kind })", false],
+  ];
+  for (const [what, source, shouldSee] of comparisonCases) {
+    if ((rawCrossSurfaceComparisons(source).length > 0) !== shouldSee) {
+      failures.push(`the cross-surface scanner ${shouldSee ? "cannot see" : "falsely reports"} ${what}`);
+    }
+  }
+  const rawComparisons = rawCrossSurfaceComparisons(readFileSync(GRADER_SOURCE, "utf8"));
+  if (rawComparisons.length > 0) {
+    failures.push(
+      `A FIELD IS COMPARED OUTSIDE compareField — ${rawComparisons.join("; ")}. A hand-written ` +
+        `cross-surface comparison expresses only the disagree case, and the two silences get ` +
+        `decided by omission. That is how the same rule came to be half applied`,
+    );
+  }
+
   const breaches = boundaryBreaches(readFileSync(GRADER_SOURCE, "utf8"));
   if (breaches.length > 0) {
     failures.push(
@@ -1419,9 +1528,25 @@ await runGoal(async () => {
         evidence: "",
       };
     }
+    // THE DIAGNOSTIC MUST BE REACHABLE ON THE REAL PATH. A single request whose
+    // id cannot be read is counted but yields no view, so the count check above
+    // passes and `view.runId` would throw here — before `grade` could emit the
+    // `a0-request-dropped` finding written for exactly this state. The guard
+    // case calls `grade` directly and so never crossed this line: a guard that
+    // cannot reach the code it guards looks identical to one that passes, which
+    // is the defect this whole check exists to detect, one round old.
     const view = account.runs[0];
     const expectation: Expectation = { paths: expectedNames };
-    const findings: Finding[] = [...grade(account, expectation, COLLECTIONS, view.runId), a8];
+    const findings: Finding[] = [
+      ...grade(account, expectation, COLLECTIONS, view?.runId ?? "(no readable run id)"),
+      a8,
+    ];
+    if (view === undefined) {
+      return {
+        failures: failuresOf(findings),
+        evidence: "",
+      };
+    }
 
     // The account, printed whole — this IS the artifact, and a reader of the
     // log should be able to see what the state said without re-running.
