@@ -153,7 +153,7 @@ async function assemble(
   });
 
   const flow = defineFlow({
-    kind: "lab-136-review-brief",
+    kind: "review-brief-goal",
     requireUser: true,
     actions: { review: { block: recipe as never } },
   })({ id: "default" });
@@ -166,7 +166,7 @@ async function assemble(
     // Per-pass slug is load-bearing, not decorative: `goalSessionId`'s stamp is
     // per-PROCESS, so a bare slug would hand all eight passes one session, and
     // the accumulated history would make pass 2 legitimately differ from pass 1.
-    sessionId: goalSessionId(`lab136-${passLabel}`),
+    sessionId: goalSessionId(`review-brief-${passLabel}`),
     stores: createInMemoryStores(),
     runtimeConfig: {
       modelResolver: Object.assign(() => model, { resolveId: (id: string) => id }),
@@ -271,12 +271,18 @@ const changingContributions = (id: string): Leaf[] => leaves(issueOf(WORLD, id),
  * How a field is PLACED in the brief, for the fields whose bare value cannot
  * identify them. Mirrors the labels in `renderTail` — keep the two together.
  *
- * Presence alone grades the wrong thing here: swap `linesAdded` and
- * `linesRemoved` and every leaf is still somewhere in the tail, so a brief
- * reporting the wrong metrics passes. A held-out world with two equal numbers
- * hides an omitted field the same way. Grading the labelled fragment ties each
- * value to the field it was rendered for. Leaves absent from this list are
- * distinctive prose and are graded on their text.
+ * Placement is graded two ways, because the two hazards are different and
+ * neither mechanism covers the other. Verified, not assumed — emptying this
+ * table and transposing the metrics turns the check GREEN again:
+ *
+ *   - ACROSS regions (`project` rendered under `<standards>`): caught by
+ *     `standingRegion`, which scopes each contribution to its own tag.
+ *   - WITHIN one region (`linesAdded` rendered where `linesRemoved` belongs):
+ *     region scoping cannot see it — all four PR scalars render into the same
+ *     untagged tail — so these are graded on their labelled fragment instead.
+ *
+ * Leaves absent from this list are distinctive prose and are graded on their
+ * text within their region.
  */
 const PLACED: Array<[string, (v: string) => string]> = [
   ["pullRequest.number", (v) => `#${v}`],
@@ -297,9 +303,42 @@ const escapeXml = (s: string): string =>
 const carries = (haystack: string, fragment: string): boolean =>
   haystack.includes(fragment) || haystack.includes(escapeXml(fragment));
 
-const missingFrom = (haystack: string, expected: Leaf[]): string[] =>
+/**
+ * The slice of the brief that is supposed to carry a contribution.
+ *
+ * Scoped, not whole-half: an unscoped search cannot tell a value rendered under
+ * the right tag from the same value rendered under the wrong one, so swapping
+ * `project` and `standards` would leave both present and every signal green
+ * while the model reads each under the other's heading.
+ *
+ * The tags are read off the recipe's own context object — its keys ARE the tags
+ * the framework renders — so this is derived from the recipe, not declared
+ * beside it, and a recipe that grows a fourth grounding key is covered without
+ * anyone remembering to add it here.
+ */
+const GROUNDING_TAGS = Object.keys(reviewGrounding(WORLD) as Record<string, unknown>);
+
+function taggedRegion(text: string, tag: string): string {
+  const open = `<${tag}>`;
+  const start = text.indexOf(open);
+  if (start < 0) return "";
+  const end = text.indexOf(`</${tag}>`, start);
+  return end < 0 ? "" : text.slice(start + open.length, end);
+}
+
+function standingRegion(text: string, leafPath: string): string {
+  const tag = GROUNDING_TAGS.find((t) => leafPath.includes(t));
+  if (tag !== undefined) return taggedRegion(text, tag);
+  // The untagged prompt: everything ahead of the first tag the recipe declares.
+  const firstTag = GROUNDING_TAGS.map((t) => text.indexOf(`<${t}>`))
+    .filter((i) => i >= 0)
+    .sort((x, y) => x - y)[0];
+  return firstTag === undefined ? text : text.slice(0, firstTag);
+}
+
+const missingFrom = (expected: Leaf[], regionFor: (leaf: Leaf) => string): string[] =>
   expected
-    .filter((l) => !carries(haystack, expectedFragment(l)))
+    .filter((l) => !carries(regionFor(l), expectedFragment(l)))
     .map((l) => {
       const fragment = expectedFragment(l);
       return fragment === l.text ? l.path : `${l.path} (expected ${JSON.stringify(fragment)})`;
@@ -421,15 +460,22 @@ await runGoal(async () => {
 
   // S3 — the brief carries every contribution it claims to. Without this the
   // shape can stay perfectly stable while the content drains away.
-  const standingMissing = missingFrom(standingText(a), standingContributions());
+  const standingMissing = missingFrom(standingContributions(), (l) =>
+    standingRegion(standingText(a), l.path),
+  );
   if (standingMissing.length > 0) {
-    failures.push(`the standing half is missing contributions it claims to carry: ${standingMissing.join(", ")}`);
+    failures.push(
+      `the standing half is missing contributions it claims to carry, or carries them under the ` +
+        `wrong heading: ${standingMissing.join(", ")}`,
+    );
   }
   for (const [id, capture] of [
     [ISSUE_A, a],
     [ISSUE_B, b],
   ] as const) {
-    const tailMissing = missingFrom(changingText(capture), changingContributions(id));
+    // The changing half is one untagged region, so placement within it is what
+    // the labelled fragments in `PLACED` carry.
+    const tailMissing = missingFrom(changingContributions(id), () => changingText(capture));
     if (tailMissing.length > 0) {
       failures.push(`${id}'s changing half is missing contributions it claims to carry: ${tailMissing.join(", ")}`);
     }
