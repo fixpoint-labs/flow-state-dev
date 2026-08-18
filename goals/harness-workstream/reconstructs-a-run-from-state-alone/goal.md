@@ -371,6 +371,66 @@ one's PASS into a claim about theirs.
 
 ## Verdict log
 
+**THE VERDICT IS TWO ASSERTIONS WEAKER THAN IT HAS BEEN REPORTING.** Assertions 3 and 7 are
+**structurally satisfied on the real path** — not unreached edges, not named limits, but claims
+the system makes true before the run is consulted. **Their combined contribution to all 26 PASSes
+is zero.** Each has real teeth in the calibration fixture and the guard table, where the state is
+handed in; neither can say anything about a dispatched run. This is stated here, in the verdict
+section, because it is a correction to what the PASSes mean — putting it in the named-limits list
+would read as an edge case, and it is not one.
+
+**Assertion 3 measures a field the store sorts by.** The reader's ordering set comes from
+`/sessions/:id/requests?include_items=true`, which lands on `store.request.list({withItems:true})`.
+In `packages/store-sqlite/src/request-store.ts` the item write persists `sequence = item.itemIndex`,
+and both read paths — `selectItemsStmt` and the batch `list` query — are `ORDER BY … sequence ASC`.
+The legacy dual-read merge beside them re-sorts on `itemIndex` too. So the item list arrives sorted
+by **the exact field A3 tests for non-decreasing order**: a run emitting `0, 3, 2, 4` reads back
+`0, 2, 3, 4` and grades `a3-ok`. `a3-out-of-order` is unreachable outside a directly-fed state.
+Its two other branches are closed by the same layer — `sequence INTEGER NOT NULL` means a
+persisted item always carries a numeric `itemIndex`, so `a3-unreadable` cannot fire either (nor
+can A4's `a4-unreadable-mutation`, which reads the same absence), and a run of 30-odd items is
+never short of two distinct positions.
+
+**Assertion 7 followed a cursor that was never offered.** `STATE_LIST_DEFAULT_LIMIT` is 50 and
+these runs write three file rows, no gaps and no plan rows, so every collection fits in one page
+and `nextCursor` is never returned. `a7-truncated` needs 200 pages; `a7-never-read` needs a view
+whose `reads` map lacks a collection, which `readAccount` cannot produce because it assigns all
+three unconditionally or throws. A7's real teeth are in the calibration — the page-cap-1 mutation
+went red there — and that is the whole of its coverage.
+
+**The rest of the verdict is unaffected, and naming what survives is part of being honest about
+what does not.** A1, A2, A4 and A6 read field *values*, not the order they arrive in, so the
+store's sort passes through them: A4 compares `max(mutation itemIndex)` against
+`max(message itemIndex)` and still goes red on a run that writes after its closing word. A8 grades
+source text. A5 reports UNMEASURED, which is disclosed above and is not a silent tautology. So
+what the 26 PASSes certify is **A1, A2, A4, A6 and A8 over the dispatched run**, plus the
+model-free half in full.
+
+**An independent ordering surface was looked for, found, and rejected on measurement — recorded
+so nobody re-derives it.** `request_events` is written with its own `sequence_number` and read
+`ORDER BY sequence_number ASC`, so it is genuinely not sorted by `itemIndex`: the counter is
+`this.sequenceNumber += 1` inside the emitter's `appendEvent`, and `item.added` carries the whole
+item, `itemIndex` included. It is a real second surface. It is also **not a witness of the
+property A3 names**, because `itemIndex` is reserved at item *construction* (`emittedItemCount++`
+in `createExecutionContext`) and the event sequence is assigned later at *emission*, with awaits
+between. On a faithful model-free run of this goal's own board-and-detached-worker shape, the
+persisted log's `item.added` events carried
+`0,1,1,3,2,3,4,7,5,6,7,11,8,13,9,15` — a state snapshot reserved at 3 emitted before a block trace
+reserved at 2, and so on down the run. Routing A3 through the event log would therefore fail
+**ordinary faithful state on every run**, which is this file's most repeated defect wearing a new
+hat. A second reason on its own would have been enough: when the persisted log is empty the stream
+route falls back to `buildReplayEvents`, which reconstructs from `record.items` and is
+`itemIndex`-sorted again — the identical tautology one level down, with nothing at the reader able
+to tell the two apart.
+
+**The level is the lesson, and it is the third one.** A3 was caught by reading the *storage
+layer*, which is invisible from the check, from the fixture, and from the guard table alike — the
+three levels this same failure has now appeared at. A guard case proves an assertion rejects a
+world; it cannot prove the world reaches the assertion, because everything between the emitter and
+the grader is stubbed out. So the sweep that found A7 is the one worth repeating: **for every
+assertion, name the field it reads and ask what the persistence layer does to that field on the
+way out.** Preconditions 1f and 1g below execute the two answers rather than remembering them.
+
 **Assertion 5 has reported UNMEASURED on every run**, and that is the finding rather than a
 footnote. Through the in-process Agent SDK path the run invokes no plan tool at all — it writes
 its to-do list as **prose in its own messages**, which the account shows verbatim
