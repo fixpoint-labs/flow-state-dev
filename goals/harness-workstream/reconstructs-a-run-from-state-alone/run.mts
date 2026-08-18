@@ -1269,6 +1269,13 @@ await runGoal(async () => {
             `bare global is a second way in`,
         }
       : { id: "A8", status: "pass", because: "a8-ok", message: a8Seen.join("; ") };
+  // A8 is a pure source scan, so its verdict is FINAL here — before a run is
+  // dispatched. Leaving it out of the pre-dispatch gate cost a full
+  // model-backed coding run to return a failure already in hand. Not a
+  // correctness defect: the verdict was right either way. It is wrong-extent on
+  // the GATE, which exists for exactly one reason — never spend a run the goal
+  // cannot pass — and did not include one of the failures it already knew.
+  if (a8.status === "fail") failures.push(`A8/${a8.because} — ${a8.message}`);
 
   // ══ Precondition 1b — calibration against a state whose account is known ══
   const state = JSON.parse(readFileSync(fixturePath(import.meta.url, "known-state.json"), "utf8")) as KnownState;
@@ -1531,9 +1538,9 @@ await runGoal(async () => {
   // section is now understating what the run proves — so it fails and says so,
   // rather than letting the goal quietly go on under-reporting itself.
   const sortProbeDir = mkdtempSync(join(tmpdir(), "state-readback-sortprobe-"));
+  const { sqliteStores: probeStores } = await import("@flow-state-dev/store-sqlite");
+  const adapter = probeStores({ filename: join(sortProbeDir, "sort-probe.sqlite") });
   try {
-    const { sqliteStores: probeStores } = await import("@flow-state-dev/store-sqlite");
-    const adapter = probeStores({ filename: join(sortProbeDir, "sort-probe.sqlite") });
     const registry = (await adapter.resolve(["primary"])) as unknown as {
       request: {
         set(id: string, value: unknown, expected: "any"): Promise<unknown>;
@@ -1593,8 +1600,8 @@ await runGoal(async () => {
           `against a store whose read path is doing something else entirely`,
       );
     }
-    adapter.dispose?.();
   } finally {
+    await adapter.dispose?.();
     rmSync(sortProbeDir, { recursive: true, force: true });
   }
 

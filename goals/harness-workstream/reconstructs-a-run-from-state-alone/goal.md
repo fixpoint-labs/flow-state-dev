@@ -152,6 +152,13 @@ be produced at all.
 - Assertion 4 compared the report against the run's *first* activity, so `write, report, write`
   passed: it rejected the world where all activity follows the report and accepted the one where
   only some does. It now grades the last mutation.
+- **Assertion 8's verdict was final before dispatch and was not in the pre-dispatch gate**, so a
+  reader with a forbidden import spent a full model-backed coding run to return a failure already
+  computed. **Not a correctness defect — the verdict was right either way — and it is listed here
+  rather than as a limit because what it costs is a run, not an answer.** It is wrong-extent on
+  the *gate*: that gate exists for one reason, never spend a run the goal cannot pass, and it left
+  out one of the failures it already held. Every other member of this class has been a rule
+  half-applied to code; this one was half-applied to the mechanism that protects the budget.
 - Assertion 8 checked module specifiers only, and `process.cwd()` names no module. It now also
   scans for bare globals and computed dynamic imports, over the shared `paths.mts` as well as the
   reader.
@@ -308,19 +315,38 @@ not currently grade:
 
 - `lastTouchedAt` on a row is read into no comparison, so a record may carry any timestamp.
 - `previousStatus` on a plan row is derived and never graded.
-- **A plan row's `lastOutcome` never reaches the grader, because the READER drops it.** The
-  collection exposes it and the recorder writes it, and `readAccount`'s plan-row mapping carries
-  `title`, `status` and `previousStatus` only — so a task with a confirmed title and status plus a
-  later `TaskUpdate` that failed grades `a5-ok`, certifying a transition the state says never
-  settled. **This is A3's shape one notch weaker, and the pair says more than either half does.**
+- **A5's ROWS arm can certify a fractional account in THREE distinct ways, and that list is the
+  finding.** It is the weakest thing in this check, and no one of the three says so on its own:
+
+  1. **A plan row's `lastOutcome` never reaches the grader, because the READER drops it.** The
+     collection exposes it and the recorder writes it, and `readAccount`'s plan-row mapping
+     carries `title`, `status` and `previousStatus` only — so a task with a confirmed title and
+     status plus a later `TaskUpdate` that failed grades `a5-ok`, certifying a transition the
+     state says never settled.
+  2. **Gap handling is skipped whenever any plan row exists** — the entry below, kept there
+     because it was reported on its own, and repeated here because it belongs to this set.
+  3. **A successful `TaskCreate` whose row is lost leaves neither a row nor a gap**, and
+     `rows.length !== 0` bypasses loss accounting entirely, so `a5-ok`. The sharp part is the
+     reporter's own note: **checking gaps beside the surviving rows would not catch it.** A gap is
+     emitted when a successful create's item id is *unreadable*; a row that simply vanished
+     produces no gap, so the loss is invisible on both surfaces at once. Every other exemption in
+     this check works because the absent thing leaves a trace somewhere. This one has nowhere to
+     look, which is a different repair from the other two and worth knowing before anyone starts.
+
+  Taken together they are one statement: **the arm reports on the rows it can see, and has three
+  separate blind spots about the rows it cannot.** That is this goal's own thesis — a fractional
+  account certified as whole — appearing three times inside one assertion of it.
+
+  **Number 1 is also A3's shape one notch weaker, and that pair says more than either half does.**
   A3 is an assertion measuring a property the layer below it has already made true; this is an
   assertion blind to a field the layer below it recorded faithfully and the layer *above* the
   store threw away. Both are the same question asked at the wrong altitude — *what happened to
   this value between the writer and the check?* — and neither is visible from the grader, where
-  every review of this file has been looking. It stays a limit rather than a fix on two counts:
-  A5 can fail, so this is one dimension of blindness rather than an assertion that cannot fail;
-  and its ROWS arm does not execute on a real run at all (`toolCalls === 0`, FIX-1185), so
-  closing it would change no verdict until the driver does.
+  every review of this file has been looking. **All three stay limits rather than fixes on two
+  counts:** A5 can fail, so these are dimensions of blindness rather than an assertion that cannot
+  fail — which is the bar this PR folds at; and the ROWS arm does not execute on a real run at all
+  (`toolCalls === 0`, FIX-1185), so closing any of them would change no verdict until the driver
+  does.
 - A `tool_output` whose `toolCall.name` is unreadable matches no tool table and is invisible to
   A2 entirely — an existence cell, not a presence one.
 - A row's `storageKey` and its `topic` are never checked against each other.
