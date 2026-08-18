@@ -239,11 +239,19 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
     // or a later comparison against the run's tool activity reads this as the
     // record having lost a write.
     if (event.resolvedPath !== undefined && canonicalFilePathKey(event.resolvedPath) !== canonical) {
+      // THE GAP IS THE WHOLE RECORD, the same as a plan update the harness
+      // applied to a different item. The settling event's other fields — the
+      // kind the harness reported, its outcome — describe the write it actually
+      // performed at ITS path, so stamping them onto a row keyed by the path the
+      // run named would assert that something happened to a file that may never
+      // have been touched. The attempt keeps the `pending` row it already has,
+      // which is the honest state: asked for, not confirmed.
       gap(
-        `a file mutation was recorded under the path the run named, which is not the path ` +
-          `the harness reported ("${event.resolvedPath}")`,
+        `a file mutation was attempted on the path the run named and the harness reported ` +
+          `writing "${event.resolvedPath}" instead, so nothing was settled for either`,
         event.path,
       );
+      return;
     }
     const key = keyFor("file operation", canonical, event.path);
     if (key === null) return;
@@ -272,14 +280,17 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
       // is nothing to derive from — the create carried no status — so a derived
       // `previousStatus` is null for a transition the harness described in full.
       const prior = event.previousStatus ?? confirmedStatus.get(event.itemId);
-      // Only a real change moves the pointer. Re-confirming the status an item
-      // already holds is not a transition, and recording it as one would leave
-      // `previousStatus === status` on a row that never moved.
-      if (prior !== event.status) {
-        if (prior !== undefined) merged.previousStatus = prior;
-        confirmedStatus.set(event.itemId, event.status);
-        merged.status = event.status;
-      }
+      // The CURRENT status is recorded unconditionally, because the harness
+      // confirmed it whether or not it changed. Gating this on a change left a
+      // no-op update (`pending` → `pending`) with `status: null`, since a create
+      // records no status — the row denying a state the harness had just
+      // confirmed.
+      confirmedStatus.set(event.itemId, event.status);
+      merged.status = event.status;
+      // Only a real change moves the POINTER, though. Re-confirming the status
+      // an item already holds is not a transition, and recording it as one
+      // would leave `previousStatus === status` on a row that never moved.
+      if (prior !== undefined && prior !== event.status) merged.previousStatus = prior;
     }
     pendingPlan.set(key, merged);
     armTimer();

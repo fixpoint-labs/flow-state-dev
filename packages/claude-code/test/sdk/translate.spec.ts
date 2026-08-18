@@ -920,6 +920,133 @@ describe("translateSdkMessage — observed work", () => {
     expect(events[1]).not.toHaveProperty("status");
   });
 
+  it("settles NOTHING when the harness reports updating a different item", () => {
+    // The disagreement that isolates it: the result confirms a status and a
+    // subject, and names a DIFFERENT item. Settling anyway writes item 9's
+    // confirmed data onto item 5's row — corrupting a row the harness never
+    // touched while omitting the one it did.
+    const events = translateScript([
+      {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_u",
+              name: "TaskUpdate",
+              input: { taskId: "5", status: "completed" },
+            },
+          ],
+        },
+      },
+      {
+        type: "user",
+        tool_use_result: {
+          success: true,
+          taskId: "9",
+          updatedFields: ["status"],
+          statusChange: { from: "in_progress", to: "completed" },
+        },
+        message: {
+          content: [{ type: "tool_result", tool_use_id: "toolu_u", content: "Updated task #9" }],
+        },
+      },
+    ]);
+    // The attempt stays pending; no `applied` event carries item 9's data.
+    const plan = events.filter((e) => e.kind === "plan_item_observed");
+    expect(plan).toEqual([{ kind: "plan_item_observed", itemId: "5", outcome: "pending" }]);
+    expect(events.filter((e) => e.kind === "work_gap_observed")).toHaveLength(1);
+  });
+
+  it("reports a batch whose structured confirmation could not be attributed", () => {
+    // Two results, one message-level structured result. Every settlement in the
+    // message falls back to call-time values — right when the harness says
+    // nothing, but here it DID say something and we discarded it, so an
+    // approval-revised input or an in-band refusal is invisible. The row must
+    // not be indistinguishable from a confirmed one.
+    const events = translateScript([
+      {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_1",
+              name: "TaskUpdate",
+              input: { taskId: "5", status: "completed" },
+            },
+            { type: "tool_use", id: "toolu_2", name: "Write", input: { file_path: "/work/a.txt" } },
+          ],
+        },
+      },
+      {
+        type: "user",
+        // Contradicts the call-time status, and cannot be attributed to either.
+        tool_use_result: { success: false, taskId: "5", updatedFields: [] },
+        message: {
+          content: [
+            { type: "tool_result", tool_use_id: "toolu_1", content: "ok" },
+            { type: "tool_result", tool_use_id: "toolu_2", content: "ok" },
+          ],
+        },
+      },
+    ]);
+    const gaps = events.filter((e) => e.kind === "work_gap_observed");
+    expect(gaps).toHaveLength(1);
+    expect((gaps[0] as { reason: string }).reason).toContain("could not be attributed");
+  });
+
+  it("says nothing about a batch that settled no recorded work", () => {
+    // A batch of results for tools nobody records discarded nothing that
+    // mattered, so it must not manufacture a gap.
+    const events = translateScript([
+      {
+        type: "assistant",
+        message: {
+          content: [
+            { type: "tool_use", id: "toolu_1", name: "Bash", input: { command: "ls" } },
+            { type: "tool_use", id: "toolu_2", name: "Bash", input: { command: "pwd" } },
+          ],
+        },
+      },
+      {
+        type: "user",
+        tool_use_result: { stdout: "" },
+        message: {
+          content: [
+            { type: "tool_result", tool_use_id: "toolu_1", content: "ok" },
+            { type: "tool_result", tool_use_id: "toolu_2", content: "ok" },
+          ],
+        },
+      },
+    ]);
+    expect(events.filter((e) => e.kind === "work_gap_observed")).toEqual([]);
+  });
+
+  it("says nothing about a batch that carried no structured result to discard", () => {
+    const events = translateScript([
+      {
+        type: "assistant",
+        message: {
+          content: [
+            { type: "tool_use", id: "toolu_1", name: "Write", input: { file_path: "/work/a.txt" } },
+            { type: "tool_use", id: "toolu_2", name: "Write", input: { file_path: "/work/b.txt" } },
+          ],
+        },
+      },
+      {
+        type: "user",
+        message: {
+          content: [
+            { type: "tool_result", tool_use_id: "toolu_1", content: "ok" },
+            { type: "tool_result", tool_use_id: "toolu_2", content: "ok" },
+          ],
+        },
+      },
+    ]);
+    expect(events.filter((e) => e.kind === "work_gap_observed")).toEqual([]);
+  });
+
   it("reports an update the harness applied to a DIFFERENT item as a gap", () => {
     // The id is a key, so it keeps its call-time value — but a result naming
     // another item means this row describes work done to something else.

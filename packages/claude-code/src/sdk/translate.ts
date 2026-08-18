@@ -437,6 +437,9 @@ function observeToolCall(
  * to THIS call — see {@link translateUser}. Everything here degrades rather than
  * throws: an unrecognised call id, an absent structured field, a create with no
  * recoverable id, all record nothing.
+ *
+ * Returns whether this call was one the recorder tracks, so the caller can tell
+ * a message that settled recorded work from one that settled none.
  */
 function observeToolResult(
   callId: string,
@@ -445,7 +448,7 @@ function observeToolResult(
   structured: unknown,
   state: TranslateState,
   events: TranslatedEvent[],
-): void {
+): boolean {
   const fileOp = state.openFileOps.get(callId);
   if (fileOp !== undefined) {
     state.openFileOps.delete(callId);
@@ -478,13 +481,13 @@ function observeToolResult(
       outcome: isError ? "failed" : "applied",
       ...(resolved !== null && resolved !== fileOp.path ? { resolvedPath: resolved } : {}),
     });
-    return;
+    return true;
   }
 
   const create = state.openPlanCreates.get(callId);
   if (create !== undefined) {
     state.openPlanCreates.delete(callId);
-    if (isError) return; // a create that failed created nothing to record
+    if (isError) return true; // a create that failed created nothing to record
     const itemId = readCreatedItemId(structured) ?? recoverItemIdFromProse(content);
     if (itemId === null) {
       // The harness DID create the item and we cannot address it. That is a
@@ -493,7 +496,7 @@ function observeToolResult(
         kind: "work_gap_observed",
         reason: "a plan item was created and its id could not be read from the result",
       });
-      return;
+      return true;
     }
     // The subject the harness CREATED, not the one the run asked for. An
     // approval seam can revise a tool's input before it executes, so the two
@@ -507,7 +510,7 @@ function observeToolResult(
       ...(title !== null ? { title } : {}),
       outcome: "applied",
     });
-    return;
+    return true;
   }
 
   const update = state.openPlanUpdates.get(callId);
@@ -521,27 +524,36 @@ function observeToolResult(
       // Neither the status nor the wording is carried: claiming a move the
       // harness refused is worse than recording nothing about it.
       events.push({ kind: "plan_item_observed", itemId: update.itemId, outcome: "failed" });
-      return;
+      return true;
+    }
+
+    // The id is a KEY, so it keeps its call-time value for the same reason the
+    // file path does — but a result naming a different item means the row we
+    // are about to settle describes work done to something else.
+    const reportedId = readString(structured, "taskId");
+    if (reportedId !== null && reportedId !== update.itemId) {
+      // THE GAP IS THE WHOLE RECORD HERE. Settling as well would take the
+      // confirmed fields — which describe item `reportedId` — and write them
+      // onto item `update.itemId`'s row, corrupting a row the harness never
+      // touched while omitting the one it did. The key correctly stays
+      // call-time and the fields correctly come from the result; applying both
+      // at once is what makes them wrong together.
+      //
+      // The attempt stays `pending`, which is the honest state: we asked to
+      // move this item and cannot confirm what became of it.
+      events.push({
+        kind: "work_gap_observed",
+        reason:
+          `a plan update was attempted on item ${update.itemId} and the harness reported ` +
+          `updating ${reportedId} instead, so nothing was settled for either`,
+      });
+      return true;
     }
 
     // The harness reports the transition it performed, both ends of it. That
     // `from` is the only source for the item's PRIOR status on a first move —
     // the create result carries no status, so deriving it downstream can only
     // produce null for a transition the harness described in full.
-    // The id is a KEY, so it keeps its call-time value for the same reason the
-    // file path does — but a result naming a different item means the row we
-    // are about to settle describes work done to something else, so it is
-    // reported rather than followed.
-    const reportedId = readString(structured, "taskId");
-    if (reportedId !== null && reportedId !== update.itemId) {
-      events.push({
-        kind: "work_gap_observed",
-        reason:
-          `a plan update was recorded against item ${update.itemId}, which is not the item ` +
-          `the harness reported updating (${reportedId})`,
-      });
-    }
-
     const movedFrom = readNestedString(structured, "statusChange", "from");
     const movedTo = readNestedString(structured, "statusChange", "to");
     const applied = readAppliedFields(structured);
@@ -559,7 +571,10 @@ function observeToolResult(
       ...(movedFrom !== null ? { previousStatus: movedFrom } : {}),
       outcome: "applied",
     });
+    return true;
   }
+
+  return false;
 }
 
 /**
@@ -578,8 +593,18 @@ function translateUser(
   // it can only be attributed when the message carries exactly one result. With
   // two, there is no way to tell which one it describes, and guessing would put
   // one tool's structured output onto another's record.
-  const structured =
-    blocks.filter((b) => b.type === "tool_result").length === 1 ? msg.tool_use_result : undefined;
+  const resultCount = blocks.filter((b) => b.type === "tool_result").length;
+  const attributable = resultCount === 1;
+  const structured = attributable ? msg.tool_use_result : undefined;
+  // Confirmation that EXISTED and could not be attributed is different from
+  // confirmation that was never sent, and the difference has to reach the
+  // record. Every settlement below then falls back to call-time values — which
+  // is the right behaviour when the harness says nothing, but leaves a row
+  // indistinguishable from a genuinely confirmed one unless the discard is
+  // written down. An approval that revised the input, or an in-band
+  // `success: false`, is invisible in exactly this case.
+  const discardedConfirmation = !attributable && msg.tool_use_result !== undefined;
+  let settledRecordedWork = false;
   for (const block of blocks) {
     if (block.type !== "tool_result") continue;
     const callId = block.tool_use_id;
@@ -590,8 +615,21 @@ function translateUser(
     } else {
       state.openTools.delete(callId);
       events.push({ kind: "tool_result", callId, output: block.content, isError, ...withParent });
-      observeToolResult(callId, block.content, isError, structured, state, events);
+      if (observeToolResult(callId, block.content, isError, structured, state, events)) {
+        settledRecordedWork = true;
+      }
     }
+  }
+  // Only when recorded work actually settled from it: a batch of results for
+  // tools nobody records discarded nothing that mattered.
+  if (discardedConfirmation && settledRecordedWork) {
+    events.push({
+      kind: "work_gap_observed",
+      reason:
+        `${resultCount} tool results arrived in one message carrying a single structured ` +
+        `result, so it could not be attributed to any of them — the settlements in that ` +
+        `message fell back to what the run asked for`,
+    });
   }
   return events;
 }

@@ -918,7 +918,9 @@ describe("claudeCodeAgent — recordWork", () => {
     >;
     const fileRows = await resources["observed-file-ops"].list();
     expect(fileRows).toHaveLength(1);
-    expect(fileRows[0].state).toMatchObject({ outcome: "applied" });
+    // Unsettled, not applied: the harness reported writing somewhere else, so
+    // there is nothing confirming a write at the path this row is keyed by.
+    expect(fileRows[0].state).toMatchObject({ outcome: "pending" });
     // …and the divergence is visible rather than swallowed.
     const gapRows = await resources["observed-gaps"].list();
     expect(gapRows).toHaveLength(1);

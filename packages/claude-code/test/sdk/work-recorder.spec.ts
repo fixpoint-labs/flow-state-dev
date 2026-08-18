@@ -293,6 +293,28 @@ describe("createWorkRecorder — plan items", () => {
     });
   });
 
+  it("records a confirmed status even when the move was a no-op", async () => {
+    // `{ from: "pending", to: "pending" }` is still the harness confirming the
+    // item's current state. Gating the status on a CHANGE left the row at
+    // `status: null` — a create records none — so the record denied a state the
+    // harness had just confirmed.
+    const { plan, recorder } = harness();
+    recorder.observe(created("5", "Create the file"));
+    recorder.observe({
+      kind: "plan_item_observed",
+      itemId: "5",
+      status: "pending",
+      previousStatus: "pending",
+      outcome: "applied",
+    });
+    await recorder.stop();
+
+    const row = plan.rows.get(`${RUN}/5`);
+    expect(row).toMatchObject({ status: "pending" });
+    // …and no transition is invented from a move that did not happen.
+    expect(row).not.toHaveProperty("previousStatus");
+  });
+
   it("does not invent a transition when a status is merely re-confirmed", async () => {
     const { plan, recorder } = harness();
     recorder.observe(moved("5", "in_progress"));
@@ -397,11 +419,15 @@ describe("createWorkRecorder — watching the work never breaks the work", () =>
     await expect(recorder.stop()).resolves.toBeUndefined();
   });
 
-  it("records a divergence when the harness names a different path", async () => {
-    // The operation IS recorded — it happened — but under a path the harness
-    // says it did not touch. A reader comparing the run's tool activity against
-    // this record has to be able to see that the key is contested.
+  it("leaves the attempt unsettled when the harness names a different path", async () => {
+    // The settling event's fields describe the write the harness actually
+    // performed, at ITS path. Stamping them onto a row keyed by the path the run
+    // named would assert something happened to a file that may never have been
+    // touched — so the gap is the whole record and the attempt keeps the
+    // `pending` state it already had. Same rule as a plan update the harness
+    // applied to a different item.
     const { files, gaps, recorder } = harness();
+    recorder.observe(fileCall("/work/notes.txt"));
     recorder.observe({
       kind: "file_op_observed",
       path: "/work/notes.txt",
@@ -412,8 +438,10 @@ describe("createWorkRecorder — watching the work never breaks the work", () =>
     await recorder.stop();
 
     expect([...files.rows.keys()]).toEqual([`${RUN}/work/notes.txt`]);
+    // Unsettled — NOT "applied", which would claim a write we cannot confirm.
+    expect(files.rows.get(`${RUN}/work/notes.txt`)).toMatchObject({ outcome: "pending" });
     expect([...gaps.rows.values()]).toHaveLength(1);
-    expect(String([...gaps.rows.values()][0].reason)).toContain("the harness reported");
+    expect(String([...gaps.rows.values()][0].reason)).toContain("/work/elsewhere/notes.txt");
   });
 
   it("stays quiet when canonicalization reconciles the two paths", async () => {
