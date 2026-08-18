@@ -466,11 +466,26 @@ free once the first exists. It also sharpens the *keep* case: the count stays on
 the evidence line prints it — **describing a run is not requiring something of it**, and
 conflating the two is what put the row there.
 
-**Structural closes, where they were reached:** per-run views making a pooled read a *compile
-error*, plus a source scan over the grader that fails preconditions on any function taking a
-`GradeableView` beside an account-wide value — **guarding the reintroduction path, not just the
-current code.** Every other fix this epic was verified against the code as it is; that one against
-the code as someone might next write it.
+**Structural closes, where they were reached — and the two are not equivalent, which I stated
+wrongly and am correcting here.**
+
+- **Per-run views making a pooled read a *compile error*.** Genuinely structural: the wrong program
+  does not typecheck, and no spelling gets around it.
+- **A source scan over the grader** that fails preconditions on functions taking a `GradeableView`
+  beside an account-wide value. **This is a regex over text**, and review found two ways past it —
+  the per-run scan is declaration-only, so an arrow function is never examined; the cross-surface
+  scan requires the literal identifiers `entry` and `mutation`, so an alias or a destructure slips
+  by.
+
+**A "structural" guard implemented as a regex is a remembered rule enforced by a spell-checker.**
+It catches the shape its author thought of. That is the failure this document describes six times,
+now aimed at the guard written to end it — and I compressed both closes into one sentence as
+though they were the same kind of thing, which is the overclaim, not the implementer's description.
+
+The distinction survives: **the type-level close does guard the reintroduction path.** The scan
+guards it only as currently spelled, and moving it to an AST- or type-aware check would put it in
+the same category as the close it supplements. Recorded as a named limit rather than fixed, since
+both holes need a future author rather than a run to reach them.
 
 **Cross-issue evidence beat coordinator arbitration, twice, unplanned.** LAB-135's nine UNMEASURED
 plan verdicts independently confirmed LAB-134's 8-of-8 plan-tool finding by a different reader on a
