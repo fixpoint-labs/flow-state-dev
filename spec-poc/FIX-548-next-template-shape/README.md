@@ -74,6 +74,14 @@ not merely that the process exited 0.
   scaffold run with an option deliberately withheld, which buys a fact the spec already acts on
   at the cost of doubling the probe's slowest step. Stated here, outside the asserted list,
   rather than dropped, because the spec cites it for the bare-app step's flag discipline.
+- **Any import form for a config that imports *another module*.** The config this script drops in
+  is **self-contained** — it imports nothing. The real `fsdev.config.ts` imports the demo flow,
+  and that is a second resolution question this probe never asked: Turbopack infers a missing
+  extension, native Node does not. So every row above speaks to the config's *own* extension and
+  nothing else. Settled separately, by execution, and recorded in the spec's decision 4: the
+  relative specifier must carry `.ts` and the generated `tsconfig.json` must set
+  `allowImportingTsExtensions`. **This is the gap that mattered most** — the probe passed while
+  the shape the template actually ships had no working import form at all.
 - **Whether a provider SDK that `@flow-state-dev/core` imports dynamically by package name
   resolves inside the Next.js server bundle.** `createModelResolver` carries a `directLoadFailed`
   fallback for exactly this case, so it is a known hazard. Only a real run with a real key
