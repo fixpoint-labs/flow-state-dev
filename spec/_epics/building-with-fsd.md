@@ -413,7 +413,7 @@ call.
    member of this class. The brownfield pnpm run is what actually guards it.
 
    **(ii) The agent-instructions content — FIX-1160 authors it, FIX-548's template ships a copy,
-   and a version marker catches drift.** §5 Q1 assigns the content to FIX-1160 and theme 3 has the
+   and a content digest catches drift.** §5 Q1 assigns the content to FIX-1160 and theme 3 has the
    template ship it, but no edge ordered them: in a merge order where FIX-548 lands first, the
    template ships an absent or copied draft that then drifts. **FIX-1160 lands before FIX-548** —
    but the ordering edge alone left *"consumes rather than re-authors"* undefined, because nothing
@@ -421,28 +421,39 @@ call.
    a build-time reach into another package, or a shared artifact.
 
    **Decided: the template checks in its own copy, and drift is caught rather than prevented.** The
-   copy carries a **version marker inside the delimited FSD block theme 6 already requires** —
-   `<!-- fsd:agent-instructions v<n> -->` — and a monorepo test asserts every shipped copy carries
-   the marker FIX-1160 currently publishes. Change the canonical content without updating a
-   shipper and CI fails, naming the stale copy. **FIX-1160 owns the canonical content, the marker,
-   and the check; FIX-548 conforms.** No new artifact: the marker rides inside a delimiter this
-   epic already mandates.
+   copy carries a **digest of the canonical content inside the delimited FSD block theme 6 already
+   requires** — `<!-- fsd:agent-instructions sha256:<digest> -->` — and a monorepo test recomputes
+   the digest from FIX-1160's canonical source and compares it against every shipped copy. Edit the
+   canonical content without updating a shipper and CI fails, naming the stale copy. **FIX-1160
+   owns the canonical content, the digest and the check; FIX-548 conforms.** No new artifact: the
+   digest rides inside a delimiter this epic already mandates, and `node:crypto` computes it, so
+   there is no build step and no new dependency.
+
+   **This was a hand-maintained version label first, and that version could not fail for the thing
+   it guarded**: a stale or arbitrarily different body still carries `v3`, and a canonical edit that
+   forgets to increment leaves every copy green. The rule that replaced it is worth stating plainly,
+   because the next person here will reach for a label again — **a check whose failure depends on
+   someone remembering to update it is not a check.** A digest has no canonical copy to maintain: it
+   is recomputed from the content at test time, so the forgetting that used to pass now fails.
+
+   **Currency, not equality — which the digest preserves.** The digest is computed over FIX-1160's
+   canonical content and embedded in the *copy*; the copy's own body is never hashed, so there is no
+   self-reference and no requirement that the two renderings match. It asserts "this copy was
+   produced from canonical version X", which is the property that matters.
 
    **Why not a build-time copy, which is the obvious mechanism.** It presumes the two copies are
    byte-identical, and this epic has already been wrong about exactly that: theme 5 required the
    next-steps block be "reused verbatim" and **that was recorded as a defect**, because detection
    exists precisely so the printed commands match the host. The same pressure applies here — a
    template that just wrote `flows/chat.ts` can name it, a brownfield run against a stranger's repo
-   cannot. **A marker check asserts currency, which is the property that actually matters, and it
-   holds whether or not the two renderings are identical. A copy step asserts equality, which is a
-   property we are not sure we want.** It also avoids the seam a copy would need: `create-flow-state`
-   reaching into FIX-1160's source at build time, which undeclared is worse than declared, and
-   declared is a new dependency between packages.
+   cannot. A copy step asserts equality, which is a property we are not sure we want. It also avoids
+   the seam a copy would need: `create-flow-state` reaching into FIX-1160's source at build time,
+   which undeclared is worse than declared, and declared is a new dependency between packages.
 
    **Every guarantee here has a check, which is the half theme 1's tripwire never had.** (i)'s
    wiring shape rests on **theme 8's parity requirement** — both paths deliver the same
    mounted-route shape. The dependency set rests on §1's proofs **run under pnpm**, since npm's
-   hoisting hides the whole class. (ii) rests on the marker test. The tripwire that remains a
+   hoisting hides the whole class. (ii) rests on the digest test. The tripwire that remains a
    judgement call is the authoring one: a template file or an instruction that restates shared
    content instead of citing it is the signal a person looks for in review.
 
