@@ -109,6 +109,22 @@ That second clause is the load-bearing one and it was not in the coordinator's f
 opens the next direction. Everything else here argues that structural beats remembered on grounds
 of *reliability*; this argues it on grounds of *possibility*.
 
+**And the epic tested that claim against me directly, in one round.** Routing the fourth direction,
+I wrote — and the implementer adopted into `goal.md` — that *the class entry is the thing that
+stops the fifth.* **The fifth arrived one round later, out of the fourth's own repair.**
+
+That is a **tenth coordinator error and a shape distinct from the other three**: not a rule stated
+past its boundary, not a true result applied past its subject, not a rule in the wrong units, but a
+**prediction** — a claim about the future that got written into an artifact and falsified by
+events. It is also the most confidently wrong thing in this epic, and its wrongness is precise:
+generalising a class into prose defends against *forgetting the rule*. It does nothing against a
+repair that over-corrects, because the person making that repair is holding the rule at the time.
+
+The implementer corrected it **in place and visibly** rather than editing it away, on the grounds
+that *"a file about checks that certify more than they measured shouldn't quietly launder its own
+overclaim."* Correct, and the visible correction is worth more to LAB-137 than the original
+sentence ever was.
+
 Both are spellings of **an input that cannot determine an answer must not produce one.** LAB-135
 now records that as *one class* in `goal.md` rather than as five entries — which is the move that
 stops the fourth direction, and it is the only thing here that plausibly does.
