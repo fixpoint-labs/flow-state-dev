@@ -100,8 +100,8 @@ generator actions. The calibration and every guard case are **model-free** and r
 ## The preconditions, and why they run every time
 
 The reader derives the known account from the known state **exactly**, a deliberately lossy copy
-of that state is caught by assertion 2, and 67 guard cases each break one assertion on purpose
-and confirm it reaches the verdict it is supposed to. All of it is model-free, so it runs on
+of that state is caught by assertion 2, and every guard case breaks one assertion on purpose
+and confirms it reaches the verdict it is supposed to. All of it is model-free, so it runs on
 every invocation rather than sitting in this log as a one-time claim — and if any of it fails,
 no coding run is dispatched at all. An instrument is sanity-checked against a case whose answer
 is known before its sweep is trusted.
@@ -485,7 +485,7 @@ not currently grade:
   **Be exact about what this does and does not mean, because the difference is the whole claim.**
   The reader **is** compliant: it imports `OBSERVED_FILE_OPS`, `OBSERVED_GAPS` and `OBSERVED_PLAN`
   and nothing else, which the evidence line prints on every run and which anyone can read in
-  twenty seconds. *"Reconstructed from FSD state alone"* holds for all twenty-nine runs. What is
+  twenty seconds. *"Reconstructed from FSD state alone"* holds for every run in the verdict log. What is
   weaker than stated is the **mechanical guarantee**: A8's own description of itself — *the
   reader's source imports nothing but the collection accessor keys* — is enforced only down to the
   module, so the property currently rests on **inspection rather than enforcement**. That is the
@@ -505,8 +505,8 @@ not currently grade:
   `[..., "ledger.txt"]`; the suffix comparison fails on `.` versus the directory segment, the two
   surfaces stop pairing, and A2 emits **two** failures on entirely faithful state — the mutation
   unaccounted, and the row without a stream. **Pre-existing rather than one of ours**, and
-  unproduced in thirty runs because the harness dispatches absolute paths and the model has echoed
-  them back verbatim every time. It survives on a habit of the driver, which is exactly the kind of
+  unproduced by any graded run because the harness dispatches absolute paths and the model has
+  echoed them back verbatim every time. It survives on a habit of the driver, which is exactly the kind of
   thing that changes without telling anybody. **The fix is recorded so nobody re-derives it:**
   normalise lexical dot segments — drop `.`, pop on `..` — before the suffix comparison, in
   `segmentsOf`, where both sides already go through.
@@ -576,7 +576,7 @@ not currently grade:
   An incidental file sharing a basename — a `backup/ledger.txt` beside the `ledger.txt` the job
   asked for — makes the relative name match two rows, and A1 fails as ambiguous although the
   dispatched absolute path and both stream-derived paths distinguish them perfectly. Pre-existing
-  rather than introduced, and unreached in 24 runs. **The fix is named so nobody re-derives it:**
+  rather than introduced, and unreached by any graded run. **The fix is named so nobody re-derives it:**
   grade against the absolute `targets` the prompt supplied (`run.mts`) instead of the basenames,
   which removes the ambiguity at the source rather than teaching the matcher to break ties.
 
@@ -659,7 +659,7 @@ one's PASS into a claim about theirs.
 
 **THE VERDICT IS TWO ASSERTIONS WEAKER THAN IT HAS BEEN REPORTING.** Assertions 3 and 7 are
 **structurally satisfied on the real path** — not unreached edges, not named limits, but claims
-the system makes true before the run is consulted. **Their combined contribution to all 26 PASSes
+the system makes true before the run is consulted. **Their combined contribution to every PASS in the log below
 is zero.** Each has real teeth in the calibration fixture and the guard table, where the state is
 handed in; neither can say anything about a dispatched run. This is stated here, in the verdict
 section, because it is a correction to what the PASSes mean — putting it in the named-limits list
@@ -689,7 +689,7 @@ what does not.** A1, A2, A4 and A6 read field *values*, not the order they arriv
 store's sort passes through them: A4 compares `max(mutation itemIndex)` against
 `max(message itemIndex)` and still goes red on a run that writes after its closing word. A8 grades
 source text. A5 reports UNMEASURED, which is disclosed above and is not a silent tautology. So
-what the 26 PASSes certify is **A1, A2, A4, A6 and A8 over the dispatched run**, plus the
+what every PASS certifies is **A1, A2, A4, A6 and A8 over the dispatched run**, plus the
 model-free half in full.
 
 **An independent ordering surface was looked for, found, and rejected on measurement — recorded
