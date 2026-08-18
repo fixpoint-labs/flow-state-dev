@@ -7,6 +7,16 @@ bundler** (the mounted route imports it) and the **`fsdev` CLI** (a native `impo
 FIX-1159 decision 4 settles the CLI half by using `.mts`. Nobody had checked the bundler half,
 and the whole product — a streamed response rendered in a browser — runs through it.
 
+**Precondition: Node 22.18 or newer.** Native TypeScript type stripping arrives in 22.18, and
+every variant here loads a TypeScript config through a native `import()`. On 22.0–22.17 those
+imports cannot produce the clean result the table documents, so the script reports mismatches and
+**exits 1 — which on that runtime means nothing at all.** Read a run on older Node as *not
+performed*, never as a claim disproved. This is a stated precondition rather than a check inside
+the script, because the script is frozen (below) and a closed artifact with a documented
+requirement is smaller and more honest than one that keeps growing environment handling. The
+failure is also loud rather than subtle: every variant mismatches at once, which reads as a
+broken environment, not as a finding.
+
 Run it: `bash probe.sh [workdir]` (needs network; ~3 minutes). It scaffolds a real
 `create-next-app@16.3.1` project, drops each candidate config shape in, and runs `next build`,
 `next dev`, and a native `import()` against each. It refuses to run if `<workdir>/probe` already
