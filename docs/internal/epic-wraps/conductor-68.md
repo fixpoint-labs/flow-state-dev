@@ -77,9 +77,37 @@ because that test is written against the target.
 | 5 | `orderingUnknowable` suppresses **`previousStatus`** derivation | the **current status** has the same dependence on arrival order | 9 → post-stop |
 | 6 | `kind` gap-matching integrated on the **file** side | not on the **plan** side | 5 → 6 |
 
-**And the ambiguity rule, three directions across five rounds:** one mutation naming many rows
-(round 1) → many mutations consuming one gap (round 3) → many gaps offered for one mutation
-(round 6). Each closed correctly when found; each time the next stayed open.
+**And the ambiguity rule, five directions:** one mutation naming many rows (round 1) → many
+mutations consuming one gap (round 3) → many gaps offered for one mutation (round 7) → surplus
+gaps on the pathless side, where the bound is an inequality rather than a pairing (named, unreached)
+→ **and one caused by repairing the third.** Each closed correctly when found; each time the next
+stayed open.
+
+**The fifth is the one that matters, and it is the strongest argument this epic produced.** Round
+7's fix failed on *"two or more candidate gaps"* — which counts candidates instead of
+distinguishing them. Two attempts at one unkeyable path leave two gaps carrying the same
+`rawPath`: **one claim twice, not a choice.** Two of them against two mutations is a valid
+one-to-one accounting, and the guard rejected it. *A faithful record, failed by a guard written to
+catch unfaithful ones.* Fixed by discriminating on the number of distinct **spellings** — which is
+what the row side already used, so it completes the rule rather than adding one — with three guard
+cases, *because any one alone would look like a fix*:
+
+```
+two interchangeable gaps account for two attempts at one path  ->  a2-ok           (pass)
+three attempts at one path and only two gaps beside them       ->  a2-unaccounted  (fail)
+two gap rows could each be the one covering a lost mutation     ->  a2-ambiguous-gap (fail)
+```
+
+Its author's statement of why this bears on LAB-137, which is better than the coordinator's:
+
+> **"A class that generates instances *from its own repairs* is a stronger argument for structural
+> treatment than one that merely recurs — no amount of care at the point of fixing gets ahead of
+> it, since the care is what produced the next instance."**
+
+That second clause is the load-bearing one and it was not in the coordinator's framing.
+**Diligence cannot close this class by construction**, because diligence is the mechanism that
+opens the next direction. Everything else here argues that structural beats remembered on grounds
+of *reliability*; this argues it on grounds of *possibility*.
 
 Both are spellings of **an input that cannot determine an answer must not produce one.** LAB-135
 now records that as *one class* in `goal.md` rather than as five entries — which is the move that
