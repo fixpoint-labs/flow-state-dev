@@ -145,13 +145,38 @@ direction arrived, and it too was a regression from the same repair lineage** �
 gaps fix compared distinct spellings *per mutation* when reconciliation has to be *global*, turning
 a correct-by-accident reject into a false green. The category had two members.
 
-**So the strongest thing this epic can say about the class is not that it recurs. It is that every
-bound anyone placed on it has been falsified — including two placed by the coordinator who was
-specifically watching for that.** A count argues for vigilance. A record of falsified bounds argues
-that vigilance is the wrong instrument, which is what LAB-137 needs to carry.
+**Third, and the implementer counted one I had missed — my own stopping criterion.** *"Every
+remaining finding lives in a branch the real runs do not reach"* was confirmed true, twice, and
+then A3 turned out to be reached by every run.
 
-The operative rule that replaced my bad one: **a defect our own repair introduced folds, however
-many times that happens** — no cap, because the cap is the part that keeps being wrong.
+**Three bounds, all falsified, set by three different people who each knew the class was recurring
+while they wrote them.** That is the argument LAB-137 should lead with, in the implementer's
+words rather than mine:
+
+> **"A count invites *'so fix the rest'* and this does not: the thing that keeps being wrong is the
+> belief that the set is enumerable."**
+
+A count argues for vigilance. A record of falsified bounds argues vigilance is the wrong
+instrument — a stronger and less comfortable claim, and the only one the evidence actually
+supports. The operative rule that replaced my bad one is a **standing obligation, not a cap**: a
+defect our own repair introduced folds, however many times that happens.
+
+**And the seventh direction produced a question worth carrying past this epic.** Round 7's rule
+failed on *"two or more candidate gaps"*, which rejected the seventh's world **correctly, by
+accident**. Round 10 fixed a genuine over-rejection — and removed the accident with it, turning a
+right-for-the-wrong-reason reject into a false green.
+
+> **"Does this fix also remove a reject that happened to be right?"**
+
+That is now part of the question when loosening any over-strict check, not a nicety. It is the
+inverse of `wrong-extent`: not *did the fix reach far enough*, but *did it reach too far and take
+something load-bearing with it.*
+
+**One piece of discipline worth copying, from the same fold.** A gap spelling answering to *no*
+mutation was left accepted — it is the sixth direction, already **named in `goal.md`**, and the
+implementer declined to close it silently while editing that same function *because doing so would
+make the named entry false*. Fixing a documented limit without updating the document is how a
+limits list rots into fiction.
 
 That is a **tenth coordinator error and a shape distinct from the other three**: not a rule stated
 past its boundary, not a true result applied past its subject, not a rule in the wrong units, but a
