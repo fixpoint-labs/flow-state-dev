@@ -56,4 +56,7 @@ A wrong claim does not become right by correcting the commit beside it.
 
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-08-18 | `0a2dfcfb6` | claude-sonnet-5 (SDK default) | PASS | 21 items with `include_items=true`, **0** without; 1 top-level message, 2 top-level tool_outputs; non-decreasing on `itemIndex` 0–20; names the held-out file; the originating request carried none of the run's mirrored items |
+| 2026-08-18 | `0a2dfcfb6` | claude-sonnet-5 (SDK default) | PASS | second consecutive run — 22 items / 0 without, `itemIndex` 0–21, same shape |
+| 2026-08-18 | `0a2dfcfb6` | — | FAIL *(deliberate)* | `ORDER_FIELD` pointed at `seq` on purpose: *"could not read the item ordering on request 1: 20 of 20 items carry no numeric `seq`"*. The same conditions under which the previous version printed PASS |
 
