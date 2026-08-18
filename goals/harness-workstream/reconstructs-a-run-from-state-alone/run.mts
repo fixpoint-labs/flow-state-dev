@@ -1073,6 +1073,24 @@ const GUARD_CASES: GuardCase[] = [
 
   // ── A6 ──────────────────────────────────────────────────────────────────
   {
+    // THE WORLD A6 USED TO FAIL: a run that hands its file work to a sub-agent.
+    // Every mutation is nested, so the top-level tool_output count is zero —
+    // and A6 required it to be non-zero, reporting a run that did everything it
+    // was asked as having "reported without doing anything". Activity is
+    // scanned over every item precisely so this run reads correctly, which is
+    // what made the requirement a contradiction rather than a strict rule.
+    //
+    // This case exists so the row cannot come back quietly. It is the positive
+    // direction: the count is zero and A6 must PASS.
+    name: "A6 — the run delegated every tool call to a sub-agent",
+    mutate: (v) => {
+      v.counts.toolOutputs = 0;
+    },
+    because: "a6-ok",
+    id: "A6",
+    want: "pass",
+  },
+  {
     // Emptied at the SET, not at a count beside it.
     name: "A6 — the file record's rows are gone",
     mutate: (v) => {

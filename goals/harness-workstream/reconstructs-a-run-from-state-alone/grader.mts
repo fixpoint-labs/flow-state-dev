@@ -822,13 +822,28 @@ function gradePlan(view: GradeableView): Finding[] {
  * Where a set is one the OTHER assertions iterate, its size is taken from that
  * set rather than from a count beside it. A count can drift from its array, and
  * then A6 reports "fine" about a set A1 and A2 never saw.
+ *
+ * **`toolOutputs` is deliberately NOT here**, and its absence is the point of
+ * this paragraph. A6's claim is that no assertion read an empty set — so a
+ * count belongs here only if some assertion reads it, and no assertion iterates
+ * top-level tool outputs. Activity is scanned over every item of the request,
+ * sub-agents included, precisely so a run that delegates its file work is read
+ * correctly; requiring a top-level tool output failed exactly that run for
+ * "reporting without doing anything" while A1 and A2 could see everything it
+ * did. It was the only branch here no guard case ever watched fail, which is
+ * what a requirement nothing needs looks like from the outside.
+ *
+ * Nothing is lost by dropping it. A run that genuinely did nothing has no
+ * mutations and no rows, so `fileRows` is zero here and A2 reports both
+ * surfaces empty. The count itself stays on the view — the evidence line
+ * reports it — because describing a run is not the same as requiring something
+ * of it.
  */
 function gradeCounts(view: GradeableView): Finding[] {
   const required: Array<[string, number, string]> = [
     ["items", view.counts.items, "this run's item stream is empty — a run that completes with nothing recorded"],
     ["topLevel", view.counts.topLevel, "no item is top-level, so the run's own thread could not be read"],
     ["messages", view.said.length, "no top-level message, so A4 has nothing to place the activity against"],
-    ["toolOutputs", view.counts.toolOutputs, "no top-level tool_output, so the run reported without doing anything"],
     ["fileRows", view.did.length, "this run's file record is empty, so A1 and A2 read an empty set"],
   ];
   if (view.messagesWithoutText > 0) {

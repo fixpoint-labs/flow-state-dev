@@ -96,7 +96,7 @@ generator actions. The calibration and every guard case are **model-free** and r
 ## The preconditions, and why they run every time
 
 The reader derives the known account from the known state **exactly**, a deliberately lossy copy
-of that state is caught by assertion 2, and 64 guard cases each break one assertion on purpose
+of that state is caught by assertion 2, and 65 guard cases each break one assertion on purpose
 and confirm it reaches the verdict it is supposed to. All of it is model-free, so it runs on
 every invocation rather than sitting in this log as a one-time claim — and if any of it fails,
 no coding run is dispatched at all. An instrument is sanity-checked against a case whose answer
@@ -204,6 +204,13 @@ be produced at all.
   fixture now carries the repeat, so the false red is caught by the calibration itself rather
   than by anyone remembering: reintroducing the rule reports *"the grader reports 1 failure(s) on
   a state whose account is correct"* before a run is dispatched.
+- **Assertion 6 required a top-level tool call, and a run that delegates has none.** Activity is
+  scanned over every item of the request specifically so a sub-agent's file work is read
+  correctly — and then A6 failed that same run for "reporting without doing anything". A
+  requirement contradicting a derivation two assertions away, and the fix was a **deletion**: no
+  assertion iterates top-level tool outputs, so the count never belonged in a claim about sets
+  assertions read. It was also the only entry in that table no guard case had ever watched fail,
+  which is what a requirement nothing needs looks like from outside.
 - **Assertion 5 certified plan rows that no plan call evidenced.** The ROWS arm was selected on
   `rows.length > 0` alone, and `toolCalls === 0` is the condition on **every real run**
   (FIX-1185) — so the one thing standing between the graded path and a false `a5-ok` was the
@@ -265,6 +272,31 @@ not currently grade:
   A2 entirely — an existence cell, not a presence one.
 - A row's `storageKey` and its `topic` are never checked against each other.
 - A gap's `reason` and `at` are carried and never graded.
+- **Surplus pathless gap rows are accepted.** One pathless mutation and two `file`/`rawPath: null`
+  gaps satisfies the inequality, and the unmatched gap is a stored claim the stream does not
+  evidence. This is **the ambiguity rule's fourth direction** — the pathless side — and it arrived
+  after the class was written down, which is the useful part: the class entry is what stops the
+  fifth, and a fourth instance turning up after the generalisation is evidence the generalisation
+  is load-bearing rather than decorative.
+- **A5 skips gap handling whenever any plan row exists.** A run whose plan was partly recorded and
+  partly gapped emits `a5-ok`, because a non-empty `rows` short-circuits the branch that reads
+  plan gaps. **It certifies a fractional account** — which is, in one phrase, the thing this whole
+  goal exists to reject, appearing as one of its own limits.
+- **A message of pure whitespace counts as something the run said.** The readable-text filter
+  measures length without trimming. Wrong *extent* on the fix from round 6, which is the same
+  family as the half-applied rules: the rule was right and its reach was short.
+
+**THE NAMED-LIMITS LIST IS NOT A CLOSED SET, AND WAS NEVER GOING TO BE.** Three of the entries
+above were added *after* the criterion — "every remaining finding lives in a branch the real runs
+do not reach, and those branches are named here" — had been confirmed true. That does not
+invalidate the criterion: each of them is genuinely unreached by the graded runs, so the sentence
+stayed true the whole time. What it shows is that the sentence is a claim about the **findings we
+have**, not about the ones nobody has looked for yet. The list grows every time somebody reads
+this file carefully.
+
+Read it as exhaustive and you will make a specific mistake — the same one that produced half the
+findings here, which is taking a close that covers a class as though it covered a file. The list
+is the set of gaps that have been *seen*; it is not the set that exists.
 
 **Three of the last four findings did not live in that grid, and saying otherwise would repeat
 the defect they were.** Assertion 3's scope was *which set a derivation reads*, one level up from
