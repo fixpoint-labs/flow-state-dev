@@ -247,12 +247,14 @@ the **instances never stopped arriving** — 3, 2, 3, 3, 4, 4, 2, 2 per round. T
 questions, and only the second says whether the work is done. Recording both is the point of this
 section.
 
-**Round 11 kept the arrival rate up and moved where they arrive from**, which is the more
-useful half. Four findings: two assertions that cannot fail on the real path (3 and 7), a field
-the reader drops before the grader sees it (`lastOutcome`), and the ambiguity rule's sixth
-direction. **Not one of them is in the grader.** Every previous round's instances were —
-that is where a reviewer reads, so that is where they were found — and the three levels this same
-failure has now appeared at (guard, fixture, store) were each invisible from the one below.
+**Round 11 kept the arrival rate up and moved where they arrive from**, which is the more useful
+half. Six findings: two assertions that cannot fail on the real path (3 and 7), a field the reader
+drops before the grader sees it (`lastOutcome`), a successful create whose lost row leaves no
+trace on either surface, the ambiguity rule's sixth direction, and a pre-dispatch gate missing a
+failure it already held. **Not one of them is in an assertion's own logic.** Every previous
+round's instances were — that is where a reviewer reads, so that is where they were found — and
+the three levels this same failure has now appeared at (guard, fixture, store) were each
+invisible from the one below.
 
 **Round 8 changed what the earlier PASSes are worth, and that belongs here rather than in a
 footnote.** Until it, assertion 2 rejected a run that edited a file it had already written — so
