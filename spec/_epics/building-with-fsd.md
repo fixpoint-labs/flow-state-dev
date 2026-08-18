@@ -106,12 +106,15 @@ to run second. **The package-name half of the case against it is now settled** �
 the headline command is a name we can have rather than a hope. What is left of the case against
 it is the saved command alone.
 
-**One deterministic writer, one reference shape.** The old boundary — the wrapper owns demo
+**One deterministic writer, one specified shape.** The old boundary — the wrapper owns demo
 content, init owns scaffolding — existed to stop two deterministic writers duplicating
 scaffolding logic. There is only one such writer now, so that line is gone and FIX-548 owns its
 template end to end: host wiring, config, flows, demo content, the agent-instructions file.
-The replacement tripwire is **drift**: the template is the reference shape, and the install
-skill's instructions point at it rather than restating its contents (theme 1).
+The replacement tripwire is **drift**, and what both paths are held against is the **wiring
+contract FIX-1159 authors** — not the template, which the brownfield skill can never reach
+(theme 9). Writing the shape and specifying it are different jobs: FIX-548 writes it, FIX-1159
+specifies it, and an instruction or template file that restates the wiring instead of citing it
+is the signal.
 
 **FIX-1162 (npm name registration) is a fourth issue but not a fourth workstream.** npm short
 names are first-come and unrecoverable, and the objective promises a scaffolding command a
@@ -163,21 +166,23 @@ call.
    knowledge: FIX-1159 knows what wiring FSD into an existing repo requires, FIX-1160 knows how
    to package and ship a Claude skill.
 
-   **The template is the reference shape; the skill's instructions point at it rather than
-   restating it.** With one deterministic writer left, "no scaffolding logic in two places" has
-   nothing to bite on. The live risk is drift between the shape FIX-548's template writes and
-   the shape FIX-1159's instructions describe. An instruction that restates the template's
-   contents instead of pointing at them is the signal.
+   **Both paths are held against one specified wiring shape — see theme 9, which owns it.** With
+   one deterministic writer left, "no scaffolding logic in two places" has nothing to bite on. The
+   live risk is drift between the shape FIX-548's template writes and the shape FIX-1159's
+   instructions describe. This theme used to answer that by making the template the reference and
+   having the skill point at it; the skill can never reach the template, so **theme 9 assigns the
+   contract to FIX-1159 and makes the template conform to it** instead.
 
    **"Owns its template end to end" means checked-in files, not assembled at runtime** —
-   confirming the reading FIX-548 took and asked about, because the tripwire above only works
-   under it: an instruction can point at a shape a person can read, and cannot point at one that
-   exists only after a generator has run. So the config, the mount pair, the flow and the page
-   are files in the repository.
+   confirming the reading FIX-548 took and asked about, because conformance only works under it: a
+   template that exists only after a generator has run is one nobody can check the wiring contract
+   against. So the config, the mount pair, the flow and the page are files in the repository.
 
    **Sequencing.** FIX-1159 lands before FIX-548, but for a narrower reason than before — the
-   wrapper relationship is gone, and what remains is the shared next-steps block (theme 5), so
-   the two can now proceed in parallel further than they could. **FIX-1160 now depends on
+   wrapper relationship is gone, and what remains is the shared next-steps block (theme 5) and the
+   wiring contract the template conforms to (theme 9). The two still proceed in parallel further
+   than they could, but not as far as the next-steps block alone would allow: theme 9 constrains
+   the template's own files, not just what it prints. **FIX-1160 now depends on
    FIX-1159**: it packages content that issue authors. **FIX-1162 no longer gates FIX-548's
    spec or its build** — the name is chosen and available, so nothing is waiting on a decision.
    What it still gates is the *release*: `npm create flow-state` resolves only to an unscoped
@@ -337,7 +342,8 @@ call.
    the Next.js *template* and the brownfield Next path deliver the same mounted-route shape,
    described in the same words. This binds FIX-548 (what the template ships) and FIX-1159 (what
    the skill is instructed to do), which is why it is a theme rather than either issue's local
-   call. **The Node half of that parity requirement is gone with the Node template (theme 2)**:
+   call — and **theme 9 is where that shared shape is written down and who writes it**; this
+   theme states the requirement, theme 9 assigns the artifact. **The Node half of that parity requirement is gone with the Node template (theme 2)**:
    the second-process shape now appears in exactly one place, the brownfield Node path, so
    there is no second description to keep in step — and §1's second-process proof is its only
    check, which is why that proof got harder to cut, not easier. **The
@@ -346,6 +352,52 @@ call.
    agent re-deciding what "knowable" means each time. **§1's proof runs this path directly**,
    because the other checks cover the Next.js path only, and nothing else touches the brownfield
    Node behaviour this theme commits to.
+
+9. **The shape both entry paths produce is specified once, by FIX-1159 — the skill cannot point
+   at FIX-548's template, because it can never reach it.** Theme 1 used to make the template the
+   reference shape and have the install skill's instructions point at it. A brownfield developer
+   installs the plugin and nothing else: theme 4 forbids an instruction that reads our monorepo,
+   and the template ships inside the published scaffolder, which is neither in the plugin nor one
+   of its artifacts. The instruction had **no reachable referent**, which left the skill only two
+   moves — restate the template (the exact drift theme 1's tripwire exists to catch) or invent a
+   distribution seam nobody owned. This is a hole the greenfield/brownfield split created, not a
+   pre-existing one: moving the template's content to FIX-548 while the skill ships inside
+   FIX-1160's plugin severed the skill from the shape it is supposed to produce.
+
+   **What the two paths share is smaller than the template**, which is why "point at the template"
+   was under-specified even before reachability: the template carries a chat page and
+   `flows/chat.ts` that no brownfield run writes, and a plain-Node run writes no mount at all. The
+   common part is the **wiring** — the Next.js mount pair, `fsdev.config.ts`'s shape including its
+   store profile, and the dependency set. The other two shared things already have owners: the
+   next-steps block (theme 5, FIX-1159) and the `AGENTS.md` section (theme 3, FIX-1160).
+
+   **Decided: FIX-1159 authors the wiring contract, and FIX-548's template conforms to it.** The
+   seam is assigned by theme 1's own rule — which issue holds the knowledge — and "what wiring FSD
+   into an existing repo requires" is FIX-1159's by that rule. **It needs no new artifact and no
+   new seam:** the contract is skill content, and skill content already has a distribution path
+   (FIX-1159 authors → FIX-1160 packages → the plugin ships), so it reaches a stranger's repo
+   through the channel the install skill already travels. FIX-548 still owns its template end to
+   end and is still the set's only deterministic writer — it is the contract's *consumer*, not its
+   source. **Writing the shape and specifying it are now different jobs**, which is what the split
+   actually required and what theme 1 had collapsed into one.
+
+   **The drift tripwire survives, re-aimed.** It used to point from the skill at the template; it
+   now points from both at the contract. The signal is a template file or an instruction that
+   restates the wiring instead of citing it. The check it rests on is **theme 8's parity
+   requirement** — both paths must deliver the same mounted-route shape — so a divergence surfaces
+   as the two entry paths' proofs producing different shapes.
+
+   **Rejected — the plugin ships a copy of the template.** It makes FIX-1160 a second writer of
+   the shape, so there are two copies to keep in step, which is the drift the tripwire exists to
+   catch; and it needs the plugin's packaging to pull FIX-548's template, a build-time dependency
+   between two deliverables that have none today. **Also rejected:** the skill reading the
+   published `create-flow-state` package at run time — legal under theme 4, since npm is not our
+   monorepo, but it makes the greenfield demo app the authority for brownfield wiring and still
+   never says which parts are wiring and which are demo; and the skill producing the shape from
+   instructions alone, which *is* the restatement theme 1 forbids.
+
+   **No new package and no new dependency between packages.** Had the answer needed either, it
+   would have gone to the owner instead of into this theme.
 
 ## 3. Shape of the whole
 
@@ -360,13 +412,15 @@ the owning issues' to settle. Review the shape and the scoping it reveals, not t
 
 **Showed:** three things. First, drawn when there were two templates, the pair shared almost
 nothing except `fsdev.config.ts`, `flows/`, `.env.local`, and the agent-instructions file. That
-common set was originally the argument for a shared deterministic primitive; after the
-greenfield/brownfield split it became something better — **the reference shape the install
-skill's instructions point at** (theme 1). **The second template has since been cut (theme 2),
-which does not retract the finding but changes what carries it**: the reference shape is now
-simply the one template, and it is a shape someone reads rather than a set intersection someone
-derives. The division into issues holds, and the boundary moved rather than broke: FIX-548 owns
-its template end to end, FIX-1159 owns the knowledge a brownfield run applies.
+common set was originally the argument for a shared deterministic primitive. The split replaced
+that primitive with the template itself as the reference shape (theme 1), and **that was the
+wrong carrier — the brownfield skill can never reach the template, which is what theme 9 now
+fixes** by making the shared shape a contract FIX-1159 authors. The original finding was sounder
+than the answer it first got: what the paths share really is a small common set, and it is
+smaller than the one surviving template (theme 2), which carries a chat page and a demo flow no
+brownfield run writes. The division into issues holds, and the boundary moved rather than broke:
+FIX-548 owns its template end to end, FIX-1159 owns the knowledge a brownfield run applies —
+including the specification of the shape both produce.
 Second, the next-steps block has to name **two** servers with different jobs (the app on its own
 port, the DevTool on 4200); printing both without saying which is which is how a first-hour user
 lands on a blank page, and both entry paths print it. Third, an asymmetry the prose hid: in a
@@ -553,7 +607,7 @@ the stronger sense that the CLI's bind guard refuses that host for an unauthenti
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| FIX-1159 | The brownfield knowledge — deterministic detection scripts, the install skill's **content**, and the shared next-steps block | spec | [#1310](https://github.com/fixpoint-labs/flow-state-dev/pull/1310) | — | In spec review — re-shaped against this fold (greenfield command + brownfield skill); the earlier approval was retracted with the direction change |
+| FIX-1159 | The brownfield knowledge — deterministic detection scripts, the install skill's **content**, the shared next-steps block, and **the wiring contract both entry paths satisfy** (theme 9) | spec | [#1310](https://github.com/fixpoint-labs/flow-state-dev/pull/1310) | — | In spec review — re-shaped against this fold to **brownfield only, no command of its own**; the earlier approval was retracted with the direction change |
 | FIX-1162 | Register the npm names the launch needs — the short CLI entry name and the scaffolding name | spec | [#1313](https://github.com/fixpoint-labs/flow-state-dev/pull/1313) | — | In spec review — the npm operations themselves still sit with the owner |
 | FIX-548 | `create-flow-state` — the deterministic greenfield path; **one** template (Next.js chat app), owned end to end | spec | [#1312](https://github.com/fixpoint-labs/flow-state-dev/pull/1312) | — | In spec review — re-drafted against this fold; no longer a wrapper over `fsdev init` |
 | FIX-1160 | The authoring pack **and the plugin that distributes the install skill** — agent-instructions file, authoring skills, install skill | spec | [#1311](https://github.com/fixpoint-labs/flow-state-dev/pull/1311) | — | In spec review, **scope grew** — it is now the brownfield path's only delivery channel |
@@ -571,7 +625,10 @@ packages (`serve()` binds all interfaces and reads no `.env`; the bare `/api/flo
 endpoint needing its own file); those are facts about the code, not consequences of the command.
 
 **Dependencies.** FIX-1160 now depends on FIX-1159 — it packages content that issue authors.
-FIX-1159 still lands before FIX-548, now only for the shared next-steps block (theme 5). **The
+FIX-1159 still lands before FIX-548, for the shared next-steps block (theme 5) **and now also for
+the wiring contract the template conforms to (theme 9)** — which is a firmer edge than the
+next-steps block alone, since it constrains the template's own files rather than what it prints.
+**The
 FIX-1162 → FIX-548 edge has narrowed but not gone**: the name no longer blocks speccing or
 building, and the unscoped publish is still a hard prerequisite for release. None of these is an
 accepted deferral; each is a real ordering constraint on merge, and each pair can be specced in
@@ -874,3 +931,23 @@ noisiest period we will have, which is the cost you already declined once.
   `page.tsx` (exception (a)), the changed `package.json` (exception (b)) and the lockfile, so the
   epic's own report-versus-diff check would have failed on its own illustration; and §3's
   template caption called all four `~` files appends and counted three.
+- **New theme 9 — the split had severed the install skill from the shape it produces.** Theme 1
+  made FIX-548's template the reference shape and had the skill's instructions point at it. A
+  brownfield developer installs the plugin and nothing else; theme 4 forbids an instruction that
+  reads our monorepo; the template ships inside the published scaffolder, which is neither in the
+  plugin nor one of its artifacts. **The instruction had no reachable referent**, leaving the
+  skill to restate the template — the exact drift the tripwire exists to catch — or to invent a
+  seam nobody owned. **Decided: FIX-1159 authors the wiring contract (the Next.js mount pair,
+  `fsdev.config.ts`'s shape, the dependency set) and FIX-548's template conforms to it**, which
+  assigns the seam by theme 1's own rule and needs no new artifact — the contract is skill
+  content, so it ships through the path skill content already travels (FIX-1159 → FIX-1160 →
+  plugin). Writing the shape and specifying it are now different jobs. Rejected: the plugin
+  shipping a copy of the template (a second writer, plus a build-time dependency between two
+  deliverables that have none), the skill reading the published scaffolder at run time (legal but
+  makes the greenfield demo app the authority for brownfield wiring), and the shape from
+  instructions alone (the restatement theme 1 forbids). **No new package and no new dependency
+  between packages.** §1's tripwire paragraph, theme 1's reference-shape and sequencing clauses,
+  theme 8's cross-reference, §3's first finding, and §4's index row and dependency paragraph all
+  follow — the FIX-1159 → FIX-548 edge is firmer than before, since it now constrains the
+  template's files rather than only what it prints. §4's index row also dropped the last live
+  claim that FIX-1159 is "greenfield command + brownfield skill"; a sweep found no third instance.
