@@ -616,7 +616,7 @@ await runGoal(async () => {
     ["a block comment", '/* it must never import "node:fs" here */', false],
   ];
   for (const [what, source, shouldSee] of scannerCases) {
-    if (importsOf(source).length > 0 !== shouldSee) {
+    if ((importsOf(source).length > 0) !== shouldSee) {
       failures.push(
         `the deprivation scanner ${shouldSee ? "cannot see" : "falsely reports"} ${what} — ` +
           `assertion 8 would ${shouldSee ? "pass over a reader that reaches the tree" : "be red for prose"}`,
@@ -718,15 +718,18 @@ await runGoal(async () => {
   }
 
   // ══ Precondition 1e — a 403 and a 404 do not read alike ═══════════════════
+  // Opposite diagnoses: a 403 is the collection declining to publish its state
+  // and the reader cannot work at all; a 404 is a wrong reference, which is our
+  // mistake in this file. Both abort, so neither is graded — but a reader who
+  // gets the wrong one chases the wrong thing.
   if (!describeReadFailure(403, "/x", "").includes("does not declare client state reads")) {
     failures.push("a 403 is not reported as the collection declining to publish its state");
   }
-  if (describeReadFailure(404, "/x", "").includes("permission")) {
-    // The 404 message must say it is NOT a permission problem, and the 403 must
-    // not be reachable through it — the two are opposite diagnoses.
-    if (!describeReadFailure(404, "/x", "").includes("NOT a permission problem")) {
-      failures.push("a 404 reads as a permission problem — a wrong collection ref is our mistake, not a 403");
-    }
+  if (!describeReadFailure(404, "/x", "").includes("NOT a permission problem")) {
+    failures.push(
+      "a 404 does not say it is NOT a permission problem — a wrong collection ref would be " +
+        "chased as a visibility declaration that is in fact present",
+    );
   }
 
   if (failures.length > 0) {
