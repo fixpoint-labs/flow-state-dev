@@ -248,14 +248,14 @@ questions, and only the second says whether the work is done. Recording both is 
 section.
 
 **Round 11 kept the arrival rate up and moved where they arrive from**, which is the more useful
-half. Thirteen findings: two assertions that cannot fail on the real path (3 and 7), a field the
+half. Fourteen findings: two assertions that cannot fail on the real path (3 and 7), a field the
 reader drops before the grader sees it (`lastOutcome`), a successful create whose lost row leaves
 no trace on either surface, the ambiguity rule's sixth **and seventh** directions, a pre-dispatch
 gate missing a failure it already held, an A2 branch that reports the stream showed no mutation
 when it showed one, a deprivation guard that checks the module rather than the binding, **harness
 ground truth discarded along with the stream's silence**, **a tie rejected when nothing depended on
-it**, a dot segment that makes one file read as two, and a fixture shape the harness cannot seed.
-**Three of the thirteen are in an assertion's own logic, and all three are regressions from our own
+it**, a dot segment that makes one file read as two, a fixture shape the harness cannot seed, and **a shell branch that cannot tell a refused call from one that ran and failed**.
+**Four of the fourteen are in an assertion's own logic, and all four are regressions from our own
 repairs** — which is the round's finding rather than the count. Every previous round's instances were, because that is where a
 reviewer reads; the three levels this same failure has now appeared at (guard, fixture, store)
 were each invisible from the one below.
@@ -284,7 +284,33 @@ fixed was the instance in front of us. That is the case for the guard table in o
 rule is remembered, and remembering is what failed; a table executes, and it has never once been
 half-applied.
 
-**Four self-inflicted regressions now, from four different repairs — and one of them is the repair
+**THE FIFTH IS THE BEST INSTANCE THIS FILE HAS, AND IT IS A PROCESS DEFECT RATHER THAN A CODE ONE.**
+It took three careful steps to produce, none of them a mistake at the time:
+
+1. The coordinator claimed *"a shell call makes that path unmeasured."*
+2. That was **corrected on measurement** — a real run reached for `Bash`, was refused, and said so,
+   so *a call that never ran cannot have made the change.* The correction was right, evidenced, and
+   became assertion 1's `denied` branch.
+3. **The correction was silent about the other world.** `emitToolResult` stores every errored result
+   as `failed`, so a `Bash` the harness refused and a `Bash` that ran, wrote the missing file and
+   then exited nonzero are the *same persisted item*. The branch asserted *"none of them ran"* about
+   a state that cannot say it.
+
+The original instinct was right about a case the correction did not cover, and the correction was
+right about the case it was shown. **Nobody was careless — the class is simply wider than either
+position, and the careful step is what narrowed it.** Every other entry here is *a repair created the
+next defect*; this one is *a correction of a coordinator's error created the next defect*, which is
+the same argument one level up — where the reasoning happens rather than where the code does. That
+is what LAB-137 should carry: **the failure is not insufficient care, because care is what produced
+this one.**
+
+It is also the only instance that **cannot be repaired by reading state harder.** The distinction
+was destroyed upstream, before the record was written. Assertion 1 now reports it as unknowable —
+not *denied*, which certifies nothing happened, and not *lost*, which asserts a mutation escaped. A
+real fix needs a discriminator on the failure at the recorder (`@flow-state-dev/claude-code`'s
+`emitToolResult`), which is **LAB-137's territory, not this file's**.
+
+**Five self-inflicted regressions now, from five different repairs — and one of them is the repair
 for the worst defect this file ever had.** The tool table asserting `Write` means `created` was the
 only defect here that failed red on truth AND green on the defect; its repair, which is the most
 carefully reasoned change in the file, created a **new false green on the same assertion**. That is
@@ -297,19 +323,22 @@ watching for exactly that.**
 
 - *"The written-down class entry is what stops the fifth."* The fifth arrived one round later,
   produced by the fourth's own repair.
-- *"Self-inflicted regression is a closed category with one member."* Falsified **three times in
-  the round it was written** — the seventh gap direction from round 10's per-mutation spelling
-  test, the tie over-rejection from the aggregate-row repair, and ground truth discarded by the
-  indeterminate-`Write` repair. A bound of one, wrong by three, inside a single round.
+- *"Self-inflicted regression is a closed category with one member."* Falsified **four times in the
+  round it was written** — the seventh gap direction from round 10's per-mutation spelling test,
+  the tie over-rejection from the aggregate-row repair, ground truth discarded by the
+  indeterminate-`Write` repair, and the shell branch that cannot tell refusal from
+  execution-then-failure. A bound of one, wrong by four, inside a single round.
 - And one placed here rather than by the coordinator: *"every remaining finding lives in a branch
   the real runs do not reach."* Falsified this round by two assertions that cannot fire at all —
   a cell the criterion did not have.
 
-The four self-inflicted ones, so the lineage is legible rather than a number: the **fifth** gap
+The five self-inflicted ones, so the lineage is legible rather than a number: the **fifth** gap
 direction, from round 7's two-or-more-candidates rule; the **seventh**, from round 10's repair of
-that fifth; the **tie over-rejection**, from the aggregate-row repair; and **ground truth discarded
-along with the stream's silence**, from the indeterminate-`Write` repair. Four repairs, four new
-defects, no two in the same place.
+that fifth; the **tie over-rejection**, from the aggregate-row repair; **ground truth discarded
+along with the stream's silence**, from the indeterminate-`Write` repair; and **refusal conflated
+with execution-then-failure**, from the correction to a coordinator's own claim. Five repairs, five
+new defects, no two in the same place — and the last was produced by the most deliberate step in
+the list.
 
 Three bounds, three falsifications, by three different people all of whom knew the class was
 recurring while they wrote them — and a fourth self-inflicted instance arriving in the same round
@@ -525,6 +554,13 @@ nobody had looked for, and this is the second time this file has had to say so.
 The residual belongs beside **LAB-137**, not inside it. LAB-137 is recorder-side — *confirm only
 what the harness confirmed*. This is reader-side — *assert only what the state shows*. Siblings,
 same disease, opposite ends of the same wire.
+
+**One item crosses that line and is handed over explicitly.** `emitToolResult` collapses every
+errored tool result to `status: "failed"`, so a refused call and one that ran and then failed are
+the same persisted item — and assertion 1 can therefore only report *unknowable* where it used to
+claim *nothing ran*. No amount of reading state better recovers that; the information is destroyed
+before the record exists. **A discriminator on the failure at the recorder is LAB-137's to make**,
+and it would turn one of this check's unmeasured arms back into a graded one.
 
 ## Named limits
 

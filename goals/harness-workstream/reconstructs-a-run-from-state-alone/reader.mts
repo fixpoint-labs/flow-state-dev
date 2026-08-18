@@ -448,11 +448,20 @@ export async function readAccount(read: Read, workstreamId: string): Promise<Acc
     }
 
     const shellItems = toolItems.filter((i) => i.toolCall?.name === SHELL_TOOL);
-    // A shell call the harness REFUSED cannot have edited anything, so it must
-    // not soften a missing path into "unmeasured". `completed` is required
-    // rather than "not failed": a status we cannot read is not evidence that
-    // the call succeeded. Measured on a real run — the agent reached for
-    // `Bash`, was refused, and said so.
+    // `completed` is required rather than "not failed": a status we cannot read
+    // is not evidence that the call succeeded. Measured on a real run — the
+    // agent reached for `Bash`, was refused, and said so.
+    //
+    // **WHAT THIS COUNT CANNOT TELL YOU, corrected in place because the wrong
+    // version of it shipped here.** It used to read "a shell call the harness
+    // REFUSED cannot have edited anything, so it must not soften a missing path
+    // into unmeasured" — true of refusal, and the state does not only contain
+    // refusals. `emitToolResult` sets `status` to `failed` for EVERY errored
+    // result, so a refused `Bash` and a `Bash` that ran, wrote a file and then
+    // exited nonzero are the same persisted item. `calls - succeeded` is
+    // therefore "calls that did not complete", never "calls that did not run",
+    // and the grader treats the difference as unknowable rather than choosing.
+    // Recovering it needs a discriminator at the recorder, not a better read.
     const shellSucceeded = shellItems.filter((i) => i.status === "completed").length;
     // A failed create is excluded: the translator records nothing for it
     // because nothing was created, so it is a visible failure rather than a

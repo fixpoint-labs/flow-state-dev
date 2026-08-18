@@ -384,15 +384,57 @@ const GUARD_CASES: GuardCase[] = [
     want: "fail",
   },
   {
-    // Between the two: the run reached for the shell and was REFUSED. A call
-    // that never ran cannot have made the change — measured on a real run.
-    name: "A1 — an expected path is absent and every shell call was refused",
+    // THE FIFTH SELF-INFLICTED REGRESSION, and the one with three careful steps
+    // behind it. The coordinator first said "a shell call makes that path
+    // unmeasured"; that was corrected — on measurement, from a real run where
+    // the harness refused `Bash` — to "a call that never ran cannot have made
+    // the change", which became a FAILURE here. Right about refusal. Silent
+    // about the other world: `emitToolResult` stores every errored result as
+    // `failed`, so a `Bash` that ran, wrote this file and then exited nonzero
+    // is the same item as a refused one. The first instinct was right about a
+    // case the correction did not cover, and the correction was right about the
+    // case it was shown.
+    //
+    // So the branch says UNKNOWABLE rather than choosing. It is counted as
+    // unmeasured, which is what keeps `a1-all-unmeasured` able to fire.
+    name: "A1 — an expected path is absent and no shell call completed",
     mutate: (v) => {
       v.did = v.did.filter((d) => !d.topic.endsWith("alpha.txt"));
       v.streamMutations = v.streamMutations.filter((m) => !m.path.endsWith("alpha.txt"));
       v.shell = { called: true, calls: 2, succeeded: 0 };
     },
-    because: "a1-missing-shell-denied",
+    because: "a1-missing-shell-unknowable",
+    id: "A1",
+    want: "unmeasured",
+  },
+  {
+    // The neighbour this must NOT sweep up, and the reason the fold is a
+    // narrowing rather than a surrender: with NO shell call there is no second
+    // world to be uncertain about, so a missing path is still the graph having
+    // lost it. Without this case, "stop failing when the shell failed" would
+    // look indistinguishable from "stop failing".
+    name: "A1 — a missing path with no shell call is still lost, not unknowable",
+    mutate: (v) => {
+      v.did = v.did.filter((d) => !d.topic.endsWith("alpha.txt"));
+      v.streamMutations = v.streamMutations.filter((m) => !m.path.endsWith("alpha.txt"));
+      v.shell = { called: false, calls: 0, succeeded: 0 };
+    },
+    because: "a1-missing-no-shell",
+    id: "A1",
+    want: "fail",
+  },
+  {
+    // And the hole the fold could have opened: every path landing in the new
+    // branch must still reach the INCONCLUSIVE arm. A run that measured nothing
+    // must not come back green with three polite notes — which is what would
+    // happen if the unmeasured counter were not incremented there.
+    name: "A1 — every path unknowable because no shell call completed",
+    mutate: (v) => {
+      v.did = [];
+      v.streamMutations = [];
+      v.shell = { called: true, calls: 1, succeeded: 0 };
+    },
+    because: "a1-all-unmeasured",
     id: "A1",
     want: "fail",
   },

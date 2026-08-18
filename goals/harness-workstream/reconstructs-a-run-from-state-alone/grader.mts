@@ -177,13 +177,31 @@ function gradePaths(view: GradeableView, expectation: Expectation): Finding[] {
         continue;
       }
       if (view.shell.calls > 0) {
+        // TWO WORLDS THE RECORD CANNOT TELL APART, so this says so instead of
+        // picking one. `emitToolResult` maps EVERY errored result to
+        // `status: "failed"`, so a `Bash` the harness refused and a `Bash` that
+        // ran, wrote this very file and then exited nonzero are the same item.
+        // The distinction was destroyed upstream of the state, and no amount of
+        // reading state harder recovers it — the only honest repair is a
+        // discriminator on the failure at the recorder, which is
+        // `@flow-state-dev/claude-code`'s to make and LAB-137's to own.
+        //
+        // It was a FAILURE here, asserting "none of them ran". That claim is
+        // true of one world and false of the other, and the assertion that
+        // explains away missing rows is the last place this epic can afford to
+        // pick. Counted as unmeasured so `a1-all-unmeasured` still fires when
+        // every path lands here — otherwise a run that measured nothing would
+        // come back green with three polite notes.
+        unmeasured += 1;
         findings.push({
           id: "A1",
-          status: "fail",
-          because: "a1-missing-shell-denied",
+          status: "unmeasured",
+          because: "a1-missing-shell-unknowable",
           message:
             `"${path}" has no row in this run's file record. The run made ${view.shell.calls} ` +
-            `shell call(s) but none of them ran, so none could have made this change`,
+            `shell call(s) and none of them completed — but a refused call and one that ran, ` +
+            `changed this file and then exited nonzero are both stored as "failed", so state ` +
+            `cannot say whether the graph lost this mutation or the shell made it invisibly`,
         });
         continue;
       }
