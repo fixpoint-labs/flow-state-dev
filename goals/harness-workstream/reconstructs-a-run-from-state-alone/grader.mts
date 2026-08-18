@@ -50,6 +50,29 @@ export interface Expectation {
    * trailing-segment matching cannot be ambiguous.
    */
   paths: string[];
+  /**
+   * Whether each path EXISTED ON DISK before the run — ground truth the harness
+   * holds because it built the directory, and the reader must never see.
+   *
+   * **This exists because indeterminacy was applied one step too far.** The
+   * stream cannot tell a `Write` that created from a `Write` that overwrote, so
+   * the reader makes no claim about a `Write`'s kind — the repair for the worst
+   * defect this check had, where the tool table asserted `Write` means
+   * `created` and so failed faithful state while passing a recorder that
+   * mislabelled an overwrite. That repair then threw away something the stream
+   * never had and the HARNESS always does: it makes a fresh directory and seeds
+   * exactly one file, so it knows before dispatch which paths cannot exist. A
+   * recorder labelling a creation `edited` passed A1 (kind non-null) and passed
+   * A2 (the kind comparison is skipped) with nothing left to catch it.
+   *
+   * *Don't guess where the stream is silent* was always the rule. *Discard
+   * ground truth we hold* never was.
+   *
+   * Keyed by the same strings as {@link Expectation.paths}. A path with no
+   * entry is a FAILURE rather than a skip — the harness knows for every path it
+   * dispatched, so absence means a caller dropped it.
+   */
+  existedBefore: Record<string, boolean>;
 }
 
 /** One run's view, with the run's own words removed. See the header. */
@@ -174,7 +197,57 @@ function gradePaths(view: GradeableView, expectation: Expectation): Finding[] {
       });
       continue;
     }
+    // GROUND TRUTH THE HARNESS HOLDS, graded here because the reader may not
+    // see it. Both directions are sound without qualification only when they
+    // are stated narrowly, so they are:
+    //
+    // - A path that EXISTED cannot have been created by this run, whatever the
+    //   run did to it and however many times. Unconditional.
+    // - A path that DID NOT EXIST, touched exactly once, by a call that
+    //   APPLIED, was created by that call. The two guards are not decoration:
+    //   a row is an aggregate whose `lastKind` follows the LAST call, so a
+    //   create target written and then edited legitimately reads `edited`; and
+    //   a call that failed created nothing. Asserting past either would fail
+    //   faithful state, which is the failure mode this whole file is about.
+    const existed = expectation.existedBefore[path];
+    if (existed === undefined) {
+      findings.push({
+        id: "A1",
+        status: "fail",
+        because: "a1-no-ground-truth",
+        message:
+          `"${path}" was dispatched but the harness recorded nothing about whether it existed ` +
+          `beforehand — that is knowledge the harness always has, so its absence is a dropped ` +
+          `field rather than a path about which nothing can be said`,
+      });
+      continue;
+    }
     for (const entry of entries) {
+      if (existed && entry.kind === "created") {
+        findings.push({
+          id: "A1",
+          status: "fail",
+          because: "a1-kind-impossible",
+          message:
+            `the record says "${nameOf(entry)}" was created, but the harness seeded that file ` +
+            `before the run — nothing the run did could have created it, so the record is wrong ` +
+            `about an operation the stream alone could not have caught`,
+        });
+      }
+      if (!existed && entry.kind !== null && entry.kind !== "created") {
+        const naming = view.streamMutations.filter((m) => sameFile(m.path, entry.topic));
+        if (naming.length === 1 && naming[0].outcome === "applied") {
+          findings.push({
+            id: "A1",
+            status: "fail",
+            because: "a1-kind-not-created",
+            message:
+              `the record says "${nameOf(entry)}" was ${JSON.stringify(entry.kind)} by a single ` +
+              `applied call, but the harness made a fresh directory and never seeded that file — ` +
+              `one applied operation on a path that did not exist is a creation`,
+          });
+        }
+      }
       if (entry.kind === null) {
         findings.push({
           id: "A1",
@@ -576,15 +649,35 @@ function gradeAgreement(view: GradeableView): Finding[] {
       }
       const highest = Math.max(...(positions as number[]));
       const terminal = naming.filter((m) => m.at === highest);
-      if (terminal.length > 1) {
+      // A tie only matters when the tied calls would be GRADED DIFFERENTLY.
+      //
+      // This is the ambiguity rule's "distinguishable, not few" again, and it
+      // is here because the aggregate-row repair over-reached: that repair
+      // introduced terminal selection, and rejected every tie — including ties
+      // where no choice exists to get wrong. Two `Edit` calls on one path that
+      // both complete carry identical kind and outcome, so a faithful
+      // `edited`/`applied` row agrees with either, and there is nothing the
+      // state failed to say. Rejecting it failed a faithful record.
+      //
+      // The third defect one of our own repairs introduced, and the same shape
+      // as the seventh gap direction: a rule that is right about the world it
+      // was shown and over-rejects the neighbouring one. So the discriminator
+      // is the number of distinct GRADED SEMANTICS, never the number of calls —
+      // and a tie whose kind or outcome genuinely differs still fails, because
+      // then the row's claim does depend on which call it settled on.
+      const semantics = [
+        ...new Set(terminal.map((m) => `${JSON.stringify(m.kind)}|${JSON.stringify(m.outcome)}`)),
+      ];
+      if (semantics.length > 1) {
         findings.push({
           id: "A2",
           status: "fail",
           because: "a2-terminal-tied",
           message:
             `the row keyed "${entry.topic}" folds ${naming.length} mutations and ${terminal.length} ` +
-            `of them share the last stream position ${highest} — itemIndex carries duplicates, so ` +
-            `which one the row settled on is not recoverable`,
+            `of them share the last stream position ${highest}, disagreeing about what happened ` +
+            `(${semantics.join(" vs ")}) — itemIndex carries duplicates, so which one the row ` +
+            `settled on is not recoverable, and the answer depends on it`,
         });
         continue;
       }

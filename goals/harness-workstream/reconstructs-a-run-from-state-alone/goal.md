@@ -248,13 +248,15 @@ questions, and only the second says whether the work is done. Recording both is 
 section.
 
 **Round 11 kept the arrival rate up and moved where they arrive from**, which is the more useful
-half. Nine findings: two assertions that cannot fail on the real path (3 and 7), a field the
+half. Thirteen findings: two assertions that cannot fail on the real path (3 and 7), a field the
 reader drops before the grader sees it (`lastOutcome`), a successful create whose lost row leaves
 no trace on either surface, the ambiguity rule's sixth **and seventh** directions, a pre-dispatch
 gate missing a failure it already held, an A2 branch that reports the stream showed no mutation
-when it showed one, and a deprivation guard that checks the module rather than the binding.
-**Only one of the nine is in an assertion's own logic** — the seventh direction, and that one is
-a regression from our own repair. Every previous round's instances were, because that is where a
+when it showed one, a deprivation guard that checks the module rather than the binding, **harness
+ground truth discarded along with the stream's silence**, **a tie rejected when nothing depended on
+it**, a dot segment that makes one file read as two, and a fixture shape the harness cannot seed.
+**Three of the thirteen are in an assertion's own logic, and all three are regressions from our own
+repairs** — which is the round's finding rather than the count. Every previous round's instances were, because that is where a
 reviewer reads; the three levels this same failure has now appeared at (guard, fixture, store)
 were each invisible from the one below.
 
@@ -282,9 +284,16 @@ fixed was the instance in front of us. That is the case for the guard table in o
 rule is remembered, and remembering is what failed; a table executes, and it has never once been
 half-applied.
 
-**Seven, and two of them were ours.** The count is not the strongest thing this file has to hand
-LAB-137. **This is: every bound anyone has placed on this class has been falsified, including two
-placed by the coordinator who was watching for exactly that.**
+**Four self-inflicted regressions now, from four different repairs — and one of them is the repair
+for the worst defect this file ever had.** The tool table asserting `Write` means `created` was the
+only defect here that failed red on truth AND green on the defect; its repair, which is the most
+carefully reasoned change in the file, created a **new false green on the same assertion**. That is
+the sharpest available statement of what this class is: *the fix is where the next defect comes
+from*, and it holds even when the fix is the best-argued one anybody made.
+
+**So the count is not the strongest thing this file has to hand LAB-137. This is: every bound
+anyone has placed on this class has been falsified, including two placed by the coordinator who was
+watching for exactly that.**
 
 - *"The written-down class entry is what stops the fifth."* The fifth arrived one round later,
   produced by the fourth's own repair.
@@ -295,8 +304,15 @@ placed by the coordinator who was watching for exactly that.**
   the real runs do not reach."* Falsified this round by two assertions that cannot fire at all —
   a cell the criterion did not have.
 
+The four self-inflicted ones, so the lineage is legible rather than a number: the **fifth** gap
+direction, from round 7's two-or-more-candidates rule; the **seventh**, from round 10's repair of
+that fifth; the **tie over-rejection**, from the aggregate-row repair; and **ground truth discarded
+along with the stream's silence**, from the indeterminate-`Write` repair. Four repairs, four new
+defects, no two in the same place.
+
 Three bounds, three falsifications, by three different people all of whom knew the class was
-recurring while they wrote them. That is a better argument than any count, because a count invites
+recurring while they wrote them — and a fourth self-inflicted instance arriving in the same round
+the third was written down. That is a better argument than any count, because a count invites
 the reply *"so fix the remaining ones"* and this does not: **the thing that keeps being wrong is
 the belief that the set is now enumerable.** The operative rule is therefore not a cap but a
 standing obligation — *a defect our own repair introduced folds, however many times that
@@ -412,6 +428,26 @@ not currently grade:
   or move the keys into a constants-only module, which makes the specifier check and the binding
   check the same check. The second is the better shape by this file's own standard — it removes
   the gap by construction rather than adding a rule that has to stay right.
+- **`sameFile` keeps `.` and `..` as segments, so a run naming a file `./ledger.txt` reads as a
+  different file — a FALSE RED, and a double one.** `segmentsOf` splits on `/` and drops only empty
+  strings, while the recorder canonicalizes with `resolvePath` before keying its row. So the stream
+  spelling `./ledger.txt` has segments `[".", "ledger.txt"]` and the row's key ends
+  `[..., "ledger.txt"]`; the suffix comparison fails on `.` versus the directory segment, the two
+  surfaces stop pairing, and A2 emits **two** failures on entirely faithful state — the mutation
+  unaccounted, and the row without a stream. **Pre-existing rather than one of ours**, and
+  unproduced in thirty runs because the harness dispatches absolute paths and the model has echoed
+  them back verbatim every time. It survives on a habit of the driver, which is exactly the kind of
+  thing that changes without telling anybody. **The fix is recorded so nobody re-derives it:**
+  normalise lexical dot segments — drop `.`, pop on `..` — before the suffix comparison, in
+  `segmentsOf`, where both sides already go through.
+- **A replacement fixture naming a path inside a subdirectory aborts the run with `ENOENT` before
+  dispatch.** The harness makes the temp root and writes the seed file directly into it, so a
+  fixture whose `editPath` is `sub/notes.txt` throws on the seed write rather than reporting a bad
+  fixture. Harness robustness for a fixture nobody has written — the goal's contract says a
+  different valid fixture must still pass, and this is one shape of "valid" that would not get as
+  far as being graded. The smallest item on this list, and named only because "unwritten fixture
+  shapes" is the same silence that hid two of the viability defects: `mkdirSync(dirname(...), {
+  recursive: true })` before the seed write closes it.
 - A row's `storageKey` and its `topic` are never checked against each other.
 - A gap's `reason` and `at` are carried and never graded.
 - **Surplus pathless gap rows are accepted.** One pathless mutation and two `file`/`rawPath: null`

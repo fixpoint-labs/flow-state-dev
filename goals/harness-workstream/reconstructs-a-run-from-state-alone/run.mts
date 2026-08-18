@@ -314,6 +314,15 @@ interface GuardCase {
    */
   because: string;
   want: FindingStatus;
+  /**
+   * Grade this world against a different expectation.
+   *
+   * The calibration expectation is the default and most worlds want it. Ground
+   * truth about the DIRECTORY — which paths existed before the run — is part of
+   * the expectation rather than the account, so a world about it has to vary
+   * the expectation instead of the view.
+   */
+  expectation?: Expectation;
 }
 
 /**
@@ -579,6 +588,125 @@ const GUARD_CASES: GuardCase[] = [
       );
       v.gaps.push({ kind: "file", reason: "skipped", rawPath: "/work/repo/gamma.txt" });
       v.gaps.push({ kind: "file", reason: "skipped", rawPath: "/work/repo/delta.txt" });
+    },
+    because: "a2-ok",
+    id: "A2",
+    want: "pass",
+  },
+  {
+    // THE FOURTH SELF-INFLICTED REGRESSION, and the one from the repair for
+    // this file's worst defect.
+    //
+    // The tool table once asserted `Write` means `created`, which failed
+    // faithful state AND passed a recorder mislabelling an overwrite. The
+    // repair made `Write` indeterminate — right about the STREAM, which carries
+    // no field telling creation from overwrite. But the harness makes a fresh
+    // directory and seeds one file, so it knows which paths cannot exist, and
+    // the repair discarded that too. A recorder labelling a creation `edited`
+    // then passed A1 (kind is non-null) and passed A2 (the kind comparison is
+    // skipped, correctly, because the stream says nothing).
+    //
+    // Ground truth is now graded where it lives — in the expectation, after the
+    // account exists. `delta.txt` did not exist, one applied call touched it,
+    // and the record calling that anything but a creation is wrong.
+    name: "A1 — a creation the harness knows about, recorded as an edit",
+    expectation: {
+      paths: ["delta.txt"],
+      existedBefore: { "delta.txt": false },
+    },
+    mutate: (v) => {
+      const delta = v.did.find((d) => d.topic.endsWith("delta.txt"));
+      if (delta !== undefined) delta.kind = "edited";
+    },
+    because: "a1-kind-not-created",
+    id: "A1",
+    want: "fail",
+  },
+  {
+    // The other direction of the same ground truth, and the one the inverted
+    // table used to get backwards: a path the harness SEEDED cannot have been
+    // created by the run, whatever the stream says. This is the half that the
+    // stream can never catch on its own — a `Write` over an existing file is
+    // indeterminate there by construction.
+    name: "A1 — a seeded file the record claims the run created",
+    expectation: {
+      paths: ["beta.txt"],
+      existedBefore: { "beta.txt": true },
+    },
+    mutate: (v) => {
+      const beta = v.did.find((d) => d.topic.endsWith("beta.txt"));
+      if (beta !== undefined) beta.kind = "created";
+    },
+    because: "a1-kind-impossible",
+    id: "A1",
+    want: "fail",
+  },
+  {
+    // And the world it MUST accept, so the fix is not "any `edited` row on a
+    // create target fails": a create target written and THEN edited. The row is
+    // an aggregate carrying the last call, so `edited` is faithful — and the
+    // created-check stands down because more than one mutation names the row.
+    // `alpha.txt` is exactly that shape in the fixture.
+    name: "A1 — a create target written and then edited reads as edited",
+    expectation: {
+      paths: ["alpha.txt"],
+      existedBefore: { "alpha.txt": false },
+    },
+    mutate: (v) => v,
+    because: "a1-ok",
+    id: "A1",
+    want: "pass",
+  },
+  {
+    // And the other stand-down, for the other reason: one call, but it FAILED,
+    // so nothing was created and `created` is not required. `gamma.txt` is a
+    // failed `Write` in the fixture whose row says `created`/`failed`.
+    name: "A1 — a create target whose only call failed is not held to created",
+    expectation: {
+      paths: ["gamma.txt"],
+      existedBefore: { "gamma.txt": false },
+    },
+    mutate: (v) => v,
+    because: "a1-ok",
+    id: "A1",
+    want: "pass",
+  },
+  {
+    // The harness always knows whether a path existed, so a dispatched path
+    // with no ground truth beside it is a dropped field rather than a path
+    // about which nothing can be said. Decided explicitly, like every other
+    // absence in this check.
+    name: "A1 — a dispatched path carrying no ground truth",
+    expectation: {
+      paths: ["beta.txt"],
+      existedBefore: {},
+    },
+    mutate: (v) => v,
+    because: "a1-no-ground-truth",
+    id: "A1",
+    want: "fail",
+  },
+  {
+    // THE THIRD SELF-INFLICTED REGRESSION. Terminal selection came from the
+    // aggregate-row repair, and it rejected EVERY tie — including ties where
+    // no choice exists to get wrong. Two `Edit` calls on one path that both
+    // complete carry identical kind and outcome, so a faithful
+    // `edited`/`applied` row agrees with either. The state left nothing unsaid;
+    // the check invented a question.
+    //
+    // Same shape as the seventh gap direction: right about the world it was
+    // shown, over-rejecting the neighbour. This world must PASS, and the
+    // disagreeing tie above must keep failing.
+    name: "A2 — a tie whose calls are graded identically settles nothing",
+    mutate: (v) => {
+      const write = v.streamMutations.find(
+        (m) => m.path === "/work/repo/alpha.txt" && m.tool === "Write",
+      );
+      if (write !== undefined) {
+        write.tool = "Edit";
+        write.kind = "edited";
+        write.at = 6;
+      }
     },
     because: "a2-ok",
     id: "A2",
@@ -1352,8 +1480,19 @@ await runGoal(async () => {
 
   // The known case, graded: an account we know is correct must come back clean,
   // with the plan half reporting UNMEASURED rather than passing.
+  //
+  // `existedBefore` mirrors what a harness would know about this synthetic
+  // directory, and the three are chosen to exercise all three arms of the
+  // ground-truth check model-free: `beta.txt` existed and its row says
+  // `edited`, so the impossible-create branch is live and green; `alpha.txt`
+  // did not exist and is named by TWO mutations, so the aggregate's `edited`
+  // is legitimate and the created-check correctly stands down; `gamma.txt` did
+  // not exist and its single call FAILED, so it stands down for the other
+  // reason. The positive arm — one applied call on a path that did not exist
+  // must read `created` — is exercised by every real run's two create targets.
   const calibrationExpectation: Expectation = {
     paths: ["alpha.txt", "beta.txt", "gamma.txt"],
+    existedBefore: { "alpha.txt": false, "beta.txt": true, "gamma.txt": false },
   };
   const CALIBRATION_RUN_ID = state.runId;
   const gradedKnownRun = knownAccount.runs.find((r) => r.runId === CALIBRATION_RUN_ID);
@@ -1459,7 +1598,7 @@ await runGoal(async () => {
   for (const guard of GUARD_CASES) {
     const clone = structuredClone(knownRuns[0]);
     const mutated = guard.mutate(clone) ?? clone;
-    const findings = gradeRun(mutated, calibrationExpectation, COLLECTIONS);
+    const findings = gradeRun(mutated, guard.expectation ?? calibrationExpectation, COLLECTIONS);
     if (
       !findings.some(
         (f) => f.id === guard.id && f.status === guard.want && f.because === guard.because,
@@ -1896,7 +2035,16 @@ await runGoal(async () => {
     // cannot reach the code it guards looks identical to one that passes, which
     // is the defect this whole check exists to detect, one round old.
     const view = account.runs[0];
-    const expectation: Expectation = { paths: expectedNames };
+    // The harness made `workDir` fresh and seeded exactly `fixture.editPath`, so
+    // it knows which of these existed before the run began. That knowledge is
+    // introduced HERE, after the account exists — the reader never sees it, and
+    // the inversion this goal is built on is preserved.
+    const expectation: Expectation = {
+      paths: expectedNames,
+      existedBefore: Object.fromEntries(
+        expectedNames.map((name) => [name, name === fixture.editPath]),
+      ),
+    };
     const findings: Finding[] = [
       ...grade(account, expectation, COLLECTIONS, view?.runId ?? "(no readable run id)"),
       a8,
