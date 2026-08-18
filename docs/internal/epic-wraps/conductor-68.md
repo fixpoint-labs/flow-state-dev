@@ -101,7 +101,7 @@ because that test is written against the target.
 | 5 | `orderingUnknowable` suppresses **`previousStatus`** derivation | the **current status** has the same dependence on arrival order | 9 → post-stop |
 | 6 | `kind` gap-matching integrated on the **file** side | not on the **plan** side | 5 → 6 |
 
-**And the ambiguity rule, five directions:** one mutation naming many rows (round 1) → many
+**And the ambiguity rule, seven directions:** one mutation naming many rows (round 1) → many
 mutations consuming one gap (round 3) → many gaps offered for one mutation (round 7) → surplus
 gaps on the pathless side, where the bound is an inequality rather than a pairing (named, unreached)
 → **and one caused by repairing the third.** Each closed correctly when found; each time the next
@@ -133,9 +133,25 @@ That second clause is the load-bearing one and it was not in the coordinator's f
 opens the next direction. Everything else here argues that structural beats remembered on grounds
 of *reliability*; this argues it on grounds of *possibility*.
 
-**And the epic tested that claim against me directly, in one round.** Routing the fourth direction,
-I wrote — and the implementer adopted into `goal.md` — that *the class entry is the thing that
-stops the fifth.* **The fifth arrived one round later, out of the fourth's own repair.**
+**And the epic tested that claim against me directly, twice.**
+
+**First:** routing the fourth direction, I wrote — and the implementer adopted into `goal.md` —
+that *the class entry is the thing that stops the fifth.* **The fifth arrived one round later, out
+of the fourth's own repair.**
+
+**Second:** folding that fifth, I declared *"self-inflicted regression is a closed category — one
+member, used"* and made it the bar for reopening a stopped PR. **Two rounds later the seventh
+direction arrived, and it too was a regression from the same repair lineage** — the interchangeable-
+gaps fix compared distinct spellings *per mutation* when reconciliation has to be *global*, turning
+a correct-by-accident reject into a false green. The category had two members.
+
+**So the strongest thing this epic can say about the class is not that it recurs. It is that every
+bound anyone placed on it has been falsified — including two placed by the coordinator who was
+specifically watching for that.** A count argues for vigilance. A record of falsified bounds argues
+that vigilance is the wrong instrument, which is what LAB-137 needs to carry.
+
+The operative rule that replaced my bad one: **a defect our own repair introduced folds, however
+many times that happens** — no cap, because the cap is the part that keeps being wrong.
 
 That is a **tenth coordinator error and a shape distinct from the other three**: not a rule stated
 past its boundary, not a true result applied past its subject, not a rule in the wrong units, but a
