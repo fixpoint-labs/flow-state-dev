@@ -261,7 +261,36 @@ create target fails"*.
 
 **This is why the argument is about possibility rather than reliability.** Every other instance
 here can be answered with *"be more careful."* This one cannot: it was the careful change.
-`goal.md`'s class entry now leads with it instead of the count.
+
+**And the fifth goes one level higher still — a *correction of an error* created the next defect.**
+Early on I claimed *"a shell call makes that path unmeasured."* The implementer refuted it **on
+measurement**: a real run reached for `Bash`, was refused, and said so — *a call that never ran
+cannot have made the change.* Right, evidenced, and it became the `denied` branch. But the
+correction was **silent about the other world**, and its silence became an assertion:
+`emitToolResult` collapses `isError` to one `status: "failed"`, so a refused `Bash` and a `Bash`
+that ran, wrote the file and exited nonzero are **the same persisted item**.
+
+Three careful steps, none of them a mistake at the time. My first instinct was right about a case
+the correction did not cover; the correction was right about the case it was shown. The
+implementer's summary is the sharpest form of this wrap's whole argument:
+
+> **"Every other entry is *a repair created the next defect*; this one is *a correction of an error
+> created the next defect* — the same argument one level up, at the level where the reasoning
+> happens rather than where the code does."**
+
+**And the fold's third guard is the epic in miniature.** Having made the arm UNMEASURED, it
+removed the aggregate `unmeasured` increment and re-ran, to check that removal would be caught:
+
+```
+"A1 — every path unknowable because no shell call completed"
+  did not reach A1/a1-all-unmeasured with a fail; it produced
+  ["a1-missing-shell-unknowable=unmeasured", ×3]
+```
+
+**A run that measured nothing, coming back green with three polite notes.** The increment is
+load-bearing rather than tidy — proven, not asserted, inside the fix for the class it belongs to.
+
+`goal.md`'s class entry now leads with this lineage instead of the count.
 
 ---
 
