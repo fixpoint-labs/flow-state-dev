@@ -3,7 +3,7 @@
 #
 #   bash probe.sh [workdir]
 #
-# Scaffolds a real create-next-app@16 project, then for each candidate shape of
+# Scaffolds a real create-next-app@16.3.1 project, then for each candidate shape of
 # the FSD config runs `next build` (the bundler + TypeScript half) and a native
 # `import()` (the fsdev CLI half). Ends with a `next dev` + curl on the chosen
 # shape, so the mounted route is proven to serve, not just to compile.
@@ -15,7 +15,9 @@ APP="$WORK/probe"
 rm -rf "$APP"
 echo "workdir: $WORK"
 
-npx --yes create-next-app@16 "$APP" \
+# Exact, not @16 — a range would re-resolve and this script is cited as evidence,
+# so a reader running it later must get the version the findings were measured on.
+npx --yes create-next-app@16.3.1 "$APP" \
   --ts --app --no-tailwind --no-eslint --no-biome --no-src-dir \
   --no-react-compiler --no-rspack --import-alias "@/*" \
   --agents-md --skip-install --disable-git || exit 1
@@ -93,7 +95,7 @@ PORT=0
 for p in $(seq 3990 3999); do
   if ! (exec 3<>"/dev/tcp/127.0.0.1/$p") 2>/dev/null; then PORT=$p; break; fi
 done
-if [ "$PORT" = 0 ]; then echo "  no free port in 3990-3999 — skipped"; exit 0; fi
+if [ "$PORT" = 0 ]; then echo "  no free port in 3990-3999 — CANNOT VERIFY"; exit 2; fi
 echo "  port $PORT (verified free)"
 
 printf '\n<!-- BEGIN:fsd -->\nFSD SECTION SENTINEL\n<!-- END:fsd -->\n' >> AGENTS.md
@@ -102,11 +104,22 @@ DEV_PID=$!
 sleep 18
 BODY=$(curl -s --max-time 20 --noproxy '*' "http://127.0.0.1:$PORT/api/flows")
 echo "  GET /api/flows -> $BODY"
+RC=0
 case "$BODY" in
   "$MARKER":200) echo "  PASS — the route served this run's config module" ;;
-  *)             echo "  FAIL — expected $MARKER:200" ;;
+  *)             echo "  FAIL — expected $MARKER:200"; RC=1 ;;
 esac
-echo "  FSD section survived next dev: $(grep -c 'FSD SECTION SENTINEL' AGENTS.md) (expect 1)"
-echo "  next's own block still there:  $(grep -c 'BEGIN:nextjs-agent-rules' AGENTS.md) (expect 1)"
+FSD_N=$(grep -c 'FSD SECTION SENTINEL' AGENTS.md)
+NEXT_N=$(grep -c 'BEGIN:nextjs-agent-rules' AGENTS.md)
+echo "  FSD section survived next dev: $FSD_N (expect 1)"
+echo "  next's own block still there:  $NEXT_N (expect 1)"
+[ "$FSD_N" = 1 ] || { echo "  FAIL — appended FSD section did not survive"; RC=1; }
+[ "$NEXT_N" = 1 ] || { echo "  FAIL — next's own block is not intact"; RC=1; }
 kill "$DEV_PID" 2>/dev/null; wait "$DEV_PID" 2>/dev/null
-exit 0
+
+# The exit status is the evidence. This script is cited by the spec and the PR as
+# the thing a reader runs, so it must not be able to report green for a claim it
+# did not prove: 0 = the served-route and AGENTS.md claims held, 1 = one failed,
+# 2 = could not be checked at all.
+[ "$RC" = 0 ] && echo "  probe: PASS" || echo "  probe: FAIL"
+exit "$RC"

@@ -11,6 +11,13 @@ Run it: `bash probe.sh` (needs network; ~2 minutes). It scaffolds a real `create
 project, drops each candidate config shape in, and runs `next build`, `next dev`, and a native
 `import()` against each.
 
+**The exit status is the evidence** — `0` the served-route and `AGENTS.md` claims held, `1` one
+of them failed, `2` it could not be checked. The variant table below is printed output you read;
+the final section is an assertion the script fails on. It uses a fresh marker per run on a port
+it proves free first, because an earlier version of this probe reported green by reaching a stale
+dev server left over from a previous run — a result from a neighbour of the claim, which is the
+whole failure it exists to catch.
+
 ## What it settled
 
 | Variant | `next build` | native `import()` | verdict |
