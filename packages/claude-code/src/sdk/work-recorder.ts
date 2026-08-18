@@ -185,7 +185,7 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
    * it. That is the same can't-tell rule as everywhere else: while a mutation
    * on this subject is unresolved, the honest outcome is "unresolved".
    */
-  const outstandingCalls = new Map<string, Set<string>>();
+  const outstandingCalls = new Map<string, Map<string, ObservedFileOpKind | undefined>>();
   /**
    * Rows that have had two calls open at once.
    *
@@ -202,27 +202,51 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
 
   /**
    * Fold this event's outcome together with any other calls still in flight on
-   * the same row. Returns what the row's outcome should actually become.
+   * the same row, and return the outcome TOGETHER WITH the metadata of the call
+   * that outcome describes.
+   *
+   * **Returning both is the point, not a convenience.** `lastKind` and `outcome`
+   * are a pair describing one touch, and this function is the only thing that
+   * knows which call the outcome ended up being about. When it returned an
+   * outcome alone, the caller had to guess the matching metadata — and guessed
+   * wrong in both directions, in two separate review rounds: first by letting a
+   * settling call overwrite an unfinished call's kind, then, after that was
+   * "fixed" by keeping whatever was already there, by retaining the *settled*
+   * call's kind when it was the earlier call left unresolved. Pairing them here
+   * makes the whole axis unreachable rather than patched twice.
    */
   const settleAgainstOpenCalls = (
-    key: string,
+    scope: "file" | "plan",
+    subjectKey: string,
     callId: string,
     outcome: ObservedOutcome,
-  ): ObservedOutcome => {
+    meta?: ObservedFileOpKind,
+  ): { outcome: ObservedOutcome; meta: ObservedFileOpKind | undefined } => {
+    // Files and plan items are keyed the same way (`<runId>/<segment>`) into two
+    // DIFFERENT collections, so the two keyspaces are only distinct by accident
+    // of what a segment usually looks like. Scoping the bookkeeping key means a
+    // plan item whose id collides with a root-level file path cannot hold that
+    // file's row at `pending`, or mark its ordering unknowable.
+    const key = `${scope}:${subjectKey}`;
     if (outcome === "pending") {
-      const open = outstandingCalls.get(key) ?? new Set<string>();
+      const open = outstandingCalls.get(key) ?? new Map<string, ObservedFileOpKind | undefined>();
       if (open.size > 0 && !open.has(callId)) orderingUnknowable.add(key);
-      open.add(callId);
+      open.set(callId, meta);
       outstandingCalls.set(key, open);
-      return "pending";
+      return { outcome: "pending", meta };
     }
     const open = outstandingCalls.get(key);
     open?.delete(callId);
-    // Someone else is still mid-flight on this subject, so the row is not
-    // settled however this particular call ended.
-    if (open !== undefined && open.size > 0) return "pending";
+    if (open !== undefined && open.size > 0) {
+      // Someone else is still mid-flight on this subject, so the row is not
+      // settled however THIS call ended — and the `pending` now describes that
+      // other call, so its metadata is what belongs beside it. Insertion order
+      // makes the last entry the most recently attempted.
+      const stillOpen = [...open.values()].at(-1);
+      return { outcome: "pending", meta: stillOpen };
+    }
     outstandingCalls.delete(key);
-    return outcome;
+    return { outcome, meta };
   };
 
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -323,18 +347,23 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
     }
     const key = keyFor("file", "file operation", canonical, event.path);
     if (key === null) return;
-    const outcome = settleAgainstOpenCalls(key, event.callId, event.outcome);
-    // A settlement HELD at `pending` because another call is still open on this
-    // path describes that other call, not this one — so this call's kind must
-    // not ride along with it. Overwriting left a row whose outcome referred to
-    // the unfinished Edit and whose kind said `created` from the Write that
-    // finished first, which is metadata and outcome describing different calls.
-    // Omitting the field leaves the upsert to keep whatever the row already
-    // had: the kind of the attempt still in flight.
-    const heldForAnotherCall = event.outcome !== "pending" && outcome === "pending";
+    // `outcome` and `meta` arrive paired because they describe ONE call, which
+    // is not always this one: a settlement held at `pending` by another open
+    // call describes that call, and carries its kind. Taking the kind from
+    // `event.op` here instead is what put an unfinished Edit's `pending` beside
+    // a finished Write's `created` — and then, once that was patched by keeping
+    // whatever the row already had, put the settled call's kind beside the
+    // earlier call's unresolved outcome. Neither is reachable from a pair.
+    const { outcome, meta } = settleAgainstOpenCalls(
+      "file",
+      key,
+      event.callId,
+      event.outcome,
+      event.op,
+    );
     pendingFiles.set(key, {
       ...pendingFiles.get(key),
-      ...(heldForAnotherCall ? {} : { lastKind: event.op }),
+      ...(meta !== undefined ? { lastKind: meta } : {}),
       outcome,
       lastTouchedAt: now(),
     });
@@ -346,7 +375,11 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
   ): void => {
     const key = keyFor("plan", "plan item", event.itemId);
     if (key === null) return;
-    const settled = settleAgainstOpenCalls(key, event.callId, event.outcome);
+    // No metadata pairing here: a plan row's `status` is the item's own state as
+    // the harness confirmed it, not a field that only makes sense beside this
+    // call's outcome — so unlike a file row's kind, it does not travel with
+    // whichever call the outcome ended up describing.
+    const { outcome: settled } = settleAgainstOpenCalls("plan", key, event.callId, event.outcome);
     const merged: PendingPlanEntry = {
       ...pendingPlan.get(key),
       lastOutcome: settled,
@@ -368,7 +401,7 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
       // it describes the transition rather than the arrival order.
       const prior =
         event.previousStatus ??
-        (orderingUnknowable.has(key) ? undefined : confirmedStatus.get(event.itemId));
+        (orderingUnknowable.has(`plan:${key}`) ? undefined : confirmedStatus.get(event.itemId));
       // The CURRENT status is recorded unconditionally, because the harness
       // confirmed it whether or not it changed. Gating this on a change left a
       // no-op update (`pending` → `pending`) with `status: null`, since a create

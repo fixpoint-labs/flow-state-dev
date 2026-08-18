@@ -501,14 +501,22 @@ function observeToolResult(
     // That is the worst version of this defect: not merely a wrong row, but a
     // SILENT one, with the file actually written omitted entirely and no gap
     // pointing at either. The attempt stays `pending`, which is what we know.
-    if (!isError && resolved === null && state.inputsMayBeRevised) {
+    //
+    // A FAILURE is unattributable for exactly the same reason, so this does not
+    // test `isError`. An errored result naming no path leaves two worlds we
+    // cannot separate — the seam denied the call, or it revised the input and
+    // the write failed somewhere else — and `failed` on the call-time path only
+    // describes the first. Settling it anyway asserts an event at a path the
+    // harness may never have touched, which is the wrong-subject defect with
+    // its polarity flipped, not a safer version of it.
+    if (resolved === null && state.inputsMayBeRevised) {
       events.push({
         kind: "work_gap_observed",
         subject: "file",
         reason:
-          `a file mutation settled without the harness naming the path it wrote, and an ` +
-          `approval seam may have revised what was asked for, so the attempt could not be ` +
-          `confirmed against any path`,
+          `a file mutation ${isError ? "failed" : "settled"} without the harness naming the ` +
+          `path it wrote, and an approval seam may have revised what was asked for, so the ` +
+          `attempt could not be confirmed against any path`,
         rawPath: fileOp.path,
       });
       return true;
@@ -565,25 +573,17 @@ function observeToolResult(
   const update = state.openPlanUpdates.get(callId);
   if (update !== undefined) {
     state.openPlanUpdates.delete(callId);
-    // A refusal can arrive two ways: as a tool error, or IN BAND as
-    // `success: false` on an otherwise ordinary result. Reading only the first
-    // records a refused transition as applied — the worst available outcome,
-    // and the same mistake as trusting the request over the report.
-    if (isError || readBool(structured, "success") === false) {
-      // Neither the status nor the wording is carried: claiming a move the
-      // harness refused is worse than recording nothing about it.
-      events.push({
-        kind: "plan_item_observed",
-        callId,
-        itemId: update.itemId,
-        outcome: "failed",
-      });
-      return true;
-    }
-
+    // WHICH ITEM the result is about is settled before WHAT it says happened,
+    // because the second question is meaningless until the first is answered.
     // The id is a KEY, so it keeps its call-time value for the same reason the
     // file path does — but a result naming a different item means the row we
     // are about to settle describes work done to something else.
+    //
+    // This guard sits above the refusal branch deliberately. Ordered the other
+    // way, a refusal that also named a different item wrote `failed` onto
+    // `update.itemId` — a refusal is a claim about a subject too, so pinning it
+    // to the wrong one is the same corruption as pinning a success there, and
+    // is not made harmless by being negative.
     const reportedId = readString(structured, "taskId");
     if (reportedId !== null && reportedId !== update.itemId) {
       // THE GAP IS THE WHOLE RECORD HERE. Settling as well would take the
@@ -600,7 +600,24 @@ function observeToolResult(
         subject: "plan",
         reason:
           `a plan update was attempted on item ${update.itemId} and the harness reported ` +
-          `updating ${reportedId} instead, so nothing was settled for either`,
+          `${isError || readBool(structured, "success") === false ? "refusing" : "updating"} ` +
+          `${reportedId} instead, so nothing was settled for either`,
+      });
+      return true;
+    }
+
+    // A refusal can arrive two ways: as a tool error, or IN BAND as
+    // `success: false` on an otherwise ordinary result. Reading only the first
+    // records a refused transition as applied — the worst available outcome,
+    // and the same mistake as trusting the request over the report.
+    if (isError || readBool(structured, "success") === false) {
+      // Neither the status nor the wording is carried: claiming a move the
+      // harness refused is worse than recording nothing about it.
+      events.push({
+        kind: "plan_item_observed",
+        callId,
+        itemId: update.itemId,
+        outcome: "failed",
       });
       return true;
     }

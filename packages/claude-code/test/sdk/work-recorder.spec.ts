@@ -211,6 +211,62 @@ describe("createWorkRecorder — file operations", () => {
     });
   });
 
+  it("pairs the kind with the call still open, when the LATER call settles first", async () => {
+    // The mirror of the case above, and the one it did not reach. The two tests
+    // differ only in which call comes back — and "keep whatever the row already
+    // had" is right in one order and wrong in the other. Here the Edit opens
+    // second (so the row reads `edited`) and settles first, leaving the Write
+    // unresolved: the outcome describes a `created` and the kind beside it says
+    // `edited`. Outcome and kind are a pair describing one call, so the pairing
+    // belongs where the call is chosen, not at the caller guessing after it.
+    const { files, recorder } = harness();
+    const path = "/work/src/checkout.ts";
+    recorder.observe(fileCall(path, "call_write"));
+    recorder.observe({
+      kind: "file_op_observed",
+      callId: "call_edit",
+      path,
+      op: "edited",
+      outcome: "pending",
+    });
+    recorder.observe({
+      kind: "file_op_observed",
+      callId: "call_edit",
+      path,
+      op: "edited",
+      outcome: "applied",
+    });
+    await recorder.stop();
+
+    expect(files.rows.get(`${RUN}/work/src/checkout.ts`)).toMatchObject({
+      lastKind: "created",
+      outcome: "pending",
+    });
+  });
+
+  it("does not let a plan item hold a same-named file's row unsettled", async () => {
+    // Files and plan items both key as `<runId>/<segment>` into two DIFFERENT
+    // collections, so the two keyspaces stay apart only by accident of what a
+    // segment usually looks like. A plan item id matching a root-level path
+    // collides, and then the in-flight bookkeeping is shared: the plan item's
+    // open call holds the FILE's row at `pending` for the rest of the run.
+    const { files, plan, recorder } = harness();
+    recorder.observe({
+      kind: "plan_item_observed",
+      callId: "call_plan",
+      itemId: "notes.txt",
+      title: "Write the notes",
+      outcome: "pending",
+    });
+    recorder.observe(fileCall("/notes.txt", "call_file"));
+    recorder.observe(fileSettled("/notes.txt", "applied", "call_file"));
+    await recorder.stop();
+
+    expect(files.rows.get(`${RUN}/notes.txt`)).toMatchObject({ outcome: "applied" });
+    // And the reverse: the file settling does not settle the plan item either.
+    expect(plan.rows.get(`${RUN}/notes.txt`)).toMatchObject({ lastOutcome: "pending" });
+  });
+
   it("settles once the last in-flight call on a path comes back", async () => {
     const { files, recorder } = harness();
     const path = "/work/src/checkout.ts";

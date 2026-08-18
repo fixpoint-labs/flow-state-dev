@@ -405,6 +405,67 @@ describe("translateSdkMessage — observed work", () => {
     expect(gaps[0]).toMatchObject({ subject: "file", rawPath: "/work/notes.txt" });
   });
 
+  it("will not pin a FAILURE to a path the harness never named, under an approval seam", () => {
+    // The same guard with its polarity flipped, which is where the hole was. An
+    // errored result naming no path leaves two worlds we cannot separate: the
+    // seam denied the call, or it revised the input and the write failed
+    // somewhere else. `failed` on the call-time path only describes the first,
+    // and a negative claim about the wrong subject is still a claim about the
+    // wrong subject. Skipping the guard on errors treated it as the safe half.
+    const state = createTranslateState({ partialMessages: false, inputsMayBeRevised: true });
+    const events = [
+      writeCall,
+      {
+        type: "user" as const,
+        message: {
+          content: [
+            {
+              type: "tool_result" as const,
+              tool_use_id: "toolu_w",
+              content: "denied",
+              is_error: true,
+            },
+          ],
+        },
+      },
+    ].flatMap((m) => translateSdkMessage(m, state));
+
+    const fileEvents = events.filter((e) => e.kind === "file_op_observed");
+    expect(fileEvents).toHaveLength(1);
+    expect(fileEvents[0]).toMatchObject({ outcome: "pending" });
+    const gaps = events.filter((e) => e.kind === "work_gap_observed");
+    expect(gaps).toHaveLength(1);
+    expect((gaps[0] as { reason: string }).reason).toContain("failed without");
+  });
+
+  it("settles a failure normally without a seam, where the path cannot have moved", () => {
+    // The companion that keeps the guard narrow: with no seam the SDK executed
+    // exactly the input we saw, so an unnamed path is not an open question and
+    // gapping here would fire on every ordinary failure.
+    const state = createTranslateState({ partialMessages: false, inputsMayBeRevised: false });
+    const events = [
+      writeCall,
+      {
+        type: "user" as const,
+        message: {
+          content: [
+            {
+              type: "tool_result" as const,
+              tool_use_id: "toolu_w",
+              content: "EACCES",
+              is_error: true,
+            },
+          ],
+        },
+      },
+    ].flatMap((m) => translateSdkMessage(m, state));
+
+    expect(events.filter((e) => e.kind === "file_op_observed")[1]).toMatchObject({
+      outcome: "failed",
+    });
+    expect(events.filter((e) => e.kind === "work_gap_observed")).toEqual([]);
+  });
+
   it("settles normally without an approval seam, where the path cannot have moved", () => {
     // Without the seam the SDK executes exactly the input we saw, so a result
     // that names no path confirms nothing about WHERE only because there was
@@ -1243,6 +1304,44 @@ describe("translateSdkMessage — observed work", () => {
     const gaps = events.filter((e) => e.kind === "work_gap_observed");
     expect(gaps).toHaveLength(1);
     expect((gaps[0] as { reason: string }).reason).toContain("9");
+  });
+
+  it("reports a REFUSAL naming a different item as a gap, not a failure on ours", () => {
+    // The wrong-subject guard with its polarity flipped. Ordered after the
+    // refusal branch, this wrote `failed` onto item 5 — asserting OUR move was
+    // refused, when what the harness refused was a move on item 9 and nothing
+    // at all is known about 5. Which item the result is about has to be settled
+    // before what it says happened, because the second is meaningless until
+    // the first is answered.
+    const events = translateScript([
+      {
+        type: "assistant",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_u",
+              name: "TaskUpdate",
+              input: { taskId: "5", status: "completed" },
+            },
+          ],
+        },
+      },
+      {
+        type: "user",
+        tool_use_result: { success: false, taskId: "9", updatedFields: [], error: "locked" },
+        message: {
+          content: [{ type: "tool_result", tool_use_id: "toolu_u", content: "Task #9 is locked" }],
+        },
+      },
+    ]);
+    // Only the attempt — no `failed` claiming item 5's move was the refused one.
+    const planEvents = events.filter((e) => e.kind === "plan_item_observed");
+    expect(planEvents).toHaveLength(1);
+    expect(planEvents[0]).toMatchObject({ itemId: "5", outcome: "pending" });
+    const gaps = events.filter((e) => e.kind === "work_gap_observed");
+    expect(gaps).toHaveLength(1);
+    expect((gaps[0] as { reason: string }).reason).toContain("refusing 9");
   });
 
   it("carries a re-wording an update applied, so the plan does not go stale", () => {
