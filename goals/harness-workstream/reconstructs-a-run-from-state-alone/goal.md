@@ -248,17 +248,22 @@ questions, and only the second says whether the work is done. Recording both is 
 section.
 
 **Round 11 kept the arrival rate up and moved where they arrive from**, which is the more useful
-half. Fifteen findings: two assertions that cannot fail on the real path (3 and 7), a field the
+half. Seventeen findings: two assertions that cannot fail on the real path (3 and 7), a field the
 reader drops before the grader sees it (`lastOutcome`), a successful create whose lost row leaves
 no trace on either surface, the ambiguity rule's sixth **and seventh** directions, a pre-dispatch
 gate missing a failure it already held, an A2 branch that reports the stream showed no mutation
 when it showed one, a deprivation guard that checks the module rather than the binding, **harness
 ground truth discarded along with the stream's silence**, **a tie rejected when nothing depended on
-it**, a dot segment that makes one file read as two, a fixture shape the harness cannot seed, **a shell branch that cannot tell a refused call from one that ran and failed**, and **a tie comparison that two correct repairs made wrong between them**.
-**Five of the fifteen are in an assertion's own logic, and all five are regressions from our own
-repairs** — which is the round's finding rather than the count. Every previous round's instances were, because that is where a
-reviewer reads; the three levels this same failure has now appeared at (guard, fixture, store)
-were each invisible from the one below.
+it**, a dot segment that makes one file read as two, a fixture shape the harness cannot seed, **a shell branch that cannot tell a refused call from one that ran and failed**, **a tie comparison that two correct repairs made wrong between them**, and **both source scans being narrower than the word "guard" implies**.
+**Five of the seventeen are in an assertion's own logic, and all five are regressions from our own
+repairs** — which is the round's finding rather than the count. Every previous round's instances
+were in an assertion, because that is where a reviewer reads.
+
+**And the levels kept going.** This same failure has now appeared at the guard, the fixture, the
+store, and — this round — **the source scans that were written to close two of the classes above**.
+Each was invisible from the one below. The last is the sharpest: a scan is a regex, so it catches
+the shape its author anticipated, which is *the remembered rule* this file spent eleven rounds
+arguing against. The mechanism built to end the class turns out to be an instance of it.
 
 **Round 8 changed what the earlier PASSes are worth, and that belongs here rather than in a
 footnote.** Until it, assertion 2 rejected a run that edited a file it had already written — so
@@ -392,17 +397,33 @@ half-applied a naming** — the same wrong-extent shape the rules keep taking, t
 prose that tracks them rather than in the code they govern. A limits list is a check whose only
 evidence is somebody rereading it, so it fails the way every remembered rule here has failed.
 
-**Closed by construction — the shape cannot be written:**
+**Closed by construction — but the two closes are NOT the same kind of thing, and saying they are
+was an overclaim.** One is enforced by the type system; the other by a regex over source text. The
+first cannot be spelled around. The second catches the shapes its author anticipated, which is the
+thing this file has documented six times, now sitting inside the guard that was supposed to end it.
 
-- **A pooled value reachable from a per-run judgement.** Five instances across three rounds, each
-  fixed by scoping one read, each followed by another. Ended when the account became a list of
-  per-run views: `gradeRun` receives one view, the other runs are not in scope, and a pooled read
-  is a compile error. A source scan guards the reintroduction path. **Instances since: zero.**
-- **A cross-surface field comparison that handles one silence and not the other.** Null-outcome
-  was given a failure and null-kind kept skipping — the same rule, half applied, found a round
-  apart. Ended when both went through `compareField`, whose signature requires an absence rule for
-  each side; declining to compare now costs a written `why` and appears in the diff. A scan
-  forbids raw `entry.x !== mutation.y` beside it.
+- **A pooled value reachable from a per-run judgement — TYPE-LEVEL, and genuinely closed.** Five
+  instances across three rounds, each fixed by scoping one read, each followed by another. Ended
+  when the account became a list of per-run views: `gradeRun` receives one view, the other runs are
+  not in scope, and a pooled read **does not compile**. No spelling gets around it — the data is
+  absent, not forbidden. **Instances since: zero.** A source scan guards the one reintroduction path
+  the types cannot see, which is somebody *widening the signature*; that scan is a backstop, and its
+  reach is a named limit below.
+- **A cross-surface field comparison that handles one silence and not the other — SCAN-LEVEL, and
+  weaker than it reads.** Null-outcome was given a failure and null-kind kept skipping, the same
+  rule half applied, found a round apart. `compareField`'s signature requires an absence rule per
+  side, so declining to compare costs a written `why` and appears in the diff — **but the type binds
+  only the calls that already go through the door.** Nothing type-level stops a raw comparison being
+  written *beside* it; only the scan does, and the scan is a regex. So this class's real closure
+  rests on anticipating spellings, which is a different and lesser guarantee than the one above.
+
+**Why the distinction is worth this much space.** *Structural beats remembered* is the strongest
+claim this work makes, and it is true of the first close and only partly true of the second. A
+reader who sees "a source scan enforces the boundary" and does not know it is a regex will trust it
+more than it earns — and misplaced trust in a guard is the same defect as every entry in the grid
+below, one level out into the documentation. The scans are worth having: they are cheap, they run
+before every dispatch, and each was added after a real regression. They are **backstops for what
+the types cannot reach**, not closes in their own right.
 
 **Still enumerable — a grid, and honestly so.** The remaining family is *an assertion certifying
 on evidence that does not cover its case*, over roughly `field × surface × presence`. Rounds 6
@@ -497,6 +518,30 @@ not currently grade:
   far as being graded. The smallest item on this list, and named only because "unwritten fixture
   shapes" is the same silence that hid two of the viability defects: `mkdirSync(dirname(...), {
   recursive: true })` before the seed write closes it.
+- **THE TWO SOURCE SCANS ARE REGEXES, AND BOTH ARE NARROWER THAN THE WORD "GUARD" IMPLIES.** They
+  are grouped here because the pair makes a point neither makes alone: *the thing this file keeps
+  catching is now inside the mechanism that was supposed to end it.* A scan catches the shape its
+  author thought of; rename a parameter and it goes quiet. That is a remembered rule enforced by a
+  spell-checker.
+
+  - **The per-run boundary scan only reads `function name(...)` declarations.** It iterates
+    `/function\s+(\w+)\s*\(([^)]*)\)/`, so `const gradeX = (view: GradeableView, all:
+    GradeableAccount) => …` is never examined — nor a method shorthand, nor `const x = function
+    (…)`. The reintroduction path it exists to watch is *somebody widening a signature*, and the
+    most idiomatic way to write a new one in this codebase is the one shape it cannot see.
+  - **The cross-surface comparison scan requires the literal identifiers `entry` and `mutation`
+    around the operator.** `const { kind } = entry;` then `kind !== mutation.kind`, or
+    `const e = entry, m = mutation;` then `e.kind !== m.kind`, both slip past. Since this scan is
+    doing the *primary* work for its class rather than backstopping a type — the type binds only
+    calls that already go through `compareField` — its reach is the class's reach.
+
+  **Reachable only by a future author, never by a run**, which is why they are named rather than
+  folded: nothing a dispatched run does can produce either. **The fix, recorded so nobody
+  re-derives it:** make both AST- or type-aware rather than identifier- and declaration-shape
+  dependent — resolve the parameter types on every function-like node, and resolve the operands of
+  every strict comparison back to their declarations. `ts-morph` is already a repo dependency. That
+  would move the backstop into the same category as the close it supplements, which is the whole
+  point of the distinction drawn above.
 - A row's `storageKey` and its `topic` are never checked against each other.
 - A gap's `reason` and `at` are carried and never graded.
 - **Surplus pathless gap rows are accepted.** One pathless mutation and two `file`/`rawPath: null`
