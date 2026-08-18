@@ -1,5 +1,5 @@
 {
-  "_comment": "A known FSD state, as the real routes return it. The reader must derive known-account.json from this EXACTLY, model-free, before the goal spends a coding run. Shaped to carry the awkward cases on purpose: itemIndex with a gap and duplicates; a two-page file-op collection so the cursor must be followed; a sub-agent's mutation nested under ownedBy, placed BEFORE the closing word because a mutation after the report is a failure this fixture must not itself contain; a stream mutation with no row that a gap row accounts for; an outcome of failed, which is settled; my-alpha.txt, whose name ends with alpha.txt so a substring match would drag it into alpha.txt's grading and make that an ambiguity; and a SECOND RUN, req_cal_2, which exists so the reader's per-run partition is exercised model-free — the guard cases feed one view and can never reach it. Every row's fields agree with its stream mutation, because the record-versus-stream comparison only has teeth where the two disagree and the baseline must not.",
+  "_comment": "A known FSD state, as the real routes return it. The reader must derive known-account.json from this EXACTLY, model-free, before the goal spends a coding run. Shaped to carry the awkward cases on purpose: itemIndex with a gap and duplicates; a two-page file-op collection so the cursor must be followed; a sub-agent's mutation nested under ownedBy, placed BEFORE the closing word because a mutation after the report is a failure this fixture must not itself contain; a stream mutation with no row that a gap row accounts for; an outcome of failed, which is settled; my-alpha.txt, whose name ends with alpha.txt so a substring match would drag it into alpha.txt's grading and make that an ambiguity; a PATHLESS write, whose position must still reach the causality assertion even though it has no path; a FAILED TaskCreate, which records nothing by design and so must not read as a lost row; and a SECOND RUN, req_cal_2, which exists so the reader's per-run partition is exercised model-free — the guard cases feed one view and can never reach it. Every row's fields agree with its stream mutation, because the record-versus-stream comparison only has teeth where the two disagree and the baseline must not.",
   "workstreamId": "sess_calibration",
   "runId": "req_cal_1",
   "requests": {
@@ -14,6 +14,12 @@
             "itemIndex": 1,
             "status": "completed",
             "toolCall": { "name": "Write", "arguments": "{\"file_path\":\"/work/repo/alpha.txt\",\"content\":\"a\"}" }
+          },
+          {
+            "type": "tool_output",
+            "itemIndex": 2,
+            "status": "failed",
+            "toolCall": { "name": "TaskCreate", "arguments": "{\"subject\":\"a create the harness refused\"}" }
           },
           {
             "type": "tool_output",
@@ -51,6 +57,12 @@
             "status": "completed",
             "ownedBy": "container_sub_1",
             "toolCall": { "name": "Write", "arguments": "{\"file_path\":\"/work/repo/delta.txt\",\"content\":\"d\"}" }
+          },
+          {
+            "type": "tool_output",
+            "itemIndex": 7,
+            "status": "completed",
+            "toolCall": { "name": "Write", "arguments": "{\"content\":\"no path to key this under\"}" }
           },
           { "type": "message", "itemIndex": 8, "content": [{ "text": "Wrote the files and checked the directory." }] }
         ]
@@ -125,6 +137,16 @@
       "req_cal_1": [
         {
           "items": [
+            {
+              "topic": "req_cal_1/inv_a/000000",
+              "storageKey": "observed-gaps/req_cal_1/inv_a/000000",
+              "clientData": {
+                "kind": "file",
+                "reason": "a file mutation arrived with no path to record it under",
+                "rawPath": null,
+                "at": 999
+              }
+            },
             {
               "topic": "req_cal_1/inv_a/000001",
               "storageKey": "observed-gaps/req_cal_1/inv_a/000001",

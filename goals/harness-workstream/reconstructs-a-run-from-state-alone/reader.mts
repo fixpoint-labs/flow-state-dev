@@ -69,9 +69,17 @@ export type Read = (path: string) => Promise<unknown>;
  *
  * The mapping — not just the names — is translated here so that no ASSERTION
  * ever knows a tool name: the grader compares `mutation.kind` against the row's
- * `kind` without knowing that `Write` means `created`.
+ * `kind` without knowing what either tool means.
+ *
+ * **`Write` maps to null because the tool name does not determine the kind.**
+ * A `Write` over an existing file is an edit, and the recorder knows that: it
+ * prefers the harness's reported `type` (`create`/`update`) and falls back to
+ * the tool only when none is reported. The item stream carries no such field,
+ * so the stream simply makes no claim about a `Write`'s kind — and asserting
+ * one would fail faithful state while passing a recorder that mislabels an
+ * overwrite. `Edit` is unambiguous in both directions and keeps its teeth.
  */
-export const FILE_MUTATION_TOOLS: Record<string, string> = { Write: "created", Edit: "edited" };
+export const FILE_MUTATION_TOOLS: Record<string, string | null> = { Write: null, Edit: "edited" };
 
 /**
  * How a settled tool result maps to the outcome a row should carry. Framework
@@ -90,6 +98,14 @@ export const SHELL_TOOL = "Bash";
  * prohibition is on the harness transcript.
  */
 export const PLAN_TOOLS = ["TaskCreate", "TaskUpdate"] as const;
+
+/**
+ * The create half, named because a FAILED create records nothing by design —
+ * nothing was created, so there is no row to lose. Counting it as a call that
+ * should have produced one turns a faithful, fully visible failure into a
+ * reported recorder loss.
+ */
+const PLAN_CREATE_TOOL = "TaskCreate";
 
 /** One page of a collection, as the list-collection-state route returns it. */
 interface CollectionPage {
@@ -122,8 +138,13 @@ export interface StreamMutation {
   at: number | null;
   /** `completed` / `failed` as the item recorded it. Never parsed from prose. */
   status: string | null;
-  /** What the record SHOULD say this was. Translated here; see the vendor edge. */
-  kind: string;
+  /**
+   * What the record SHOULD say this was, or **null when the tool name does not
+   * determine it** — a `Write` over an existing file is an edit. The stream
+   * makes no claim in that case, and the grader compares nothing rather than
+   * inventing one.
+   */
+  kind: string | null;
   /**
    * What the record SHOULD say about how it ended. **Null means the item's
    * status was not one we can translate**, so nothing is claimed — and the
@@ -258,7 +279,15 @@ export interface RunView {
 /** The state's answer to "what happened in this workstream", partitioned by run. */
 export interface Account {
   runs: RunView[];
-  /** Account-level, and not a per-run claim. */
+  /**
+   * Account-level, and not a per-run claim.
+   *
+   * `requests` counts what the route returned; `runs.length` counts what could
+   * be turned into a view. They differ when a request carries no readable id,
+   * and the grader fails on the difference rather than grading what survived —
+   * a request dropped by control flow is an absence no assertion downstream can
+   * see, which is the same family as a null that skips a comparison.
+   */
   counts: { requests: number };
 }
 
@@ -363,6 +392,13 @@ export async function readAccount(read: Read, workstreamId: string): Promise<Acc
     let unreadableMutationPositions = 0;
     const mutationPositions: number[] = [];
     for (const item of toolItems.filter((i) => mutationTools.has(i.toolCall?.name ?? ""))) {
+      // The POSITION is captured before the path is, deliberately. A mutation
+      // the recorder could not key still happened, and still happened at a
+      // point in the stream — dropping it here would let a pathless write land
+      // after the closing report while A4 compared only the writes that had a
+      // path and reported that nothing followed it.
+      if (typeof item.itemIndex === "number") mutationPositions.push(item.itemIndex);
+      else unreadableMutationPositions += 1;
       const path = pathOfCall(item);
       if (path === null) {
         mutationsWithNoPath += 1;
@@ -370,8 +406,6 @@ export async function readAccount(read: Read, workstreamId: string): Promise<Acc
       }
       const tool = item.toolCall?.name ?? "";
       const status = typeof item.status === "string" ? item.status : null;
-      if (typeof item.itemIndex === "number") mutationPositions.push(item.itemIndex);
-      else unreadableMutationPositions += 1;
       streamMutations.push({
         path,
         tool,
@@ -389,7 +423,14 @@ export async function readAccount(read: Read, workstreamId: string): Promise<Acc
     // the call succeeded. Measured on a real run — the agent reached for
     // `Bash`, was refused, and said so.
     const shellSucceeded = shellItems.filter((i) => i.status === "completed").length;
-    const planToolCalls = toolItems.filter((i) => planToolNames.has(i.toolCall?.name ?? "")).length;
+    // A failed create is excluded: the translator records nothing for it
+    // because nothing was created, so it is a visible failure rather than a
+    // lost row. A failed UPDATE still records, so it stays counted.
+    const planToolCalls = toolItems.filter(
+      (i) =>
+        planToolNames.has(i.toolCall?.name ?? "") &&
+        !(i.toolCall?.name === PLAN_CREATE_TOOL && i.status === "failed"),
+    ).length;
 
     // Narrative and order: this run's own top-level thread.
     const messages = topLevel.filter((i) => i.type === "message");

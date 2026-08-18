@@ -89,7 +89,7 @@ generator actions. The calibration and every guard case are **model-free** and r
 ## The preconditions, and why they run every time
 
 The reader derives the known account from the known state **exactly**, a deliberately lossy copy
-of that state is caught by assertion 2, and 47 guard cases each break one assertion on purpose
+of that state is caught by assertion 2, and 53 guard cases each break one assertion on purpose
 and confirm it reaches the verdict it is supposed to. All of it is model-free, so it runs on
 every invocation rather than sitting in this log as a one-time claim — and if any of it fails,
 no coding run is dispatched at all. An instrument is sanity-checked against a case whose answer
@@ -131,6 +131,21 @@ be produced at all.
 - Assertion 8 checked module specifiers only, and `process.cwd()` names no module. It now also
   scans for bare globals and computed dynamic imports, over the shared `paths.mts` as well as the
   reader.
+- **The tool table asserted `Write` means `created`, which made the check inverted.** A `Write`
+  over an existing file is an edit, and the recorder knows it — it prefers the harness's reported
+  `type` and falls back to the tool name only when none is reported. So faithful state FAILED and
+  a recorder that mislabelled an overwrite PASSED: red on truth, green on the defect, each symptom
+  disguising the other. `Write` is now indeterminate — the item stream carries no field that could
+  tell creation from editing, so it makes no claim. The teeth live on `Edit`, which is
+  unambiguous, and both directions have a case.
+- A pathless mutation's stream POSITION was dropped along with its path, so a write the recorder
+  could not key could land after the closing report while assertion 4 compared only the keyed
+  ones and reported that nothing followed it.
+- A failed `TaskCreate` was counted as a plan call that should have produced a row. The translator
+  records nothing for it because nothing was created, so it is a visible failure rather than a
+  lost row — another false red on faithful behaviour.
+- A request whose id cannot be read was dropped by control flow, and nothing downstream learned it
+  existed. Found by sweeping the code the previous round had just written.
 - Assertion 2's gap exemption, as originally specified, could disguise a corrupt row: a gap
   explains a mutation the collection is **missing**, and does not license a row that is present
   and wrong. Partial handling made incomplete handling look complete. The branch order now checks
@@ -199,6 +214,12 @@ live, and the branch that would call the whole run inconclusive sits behind them
 
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-08-18 | working tree at `247725355`, pre-commit (round 5 folded) | Agent SDK default | PASS | Fourteenth consecutive real run. **53 guards** |
+| 2026-08-18 | working tree at `247725355`, pre-commit | — | FAIL *(deliberate)* | The `Write → created` table restored. Calibration red — the reader no longer derives the known account. **The only defect this epic found that fails red on truth AND green on the defect** |
+| 2026-08-18 | working tree at `247725355`, pre-commit | — | FAIL *(deliberate)* | The indeterminacy removed from the comparison only, so the reader still derives correctly. *"'A2 — a Write recorded as an edit is faithful' did not reach A2/a2-ok with a pass; it produced ["a2-kind-disagrees=fail"]"* — the false-red direction, caught. The false-green direction stays covered by the `Edit`-mislabelled case |
+| 2026-08-18 | working tree at `247725355`, pre-commit | — | FAIL *(deliberate)* | A pathless mutation's position dropped again. Calibration red — the causality span shortens from 7 to 6 |
+| 2026-08-18 | working tree at `247725355`, pre-commit | — | FAIL *(deliberate)* | A2's row-outcome branch disabled. *"'A2 — a paired row cannot say how its mutation ended' did not reach A2/a2-row-outcome-missing"* |
+| 2026-08-18 | working tree at `247725355`, pre-commit | — | FAIL *(deliberate)* | The failed `TaskCreate` counted as a plan call again. Calibration red |
 | 2026-08-18 | **`ec6b0b3a0`** | Agent SDK default | **PASS — the verdict** | Thirteenth consecutive real run, on the committed tree, against the per-run structure and with round 4 folded. 3 of 3 held-out paths `created`/`edited` and `applied`; 3 stream mutations and 3 rows naming the same files; non-decreasing across 30 top-level items at 27 distinct positions; mutations 17–22, last word at 24; 0 gap rows; 1 shell call, 0 of them ran. 47 guards proven first, over a two-run calibration state. Plan arm UNMEASURED |
 | 2026-08-18 | working tree at `8b01b39a8` (rebased base), pre-commit | Agent SDK default | PASS | Twelfth consecutive real run, and the **first against the per-run structure**. 47 guards. Calibration now derives a TWO-run state and asserts no view holds another run's rows |
 | 2026-08-18 | working tree at `8b01b39a8`, pre-commit | — | FAIL *(deliberate)* | The per-run boundary reopened — `gradePaths` given the whole account alongside its view, which is the shape all five pooled defects had. *"THE PER-RUN BOUNDARY IS OPEN — gradePaths takes a run view AND an account-wide value"*, before any run was dispatched |

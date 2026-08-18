@@ -486,7 +486,6 @@ const GUARD_CASES: GuardCase[] = [
     // file skip just because neither carries a path.
     name: "A2 — a plan gap is offered for a pathless file skip",
     mutate: (v) => {
-      v.mutationsWithNoPath = 1;
       v.gaps = [{ kind: "plan", reason: "a plan update arrived naming no item", rawPath: null }];
       v.streamMutations = v.streamMutations.filter((m) => !m.path.endsWith("epsilon.txt"));
     },
@@ -498,13 +497,7 @@ const GUARD_CASES: GuardCase[] = [
     // And the world it MUST accept, so the rule is not simply "always fail":
     // a pathless file skip with a pathless file gap beside it.
     name: "A2 — a pathless file skip answered by a pathless file gap",
-    mutate: (v) => {
-      v.mutationsWithNoPath = 1;
-      v.gaps = [
-        { kind: "file", reason: "a file mutation arrived with no path", rawPath: null },
-        { kind: "file", reason: "could not be keyed", rawPath: "/work/repo/epsilon.txt" },
-      ];
-    },
+    mutate: () => undefined,
     because: "a2-ok",
     id: "A2",
     want: "pass",
@@ -588,6 +581,45 @@ const GUARD_CASES: GuardCase[] = [
     want: "fail",
   },
   {
+    // BOTH DIRECTIONS, first: a Write that OVERWROTE an existing file is an
+    // edit, and the recorder knows it because the harness reports the type.
+    // Asserting `Write` means `created` failed this faithful state AND passed a
+    // recorder that mislabelled the overwrite — red on truth, green on the
+    // defect, with each symptom disguising the other.
+    name: "A2 — a Write recorded as an edit is faithful",
+    mutate: (v) => {
+      const row = v.did.find((d) => d.path?.endsWith("alpha.txt") === true && d.kind === "created");
+      if (row !== undefined) row.kind = "edited";
+    },
+    because: "a2-ok",
+    id: "A2",
+    want: "pass",
+  },
+  {
+    // Second direction: a Write that CREATED is equally faithful. Both
+    // labellings pass because the stream carries no evidence to tell them
+    // apart — the teeth live on `Edit`, which is unambiguous, and the case
+    // below proves they are still there.
+    name: "A2 — a Write recorded as a creation is faithful",
+    mutate: () => undefined,
+    because: "a2-ok",
+    id: "A2",
+    want: "pass",
+  },
+  {
+    // A row that exists and cannot say how its mutation ended. A1 only checks
+    // the held-out paths, so an incidentally-touched file would otherwise pair
+    // with an outcome-less row and A2 would still emit ok.
+    name: "A2 — a paired row cannot say how its mutation ended",
+    mutate: (v) => {
+      const row = v.did.find((d) => d.path?.endsWith("delta.txt") === true);
+      if (row !== undefined) row.outcome = null;
+    },
+    because: "a2-row-outcome-missing",
+    id: "A2",
+    want: "fail",
+  },
+  {
     // A DISAGREEMENT, not merely a well-formed record. LAB-134 shipped this.
     name: "A2 — the record says created and the stream shows an edit",
     mutate: (v) => {
@@ -641,7 +673,6 @@ const GUARD_CASES: GuardCase[] = [
   {
     name: "A2 — a mutation carried no path and nothing was written down",
     mutate: (v) => {
-      v.mutationsWithNoPath = 1;
       v.gaps = [];
       v.streamMutations = v.streamMutations.filter((m) => !m.path.endsWith("epsilon.txt"));
     },
@@ -654,7 +685,12 @@ const GUARD_CASES: GuardCase[] = [
     // class, and the two pools are disjoint on purpose.
     name: "A2 — a named-path gap is offered for a pathless skip",
     mutate: (v) => {
-      v.mutationsWithNoPath = 1;
+      // The fixture already carries a pathless skip AND its pathless gap, so
+      // the world is built by REMOVING that evidence and leaving only the
+      // named-path gap. Bumping the count alone would be a no-op — the same way
+      // this case stopped expressing its condition when the fixture gained the
+      // skip, and said so rather than passing.
+      v.gaps = v.gaps.filter((g) => g.rawPath !== null);
     },
     because: "a2-pathless-no-gap",
     id: "A2",
@@ -1077,6 +1113,44 @@ await runGoal(async () => {
     }
   }
 
+  // ══ Precondition 1d-ter — the account-level branches fire ═════════════════
+  // `gradeRun` takes a view and so cannot reach these; they are fed to `grade`.
+  const ACCOUNT_CASES: Array<{ name: string; mutate: (a: Account) => void; because: string }> = [
+    {
+      name: "A0 — the workstream has no request history",
+      mutate: (a) => {
+        a.counts.requests = 0;
+        a.runs = [];
+      },
+      because: "a0-no-requests",
+    },
+    {
+      name: "A0 — a request was dropped before it became a run",
+      mutate: (a) => {
+        a.runs = a.runs.slice(0, 1);
+      },
+      because: "a0-request-dropped",
+    },
+    {
+      name: "A0 — the run this check dispatched is not in the state it read",
+      mutate: (a) => {
+        for (const run of a.runs) run.runId = `${run.runId}-elsewhere`;
+      },
+      because: "a0-run-missing",
+    },
+  ];
+  for (const accountCase of ACCOUNT_CASES) {
+    const clone = structuredClone(knownAccount);
+    accountCase.mutate(clone);
+    const findings = grade(clone, calibrationExpectation, COLLECTIONS, CALIBRATION_RUN_ID);
+    if (!findings.some((f) => f.because === accountCase.because && f.status === "fail")) {
+      failures.push(
+        `GUARD NOT PROVEN — "${accountCase.name}" did not reach ${accountCase.because} with a ` +
+          `fail; it produced ${JSON.stringify(findings.map((f) => `${f.because}=${f.status}`))}`,
+      );
+    }
+  }
+
   // ══ Precondition 1d-bis — the per-run boundary still holds ════════════════
   // Proved before it is trusted, like the import scanner.
   const boundaryCases: Array<[string, string, boolean]> = [
@@ -1129,7 +1203,8 @@ await runGoal(async () => {
       `${knownAccount.counts.requests}-run state (${knownRuns[0].counts.items} items in the graded ` +
       `run, across ${knownRuns[0].reads[OBSERVED_FILE_OPS].pages} file-op page(s)), partitioned ` +
       `per run with no view holding another's rows; a lossy copy was caught by A2; ` +
-      `${GUARD_CASES.length} guard(s) broken on purpose and each observed; ` +
+      `${GUARD_CASES.length + ACCOUNT_CASES.length} guard(s) broken on purpose and each ` +
+      `observed; ` +
       `${a8.status.toUpperCase()} on A8 (${a8.message}).`,
   );
 
@@ -1416,7 +1491,8 @@ PLAN ARM: ${planFinding?.status.toUpperCase()} — ${planFinding?.message}`);
         `(${expectation.paths.map((p) => basename(p)).join(", ")}), and imports only ` +
         `what ${DEPRIVED_MODULES.length} scanned module(s) may (${a8.message}). Calibrated ` +
         `first against a checked-in state whose ` +
-        `account is known, with ${GUARD_CASES.length} guard(s) broken on purpose and observed. ` +
+        `account is known, with ${GUARD_CASES.length + ACCOUNT_CASES.length} guard(s) broken on ` +
+        `purpose and observed. ` +
         `Store adapter: @flow-state-dev/store-sqlite. Settlement not asserted (FIX-1182); the ` +
         `run's prose, the files' contents and the working tree were never read.`,
     };

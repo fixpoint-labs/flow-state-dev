@@ -47,6 +47,11 @@
       "gaps": [
         {
           "kind": "file",
+          "reason": "a file mutation arrived with no path to record it under",
+          "rawPath": null
+        },
+        {
+          "kind": "file",
           "reason": "a file operation could not be keyed: the path is not addressable",
           "rawPath": "/work/repo/epsilon.txt"
         }
@@ -57,7 +62,7 @@
           "tool": "Write",
           "at": 1,
           "status": "completed",
-          "kind": "created",
+          "kind": null,
           "outcome": "applied"
         },
         {
@@ -65,7 +70,7 @@
           "tool": "Write",
           "at": 3,
           "status": "completed",
-          "kind": "created",
+          "kind": null,
           "outcome": "applied"
         },
         {
@@ -81,7 +86,7 @@
           "tool": "Write",
           "at": 4,
           "status": "failed",
-          "kind": "created",
+          "kind": null,
           "outcome": "failed"
         },
         {
@@ -89,7 +94,7 @@
           "tool": "Write",
           "at": 4,
           "status": "completed",
-          "kind": "created",
+          "kind": null,
           "outcome": "applied"
         },
         {
@@ -97,7 +102,7 @@
           "tool": "Write",
           "at": 6,
           "status": "completed",
-          "kind": "created",
+          "kind": null,
           "outcome": "applied"
         }
       ],
@@ -119,16 +124,18 @@
         "indices": [
           0,
           1,
+          2,
           3,
           4,
           4,
           4,
           5,
+          7,
           8
         ],
         "unreadable": 0,
         "firstMutationAt": 1,
-        "lastMutationAt": 6,
+        "lastMutationAt": 7,
         "lastMessageAt": 8,
         "unreadableMutationPositions": 0
       },
@@ -137,17 +144,18 @@
         "calls": 1,
         "succeeded": 1
       },
-      "mutationsWithNoPath": 0,
+      "mutationsWithNoPath": 1,
       "toolNamesSeen": [
         "Bash",
         "Edit",
+        "TaskCreate",
         "Write"
       ],
       "counts": {
-        "items": 9,
-        "topLevel": 8,
+        "items": 11,
+        "topLevel": 10,
         "messages": 2,
-        "toolOutputs": 6
+        "toolOutputs": 8
       },
       "reads": {
         "observed-file-ops": {
@@ -157,7 +165,7 @@
         },
         "observed-gaps": {
           "pages": 1,
-          "rows": 1,
+          "rows": 2,
           "truncated": false
         },
         "observed-plan": {
@@ -186,7 +194,7 @@
           "tool": "Write",
           "at": 1,
           "status": "completed",
-          "kind": "created",
+          "kind": null,
           "outcome": "applied"
         }
       ],

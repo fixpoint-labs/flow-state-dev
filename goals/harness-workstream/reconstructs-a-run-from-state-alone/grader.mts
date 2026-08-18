@@ -242,10 +242,13 @@ function gradePaths(view: GradeableView, expectation: Expectation): Finding[] {
 function compareSemantics(mutation: StreamMutation, entry: DidEntry): Finding[] {
   const findings: Finding[] = [];
 
-  // NOT APPLICABLE, decided explicitly: a row carrying no kind is absence, and
-  // A1 fails on it where the path was expected while §9 reports it where it was
-  // not. Failing here too would double-report one defect.
-  if (entry.kind !== null && entry.kind !== mutation.kind) {
+  // NOT APPLICABLE, twice over and decided explicitly. A row carrying no kind
+  // is absence, which A1 fails on where the path was expected and §9 reports
+  // where it was not. And `mutation.kind === null` means the TOOL NAME does not
+  // determine the kind — a `Write` over an existing file is an edit — so the
+  // stream makes no claim to compare against. Inventing one would fail faithful
+  // state while passing a recorder that mislabels an overwrite.
+  if (entry.kind !== null && mutation.kind !== null && entry.kind !== mutation.kind) {
     findings.push({
       id: "A2",
       status: "fail",
@@ -263,7 +266,21 @@ function compareSemantics(mutation: StreamMutation, entry: DidEntry): Finding[] 
   // corroboration at all. An empty input certifying instead of declaring itself
   // unmeasured is the precise defect this check exists to detect, and it was
   // sitting inside the check.
-  if (mutation.outcome === null) {
+  // UNEVALUABLE, therefore a FAILURE. A1 only looks at the held-out paths, so a
+  // file the run touched incidentally can pair with a row that cannot say how it
+  // ended and nothing else would notice. §9 says report rather than fail a file
+  // the fixture did not name — that is about its PRESENCE, not about a row that
+  // exists and is silent on its own outcome.
+  if (entry.outcome === null) {
+    findings.push({
+      id: "A2",
+      status: "fail",
+      because: "a2-row-outcome-missing",
+      message:
+        `the record holds a row for "${nameOf(entry)}" with no outcome at all, so state cannot ` +
+        `say how that mutation ended — and the path is not one A1 checks`,
+    });
+  } else if (mutation.outcome === null) {
     findings.push({
       id: "A2",
       status: "fail",
@@ -273,7 +290,7 @@ function compareSemantics(mutation: StreamMutation, entry: DidEntry): Finding[] 
         `which says nothing about how it settled — so the record's ` +
         `${JSON.stringify(entry.outcome)} is a claim nothing corroborates`,
     });
-  } else if (entry.outcome !== null && entry.outcome !== mutation.outcome) {
+  } else if (entry.outcome !== mutation.outcome) {
     findings.push({
       id: "A2",
       status: "fail",
@@ -508,6 +525,11 @@ function gradeCausality(view: GradeableView): Finding[] {
       },
     ];
   }
+  // NOT APPLICABLE, decided explicitly: a MESSAGE whose position cannot be read
+  // would shrink `lastMessageAt` the same way, but messages are top-level and
+  // A3's `unreadable` already fails on any top-level item without an index. A
+  // sub-agent's mutation is not top-level, which is why that one needed its own
+  // count above.
   const last = run.lastMutationAt;
   const word = run.lastMessageAt;
   if (last === null || word === null) {
@@ -740,6 +762,19 @@ export function grade(
         status: "fail",
         because: "a0-no-requests",
         message: "the workstream has no request history at all, so nothing below could be derived",
+      },
+    ];
+  }
+  if (account.runs.length !== account.counts.requests) {
+    return [
+      {
+        id: "A0",
+        status: "fail",
+        because: "a0-request-dropped",
+        message:
+          `the route returned ${account.counts.requests} request(s) and only ` +
+          `${account.runs.length} could be read as a run — a request dropped before it reached ` +
+          `any assertion is an absence nothing downstream can see`,
       },
     ];
   }
