@@ -14,13 +14,21 @@ exists rather than deleting it.
 
 ## The contract between this file and the script
 
-**Every claim below is backed by an assertion that fails the run if the claim becomes false.**
-That is the point of the file, and it has been the source of every review finding against this
-POC — four rounds of "this check cannot fail the thing it is cited for." So the rule now is:
-a claim is either asserted, or it is not made here.
+**Every claim in this file is backed by an assertion that fails the run if the claim becomes
+false — except the ones in *What this POC does not establish*, which is the list of facts the
+spec cites and this script deliberately does not back.** Those two sections are exhaustive:
+asserted, or named as unasserted. Nothing sits between them.
 
-Exit status: `0` every claim below held · `1` one of them did not · `2` the run could not be
-completed (scaffold or install failed, no free port, workdir occupied).
+That is the point of the file, and it has been the source of every review finding against this
+POC — rounds of "this check cannot fail the thing it is cited for," including one against an
+earlier version of this very contract, which claimed everything below it was asserted while an
+externally-sourced fact sat in the asserted list.
+
+Exit status: `0` every asserted claim held · `1` one of them did not · `2` the run could not be
+completed (scaffold or install failed, no free port, workdir occupied, dev server never bound).
+The `1`/`2` split is load-bearing: a machine too slow to have bound the port yet is not a
+disproved claim, and the script polls for the bind against a deadline rather than sleeping a
+fixed interval so it cannot report one as the other.
 
 Each variant asserts both its **outcome** and its **diagnostic**, so "the build failed" is not
 automatically a pass for a row documented as failing — a route-file typo, a dependency problem,
@@ -36,7 +44,16 @@ not merely that the process exited 0.
   requires of every flag, so nothing here speaks to the default. What is asserted is that
   `create-next-app` still writes `AGENTS.md` **when asked** — which is what the design rests on.
 - **That `next dev` re-creates a missing `AGENTS.md` block.** Next's block is present before the
-  server starts, so the check proves it was left alone, not that it would be restored.
+  server starts, so the check proves it was left alone, not that it would be restored. (Next's
+  own block says it re-adds itself; nothing here tests that, and nothing in the design needs it.)
+- **That `create-next-app` fills unprovided options from saved preferences.** It prints `Using
+  defaults for unprovided options`, and its `--help` documents the behaviour — this is why the
+  spec requires every flag to be passed explicitly and rules out `--yes`: an option we leave off
+  can resolve differently on a machine that has run the tool before. **The script passes every
+  flag, so it never reproduces this and cannot fail on it.** Establishing it would need a second
+  scaffold run with an option deliberately withheld, which buys a fact the spec already acts on
+  at the cost of doubling the probe's slowest step. Stated here, outside the asserted list,
+  rather than dropped, because the spec cites it for the bare-app step's flag discipline.
 - **Whether a provider SDK that `@flow-state-dev/core` imports dynamically by package name
   resolves inside the Next.js server bundle.** `createModelResolver` carries a `directLoadFailed`
   fallback for exactly this case, so it is a known hazard. Only a real run with a real key
@@ -67,15 +84,13 @@ exactly when the pinned scaffolder had stopped producing these files.
 1. **`create-next-app@16.3.1` writes `AGENTS.md`**, carrying its own delimited block
    (`<!-- BEGIN:nextjs-agent-rules -->`). So the greenfield Next path is an **append to an
    existing file, never a create** — the case everyone had filed as brownfield-only. Our appended
-   FSD section is still intact after a `next dev` run, and so is Next's block.
+   FSD section is still intact after a `next dev` run, and so is Next's block: both are captured
+   whole before the server starts and compared byte-for-byte afterwards, plus an occurrence count
+   that a comparison alone cannot see a duplicate through. A marker count on its own would pass
+   on a section truncated after its sentinel.
 2. **It also writes `CLAUDE.md`.**
 3. **Git ignores `.env.local` in a fresh scaffold.** Asserted with `git check-ignore`, not by
    grepping `.gitignore` — a text match on `^\.env` also passes for a file that only lists
    `.env.example`, which would leave `.env.local` publishable. The credential stop (spec
    decision 7) rests on this, so it is checked the way the real command has to check it: ask git
    about the path, before the key is written.
-4. **`create-next-app` fills unprovided options from saved preferences**, printing
-   `Using defaults for unprovided options`. This is why the spec requires every flag to be passed
-   explicitly and rules out `--yes`: an option we leave off can resolve differently on a machine
-   that has run the tool before. *(Observed in the tool's output and documented in its `--help`;
-   this script passes every flag, so it does not re-establish it.)*

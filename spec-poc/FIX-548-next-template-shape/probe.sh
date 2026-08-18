@@ -13,7 +13,10 @@
 #   0  every variant matched its expected outcome AND the served-route and
 #      AGENTS.md assertions held
 #   1  at least one check disagreed with what the README claims
-#   2  the run could not be completed (scaffold/install failed, no free port)
+#   2  the run could not be completed (scaffold/install failed, no free port,
+#      workdir occupied, dev server never bound)
+# The 1/2 split is load-bearing, not cosmetic: a slow machine on which `next dev`
+# has not bound yet must never be reported as a disproved claim.
 # Each variant declares the outcome README.md claims for it, and a variant that
 # behaves differently fails the probe — including the two that are EXPECTED to
 # fail to build. "The build broke" is not automatically a probe failure here;
@@ -221,29 +224,79 @@ if [ "$PORT" = 0 ]; then echo "  no free port in 3990-3999 — CANNOT VERIFY"; e
 echo "  port $PORT (verified free)"
 
 printf '\n<!-- BEGIN:fsd -->\nFSD SECTION SENTINEL\n<!-- END:fsd -->\n' >> AGENTS.md
+
+# Both AGENTS.md sections, captured COMPLETE and before the server starts, so the
+# survival check below can compare rather than count. See the check itself.
+FSD_B='<!-- BEGIN:fsd -->';                  FSD_E='<!-- END:fsd -->'
+NXT_B='<!-- BEGIN:nextjs-agent-rules -->';   NXT_E='<!-- END:nextjs-agent-rules -->'
+section() { # $1 file · $2 begin marker · $3 end marker -> the whole block, inclusive
+  awk -v b="$2" -v e="$3" 'index($0,b){inside=1} inside{print; if(index($0,e)) exit}' "$1"
+}
+FSD_BEFORE=$(section AGENTS.md "$FSD_B" "$FSD_E")
+NXT_BEFORE=$(section AGENTS.md "$NXT_B" "$NXT_E")
+# A section that is already malformed cannot speak to survival either way. That is
+# "could not verify" (2), never "the claim is false" (1).
+case "$FSD_BEFORE" in *"$FSD_E"*) ;; *) echo "  FSD section malformed before next dev — CANNOT VERIFY"; exit 2;; esac
+case "$NXT_BEFORE" in *"$NXT_E"*) ;; *) echo "  next's block malformed before next dev — CANNOT VERIFY"; exit 2;; esac
+
 npx next dev --port "$PORT" > dev.log 2>&1 &
 DEV_PID=$!
-sleep 18
 
-BARE=$(curl -s --max-time 20 --noproxy '*' "http://127.0.0.1:$PORT/api/flows")
+# Poll for the bind against a bounded deadline; do NOT sleep a fixed interval.
+# A cold or loaded machine can take far longer than any constant to bind, and the
+# request then gets connection-refused — which a fixed sleep reports as a FAILED
+# ROUTE CLAIM (1) when the claim is fine and the machine was just slow. Startup
+# that never completes is "could not verify" (2). Readiness is the TCP bind, not a
+# 200 from the route: a route that answers wrongly must still fail as 1, so it is
+# asserted separately below.
+READY=0
+DEADLINE=$((SECONDS + 180))
+while [ "$SECONDS" -lt "$DEADLINE" ]; do
+  if ! kill -0 "$DEV_PID" 2>/dev/null; then
+    echo "  next dev exited before binding port $PORT — CANNOT VERIFY"; tail -20 dev.log | sed 's/^/    /'; exit 2
+  fi
+  if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then READY=1; break; fi
+  sleep 1
+done
+if [ "$READY" != 1 ]; then
+  echo "  next dev did not bind port $PORT within 180s — CANNOT VERIFY"; tail -20 dev.log | sed 's/^/    /'
+  kill "$DEV_PID" 2>/dev/null; wait "$DEV_PID" 2>/dev/null; exit 2
+fi
+echo "  next dev bound port $PORT after ${SECONDS}s"
+
+# Generous per-request timeout: the bind precedes compilation, and the FIRST
+# request is what triggers Turbopack to compile the route.
+BARE=$(curl -s --max-time 120 --noproxy '*' "http://127.0.0.1:$PORT/api/flows")
 echo "  GET /api/flows          -> $BARE"
 [ "$BARE" = "$MARKER:200" ] || fail "bare route: expected $MARKER:200"
 
-CATCH=$(curl -s --max-time 20 --noproxy '*' "http://127.0.0.1:$PORT/api/flows/sessions/abc")
+CATCH=$(curl -s --max-time 120 --noproxy '*' "http://127.0.0.1:$PORT/api/flows/sessions/abc")
 echo "  GET /api/flows/sessions/abc -> $CATCH"
 [ "$CATCH" = "$MARKER:catchall:sessions/abc:200" ] || fail "catch-all route: expected $MARKER:catchall:sessions/abc:200"
 
 # SURVIVAL, not restoration. Next's block was already present before the server
-# started, so a count of one proves it was left alone — it does not prove `next dev`
-# would re-create a missing block, and the README no longer claims it does.
-# Restoration is irrelevant to the design: what matters is that our appended
-# section is still there afterwards.
-FSD_N=$(grep -c 'FSD SECTION SENTINEL' AGENTS.md)
+# started, so this proves it was left alone — it does not prove `next dev` would
+# re-create a missing block, and the README does not claim it does. Restoration is
+# irrelevant to the design: what matters is that our appended section is still
+# there afterwards.
+#
+# COMPARE THE WHOLE SECTION, do not count markers. The previous version counted one
+# sentinel line and one opening delimiter, which still passes if `next dev` truncates
+# our section after its sentinel, drops the closing delimiter, or rewrites next's
+# block while keeping its BEGIN line — all while the README claims both sections are
+# intact. Byte equality of the complete block is the claim. The occurrence counts are
+# kept alongside it because equality alone cannot see a duplicate: the extraction
+# stops at the first END, so a second appended copy would compare equal.
+FSD_AFTER=$(section AGENTS.md "$FSD_B" "$FSD_E")
+NXT_AFTER=$(section AGENTS.md "$NXT_B" "$NXT_E")
+FSD_N=$(grep -c 'BEGIN:fsd' AGENTS.md)
 NEXT_N=$(grep -c 'BEGIN:nextjs-agent-rules' AGENTS.md)
-echo "  our appended FSD section, after next dev: $FSD_N (expect 1)"
-echo "  next's own block, left intact:            $NEXT_N (expect 1)"
-[ "$FSD_N" = 1 ] || fail "our appended FSD section did not survive next dev"
-[ "$NEXT_N" = 1 ] || fail "next's own block was altered or duplicated by next dev"
+echo "  our appended FSD section: $([ "$FSD_AFTER" = "$FSD_BEFORE" ] && echo 'byte-identical' || echo 'CHANGED'), $FSD_N copy/copies (expect 1)"
+echo "  next's own block:         $([ "$NXT_AFTER" = "$NXT_BEFORE" ] && echo 'byte-identical' || echo 'CHANGED'), $NEXT_N copy/copies (expect 1)"
+[ "$FSD_AFTER" = "$FSD_BEFORE" ] || fail "our appended FSD section did not survive next dev intact"
+[ "$NXT_AFTER" = "$NXT_BEFORE" ] || fail "next's own block was altered by next dev"
+[ "$FSD_N" = 1 ] || fail "our appended FSD section was duplicated by next dev ($FSD_N copies)"
+[ "$NEXT_N" = 1 ] || fail "next's own block was duplicated by next dev ($NEXT_N copies)"
 
 kill "$DEV_PID" 2>/dev/null; wait "$DEV_PID" 2>/dev/null
 
