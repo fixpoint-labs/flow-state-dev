@@ -246,9 +246,26 @@ no model call. Its author's summary:
 > *"The only defence that survived contact is the one that isn't a rule at all."*
 
 **Rules got half-applied six times. The table never did — because it isn't remembered, it
-executes.** That is the epic's argument for structural-over-remembered, and it rests on two
-unprompted saves (the green mutation in round 3, the index decay in round 8) rather than on
-argument.
+executes.** That is the epic's argument for structural-over-remembered, and it rests on three
+unprompted saves — the green mutation in round 3, the index decay in round 8, and the dead
+requirement below — rather than on argument.
+
+**And the table's *gaps* turned out to be a diagnostic nobody designed.** The last finding of the
+epic was a non-empty guard requiring `toolOutputs > 0` at top level, which failed any run that
+delegated its file work to a sub-agent — while `readAccount` scans every item *specifically* so a
+delegating run reads correctly. **A requirement contradicting a derivation two assertions away.**
+The fix was a deletion: the count had exactly one reader in the grader, that row, and A6's claim is
+*no assertion read an empty set* — so a count belongs in it only if some assertion reads that set.
+This one never did. Its author's note is the transferable part:
+
+> *"It was also the only entry in the table **no guard case had ever watched fail** — which is what
+> a requirement nothing needs looks like from outside, and I should have noticed that."*
+
+**A requirement no guard case has ever watched fail is a candidate for deletion.** The table finds
+defects by what it catches and finds dead weight by what it never exercises, and the second use is
+free once the first exists. It also sharpens the *keep* case: the count stays on the view because
+the evidence line prints it — **describing a run is not requiring something of it**, and
+conflating the two is what put the row there.
 
 **Structural closes, where they were reached:** per-run views making a pooled read a *compile
 error*, plus a source scan over the grader that fails preconditions on any function taking a
