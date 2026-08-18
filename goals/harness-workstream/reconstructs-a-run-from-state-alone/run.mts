@@ -1000,7 +1000,8 @@ await runGoal(async () => {
         `The account: ${account.counts.fileRows} file row(s), ${account.counts.gapRows} gap row(s), ` +
         `${account.counts.planRows} plan row(s), ${account.counts.messages} top-level message(s), ` +
         `${account.counts.toolOutputs} top-level tool_output(s), ${account.counts.streamMutations} ` +
-        `stream mutation(s), ${account.shell.calls} shell call(s). ` +
+        `stream mutation(s), ${account.shell.calls} shell call(s) of which ` +
+        `${account.shell.succeeded} ran. ` +
         `${findings.filter((f) => f.status === "pass").length} assertion(s) passed` +
         (notes.length === 0 ? "" : `; ${notes.length} reported unmeasured: ${notes.join(" | ")}`) +
         `. Derived before comparing: the reader never saw the expectation ` +
