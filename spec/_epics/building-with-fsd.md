@@ -937,7 +937,7 @@ section carries its path.*
 |---|---|---|---|---|---|
 | FIX-1159 | The brownfield knowledge — deterministic detection scripts, the install skill's **content**, the shared next-steps block, and **the wiring contract both entry paths satisfy** (theme 9) | spec | [#1310](https://github.com/fixpoint-labs/flow-state-dev/pull/1310) | — | In spec review — re-shaped to **brownfield only, no command of its own**; the earlier approval was retracted with the direction change. **Unblocked — Q5 resolved by constraint**: the run configures a non-default principal resolver, mechanism this issue's. Also gains the devtool peer fix (theme 5) and the mounted-route proof (theme 9 (b)) |
 | FIX-1162 | Register the npm names the launch needs — the short CLI entry name and the scaffolding name | spec | [#1313](https://github.com/fixpoint-labs/flow-state-dev/pull/1313) | — | In spec review — **both names now registered at `0.0.0` to a personal account**; what remains is the publishing identity's write access (`npm owner add` / transfer) and the unproven `@flow-state-dev` scope. Owner operations, not agent work |
-| FIX-548 | `create-flow-state` — the deterministic greenfield path; template count pending **§5 Q6**, written against one (Next.js chat app), owned end to end | spec | [#1312](https://github.com/fixpoint-labs/flow-state-dev/pull/1312) | — | Spec complete, approved at `404e82c` — **approval needs re-taking**: theme 9 now requires a pnpm-isolated install of the emitted template in its goal check (posted to #1312; its spec is not edited by the epic) |
+| FIX-548 | `create-flow-state` — the deterministic greenfield path; template count pending **§5 Q6**, written against one (Next.js chat app), owned end to end | spec | [#1312](https://github.com/fixpoint-labs/flow-state-dev/pull/1312) | — | Spec complete, approved at `404e82c`. **Re-approval needed and safe to take now** — a mechanical set (pnpm-isolated install, theme 9 devolution, exception (c) for `dev`+`start`, the 22.18 floor, static provider wiring, shipper-side comparison, non-loopback and production negative cases, the `git check-ignore` precondition), all posted to #1312; its spec is not edited by the epic. **Implementation is separately blocked by §5 Q6** — do not build against a template count nobody chose |
 | FIX-1160 | The authoring pack **and the plugin that distributes the install skill** — agent-instructions file, authoring skills, install skill | spec | [#1311](https://github.com/fixpoint-labs/flow-state-dev/pull/1311) | — | Spec complete, approved at `dd9b656` — **approval needs re-taking**: theme 9 (d) hands it the agent-instructions block's normalization and equality check (posted to #1311). Scope had already grown: it is the brownfield path's only delivery channel |
 
 **Sequencing.** Three kinds, listed apart because a dependency column cannot tell them apart and
@@ -954,15 +954,27 @@ they mean different things:
 
 ## 5. Open cross-cutting questions
 
-**Q6 is open and an approval is waiting on it** — the one-template cut was recorded here as the
-owner's without evidence, and FIX-548 has been carrying it as its open ask all along. It is the
-one question in this section a downstream re-approval currently depends on.
+**Q6 is open and blocks FIX-548's *implementation*** — the one-template cut was recorded here as
+the owner's without evidence, and FIX-548 has been carrying it as its open ask all along. **Its
+re-approval may proceed without it**, because that spec no longer asserts an answer; what may not
+proceed is building against a template count nobody chose.
 
-Q1–Q3 and Q5 are **decided** and stay here with their answers, so no issue reopens them. **Q4 is
-the only one open**, and it blocks nothing — it exists because the split changed what an
-already-made decision costs. **Q5 was raised as a product fork and resolved as an engineering
-one**, because both of the cheaper options turned out to be unavailable rather than merely
-unattractive; it is kept in full so neither is proposed again.
+**Two questions are open: Q6, which blocks, and Q4, which does not.** Q1–Q3 and Q5 are **decided**
+and stay here with their answers, so no issue reopens them.
+
+| | Status | What it gates |
+|---|---|---|
+| **Q6** — one starter or two | **open** | **Blocks FIX-548's implementation.** Its re-approval may proceed without it; the build may not. |
+| **Q4** — does install-by-URL still hold | **open** | Nothing. It exists because the split changed what an already-made decision costs. |
+| Q1, Q2, Q3, Q5 | decided | — |
+
+*This summary previously read "Q4 is the only one open", one paragraph below the text establishing
+that Q6 is open and blocking. A reader who took the summary at its word could have advanced FIX-548
+on a scope nobody approved — the same defect as §1's, in a second location, and the reason the
+sweep that follows covers **status** claims and not only answer claims.* **Q5 was raised as a
+product fork and resolved as an engineering one**, because both of the cheaper options turned out
+to be unavailable rather than merely unattractive; it is kept in full so neither is proposed
+again.
 
 ### ~~Q1 — What filename do the agent instructions go to, and what happens when one is already there?~~ — decided: `AGENTS.md`
 
@@ -1178,14 +1190,16 @@ goal check on both topology branches rather than a trigger someone has to notice
 unchanged for the printed CLI command, which runs in-process and never crosses HTTP. It changes for
 anyone who calls the mounted route directly — a `curl`, or their own UI — who now needs the value
 from `.env.local`. That is a real if small tax on the first hour, and it is the price of the
-endpoint not being open. **Not a gate**: no issue waits on it, and FIX-1159 is unblocked.
+endpoint not being open. **Not a gate**: no issue waits on *this question*, and it is not what
+holds FIX-1159. *Stated narrowly on purpose — "FIX-1159 is unblocked" was too broad a claim for a
+single question to make, and Q6 may yet add a deliverable to that issue.*
 
 **If this turns out wrong**, it is wrong in the direction of friction rather than exposure: a
 developer hits a 401 on their own machine and has to look in `.env.local`. The alternative was
 wrong in the direction of a stranger spending their credits, which is the failure this epic's whole
 brownfield pitch — *we will not damage your repo* — cannot survive.
 
-### Q6 — Does v1 ship one template or two? — **open, and FIX-548's re-approval depends on it**
+### Q6 — Does v1 ship one template or two? — **open; blocks FIX-548's implementation, not its re-approval**
 
 *Not a new question: it was raised from FIX-548's spec, recorded here as "raised, not adopted",
 re-argued, and then written into theme 2 as an owner decision that was never given. Restored to
@@ -1251,10 +1265,15 @@ the brownfield run already proves" — that is the struck substitute, and it doe
 **And one live consequence if Q6 lands on one** — §1's brownfield second-process check becomes the
 epic's *only* Node coverage of any kind, so it can no longer be dropped as redundant.
 
-**What is waiting on this.** FIX-548's re-approval. Everything else the epic asks it to re-take is
-narrow and mechanical; this is the one item that would change what it builds. If the answer is
-"one", FIX-548's §6 decision 2 becomes stale rather than open and its ask shrinks to the mechanical
-set. If it is "two", decision 2b (no `--template` flag) reopens with it.
+**What is waiting on this, stated precisely because an earlier draft of this line said the wrong
+thing.** **Not** FIX-548's re-approval — that is safe to take now, since its spec *asks* the
+question rather than answering it, and everything else in the re-take is narrow and mechanical.
+What waits is **FIX-548's implementation**: this is the one open item that changes what it builds.
+If the answer is **"one"**, §6 decision 2 becomes stale rather than open and building proceeds. If
+**"two"**, decision 2 reverses *and* decision 2b (no `--template` flag) reopens with it — that is a
+spec revision, so FIX-548 needs another pass rather than only different code. **FIX-1159 is also
+affected**, though not blocked: option (b) would hand it a minimal-project brownfield behaviour it
+does not have today.
 
 ---
 
@@ -1291,4 +1310,5 @@ those narratives now live in
 - **Length and sibling sweep** — §3 cut to four lines, §4 to its table, this log rebuilt; the reopened Q6's stale deferral entry corrected, and the bind guard's predicate stated once after a paraphrase got it wrong.
 - **Q6's substitute struck, and the recommendation re-derived** — `mkdir && <brownfield run>` does not exist: brownfield modifies an existing project, and FIX-1159 refuses the empty case at its `dev command` gate. Cutting the Node starter costs backend developers **no path**, not a worse one, so the recommendation changed from "ship one" to **(b) ship one *and* specify a minimal-project brownfield path, else (a) ship two**. Same turn: exception (c) widened to `start` after the sibling script went unchecked, theme 8's rule completed adapter-independently (the config refuses to serve a default-resolver flow outside development), and §3's citation to a non-existent POC withdrawn.
 - **§1 stopped answering Q6, and the production guard got a negative case** — gated §1 named "v1 ships one, the Node template is cut" as a *non-goal*, so approving the epic would have ratified Q6's least-recommended option without the reader knowing they were deciding it. Removed and swept by premise: theme 2's heading, its superseded asymmetry argument, and two residuals inside Q6 itself (including the struck substitute resurfacing in its cost line). **The adapter-independent production refusal — added one round earlier to close a security exposure — had nothing able to detect its absence**, the seventh instance of that defect; §1's greenfield proof and theme 5's negative list now require it to fire before any model invocation. And the brownfield credential must be declared at **both** resolver levels: the bind guard reads per-flow only, while host-scoped session listing reads host-level only and withholds rows for per-flow-authenticated flows — jointly satisfiable, and silently broken in opposite directions if only one is set.
+- **Status-claim sweep, after the answer-claim sweep missed a whole sentence shape** — §5's summary still read "Q4 is the only one open" one paragraph below the text establishing Q6 as open and blocking. The earlier sweep was keyed on Q6's *answer* (one/two, cut, ships one) and could not match a sentence about its *status*. Widened to anything asserting what is open, blocking, settled, or clear to proceed, and it found a second cluster the first shape would never have caught: **three places said Q6 blocks FIX-548's *re-approval*** when the corrected position is that the re-approval is safe and the *implementation* is what waits — a status error pointing the opposite way, capable of withholding an approval that was ready. Also narrowed Q5's "FIX-1159 is unblocked", too broad a claim for one question to make.
 - **Attribution sweep** — every "the owner's" / "your call" line checked against an artifact. Q2's and Q3's decisions evidenced (epic PR comment, 2026-08-14) and now cite it; Q1 marked as the coordinator's from the objective; the brownfield direction change evidenced (2026-08-15); the one-template cut unevidenced and already reopened as Q6. No further claims reopened — three clean, two already corrected.
