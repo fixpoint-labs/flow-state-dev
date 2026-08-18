@@ -73,12 +73,23 @@ they are stated once there rather than twice here.
   channel** — a check the scaffolded `AGENTS.md` satisfies on its own would pass while the plugin's
   manifest and install source sat unexercised until a stranger tried them.
 
-**Two of these are now agent runs, and that changes what they are worth.** A seeded-sentinel
-check on an agent run is one observation, not a guarantee — the same shape FIX-1160's proof
-always had. It is still the real path with a real model and no new apparatus, which is what a
-goal check is for; it is not a claim that every brownfield repo behaves. The trade the owner
-made is deliberate: an enumerating command gave stronger per-case guarantees over a case list
-that never closed.
+**Two of these are now agent runs, and that changes what they are worth — this is an open item,
+not a settled trade.** A seeded-sentinel check on an agent run is one observation, not a
+guarantee — the same shape FIX-1160's proof always had. It is still the real path with a real
+model and no new apparatus, which is what a goal check is for; it is not a claim that every
+brownfield repo behaves.
+
+**Attribution, stated exactly because an earlier round got it wrong.** The owner changed the
+**delivery mechanism** — brownfield becomes an agent skill rather than a deterministic command.
+That is theirs and it is settled. **The consequence for proof strength is the coordinator's
+reading of that change, recommended and never put to them**: an enumerating command would have
+given stronger per-case guarantees over a case list that never closed, and we accepted weaker
+per-case evidence to escape the treadmill. Calling that "the trade the owner made" attributed a
+judgement to someone who was never asked for it. **Reversible**: if the owner wants a
+deterministic check back on either brownfield path, the way to get it is a fixture-based check
+alongside the agent run, which costs a maintained fixture repo per host shape — the cost the
+split was made to avoid. Filed here as an open item rather than a decision so it is visible at
+the gate; it blocks nothing.
 
 **Holistic necessity.** Four issues, and the split has moved which of them is load-bearing.
 **FIX-1160 is now the substance it was not before.** It was kept defensively — it carried the
@@ -348,7 +359,7 @@ call.
      Where a file already exists, add a delimited FSD section and leave everything else exactly
      as it was. That is what makes taking the shared `AGENTS.md` filename safe (§5 Q1).
 
-     **The rule has exactly two exceptions, and they are enumerated here because a binding rule
+     **The rule has exactly three exceptions, and they are enumerated here because a binding rule
      cannot have its exceptions living in §3, which binds nothing.** (This epic has made that
      mistake once already — theme 8 exists because a constraint sat in §3 unowned.)
 
@@ -491,14 +502,25 @@ call.
    ours to begin with. The cost is that testing the new app from a phone on the same wifi needs the
    flag removed, a one-word edit in a file we just wrote them.
 
-   **Why greenfield cannot simply use brownfield's credential — the finding that decides the
-   exception.** The greenfield demo is a **browser** page calling the mounted route. Any credential
-   that page can present is one an attacker can read by loading the same page, and on a dev server
-   bound to every interface they can load it. **A credential is not a control when the client is a
-   browser**, so loopback is not the cheaper option there, it is the only one. The mirror holds
-   too: brownfield's demo is exercised from the CLI and direct calls rather than a shipped page, so
-   a server-side secret genuinely protects it — which is why the two paths land on different rails
-   rather than one being a weaker copy of the other. **Brownfield cannot be fixed the same way** — theme
+   **Why greenfield cannot simply use brownfield's credential — checked against the template's
+   actual data path, not assumed.** The chat page is a **client component** (`"use client"`) using
+   `@flow-state-dev/react`, which wraps `@flow-state-dev/client`, which `fetch`es and opens SSE
+   against `/api/flows/*` **from the browser** — verified against the reference app the template
+   follows. There is no server component or route handler of ours in between holding a secret; the
+   isomorphic client calling the mount *is* the shape, and a proxy layer would mean not using the
+   React package at all. **So any credential that page can present is one an attacker can read by
+   loading the same page, and on a dev server bound to every interface they can load it. A
+   credential is not a control when the client is a browser** — loopback is not the cheaper option
+   there, it is the only one. The mirror holds: brownfield ships no page, and its demo is exercised
+   from the CLI and direct calls, so a server-side secret genuinely protects it.
+
+   **The resulting property, per entry path, in the same explicit form.** *Greenfield*: an
+   unauthenticated caller elsewhere on the network **cannot reach the endpoint at all** — nothing
+   is listening for them — and correspondingly, **nothing else stops them if the developer removes
+   the flag**, since the flow itself accepts any caller. *Brownfield*: the endpoint **is** reachable
+   and probeable, and every call without the secret is **refused** — no model invocation, no key
+   spend, no acting as another user. **Greenfield does not also carry a credential**, and an earlier
+   round claimed it did; one control each, chosen because it is the one that works on that path. **Brownfield cannot be fixed the same way** — theme
    6 forbids rewriting a `dev` script the developer authored, and printing a flag does not reach
    someone who starts their server from memory. **So the brownfield run configures a non-default
    principal resolver on what it generates.** That is the condition
@@ -1065,7 +1087,8 @@ the themes and decisions above — it is not repeated here.
 - **Epic review of that fold** — §1's greenfield proof now asserts the additive guarantee it had
   extended without checking, and theme 5's "verbatim" became one authored source rendered per
   package manager.
-- **Epic review, round 2** — theme 6's two exceptions enumerated in theme 6 itself: a stock
+- **Epic review, round 2** — theme 6's exceptions enumerated in theme 6 itself (two at the time; a
+  third was added later): a stock
   placeholder the scaffolder just wrote, and formats that cannot carry a delimiter.
 - **Review of that fold** — §4's summary and index row corrected to FIX-1159 brownfield-only, and
   three surfaces that still described theme 6 as it read before its exceptions.
@@ -1200,3 +1223,19 @@ the themes and decisions above — it is not repeated here.
   transcripts inside the gated section — the third length finding of the same shape. Moved rather
   than deleted: the two-file mount and the required store profile to theme 9 (b), and the sketch's
   three findings were already binding in themes 5, 8 and 9.
+- **Greenfield is loopback-only, settled against the template's real data path.** The chat page is
+  a `"use client"` component using `@flow-state-dev/react` over `@flow-state-dev/client`, which
+  fetches and streams `/api/flows/*` **from the browser** — no server component of ours holds a
+  secret in between, and a proxy layer would mean not using the React package. So a credential
+  there is readable by anyone who can load the page: **greenfield carries one control, the loopback
+  bind, not two.** The per-path property is now stated explicitly — greenfield's endpoint is
+  unreachable off-host but unguarded if the flag is removed; brownfield's is reachable but refuses
+  every caller without the secret. Also: theme 6's binding count corrected to **three** exceptions
+  after (c) was added — a stale closed-set count is worse than none, because implementers are told
+  to trust it.
+- **Attribution corrected on the proof-strength trade.** The epic had called the goal-check
+  downgrade — two of four proofs becoming single recorded agent runs — "the trade the owner made".
+  It was not. The owner changed the **delivery mechanism** (brownfield becomes an agent skill);
+  the proof-strength consequence is the **coordinator's** reading of that change, recommended and
+  never put to them. Re-filed as an **open item**, marked reversible, with the cost of reversing it
+  stated (a maintained fixture repo per host shape). It blocks nothing.
