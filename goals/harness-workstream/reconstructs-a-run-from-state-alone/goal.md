@@ -199,6 +199,7 @@ live, and the branch that would call the whole run inconclusive sits behind them
 
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-08-18 | **`ec6b0b3a0`** | Agent SDK default | **PASS — the verdict** | Thirteenth consecutive real run, on the committed tree, against the per-run structure and with round 4 folded. 3 of 3 held-out paths `created`/`edited` and `applied`; 3 stream mutations and 3 rows naming the same files; non-decreasing across 30 top-level items at 27 distinct positions; mutations 17–22, last word at 24; 0 gap rows; 1 shell call, 0 of them ran. 47 guards proven first, over a two-run calibration state. Plan arm UNMEASURED |
 | 2026-08-18 | working tree at `8b01b39a8` (rebased base), pre-commit | Agent SDK default | PASS | Twelfth consecutive real run, and the **first against the per-run structure**. 47 guards. Calibration now derives a TWO-run state and asserts no view holds another run's rows |
 | 2026-08-18 | working tree at `8b01b39a8`, pre-commit | — | FAIL *(deliberate)* | The per-run boundary reopened — `gradePaths` given the whole account alongside its view, which is the shape all five pooled defects had. *"THE PER-RUN BOUNDARY IS OPEN — gradePaths takes a run view AND an account-wide value"*, before any run was dispatched |
 | 2026-08-18 | working tree at `05c6d3125`, pre-commit (round 3 folded) | Agent SDK default | PASS | Eleventh consecutive real run. **44 guards** |
