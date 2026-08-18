@@ -149,6 +149,22 @@ a correct-by-accident reject into a false green. The category had two members.
 remaining finding lives in a branch the real runs do not reach"* was confirmed true, twice, and
 then A3 turned out to be reached by every run.
 
+**And the criterion has a second weakness, found on the last finding of the epic: *"unreached"*
+conflates two very different things.** A `./ledger.txt` spelling makes the path comparison fail on
+faithful state — a *double* false red — and it has never fired in thirty-one runs. But not because
+it can't:
+
+> *"It survives on a habit of the driver. The harness dispatches absolute paths and the model has
+> echoed them back verbatim every time. That is not a property of the system — it is a behaviour of
+> one model on one prompt shape, and it can change without anyone being told. Recorded in those
+> terms rather than as 'unreached', because 'unreached' undersells how thin the reason is."*
+
+**Structurally impossible and *no model has happened to do it yet* are not the same claim, and the
+criterion treated them identically.** Every entry routed to the limits list on the strength of
+*"unreached"* inherits that ambiguity — which is a qualification on the whole stopping rule, not on
+one entry. A limits list that does not distinguish them is a list whose entries can silently
+promote themselves to live defects when a model changes.
+
 **Three bounds, all falsified, set by three different people who each knew the class was recurring
 while they wrote them.** That is the argument LAB-137 should lead with, in the implementer's
 words rather than mine:
