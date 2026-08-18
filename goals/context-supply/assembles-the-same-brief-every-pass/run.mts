@@ -264,8 +264,10 @@ const standingContributions = (): Leaf[] => [
   ...leaves(WORLD.objective, "objective"),
 ];
 
-/** Contributions one issue's changing half claims to carry. */
-const changingContributions = (id: string): Leaf[] => leaves(issueOf(WORLD, id), `issue(${id})`);
+/** Contributions one issue's changing half claims to carry. Rooted at a stable
+ *  `issue` prefix (not the issue's id) so a path suffix means the same thing for
+ *  every issue; the failure message already names which issue it was. */
+const changingContributions = (id: string): Leaf[] => leaves(issueOf(WORLD, id), "issue");
 
 /**
  * How a field is PLACED in the brief, for the fields whose bare value cannot
@@ -285,6 +287,7 @@ const changingContributions = (id: string): Leaf[] => leaves(issueOf(WORLD, id),
  * text within their region.
  */
 const PLACED: Array<[string, (v: string) => string]> = [
+  ["issue.id", (v) => `Issue ${v}`],
   ["pullRequest.number", (v) => `#${v}`],
   ["pullRequest.filesChanged", (v) => `${v} files`],
   ["pullRequest.linesAdded", (v) => `+${v}`],
@@ -334,6 +337,33 @@ function standingRegion(text: string, leafPath: string): string {
     .filter((i) => i >= 0)
     .sort((x, y) => x - y)[0];
   return firstTag === undefined ? text : text.slice(0, firstTag);
+}
+
+/**
+ * The changing half's regions. The tail is NOT tag-structured the way the
+ * standing half is — it is prose with labels — so `taggedRegion` does not apply
+ * and forcing it to would be one mechanism stretched past where it fits. These
+ * anchors are the labels `renderTail` writes; keep the two together.
+ *
+ * Without this, every changing contribution is searched across the whole tail:
+ * swap `issue.body` with `pullRequest.verification` and both strings are still
+ * present, so the brief assigns content to the wrong fields while every signal
+ * stays green — the same hole region scoping closed in the standing half.
+ */
+const TAIL_ANCHORS = ["Issue ", "\nPR #", "\nVerification: "] as const;
+
+/** Which anchored region a changing contribution belongs to. */
+const tailRegionIndex = (path: string): number =>
+  path.includes("pullRequest.verification") ? 2 : path.includes("pullRequest.") ? 1 : 0;
+
+function tailRegion(text: string, index: number): string {
+  const starts = TAIL_ANCHORS.map((a) => text.indexOf(a));
+  // A missing label voids the scoping loudly rather than silently widening the
+  // search back to the whole tail, which is how this hole appeared in the first place.
+  if (starts.some((s) => s < 0)) return "";
+  const from = starts[index]!;
+  const to = index + 1 < starts.length ? starts[index + 1]! : text.length;
+  return text.slice(from, to);
 }
 
 const missingFrom = (expected: Leaf[], regionFor: (leaf: Leaf) => string): string[] =>
@@ -473,11 +503,14 @@ await runGoal(async () => {
     [ISSUE_A, a],
     [ISSUE_B, b],
   ] as const) {
-    // The changing half is one untagged region, so placement within it is what
-    // the labelled fragments in `PLACED` carry.
-    const tailMissing = missingFrom(changingContributions(id), () => changingText(capture));
+    const tailMissing = missingFrom(changingContributions(id), (l) =>
+      tailRegion(changingText(capture), tailRegionIndex(l.path)),
+    );
     if (tailMissing.length > 0) {
-      failures.push(`${id}'s changing half is missing contributions it claims to carry: ${tailMissing.join(", ")}`);
+      failures.push(
+        `${id}'s changing half is missing contributions it claims to carry, or carries them ` +
+          `under the wrong label: ${tailMissing.join(", ")}`,
+      );
     }
   }
 
