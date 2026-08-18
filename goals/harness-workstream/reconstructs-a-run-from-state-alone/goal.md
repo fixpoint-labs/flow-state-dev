@@ -96,7 +96,7 @@ generator actions. The calibration and every guard case are **model-free** and r
 ## The preconditions, and why they run every time
 
 The reader derives the known account from the known state **exactly**, a deliberately lossy copy
-of that state is caught by assertion 2, and 65 guard cases each break one assertion on purpose
+of that state is caught by assertion 2, and 67 guard cases each break one assertion on purpose
 and confirm it reaches the verdict it is supposed to. All of it is model-free, so it runs on
 every invocation rather than sitting in this log as a one-time claim — and if any of it fails,
 no coding run is dispatched at all. An instrument is sanity-checked against a case whose answer
@@ -204,6 +204,14 @@ be produced at all.
   fixture now carries the repeat, so the false red is caught by the calibration itself rather
   than by anyone remembering: reintroducing the rule reports *"the grader reports 1 failure(s) on
   a state whose account is correct"* before a run is dispatched.
+- **Assertion 2 rejected two attempts at one unkeyable path** — the ambiguity rule's fifth
+  direction, and the only defect in this file **created by one of its own repairs**. Round 7's
+  fix failed on two-or-more candidate gaps; two attempts leave two gaps carrying the same
+  `rawPath`, which is one claim twice rather than a choice, so a valid one-to-one accounting was
+  read as unresolvable. The discriminator is now distinct spellings, exactly as it is on the row
+  side, and consumption stays one-to-one so a shortfall still reports the loss. Both directions
+  have a case: the interchangeable world must pass, and the two-different-paths world must still
+  fail, because "stop failing on two candidates" would otherwise look like a fix.
 - **Assertion 6 required a top-level tool call, and a run that delegates has none.** Activity is
   scanned over every item of the request specifically so a sub-agent's file work is read
   correctly — and then A6 failed that same run for "reporting without doing anything". A
@@ -243,11 +251,21 @@ every invocation.
 
 **The two rules that kept coming back are the same rule.** *An input that cannot determine an
 answer must not produce one* — the ambiguity rule and the null rule are both spellings of it.
-Ambiguity was wrong in three directions (rows, mutations, gaps) and null in two (outcome, kind).
-Each was applied correctly the first time it was found, and each time the *next* direction was
-still open, because what was fixed was the instance in front of us. That is the case for the
-guard table in one sentence: a rule is remembered, and remembering is what failed five times; a
-table executes, and it has never once been half-applied.
+Ambiguity has now been wrong in **five** directions (many rows for one mutation · many mutations
+for one gap · many gaps for one mutation · surplus pathless gaps · interchangeable gaps counted
+as a choice) and null in two (outcome, kind). Each was applied correctly the first time it was
+found, and each time the *next* direction was still open, because what was fixed was the instance
+in front of us. That is the case for the guard table in one sentence: a rule is remembered, and
+remembering is what failed; a table executes, and it has never once been half-applied.
+
+**The fifth direction was caused by repairing the fourth**, and that is the sharpest thing this
+file has to say about the class. Failing on "two or more candidate gaps" closed a real hole and
+opened a new one, because it counted candidates instead of distinguishing them — two attempts at
+one unkeyable path leave two gaps carrying the same `rawPath`, which is one claim twice rather
+than a choice, and a faithful record was rejected for it. A class that generates instances **from
+its own repairs** is a stronger argument for structural treatment than one that merely recurs: no
+amount of care at the point of fixing gets ahead of it, because the care is what produced the next
+instance. That is the evidence LAB-137 should carry.
 
 **Closed by construction — the shape cannot be written:**
 
@@ -285,6 +303,13 @@ not currently grade:
 - **A message of pure whitespace counts as something the run said.** The readable-text filter
   measures length without trimming. Wrong *extent* on the fix from round 6, which is the same
   family as the half-applied rules: the rule was right and its reach was short.
+- **A1 grades against the expectation's BARE NAMES, not the absolute targets the run was given.**
+  An incidental file sharing a basename — a `backup/ledger.txt` beside the `ledger.txt` the job
+  asked for — makes the relative name match two rows, and A1 fails as ambiguous although the
+  dispatched absolute path and both stream-derived paths distinguish them perfectly. Pre-existing
+  rather than introduced, and unreached in 24 runs. **The fix is named so nobody re-derives it:**
+  grade against the absolute `targets` the prompt supplied (`run.mts`) instead of the basenames,
+  which removes the ambiguity at the source rather than teaching the matcher to break ties.
 
 **THE NAMED-LIMITS LIST IS NOT A CLOSED SET, AND WAS NEVER GOING TO BE.** Three of the entries
 above were added *after* the criterion — "every remaining finding lives in a branch the real runs

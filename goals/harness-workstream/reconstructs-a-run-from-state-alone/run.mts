@@ -488,6 +488,51 @@ const GUARD_CASES: GuardCase[] = [
     want: "fail",
   },
   {
+    // THE FIFTH DIRECTION, AND THE FIRST ONE CAUSED BY REPAIRING THE FOURTH.
+    // Two attempts at one unkeyable path leave two gaps carrying the SAME
+    // `rawPath`. Every mutation matches both, so the round-7 branch called it
+    // ambiguous — but there is nothing to get wrong: the two gaps are the same
+    // claim twice, and two of them against two mutations is a valid one-to-one
+    // accounting. The rule I was given rejected a faithful record because it
+    // counted candidates instead of distinguishing them.
+    //
+    // This world must PASS, and the case above must keep failing. Both are
+    // needed: without the second, "stop failing on two candidates" would look
+    // like a fix.
+    name: "A2 — two interchangeable gaps account for two attempts at one path",
+    mutate: (v) => {
+      v.did = v.did.filter((d) => !d.topic.endsWith("gamma.txt"));
+      const gamma = v.streamMutations.find((m) => m.path.endsWith("gamma.txt"));
+      if (gamma !== undefined) {
+        v.streamMutations.push({ ...gamma, at: (gamma.at ?? 0) + 1 });
+      }
+      v.gaps.push({ kind: "file", reason: "skipped", rawPath: "/work/repo/gamma.txt" });
+      v.gaps.push({ kind: "file", reason: "skipped", rawPath: "/work/repo/gamma.txt" });
+    },
+    because: "a2-ok",
+    id: "A2",
+    want: "pass",
+  },
+  {
+    // And the shortfall on that same side, so consumption stays one-to-one
+    // rather than becoming "any matching gap excuses any number of losses":
+    // three attempts, two gaps, one loss nothing accounts for.
+    name: "A2 — three attempts at one path and only two gaps beside them",
+    mutate: (v) => {
+      v.did = v.did.filter((d) => !d.topic.endsWith("gamma.txt"));
+      const gamma = v.streamMutations.find((m) => m.path.endsWith("gamma.txt"));
+      if (gamma !== undefined) {
+        v.streamMutations.push({ ...gamma, at: (gamma.at ?? 0) + 1 });
+        v.streamMutations.push({ ...gamma, at: (gamma.at ?? 0) + 2 });
+      }
+      v.gaps.push({ kind: "file", reason: "skipped", rawPath: "/work/repo/gamma.txt" });
+      v.gaps.push({ kind: "file", reason: "skipped", rawPath: "/work/repo/gamma.txt" });
+    },
+    because: "a2-unaccounted",
+    id: "A2",
+    want: "fail",
+  },
+  {
     // And the world it MUST accept, so the new branch is not simply "more than
     // one gap fails": the same relative spelling with ONE gap that matches.
     name: "A2 — a relatively-named lost mutation answered by a single matching gap",

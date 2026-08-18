@@ -357,6 +357,12 @@ function compareSemantics(mutation: StreamMutation, entry: DidEntry): Finding[] 
  * And the pairing must be UNIQUE in both directions — many rows for one
  * mutation, many mutations for one gap, and many gaps for one mutation are the
  * same defect approached from three sides, each caught by its own branch here.
+ * **Unique means DISTINGUISHABLE, not few.** Repairing the third direction by
+ * failing on two-or-more candidates created a fifth: two attempts at one
+ * unkeyable path leave two gaps carrying the same `rawPath`, which is one claim
+ * twice rather than a choice. So every one of these branches counts distinct
+ * SPELLINGS and consumes one-to-one; the count is the accounting, and a
+ * shortfall still reports the loss.
  *
  * **A row is an AGGREGATE, and several mutations naming it is normal.** One row
  * per path, folding every call on that path, last settlement winning. So the
@@ -421,23 +427,37 @@ function gradeAgreement(view: GradeableView): Finding[] {
     // first and reported the loss excused, while the state cannot say which
     // gap covers this mutation — and an exemption that cannot be tied to its
     // case is the blanket amnesty this assertion exists to refuse.
+    //
+    // AND ITS FIFTH DIRECTION, WHICH THE FOURTH'S REPAIR CREATED. Rejecting
+    // "two or more candidates" did not distinguish candidates that are
+    // INTERCHANGEABLE from candidates that are DISTINGUISHABLE. Two attempts at
+    // one unkeyable path leave two gaps carrying the SAME `rawPath`; every
+    // mutation sees both, and there is no question of picking wrong, because
+    // the two are the same claim twice. Their count against the mutations' is a
+    // valid one-to-one accounting — and it was being failed. So the
+    // discriminator is the number of distinct SPELLINGS, exactly as it is on
+    // the row side, not the number of rows.
     const candidates = namedGaps
       .map((g, at) => ({ g, at }))
       .filter(({ g }) => sameFile(g.rawPath as string, mutation.path));
-    if (candidates.length > 1) {
+    const spellings = [...new Set(candidates.map(({ g }) => g.rawPath as string))];
+    if (spellings.length > 1) {
       findings.push({
         id: "A2",
         status: "fail",
         because: "a2-ambiguous-gap",
         message:
-          `"${mutation.path}" has no row in the file record and ${candidates.length} gap rows ` +
-          `could be the one covering it ` +
-          `(${candidates.map(({ g }) => g.rawPath).join(", ")}) — consuming either would excuse ` +
-          `this loss with a row that may belong to a different one`,
+          `"${mutation.path}" has no row in the file record and ${spellings.length} different ` +
+          `paths are offered as gaps covering it (${spellings.join(", ")}) — consuming either ` +
+          `would excuse this loss with a row that may belong to a different one`,
       });
       continue;
     }
-    if (candidates.length === 1) {
+    if (candidates.length >= 1) {
+      // Interchangeable by construction: one spelling, so which of them is
+      // consumed cannot matter. Consumption stays one-to-one, which is what
+      // turns the count into the accounting — a third mutation on this path
+      // with only two gaps beside it finds none left and is reported lost.
       namedGaps.splice(candidates[0].at, 1);
       accounted += 1;
       continue;
