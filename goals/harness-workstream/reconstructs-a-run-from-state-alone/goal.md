@@ -265,6 +265,31 @@ Each was invisible from the one below. The last is the sharpest: a scan is a reg
 the shape its author anticipated, which is *the remembered rule* this file spent eleven rounds
 arguing against. The mechanism built to end the class turns out to be an instance of it.
 
+**AND THE LEVEL AFTER THE SCANS IS THIS FILE, WHICH NOTHING CHECKS AT ALL.** Six counts in the
+narrative body had rotted — the guard total, three run totals, and two PASS totals — and they were
+found by *counting*, not by reading. That is the same failure the whole document argues against,
+now in the document itself, and the shape of it is exact:
+
+- **Counts that are COMPUTED never drifted.** The runtime evidence line reads
+  `GUARD_CASES.length + ACCOUNT_CASES.length` and has been right at every value from 53 to 81
+  without anybody touching it.
+- **Counts that are APPENDED never drifted.** Every verdict row was frozen at write time and is
+  still true of the run it describes — *67 guards* is correct **for that row** and must never be
+  updated.
+- **Only the REMEMBERED ones rotted.** Every single one. Six of six.
+
+**And the miniature of it:** the stopping line was updated to *thirty-three* in the same round that
+left two PASS totals at *twenty-six*. The update landed where the author was looking. Then the
+stopping line — the one count independently certified as current — **went stale again inside the
+round that was correcting stale counts**, because a thirty-fourth run happened while the correction
+was being written.
+
+So the fix is **subtraction, not accuracy**. Correcting a remembered number by remembering harder
+resets the drift clock; deleting it stops the clock. Where the quantity is not the point the number
+is gone — *every guard case*, *every run in the log*, *every PASS* — and where it is the point it is
+phrased so it cannot rot. The numbers that remain in this file are the computed ones and the frozen
+ones, which are the two kinds that have never been wrong.
+
 **Round 8 changed what the earlier PASSes are worth, and that belongs here rather than in a
 footnote.** Until it, assertion 2 rejected a run that edited a file it had already written — so
 the nineteen consecutive PASSes happened partly because no graded run touched a path twice. They
@@ -304,6 +329,31 @@ requirement attached to the **case** — *every fold carries a world that must s
 positioned to see it. It is also the reason the existing tie guard stopped expressing its
 condition: that case **was** this false red, written as a failure. It is now the must-pass
 neighbour, and a genuinely disagreeing tie took its place.
+
+**A SEVENTH ARRIVED, AND IT IS NOT A SEVENTH SELF-INFLICTED REGRESSION — THE COUNT STAYS AT SIX.**
+The distinction is worth drawing precisely, because it is the difference between two classes this
+file tracks separately.
+
+The harness-ground-truth repair (the fourth) graded one direction only: *is this row wrongly
+`edited`?* Its mirror — *is this row still `created` after a second applied call made the path
+exist?* — was never written. A fresh target written twice with a stale `created` row passed A1,
+and passed A2 too, because A2 abstains on `Write` by design. **The check certified the exact
+recorder regression its own ground truth was added to catch.**
+
+**But that is not a regression, and calling it one would inflate the number that carries this
+file's argument.** A regression means a repair made something worse. Before the ground-truth fix
+this world passed as well — nothing compared a row's kind against what the harness knew, so there
+was nothing to break. The repair improved one direction and left the other open. That is the
+**half-applied rule** — the oldest class here, the one null-outcome and null-kind belong to — and
+its newest instance landed on a repair made one round earlier. So: **six self-inflicted
+regressions, and a half-applied repair on top of the fourth.**
+
+**The stronger observation is what caught the degradation inside this fold.** Restructuring the
+branch dropped a guard off the original rule, and a fresh target written *once* started failing as
+`a1-kind-not-created`. The **must-pass neighbour** shipped alongside the fix caught it on the first
+table run, before the fold was committed. That is the per-case clause working on its own author,
+one round after the sixth instance argued for it — the first evidence that it catches something
+rather than merely describing what went wrong afterwards.
 
 **THE FIFTH IS THE BEST INSTANCE THIS FILE HAS, AND IT IS A PROCESS DEFECT RATHER THAN A CODE ONE.**
 It took three careful steps to produce, none of them a mistake at the time:
@@ -603,7 +653,7 @@ the honest statement is that the grid's cells are named and the axes are not clo
 Filling those buys those. **Every one lives in a branch the graded runs do not reach** — they need
 an incidental file outside the expectation, an unreadable vendor field, or a plan half that
 reports UNMEASURED on every real run. That is the stopping line for a Proof: the question this
-issue exists to answer has been answered thirty-three times, and precision on unreached edges is
+issue exists to answer has been answered by every run in the log below, and precision on unreached edges is
 worth bounding rather than grinding.
 
 **Round 11 falsified the framing of that stopping line, and the correction stays visible for the
@@ -754,6 +804,9 @@ live, and the branch that would call the whole run inconclusive sits behind them
 
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-08-18 | **`fd0791dcd`** | Agent SDK default | **PASS — the verdict** | Thirty-fourth consecutive real run, on the committed tree. 3 of 3 held-out paths `created`/`edited` and `applied`; non-decreasing across 31 items at 27 distinct positions; mutations 18–23, last word at 25; 1 shell call, 0 completed. **81 guards** proven first. Plan arm UNMEASURED. First run with the ground-truth rule graded in BOTH directions |
+| 2026-08-18 | working tree at `fd0791dcd`, grader at `7b8c90745` | — | FAIL *(deliberate)* | **The mirror the ground-truth rule was missing**, settled by building the world before changing anything: a fresh target with two applied `Write` calls and a row still saying `created` came back `A1 ["a1-ok=pass"], A2 ["a2-ok=pass"]`. As a guard case: *"'A1 — a fresh target written twice, still recorded as created' did not reach A1/a1-kind-stale-created with a fail; it produced `["a1-ok=pass"]`"*. The check certifying the exact recorder regression its own ground truth was added to catch |
+| 2026-08-18 | working tree at `fd0791dcd`, mid-fold | — | FAIL *(deliberate, and unplanned)* | **The must-pass neighbour caught a degradation inside the fold that created it.** Restructuring the branch dropped the `entry.kind !== "created"` guard off the original rule, so a fresh target written ONCE began failing: *"'A1 — a fresh target written once still reads as created' did not reach A1/a1-ok with a pass; it produced `["a1-kind-not-created=fail"]`"*. Caught on the first table run, before the fold was committed |
 | 2026-08-18 | **`58006beb4`** | Agent SDK default | **PASS — the verdict** | Thirty-third consecutive real run, on the committed tree, round 11 folded and final. 3 of 3 held-out paths `created`/`edited` and `applied`; **4 stream mutations against 3 rows** — the first REAL run to touch a path twice, so the aggregate-row rule and terminal selection were exercised on live data rather than only by the fixture; non-decreasing across 33 items at 28 distinct positions; mutations 17–25, last word at 27; 1 shell call, 0 completed. **78 guards** proven first. Plan arm UNMEASURED. CI on the branch head `2d6f854c7`: 6 passed, 1 neutral (Vercel Agent Review); Cursor Bugbot registered no run — an absence, not a pass |
 | 2026-08-18 | working tree at `58006beb4`, grader at `1c2fe209f` | — | FAIL *(deliberate)* | **The sixth self-inflicted regression, and the first from TWO repairs meeting.** *"'A2 — a tied Write and Edit that both grade clean against the row' did not reach A2/a2-ok with a pass; it produced `["a2-terminal-tied=fail"]`"* — a faithful concurrent state rejected because the tie check compared serialized values while `null` kind means *no claim*. The old `a2-terminal-tied` case **was** this world, written as a failure; it is now the must-pass neighbour |
 | 2026-08-18 | working tree at `58006beb4` | — | PASS *(the direction that must keep failing)* | A tie whose candidates genuinely disagree — two `Edit` calls at one position, one completed and one failed, against an `edited`/`applied` row — still reaches `a2-terminal-tied`. Red under both the old rule and the new one, which is what makes it the discriminator rather than a casualty of the fix |
