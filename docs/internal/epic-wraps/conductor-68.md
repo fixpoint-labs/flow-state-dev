@@ -50,8 +50,8 @@ terminates inquiry.
 | 14 | LAB-135 **A7** | collection truncation | `STATE_LIST_DEFAULT_LIMIT` is 50 and these runs write **three** rows, so `nextCursor` is never offered, `a7-truncated` needs 200 pages, and `a7-never-read` cannot be produced by `readAccount` at all | the A3 sweep |
 
 **#13 and #14 are the epic's real headline, and they are worse than #10.** *Two of eight assertions
-in the Proof certify nothing about the run.* All 26 PASSes contained an A3 and an A7 that could not
-have been anything else. What those runs actually certify is **A1, A2, A4, A6 and A8** over the
+in the Proof certify nothing about the run.* All **30** PASSes contained an A3 and an A7 that could
+not have been anything else. What those runs actually certify is **A1, A2, A4, A6 and A8** over the
 dispatched run — that is the honest sentence, and it is now the one in `goal.md`'s verdict section
 rather than in a limits list where it would read as an edge.
 

@@ -780,7 +780,14 @@ against cycle 5.
 | #1327 (LAB-133) | impl | 1 | `missed-edge-case` ×2 | no | three-way rescue outcome stated in the spec's decision, not two |
 | #1325 (LAB-136) | impl | 1 | `over-engineered` ×1, `missed-edge-case` ×1 | no | a guard whose rejection was never watched fire — see the reverted anchor guard |
 | #1332 (LAB-134) | impl | 10 (capped) | `missed-edge-case` ×22, `nit` ×4, `over-engineered` ×3 | no | LAB-137 — make the invariant structural |
-| #1334 (LAB-135) | impl | 8 | `missed-edge-case` ×19, `over-engineered` ×3, `docs-miss` ×2 | no | the calibration fixture must carry the state a rule is about |
+| #1334 (LAB-135) | impl | 13 | `missed-edge-case` ×31, `over-engineered` ×3, `docs-miss` ×2 | no | the calibration fixture must carry the state a rule is about |
+
+**Both round counts were understated when first written and are corrected here.** #1334 was recorded
+at 8 while it was still running; it took 13, and the last five produced the cycle's most consequential
+findings (A3 and A7 inert, the seventh ambiguity direction). **A count entered before the thing it
+counts has stopped is an unrun claim about the future** — the same class this cycle selected, committed
+inside the instrument that measures it, for the third cycle running. The correction is in place rather
+than appended because a wrong number in a measurement table is worth less than no number.
 
 ### Scoring cycle 5's claims
 
