@@ -528,11 +528,15 @@ call.
    the credential, an unauthenticated caller is **refused**: no model call, no key spend, no acting
    as another user. What it does **not** do is stop the port listening — the developer's `next dev`
    still binds every interface, so the endpoint stays reachable and probeable by anyone on the
-   network, and what protects it is the secret rather than the absence of a route. **Greenfield
-   therefore ends up strictly stronger than brownfield**: it has both the loopback bind and the
-   credential, and brownfield has only the credential. That asymmetry is a consequence of theme 6
-   — we author greenfield's dev script and must not touch theirs — and it is disclosed rather than
-   engineered away.
+   network, and what protects it is the secret rather than the absence of a route. **The two paths
+   therefore carry one control each, and they are not the same control**: greenfield binds loopback
+   (its browser client makes a credential unusable), brownfield requires a credential (its host's
+   dev script is not ours to bind). Neither is a weaker copy of the other and neither stacks on the
+   other — an earlier round claimed greenfield had "both layers", which was wrong in the same move
+   that wrongly claimed the dev script was ours. **What each leaves open is different, and that is
+   the honest comparison:** greenfield's endpoint is unreachable off-host but would be wide open if
+   the developer removes the flag; brownfield's stays reachable and probeable but refuses every
+   caller without the secret. Disclosed rather than engineered away.
 
    **The one option that would close it was considered and rejected, and the rejection is recorded
    here so the next person who notices the LAN gap finds an answer instead of reopening it.** That
@@ -992,7 +996,9 @@ the `.env.local` it already touches (never to a tracked file — theme 6 refuses
 the generated config reads it **by environment-variable name** in both the principal resolver and
 the `devtool` block. No literal secret appears in this document, in the template, in a printed
 command, or in any committed file. **The mechanism is FIX-1159's** within that constraint;
-greenfield keeps the loopback bind (theme 8) as a second layer, not a substitute.
+greenfield does **not** also take a credential — its demo is a browser page, so a token it could
+present is one an attacker can read from the same page; loopback is its whole control, and theme 8
+states the comparison exactly.
 
 **What this closed and what it did not.** Closed: an unauthenticated caller is refused, so a
 stranger on the same network cannot spend the developer's provider key or act as another user.
