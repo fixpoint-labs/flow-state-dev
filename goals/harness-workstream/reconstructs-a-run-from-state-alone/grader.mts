@@ -252,9 +252,19 @@ function gradePaths(view: GradeableView, expectation: Expectation): Finding[] {
             `about an operation the stream alone could not have caught`,
         });
       }
-      if (!existed && entry.kind !== null && entry.kind !== "created") {
+      if (!existed && entry.kind !== null) {
         const naming = view.streamMutations.filter((m) => sameFile(m.path, entry.topic));
-        if (naming.length === 1 && naming[0].outcome === "applied") {
+        // ONE FILE, or no count is possible. Several spellings matching a row is
+        // an ambiguity A2 grades by name; counting them here would be counting
+        // files rather than calls, and inferring a kind from that is the guess
+        // this whole check refuses.
+        const oneSpelling = new Set(naming.map((m) => m.path)).size === 1;
+        if (
+          oneSpelling &&
+          entry.kind !== "created" &&
+          naming.length === 1 &&
+          naming[0].outcome === "applied"
+        ) {
           findings.push({
             id: "A1",
             status: "fail",
@@ -264,6 +274,32 @@ function gradePaths(view: GradeableView, expectation: Expectation): Finding[] {
               `applied call, but the harness made a fresh directory and never seeded that file — ` +
               `one applied operation on a path that did not exist is a creation`,
           });
+        }
+        // THE MIRROR, and it was missing — the same ground truth read in the
+        // other direction. The first applied call MAKES THE PATH EXIST, so a
+        // second one wrote over something that was there: the row's last kind
+        // cannot still be `created`. Without this the check certified exactly
+        // the recorder regression the ground truth was added to catch, because
+        // A1 only asked "is it wrongly `edited`?" and A2 abstains on `Write`
+        // by design. Reachable by a dispatched run — the graded run at
+        // `58006beb4` was the first to touch a path twice.
+        //
+        // Stated on APPLIED calls and on a settled `created` only: a failed
+        // attempt changed nothing, and the count is of calls on one spelling.
+        if (oneSpelling && entry.kind === "created") {
+          const applied = naming.filter((m) => m.outcome === "applied");
+          if (applied.length > 1) {
+            findings.push({
+              id: "A1",
+              status: "fail",
+              because: "a1-kind-stale-created",
+              message:
+                `the record still says "${nameOf(entry)}" was created after ${applied.length} ` +
+                `applied calls on it, but the harness never seeded that file — the first applied ` +
+                `call is what made it exist, so every one after it wrote over a file that was ` +
+                `already there and the row's last kind cannot be a creation`,
+            });
+          }
         }
       }
       if (entry.kind === null) {

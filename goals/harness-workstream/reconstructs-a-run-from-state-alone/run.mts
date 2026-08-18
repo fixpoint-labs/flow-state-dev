@@ -684,6 +684,66 @@ const GUARD_CASES: GuardCase[] = [
     want: "fail",
   },
   {
+    // THE MIRROR OF THE GROUND-TRUTH RULE, WHICH THE FIRST VERSION LEFT OPEN.
+    //
+    // A1 asked only "is this wrongly `edited`?" — and A2 abstains on `Write` by
+    // design, because the stream cannot tell creation from overwrite. So a
+    // fresh target with TWO applied writes and a row still saying `created`
+    // passed both. The first applied call is what MADE THE PATH EXIST, so the
+    // second wrote over a file that was already there; the row's last kind
+    // cannot be a creation. This is the exact recorder regression the harness
+    // ground truth was added to catch, certified by the check that added it.
+    //
+    // Reachable by a dispatched run, unlike the scan findings: the graded run
+    // at `58006beb4` was the first real run to touch a path twice.
+    name: "A1 — a fresh target written twice, still recorded as created",
+    expectation: {
+      paths: ["delta.txt"],
+      existedBefore: { "delta.txt": false },
+    },
+    mutate: (v) => {
+      const delta = v.streamMutations.find((m) => m.path.endsWith("delta.txt"));
+      if (delta !== undefined) v.streamMutations.push({ ...delta, at: (delta.at ?? 0) + 1 });
+    },
+    because: "a1-kind-stale-created",
+    id: "A1",
+    want: "fail",
+  },
+  {
+    // The faithful version of that world, so the fix does not become "a repeat
+    // touch on a create target fails": the same two applied writes, with the
+    // row correctly folded to `edited`.
+    name: "A1 — a fresh target written twice and recorded as edited",
+    expectation: {
+      paths: ["delta.txt"],
+      existedBefore: { "delta.txt": false },
+    },
+    mutate: (v) => {
+      const delta = v.streamMutations.find((m) => m.path.endsWith("delta.txt"));
+      if (delta !== undefined) v.streamMutations.push({ ...delta, at: (delta.at ?? 0) + 1 });
+      const row = v.did.find((d) => d.topic.endsWith("delta.txt"));
+      if (row !== undefined) row.kind = "edited";
+    },
+    because: "a1-ok",
+    id: "A1",
+    want: "pass",
+  },
+  {
+    // And the single-call case the new rule must leave alone, which is what
+    // keeps it from collapsing into "`created` is never allowed on a target the
+    // run touched": one applied write on a fresh path reads `created`, and that
+    // is the ordinary shape of every real run's two create targets.
+    name: "A1 — a fresh target written once still reads as created",
+    expectation: {
+      paths: ["delta.txt"],
+      existedBefore: { "delta.txt": false },
+    },
+    mutate: (v) => v,
+    because: "a1-ok",
+    id: "A1",
+    want: "pass",
+  },
+  {
     // And the world it MUST accept, so the fix is not "any `edited` row on a
     // create target fails": a create target written and THEN edited. The row is
     // an aggregate carrying the last call, so `edited` is faithful — and the
