@@ -457,7 +457,11 @@ call.
      all. `tsconfig.json` is **not** in the edit set for the chosen template shape, so it needs no
      rule here; an issue that finds it does has hit a cross-cutting question.
 
-     **(c) The stock `dev` script, greenfield only, narrowed to loopback.** `create-next-app`
+     **(c) The stock serving scripts, greenfield only, narrowed to loopback.** *Named for `dev`
+     when it was written, which was the defect: we widened the contract for one key and never asked
+     what its siblings do. `create-next-app` ships exactly three — `dev`, `build`, `start` — and
+     `build` serves nothing, so the exception covers **`dev` and `start`**, both narrowed to
+     loopback.* `create-next-app`
      writes `scripts.dev`; the template rewrites its value to bind `127.0.0.1` (theme 8). **This is
      a third exception, stated as one rather than smuggled into (a) or (b), because it fits
      neither** — the script's purpose is to be *run*, not replaced, so (a) does not reach it, and
@@ -479,6 +483,15 @@ call.
      only ever *narrows* a bind, breaks nothing, and is a one-word revert the developer can make.
      **It does not reach brownfield**, where the script is theirs, the project is theirs, and theme
      6's promise is the one the objective actually sells.
+
+     **`start` is the worse of the two, and binding it is not sufficient.** `next start` also
+     defaults to `0.0.0.0`, and someone running `npm run build && npm start` is by definition not
+     on their laptop — so the same unauthenticated model-backed route is exposed on a real host,
+     billed to them. Binding it closes the self-hosted case, and **says something the owner must
+     hear: the generated app does not serve off-host until its authentication is configured.** For
+     a demo scaffold that is the right default; it is still a product statement, not a footnote.
+     **But it closes only one deployment mode** — a platform deploy never runs `next start`, so a
+     script bound to loopback protects nothing there. See theme 8's completion of the rule.
    - **No credential is written until the path is verifiably ignored — a precondition, not a
      report.** Before writing anything secret, the run asks **git** whether the target path is
      effectively ignored (`git check-ignore`). If it is, write. If it is not, **append the rule**
@@ -605,6 +618,23 @@ call.
    credential is not a control when the client is a browser** — loopback is not the cheaper option
    there, it is the only one. The mirror holds: brownfield ships no page, and its demo is exercised
    from the CLI and direct calls, so a server-side secret genuinely protects it.
+
+   **The rule was always "on a network interface", and it had only ever been implemented for the
+   dev server. That gap is the third form of one exposure** — the Node template's `serve()`, then
+   `next dev`, now `next start` — and each was found separately because each was reasoned about as
+   a *script* or a *template* rather than as the rule's coverage. **Binding scripts cannot finish
+   it:** a platform deploy runs neither `next dev` nor `next start`, so no script we write is in
+   the path at all, and the generated flow is on the default resolver there exactly as it is
+   everywhere else.
+
+   **So the control is completed where it is adapter-independent: the generated config refuses to
+   serve a default-resolver flow outside development.** Same shape as the runtime floor — refuse
+   rather than hand someone something that looks like it works — and it holds on every host,
+   including the ones we never see. **This is owner-visible and stated plainly: a generated app
+   will not serve in production until authentication is configured**, which for a demo scaffold is
+   the correct default and is still a promise about what the thing does. The alternative is
+   shipping a scaffold whose default deployment is an open model endpoint on the developer's bill,
+   which is the same trade Q5 already refused for brownfield.
 
    **The resulting property, per entry path, in the same explicit form.** *Greenfield*: an
    unauthenticated caller elsewhere on the network **cannot reach the endpoint at all** — nothing
@@ -838,34 +868,23 @@ call.
 
 ## 3. Shape of the whole
 
-**Built:** an end-state sketch — the file tree a developer ends up with from the template, the
-file-tree diffs a brownfield run produces against an existing Next.js app and an existing
-plain-Node app, and a terminal transcript of each path end to end. Drawn, not run: what this epic
-ships is *what a developer sees and what files land in their repo*, and whether that is right is
-judged by reading it.
+**No end-state POC exists, and this section previously implied one did.** It described a "Built"
+artifact — file trees, diffs, transcripts — that was never a `spec-poc/` directory; it was prose
+inline in this section, and a later pass cut the prose while leaving the citation. `spec-poc/` on
+this branch holds only its own README. **A conclusion cited to an artifact nobody can inspect is
+worse than one with no citation, because the citation implies a check that cannot be performed**,
+so the citation is withdrawn rather than repaired.
 
-**See it:** the sketch is no longer reproduced here. It was ~200 lines of file trees, config
-detail and transcripts owned by FIX-548 and FIX-1159, in a section the objective gate signs off —
-the same accumulation theme 9 and §1 were both cut for. Everything it established that binds more
-than one issue has been moved to the theme that owns it: the **two-file mount** and the **required
-store profile** to theme 9 (b), the **no-generated-Node-entrypoint** reasoning and the bind guard
-to theme 8, the **printed-command** rules to theme 5. The per-issue file lists live in the child
-specs, which are where they can be kept true.
+**Nothing rests on it.** The three findings that drawing exercise produced were migrated into the
+themes that bind them, each with its own reasoning stated there and none citing the drawing:
+theme 5 (one authored next-steps source, and why naming two servers matters), theme 6 (a run is
+additive over what it touches), and theme 8 (mounted route where the location is derivable, second
+process otherwise). Theme 9 postdates it entirely. Those four stand on their own arguments and were
+re-derived to confirm it before this section was cut.
 
-**Showed:** three things, each of which became binding elsewhere rather than staying an
-observation here. The two templates shared almost nothing but `fsdev.config.ts`, `flows/`,
-`.env.local` and the agent-instructions file — a common set smaller than either template, which is
-why the shared shape became a **contract FIX-1159 authors** (theme 9) rather than a template the
-brownfield skill can never reach. The next-steps block has to name **two servers with different
-jobs** and say which is which, or a first-hour user lands on a blank page (theme 5). And in a
-Next.js app FSD can be a real mounted route while a plain-Node app gets a **second process**,
-because nothing may edit an entrypoint it did not write — an asymmetry the prose had hidden, now
-**theme 8**.
+*If an end-state POC is built later, it belongs at `spec-poc/epic-building-with-fsd/` and this
+section carries its path.*
 
-**Changed:** it added theme 5's one-next-steps-block clause and theme 6 (a run is additive over
-what it touches); neither was visible in prose. Both survived the greenfield/brownfield split with
-their guarantees intact and their mechanism replaced — the clearest evidence that what the diffs
-surfaced was a property of the *situation* rather than of the command that used to implement it.
 
 ## 4. Running index
 
@@ -1132,22 +1151,55 @@ throughout, and the epic is what drifted.*
 one — a Next.js app that ends at a chat page you can type into — or also a second for backend
 developers, which ends at a server with no screen.
 
-**The trade-off.** Since a plain-Node host now gets no generated server file and no package
-script, everything the Node starter would ship is a `package.json`, a `tsconfig.json` and a demo
-flow with a better name — and `mkdir && <brownfield run>` already produces that on a path §1's
-proof exercises with a real model. Against that, every template is proved per advertised provider
-on every release, on machines we do not control, forever.
+**The trade-off — corrected, because the version of it that reached the owner was wrong.** This
+entry claimed the Node starter's contents were already obtainable via `mkdir && <brownfield run>`.
+**That substitute does not exist**, and the correction changes the size of the decision rather than
+its wording. Brownfield is defined throughout as modifying a project that already exists, it is
+proved only against an *existing* plain-Node app, and FIX-1159's spec refuses the empty case at two
+independent gates: **detection's `dev command` row — *"No usable script → refuse, because the
+next-steps block cannot be written without it"*** — which an empty directory and a bare
+`npm init -y` both trip, since neither has a script that starts anything; and the deleted
+empty-directory worked example, removed from that spec along with the greenfield goal check that
+ran it. §1 says the same thing from the other side: the two-command alternative *"no longer
+exists, because there is no brownfield command to run second"*.
 
-**My recommendation: ship one.** The deciding point is asymmetry rather than file count — adding
-`node-api` later is additive and strands nobody, while removing a published template later breaks
-invocations that already exist. Two independent reviewers agreed when FIX-548 raised it.
+**So the real cost of cutting is not a worse path for backend developers. It is no path.** A
+backend developer starting fresh would have to hand-build a Node project *with a working dev
+script* before the skill would engage — which is the manual assembly this epic exists to remove —
+or take the Next.js template and strip it, dragging `next` and `react` into a backend service.
+**Against that**, every template is proved per advertised provider on every release, on machines we
+do not control, forever.
+
+**My recommendation has changed, and it is now conditional.** It was "ship one", resting on the
+substitute. Without it, "ship one" means **§1's own outcome — a working feature in their project,
+"new or existing" — is unmet for backend developers in v1**, which the asymmetry argument does not
+answer: adding a starter later is indeed additive, but deferring now defers an audience to nothing
+rather than to something lesser. There are three options, not two:
+
+- **(a) Ship two starters.** Serves backend greenfield deterministically. Costs a second starter
+  kept green and proved per provider, forever — the original objection, unchanged.
+- **(b) Ship one starter, and specify and prove a minimal-project brownfield path** — the smallest
+  project the skill will engage with, and what it prints when the host has no dev command of its
+  own. Costs FIX-1159 one specified behaviour and one proof, and requires relaxing the
+  `dev command` refusal for exactly the second-process case, where a host with no dev script is
+  coherent rather than broken: the next-steps block then prints only FSD's own commands.
+- **(c) Ship one starter and accept that backend greenfield is unserved in v1.** Honest, and the
+  cheapest — but it should be chosen knowingly rather than inherited from a substitute that was
+  never real.
+
+**Recommendation: (b) if FIX-1159 will carry it, otherwise (a).** (b) serves the audience without a
+second artifact to keep green, and the behaviour it adds is one the skill arguably owes anyway —
+today a project with no dev script is refused rather than served as a second process, which is the
+topology theme 8 already says that host gets. **I no longer recommend (c)**, which is what "ship
+one" silently meant.
 
 **What would change my mind:** if the launch plan points backend developers at a Node starter *by
 name* — a landing page, a comparison table, an announcement. A template that exists to be linked
 to is worth more than the files it writes, and that is a business fact no spec here has.
 
-**Cost of being wrong.** Ship one and be wrong: a later additive release, and backend developers
-meet no starter aimed at them during launch. Ship two and be wrong: a starter kept permanently
+**Cost of being wrong.** Ship one *without* (b) and be wrong: backend developers have no
+first-party way to start a new FSD project at all during launch — recoverable by a later release,
+but it is an audience meeting a closed door rather than a plain one. Ship two and be wrong: a starter kept permanently
 green, proved on every release, for a path the brownfield run already proves. **And one live
 consequence either way** — with the Node template cut, §1's brownfield second-process check is the
 epic's *only* Node coverage of any kind, so it can no longer be dropped as redundant.
@@ -1190,4 +1242,5 @@ those narratives now live in
 - **Credential wiring audited** — the DevTool needs the same secret; `git check-ignore` became a precondition before any credential is written; every control gained a negative case.
 - **Attribution audit** — the one-template cut was recorded as the owner's without evidence and is reopened as **Q6**; Q2's rationale re-marked as the coordinator's; Q4 stopped pre-arguing from words the owner never said.
 - **Length and sibling sweep** — §3 cut to four lines, §4 to its table, this log rebuilt; the reopened Q6's stale deferral entry corrected, and the bind guard's predicate stated once after a paraphrase got it wrong.
+- **Q6's substitute struck, and the recommendation re-derived** — `mkdir && <brownfield run>` does not exist: brownfield modifies an existing project, and FIX-1159 refuses the empty case at its `dev command` gate. Cutting the Node starter costs backend developers **no path**, not a worse one, so the recommendation changed from "ship one" to **(b) ship one *and* specify a minimal-project brownfield path, else (a) ship two**. Same turn: exception (c) widened to `start` after the sibling script went unchecked, theme 8's rule completed adapter-independently (the config refuses to serve a default-resolver flow outside development), and §3's citation to a non-existent POC withdrawn.
 - **Attribution sweep** — every "the owner's" / "your call" line checked against an artifact. Q2's and Q3's decisions evidenced (epic PR comment, 2026-08-14) and now cite it; Q1 marked as the coordinator's from the objective; the brownfield direction change evidenced (2026-08-15); the one-template cut unevidenced and already reopened as Q6. No further claims reopened — three clean, two already corrected.
