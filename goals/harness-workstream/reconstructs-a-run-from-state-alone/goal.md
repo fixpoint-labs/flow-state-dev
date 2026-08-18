@@ -240,6 +240,13 @@ the **instances never stopped arriving** — 3, 2, 3, 3, 4, 4, 2, 2 per round. T
 questions, and only the second says whether the work is done. Recording both is the point of this
 section.
 
+**Round 11 kept the arrival rate up and moved where they arrive from**, which is the more
+useful half. Four findings: two assertions that cannot fail on the real path (3 and 7), a field
+the reader drops before the grader sees it (`lastOutcome`), and the ambiguity rule's sixth
+direction. **Not one of them is in the grader.** Every previous round's instances were —
+that is where a reviewer reads, so that is where they were found — and the three levels this same
+failure has now appeared at (guard, fixture, store) were each invisible from the one below.
+
 **Round 8 changed what the earlier PASSes are worth, and that belongs here rather than in a
 footnote.** Until it, assertion 2 rejected a run that edited a file it had already written — so
 the nineteen consecutive PASSes happened partly because no graded run touched a path twice. They
@@ -255,12 +262,23 @@ every invocation.
 
 **The two rules that kept coming back are the same rule.** *An input that cannot determine an
 answer must not produce one* — the ambiguity rule and the null rule are both spellings of it.
-Ambiguity has now been wrong in **five** directions (many rows for one mutation · many mutations
+Ambiguity has now been wrong in **six** directions (many rows for one mutation · many mutations
 for one gap · many gaps for one mutation · surplus pathless gaps · interchangeable gaps counted
-as a choice) and null in two (outcome, kind). Each was applied correctly the first time it was
-found, and each time the *next* direction was still open, because what was fixed was the instance
-in front of us. That is the case for the guard table in one sentence: a rule is remembered, and
-remembering is what failed; a table executes, and it has never once been half-applied.
+as a choice · surplus *named* gaps) and null in two (outcome, kind). Each was applied correctly
+the first time it was found, and each time the *next* direction was still open, because what was
+fixed was the instance in front of us. That is the case for the guard table in one sentence: a
+rule is remembered, and remembering is what failed; a table executes, and it has never once been
+half-applied.
+
+**Six, and the fifth was ours.** That count is the strongest single thing this file has to hand
+LAB-137, and it is worth more than any individual entry: a class that has generated six instances,
+**one of them produced by our own repair of a previous one**, is not a class that careful fixing
+terminates — the care is what produced the next instance. The sixth adds a second lesson beside
+it, because of *where* it was found. The pathless surplus was named in the limits list a round
+ago; its named-path twin sat one branch away and was not. **We half-applied a naming** — the same
+wrong-extent shape the rules keep taking, this time in the prose that tracks them rather than in
+the code they govern. A limits list is a check whose evidence is somebody rereading it, so it
+fails the way every remembered rule here has failed.
 
 **The fifth direction was caused by repairing the fourth**, and that is the sharpest thing this
 file has to say about the class. Failing on "two or more candidate gaps" closed a real hole and
@@ -290,6 +308,19 @@ not currently grade:
 
 - `lastTouchedAt` on a row is read into no comparison, so a record may carry any timestamp.
 - `previousStatus` on a plan row is derived and never graded.
+- **A plan row's `lastOutcome` never reaches the grader, because the READER drops it.** The
+  collection exposes it and the recorder writes it, and `readAccount`'s plan-row mapping carries
+  `title`, `status` and `previousStatus` only — so a task with a confirmed title and status plus a
+  later `TaskUpdate` that failed grades `a5-ok`, certifying a transition the state says never
+  settled. **This is A3's shape one notch weaker, and the pair says more than either half does.**
+  A3 is an assertion measuring a property the layer below it has already made true; this is an
+  assertion blind to a field the layer below it recorded faithfully and the layer *above* the
+  store threw away. Both are the same question asked at the wrong altitude — *what happened to
+  this value between the writer and the check?* — and neither is visible from the grader, where
+  every review of this file has been looking. It stays a limit rather than a fix on two counts:
+  A5 can fail, so this is one dimension of blindness rather than an assertion that cannot fail;
+  and its ROWS arm does not execute on a real run at all (`toolCalls === 0`, FIX-1185), so
+  closing it would change no verdict until the driver does.
 - A `tool_output` whose `toolCall.name` is unreadable matches no tool table and is invisible to
   A2 entirely — an existence cell, not a presence one.
 - A row's `storageKey` and its `topic` are never checked against each other.
@@ -298,6 +329,17 @@ not currently grade:
   gaps satisfies the inequality, and the unmatched gap is a stored claim the stream does not
   evidence. This is **the ambiguity rule's fourth direction** — the pathless side — and it arrived
   after the class was written down.
+- **Surplus NAMED gap rows are accepted too — the sixth direction, and the twin of the entry
+  directly above.** After one-to-one consumption, whatever is left in the named pool is never
+  looked at: one missing mutation beside two identical named gap rows consumes one and grades
+  `a2-ok`, with the leftover standing as a recorded claim of a loss the stream never showed. The
+  reverse direction — a row the stream never showed — has failed by name since round 1; a *gap*
+  the stream never justified does not. **What this entry is really evidence of is the list it is
+  in:** the pathless case was written down a round ago and this one sits one branch away in the
+  same function, so naming one and not the other is the wrong-extent failure applied to our own
+  bookkeeping. Cheap to close — compare the pool's residue the way the pathless side compares its
+  count — and deliberately not closed here, because this PR folds only what an assertion cannot
+  fail, and A2 fails in five other directions already.
 
   When this was first recorded it said the class entry *is what stops the fifth*. **That was
   wrong, and the next round proved it wrong**: a fifth direction arrived one round later, produced
@@ -432,8 +474,14 @@ layer*, which is invisible from the check, from the fixture, and from the guard 
 three levels this same failure has now appeared at. A guard case proves an assertion rejects a
 world; it cannot prove the world reaches the assertion, because everything between the emitter and
 the grader is stubbed out. So the sweep that found A7 is the one worth repeating: **for every
-assertion, name the field it reads and ask what the persistence layer does to that field on the
-way out.**
+assertion, name the field it reads and ask what happens to that field between the writer and the
+check.** Asked that way it catches one more, a notch weaker and on the other side of the wire: the
+reader's plan-row mapping **drops `lastOutcome`**, a field the collection exposes and the recorder
+writes, so A5's ROWS arm is blind to whether a plan transition settled. It is named in the grid
+below rather than fixed, and it belongs beside A3 rather than filed away from it — A3 is a check
+measuring a property something below it already made true, this is a check blind to a value
+something above the store threw away, and the two together say what neither says alone: **this
+file's remaining defects are not in the grader, which is where every review has been looking.**
 
 Both halves of the disclosure are **executed rather than remembered**, because a paragraph is
 exactly the artifact that decayed here. Precondition 1f writes two items out of order through a
@@ -461,6 +509,9 @@ live, and the branch that would call the whole run inconclusive sits behind them
 
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-08-18 | **`45e31d952`** | Agent SDK default | **PASS — the verdict** | Twenty-seventh consecutive real run, on the committed tree, round 11 folded. 3 of 3 held-out paths `created`/`edited` and `applied`; 3 stream mutations and 3 rows naming the same files; non-decreasing across 31 items of the request at 27 distinct positions; mutations 18–23, last word at 25; 1 shell call, 0 of them ran. **67 guards** proven first, and precondition 1f silent. Plan arm UNMEASURED. **The first run whose evidence line states what it does NOT prove**: A3 grades a field the store returns sorted by, and A7 followed 0 cursors because every collection fitted in one page — so this PASS is A1, A2, A4, A6 and A8 over the run, not eight assertions over it |
+| 2026-08-18 | working tree at `45e31d952` | — | FAIL *(deliberate)* | Precondition 1f's other direction: the probe's two rows read back without the `ORDER BY`, which is what a store that stopped sorting returns. `[1,0]` reaches *"THE A3 DISCLOSURE IS STALE — items written out of order (1, 0) read back as written"*. The disclosure fails loudly when it stops being true, instead of quietly over-reporting |
+| 2026-08-18 | working tree at `45e31d952` | — | FAIL *(deliberate, and unplanned)* | **The first version of precondition 1f could not fail.** Its two items were named `item_probe_early` / `item_probe_late`, and the write path sorts each batch by `item.id` — so the rows were already in index order on disk and the probe went silent against a read doing no sorting at all. A check of a tautology that was itself a tautology, found by running its second direction. The ids now contradict the index order |
 | 2026-08-18 | **`7570fac56`** | Agent SDK default | **PASS — the verdict** | Twenty-sixth consecutive real run, on the committed tree, round 10 folded. 3 of 3 held-out paths `created`/`edited` and `applied`; 3 stream mutations and 3 rows naming the same files; non-decreasing across 32 items of the request at 28 distinct positions; mutations 19–24, last word at 26; 2 shell calls, 0 of them ran. **67 guards** proven first. Plan arm UNMEASURED |
 | 2026-08-18 | working tree at `5fb92957b`, pre-commit | — | FAIL *(deliberate)* | Candidate gaps counted rather than distinguished — the round-7 repair as it stood. *"'A2 — two interchangeable gaps account for two attempts at one path' did not reach A2/a2-ok with a pass; it produced `["a2-ambiguous-gap=fail","a2-ambiguous-gap=fail"]`"*. The over-rejection a fix of ours introduced |
 | 2026-08-18 | working tree at `5fb92957b`, pre-commit | — | FAIL *(deliberate)* | The ambiguity branch loosened away entirely — what "stop failing on two candidates" looks like if done carelessly. *"'A2 — two gap rows could each be the one covering a lost mutation' did not reach A2/a2-ambiguous-gap with a fail; it produced `["a2-ok=pass"]`"* — the round-7 hole, reopened |
