@@ -513,7 +513,12 @@ const GUARD_CASES: GuardCase[] = [
   {
     name: "A2 — a mutation carried no path and nothing was written down",
     mutate: (a) => {
+      // Set on the PER-RUN map the grader reads, not on the pooled count beside
+      // it. Setting the total alone is a world the assertion no longer looks at
+      // — which is how this very case stopped expressing its condition when the
+      // grader moved to per-run evidence, and said so instead of passing.
       a.counts.mutationsWithNoPath = 1;
+      a.mutationsWithNoPathByRun = { [a.runIds[0]]: 1 };
       a.gaps = [];
       a.streamMutations = a.streamMutations.filter((m) => !m.path.endsWith("epsilon.txt"));
     },
@@ -614,6 +619,79 @@ const GUARD_CASES: GuardCase[] = [
     want: "fail",
   },
   {
+    // ONE gap, TWO mutations on the same path with no row. `.find()` hands the
+    // same row to both and reports the pair accounted for — certifying a state
+    // that lost one of them. The recorder writes one gap per unrecordable
+    // mutation, so a gap excuses one loss and not two.
+    name: "A2 — one gap row is made to excuse two lost mutations",
+    mutate: (a) => {
+      a.did = a.did.filter((d) => !d.topic.endsWith("gamma.txt"));
+      a.streamMutations.push({
+        runId: a.runIds[0],
+        path: "/work/repo/gamma.txt",
+        tool: "Write",
+        at: 9,
+        status: "completed",
+        kind: "created",
+        outcome: "applied",
+      });
+      a.gaps.push({ runId: a.runIds[0], reason: "skipped", rawPath: "/work/repo/gamma.txt" });
+    },
+    because: "a2-unaccounted",
+    id: "A2",
+    want: "fail",
+  },
+  {
+    // A pathless mutation in one run, and the only pathless gap belongs to
+    // ANOTHER. Counting the account's gaps globally accepted this, so A2 passed
+    // with no evidence that this run's own skip was ever recorded.
+    name: "A2 — the pathless skip's only gap belongs to a different run",
+    mutate: (a) => {
+      a.counts.mutationsWithNoPath = 1;
+      a.mutationsWithNoPathByRun = { [a.runIds[0]]: 1 };
+      a.gaps.push({ runId: "req_cal_other", reason: "skipped elsewhere", rawPath: null });
+    },
+    because: "a2-pathless-no-gap",
+    id: "A2",
+    want: "fail",
+  },
+  {
+    // A named-path gap is not evidence for a PATHLESS skip either: different
+    // evidence class, same run. The pools are disjoint on purpose.
+    name: "A2 — a named-path gap is offered for a pathless skip",
+    mutate: (a) => {
+      a.counts.mutationsWithNoPath = 1;
+      a.mutationsWithNoPathByRun = { [a.runIds[0]]: 1 };
+    },
+    because: "a2-pathless-no-gap",
+    id: "A2",
+    want: "fail",
+  },
+  {
+    // A reused workstream where one run lost every plan row and the other
+    // recorded fine. Pooled, `rows.length > 0` selects ROWS and the first run's
+    // LOST disappears behind the second run's success.
+    //
+    // NOT producible from a real run here: this goal dispatches one run per
+    // invocation, so the reused-workstream shape is fed directly and the
+    // end-to-end path stays a named limit rather than a silent one.
+    name: "A5 — one run lost its plan rows and a sibling recorded fine",
+    mutate: (a) => {
+      const second = "req_cal_2";
+      a.runIds.push(second);
+      a.planned = {
+        rows: [{ runId: second, title: "the sibling's item", status: "completed", previousStatus: null }],
+        perRun: [
+          { runId: a.runIds[0], arm: "LOST", rows: 0, toolCalls: 4 },
+          { runId: second, arm: "ROWS", rows: 1, toolCalls: 2 },
+        ],
+      };
+    },
+    because: "a5-lost",
+    id: "A5",
+    want: "fail",
+  },
+  {
     name: "A3 — the stream is out of order",
     mutate: (a) => {
       a.order.runs[0].indices = [5, 1, 2];
@@ -700,7 +778,10 @@ const GUARD_CASES: GuardCase[] = [
   {
     name: "A5 — the plan tools fired and nothing was recorded",
     mutate: (a) => {
-      a.planned = { arm: "LOST", reason: "the plan tools fired 3 time(s) and no plan row was recorded", rows: [] };
+      a.planned = {
+        rows: [],
+        perRun: [{ runId: a.runIds[0], arm: "LOST", rows: 0, toolCalls: 3 }],
+      };
     },
     because: "a5-lost",
     id: "A5",
@@ -710,9 +791,8 @@ const GUARD_CASES: GuardCase[] = [
     name: "A5 — a plan row exists with no wording",
     mutate: (a) => {
       a.planned = {
-        arm: "ROWS",
-        reason: "1 plan row(s)",
         rows: [{ runId: a.runIds[0], title: null, status: "completed", previousStatus: null }],
+        perRun: [{ runId: a.runIds[0], arm: "ROWS", rows: 1, toolCalls: 2 }],
       };
     },
     because: "a5-untitled",
@@ -731,12 +811,11 @@ const GUARD_CASES: GuardCase[] = [
     name: "A5 — plan rows are worded but none carries a status",
     mutate: (a) => {
       a.planned = {
-        arm: "ROWS",
-        reason: "2 plan row(s)",
         rows: [
           { runId: a.runIds[0], title: "write the ledger", status: null, previousStatus: null },
           { runId: a.runIds[0], title: "edit the notes", status: null, previousStatus: null },
         ],
+        perRun: [{ runId: a.runIds[0], arm: "ROWS", rows: 2, toolCalls: 2 }],
       };
     },
     because: "a5-no-status",
@@ -747,9 +826,8 @@ const GUARD_CASES: GuardCase[] = [
     name: "A5 — plan rows carry a wording and a status",
     mutate: (a) => {
       a.planned = {
-        arm: "ROWS",
-        reason: "1 plan row(s)",
         rows: [{ runId: a.runIds[0], title: "write the ledger", status: "completed", previousStatus: "in_progress" }],
+        perRun: [{ runId: a.runIds[0], arm: "ROWS", rows: 1, toolCalls: 2 }],
       };
     },
     because: "a5-ok",
@@ -1221,7 +1299,11 @@ await runGoal(async () => {
     for (const said of account.said) {
       console.log(`  said     [${said.at}] ${said.text.replace(/\s+/g, " ").slice(0, 160)}`);
     }
-    console.log(`  planned  ${account.planned.arm} — ${account.planned.reason}`);
+    const planFinding = findings.find((f) => f.id === "A5");
+    console.log(
+      `  planned  ${planFinding?.because.replace("a5-", "").toUpperCase() ?? "?"} — ` +
+        `${planFinding?.message ?? "(not graded)"}`,
+    );
     console.log(
       `  shell    ${account.shell.calls} call(s), ${account.shell.succeeded} of them ran; ` +
         `tools seen: ${account.toolNamesSeen.join(", ") || "(none)"}`,
@@ -1246,7 +1328,8 @@ await runGoal(async () => {
     // only on a pass, and which arm the plan half took is exactly what the
     // verdict log has to carry. A drift toward never measuring anything must be
     // visible rather than comfortable.
-    console.log(`\nPLAN ARM: ${account.planned.arm} — ${account.planned.reason}`);
+    console.log(`
+PLAN ARM: ${planFinding?.status.toUpperCase()} — ${planFinding?.message}`);
 
     const graded = failuresOf(findings);
     return {

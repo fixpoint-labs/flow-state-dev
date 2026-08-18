@@ -67,9 +67,15 @@
     }
   ],
   "planned": {
-    "arm": "UNMEASURED",
-    "reason": "the run invoked no plan tool in its own item stream, so nothing was measured about the plan half. Tools it did use: Bash, Edit, Write",
-    "rows": []
+    "rows": [],
+    "perRun": [
+      {
+        "runId": "req_cal_1",
+        "arm": "UNMEASURED",
+        "rows": 0,
+        "toolCalls": 0
+      }
+    ]
   },
   "shell": {
     "called": true,
@@ -171,6 +177,7 @@
     "mutationsWithNoPath": 0,
     "planToolCalls": 0
   },
+  "mutationsWithNoPathByRun": {},
   "reads": {
     "observed-file-ops": {
       "pages": 2,

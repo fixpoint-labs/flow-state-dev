@@ -272,6 +272,12 @@ function gradeAgreement(account: GradeableAccount): Finding[] {
   }
 
   let accounted = 0;
+  // Gaps are CONSUMED, not merely matched. The recorder writes one row per
+  // unrecordable mutation, so one gap excuses one loss — `.find()` would return
+  // the same row for two mutations sharing a path and certify a state that lost
+  // one of them. An exemption has to be tied to the specific thing it excuses,
+  // or the account's own noise satisfies it.
+  const namedGaps = account.gaps.filter((g) => g.rawPath !== null);
   for (const mutation of account.streamMutations) {
     const rows = account.did.filter(
       (d) => d.runId === mutation.runId && sameFile(d.topic, mutation.path),
@@ -302,10 +308,11 @@ function gradeAgreement(account: GradeableAccount): Finding[] {
       findings.push(...compareSemantics(mutation, rows[0]));
       continue;
     }
-    const gap = account.gaps.find(
-      (g) => g.runId === mutation.runId && g.rawPath !== null && sameFile(g.rawPath, mutation.path),
+    const gapIndex = namedGaps.findIndex(
+      (g) => g.runId === mutation.runId && sameFile(g.rawPath as string, mutation.path),
     );
-    if (gap !== undefined) {
+    if (gapIndex !== -1) {
+      namedGaps.splice(gapIndex, 1);
       accounted += 1;
       continue;
     }
@@ -315,8 +322,8 @@ function gradeAgreement(account: GradeableAccount): Finding[] {
       because: "a2-unaccounted",
       message:
         `"${mutation.path}" appears in the item stream as a ${mutation.tool}, has no row in the ` +
-        `file record, and no gap row accounts for it: the graph lost a tool-driven mutation ` +
-        `without admitting it`,
+        `file record, and no UNCONSUMED gap row accounts for it: the graph lost a tool-driven ` +
+        `mutation without admitting it`,
     });
   }
 
@@ -350,16 +357,34 @@ function gradeAgreement(account: GradeableAccount): Finding[] {
     });
   }
 
-  if (account.counts.mutationsWithNoPath > 0 && account.gaps.length === 0) {
-    findings.push({
-      id: "A2",
-      status: "fail",
-      because: "a2-pathless-no-gap",
-      message:
-        `${account.counts.mutationsWithNoPath} file-tool call(s) carried no path to key them ` +
-        `under and no gap row was written — a skip that leaves nothing behind is ` +
-        `indistinguishable from a mutation that never happened`,
-    });
+  // A mutation the recorder could not key leaves a gap carrying NO path, in the
+  // run that made it. Counting the whole account's gaps let an unrelated plan
+  // gap, another run's gap, or a named-path gap satisfy this — so A2 passed
+  // without evidence that its own skip was recorded at all.
+  //
+  // Counted per run and one-to-one, disjoint from the named-path pool above by
+  // construction (`rawPath === null` versus `!== null`).
+  //
+  // **The residual imprecision, stated rather than hidden.** A gap row carries
+  // `reason`, `rawPath` and `at` and nothing that says which KIND of skip it
+  // was, so a plan gap and an unkeyable-file gap are indistinguishable here
+  // without parsing prose — which is the substring grading this file refuses.
+  // This is therefore a counting bound: the run wrote at least as many pathless
+  // gaps as it had pathless mutations. Sharpening it needs a `kind` field on
+  // the gap row, which is the recorder's to add.
+  for (const [runId, pathless] of Object.entries(account.mutationsWithNoPathByRun)) {
+    const available = account.gaps.filter((g) => g.runId === runId && g.rawPath === null).length;
+    if (available < pathless) {
+      findings.push({
+        id: "A2",
+        status: "fail",
+        because: "a2-pathless-no-gap",
+        message:
+          `run ${runId} made ${pathless} file-tool call(s) with no path to key them under and ` +
+          `wrote ${available} pathless gap row(s) — a skip that leaves nothing behind is ` +
+          `indistinguishable from a mutation that never happened`,
+      });
+    }
   }
 
   if (findings.length === 0) {
@@ -592,13 +617,49 @@ function gradeCausality(account: GradeableAccount): Finding[] {
  * mutation-tested through a run: the mutation never executes, and that green is
  * indistinguishable from the green of a guard that works.
  */
-function gradePlan(account: GradeableAccount): Finding[] {
+export function gradePlan(account: GradeableAccount): Finding[] {
   const planned = account.planned;
-  if (planned.arm === "LOST") {
-    return [{ id: "A5", status: "fail", because: "a5-lost", message: `${planned.reason} — our bug` }];
+  const perRun = planned.perRun;
+  if (perRun.length === 0) {
+    return [
+      {
+        id: "A5",
+        status: "fail",
+        because: "a5-no-runs",
+        message: "no run's plan half was observed at all, so this assertion read an empty set",
+      },
+    ];
   }
-  if (planned.arm === "UNMEASURED") {
-    return [{ id: "A5", status: "unmeasured", because: "a5-unmeasured", message: planned.reason }];
+
+  // WORST-FIRST, over the per-run arms. A single run that fired the plan tools
+  // and had every row lost is our bug, and must not be outvoted by a sibling
+  // that happened to record fine — a verdict that improves because a DIFFERENT
+  // run went well is not a verdict about this one.
+  const lost = perRun.filter((r) => r.arm === "LOST");
+  const arms = `Arms per run: ${perRun.map((r) => `${r.runId}=${r.arm}`).join(", ")}`;
+  if (lost.length > 0) {
+    return [
+      {
+        id: "A5",
+        status: "fail",
+        because: "a5-lost",
+        message:
+          `${lost.length} run(s) fired the plan tools and had no row recorded ` +
+          `(${lost.map((r) => `${r.runId}: ${r.toolCalls} call(s)`).join("; ")}) — our bug. ${arms}`,
+      },
+    ];
+  }
+  if (perRun.every((r) => r.arm === "UNMEASURED")) {
+    return [
+      {
+        id: "A5",
+        status: "unmeasured",
+        because: "a5-unmeasured",
+        message:
+          `no run invoked a plan tool in its own item stream, so nothing was measured about the ` +
+          `plan half. Tools they did use: ${account.toolNamesSeen.join(", ") || "(none)"}. ${arms}`,
+      },
+    ];
   }
   const findings: Finding[] = [];
   const untitled = planned.rows.filter((r) => r.title === null || r.title.length === 0);
@@ -621,7 +682,12 @@ function gradePlan(account: GradeableAccount): Finding[] {
     });
   }
   if (findings.length === 0) {
-    findings.push({ id: "A5", status: "pass", because: "a5-ok", message: planned.reason });
+    findings.push({
+      id: "A5",
+      status: "pass",
+      because: "a5-ok",
+      message: `${planned.rows.length} plan row(s). ${arms}`,
+    });
   }
   return findings;
 }

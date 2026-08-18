@@ -228,12 +228,29 @@ export interface OrderRun {
   lastMessageAt: number | null;
 }
 
-/** What the plan half resolved to, and why. */
-export interface PlannedHalf {
+/** How the plan half resolved for ONE run. */
+export interface PlannedRun {
+  runId: string;
   /** ROWS: measured. UNMEASURED: the run never planned. LOST: it planned and we dropped it. */
   arm: "ROWS" | "UNMEASURED" | "LOST";
-  reason: string;
+  rows: number;
+  toolCalls: number;
+}
+
+/**
+ * What the plan half OBSERVED — per run, with no overall arm.
+ *
+ * There is deliberately no pooled verdict here. Combining the arms is a
+ * judgement ("does one run's loss outweigh another's success?"), and judgement
+ * belongs to the grader; the reader's job is to observe each run separately so
+ * nothing can be hidden by pooling. Keeping the combination here also put it
+ * where the guard cases — which feed the grader synthetic accounts — could not
+ * reach it, so a regression to pooled rows ran green.
+ */
+export interface PlannedHalf {
   rows: PlanEntry[];
+  /** Every run's own arm. The grader combines them. */
+  perRun: PlannedRun[];
 }
 
 /** Everything the state says about the run, before anything is compared to it. */
@@ -266,6 +283,12 @@ export interface Account {
     mutationsWithNoPath: number;
     planToolCalls: number;
   };
+  /**
+   * Pathless mutations per run. The pooled count cannot be graded: the gap that
+   * excuses a skip belongs to the run that skipped, and a total says nothing
+   * about which run owes which evidence.
+   */
+  mutationsWithNoPathByRun: Record<string, number>;
   /** Per collection: pages followed, rows read, and whether a cursor was left. */
   reads: Record<string, PageReport>;
 }
@@ -366,6 +389,7 @@ export async function readAccount(read: Read, workstreamId: string): Promise<Acc
   // request so each mutation keeps the run that made it.
   const mutationTools = new Set<string>(Object.keys(FILE_MUTATION_TOOLS));
   const streamMutations: StreamMutation[] = [];
+  const mutationsWithNoPathByRun: Record<string, number> = {};
   let mutationsWithNoPath = 0;
   for (const request of requests) {
     const requestRunId = request.id;
@@ -376,6 +400,7 @@ export async function readAccount(read: Read, workstreamId: string): Promise<Acc
       const path = pathOfCall(item);
       if (path === null) {
         mutationsWithNoPath += 1;
+        mutationsWithNoPathByRun[requestRunId] = (mutationsWithNoPathByRun[requestRunId] ?? 0) + 1;
         continue;
       }
       const tool = item.toolCall?.name ?? "";
@@ -506,28 +531,21 @@ export async function readAccount(read: Read, workstreamId: string): Promise<Acc
 
   const toolNamesSeen = [...new Set(toolItems.map((i) => i.toolCall?.name ?? "(unnamed)"))].sort();
 
-  // The three plan arms. Two of them are empty and need opposite verdicts, and
-  // the run's own item stream is what tells them apart.
-  const planned: PlannedHalf =
-    planRows.length > 0
-      ? {
-          arm: "ROWS",
-          reason: `${planRows.length} plan row(s) from ${planToolCalls} plan tool call(s)`,
-          rows: planRows,
-        }
-      : planToolCalls === 0
-        ? {
-            arm: "UNMEASURED",
-            reason:
-              `the run invoked no plan tool in its own item stream, so nothing was measured ` +
-              `about the plan half. Tools it did use: ${toolNamesSeen.join(", ") || "(none)"}`,
-            rows: [],
-          }
-        : {
-            arm: "LOST",
-            reason: `the plan tools fired ${planToolCalls} time(s) and no plan row was recorded`,
-            rows: [],
-          };
+  // The three plan arms, resolved PER RUN. Two of them are empty and need
+  // opposite verdicts, and the run's own item stream is what tells them apart.
+  const perRunPlan: PlannedRun[] = requests
+    .filter((r) => typeof r.id === "string")
+    .map((r) => {
+      const runId = r.id as string;
+      const rows = planRows.filter((row) => row.runId === runId).length;
+      const toolCalls = (r.items ?? []).filter(
+        (i) => i.type === "tool_output" && planToolNames.has(i.toolCall?.name ?? ""),
+      ).length;
+      const arm = rows > 0 ? "ROWS" : toolCalls === 0 ? "UNMEASURED" : "LOST";
+      return { runId, arm: arm as PlannedRun["arm"], rows, toolCalls };
+    });
+
+  const planned: PlannedHalf = { rows: planRows, perRun: perRunPlan };
 
   return {
     runIds,
@@ -552,6 +570,7 @@ export async function readAccount(read: Read, workstreamId: string): Promise<Acc
       mutationsWithNoPath,
       planToolCalls,
     },
+    mutationsWithNoPathByRun,
     reads,
   };
 }

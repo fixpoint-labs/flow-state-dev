@@ -30,7 +30,9 @@ it reads is empty.
 4. The run's **last** file mutation precedes its final report — a write after the closing word
    leaves a row in the record the report never covered. A **tie** is unevaluable, not a pass:
    `itemIndex` carries duplicates, so equal positions say nothing about which came first
-5. The plan half resolves to rows, or to UNMEASURED with its reason named — never to LOST
+5. The plan half resolves to rows, or to UNMEASURED with its reason named — never to LOST. Judged
+   **per run and worst-first**: one run that fired the plan tools and lost every row is our bug,
+   and a sibling that recorded fine does not outvote it
 6. Every set an assertion iterates is non-empty, failing by name
 7. Every `nextCursor` was followed, on all three collections
 8. The reader's own source imports nothing but the collection accessor keys
@@ -38,6 +40,13 @@ it reads is empty.
 Two arms report rather than fail, and neither may pass silently: assertion 5's UNMEASURED, and
 assertion 1's per-path unmeasured. If **every** expected path lands unmeasured the run proved
 nothing and the goal is inconclusive, which is a failure.
+
+**Every exemption is tied to the specific thing it excuses.** A gap row covers *this* missing
+record — not any missing record, not another run's, not a different kind of skip. So gaps are
+**consumed** one-to-one rather than matched (one gap excuses one loss, because the recorder writes
+one row per unrecordable mutation); a pathless skip answers only to a pathless gap **in its own
+run**; and the plan arm is judged per run. An exemption that isn't tied to its case is a blanket
+amnesty the account's own noise can satisfy.
 
 **A pairing that is not unique is not a pairing.** The two surfaces spell a path differently, so
 they are compared by whole trailing path segments rather than by re-implementing the recorder's
@@ -71,7 +80,7 @@ generator actions. The calibration and every guard case are **model-free** and r
 ## The preconditions, and why they run every time
 
 The reader derives the known account from the known state **exactly**, a deliberately lossy copy
-of that state is caught by assertion 2, and 40 guard cases each break one assertion on purpose
+of that state is caught by assertion 2, and 44 guard cases each break one assertion on purpose
 and confirm it reaches the verdict it is supposed to. All of it is model-free, so it runs on
 every invocation rather than sitting in this log as a one-time claim — and if any of it fails,
 no coding run is dispatched at all. An instrument is sanity-checked against a case whose answer
@@ -124,10 +133,35 @@ be produced at all.
   duplicates — the assertion was built on top of that finding and then ignored it.
 - Assertion 2 paired across the whole workstream rather than within a run, which would have failed
   a faithful record the moment a reused workstream held two requests touching one path.
+- Assertion 2 matched a gap without consuming it, so a single gap row excused two mutations that
+  had both been lost.
+- Assertion 2's pathless branch counted the account's gaps globally, so an unrelated plan gap,
+  another run's gap, or a named-path gap satisfied it — passing with no evidence that its own skip
+  was recorded.
+- The plan arm was combined **in the reader**, where the guard cases — which feed the grader
+  synthetic accounts — could not reach it. Regressing it to pooled rows ran green, and that green
+  is what moved the judgement to the grader. The reader observes per run; the grader decides.
 
 One masking relationship among the preconditions themselves was removed for the same reason: a
 failed lossy-calibration used to return early and hide the entire guard table. All preconditions
 now report together.
+
+## Named limits
+
+Three things this check states rather than proves, so none of them is a silent gap:
+
+- **The plan half is UNMEASURED on every run** (FIX-1185), so its ROWS branch has never executed
+  against real data. Every part of it is exercised by directly-fed worlds instead.
+- **Two runs in one workstream are never produced end to end.** This goal dispatches one run per
+  invocation, so the reused-workstream shapes — per-run pairing, a run losing its plan rows beside
+  a sibling that didn't, another run's gap being offered as evidence — are fed to the grader
+  directly. The *reader's* own per-run derivation is exercised only by the single-run calibration
+  fixture. Proving it end to end needs a second real run, which is the predecessor goal's ground.
+- **A gap row does not say which KIND of skip it was.** It carries `reason`, `rawPath` and `at`,
+  so a plan gap and an unkeyable-file gap are indistinguishable without parsing prose. The
+  pathless check is therefore a counting bound — the run wrote at least as many pathless gaps as
+  it had pathless mutations — not proof that the specific skip was recorded. Sharpening it needs a
+  `kind` field on the gap row, which belongs to the recorder.
 
 ## What this deliberately does not re-assert
 
@@ -157,6 +191,10 @@ live, and the branch that would call the whole run inconclusive sits behind them
 
 | Date | Commit | Model | Verdict | Notes |
 |------|--------|-------|---------|-------|
+| 2026-08-18 | working tree at `05c6d3125`, pre-commit (round 3 folded) | Agent SDK default | PASS | Eleventh consecutive real run. **44 guards** |
+| 2026-08-18 | working tree at `05c6d3125`, pre-commit | — | FAIL *(deliberate)* | Gaps matched without being consumed. *"'A2 — one gap row is made to excuse two lost mutations' did not reach A2/a2-unaccounted"* |
+| 2026-08-18 | working tree at `05c6d3125`, pre-commit | — | FAIL *(deliberate)* | The pathless branch counting the account's gaps globally. Both new cases red — another run's gap, and a named-path gap offered for a pathless skip |
+| 2026-08-18 | working tree at `05c6d3125`, pre-commit | — | **PASS *(the mutation that should have failed)*** | Pooled plan rows allowed to outvote a run's LOST, with the combination still **in the reader**. It ran green: the guard cases feed the grader, so nothing could reach reader-side judgement. That green is the finding — the combination moved to the grader, and the same regression is now caught: *"'A5 — one run lost its plan rows and a sibling recorded fine' did not reach A5/a5-lost"* |
 | 2026-08-18 | working tree at `87c3edcc0`, pre-commit (round 2 folded) | Agent SDK default | PASS | Ninth consecutive real run. **40 guards** |
 | 2026-08-18 | working tree at `87c3edcc0`, pre-commit | — | FAIL *(deliberate)* | A tie allowed to certify causality again. *"'A4 — the report and the last mutation share a stream position' did not reach A4/a4-tied"* |
 | 2026-08-18 | working tree at `87c3edcc0`, pre-commit | — | FAIL *(deliberate)* | Per-run scoping dropped from both of A2's pairing directions. The false red reproduces exactly: *"'A2 — two runs touched the same path and both records are faithful' did not reach A2/a2-ok with a pass; it produced ["a2-ambiguous-mutation=fail","a2-ambiguous-mutation=fail","a2-ambiguous-row=fail","a2-ambiguous-row=fail"]"* |
