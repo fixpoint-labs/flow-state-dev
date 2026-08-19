@@ -4,7 +4,7 @@ sidebar_position: 6
 
 # CLI API
 
-`@flow-state-dev/cli` — Terminal interface for running flows, executing blocks, and inspecting definitions.
+`fsdev` — Terminal interface for running flows, executing blocks, and inspecting definitions.
 
 ## Commands
 
@@ -257,7 +257,7 @@ The CLI exports its utilities for use in scripts and CI:
 Scan conventional directories and return all discovered flow instances. Accepts a string (cwd) or an options object.
 
 ```ts
-import { discoverFlows } from "@flow-state-dev/cli";
+import { discoverFlows } from "fsdev";
 
 // Simple: scan from a directory
 const flows = await discoverFlows("./my-project");
@@ -284,7 +284,7 @@ Modules that throw during import are skipped and reported through the `onImportF
 Load a single flow from an explicit file path.
 
 ```ts
-import { resolveFlow } from "@flow-state-dev/cli";
+import { resolveFlow } from "fsdev";
 
 const flow = await resolveFlow("./src/flows/my-chat/flow.ts");
 ```
@@ -294,7 +294,7 @@ const flow = await resolveFlow("./src/flows/my-chat/flow.ts");
 Load a single block from a file path.
 
 ```ts
-import { resolveBlock } from "@flow-state-dev/cli";
+import { resolveBlock } from "fsdev";
 
 const block = await resolveBlock("./src/blocks/counter.ts");
 ```
@@ -314,7 +314,7 @@ import type {
   FlowRunResult,  // Structured result from fsdev run
   FlowEvent,      // NDJSON event union type
   BlockExecResult, // Structured result from fsdev block
-} from "@flow-state-dev/cli";
+} from "fsdev";
 ```
 
 ## Exit Codes

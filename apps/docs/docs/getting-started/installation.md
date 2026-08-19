@@ -25,7 +25,7 @@ pnpm add @flow-state-dev/react
 pnpm add -D @flow-state-dev/testing
 
 # CLI — run flows and blocks from the terminal
-pnpm add -D @flow-state-dev/cli
+pnpm add -D fsdev
 ```
 
 ### Which packages do I need?

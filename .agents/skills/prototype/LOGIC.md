@@ -72,7 +72,7 @@ Add a script entry to `apps/kitchen-sink/package.json`:
 ```json
 {
   "scripts": {
-    "prototype:<name>": "pnpm --filter @flow-state-dev/cli fsdev run _prototype_<name> run --flow-dir flows/_prototypes -i"
+    "prototype:<name>": "pnpm --filter fsdev fsdev run _prototype_<name> run --flow-dir flows/_prototypes -i"
   }
 }
 ```

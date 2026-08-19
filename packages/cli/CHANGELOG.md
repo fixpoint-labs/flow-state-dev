@@ -1,4 +1,4 @@
-# @flow-state-dev/cli
+# fsdev
 
 ## Pre-1.0 history
 

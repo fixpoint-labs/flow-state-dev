@@ -2,7 +2,7 @@
 "@flow-state-dev/engine": minor
 "@flow-state-dev/store-postgres": minor
 "@flow-state-dev/store-sqlite": minor
-"@flow-state-dev/cli": patch
+"fsdev": patch
 ---
 
 Cancelling a request now stops it even when it is running in another process (FIX-1026). `session.abortRequest()` and `POST /abort` previously recorded the cancellation durably but nothing read it while the run was alive, so a detached request on a worker ran to completion. The process running the work now checks for a recorded cancellation on the heartbeat tick it already performs and tears the run down through the same path a same-process abort uses. Delivery is bounded by the flow's `heartbeatIntervalMs` (default 10s) and requires a request store shared across processes.

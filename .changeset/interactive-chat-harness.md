@@ -1,5 +1,5 @@
 ---
-"@flow-state-dev/cli": minor
+"fsdev": minor
 "@flow-state-dev/engine": patch
 "@flow-state-dev/core": patch
 "@flow-state-dev/orchestration": patch

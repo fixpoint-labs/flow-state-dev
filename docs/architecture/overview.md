@@ -45,7 +45,7 @@ Six packages with strict dependency boundaries:
 @flow-state-dev/client     Isomorphic API client (actions, sessions, streams)
 @flow-state-dev/react      React hooks and renderers (wraps client)
 @flow-state-dev/testing    Test harnesses and mocks
-@flow-state-dev/cli        Terminal interface (fsdev)
+fsdev                      Terminal interface (the fsdev command)
 apps/devtool               First-party inspector app
 ```
 
