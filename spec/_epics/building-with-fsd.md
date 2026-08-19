@@ -1207,7 +1207,9 @@ call.
    **serverless** adapters remain unmeasured too, where the rail is Node-only and a deployment-keyed
    refusal may have no meaning at all.
 
-   **What the behaviour should become is not settled here — it is §5 Q7, and it is the owner's.**
+   **What the behaviour should become is not settled here — it is §5 Q7, where two forks are now
+   settled by the coordinator (key on the bind address, not deployment; do the named minimum fix,
+   filed as FIX-1189) and the remaining choice is the owner's.**
    Four questions fall out of the findings: whether the refusal is per-flow or whole-app; whether it
    keys on bind address or on deployment; whether the guard is taught to see a host-level resolver;
    and whether the library path is guarded at all. Each
@@ -1521,7 +1523,7 @@ independent; clearing one does not clear the other.
 | | Status | What it gates |
 |---|---|---|
 | **Q6** — one starter or two | **open** | **Blocks the implementation of FIX-548 *and* FIX-1159** — the second added on review: option (b) gives FIX-1159 a new host shape and its own proof, and it merges first, so a reopen invalidates work downstream of it.** It does **not** block that spec's re-approval — though that re-approval is separately held, and not for mechanical reasons: a scope increase (Small → Medium), a reversed decision, and a new product statement. A different hold, and a heavier one. |
-| **Q7** — what the unauthenticated-demo rail should do | **open** | **Blocks any production-refusal work in every issue.** Raised by a POC that ran the real code: the rail is whole-app not per-flow, keys on bind address not environment, and is never invoked on either path this epic ships. The epic's product statement is **withdrawn** until this is answered. |
+| **Q7** — what the unauthenticated-demo rail should do | **open (2 of 4 forks settled)** | **Blocks any unauthenticated-demo refusal work in every issue.** Forks (2) and (3) decided by the coordinator; (1)+(4) go to the owner as one question. Raised by a POC that ran the real code: the rail is whole-app not per-flow, keys on bind address not environment, and is never invoked on either path this epic ships. The epic's product statement is **withdrawn** until this is answered. |
 | **Q4** — does install-by-URL still hold | **open** | Nothing. It exists because the split changed what an already-made decision costs. |
 | Q1, Q2, Q3, Q5 | decided | — |
 
@@ -1802,7 +1804,19 @@ start at all?**
   loudly and completely than serve partially — a defensible position for a security control, and the
   cheaper one.
 
-**(2) Does the refusal key on the bind address, or on the deployment?**
+**(2) ~~Does the refusal key on the bind address, or on the deployment?~~ — DECIDED by the
+coordinator: keep the bind address, and stop describing it as production.**
+
+*Settled rather than escalated, and the reason is that there is no product content in it: it is a
+description being made to match a mechanism, and the alternative is inventing a deployment signal we
+do not have. Recorded as the coordinator's, not the owner's, and not as a recommendation they
+declined to answer. Every product statement this epic got wrong said "production" about a predicate
+that reads a bind address — the defect was in the description each time, never in the predicate.*
+**Consequence carried forward:** no document, template, comment or error text in this epic describes
+this control in terms of production or deployment. **Bounded by fork (4)**, which is where the
+mounted and serverless paths — having no bind to read — get their own signal.
+
+*The original fork, kept so nothing re-proposes it:*
 
 - *Bind address* is what ships: `--host 127.0.0.1` is exempt, `0.0.0.0` is refused, and the
   environment is never consulted. Cost: zero. What a developer experiences: a container that binds
@@ -1818,7 +1832,20 @@ start at all?**
   the predicate. **What would change my mind:** if the scaffold's story is "deploy it and see" — then
   a developer meets this control at deploy time and it has to speak that language.
 
-**(3) Do we let the guard see a host-level resolver — the named minimum fix?**
+**(3) ~~Do we let the guard see a host-level resolver?~~ — DECIDED by the coordinator: do the named
+minimum fix. Filed as FIX-1189; non-blocking.**
+
+*Settled on the author's own framing: nothing about the developer experience would have changed the
+recommendation, only sequencing, which makes it an engineering call rather than a product one. The
+fix is described on FIX-1189 — pass the app's configured `resolvePrincipal` into
+`assertNetworkBindIsAuthenticated` and count a flow unauthenticated only when its **effective**
+resolver, per `pickPrincipalResolver`'s precedence, is undefined or default-branded.* **Sequencing
+is handled when FIX-1189 is picked up and gates nothing here. The one standing constraint until it
+lands: no artifact this epic ships may print or document `--allow-unauthenticated` as the remedy for
+a correctly-authenticated app** — that flag disables the guard wholesale, and teaching it is how a
+later unauthenticated flow ends up binding silently.
+
+*The original fork, kept so the reasoning is not lost:*
 
 *This option did not exist when the fork was first written; it comes out of the measurement.*
 
@@ -1907,7 +1934,7 @@ Q7 answers it, and it will be written once from that answer rather than derived 
 
 ---
 
-### Q6 — Does v1 ship one template or two? — **open; blocks FIX-548's implementation, not its re-approval**
+### Q6 — Does v1 ship one template or two? — **open; blocks the implementation of FIX-548 *and* FIX-1159, neither's re-approval**
 
 *Not a new question: it was raised from FIX-548's spec, recorded here as "raised, not adopted",
 re-argued, and then written into theme 2 as an owner decision that was never given. Restored to
@@ -2074,3 +2101,4 @@ those narratives now live in
 - **The impossibility alarm was refuted by measurement, and what replaced it is worse.** The concern — that the author branch's mandated host-level resolver made a network bind unreachable forever — was raised here and is **withdrawn**. `executeServeCommand` run across five configurations on `origin/main @ f56c6b216`: the guard **does** refuse a genuinely host-authenticated app (a true false positive, proved by a negative control — the same resolver moved per-flow binds and enforces correctly), and the **mixed** case refuses whole-app, naming only the inheriting flow while the correctly-configured one also stops serving. But **two escapes work**: `--allow-unauthenticated`, after which the app binds *and still enforces auth*, and a hand-written `serve()` entrypoint the guard never sees. Awkward, not impossible. **What survives is the real hazard: the sanctioned escape is a flag named `--allow-unauthenticated`, applied to a fully authenticated app, disabling the guard wholesale — so a flow added later with no authentication binds silently.** Documented as a known limit at `packages/node/src/bind-guard.ts:14-18` (`packages/node`, not `packages/engine`). Q7 gains a fourth priced option, the named minimum fix: pass the app's `resolvePrincipal` into `assertNetworkBindIsAuthenticated` and judge a flow by its **effective** resolver per `pickPrincipalResolver`'s precedence. *Recorded as a correction of our own alarm, not of a reviewer's: the document is better for being right than for being consistent with the fear that motivated the check.* Three gaps declared unknown: `authentication` declared without `resolvePrincipal`, non-HTTP adapters under `fsdev serve`, and `tsx`-vs-`dist`.
 - **The remedy had inherited the boundary of the artifact that motivated it — the ninth instance, in a new costume.** Q7's fourth fork asked whether to guard `serve()`. **It was aimed at the wrong path**: plain-Node brownfield already enters through the guarded `fsdev serve` CLI, while **greenfield Next — the headline entry path — mounts through `createNextHandler` and touches neither `serve()` nor the CLI**, as does brownfield Next. The fix would have protected what was already protected and left both exposed paths exposed. *Cause: the measurement ran through `fsdev serve` because that is where the guard lives, the conclusion was framed in `serve()` terms, and the remedy followed the frame rather than the exposure.* Rewritten to the real question — **where can this be enforced at all** — under the constraint already measured under Q5 (a Next handler has **no peer address**, so no network-position control exists there at any price): (A) `createNextHandler` refuses a default-resolver flow unless opted in; (B) the same, gated on environment; (C) accept it and say so. **Recommendation (A)**, and it **constrains fork (2)** — "key on the bind address" cannot be the whole answer where there is no bind. The honest headline the owner gets: *the only place we enforce this today is the CLI, and two of three topologies do not use the CLI for the route that matters.*
 - **The mandate outlived the narrative that withdrew it.** Theme 8 established that the production promise was false and deferred the behaviour to Q7, and **still directed workers to implement a generated-config refusal**, repeating it in the control matrix — so a child issue could have preempted the owner's decision by following a sentence the surrounding paragraphs had already retracted. Marked pending Q7 at all three sites. *Same shape as the DevTool boundary: the correction was applied to one member of a pair.* **And FIX-1159 was gated on Q6 rather than noted as affected** — option (b) gives it a new host shape and its own proof, and it is first in the merge order, so a reopen invalidates what FIX-1160 packaged and FIX-548 conformed to. Q6 now gates two issues.
+- **Two of Q7's four forks settled by the coordinator, so the owner sees one question rather than four.** **(2) Keep the bind address and stop describing it as production** — no product content in it: a description being made to match a mechanism, against the alternative of inventing a deployment signal we do not have. Carried forward as a constraint on every artifact this epic ships: nothing describes this control in terms of production or deployment. **(3) Do the named minimum fix**, filed as **FIX-1189**, settled on the author's own framing that only sequencing would have changed the recommendation — which makes it engineering, not product. Non-blocking, with one standing constraint until it lands: **nothing this epic ships may print or document `--allow-unauthenticated` as the remedy for a correctly-authenticated app.** What reaches the owner is **(1) + (4) combined**, since separately they are mechanism and together they are one choice about what a developer meets when their demo is unguarded. *Also reconciled: Q6's heading still read "blocks FIX-548's implementation" a round after its body was corrected to gate FIX-1159 too — the fix-applied-to-one-member-of-a-pair defect, this time on a heading, found by re-reading the entry rather than the edit.*
