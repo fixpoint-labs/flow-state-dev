@@ -49,6 +49,29 @@ more than its job requires. The cheapest way to end that loop is to stop claimin
 is the same move that closed round 3 — and unlike growing the script, it cannot introduce a new
 check that fails for its own reasons.
 
+**The freeze was lifted once, deliberately, and this is the record of it.** A review found that
+`git init` discarded its exit status before the `.gitignore` check, so a machine where git is
+missing or init fails would fall through to `fail` and report **exit 1 — the ignore claim
+disproved** — when the truth was that it could not be tested. The scaffold runs with
+`--disable-git`, so that environment is independently reachable.
+
+That was fixed in the script rather than narrowed in this README, and the distinction is the
+reason the rule survives intact:
+
+- **The rule covers over-assertion.** A probe claiming more than it proves is answered by moving
+  the claim into *What this POC does not establish*. Every round the freeze was written for was
+  that shape.
+- **This was under-reporting, in the one direction that cannot be documented away.** Narrowing the
+  README here would mean writing "if the ignore check exits 1, it might instead mean git failed" —
+  which does not remove the false disproof, it teaches the reader to distrust exit 1 *everywhere*
+  in this script. A red result nobody believes is worse than no check.
+- **The fix added no assertion surface.** It routes one already-existing failure mode into the
+  `2` the script already uses in ten other places. It closes a gap in this contract rather than
+  extending it.
+
+**The freeze is back on**, unchanged, with one clause added by the case: a finding that the script
+reports a *true* claim as **disproved** is fixed in the script; everything else is narrowed here.
+
 Exit status: `0` every asserted claim held · `1` one of them did not · `2` the run could not be
 completed (scaffold or install failed, no free port, workdir occupied, dev server never bound, a
 request that never completed). The `1`/`2` split is load-bearing: a machine too slow to have

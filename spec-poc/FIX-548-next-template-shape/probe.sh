@@ -77,7 +77,11 @@ grep -q 'BEGIN:nextjs-agent-rules' AGENTS.md 2>/dev/null \
 # scaffold runs with --disable-git, so init a throwaway repo just to evaluate the
 # rules. check-ignore works on a path that does not exist yet, which is the state
 # the real command is in when it decides whether it may write the key.
-git init -q . 2>/dev/null
+# If git itself is unavailable or init fails, this claim CANNOT BE TESTED — it is
+# not disproved. Without this guard the check-ignore below falls through to
+# `fail`, reporting exit 1 (claim disproved) for a true claim, which is the one
+# direction of wrongness that trains a reader to ignore a red result.
+git init -q . 2>/dev/null || { echo "  git init failed — .gitignore claim CANNOT VERIFY"; exit 2; }
 if git check-ignore -q .env.local; then
   echo "  .gitignore: git would ignore .env.local ($(git check-ignore -v .env.local | awk '{print $1":"$2}'))"
 else
