@@ -6,9 +6,9 @@ The CLI package is now published as `@flow-state-dev/fsdev`, renamed from `@flow
 
 **This is a hand-swap: there is no compatibility path.** The old name is not re-exported, aliased, or deprecated-but-working — `@flow-state-dev/cli` simply will not resolve. If you pin it, you must change the dependency yourself; nothing will do it for you and nothing will warn you at install time.
 
-```diff
--"@flow-state-dev/cli": "^0.0.0"
-+"@flow-state-dev/fsdev": "^0.0.0"
+```bash
+pnpm remove @flow-state-dev/cli
+pnpm add -D @flow-state-dev/fsdev
 ```
 
 Library imports move with it: `import { discoverFlows } from "@flow-state-dev/fsdev"`.
