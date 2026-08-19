@@ -95,14 +95,14 @@ type ClaudeRemoteHandle = {
 A later request reads `ctx.session.state.claudeRemoteTasks` to reference prior
 dispatches.
 
-### Turning session state off (`/sdk`)
+### Running as detached background work (`/sdk`)
 
 The SDK agent keeps its own session state — `sdkSessionId` (the run it resumes)
-and `sdkAgentRuns` (the handles it has returned). Pass `sessionState: false` to
-switch that off:
+and `sdkAgentRuns` (the handles it has returned). Pass `detached: true` to run it
+as background work instead, which switches that off:
 
 ```ts
-claudeCodeAgent({ sessionState: false });
+claudeCodeAgent({ detached: true });
 ```
 
 Nothing is declared, read, or written, and the SDK is handed no `resume`, so each
@@ -114,9 +114,9 @@ The returned handle still carries the SDK `sessionId`, and as a worker's output
 it is persisted with the task — the option governs session state and resume, not
 the result.
 
-`createClaudeCodeAgentCapability({ sessionState: false })` takes the same option,
-and passing it is required rather than tidy: a capability declares the schema
-through a channel the board's refusal cannot see.
+`createClaudeCodeAgentCapability({ detached: true })` takes the same option, and
+passing it is required rather than tidy: a capability declares the schema through
+a channel the board's refusal cannot see.
 
 ### Recording what a run did (`/sdk`)
 
@@ -131,7 +131,7 @@ resource collections and writes into them as it goes:
 | `observed-gaps` | mutation the recorder understood and could not record — `kind` (`file`/`plan`/`run`) says which record it stands in for, plus the reason and the raw path |
 
 ```ts
-claudeCodeAgent({ sessionState: false, recordWork: true });
+claudeCodeAgent({ detached: true, recordWork: true });
 ```
 
 Entries are keyed as `<requestId>/<invocation>`, so a workstream reused across
@@ -192,7 +192,7 @@ for the full surface.
 | Auth | claude.ai subscription | Anthropic credentials |
 | Progress | Watch via `/tasks`, claude.ai, mobile | Streamed live as flow-state-dev items |
 | Session | Cloud session handle | Persistent, resumed across requests |
-| As background work | Already fire-and-forget | Task-board worker with `sessionState: false`; the workstream's item stream is the run's record |
+| As background work | Already fire-and-forget | Task-board worker with `detached: true`; the workstream's item stream is the run's record |
 | Reach for it when | Offloading long autonomous work | A real agent in the loop, observed step by step |
 
 ## Running tests

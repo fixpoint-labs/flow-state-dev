@@ -7,7 +7,7 @@
  * appends to. Installing this capability is the explicit declaration that a
  * process may run the Agent SDK in-process.
  *
- * `sessionState` is documented once, on the option itself in `./agent`.
+ * `detached` is documented once, on the option itself in `./agent`.
  */
 import { defineCapability } from "@flow-state-dev/core";
 import {
@@ -24,7 +24,7 @@ import { workRecorderResources } from "./work-collections";
  * declares the session-state schema the block depends on.
  */
 export function createClaudeCodeAgentCapability(options: ClaudeCodeAgentOptions = {}) {
-  const { sessionState = true, recordWork = false } = options;
+  const { detached = false, recordWork = false } = options;
   const agent = claudeCodeAgent(options);
 
   return defineCapability({
@@ -40,7 +40,7 @@ export function createClaudeCodeAgentCapability(options: ClaudeCodeAgentOptions 
     // declaring the schema puts the key back through the one door the refusal
     // cannot check, and the board accepts a detached worker carrying exactly
     // the collision that refusal exists to prevent.
-    ...(sessionState ? { sessionStateSchema: claudeAgentSessionStateSchema } : {}),
+    ...(detached ? {} : { sessionStateSchema: claudeAgentSessionStateSchema }),
     // Declared HERE, not inherited from the agent block below — and forwarding
     // the option alone is NOT enough, which is the failure this comment exists
     // to prevent recurring. The block sits in the capability's `tools` preset,

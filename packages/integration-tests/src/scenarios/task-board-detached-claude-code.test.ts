@@ -1,6 +1,6 @@
 /**
  * The task board accepts `claudeCodeAgent` as a detached worker once its
- * conversation state is turned off (LAB-133). See `sessionState` in
+ * conversation state is turned off (LAB-133). See `detached` in
  * `packages/claude-code/src/sdk/agent.ts` for what the option does and why.
  *
  * **Asserted here** rather than in `packages/claude-code` (which would take an
@@ -27,31 +27,31 @@ const codingTasks = defineTaskCollection({ id: "lab133-coding", scope: "user" })
  * composition. A test that handed the board the bare handler would pass while
  * the real wiring still failed.
  */
-function codingRun(options: { sessionState?: boolean }): TaskWorker {
+function codingRun(options: { detached?: boolean }): TaskWorker {
   const toPrompt = sequencer({
     name: "lab133-coding-run",
     inputSchema: taskWorkerInputSchema,
     outputSchema: z.unknown(),
   }).step(
-    // `sessionState: undefined` is the same as omitting it — the block's own
+    // `detached: undefined` is the same as omitting it — the block's own
     // default applies — so the conditional spread bought nothing.
     claudeCodeAgent({
       model: "test-model",
-      sessionState: options.sessionState,
+      detached: options.detached,
     }).connectInput((input: { goal: string }) => ({ prompt: input.goal })),
   );
   return toPrompt as unknown as TaskWorker;
 }
 
 describe("task board × claudeCodeAgent (detached)", () => {
-  it("accepts the agent as a detached worker when sessionState is off", () => {
+  it("accepts the agent as a detached worker when detached is set", () => {
     expect(() =>
       taskBoard({
         name: "coding",
         boardId: "coding",
         collection: codingTasks,
         workers: {
-          implement: { worker: codingRun({ sessionState: false }), dispatch: { mode: "detached" } },
+          implement: { worker: codingRun({ detached: true }), dispatch: { mode: "detached" } },
         },
       }),
     ).not.toThrow();
