@@ -6,10 +6,30 @@
  * link between a shipped, released change and the reasoning behind it. Without
  * the issue id in the fragment, a CHANGELOG entry has no route back.
  *
- * Scoped to fragments this branch adds or edits, so the rule applies going
- * forward without a backfill of every fragment written before it existed.
+ * Scoped to fragments this branch ADDS, so the rule applies going forward
+ * without a backfill of every fragment written before it existed.
  * Empty fragments (`pnpm changeset --empty`, internal-only work) release
  * nothing and are skipped.
+ *
+ * WHAT THIS MEASURES, and why `--diff-filter=A` rather than `AM`: the rule asks
+ * "did the author of this release note name their issue". Touching a file is
+ * not authoring it. A repo-wide rename has to rewrite the package key in every
+ * old fragment that bumps the renamed package — otherwise `changeset version`
+ * fails on a name that no longer resolves — and under `AM` that mechanical
+ * rewrite made the sweep's author answerable for a dozen strangers' release
+ * notes, demanding issue ids they had no way to know. The guard was firing on
+ * "this PR's diff touched the file", which is not the thing it claims to check.
+ *
+ * A body-diff refinement (check `M` too, but only when the body changed) was
+ * considered and rejected on evidence: during the `@flow-state-dev/cli` ->
+ * `fsdev` rename (FIX-1191) one fragment's *body* also changed, because the
+ * release note named the package in prose. That edit was equally mechanical,
+ * so "the body changed" is the same wrong proxy one level down. An id is
+ * required at the moment a fragment is written, which is the moment its author
+ * knows it — and that is exactly what `A` captures.
+ *
+ * Do not widen this back to `AM` to "be safe". It catches no additional real
+ * omission; it only blocks mechanical sweeps.
  *
  * No dependencies, so CI runs it without an install.
  */
@@ -34,7 +54,7 @@ function changedChangesets() {
   try {
     out = execFileSync(
       "git",
-      ["diff", "--name-only", "--diff-filter=AM", `${base}...HEAD`, "--", ".changeset"],
+      ["diff", "--name-only", "--diff-filter=A", `${base}...HEAD`, "--", ".changeset"],
       { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
     );
   } catch (error) {

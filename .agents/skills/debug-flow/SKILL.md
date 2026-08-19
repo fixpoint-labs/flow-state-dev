@@ -57,7 +57,7 @@ Run the flow using `fsdev run` and capture both stdout (NDJSON events) and stder
 
 ```bash
 # Basic execution — capture everything
-source ~/.zshrc && cd <repo-root> && pnpm fsdev run <flowKind> <action> -i '<json-input>' --flow-dir <path-to-flows> 2>&1
+source ~/.zshrc && cd <repo-root> && pnpm --filter fsdev fsdev run <flowKind> <action> -i '<json-input>' --flow-dir <path-to-flows> 2>&1
 ```
 
 **Key flags:**
@@ -128,7 +128,7 @@ Once you identify which block failed from the trace, test it in isolation:
 
 ```bash
 # Execute a single block directly
-source ~/.zshrc && pnpm fsdev block <path-to-block-file> -i '<json-input>' 2>&1
+source ~/.zshrc && pnpm --filter fsdev fsdev block <path-to-block-file> -i '<json-input>' 2>&1
 ```
 
 The `fsdev block` command returns structured JSON (not NDJSON):
@@ -178,7 +178,7 @@ Based on the trace evidence, classify the problem:
 1. Implement the fix based on your diagnosis
 2. Re-run the flow with the same input to verify:
    ```bash
-   source ~/.zshrc && pnpm fsdev run <flowKind> <action> -i '<same-input>' --flow-dir <path> 2>&1
+   source ~/.zshrc && pnpm --filter fsdev fsdev run <flowKind> <action> -i '<same-input>' --flow-dir <path> 2>&1
    ```
 3. Confirm the trace now shows `flow_complete` (not `error`)
 4. Run the package tests:
