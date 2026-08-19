@@ -1,0 +1,4 @@
+# Local install for the POCs. Nothing here is committed — see README.md → "Running these".
+node_modules/
+package.local.json
+package-lock.local.json
