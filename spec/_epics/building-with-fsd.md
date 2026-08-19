@@ -389,11 +389,27 @@ call.
      **"Same environment variable" is not sufficient, and the audit of it found a worse failure
      than a rename.** The generated config **reads the credential once into a single binding, and
      both the resolver — declared **per-flow**, per theme 8's statement of what the bind guard reads —
-     and the `devtool` block reference that binding** — never two independent `process.env` reads — **and refuses to start when it is missing or empty.** Four ways the two
+     and the `devtool` block reference that binding** — never two independent `process.env` reads — **and
+     the run refuses when it is missing or empty** (in the flow file, per below, so the refusal
+     exists on both authorship branches). Four ways the two
      sides diverge otherwise, all silent: a rename in one place; a `??` fallback on one side; a
      **partial declaration**, since `DevToolConnectionConfig` makes both fields optional and
      `fsdev dev` gates on `userId` **or** `bearerToken` being non-empty, so a config with an
      identity and an absent token passes the gate and then fails auth looking like a bad key; and
+     the serious one — **an unset variable makes a naive equality accept everyone**, because a
+     request carrying no credential compares equal to an absent expected value, so the flow reads
+     as secured while being open. Refusing at startup is what makes that unrepresentable, rather
+     than a thing the reader has to remember. **And that refusal is itself asserted** — with the
+     variable unset, **the run must fail on both authorship branches** — because a mitigation nobody
+     exercises is the defect it was written to prevent, wearing a fix's clothes.
+
+     **The refusal lives in the file we author on *that* branch, which is the flow file — not the
+     config.** Stated this way because defining it on the config made it vacuous in exactly the
+     branch it was written for: when the config is the developer's we write none, so "the config
+     fails to start" is a check that returns **pass** while the developer's variable sits unset and
+     the naive-equality hazard is fully live. The flow file is written on **both** branches, so the
+     credential read and its refusal go there and hold regardless of who owns the config.
+
      **And in the guest case the `devtool` block is not ours to write either**, since it lives in
      the config we deliberately do not touch. Traced rather than assumed: securing our flow per-flow
      while leaving their config alone would open a DevTool that cannot invoke our demo flow at all —
@@ -403,14 +419,6 @@ call.
      the `devtool` block beside it — rather than writing either. Their diff review is the consent
      surface, exactly as it is for every other write; what changes is that these two are applied by
      them rather than by us.
-
-     the serious one — **an unset variable makes a naive equality accept everyone**, because a
-     request carrying no credential compares equal to an absent expected value, so the flow reads
-     as secured while being open. Refusing at startup is what makes that unrepresentable, rather
-     than a thing the reader has to remember. **And that refusal is itself asserted** — with the
-     variable unset, the config must fail to start — because a mitigation nobody exercises is the
-     defect it was written to prevent, wearing a fix's clothes. Found by the same sweep that added
-     the two negative assertions in §1.
    - **`fsdev run` is unaffected**, on both branches: it calls `runAction` in-process with its own
      `cli-user` identity and never resolves a principal, so it does not cross the secured surface.
    - **The second-process branch's own call does cross it.** `fsdev serve` starts a real HTTP
@@ -424,7 +432,8 @@ call.
 
    **So the printed block is under a standing goal check, not a rule that fires when someone
    notices.** Every command the block prints is run against the emitted project, on **both**
-   topology branches, and asserted on **real behaviour rather than exit status** — the DevTool page
+   topology branches **and both authorship branches**, and asserted on **real behaviour rather than
+   exit status** — the DevTool page
    answers an authenticated API call, the printed flow invocation returns a streamed model
    response, the second-process call is accepted with the credential and refused without it. It is
    a standing check because "re-walk the block whenever a decision changes the `FlowState`" is
@@ -432,6 +441,17 @@ call.
    now hit four times, one level up. **The standing check subsumes that trigger, so the trigger is
    gone rather than kept alongside it** — two rules covering one hazard is how the weaker one
    becomes the one people rely on.
+
+   **Two axes, not one — and enumerating the wrong one is how a branch goes unchecked.** Topology
+   (`mounted-route` / `second-process`) decides what the block *prints*; **authorship** — whether
+   the run wrote the config or the project already had one — decides what the run *installs*
+   (theme 8's resolver rule) and therefore what the printed commands can do. They are independent,
+   so covering topology alone leaves the **guest** case exercised by nothing: per-flow-only
+   resolver, two config lines handed over rather than applied, no host resolver, degraded session
+   listing. **That is the same defect this theme names one paragraph up, committed against this
+   theme's own check** — a rule was widened without widening the thing that feeds it. The guest
+   branch gets its own run; `second-process` × guest is the combination most likely to be dropped
+   as exotic, and it is the one where the fewest of our files exist.
 
    **The finding that earns it, stated as the reason rather than as a fixed bug: securing the flow
    silently removed a rail.** Configuring a resolver **where the guard can see it** satisfies
@@ -992,7 +1012,7 @@ section carries its path.*
 |---|---|---|---|---|---|
 | FIX-1159 | The brownfield knowledge — deterministic detection scripts, the install skill's **content**, the shared next-steps block, and **the wiring contract both entry paths satisfy** (theme 9) | spec | [#1310](https://github.com/fixpoint-labs/flow-state-dev/pull/1310) | — | In spec review — re-shaped to **brownfield only, no command of its own**; the earlier approval was retracted with the direction change. **Unblocked — Q5 resolved by constraint**: the run configures a non-default principal resolver, mechanism this issue's. Also gains the devtool peer fix (theme 5) and the mounted-route proof (theme 9 (b)) |
 | FIX-1162 | Register the npm names the launch needs — the short CLI entry name and the scaffolding name | spec | [#1313](https://github.com/fixpoint-labs/flow-state-dev/pull/1313) | — | In spec review — **both names now registered at `0.0.0` to a personal account**; what remains is the publishing identity's write access (`npm owner add` / transfer) and the unproven `@flow-state-dev` scope. Owner operations, not agent work |
-| FIX-548 | `create-flow-state` — the deterministic greenfield path; template count pending **§5 Q6**, written against one (Next.js chat app), owned end to end | spec | [#1312](https://github.com/fixpoint-labs/flow-state-dev/pull/1312) | — | Spec complete, approved at `404e82c`. **Re-approval needed and safe to take now** — a mechanical set (pnpm-isolated install, theme 9 devolution, exception (c) for `dev`+`start`, the 22.18 floor, static provider wiring, shipper-side comparison, non-loopback and production negative cases, the `git check-ignore` precondition), all posted to #1312; its spec is not edited by the epic. **Implementation is separately blocked by §5 Q6** — do not build against a template count nobody chose |
+| FIX-548 | `create-flow-state` — the deterministic greenfield path; template count pending **§5 Q6**, written against one (Next.js chat app), owned end to end | spec | [#1312](https://github.com/fixpoint-labs/flow-state-dev/pull/1312) | — | Spec complete, approved at `404e82c`. **Re-approval needed; held for defects in its own spec** (a cross-spec sweep, not this epic) — a mechanical set (pnpm-isolated install, theme 9 devolution, exception (c) for `dev`+`start`, the 22.18 floor, static provider wiring, shipper-side comparison, non-loopback and production negative cases, the `git check-ignore` precondition), all posted to #1312; its spec is not edited by the epic. **Implementation is separately blocked by §5 Q6** — two independent holds; clearing one does not clear the other |
 | FIX-1160 | The authoring pack **and the plugin that distributes the install skill** — agent-instructions file, authoring skills, install skill | spec | [#1311](https://github.com/fixpoint-labs/flow-state-dev/pull/1311) | — | Spec complete, approved at `dd9b656` — **approval needs re-taking**: theme 9 (d) hands it the agent-instructions block's normalization and equality check (posted to #1311). Scope had already grown: it is the brownfield path's only delivery channel |
 
 **Sequencing.** Three kinds, listed apart because a dependency column cannot tell them apart and
@@ -1011,15 +1031,17 @@ they mean different things:
 
 **Q6 is open and blocks FIX-548's *implementation*** — the one-template cut was recorded here as
 the owner's without evidence, and FIX-548 has been carrying it as its open ask all along. **Its
-re-approval may proceed without it**, because that spec no longer asserts an answer; what may not
-proceed is building against a template count nobody chose.
+re-approval is not blocked *by Q6***, because that spec no longer asserts an answer; what Q6 stops
+is building against a template count nobody chose. **That is not the same as the re-approval being
+ready** — a cross-spec sweep has since found defects in FIX-548's own spec, so it is held for
+reasons of its own. Q6 and that hold are independent; clearing one does not clear the other.
 
 **Two questions are open: Q6, which blocks, and Q4, which does not.** Q1–Q3 and Q5 are **decided**
 and stay here with their answers, so no issue reopens them.
 
 | | Status | What it gates |
 |---|---|---|
-| **Q6** — one starter or two | **open** | **Blocks FIX-548's implementation.** Its re-approval may proceed without it; the build may not. |
+| **Q6** — one starter or two | **open** | **Blocks FIX-548's implementation.** It does **not** block that spec's re-approval — though the re-approval is separately held for defects of its own, which is a different hold. |
 | **Q4** — does install-by-URL still hold | **open** | Nothing. It exists because the split changed what an already-made decision costs. |
 | Q1, Q2, Q3, Q5 | decided | — |
 
@@ -1232,8 +1254,14 @@ stranger on the same network cannot spend the developer's provider key or act as
 Not closed: the port still listens on every interface, because it is their dev server and theme 6
 forbids us editing it. The endpoint remains reachable and probeable; the secret is what stands
 between a caller and the flow, rather than the absence of a route. **The question this section
-asked is answered — yes, we require a credential — while the guarantee is narrower than
-greenfield's, which has both layers.** That is disclosed in theme 8 rather than treated as an open
+asked is answered — yes, we require a credential — and the guarantee is *different* from
+greenfield's rather than a lesser version of it.** Greenfield has **one** control, the loopback
+bind, and no credential at all: its demo is a browser page, so any token it could present is one an
+attacker reads from the same page. Brownfield has **one** control, the credential, and no bind: the
+dev server is theirs. **Neither path is defence-in-depth, and this sentence used to say greenfield
+"has both layers", which was wrong** — a reader deriving from this closed entry could have treated
+one of greenfield's controls as redundant and dropped it, leaving that path with none. What each
+leaves open is stated in theme 8. That is disclosed in theme 8 rather than treated as an open
 fork, because the only option that would close it is refusing to mount a route in a brownfield Next
 app at all, which trades the epic's headline integration for defence in depth over a control that
 already works.
@@ -1262,7 +1290,11 @@ brownfield pitch — *we will not damage your repo* — cannot survive.
 
 *Not a new question: it was raised from FIX-548's spec, recorded here as "raised, not adopted",
 re-argued, and then written into theme 2 as an owner decision that was never given. Restored to
-open. **FIX-548's spec is the accurate record** — it has carried this as its §6 decision 2 ask
+open. *An earlier revision of this entry called FIX-548's spec "the accurate record" on this
+question — **withdraw that**: a cross-spec sweep found its ask still arguing for a recommendation
+since withdrawn, and five jobs disclaimed by both it and FIX-1159. It is right that the question is
+open and wrong about the rest; a FIX-548 worker is correcting it in parallel and this document
+should not be cited as vouching for it.* It has carried this as its §6 decision 2 ask
 throughout, and the epic is what drifted.*
 
 **Plain terms.** We ship a starter that creates a new project. The question is whether v1 ships
@@ -1271,15 +1303,24 @@ developers, which ends at a server with no screen.
 
 **The trade-off — corrected, because the version of it that reached the owner was wrong.** This
 entry claimed the Node starter's contents were already obtainable via `mkdir && <brownfield run>`.
-**That substitute does not exist**, and the correction changes the size of the decision rather than
-its wording. Brownfield is defined throughout as modifying a project that already exists, it is
-proved only against an *existing* plain-Node app, and FIX-1159's spec refuses the empty case at two
-independent gates: **detection's `dev command` row — *"No usable script → refuse, because the
-next-steps block cannot be written without it"*** — which an empty directory and a bare
-`npm init -y` both trip, since neither has a script that starts anything; and the deleted
-empty-directory worked example, removed from that spec along with the greenfield goal check that
-ran it. §1 says the same thing from the other side: the two-command alternative *"no longer
+**That substitute does not exist** — but **the gate it fails on is not the one this entry used to
+name, and the re-derivation changes what option (b) costs.** Brownfield is defined throughout as
+modifying a project that already exists, it is proved only against an *existing* plain-Node app,
+and the empty-directory worked example was deleted from FIX-1159 along with the greenfield goal
+check that ran it. §1 says the same from the other side: the two-command alternative *"no longer
 exists, because there is no brownfield command to run second"*.
+
+**The gate that actually holds, verified against FIX-1159 at head (`6b2c4093d`), is the package
+manager — not the dev command.** *This entry previously cited detection's `dev command` row
+refusing when no script starts anything. **That row was narrowed and no longer says it:** it now
+reads "Reported for every host; required only where the next-steps block spends it — the
+`mounted-route` topology. No usable script on a Next host → refuse. On a plain-Node host → report
+`none` and proceed."* What refuses a bare directory instead is the **package-manager** row:
+*"Neither a field nor any lockfile in the whole chain → `undeclared`, which also refuses"*, backed
+by a deliberate design rule — *"there is no ambient signal worth trusting: `npm_config_user_agent`
+describes how our own script was launched, not what the project uses, and defaulting to npm writes
+a lockfile the project never asked for."* An empty directory has neither; `npm init -y` alone
+produces a manifest with no `packageManager` field and no lockfile, so it refuses too.
 
 **So the real cost of cutting is not a worse path for backend developers. It is no path.** A
 backend developer starting fresh would have to hand-build a Node project *with a working dev
@@ -1297,18 +1338,25 @@ rather than to something lesser. There are three options, not two:
 - **(a) Ship two starters.** Serves backend greenfield deterministically. Costs a second starter
   kept green and proved per provider, forever — the original objection, unchanged.
 - **(b) Ship one starter, and specify and prove a minimal-project brownfield path** — the smallest
-  project the skill will engage with, and what it prints when the host has no dev command of its
-  own. Costs FIX-1159 one specified behaviour and one proof, and requires relaxing the
-  `dev command` refusal for exactly the second-process case, where a host with no dev script is
-  coherent rather than broken: the next-steps block then prints only FSD's own commands.
+  project the skill will engage with. **This costs less than this entry used to say, and the
+  correction is in your favour.** The dev-command relaxation it was priced on is **already in
+  FIX-1159 at head**: a plain-Node host with no usable script reports `none` and proceeds, because
+  the `second-process` branch prints only `fsdev` commands and never names the host's script. What
+  remains is the **package-manager** gate — and that may need no relaxation either, only a stated
+  precondition, since a project with a `packageManager` field *or* any lockfile already resolves.
+  On the two gates I checked, `npm init -y && npm install` would proceed; **I have not walked every
+  refusal**, so (b)'s honest cost is *verify the minimal precondition end to end, document it, and
+  prove it once* — not "relax a refusal". If some other gate does refuse, (b) grows back toward
+  what this entry originally claimed.
 - **(c) Ship one starter and accept that backend greenfield is unserved in v1.** Honest, and the
   cheapest — but it should be chosen knowingly rather than inherited from a substitute that was
   never real.
 
 **Recommendation: (b) if FIX-1159 will carry it, otherwise (a).** (b) serves the audience without a
-second artifact to keep green, and the behaviour it adds is one the skill arguably owes anyway —
-today a project with no dev script is refused rather than served as a second process, which is the
-topology theme 8 already says that host gets. **I no longer recommend (c)**, which is what "ship
+second artifact to keep green. *The argument for it used to be that the skill owes this anyway,
+since a project with no dev script was refused rather than served as the second process theme 8
+says that host gets — **that has since been fixed in FIX-1159 independently**, which removes the
+argument while making (b) cheaper. The recommendation stands on the audience, not on the debt.* **I no longer recommend (c)**, which is what "ship
 one" silently meant.
 
 **What would change my mind:** if the launch plan points backend developers at a Node starter *by
@@ -1325,8 +1373,11 @@ the brownfield run already proves" — that is the struck substitute, and it doe
 epic's *only* Node coverage of any kind, so it can no longer be dropped as redundant.
 
 **What is waiting on this, stated precisely because an earlier draft of this line said the wrong
-thing.** **Not** FIX-548's re-approval — that is safe to take now, since its spec *asks* the
-question rather than answering it, and everything else in the re-take is narrow and mechanical.
+thing.** **Not** FIX-548's re-approval — Q6 does not block it, since its spec *asks* the question
+rather than answering it. *Separately, and not because of Q6, that re-approval is **not** ready: a
+cross-spec sweep found defects in FIX-548's own spec, including an ask still arguing a withdrawn
+recommendation. An earlier version of this line said "safe to take now"; that inference no longer
+holds, and it is the kind of claim this document should stop making about a spec it does not own.*
 What waits is **FIX-548's implementation**: this is the one open item that changes what it builds.
 If the answer is **"one"**, §6 decision 2 becomes stale rather than open and building proceeds. If
 **"two"**, decision 2 reverses *and* decision 2b (no `--template` flag) reopens with it — that is a
