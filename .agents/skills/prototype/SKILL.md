@@ -33,7 +33,7 @@ The two branches produce very different artifacts — getting this wrong wastes 
 
 1. **Throwaway from day one, and clearly marked as such.** Locate prototypes under a `_prototypes/` directory inside the host app (`apps/kitchen-sink/flows/_prototypes/<name>/`, `apps/kitchen-sink/components/_prototypes/<name>/`, `apps/devtool/src/_prototypes/<name>/`). The leading underscore signals "not production" and keeps them out of any glob-based exports. Do not put prototypes inside the framework packages (`packages/*`) — those are shipped to consumers.
 2. **One command to run.** Whatever the host app's existing task runner supports:
-   - Logic prototype: `pnpm --filter fsdev fsdev run <prototype-flow-kind> <action> -i '<json>' --flow-dir apps/kitchen-sink/flows/_prototypes` — wire a one-line helper script in the host app's `package.json` if the invocation is awkward.
+   - Logic prototype: `pnpm fsdev run <prototype-flow-kind> <action> -i '<json>' --flow-dir apps/kitchen-sink/flows/_prototypes` — wire a one-line helper script in the host app's `package.json` if the invocation is awkward.
    - UI prototype: `pnpm --filter @flow-state-dev/kitchen-sink dev` or `pnpm --filter @flow-state-dev/devtool dev` (whichever app hosts the variants).
    The user must be able to start it without thinking.
 3. **No persistence by default.** Use the in-memory store. Seed state via `--seed-session` / `--seed-user` / `--seed-project` if the question depends on starting state. Reach for `@flow-state-dev/store-sqlite` only when the question is specifically about persistence semantics — and label the database file `PROTOTYPE-wipe-me.sqlite`.

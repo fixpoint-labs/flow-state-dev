@@ -92,13 +92,40 @@ function walkTsFiles(dirPath, files = []) {
   return files;
 }
 
+/**
+ * Workspace packages published under an unscoped name, mapped to the internal
+ * key `packageRules` uses.
+ *
+ * Matched on the exact first path segment, never by prefix. A prefix rule is
+ * what blinded this validator when the CLI was renamed `@flow-state-dev/cli`
+ * -> `fsdev` (FIX-1191): the package stopped matching `@flow-state-dev/`, so
+ * every import of it was skipped and restricted packages could reach the CLI
+ * with no allow/deny check and no cycle detection — silently, because a guard
+ * that recognises nothing reports success.
+ */
+const unscopedPackages = new Map([["fsdev", "cli"]]);
+
 function resolveWorkspacePackage(specifier) {
-  if (!specifier.startsWith("@flow-state-dev/")) {
+  const [head, subpath] = specifier.split("/");
+
+  const unscoped = unscopedPackages.get(head);
+  if (unscoped !== undefined) {
+    return packages.includes(unscoped) ? unscoped : undefined;
+  }
+
+  if (head !== "@flow-state-dev") {
     return undefined;
   }
 
-  const packageName = specifier.split("/")[1];
-  return packages.includes(packageName) ? packageName : undefined;
+  return packages.includes(subpath) ? subpath : undefined;
+}
+
+/** How a package is spelled in an import, for error messages. */
+function specifierFor(pkg) {
+  for (const [name, key] of unscopedPackages) {
+    if (key === pkg) return name;
+  }
+  return `@flow-state-dev/${pkg}`;
 }
 
 function detectCycles(graph) {
@@ -160,15 +187,15 @@ for (const pkg of packages) {
       graph.get(pkg).add(targetPkg);
 
       if (rules.deny?.has(targetPkg)) {
-        errors.push(`${filePath}: forbidden import from @flow-state-dev/${targetPkg}`);
+        errors.push(`${filePath}: forbidden import from ${specifierFor(targetPkg)}`);
       }
 
       if (!rules.allow.has(targetPkg)) {
-        errors.push(`${filePath}: package ${pkg} is not allowed to import @flow-state-dev/${targetPkg}`);
+        errors.push(`${filePath}: package ${pkg} is not allowed to import ${specifierFor(targetPkg)}`);
       }
 
       if (rules.typeOnly.has(targetPkg) && !isTypeOnly) {
-        errors.push(`${filePath}: import from @flow-state-dev/${targetPkg} must be type-only`);
+        errors.push(`${filePath}: import from ${specifierFor(targetPkg)} must be type-only`);
       }
     }
   }

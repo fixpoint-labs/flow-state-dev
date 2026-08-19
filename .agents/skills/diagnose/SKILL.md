@@ -48,11 +48,11 @@ Loops that work well in this repo, fastest-to-slowest signal:
    ```
 3. **`fsdev block` for single-block isolation.** One-shot JSON-in/JSON-out. Returns structured `schemaValidation`, `execution.durationMs`, and `error.stack`. Ideal for handlers, utility generators, and routers when you can name the input shape:
    ```bash
-   pnpm --filter fsdev fsdev block <path-to-block.ts> -i '<json>'
+   pnpm fsdev block <path-to-block.ts> -i '<json>'
    ```
 4. **`fsdev run` with NDJSON capture** when the bug only appears in a real flow (sequencer composition, state-scope interactions, generator + tool loop). Pipe stdout to a file so you can diff between runs:
    ```bash
-   pnpm --filter fsdev fsdev run <flowKind> <action> \
+   pnpm fsdev run <flowKind> <action> \
      -i '<json>' --flow-dir <path> > /tmp/run.ndjson 2> /tmp/run.log
    ```
    For deep flow analysis, hand off to **`debug-flow`** — it has the NDJSON event-type reader and failure-pattern table.

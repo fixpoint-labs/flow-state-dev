@@ -37,7 +37,7 @@ pnpm add -D fsdev
 | Client-side consumption | `core` + `client` |
 | Full-stack React app | `core` + `engine` + `react` |
 | Testing | `core` + `testing` |
-| CLI development workflow | `core` + `engine` + `cli` |
+| CLI development workflow | `core` + `engine` + `fsdev` |
 
 The `react` package depends on `client` internally — you don't need to install `client` separately when using `react`.
 
