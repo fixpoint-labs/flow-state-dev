@@ -5,7 +5,7 @@
 "@flow-state-dev/core": patch
 ---
 
-Add a cross-pattern benchmark harness that runs a fixed task suite across multiple coordination patterns plus a single-generator baseline on one model and produces a comparative scorecard.
+Add a cross-pattern benchmark harness that runs a fixed task suite across multiple coordination patterns plus a single-generator baseline on one model and produces a comparative scorecard (FIX-614).
 
 - `@flow-state-dev/testing`: `runBenchmark`, `comparePatterns`, `baselineSubject`, `defineBenchmark`, `buildBenchmarkReport`, and `renderScorecard`. `testBlock` and `analyzerScorer` now accept an optional `modelResolver`, so subjects and the LLM judge can run against real models. Subjects can carry a per-subject `model`, and `comparePatterns` accepts `baselineModels` for cross-model comparisons (cheap-model patterns vs. one or more pure models, e.g. "does a Haiku swarm beat raw Sonnet?").
 - `@flow-state-dev/patterns`: benchmark adapters and `defaultBenchmarkRegistry` for the supervisor, plan-and-execute, parallel-tasks, round-robin, debate, and routed-specialists patterns, so adding a pattern adapter gets it benchmarked.
