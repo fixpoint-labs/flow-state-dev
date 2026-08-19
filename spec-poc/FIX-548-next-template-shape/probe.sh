@@ -181,6 +181,13 @@ variant() {
   # MODULE_TYPELESS_PACKAGE_JSON asynchronously, and an immediate exit() cuts it
   # off before it reaches stderr, which made this probe report "clean" for the
   # variant whose whole point is that it warns.
+  # Node's warning suppression is inherited from the environment, and this check
+  # reads stderr to decide whether a documented warning appeared. With
+  # NODE_NO_WARNINGS=1 or --no-warnings in NODE_OPTIONS, the no-`type`-field
+  # variant emits nothing, classifies as `clean`, and the probe reports a TRUE
+  # claim about Node as DISPROVED — the same false-disproof direction as the
+  # `git init` case, from a different cause. Cleared for this invocation only.
+  NODE_NO_WARNINGS= NODE_OPTIONS= \
   node -e "import('./$cfg').then(m=>{
       if(m.default.marker!=='config-module-loaded'){console.error('WRONG MODULE');process.exitCode=3}
     }).catch(e=>{console.error('IMPORT THREW: '+e.message);process.exitCode=3})" > import.log 2>&1

@@ -72,6 +72,22 @@ reason the rule survives intact:
 **The freeze is back on**, unchanged, with one clause added by the case: a finding that the script
 reports a *true* claim as **disproved** is fixed in the script; everything else is narrowed here.
 
+**That clause has since fired a second time, which is the point of writing it down.** The native
+`import()` check reads stderr to decide whether Node's documented
+`MODULE_TYPELESS_PACKAGE_JSON` warning appeared — and Node's warning suppression is inherited from
+the environment. With `NODE_NO_WARNINGS=1` or `--no-warnings` in `NODE_OPTIONS`, the
+no-`type`-field variant emits nothing, classifies as `clean`, and the probe exits **1: claim
+disproved**, when the environment had merely hidden the evidence. Same direction as the `git init`
+case, different cause. Fixed in the script — both variables are cleared for that invocation — and
+**not re-argued**, because the rule already decided it: this is under-reporting, not
+over-assertion, and documenting it would again mean telling a reader that a red result might not
+mean what it says.
+
+*Two instances is enough to state the underlying shape:* **this probe's evidence is read from
+process output, and process output is environment-dependent.** Any future check that decides a
+claim by looking at stdout/stderr inherits the same failure mode, so it clears whatever suppresses
+the signal it reads, or classifies the environment as cannot-verify (`2`).
+
 Exit status: `0` every asserted claim held · `1` one of them did not · `2` the run could not be
 completed (scaffold or install failed, no free port, workdir occupied, dev server never bound, a
 request that never completed). The `1`/`2` split is load-bearing: a machine too slow to have
