@@ -626,8 +626,23 @@ call.
        the floor is a rule we state while they own the runtime.
      - **`handleExecuteAction`'s principal path**, which no read has yet enumerated.
 
-     *Also unresolved rather than absent: the guest whose config already declares a `devtool` block
-     still ends the run with a manual step (see the `devtool` bullet below).*
+     **The guest whose config already declares a `devtool` block is a *conflict the run must refuse*,
+     not a manual step it may leave behind — and this was filed as "unresolved" for a round while the
+     rest of the theme treated the run as complete.** Traced: the block is **app-global**, so their
+     existing `bearerToken` is what the DevTool sends to *every* flow, including ours — and ours
+     requires the per-flow credential the run just generated. So the printed `fsdev dev` step cannot
+     invoke the demo at all. That breaks the one-agent-run promise (the developer is left hand-editing
+     a security-relevant config) and it fails this theme's own shipper × host command walk, which
+     requires `fsdev dev` to answer an **authenticated** API call. **So: refuse the run with
+     remediation naming the conflict, or specify a compatible integration and prove it. Not a
+     disclosure.** *Owned by FIX-1159 as a mechanism; stated here because it is the walk's
+     requirement that it violates.*
+
+     **The fixture gap is the more useful half.** §1's guest proof requires a host with an existing
+     `fsdev.config.*` but says nothing about an existing `devtool` block, so the failing case cannot
+     be constructed and the check is green on a path that cannot work. **The guest fixture must carry
+     a pre-existing `devtool` block**, which is the same defect family as everything else this round:
+     a proof whose fixture cannot express the failure it is supposed to catch.
 
      **This is the fourth consequence to fall out of the resolver work** — DevTool listing, the
      additive-promise break, this, and the model-resolver gap above. Each fix was correct and each
@@ -840,10 +855,14 @@ call.
      `start` was narrowed or never touched.
 
      **And it falsified the product statement**, which is the part that reached a person. *"The
-     generated app does not serve off-host until its authentication is configured"* — configuring
-     authentication lifts the config refusal but could never lift a hardcoded hostname, so the
-     "until" resolved to *never*. **The corrected statement is in theme 8**, and it is true because
-     the only production control is now the one that lifts.
+     generated app does not serve off-host until its authentication is configured"* — the "until"
+     resolved to *never*, because a hardcoded hostname cannot lift. **Its replacement was false too
+     and is withdrawn** (theme 8): *there is no production control on this path*, so the sentence
+     that used to close this paragraph — "the corrected statement is in theme 8, and it is true
+     because the only production control is now the one that lifts" — asserted the existence of the
+     very thing the measurement removed. *Third instance tonight of a correction applied to one
+     member of a pair. **What survives here is only the `start` withdrawal**, which never depended on
+     a replacement control; what covers production is open (§5 Q7).*
 
      *`dev` keeps the exception and its original justification intact:* development is where no
      other control exists, and it is the one case where the justifying condition never clears —
@@ -1868,60 +1887,71 @@ later unauthenticated flow ends up binding silently.
   change my mind:** nothing about the developer experience — only sequencing, if the framework fix
   cannot land inside this epic's window, in which case the scaffold must not print the flag.
 
-**(4) Where can this be enforced at all — because the path that is exposed is the one path that
-can see nothing?**
+**(4) What does a developer meet when their generated demo is unguarded? — and the answer is
+**two** options, not three, because the third is empty on the path that needs it.**
 
-*This fork replaced one asking whether to guard `serve()`. **That question was aimed at the wrong
-path**, and the correction is the most important thing in this entry. Plain-Node brownfield already
-enters through the guarded `fsdev serve` CLI. Greenfield Next — our headline entry path — mounts
-through `createNextHandler` and touches neither `serve()` nor the CLI, and so does brownfield Next.
-So guarding `serve()` would have protected the path that is already protected and left both exposed
-paths exposed. The remedy had inherited the boundary of the artifact that motivated it: the
-measurement ran through `fsdev serve` because that is where the guard lives, and the fix followed
-the measurement's frame instead of the exposure.*
+*This fork replaced one asking whether to guard `serve()`, which was aimed at the wrong path. The
+replacement — "refuse at the mounted handler unless the app opts in", option **A** — reached the
+right path and **still does not work on greenfield**. Recorded in full, because a fork whose
+recommended branch dissolves when it is chosen is worse than a fork with fewer branches.*
 
-**The honest headline, and the owner should see it in this form: the only place we enforce this
-today is the CLI, and two of our three topologies do not use the CLI for the route that matters.**
-Greenfield mounted-route and brownfield mounted-route both run inside the developer's own Next
-server. Only brownfield second-process goes through `fsdev serve`.
+**The setting.** The only place we enforce anything today is the `fsdev serve` CLI, and **two of our
+three topologies do not use the CLI for the route that matters**: greenfield Next and brownfield Next
+both mount inside the developer's own server. And the mounted route **cannot** be given a
+network-position guard at any price — a Next handler receives no peer address (measured, Q5
+*Eliminated 2*).
 
-**And the mounted route cannot be given the same kind of guard**, which is measured rather than
-assumed and is recorded under Q5's *Eliminated 2*: a Next App Router handler receives a web
-`Request`, and `NextRequest` in `next@16.3.1` exposes **no peer address** — `ip` is gone,
-`connection()` is a prerendering signal. A guard keyed on `x-forwarded-for` or `host` is defeated by
-sending a header, which is worse than none because it reads as protection. **So no network-position
-control is available on the exposed path, at any price.** That constraint, not cost, is what shapes
-the options:
+**Why A is empty on greenfield.** A refuses a flow whose effective resolver is default-branded. The
+greenfield template **configures no resolver at all** (theme 8's matrix: bind on `dev` only, no
+credential), so A refuses the demo during FIX-548's mandatory first run — the run this epic exists to
+deliver. Every escape was tested and each fails:
 
-- **(A) `createNextHandler` refuses a default-resolver flow unless the app explicitly opts in.** No
-  peer address needed — the handler judges the flow's *effective* resolver, which it can see. Cost:
-  contained, it is our code and one check at handler construction; the greenfield template must then
-  either ship a real resolver or carry the opt-in, which is a template change rather than a
-  framework one. What a developer experiences: a scaffolded app refuses its demo route until either
-  we configured something or they did, on every host including serverless, with no environment
-  guessing.
-- **(B) The same check, but only when the environment says production.** Cost: A's cost plus owning
-  the definition of "production" across Next, Vercel, Node and a queue, where `NODE_ENV` is wrong
-  often enough to matter. What a developer experiences: development is untouched and deployment
-  refuses — the mental model every product statement we wrote already implied, which is an argument
-  for it and also the reason it keeps getting assumed.
+- **Give the template a credential.** Measured already: its demo is a **browser** page, so any token
+  the page can present is one an attacker reads by loading the same page. It would satisfy A's
+  predicate while providing no protection — security theatre that also passes our own check, which is
+  worse than either option below.
+- **Bake an unconditional opt-in into the generated handler.** Permits the same unauthenticated route
+  on every deployed host. That **is** option C, plus a line of code.
+- **Opt in only in development.** That **is** option B.
+- **Have our `dev` script set a permit variable, so the permit rides with the loopback bind.** The
+  most promising one, since `scripts.dev` is ours under theme 6 (c) — and it fails on an edit this
+  document **already tells developers to make**: theme 8 says testing from a phone on the same wifi
+  is "a one-word edit in a file we just wrote them." Removing `-H 127.0.0.1` while leaving the permit
+  turns their machine into an open model endpoint on the wifi. The two halves are separable tokens in
+  one string, unlike the bind guard, where the check *is* the condition.
+- **Ship a real auth system in the scaffold** (signed cookie, prompted identity). Named so it is not
+  re-proposed: this is the thing "until real authentication is configured" has always deferred to,
+  and building it into a demo scaffold is a different product.
+
+**A survives on brownfield and is not a fork there.** Its mounted-route branch ships a server-side
+credential, so its effective resolver is already non-default and A permits it on the merits. **A was
+never a third branch — it was greenfield and brownfield priced together**, and it is empty exactly
+where the constraint lives.
+
+**So the real constraint, and it is the answer rather than a gap:** *the greenfield browser template
+cannot have both a working first run and a guarded route using anything the handler can see.* The
+client is a browser (no credential), the handler has no peer address (no network position), so the
+only remaining discriminator is an **environment signal** — which is option B — or **none**, which is
+option C.
+
+- **(B) The mounted handler refuses a default-resolver flow outside development.** Cost: the check is
+  ours and contained, plus owning what "development" means across Next, Vercel, Node and a queue,
+  where `NODE_ENV` is wrong often enough to matter. What a developer experiences: first run untouched;
+  a deployed app refuses its demo route until authentication is configured, on every host including
+  serverless.
 - **(C) Accept that the mounted route is unguarded, and say so plainly** in the scaffold's docs and
-  its generated comments. Cost: zero to build. What a developer experiences: the default deployment
-  of the app we generated is an open model endpoint on their key, and the only thing standing
-  between them and that is having read a paragraph.
-- **Note on `serve()`**, kept because it is real and demoted because it is not this: guarding it
-  would close hand-written Node embedders, who are nobody this epic ships to. Worth doing on its own
-  merits, not as an answer to this fork.
+  its generated comments. Cost: nothing to build. What a developer experiences: the default deployment
+  of the app we generated is an open model endpoint on their key, and a paragraph is what stands
+  between them and it.
 
-**My recommendation: (A).** It is the only option that reaches the exposed path, it needs no signal
-we have already proved unavailable, and it fails in the direction a demo scaffold should fail. **What
-would change my mind:** if refusing in development would break the first-run experience the epic
-exists to create — which is exactly what (B) is for, and I would rather take (B) than (C).
-**Note this fork constrains fork (2):** "key on the bind address" cannot be the whole answer, because
-the mounted route has no bind to key on. Bind address is right where a bind exists; the mounted and
-serverless paths need one of (A)'s or (B)'s signals regardless.
+**My recommendation: (B).** Its known weakness — that `NODE_ENV` is an imperfect signal — is no longer
+a reason to prefer something else, because there is nothing else; it is the price of the only branch
+that works. And it fails in the direction a demo scaffold should fail. **What would change my mind:**
+nothing about cost. Only evidence that a deployed-but-private topology is common enough among first-hour
+users that refusing there would cost more first runs than it protects keys — which is a business fact
+no spec here has.
 
-**Cost of being wrong, across all four.** Wrong toward permissive: a scaffold whose default
+**Cost of being wrong, across the set.** Wrong toward permissive: a scaffold whose default
 deployment is an open model endpoint billed to the developer, which is the thing Q5 already refused
 to ship for brownfield. Wrong toward strict: developers hit refusals in setups that were never
 exposed — a private network, a proxied host — and route around the control, which ends with them
@@ -2102,3 +2132,5 @@ those narratives now live in
 - **The remedy had inherited the boundary of the artifact that motivated it — the ninth instance, in a new costume.** Q7's fourth fork asked whether to guard `serve()`. **It was aimed at the wrong path**: plain-Node brownfield already enters through the guarded `fsdev serve` CLI, while **greenfield Next — the headline entry path — mounts through `createNextHandler` and touches neither `serve()` nor the CLI**, as does brownfield Next. The fix would have protected what was already protected and left both exposed paths exposed. *Cause: the measurement ran through `fsdev serve` because that is where the guard lives, the conclusion was framed in `serve()` terms, and the remedy followed the frame rather than the exposure.* Rewritten to the real question — **where can this be enforced at all** — under the constraint already measured under Q5 (a Next handler has **no peer address**, so no network-position control exists there at any price): (A) `createNextHandler` refuses a default-resolver flow unless opted in; (B) the same, gated on environment; (C) accept it and say so. **Recommendation (A)**, and it **constrains fork (2)** — "key on the bind address" cannot be the whole answer where there is no bind. The honest headline the owner gets: *the only place we enforce this today is the CLI, and two of three topologies do not use the CLI for the route that matters.*
 - **The mandate outlived the narrative that withdrew it.** Theme 8 established that the production promise was false and deferred the behaviour to Q7, and **still directed workers to implement a generated-config refusal**, repeating it in the control matrix — so a child issue could have preempted the owner's decision by following a sentence the surrounding paragraphs had already retracted. Marked pending Q7 at all three sites. *Same shape as the DevTool boundary: the correction was applied to one member of a pair.* **And FIX-1159 was gated on Q6 rather than noted as affected** — option (b) gives it a new host shape and its own proof, and it is first in the merge order, so a reopen invalidates what FIX-1160 packaged and FIX-548 conformed to. Q6 now gates two issues.
 - **Two of Q7's four forks settled by the coordinator, so the owner sees one question rather than four.** **(2) Keep the bind address and stop describing it as production** — no product content in it: a description being made to match a mechanism, against the alternative of inventing a deployment signal we do not have. Carried forward as a constraint on every artifact this epic ships: nothing describes this control in terms of production or deployment. **(3) Do the named minimum fix**, filed as **FIX-1189**, settled on the author's own framing that only sequencing would have changed the recommendation — which makes it engineering, not product. Non-blocking, with one standing constraint until it lands: **nothing this epic ships may print or document `--allow-unauthenticated` as the remedy for a correctly-authenticated app.** What reaches the owner is **(1) + (4) combined**, since separately they are mechanism and together they are one choice about what a developer meets when their demo is unguarded. *Also reconciled: Q6's heading still read "blocks FIX-548's implementation" a round after its body was corrected to gate FIX-1159 too — the fix-applied-to-one-member-of-a-pair defect, this time on a heading, found by re-reading the entry rather than the edit.*
+- **Q7's recommended branch dissolved when it was priced, and the dissolution is the answer.** Option A — the mounted handler refuses a default-resolver flow unless the app opts in — reached the right path after the previous round's correction and **still does not work on greenfield**, whose template configures no resolver at all and whose demo is therefore refused during FIX-548's mandatory first run. Five escapes tested, all fail: a template credential is readable from the page it protects (already measured), an unconditional opt-in **is** option C, a development-only opt-in **is** option B, a permit variable set by our own `dev` script is separable from the bind by **the one-word edit theme 8 already tells developers to make** for phone testing, and shipping a real auth system is the thing this whole control defers to. **A was greenfield and brownfield priced together** — on brownfield it is satisfied on the merits by the server-side credential and was never a fork. **So the owner gets two options, not three, and a real constraint instead of a recommendation: the greenfield browser template cannot have both a working first run and a guarded route using anything the handler can see** — no credential (browser client), no peer address (measured), so the only discriminator left is an environment signal (B) or none (C). Recommendation **(B)**, whose imperfect signal is now the price of the only branch that works rather than a reason to look for a fourth. *Recorded because the shape recurs: the fork was born of pricing two paths as one, and it took reaching the correct path before the emptiness became visible.*
+- **Two more pair-defects swept.** The `start` withdrawal still closed on *"the corrected statement is in theme 8, and it is true because the only production control is now the one that lifts"* — asserting the existence of the control the measurement had removed, in the same document that withdraws the statement pending Q7. Corrected on the premise (*does a production control exist?*), not the wording; what survives there is the `start` withdrawal, which never needed a replacement. And **the guest with an existing `devtool` block was filed as "unresolved rather than absent"** while the theme treated the run as complete: the block is app-global, so their `bearerToken` reaches our flow, which requires the credential the run just generated, and the printed `fsdev dev` cannot invoke the demo — breaking the one-agent-run promise and failing the shipper × host walk this theme mandates. **Refuse the conflict or specify and prove a compatible integration.** *The fixture gap is the more useful half: §1's guest proof requires an existing config but not an existing `devtool` block, so it cannot construct the failing case — a proof whose fixture cannot express the failure it exists to catch, which is this round's signature.*
