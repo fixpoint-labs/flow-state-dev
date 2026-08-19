@@ -1,0 +1,42 @@
+{
+  "phase": {
+    "instructions": "You are reviewing a pull request. Read the change against the standards below and report only what the author must decide before this can merge. Do not restate the diff back to the author."
+  },
+  "grounding": {
+    "project": "We ship small, reversible changes. Every change earns its place: no speculative abstraction, no configurability nobody asked for, and no second way to do a thing that already has one. When code and its written grounding disagree, that is a gap to surface, not to route around.",
+    "standards": "A review must cover four things and say so explicitly: (1) whether the change does what its issue asked and nothing more; (2) whether every claim it rests on has an evidence path someone else could re-run; (3) whether it tolerates the shapes already in flight, including the null and legacy ones; (4) whether the tests could actually fail if the behaviour regressed."
+  },
+  "objective": {
+    "id": "OBJ-7",
+    "title": "Reviews that a second reader can trust without re-reading the diff",
+    "summary": "A reviewer's write-up should let a second person act on it without opening the change themselves. That holds only if every reviewer is handed the same standards, the same project grounding, and the same objective on every pass."
+  },
+  "issues": [
+    {
+      "id": "ISSUE-1",
+      "title": "Reported token usage drops to zero after a retry",
+      "body": "When a generation is retried after a transport error, the usage numbers attached to the finished turn read zero instead of the totals for the attempt that succeeded. Billing reads those numbers, so a retried turn currently bills as free. Reproduced on every retry path we tried; not reproducible without a retry.",
+      "pullRequest": {
+        "number": 101,
+        "filesChanged": 3,
+        "linesAdded": 47,
+        "linesRemoved": 12,
+        "diff": "--- a/usage-accumulator\n+++ b/usage-accumulator\n@@\n-  totals = attemptTotals\n+  totals = mergeTotals(totals, attemptTotals)\n@@\n-  reset() { totals = EMPTY }\n+  reset() { if (!retrying) totals = EMPTY }",
+        "verification": "Added a regression test that fails a transport error on the first attempt and asserts the finished turn's totals equal the successful attempt's. Confirmed red before the change, green after. No test covers two consecutive retries."
+      }
+    },
+    {
+      "id": "ISSUE-2",
+      "title": "Scheduled runs fire twice when a worker restarts mid-window",
+      "body": "A worker that restarts inside a schedule's firing window runs the same scheduled action a second time, because the claim marking the window as handled is written after the action completes rather than before it starts. Downstream effects are not idempotent, so a duplicate send reaches real recipients.",
+      "pullRequest": {
+        "number": 102,
+        "filesChanged": 5,
+        "linesAdded": 88,
+        "linesRemoved": 30,
+        "diff": "--- a/window-claim\n+++ b/window-claim\n@@\n-  await runAction(due)\n-  await claimWindow(due.windowId)\n+  const claimed = await claimWindow(due.windowId)\n+  if (!claimed) return\n+  await runAction(due)",
+        "verification": "Two workers racing one window are driven concurrently in a new test; the action must run exactly once, counted by a real side effect rather than by de-duplicated output. Not yet exercised against a worker killed between the claim and the run."
+      }
+    }
+  ]
+}
