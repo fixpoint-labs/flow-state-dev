@@ -38,7 +38,7 @@ pnpm add @flow-state-dev/next
 
 For development:
 ```bash
-pnpm add -D @flow-state-dev/testing fsdev
+pnpm add -D @flow-state-dev/testing @flow-state-dev/fsdev
 ```
 
 ---
