@@ -109,10 +109,10 @@ resource (an open connection, for example).
 
 A **workstream** is a child session dedicated to one background job, running
 outside the request that started it. If you dispatch the agent into one, set
-`sessionState: false`:
+`detached: true`:
 
 ```ts
-const agent = claudeCodeAgent({ sessionState: false });
+const agent = claudeCodeAgent({ detached: true });
 ```
 
 Each job is then one run. Nothing is written to session state, and no prior SDK
@@ -140,7 +140,7 @@ worker can be accepted while still carrying session state that way. If you attac
 this agent as a capability, pass the option there too — it takes the same one:
 
 ```ts
-createClaudeCodeAgentCapability({ sessionState: false });
+createClaudeCodeAgentCapability({ detached: true });
 ```
 
 See [Background work](../server/background-work.md) for how a workstream is set

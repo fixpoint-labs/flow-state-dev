@@ -180,7 +180,7 @@ await runGoal(async () => {
   });
 
   /**
-   * The detached worker. `sessionState: false` is what makes the board accept
+   * The detached worker. `detached: true` is what makes the board accept
    * it — see the option's docs in `packages/claude-code/src/sdk/agent.ts`.
    */
   const codingRun = sequencer({
@@ -191,7 +191,7 @@ await runGoal(async () => {
     .step(taskGoalToPrompt)
     .step(
       claudeCodeAgent({
-        sessionState: false,
+        detached: true,
         // Bounded on purpose: a small, deterministic job, not an open-ended one.
         allowedTools: ["Write", "Read"],
         // `acceptEdits`, NOT `bypassPermissions`: the latter maps to

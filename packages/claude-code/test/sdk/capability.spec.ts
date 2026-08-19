@@ -33,13 +33,13 @@ describe("createClaudeCodeAgentCapability", () => {
     expect(parsed).toMatchObject({ sdkSessionId: null, sdkAgentRuns: [] });
   });
 
-  it("honours sessionState: false and declares no session-state schema", () => {
+  it("honours detached: true and declares no session-state schema", () => {
     // The half that fails SILENTLY if missed. A capability contributes its
     // `sessionStateSchema` through a channel the task board's block walk cannot
     // see, so a capability still declaring it would re-add the very key the
     // block just stopped declaring — and the board would accept the worker
     // while the collision it refuses is back.
-    const cap = createClaudeCodeAgentCapability({ sessionState: false }) as unknown as {
+    const cap = createClaudeCodeAgentCapability({ detached: true }) as unknown as {
       sessionStateSchema?: unknown;
       __presetDefs: { tools: { tools: Array<{ config?: { sessionStateSchema?: unknown } }> } };
     };
@@ -49,5 +49,21 @@ describe("createClaudeCodeAgentCapability", () => {
     // capability's own declaration.
     const [tool] = cap.__presetDefs.tools.tools;
     expect(tool.config?.sessionStateSchema).toBeUndefined();
+  });
+
+  it("declares the session-state schema when `detached: false`", () => {
+    // `capability.ts` reads the option at its OWN site with its own default, so
+    // the three states are pinned here too rather than inferred from the
+    // block's. `false` and omitted are different values arriving at that read;
+    // only asserting both catches a read that collapses one into the other.
+    // (The omitted case is the `sdkSessionId`/`sdkAgentRuns` test above.)
+    const cap = createClaudeCodeAgentCapability({ detached: false }) as unknown as {
+      sessionStateSchema?: unknown;
+      __presetDefs: { tools: { tools: Array<{ config?: { sessionStateSchema?: unknown } }> } };
+    };
+
+    expect(cap.sessionStateSchema).toBeDefined();
+    const [tool] = cap.__presetDefs.tools.tools;
+    expect(tool.config?.sessionStateSchema).toBeDefined();
   });
 });
