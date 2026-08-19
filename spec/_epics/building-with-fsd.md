@@ -1023,8 +1023,13 @@ call.
    the path at all, and the generated flow is on the default resolver there exactly as it is
    everywhere else.
 
-   **So the control is completed where it is adapter-independent: the generated config refuses to
-   serve a default-resolver flow outside development.** Same shape as the runtime floor — refuse
+   **PENDING §5 Q7 — this paragraph states a direction, not a mandate, and no issue implements it
+   until Q7 is answered.** *It read as a binding instruction for several rounds after the measurement
+   below established that the behaviour it describes does not exist and that the epic had no right to
+   pick it. The narrative was corrected and the mandate was left standing — the same
+   fix-applied-to-one-member-of-a-pair this document keeps hitting — so a child issue could have
+   preempted the owner's decision by doing exactly what this sentence says.* The direction was: **the
+   generated config refuses to serve a default-resolver flow outside development.** Same shape as the runtime floor — refuse
    rather than hand someone something that looks like it works — and it holds on every host,
    including the ones we never see. **This is owner-visible and stated plainly: a generated app
    will not serve in production until authentication is configured**, which for a demo scaffold is
@@ -1079,7 +1084,7 @@ call.
 
    | | Loopback bind | Credential | Why |
    |---|---|---|---|
-   | **Greenfield** (mounted-route) | **`dev` only** — theme 6 (c); production is the config refusal, not a bind | no | its demo is a browser page, so any token it holds an attacker reads from the same page |
+   | **Greenfield** (mounted-route) | **`dev` only** — theme 6 (c). **Production: unresolved, §5 Q7** — the row previously said "the config refusal", a control that does not exist | no | its demo is a browser page, so any token it holds an attacker reads from the same page |
    | **Brownfield, mounted-route** | no — their dev script, theme 6 forbids editing it | **yes** | the only control available |
    | **Brownfield, second-process** | **yes** — our printed `fsdev serve --host 127.0.0.1` | **yes** | **both**, because we author the start command *and* ship no browser client |
 
@@ -1097,8 +1102,10 @@ call.
    wrong there *by construction*, whoever authored the command. The second-process branch gets this
    right for free because `assertNetworkBindIsAuthenticated` **is** the condition. The attempt to
    narrow greenfield's `start` got it wrong because a script argument is a constant and cannot ask —
-   which is why that narrowing was withdrawn rather than made cleverer, and **production is now the
-   config refusal on every path**, the one control that lifts when the condition lifts. **A control
+   which is why that narrowing was withdrawn rather than made cleverer. **What covers production on
+   each path is now open (§5 Q7)** — this sentence used to answer it with "the config refusal on
+   every path", naming a control that was never built and, on the mounted route, could not have been
+   built the way it was described. **A control
    whose condition can clear must be able to observe it clearing** — otherwise it is not a control,
    it is a permanent default wearing a rationale.
 
@@ -1462,7 +1469,7 @@ section carries its path.*
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| FIX-1159 | The brownfield knowledge — deterministic detection scripts, the install skill's **content**, the shared next-steps block, and **the wiring contract both entry paths satisfy** (theme 9) | spec | [#1310](https://github.com/fixpoint-labs/flow-state-dev/pull/1310) | — | In spec review — re-shaped to **brownfield only, no command of its own**; the earlier approval was retracted with the direction change. **Not blocked by an open question** (Q5 resolved by constraint: the run configures a non-default principal resolver, mechanism this issue's) — **but its decision 1 now needs to change**: theme 5 has the run *apply* the flow-registration line as an additive edit, where that decision hands it back, and handed back it leaves nothing we author reachable on the guest branch. Also gains the devtool peer fix (theme 5), the mounted-route proof (theme 9 (b)), and the **production-guard fixture** (theme 8) — the guest fixture cannot carry that check, and the assertion that said it could was unfalsifiable. **The fixture may run on the author branch after all** — the alarm that its mandated host-level resolver made the case impossible was measured and refuted (awkward, not impossible; two verified escapes). What the fixture asserts still follows from §5 Q7 |
+| FIX-1159 | The brownfield knowledge — deterministic detection scripts, the install skill's **content**, the shared next-steps block, and **the wiring contract both entry paths satisfy** (theme 9) | spec | [#1310](https://github.com/fixpoint-labs/flow-state-dev/pull/1310) | — | In spec review — re-shaped to **brownfield only, no command of its own**; the earlier approval was retracted with the direction change. **Implementation now blocked by §5 Q6** — corrected this round: option (b) hands it a minimal-project host shape and a proof of its own, and it merges first, so landing it on an unchosen scope invalidates work downstream. Its *spec* may proceed, carrying (b) as an explicit conditional. (Q5 remains resolved by constraint: the run configures a non-default principal resolver, mechanism this issue's.) **Its decision 1 also needs to change**: theme 5 has the run *apply* the flow-registration line as an additive edit, where that decision hands it back, and handed back it leaves nothing we author reachable on the guest branch. Also gains the devtool peer fix (theme 5), the mounted-route proof (theme 9 (b)), and the **production-guard fixture** (theme 8) — the guest fixture cannot carry that check, and the assertion that said it could was unfalsifiable. **The fixture may run on the author branch after all** — the alarm that its mandated host-level resolver made the case impossible was measured and refuted (awkward, not impossible; two verified escapes). What the fixture asserts still follows from §5 Q7 |
 | FIX-1162 | Register the npm names the launch needs — the short CLI entry name and the scaffolding name | spec | [#1313](https://github.com/fixpoint-labs/flow-state-dev/pull/1313) | — | In spec review — **both names now registered at `0.0.0` to a personal account**; what remains is the publishing identity's write access (`npm owner add` / transfer) and the unproven `@flow-state-dev` scope. Owner operations, not agent work |
 | FIX-548 | `create-flow-state` — the deterministic greenfield path; template count pending **§5 Q6**, written against one (Next.js chat app), owned end to end | spec | [#1312](https://github.com/fixpoint-labs/flow-state-dev/pull/1312) | — | **Re-approval needed and NOT mechanical** — at `a3fc694` the spec takes five previously-unowned jobs into decision 3, **reverses decision 5** (verified: `providerPreference` is consulted only inside `resolveIntent`, so a declared `provider/model` never reaches it — the hijack scenario it guarded is unreachable on that path, not merely weakened), moves **Small → Medium**, and adds decision 8, a new **product statement** (*the generated app does not serve off-host until authentication is configured*). A scope change and a product statement are the owner's to read, not a sweep's to wave through. In Linear it is `blocks`-blocked by **FIX-1159, FIX-1160 and FIX-1162** — read from the graph, and over-tight against Sequencing, which calls the first two merge-order and forbids the third outright. Its spec is not edited by the epic. **Implementation is separately blocked by §5 Q6** — independent holds; clearing one does not clear the other |
 | FIX-1160 | The authoring pack **and the plugin that distributes the install skill** — agent-instructions file, authoring skills, install skill | spec | [#1311](https://github.com/fixpoint-labs/flow-state-dev/pull/1311) | — | Spec complete, approved at `dd9b656` — **approval needs re-taking**: theme 9 (d) hands it the agent-instructions block's normalization and equality check (posted to #1311). Scope had already grown: it is the brownfield path's only delivery channel |
@@ -1489,8 +1496,13 @@ they mean different things:
 - **Release gates** (gate shipping only — no issue's spec, build, or merge): the publishing identity
   can write every package the quickstarts install (theme 1). **FIX-1162 is not a merge edge on
   FIX-548 and must not be treated as one.**
-- **Undecided, not deferred**: the second template — **§5 Q6 is open.** Not an accepted deferral,
-  and FIX-548 must not be advanced on a one-template scope until it is answered.
+- **Undecided, not deferred**: the second template — **§5 Q6 is open.** Not an accepted deferral, and
+  **neither FIX-548 nor FIX-1159 may be advanced to implementation on a one-template scope until it is
+  answered.** FIX-1159 was added to this bullet on review: option (b) changes its scope too, and it is
+  first in the merge order.
+- **Undecided, not deferred**: what an unauthenticated generated demo does on a network — **§5 Q7 is
+  open.** No issue implements a production or bind refusal until it is answered; theme 8 states the
+  measured behaviour and mandates nothing.
 
 ## 5. Open cross-cutting questions
 
@@ -1508,7 +1520,7 @@ independent; clearing one does not clear the other.
 
 | | Status | What it gates |
 |---|---|---|
-| **Q6** — one starter or two | **open** | **Blocks FIX-548's implementation.** It does **not** block that spec's re-approval — though that re-approval is separately held, and not for mechanical reasons: a scope increase (Small → Medium), a reversed decision, and a new product statement. A different hold, and a heavier one. |
+| **Q6** — one starter or two | **open** | **Blocks the implementation of FIX-548 *and* FIX-1159** — the second added on review: option (b) gives FIX-1159 a new host shape and its own proof, and it merges first, so a reopen invalidates work downstream of it.** It does **not** block that spec's re-approval — though that re-approval is separately held, and not for mechanical reasons: a scope increase (Small → Medium), a reversed decision, and a new product statement. A different hold, and a heavier one. |
 | **Q7** — what the unauthenticated-demo rail should do | **open** | **Blocks any production-refusal work in every issue.** Raised by a POC that ran the real code: the rail is whole-app not per-flow, keys on bind address not environment, and is never invoked on either path this epic ships. The epic's product statement is **withdrawn** until this is answered. |
 | **Q4** — does install-by-URL still hold | **open** | Nothing. It exists because the split changed what an already-made decision costs. |
 | Q1, Q2, Q3, Q5 | decided | — |
@@ -1829,18 +1841,58 @@ start at all?**
   change my mind:** nothing about the developer experience — only sequencing, if the framework fix
   cannot land inside this epic's window, in which case the scaffold must not print the flag.
 
-**(4) Is the library path guarded at all?**
+**(4) Where can this be enforced at all — because the path that is exposed is the one path that
+can see nothing?**
 
-- *No* is today's behaviour: `serve()` is unguarded, only the `fsdev serve` CLI checks. Cost: zero.
-  What a developer experiences: our brownfield install, which is exactly a host app importing our
-  flow, has no rail — the epic's central path is the unguarded one.
-- *Yes* means moving the check into `serve()` so every caller gets it. Cost: modest in code, larger
-  in blast radius — it changes behaviour for every existing embedder, and anyone binding `0.0.0.0`
-  today with a default-resolver flow starts failing on upgrade.
-- **My recommendation: yes, guard `serve()`**, because "the CLI does it" is a rail that only protects
-  the people who did not need protecting. **What would change my mind:** if we are unwilling to ship
-  a behaviour change to existing embedders before 1.0 — though pre-1.0 is precisely when this is
-  cheapest.
+*This fork replaced one asking whether to guard `serve()`. **That question was aimed at the wrong
+path**, and the correction is the most important thing in this entry. Plain-Node brownfield already
+enters through the guarded `fsdev serve` CLI. Greenfield Next — our headline entry path — mounts
+through `createNextHandler` and touches neither `serve()` nor the CLI, and so does brownfield Next.
+So guarding `serve()` would have protected the path that is already protected and left both exposed
+paths exposed. The remedy had inherited the boundary of the artifact that motivated it: the
+measurement ran through `fsdev serve` because that is where the guard lives, and the fix followed
+the measurement's frame instead of the exposure.*
+
+**The honest headline, and the owner should see it in this form: the only place we enforce this
+today is the CLI, and two of our three topologies do not use the CLI for the route that matters.**
+Greenfield mounted-route and brownfield mounted-route both run inside the developer's own Next
+server. Only brownfield second-process goes through `fsdev serve`.
+
+**And the mounted route cannot be given the same kind of guard**, which is measured rather than
+assumed and is recorded under Q5's *Eliminated 2*: a Next App Router handler receives a web
+`Request`, and `NextRequest` in `next@16.3.1` exposes **no peer address** — `ip` is gone,
+`connection()` is a prerendering signal. A guard keyed on `x-forwarded-for` or `host` is defeated by
+sending a header, which is worse than none because it reads as protection. **So no network-position
+control is available on the exposed path, at any price.** That constraint, not cost, is what shapes
+the options:
+
+- **(A) `createNextHandler` refuses a default-resolver flow unless the app explicitly opts in.** No
+  peer address needed — the handler judges the flow's *effective* resolver, which it can see. Cost:
+  contained, it is our code and one check at handler construction; the greenfield template must then
+  either ship a real resolver or carry the opt-in, which is a template change rather than a
+  framework one. What a developer experiences: a scaffolded app refuses its demo route until either
+  we configured something or they did, on every host including serverless, with no environment
+  guessing.
+- **(B) The same check, but only when the environment says production.** Cost: A's cost plus owning
+  the definition of "production" across Next, Vercel, Node and a queue, where `NODE_ENV` is wrong
+  often enough to matter. What a developer experiences: development is untouched and deployment
+  refuses — the mental model every product statement we wrote already implied, which is an argument
+  for it and also the reason it keeps getting assumed.
+- **(C) Accept that the mounted route is unguarded, and say so plainly** in the scaffold's docs and
+  its generated comments. Cost: zero to build. What a developer experiences: the default deployment
+  of the app we generated is an open model endpoint on their key, and the only thing standing
+  between them and that is having read a paragraph.
+- **Note on `serve()`**, kept because it is real and demoted because it is not this: guarding it
+  would close hand-written Node embedders, who are nobody this epic ships to. Worth doing on its own
+  merits, not as an answer to this fork.
+
+**My recommendation: (A).** It is the only option that reaches the exposed path, it needs no signal
+we have already proved unavailable, and it fails in the direction a demo scaffold should fail. **What
+would change my mind:** if refusing in development would break the first-run experience the epic
+exists to create — which is exactly what (B) is for, and I would rather take (B) than (C).
+**Note this fork constrains fork (2):** "key on the bind address" cannot be the whole answer, because
+the mounted route has no bind to key on. Bind address is right where a bind exists; the mounted and
+serverless paths need one of (A)'s or (B)'s signals regardless.
 
 **Cost of being wrong, across all four.** Wrong toward permissive: a scaffold whose default
 deployment is an open model endpoint billed to the developer, which is the thing Q5 already refused
@@ -1959,9 +2011,17 @@ it does not own.*
 What waits is **FIX-548's implementation**: this is the one open item that changes what it builds.
 If the answer is **"one"**, §6 decision 2 becomes stale rather than open and building proceeds. If
 **"two"**, decision 2 reverses *and* decision 2b (no `--template` flag) reopens with it — that is a
-spec revision, so FIX-548 needs another pass rather than only different code. **FIX-1159 is also
-affected**, though not blocked: option (b) would hand it a minimal-project brownfield behaviour it
-does not have today.
+spec revision, so FIX-548 needs another pass rather than only different code. **FIX-1159 is *gated*, not merely affected — corrected, and the correction changes what you are
+deciding.** Option (b) hands it a new supported host shape (the smallest project the skill will
+engage with), the precondition work to make that shape resolve, and **a proof of its own**. Treating
+that as an "affected" note would let FIX-1159 land on a scope nobody chose — and it is **first in the
+`FIX-1159 → FIX-1160 → FIX-548` merge order**, so a reopen after the fact invalidates content
+FIX-1160 has already packaged and a contract FIX-548 has already conformed to. **The gate is on its
+implementation, not its spec**, matching FIX-548: its spec may proceed, but must carry (b) as an
+explicit conditional rather than quietly assuming (c). *Weighed the other way honestly — a gate is
+heavier than a reopen only when the addition is small and terminal, and this one is neither: it is
+upstream of both other issues.* **So Q6 now gates two issues, and that is part of what it costs to
+leave it open.**
 
 ---
 
@@ -2012,3 +2072,5 @@ those narratives now live in
 - **The rail was measured instead of reasoned, and four of this document's claims about it were false.** A POC served a real three-flow app through `@flow-state-dev/node` and invoked `assertNetworkBindIsAuthenticated` as `fsdev serve` does. **(1)** Detection is per-flow, **enforcement is whole-app** — a properly-authenticating bystander is refused along with the offender, so *"flows that authenticate properly continue to serve"* is false; the any-flow blast radius is not a reading we can choose against, it is what ships. **(2)** The trigger is the **bind host**, not the environment — no `NODE_ENV` check exists anywhere on the path, so `--host 127.0.0.1` in production is exempt and `0.0.0.0` in development is refused. **(3)** **`serve()` never calls the guard**; only the CLI does — so a host app importing our flow, which is this epic's entire brownfield shape, has no rail on its path, and neither does the Next mounted route. **(4)** A credentialed flow returns the same 401 with the guard present, removed, or per-flow, so it carries **zero** information about it; the discriminator is the default-resolver flow, which returns `202` and logs `userId: 'attacker'` when the guard is removed. **Consequence: the third product statement in a row was false, and this document stopped making one** — the behaviour is now **§5 Q7**, the owner's, with the three forks priced. Swept the premise rather than the wording: theme 6 exception (c)'s redundancy argument collapsed with the control (the withdrawal stands on harm), theme 5's negative list and §1's greenfield production assertion both named a control rather than a behaviour, and the release-check mirror survived because it asserts an **absence**. *The lesson is not "verify more". It is that every false version of this promise was produced by deriving behaviour from our own rules, and the derivation never once failed loudly.*
 - **Two structural findings folded, one held.** The `devtool` boundary still said "the registration line is the only edit" three bullets under the correction that added a second — **a fix applied to one member of a pair**, now this document's most common defect shape, and an implementer following it would have failed the authenticated `fsdev dev` check this same theme mandates. And the epic was **dictating a child spec's correction** at theme 5's citation of FIX-1159's decision 1; reduced to stating the invariant and flagging the conflict for routing. **Held pending measurement:** whether the author branch's mandated host-level resolver counts as authentication to the bind guard — `bind-guard.ts` documents its own host-level fallback as a known false positive, and if that holds the generated app can never serve on a network interface whatever the developer configures. The author-branch fixture assertion is **withdrawn rather than defended** until that verdict lands.
 - **The impossibility alarm was refuted by measurement, and what replaced it is worse.** The concern — that the author branch's mandated host-level resolver made a network bind unreachable forever — was raised here and is **withdrawn**. `executeServeCommand` run across five configurations on `origin/main @ f56c6b216`: the guard **does** refuse a genuinely host-authenticated app (a true false positive, proved by a negative control — the same resolver moved per-flow binds and enforces correctly), and the **mixed** case refuses whole-app, naming only the inheriting flow while the correctly-configured one also stops serving. But **two escapes work**: `--allow-unauthenticated`, after which the app binds *and still enforces auth*, and a hand-written `serve()` entrypoint the guard never sees. Awkward, not impossible. **What survives is the real hazard: the sanctioned escape is a flag named `--allow-unauthenticated`, applied to a fully authenticated app, disabling the guard wholesale — so a flow added later with no authentication binds silently.** Documented as a known limit at `packages/node/src/bind-guard.ts:14-18` (`packages/node`, not `packages/engine`). Q7 gains a fourth priced option, the named minimum fix: pass the app's `resolvePrincipal` into `assertNetworkBindIsAuthenticated` and judge a flow by its **effective** resolver per `pickPrincipalResolver`'s precedence. *Recorded as a correction of our own alarm, not of a reviewer's: the document is better for being right than for being consistent with the fear that motivated the check.* Three gaps declared unknown: `authentication` declared without `resolvePrincipal`, non-HTTP adapters under `fsdev serve`, and `tsx`-vs-`dist`.
+- **The remedy had inherited the boundary of the artifact that motivated it — the ninth instance, in a new costume.** Q7's fourth fork asked whether to guard `serve()`. **It was aimed at the wrong path**: plain-Node brownfield already enters through the guarded `fsdev serve` CLI, while **greenfield Next — the headline entry path — mounts through `createNextHandler` and touches neither `serve()` nor the CLI**, as does brownfield Next. The fix would have protected what was already protected and left both exposed paths exposed. *Cause: the measurement ran through `fsdev serve` because that is where the guard lives, the conclusion was framed in `serve()` terms, and the remedy followed the frame rather than the exposure.* Rewritten to the real question — **where can this be enforced at all** — under the constraint already measured under Q5 (a Next handler has **no peer address**, so no network-position control exists there at any price): (A) `createNextHandler` refuses a default-resolver flow unless opted in; (B) the same, gated on environment; (C) accept it and say so. **Recommendation (A)**, and it **constrains fork (2)** — "key on the bind address" cannot be the whole answer where there is no bind. The honest headline the owner gets: *the only place we enforce this today is the CLI, and two of three topologies do not use the CLI for the route that matters.*
+- **The mandate outlived the narrative that withdrew it.** Theme 8 established that the production promise was false and deferred the behaviour to Q7, and **still directed workers to implement a generated-config refusal**, repeating it in the control matrix — so a child issue could have preempted the owner's decision by following a sentence the surrounding paragraphs had already retracted. Marked pending Q7 at all three sites. *Same shape as the DevTool boundary: the correction was applied to one member of a pair.* **And FIX-1159 was gated on Q6 rather than noted as affected** — option (b) gives it a new host shape and its own proof, and it is first in the merge order, so a reopen invalidates what FIX-1160 packaged and FIX-548 conformed to. Q6 now gates two issues.
