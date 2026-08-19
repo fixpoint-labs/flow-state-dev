@@ -58,7 +58,12 @@ they are stated once there rather than twice here.
   resolver, `defaultBodyUserIdPrincipalResolver` accepts the request and streams happily, so the
   positive check passes **identically whether the wiring is correct or entirely absent**.
   Asserting no model invocation is the second half that matters: a 200 carrying an error body
-  would otherwise read as a refusal.
+  would otherwise read as a refusal. **And the run must be against a host that already has its own
+  `fsdev.config.*`** — the guest branch, where the registration line is applied rather than handed
+  back. That is not a variant of the same check: `resolveRuntimeSource` returns on a located config
+  *before* `discoverFlows` runs, so on a host with a config the flow file we author is never
+  imported, and a proof run against a config-less project would pass while the supported branch
+  reaches nothing we wrote (theme 5).
 - *FIX-1159, second-process path* — the same against an existing plain-Node project: the printed
   command starts FSD, a call to it **carrying the generated credential** streams a real model
   response, and the project's own server keeps running. **A call without it is refused, and the FSD
@@ -86,6 +91,14 @@ they are stated once there rather than twice here.
   mounted-route one: the bind is greenfield's *only* control (theme 8), and a chat page streaming
   over `localhost` proves nothing about it, because the page streams identically whether the dev
   script carries the flag or the exception was never implemented at all.
+
+  **And the mirror of that assertion, which is the one a fixed bind fails:** with a real principal
+  resolver configured, `npm run build && npm start` **must be reachable from a non-loopback
+  address**. Every check above asks whether the control is present; none asks whether it *lets go*
+  once its condition clears, and a permanent loopback lock-out passes all of them silently — the
+  only signal is a developer who cannot deploy and is told nothing. Both directions are required
+  because theme 6 (c) narrows a **production** command, where the justifying condition is expected
+  to clear.
 - *FIX-1160* — one recorded run covering **both halves of the pack**: the plugin installed from its
   published source and a packaged skill invoked, then an assistant in a fresh project, given a
   stated feature goal and nothing else, produces a flow that runs. A single observation, stated as
@@ -364,6 +377,13 @@ call.
      clients carry none of our credential — **their working app starts returning 401s, silently,
      because we were invited in.** That is theme 6's promise broken directly.
 
+     **That quoted line is now in conflict with this theme and FIX-1159 owns the resolution.** "Hand
+     back the one line that registers the new flow" is exactly what the finding below shows cannot
+     work: handed back, nothing we author is ever imported. This theme's revised rule has the run
+     **apply** the registration line as an additive edit. FIX-1159's decision 1 must move with it —
+     flagged rather than assumed, since the epic does not edit a child spec, and quoted at the head
+     it was read at per this theme's citation rule.
+
      **And no host-level resolver can avoid it.** The obvious escape — install a host resolver that
      branches on `flowKind` and leaves other flows as they were — **is not available**, because the
      guard branches on resolver *identity*: `isDefaultBodyUserIdPrincipalResolver` is a brand check,
@@ -372,7 +392,8 @@ call.
      it does internally. Checked before choosing, because a third remedy would have been better than
      either of the two obvious ones.
 
-     **So the rule is keyed on authorship — the same boundary theme 6 already uses:**
+     **So the rule is keyed on inheritance — narrower than the authorship boundary it was first
+     written as, and corrected below for the reason recorded there:**
 
      - **When the run writes the config (no existing one):** install at **both** levels. Ours is the
        only flow, so the host level harms nothing, the bind guard is satisfied, and session listing
@@ -380,6 +401,13 @@ call.
      - **When the config is the developer's:** install **per-flow only**, in the flow file we
        author, and **never add a host-level resolver to a config we did not write.** The bind guard
        is satisfied (our flow authenticates); their flows keep exactly the behaviour they had.
+
+     **The prohibition is on the host-level resolver specifically, not on touching their config**,
+     because the hazard is *inheritance* — `pickPrincipalResolver` falls back to the host resolver
+     for every flow with no override, so a host resolver reaches flows we never named. An edit that
+     reaches only our own entry carries none of that. Stating the rule as "write no config at all"
+     is a wider prohibition than the hazard supports, and that width is what made the guest branch
+     impossible to complete — see below.
 
      **What that costs, disclosed rather than engineered around:** in the guest case the DevTool's
      session list will not show our demo flow's sessions, because constraint 2 withholds them while
@@ -420,11 +448,72 @@ call.
      the config we deliberately do not touch. Traced rather than assumed: securing our flow per-flow
      while leaving their config alone would open a DevTool that cannot invoke our demo flow at all —
      worse than the empty session list, and the same class of "we secured it and broke the next
-     printed line" that theme 5 exists to catch. **So the guest case hands the developer two lines
-     for their own config** — the one that registers the flow, which FIX-1159 already prints, and
-     the `devtool` block beside it — rather than writing either. Their diff review is the consent
-     surface, exactly as it is for every other write; what changes is that these two are applied by
-     them rather than by us.
+     printed line" that theme 5 exists to catch.
+
+     **Handing both lines over does not work, and the reason generalises past the two lines.** The
+     first draft of this bullet had the guest case hand the developer the registration line and the
+     `devtool` block for their own config rather than writing either. Walked against the CLI, that
+     leaves the branch unable to do anything at all until the developer edits their config by hand.
+     **`resolveRuntimeSource` does not *prefer* the config — it is exclusive:** a located
+     `fsdev.config.*` returns before `discoverFlows` is ever called. So the flow file we author is
+     not merely outranked, it is **never imported**. The projections, none of which is the whole
+     finding:
+
+     - `fsdev run <demo-flow>` — the flow is absent from their registry; discovery, which would have
+       found our file, does not run.
+     - `fsdev dev` — same registry, so the demo is neither listed nor runnable; and with no `devtool`
+       block, `hasField` is false and the DevTool page is handed no credential, so our secured flow
+       stays uninvocable even once registered.
+     - `fsdev serve` — passes `requireConfig: true`, which throws *before* discovery. There is no
+       `--no-config` on `serve` at all.
+     - A mounted handler backed by that config — same absent flow, so the route cannot expose it.
+     - **Both flag-level escapes fail**: `--flow-dir` is rejected outright when a config loaded
+       (`assertNoFlowDirWithConfig`), and `--no-config` discards the app's real wiring — stores,
+       model resolver — which is the entire reason their config exists, so it runs a different app
+       rather than the same one differently.
+
+     **The generalisation, which is the finding: on the guest branch nothing we author executes until
+     that registration line is applied.** Every bullet above is a projection of that one fact, and so
+     is the credential refusal this theme moved into the flow file *specifically so it would hold on
+     both authorship branches* — it holds, but only downstream of a step we had left to the
+     developer. **A standing check that must be run "on both authorship branches" therefore had a
+     guest arm that could not be run**, which is a worse shape than the false passes this epic has
+     been finding: those returned the wrong answer, this one has no answer to return.
+
+     **So the run applies the registration line, and this is a change of mind about the boundary
+     that should be recorded as one.** What changed it: the boundary was formulated as *authorship*
+     — do not write a config we did not author — but the hazard it was built from is *inheritance*,
+     and inheritance is a property of the host-level resolver alone. Generalising one flow-reaching
+     hazard into a whole-file prohibition is what produced an unreachable branch. Keyed on the
+     hazard instead, the config falls under **theme 6's additive contract like every other file we
+     did not write**: appending our flow to the registry removes nothing, reorders nothing, and
+     changes no existing key's value — the same standard already applied to `.gitignore` and
+     `package.json`, neither of which we authored either. The developer's diff review is the consent
+     surface, exactly as it is for every other write. **The host-level resolver stays prohibited**,
+     because it is the one edit that reaches flows we never named.
+
+     - **Flow registration** — additive, reaches only our entry. **Applied by the run.**
+     - **`devtool` block, none present** — additive; it supplies the DevTool page a credential and
+       gates nothing. **Applied by the run.**
+     - **`devtool` block already present** — changing the value of a key we do not own is exactly
+       what exception (b) forbids, and their DevTool identity is a real conflict rather than a
+       formatting one. **Handed over**, with the conflict named.
+     - **Host-level resolver** — inherited by their override-less flows. **Never.**
+
+     **Two things survive this fix, recorded so the next reader does not have to rediscover that
+     the list was longer than the symptom.** First, the DevTool-block conflict above is unresolved
+     rather than absent — the guest whose config already declares `devtool` still ends the run with
+     a manual step. Second, and not a config-edit question at all: **`modelResolver` is a single
+     app-level option on `createFlowState`**, so on the guest branch our demo flow generates through
+     *their* resolver. Registration makes the flow reachable; it does not make its model resolvable,
+     and nothing in this epic currently says the demo's model must be one the host app can already
+     serve. That is a live gap, not a closed one.
+
+     **This is the fourth consequence to fall out of the resolver work** — DevTool listing, the
+     additive-promise break, this, and the model-resolver gap above. Each fix was correct and each
+     exposed the next, which is evidence about the *area* rather than about any of the fixes:
+     changes to who-installs-what keep reaching further than the edit that motivates them, so the
+     next one should be assumed to exist rather than hoped against.
    - **`fsdev run` is unaffected**, on both branches: it calls `runAction` in-process with its own
      `cli-user` identity and never resolves a principal, so it does not cross the secured surface.
    - **The second-process branch's own call does cross it.** `fsdev serve` starts a real HTTP
@@ -453,8 +542,9 @@ call.
    the run wrote the config or the project already had one — decides what the run *installs*
    (theme 8's resolver rule) and therefore what the printed commands can do. They are independent,
    so covering topology alone leaves the **guest** case exercised by nothing: per-flow-only
-   resolver, two config lines handed over rather than applied, no host resolver, degraded session
-   listing. **That is the same defect this theme names one paragraph up, committed against this
+   resolver, an additively-applied registration line, no host resolver, degraded session listing,
+   and a `devtool` block applied or handed over depending on whether one already exists. **That is
+   the same defect this theme names one paragraph up, committed against this
    theme's own check** — a rule was widened without widening the thing that feeds it. The guest
    branch gets its own run; `second-process` × guest is the combination most likely to be dropped
    as exotic, and it is the one where the fewest of our files exist.
@@ -618,6 +708,35 @@ call.
      a demo scaffold that is the right default; it is still a product statement, not a footnote.
      **But it closes only one deployment mode** — a platform deploy never runs `next start`, so a
      script bound to loopback protects nothing there. See theme 8's completion of the rule.
+
+     **And a hardcoded hostname cannot observe the condition that sentence states.** "Does not serve
+     off-host *until* its authentication is configured" is a conditional, but `--hostname 127.0.0.1`
+     baked into `scripts.start` is not: the developer who then configures a real resolver — the
+     exact thing theme 8 asks of them — deploys and is still unreachable, with nothing naming why.
+     **The control keeps applying after its justifying condition is gone**, and it lands wrong in
+     whichever direction the developer moves: unnarrowed it exposes a pre-auth self-host deploy,
+     narrowed it breaks a post-auth one, and both are the *same* deployment mode, so no fixed choice
+     is right for it.
+
+     **The asymmetry that names the fix: the second-process branch already has a condition-linked
+     bind and this one does not.** `assertNetworkBindIsAuthenticated` returns early once every flow
+     authenticates, so on that branch the rail clears itself exactly when the condition clears. The
+     greenfield mounted-route branch has no equivalent because the process that binds is Next's, not
+     ours — our only lever there is a script argument, which is a string and cannot ask a question.
+     **So the rule is that the production bind must be condition-linked rather than fixed**, and a
+     `start` script that runs a preflight before `next start` is the shape that gets there: the
+     preflight imports the config the greenfield run authored and asks the framework's own predicate,
+     rather than inventing a second notion of "authentication is configured" that can drift from the
+     first. It refuses loudly with the guard's own message instead of binding somewhere surprising,
+     and `allowUnauthenticated` — which already exists — is the explicit opt-out for the deploy whose
+     protection sits in front of the app rather than inside it.
+
+     **Mechanism is FIX-548's, not this document's**; what is fixed here is that the bind may not be
+     a constant. Two honest limits: this stays inside exception (c)'s budget (still `start`, still
+     one key) but it does add a file to the generated project, which is **a further reason FIX-548's
+     re-approval is needed rather than a new one** — that re-approval is already open. And it does
+     **not** close the platform-deploy gap, since a platform deploy runs neither the script nor the
+     preflight; that gap remains theme 8's.
    - **No credential is written until the path is verifiably ignored — a precondition, not a
      report.** Before writing anything secret, the run asks **git** whether the target path is
      effectively ignored (`git check-ignore`). If it is, write. If it is not, **append the rule**
@@ -808,7 +927,7 @@ call.
 
    | | Loopback bind | Credential | Why |
    |---|---|---|---|
-   | **Greenfield** (mounted-route) | **yes** — our `dev`/`start` scripts | no | its demo is a browser page, so any token it holds an attacker reads from the same page |
+   | **Greenfield** (mounted-route) | **yes**, but split: `dev` **unconditionally**, `start` **condition-linked** (theme 6 (c)) | no | its demo is a browser page, so any token it holds an attacker reads from the same page |
    | **Brownfield, mounted-route** | no — their dev script, theme 6 forbids editing it | **yes** | the only control available |
    | **Brownfield, second-process** | **yes** — our printed `fsdev serve --host 127.0.0.1` | **yes** | **both**, because we author the start command *and* ship no browser client |
 
@@ -818,6 +937,16 @@ call.
    **credential** when *the demo ships no browser client to leak it*. Those two questions cut across
    greenfield/brownfield rather than along it, which is why every attempt to state this per path has
    been wrong.
+
+   **A third question sits underneath both, and missing it is what produced the `start` defect: can
+   the justifying condition ever clear?** For a development command it cannot — nobody configures
+   production auth and then keeps running `npm run dev` — so a fixed bind is correct there. For a
+   production command it clears the moment the developer does what theme 8 asks, so a fixed bind is
+   wrong there *by construction*, whoever authored the command. The second-process branch gets this
+   right for free because `assertNetworkBindIsAuthenticated` **is** the condition; greenfield's
+   `start` got it wrong because a script argument is a constant and cannot ask. **A control whose
+   condition can clear must be able to observe it clearing** — otherwise it is not a control, it is
+   a permanent default wearing a rationale.
 
    **The second-process branch therefore has defence in depth, and that is a specified property
    rather than an accident** — theme 5 keeps `--host 127.0.0.1` in its printed command. **§1's proof
@@ -1064,10 +1193,11 @@ section carries its path.*
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| FIX-1159 | The brownfield knowledge — deterministic detection scripts, the install skill's **content**, the shared next-steps block, and **the wiring contract both entry paths satisfy** (theme 9) | spec | [#1310](https://github.com/fixpoint-labs/flow-state-dev/pull/1310) | — | In spec review — re-shaped to **brownfield only, no command of its own**; the earlier approval was retracted with the direction change. **Unblocked — Q5 resolved by constraint**: the run configures a non-default principal resolver, mechanism this issue's. Also gains the devtool peer fix (theme 5) and the mounted-route proof (theme 9 (b)) |
+| FIX-1159 | The brownfield knowledge — deterministic detection scripts, the install skill's **content**, the shared next-steps block, and **the wiring contract both entry paths satisfy** (theme 9) | spec | [#1310](https://github.com/fixpoint-labs/flow-state-dev/pull/1310) | — | In spec review — re-shaped to **brownfield only, no command of its own**; the earlier approval was retracted with the direction change. **Not blocked by an open question** (Q5 resolved by constraint: the run configures a non-default principal resolver, mechanism this issue's) — **but its decision 1 now needs to change**: theme 5 has the run *apply* the flow-registration line as an additive edit, where that decision hands it back, and handed back it leaves nothing we author reachable on the guest branch. Also gains the devtool peer fix (theme 5) and the mounted-route proof (theme 9 (b)) |
 | FIX-1162 | Register the npm names the launch needs — the short CLI entry name and the scaffolding name | spec | [#1313](https://github.com/fixpoint-labs/flow-state-dev/pull/1313) | — | In spec review — **both names now registered at `0.0.0` to a personal account**; what remains is the publishing identity's write access (`npm owner add` / transfer) and the unproven `@flow-state-dev` scope. Owner operations, not agent work |
-| FIX-548 | `create-flow-state` — the deterministic greenfield path; template count pending **§5 Q6**, written against one (Next.js chat app), owned end to end | spec | [#1312](https://github.com/fixpoint-labs/flow-state-dev/pull/1312) | — | Spec complete, approved at `404e82c`. **Re-approval needed; held for defects in its own spec** (a cross-spec sweep, not this epic) — a mechanical set (pnpm-isolated install, theme 9 devolution, exception (c) for `dev`+`start`, the 22.18 floor, static provider wiring, shipper-side comparison, non-loopback and production negative cases, the `git check-ignore` precondition), all posted to #1312; its spec is not edited by the epic. **Implementation is separately blocked by §5 Q6** — two independent holds; clearing one does not clear the other |
+| FIX-548 | `create-flow-state` — the deterministic greenfield path; template count pending **§5 Q6**, written against one (Next.js chat app), owned end to end | spec | [#1312](https://github.com/fixpoint-labs/flow-state-dev/pull/1312) | — | **Re-approval needed and NOT mechanical** — at `a3fc694` the spec takes five previously-unowned jobs into decision 3, **reverses decision 5** (verified: `providerPreference` is consulted only inside `resolveIntent`, so a declared `provider/model` never reaches it — the hijack scenario it guarded is unreachable on that path, not merely weakened), moves **Small → Medium**, and adds decision 8, a new **product statement** (*the generated app does not serve off-host until authentication is configured*). A scope change and a product statement are the owner's to read, not a sweep's to wave through. In Linear it is `blocks`-blocked by **FIX-1159, FIX-1160 and FIX-1162** — read from the graph, and over-tight against Sequencing, which calls the first two merge-order and forbids the third outright. Its spec is not edited by the epic. **Implementation is separately blocked by §5 Q6** — independent holds; clearing one does not clear the other |
 | FIX-1160 | The authoring pack **and the plugin that distributes the install skill** — agent-instructions file, authoring skills, install skill | spec | [#1311](https://github.com/fixpoint-labs/flow-state-dev/pull/1311) | — | Spec complete, approved at `dd9b656` — **approval needs re-taking**: theme 9 (d) hands it the agent-instructions block's normalization and equality check (posted to #1311). Scope had already grown: it is the brownfield path's only delivery channel |
+| FIX-1186 | The publishing identity's write access to the two names — `npm owner add` / transfer off the personal account | direct | — | — | **Backlog. Added to this index late — it has been a sub-issue of FIX-1161 in Linear while this table listed four issues**, which is the index failing at the one job it has. Owner-operated, not agent work. Blocks FIX-1187 (the first public publish, which is *not* a child of this epic). Its closing condition was moved to FIX-1187 to break a cycle; verified here — FIX-1187 has no outgoing `blocks` edges, so no path returns |
 
 **Sequencing.** Three kinds, listed apart because a dependency column cannot tell them apart and
 they mean different things:
@@ -1075,6 +1205,18 @@ they mean different things:
 - **Merge-order edges** (gate merge, nothing else): `FIX-1159 → FIX-1160 → FIX-548`. FIX-1160
   packages content FIX-1159 authors; FIX-548 conforms to FIX-1159's wiring contract and ships
   FIX-1160's agent-instructions block. Each pair can still be specced in parallel.
+
+  **Flagged, not reconciled — the Linear graph does not match this section, and one edge contradicts
+  it outright.** Read from Linear rather than assumed, FIX-548 is `blocks`-blocked by **FIX-1159,
+  FIX-1160 *and* FIX-1162**. Under `epic-lifecycle` a `blocks` edge means the issue cannot enter the
+  active set at all — not that it merges later. So the first two are over-tight against this
+  bullet's "can still be specced in parallel", which is not hypothetical, since all four specs were
+  in fact written in parallel. **The third is worse than over-tight: it is the thing the release-gate
+  bullet below explicitly forbids** — FIX-1162 is wired as an activation gate on FIX-548 while this
+  document says in bold that it must not be treated as a merge edge, which would stall the epic's
+  largest issue behind an owner-operated npm transfer. Left for the coordinator because the epic does
+  not edit the graph. **All three are the same confusion that produced the FIX-1162 release cycle** —
+  a condition wired as an activation gate — so the fix is one convention, not three edge edits.
 - **Release gates** (gate shipping only — no issue's spec, build, or merge): the publishing identity
   can write every package the quickstarts install (theme 1). **FIX-1162 is not a merge edge on
   FIX-548 and must not be treated as one.**
@@ -1087,15 +1229,17 @@ they mean different things:
 the owner's without evidence, and FIX-548 has been carrying it as its open ask all along. **Its
 re-approval is not blocked *by Q6***, because that spec no longer asserts an answer; what Q6 stops
 is building against a template count nobody chose. **That is not the same as the re-approval being
-ready** — a cross-spec sweep has since found defects in FIX-548's own spec, so it is held for
-reasons of its own. Q6 and that hold are independent; clearing one does not clear the other.
+ready**, and it is further from it than "defects" suggests: at `a3fc694` that spec has taken on five
+previously-unowned jobs, **reversed a decision**, moved **Small → Medium**, and added a **new product
+statement**. A size change and a product statement are the owner's to read. Q6 and that hold are
+independent; clearing one does not clear the other.
 
 **Two questions are open: Q6, which blocks, and Q4, which does not.** Q1–Q3 and Q5 are **decided**
 and stay here with their answers, so no issue reopens them.
 
 | | Status | What it gates |
 |---|---|---|
-| **Q6** — one starter or two | **open** | **Blocks FIX-548's implementation.** It does **not** block that spec's re-approval — though the re-approval is separately held for defects of its own, which is a different hold. |
+| **Q6** — one starter or two | **open** | **Blocks FIX-548's implementation.** It does **not** block that spec's re-approval — though that re-approval is separately held, and not for mechanical reasons: a scope increase (Small → Medium), a reversed decision, and a new product statement. A different hold, and a heavier one. |
 | **Q4** — does install-by-URL still hold | **open** | Nothing. It exists because the split changed what an already-made decision costs. |
 | Q1, Q2, Q3, Q5 | decided | — |
 
@@ -1295,9 +1439,10 @@ the generated config reads it **by environment-variable name** in both the princ
 declared **per-flow** on the demo flow, which is what the bind guard actually inspects (theme 8) —
 and the `devtool` block. **Where each lands depends on who wrote the config** (theme 5): when the
 run writes it, both go in, plus a host-level resolver; when the config is the developer's, only the
-per-flow resolver is written — into our own flow file — and the two config lines are handed to them
-rather than applied, because a host-level resolver in *their* config would be inherited by *their*
-flows and 401 their working app. No literal secret appears in this document, in the template, in a printed
+per-flow resolver is written — into our own flow file — and the **host-level** resolver is withheld,
+because a host-level resolver in *their* config would be inherited by *their* flows and 401 their
+working app. The registration line and an absent `devtool` block are **applied** as additive edits;
+withholding them left nothing we author reachable at all (theme 5). No literal secret appears in this document, in the template, in a printed
 command, or in any committed file. **The mechanism is FIX-1159's** within that constraint;
 greenfield does **not** also take a credential — its demo is a browser page, so a token it could
 present is one an attacker can read from the same page; loopback is its whole control, and theme 8
@@ -1390,7 +1535,14 @@ do not control, forever.
 substitute. Without it, "ship one" means **§1's own outcome — a working feature in their project,
 "new or existing" — is unmet for backend developers in v1**, which the asymmetry argument does not
 answer: adding a starter later is indeed additive, but deferring now defers an audience to nothing
-rather than to something lesser. There are three options, not two:
+rather than to something lesser. There are three options, not two.
+
+**Before reading them — "ship one" is no longer an answer to this question.** The earlier ask
+recommended "ship one", and under this framing that phrase means **(c)**, the option I no longer
+recommend. It is a live trap rather than a tidy-up, because **two** of the three options ship one
+starter: (b) ships one *and* specifies a minimal-project brownfield path, (c) ships one and serves
+nobody else. An answer given from memory of the old framing selects (c) while sounding like it
+could mean (b). **Please answer by letter.**
 
 - **(a) Ship two starters.** Serves backend greenfield deterministically. Costs a second starter
   kept green and proved per provider, forever — the original objection, unchanged.
@@ -1405,9 +1557,9 @@ rather than to something lesser. There are three options, not two:
   refusal**, so (b)'s honest cost is *verify the minimal precondition end to end, document it, and
   prove it once* — not "relax a refusal". If some other gate does refuse, (b) grows back toward
   what this entry originally claimed.
-- **(c) Ship one starter and accept that backend greenfield is unserved in v1.** Honest, and the
-  cheapest — but it should be chosen knowingly rather than inherited from a substitute that was
-  never real.
+- **(c) Ship one starter and accept that backend greenfield is unserved in v1** — *this is what the
+  old "ship one" ask meant.* Honest, and the cheapest — but it should be chosen knowingly rather
+  than inherited from a substitute that was never real.
 
 **Recommendation: (b) if FIX-1159 will carry it, otherwise (a).** (b) serves the audience without a
 second artifact to keep green. *The argument for it used to be that the skill owes this anyway,
@@ -1431,10 +1583,12 @@ epic's *only* Node coverage of any kind, so it can no longer be dropped as redun
 
 **What is waiting on this, stated precisely because an earlier draft of this line said the wrong
 thing.** **Not** FIX-548's re-approval — Q6 does not block it, since its spec *asks* the question
-rather than answering it. *Separately, and not because of Q6, that re-approval is **not** ready: a
-cross-spec sweep found defects in FIX-548's own spec, including an ask still arguing a withdrawn
-recommendation. An earlier version of this line said "safe to take now"; that inference no longer
-holds, and it is the kind of claim this document should stop making about a spec it does not own.*
+rather than answering it. *Separately, and not because of Q6, that re-approval is **not** ready, and
+not mechanically so: at `a3fc694` FIX-548 has absorbed five previously-unowned jobs, reversed a
+decision, moved Small → Medium, and added a new product statement. An earlier version of this line
+said "safe to take now" and the running index went on saying it for three further rounds; that
+inference no longer holds, and it is the kind of claim this document should stop making about a spec
+it does not own.*
 What waits is **FIX-548's implementation**: this is the one open item that changes what it builds.
 If the answer is **"one"**, §6 decision 2 becomes stale rather than open and building proceeds. If
 **"two"**, decision 2 reverses *and* decision 2b (no `--template` flag) reopens with it — that is a
@@ -1479,5 +1633,8 @@ those narratives now live in
 - **§1 stopped answering Q6, and the production guard got a negative case** — gated §1 named "v1 ships one, the Node template is cut" as a *non-goal*, so approving the epic would have ratified Q6's least-recommended option without the reader knowing they were deciding it. Removed and swept by premise: theme 2's heading, its superseded asymmetry argument, and two residuals inside Q6 itself (including the struck substitute resurfacing in its cost line). **The adapter-independent production refusal — added one round earlier to close a security exposure — had nothing able to detect its absence**, the seventh instance of that defect; §1's greenfield proof and theme 5's negative list now require it to fire before any model invocation. And the brownfield credential must be declared at **both** resolver levels: the bind guard reads per-flow only, while host-scoped session listing reads host-level only and withholds rows for per-flow-authenticated flows — jointly satisfiable, and silently broken in opposite directions if only one is set.
 - **"One control each" was the mirror of the error it fixed.** An early round claimed greenfield had "both layers"; the correction flattened a **per-topology** fact into a **per-path** rule and erased that the plain-Node `second-process` branch has *both* the loopback bind and the credential. **The failure it enabled is a check that cannot fail**: that branch installs a per-flow resolver, so every flow authenticates, `assertNetworkBindIsAuthenticated` returns early on `unauthenticated.length === 0` and **permits** a non-loopback bind — an implementer dropping `--host 127.0.0.1` draws no complaint, and §1's proof asserted only credential acceptance and refusal. Severity stated honestly: a specified layer lost, not an endpoint opened. Replaced with a per-(path × topology) matrix and the generalisation that actually holds — **the bind follows *who authors the start command*, the credential follows *whether the demo ships a browser client*, and neither question runs along greenfield/brownfield.** §1's second-process proof now asserts the bind. Two further rules are flagged as stated per path with a different cause (theme 6's exception (c), the credential rule), left conditional on Q6 rather than rewritten for an undecided answer. **Third time a fix for over-claiming produced under-claiming or the reverse.**
 - **The two-level resolver fix broke the additive promise in someone else's repo, and the fix was mine.** A host-level resolver is inherited by every flow with no override (`pickPrincipalResolver`), and FIX-1159 *proceeds* when the project has its own config — so instructing that developer to add one would 401 their working flows, silently. No host-level resolver can avoid it: the guard branches on resolver **identity** (`isDefaultBodyUserIdPrincipalResolver` is a brand check) and the default's behaviour is *not to run the guard at all*, so any real function flips every override-less flow out of the no-enforcement branch — checked before choosing, because a third remedy would have beaten both offered ones. **Resolution is keyed on authorship**, the boundary theme 6 already uses: when the run writes the config, install at both levels; when the config is theirs, per-flow only in our own flow file, and the two config lines are *handed over* rather than applied. Cost, disclosed: the DevTool's session list will not show our flow in the guest case. Theme 6 also gained the general form — **the guarantee is about behaviour, not only files**, since every file rule can hold while a recommended one-line config change breaks their app.
-- **Status-claim sweep, after the answer-claim sweep missed a whole sentence shape** — §5's summary still read "Q4 is the only one open" one paragraph below the text establishing Q6 as open and blocking. The earlier sweep was keyed on Q6's *answer* (one/two, cut, ships one) and could not match a sentence about its *status*. Widened to anything asserting what is open, blocking, settled, or clear to proceed, and it found a second cluster the first shape would never have caught: **three places said Q6 blocks FIX-548's *re-approval*** when the corrected position is that the re-approval is safe and the *implementation* is what waits — a status error pointing the opposite way, capable of withholding an approval that was ready. Also narrowed Q5's "FIX-1159 is unblocked", too broad a claim for one question to make.
+- **Status-claim sweep, after the answer-claim sweep missed a whole sentence shape** — §5's summary still read "Q4 is the only one open" one paragraph below the text establishing Q6 as open and blocking. The earlier sweep was keyed on Q6's *answer* (one/two, cut, ships one) and could not match a sentence about its *status*. Widened to anything asserting what is open, blocking, settled, or clear to proceed, and it found a second cluster the first shape would never have caught: **three places said Q6 blocks FIX-548's *re-approval*** when the position at the time was that Q6 does not block it and the *implementation* is what waits — a status error pointing the opposite way, capable of withholding an approval that was ready. *Q6 still does not block that re-approval; but "the re-approval is safe", which this entry went on to assert, was **superseded two rounds later** and is recorded below — the separation between "not blocked by Q6" and "ready" is the whole point, and this entry collapsed it again while fixing the reverse error.* Also narrowed Q5's "FIX-1159 is unblocked", too broad a claim for one question to make.
+- **The guest branch could not complete at all, and the boundary that caused it was mine.** Keying the resolver fix on *authorship* ("write no config we did not author") was wider than its hazard, which is **inheritance** and belongs to the host-level resolver alone. Verified: `resolveRuntimeSource` returns on a located config **before** `discoverFlows` — exclusive, not preferential — so the handed-back registration line meant **nothing we author is ever imported**; `serve` passes `requireConfig: true` and has no `--no-config`; `--flow-dir` is rejected outright; `--no-config` runs a different app. **A standing check required "on both authorship branches" therefore had a guest arm that could not be run** — worse than a false pass, which at least returns something. Re-keyed on the hazard, so the config falls under theme 6's additive contract like `.gitignore` and `package.json`: registration and an absent `devtool` block are **applied**, a *present* `devtool` block is handed over, the host-level resolver is still never written. **Fourth consequence of the resolver work** (DevTool listing → additive break → this → `modelResolver` is a single app-level option, so the guest's demo runs on *their* resolver and nothing yet says its model must be one they can serve). Conflicts with FIX-1159's decision 1, flagged not edited.
+- **A production control that could not notice its condition clearing.** Theme 6 (c) narrowed `start` to loopback while the prose claimed the app "does not serve off-host *until* authentication is configured" — a conditional implemented as a constant, so the developer who does what theme 8 asks deploys and is unreachable, told nothing. It lands wrong in *both* directions on the same deployment mode, so no fixed value is right. Named by contrast with the second-process branch, where `assertNetworkBindIsAuthenticated` **is** the condition and clears itself; greenfield's `start` is a script argument and cannot ask. Rule: the production bind must be condition-linked, mechanism FIX-548's. **Generalised into theme 8 as the third question under the matrix** — *can the justifying condition ever clear?* — which is what separates a `dev` bind (correctly fixed) from a `start` bind (wrong by construction). §1 gained the mirror assertion: with a resolver configured, production **must** be reachable off-host.
+- **Index and graph sweep, after a readiness claim survived three rounds in a table cell.** FIX-548's row still read "safe to take now — a mechanical set" after that claim was retracted in three prose locations; it is a scope increase (Small → Medium), a **reversed** decision (verified: `providerPreference` is consulted only inside `resolveIntent`, so a declared `provider/model` never reaches it), and a new **product statement**. Rows are the shape a prose sweep skims. Same sweep, reading Linear rather than the document: **FIX-1186 is a sub-issue of the epic and had no index row at all** — the index failing at its only job — and FIX-548 is `blocks`-blocked by FIX-1159, FIX-1160 **and FIX-1162**, the last of which this document forbids in bold. All flagged, not reconciled; the epic does not edit the graph. Q6 also carried a live trap: **two** of its three options begin "ship one", so an answer from memory of the withdrawn ask selects (c) while sounding like (b).
 - **Attribution sweep** — every "the owner's" / "your call" line checked against an artifact. Q2's and Q3's decisions evidenced (epic PR comment, 2026-08-14) and now cite it; Q1 marked as the coordinator's from the objective; the brownfield direction change evidenced (2026-08-15); the one-template cut unevidenced and already reopened as Q6. No further claims reopened — three clean, two already corrected.
