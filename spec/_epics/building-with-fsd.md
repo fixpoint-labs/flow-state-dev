@@ -68,7 +68,13 @@ they are stated once there rather than twice here.
   refusal fires" and "their app is now dead" are the same observation, which is how the first
   version of the credential refusal passed while taking down the host's config. **And its resolver
   must be one that does not serve our pinned model**, so the demo's failure surfaces as a refusal
-  with remediation at install time rather than as the developer's first broken request.
+  with remediation at install time rather than as the developer's first broken request. **And the
+  same fixture, built and started in production mode, must show the production refusal applying to
+  *our* flow while the host's own flow still serves.** That is the only place theme 8's refusal
+  predicate is falsifiable: greenfield has one flow, so per-flow, any-flow and host-level readings
+  all agree there and the check passes under any of them. Here they diverge, and an **any-flow**
+  reading would refuse the host's entire app in production — the same blast radius as the
+  import-time throw above, arrived at from a different direction.
 - *FIX-1159, second-process path* — the same against an existing plain-Node project: the printed
   command starts FSD, a call to it **carrying the generated credential** streams a real model
   response, and the project's own server keeps running. **A call without it is refused, and the FSD
@@ -441,10 +447,20 @@ call.
      identity and an absent token passes the gate and then fails auth looking like a bad key; and
      the serious one — **an unset variable makes a naive equality accept everyone**, because a
      request carrying no credential compares equal to an absent expected value, so the flow reads
-     as secured while being open. Refusing at startup is what makes that unrepresentable, rather
-     than a thing the reader has to remember. **And that refusal is itself asserted** — with the
-     variable unset, **the run must fail on both authorship branches** — because a mitigation nobody
-     exercises is the defect it was written to prevent, wearing a fix's clothes.
+     as secured while being open. Refusing is what makes that unrepresentable, rather
+     than a thing the reader has to remember. **And the refusal is itself asserted, in the form each
+     branch actually takes** — because a mitigation nobody exercises is the defect it was written to
+     prevent, wearing a fix's clothes. With the variable unset:
+
+     - **Author branch** — the run **must fail at startup**.
+     - **Guest branch** — the run **must start**, our flow **must refuse the request**, and **a
+       pre-existing flow of the host's own must still serve**. The last clause is the load-bearing
+       one: it is the only assertion that fails if an implementer regresses to an import-time throw,
+       which is what the first version of this rule specified.
+
+     *An earlier revision asserted startup failure on **both** branches, directly above the
+     paragraphs explaining why that takes the guest's whole app down. The reasoning had been
+     corrected and the check beside it had not — which is the defect shape, not a typo.*
 
      **The refusal is *split by branch*, and getting this wrong was the most severe defect in this
      theme.** The first version put a **startup** refusal in the flow file, reasoning that the flow
@@ -523,17 +539,23 @@ call.
      because it is the one edit that reaches flows we never named.
 
      - **Flow registration** — additive, reaches only our entry. **Applied by the run.**
-     - **The `devtool` block** — **handed over on the guest branch, never applied**, with its
-       consequence stated in the handed-over diff. It looks per-flow in the reasoning and is
-       **app-global in the type**: `DevToolConnectionConfig` is `{ userId?, bearerToken? }` on
-       `meta.devtool`, one block per app, injected as a single `window.__FSD_DEVTOOL_CONFIG__` and
-       applied to **every** flow the DevTool talks to. Applied silently, it would make the DevTool
-       act as *our generated identity* against *their* flows, and new sessions in their flows would
-       land under our `userId`. Theme 6's own clause settles it — *a change we merely recommend into
-       a file we do not write is still our change* — and this one is not additive in behaviour even
-       when the key is absent. **Disclosed cost:** until they apply it, the DevTool cannot invoke our
-       secured demo flow; that is theirs to weigh against the identity effect, and it is exactly the
-       kind of trade we must not make on their behalf.
+     - **The `devtool` block — absent: applied. Already present: handed over.** The block is
+       **app-global in the type**, not per-flow: `DevToolConnectionConfig` is `{ userId?,
+       bearerToken? }` on `meta.devtool`, one per app, injected as a single
+       `window.__FSD_DEVTOOL_CONFIG__` and used for **every** flow the DevTool talks to. That is why
+       overwriting an existing one is out — their DevTool identity is a real conflict, not a
+       formatting one, and exception (b) forbids changing a key we do not own.
+
+       **But absent is not the same case, and treating them alike was wrong in the expensive
+       direction.** With no block present there is nothing of theirs to disturb: their DevTool has no
+       configured identity today, so writing one sets a development-tool default rather than
+       displacing a choice. Withholding it, meanwhile, breaks the advertised path outright — the
+       standing check below requires `fsdev dev` to answer an **authenticated** API call, and without
+       the generated token the DevTool cannot invoke our secured demo flow at all. **A rule that
+       fails a check this theme itself mandates, and a next step we print, is not a cautious rule.**
+       **Disclosed in the diff:** while the block is ours, the DevTool sends our generated `userId`
+       to *their* flows too, so sessions created through it land under that id until they change it
+       in DevTool settings — development-only, visible, and reversible in the UI.
      - **Host-level resolver** — inherited by their override-less flows. **Never.**
 
      *The registration line is the only edit the run applies to a config it did not author. That is
@@ -699,10 +721,13 @@ call.
    published CLI docs already show `-i '{"message": "…"}'` without it. Both entry paths print these
    commands, so this is theme 5's rather than either issue's.
 
-   It sits with FIX-1159 because the constraint that makes it hard is the brownfield one:
-   **a next-steps block must not print a command the project cannot run**, and greenfield can
-   always run what it just wrote. That constraint is precisely why rendering has to vary and
-   content must not.
+   It sits with FIX-1159 because the constraint that makes rendering hard is the brownfield one:
+   **a next-steps block must not print a command the project cannot run**, and brownfield meets
+   hosts whose package manager and topology it must detect. **That is a claim about *rendering*, and
+   it does not exempt greenfield from *running* what it prints** — `fsdev dev` resolves a separate
+   package and its assets at run time, so authoring the project proves nothing about it. Every
+   shipper runs what it prints; see the shipper × host check above, which exists because this
+   sentence previously ended "and greenfield can always run what it just wrote."
 
 6. **A run is additive over files it did not author, and what makes that safe is review of what
    actually changed — not an enumerated file list.** The old boundary was a fixed four files plus
@@ -1752,6 +1777,7 @@ those narratives now live in
 - **The guest branch could not complete at all, and the boundary that caused it was mine.** Keying the resolver fix on *authorship* ("write no config we did not author") was wider than its hazard, which is **inheritance** and belongs to the host-level resolver alone. Verified: `resolveRuntimeSource` returns on a located config **before** `discoverFlows` — exclusive, not preferential — so the handed-back registration line meant **nothing we author is ever imported**; `serve` passes `requireConfig: true` and has no `--no-config`; `--flow-dir` is rejected outright; `--no-config` runs a different app. **A standing check required "on both authorship branches" therefore had a guest arm that could not be run** — worse than a false pass, which at least returns something. Re-keyed on the hazard, so the config falls under theme 6's additive contract like `.gitignore` and `package.json`: registration and an absent `devtool` block are **applied**, a *present* `devtool` block is handed over, the host-level resolver is still never written. **Fourth consequence of the resolver work** (DevTool listing → additive break → this → `modelResolver` is a single app-level option, so the guest's demo runs on *their* resolver and nothing yet says its model must be one they can serve). Conflicts with FIX-1159's decision 1, flagged not edited.
 - **A production control that could not notice its condition clearing.** Theme 6 (c) narrowed `start` to loopback while the prose claimed the app "does not serve off-host *until* authentication is configured" — a conditional implemented as a constant, so the developer who does what theme 8 asks deploys and is unreachable, told nothing. It lands wrong in *both* directions on the same deployment mode, so no fixed value is right. Named by contrast with the second-process branch, where `assertNetworkBindIsAuthenticated` **is** the condition and clears itself; greenfield's `start` is a script argument and cannot ask. Rule: the production bind must be condition-linked, mechanism FIX-548's. **Generalised into theme 8 as the third question under the matrix** — *can the justifying condition ever clear?* — which is what separates a `dev` bind (correctly fixed) from a `start` bind (wrong by construction). §1 gained the mirror assertion: with a resolver configured, production **must** be reachable off-host.
 - **Index and graph sweep, after a readiness claim survived three rounds in a table cell.** FIX-548's row still read "safe to take now — a mechanical set" after that claim was retracted in three prose locations; it is a scope increase (Small → Medium), a **reversed** decision (verified: `providerPreference` is consulted only inside `resolveIntent`, so a declared `provider/model` never reaches it), and a new **product statement**. Rows are the shape a prose sweep skims. Same sweep, reading Linear rather than the document: **FIX-1186 is a sub-issue of the epic and had no index row at all** — the index failing at its only job — and FIX-548 is `blocks`-blocked by FIX-1159, FIX-1160 **and FIX-1162**, the last of which this document forbids in bold. All flagged, not reconciled; the epic does not edit the graph. Q6 also carried a live trap: **two** of its three options begin "ship one", so an answer from memory of the withdrawn ask selects (c) while sounding like (b).
-- **Non-author pass over themes 5/6/8 — every code-resting claim confirmed, every finding in how rules are *keyed*.** Exactly the split predicted, and five findings followed. **(1)** The credential's startup refusal in the flow file was right about coverage and wrong about **blast radius**, which runs along *whose module graph imports our flow file*: on the guest branch their config imports it, `loadFsdevConfig` wraps the throw into a config-load failure, and **their whole app dies without `.env.local`**. Its check confirmed it *by observing the harm* — no bystander flow in the fixture. Split: startup refusal on the author branch, **request-time** refusal in our own resolver on the guest branch. **(2)** Exception (c)'s `start` half **withdrawn** — redundant against theme 8's config refusal, and harmful because *"a platform deploy never runs `next start`"* is false of Docker/Render/Railway/Fly/Heroku/App Runner, with `-H` carrying no env binding so `HOST=0.0.0.0` cannot override it: the container binds loopback and reads as dead. It also **falsified a product statement already relayed to the owner**; corrected in theme 8. **(3)** The standing check was keyed to topology × authorship, both brownfield-internal, leaving theme 9's **greenfield shipper** exempt from its own block — re-keyed to **shipper × host**, and *"greenfield can always run what it just wrote"* withdrawn (true of files, false of `fsdev dev`). **(4)** The `devtool` block is per-flow in the reasoning and **app-global in the type** — one `window.__FSD_DEVTOOL_CONFIG__` for every flow — so applying it would make the DevTool act as our identity against their flows; now handed over on the guest branch, never applied. **(5)** Theme 8's production refusal was a fourth reader of "is this flow authenticated" with **no stated predicate**, passing because its only scenario was greenfield where all readings agree; predicate now stated once, per-flow, matching the bind guard. *One flag it raised was refuted before folding: `@flow-state-dev/devtool`'s `publishConfig` rewrites the exports map, so the published package is fine.*
+- **Non-author pass over themes 5/6/8 — every code-resting claim confirmed, every finding in how rules are *keyed*.** Exactly the split predicted, and five findings followed. **(1)** The credential's startup refusal in the flow file was right about coverage and wrong about **blast radius**, which runs along *whose module graph imports our flow file*: on the guest branch their config imports it, `loadFsdevConfig` wraps the throw into a config-load failure, and **their whole app dies without `.env.local`**. Its check confirmed it *by observing the harm* — no bystander flow in the fixture. Split: startup refusal on the author branch, **request-time** refusal in our own resolver on the guest branch. **(2)** Exception (c)'s `start` half **withdrawn** — redundant against theme 8's config refusal, and harmful because *"a platform deploy never runs `next start`"* is false of Docker/Render/Railway/Fly/Heroku/App Runner, with `-H` carrying no env binding so `HOST=0.0.0.0` cannot override it: the container binds loopback and reads as dead. It also **falsified a product statement already relayed to the owner**; corrected in theme 8. **(3)** The standing check was keyed to topology × authorship, both brownfield-internal, leaving theme 9's **greenfield shipper** exempt from its own block — re-keyed to **shipper × host**, and *"greenfield can always run what it just wrote"* withdrawn (true of files, false of `fsdev dev`). **(4)** The `devtool` block is per-flow in the reasoning and **app-global in the type** — one `window.__FSD_DEVTOOL_CONFIG__` for every flow — so an *existing* block is handed over rather than overwritten. *The first fix over-corrected to "never applied", which broke the standing check requiring `fsdev dev` to answer an authenticated call, and the printed next step with it; corrected to **absent → apply, present → hand over**, since with no block present there is nothing of theirs to disturb.* **(5)** Theme 8's production refusal was a fourth reader of "is this flow authenticated" with **no stated predicate**, passing because its only scenario was greenfield where all readings agree; predicate now stated once, per-flow, matching the bind guard. *One flag it raised was refuted before folding: `@flow-state-dev/devtool`'s `publishConfig` rewrites the exports map, so the published package is fine.*
 - **The pair, not the rule, was wrong: a pinned model through a resolver we do not own.** FIX-1159 pinned a concrete `provider/model` (correct alone — the alternative threw at construction) and resolver installation was keyed to authorship (correct alone — it fixed the additive break). Together: the guest's demo runs on **their** app-level `modelResolver` with **our** hardcoded model, and if it is unrecognised every advertised command fails before streaming, so the guest proof cannot pass. **Verified the remedy question rather than assuming it — `ModelResolver` is a callable plus `resolveId`, with no `supports()` and no enumeration, and providers load lazily, so a resolver cannot be interrogated and a successful resolution is not proof.** So: invoke the demo once end to end during the run and **refuse with remediation** naming the resolver. Generalised to a standing question — *what else do we pin that the host also decides?* — with the credential variable name, the store, module format, the 22.18 floor, and `handleExecuteAction`'s principal path left open as candidates. **Two independent workers hit this class tonight**, so it is recorded as a check, not an anecdote.
+- **Three corrections that had landed in the prose but not in the assertion beside it — the durable shape of the round.** Each of the two premises the previous pass flagged as unconfirmable produced a real defect within the hour, which is the sweep working at the only level it can: naming where it cannot see. **(1)** The credential refusal's check still demanded startup failure on **both** branches, sitting directly above the paragraphs explaining why an import-time throw takes down the guest's whole config. Split: author branch proves startup failure; guest branch proves the run **starts**, our flow **refuses**, and **a bystander flow of the host's still serves** — that last clause being the only assertion that fails if an implementer regresses to the throw. **(2)** The `devtool` reversal was over-corrected: "never applied" contradicted Q5's absent/present split and broke this theme's own standing check, which requires `fsdev dev` to answer an **authenticated** call. A rule that fails a check the same theme mandates is not cautious. **(3)** `"greenfield can always run what it just wrote"` was withdrawn in theme 5 and still standing verbatim in theme 6's rendering constraint, where a FIX-548 implementer would have read it as licence to skip the runtime command check — re-creating the unchecked greenfield cell the re-keying existed to close. **The rule: the explanation and the check are different artifacts, and only one of them runs.** Swept on that basis, which found one more — theme 8's production-refusal predicate was falsifiable nowhere, since greenfield has a single flow and per-flow, any-flow and host-level readings all agree there; asserted now on the guest fixture, where an **any-flow** reading would refuse the host's entire app in production.
 - **Attribution sweep** — every "the owner's" / "your call" line checked against an artifact. Q2's and Q3's decisions evidenced (epic PR comment, 2026-08-14) and now cite it; Q1 marked as the coordinator's from the objective; the brownfield direction change evidenced (2026-08-15); the one-template cut unevidenced and already reopened as Q6. No further claims reopened — three clean, two already corrected.
