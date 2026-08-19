@@ -18,19 +18,27 @@
  * a name that no longer resolves) and so was held answerable for a dozen
  * strangers' release notes, demanding ids it had no way to know.
  *
- * Three cases, and each branch below exists for one of them:
+ * Five cases. Each is exercised; keep it that way if you touch this.
  *
- *   1. A NEW fragment with no issue id                     -> fails.
- *   2. An EXISTING fragment whose BODY is edited, no id     -> fails.
- *   3. An EXISTING fragment whose ONLY change is a
- *      package-name rekey                                   -> passes.
+ *   1.  NEW fragment, no issue id                            -> fails.
+ *   2.  EXISTING fragment, BODY edited, no id                -> fails.
+ *   2b. EXISTING fragment, package bump ADDED, no id         -> fails.
+ *   2c. EXISTING fragment, package SWAPPED for an unrelated
+ *       one at the same bump level, no id                    -> fails.
+ *   3.  EXISTING fragment, only `RENAMED_PACKAGES` applied   -> passes.
  *
- * `isMechanicalRekey` is case 3 and nothing wider. Do NOT "simplify" this to
- * `--diff-filter=A`: that was tried, and it silently permits case 2 — someone
- * can replace a release note's entire body, or bolt on a package bump, and the
- * guard says nothing. Trading "fires when it shouldn't" for "silent when it
- * should" is the same defect pointed the other way. If you change this, keep
- * all three cases and prove them.
+ * THIS GUARD HAS ALREADY REGRESSED THREE TIMES, each fix opening a smaller
+ * hole than the one it closed:
+ *
+ *   `--diff-filter=AM`  fired at whoever's diff touched a file  (wrong people)
+ *   `--diff-filter=A`   went silent on case 2                   (too weak)
+ *   bump-shape compare  went silent on case 2c                  (too general)
+ *
+ * The pattern is generalising the exemption. It terminates by naming the exact
+ * thing: `RENAMED_PACKAGES` is one specific migration, not a class of edit.
+ * If you are tempted to widen it — "any same-level swap", "any body-preserving
+ * change" — that is the regress restarting, and case 2c is the probe that
+ * catches it. Add a mapping entry for a real rename instead.
  *
  * No dependencies, so CI runs it without an install.
  */
@@ -87,27 +95,38 @@ function parse(source) {
 }
 
 /**
- * The bump levels a frontmatter declares, sorted, with the package names
- * dropped. Two fragments share a shape when they bump the same number of
- * packages at the same levels — so a pure rename matches, while adding a
- * package, removing one, or changing a bump does not.
+ * The package renames this exemption exists for — old name -> new name.
+ *
+ * Deliberately an exact mapping, NOT a general "a package was swapped" rule.
+ * A shape rule (compare bump levels, discard the names) was tried here and was
+ * broken in review within the hour: because it ignored package identity,
+ * replacing `"fsdev": patch` with `"@flow-state-dev/core": patch` read as
+ * mechanical, so a release note and its version bump could be retargeted onto
+ * a different package with no issue reference and no complaint. Silently
+ * moving a version bump is worse than the over-firing this exemption was
+ * added to stop.
+ *
+ * Naming the specific migration makes the exemption impossible to reuse for
+ * anything else, and trivially deletable once the last pre-rename fragment has
+ * been released — a property no general rule has.
  */
-function bumpShape(frontmatter) {
-  return [...frontmatter.matchAll(/^\s*['"][^'"]+['"]\s*:\s*(patch|minor|major)\s*$/gm)]
-    .map((match) => match[1])
-    .sort()
-    .join(",");
+const RENAMED_PACKAGES = new Map([["@flow-state-dev/cli", "fsdev"]]);
+
+/** `[name, bump]` per package a frontmatter bumps, in declaration order. */
+function packageBumps(frontmatter) {
+  return [...frontmatter.matchAll(/^\s*['"]([^'"]+)['"]\s*:\s*(patch|minor|major)\s*$/gm)].map(
+    (match) => [match[1], match[2]],
+  );
 }
 
 /**
- * Case 3: a modified fragment whose only change is a package-name rekey.
+ * Case 3: a modified fragment whose only change is applying `RENAMED_PACKAGES`.
  *
- * Exempt, because renaming a package is a mechanical edit forced on every old
- * fragment that bumps it — it does not make the sweep's author the author of
- * someone else's release note. The line is drawn narrowly: the body must be
- * byte-identical, and the same packages must still be bumped at the same
- * levels. A body edit (case 2) or an added/removed/re-levelled package is
- * authorship and still needs the reference.
+ * Exempt, because a rename is an edit forced on every old fragment that bumps
+ * the renamed package — it does not make the sweep's author the author of
+ * someone else's release note. Everything else is authorship: the body must be
+ * byte-identical, and every package must be either untouched or exactly the
+ * mapped rename, at the same bump level and in the same position.
  */
 function isMechanicalRekey(path, current) {
   let previous;
@@ -117,10 +136,16 @@ function isMechanicalRekey(path, current) {
     return false; // Not on the base after all — treat as new.
   }
   if (!previous) return false;
-  return (
-    previous.body === current.body &&
-    bumpShape(previous.frontmatter) === bumpShape(current.frontmatter)
-  );
+  if (previous.body !== current.body) return false;
+
+  const before = packageBumps(previous.frontmatter);
+  const after = packageBumps(current.frontmatter);
+  if (before.length !== after.length) return false;
+
+  return before.every(([name, bump], index) => {
+    const [currentName, currentBump] = after[index];
+    return currentBump === bump && currentName === (RENAMED_PACKAGES.get(name) ?? name);
+  });
 }
 
 const MERGE_BASE = (() => {
