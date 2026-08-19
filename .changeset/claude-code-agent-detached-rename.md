@@ -4,8 +4,8 @@
 
 Rename the SDK agent's `sessionState` option to `detached`, inverting its sense:
 `claudeCodeAgent({ sessionState: false })` becomes
-`claudeCodeAgent({ detached: true })`. `createClaudeCodeAgentCapability` takes
-the renamed option the same way.
+`claudeCodeAgent({ detached: true })` (LAB-133).
+`createClaudeCodeAgentCapability` takes the renamed option the same way.
 
 The old name shadowed `sessionStateSchema` — the framework primitive it
 suppresses, used six times in the same file — so the option was named after the
