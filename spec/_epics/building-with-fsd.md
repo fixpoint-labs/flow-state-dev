@@ -63,7 +63,12 @@ they are stated once there rather than twice here.
   back. That is not a variant of the same check: `resolveRuntimeSource` returns on a located config
   *before* `discoverFlows` runs, so on a host with a config the flow file we author is never
   imported, and a proof run against a config-less project would pass while the supported branch
-  reaches nothing we wrote (theme 5).
+  reaches nothing we wrote (theme 5). **That fixture must carry at least one pre-existing flow of
+  the host's own, and the run must assert it still serves afterwards** — without a bystander, "our
+  refusal fires" and "their app is now dead" are the same observation, which is how the first
+  version of the credential refusal passed while taking down the host's config. **And its resolver
+  must be one that does not serve our pinned model**, so the demo's failure surfaces as a refusal
+  with remediation at install time rather than as the developer's first broken request.
 - *FIX-1159, second-process path* — the same against an existing plain-Node project: the printed
   command starts FSD, a call to it **carrying the generated credential** streams a real model
   response, and the project's own server keeps running. **A call without it is refused, and the FSD
@@ -92,13 +97,14 @@ they are stated once there rather than twice here.
   over `localhost` proves nothing about it, because the page streams identically whether the dev
   script carries the flag or the exception was never implemented at all.
 
-  **And the mirror of that assertion, which is the one a fixed bind fails:** with a real principal
-  resolver configured, `npm run build && npm start` **must be reachable from a non-loopback
-  address**. Every check above asks whether the control is present; none asks whether it *lets go*
-  once its condition clears, and a permanent loopback lock-out passes all of them silently — the
-  only signal is a developer who cannot deploy and is told nothing. Both directions are required
-  because theme 6 (c) narrows a **production** command, where the justifying condition is expected
-  to clear.
+  **And the mirror of it, which is what a bind that cannot let go would fail:** with a real
+  principal resolver configured, the built app started in production mode **must be reachable from a
+  non-loopback address**, and **`scripts.start` must be byte-identical to what `create-next-app`
+  wrote**. Every other check here asks whether a control is present; none asked whether it *releases*
+  once its condition clears. This is the check that would have caught the withdrawn `start`
+  narrowing, whose failure mode was a container binding loopback, a health check that never
+  connects, and an app that reads as dead with nothing to read.
+
 - *FIX-1160* — one recorded run covering **both halves of the pack**: the plugin installed from its
   published source and a packaged skill invoked, then an assistant in a fresh project, given a
   stated feature goal and nothing else, produces a flow that runs. A single observation, stated as
@@ -338,7 +344,7 @@ call.
    on, and the caveats that go with it.
 
    **Securing the endpoint changes what the printed commands do, so the whole block is walked
-   under the secured config — both topology branches, every line.** Theme 8's credential is not a
+   under the secured config — every cell of shipper × host, every line.** Theme 8's credential is not a
    change to one route; it changes the `FlowState` every printed command loads. Walked end to end:
 
    - **`fsdev dev` breaks unless the generated config says so.** The DevTool page loads, and its
@@ -418,7 +424,10 @@ call.
      generated file says so, since the developer who adds the second flow is the one it surprises.*
 
      *Greenfield is unaffected throughout: it configures no resolver at all, so its flow stays in
-     the anonymous set and its rows stay visible. All of this is a brownfield-path requirement.*
+     the anonymous set and its rows stay visible. **Re-keyed:** this is a requirement of **a demo
+     that ships no browser client**, which today only the brownfield path has — not a fact about
+     brownfield. Stated per path it is accidentally true and would silently stop being true the
+     moment a starter ships whose demo is not a web page (§5 Q6 option (a)).*
 
      **"Same environment variable" is not sufficient, and the audit of it found a worse failure
      than a rename.** The generated config **reads the credential once into a single binding, and
@@ -437,12 +446,33 @@ call.
      variable unset, **the run must fail on both authorship branches** — because a mitigation nobody
      exercises is the defect it was written to prevent, wearing a fix's clothes.
 
-     **The refusal lives in the file we author on *that* branch, which is the flow file — not the
-     config.** Stated this way because defining it on the config made it vacuous in exactly the
-     branch it was written for: when the config is the developer's we write none, so "the config
-     fails to start" is a check that returns **pass** while the developer's variable sits unset and
-     the naive-equality hazard is fully live. The flow file is written on **both** branches, so the
-     credential read and its refusal go there and hold regardless of who owns the config.
+     **The refusal is *split by branch*, and getting this wrong was the most severe defect in this
+     theme.** The first version put a **startup** refusal in the flow file, reasoning that the flow
+     file is the one thing we author on both branches — correct about coverage, and wrong about
+     blast radius, which runs along a different axis: **whose module graph imports our flow file.**
+     On the author branch our config is its only importer, so a throw takes down our demo and
+     nothing else. On the guest branch the developer applies the registration line into *their*
+     config, which makes our flow file a node in **their** graph — and `loadFsdevConfig` wraps any
+     throw from that import into a config-load failure. Their CI and their production deploy have no
+     `.env.local`, so our module throws, their config fails to load, and **every flow they already
+     had stops working.** That is theme 6's promise broken in its most severe form yet: not a 401 on
+     their endpoints but a hard startup failure of their app.
+
+     **And the check confirmed it by observing the harm.** It asserted the throw fires on both
+     authorship branches; the guest fixture has no pre-existing flows, so "the refusal works" and
+     "the guest's app is now dead without `.env.local`" were the *same assertion*. A check cannot
+     catch a blast radius it has no bystander to measure.
+
+     - **Author branch — startup refusal, in the config we write.** Our app is the only thing that
+       fails, and failing early is right when the credential is the only control.
+     - **Guest branch — request-time refusal, inside our own flow's resolver.** The resolver reads
+       the variable **lazily, per request**, and refuses when the expected value is absent or empty.
+       That closes the naive-equality hazard at the point it actually bites — a request comparing
+       equal to an absent expected value — without detonating at import. Our flow refuses; theirs
+       are untouched.
+
+     *This is the shape theme 6's behavioural clause exists for: nothing about the file rules
+     changed, and the run would still have broken their app.*
 
      **And in the guest case the `devtool` block is not ours to write either**, since it lives in
      the config we deliberately do not touch. Traced rather than assumed: securing our flow per-flow
@@ -493,21 +523,57 @@ call.
      because it is the one edit that reaches flows we never named.
 
      - **Flow registration** — additive, reaches only our entry. **Applied by the run.**
-     - **`devtool` block, none present** — additive; it supplies the DevTool page a credential and
-       gates nothing. **Applied by the run.**
-     - **`devtool` block already present** — changing the value of a key we do not own is exactly
-       what exception (b) forbids, and their DevTool identity is a real conflict rather than a
-       formatting one. **Handed over**, with the conflict named.
+     - **The `devtool` block** — **handed over on the guest branch, never applied**, with its
+       consequence stated in the handed-over diff. It looks per-flow in the reasoning and is
+       **app-global in the type**: `DevToolConnectionConfig` is `{ userId?, bearerToken? }` on
+       `meta.devtool`, one block per app, injected as a single `window.__FSD_DEVTOOL_CONFIG__` and
+       applied to **every** flow the DevTool talks to. Applied silently, it would make the DevTool
+       act as *our generated identity* against *their* flows, and new sessions in their flows would
+       land under our `userId`. Theme 6's own clause settles it — *a change we merely recommend into
+       a file we do not write is still our change* — and this one is not additive in behaviour even
+       when the key is absent. **Disclosed cost:** until they apply it, the DevTool cannot invoke our
+       secured demo flow; that is theirs to weigh against the identity effect, and it is exactly the
+       kind of trade we must not make on their behalf.
      - **Host-level resolver** — inherited by their override-less flows. **Never.**
 
-     **Two things survive this fix, recorded so the next reader does not have to rediscover that
-     the list was longer than the symptom.** First, the DevTool-block conflict above is unresolved
-     rather than absent — the guest whose config already declares `devtool` still ends the run with
-     a manual step. Second, and not a config-edit question at all: **`modelResolver` is a single
-     app-level option on `createFlowState`**, so on the guest branch our demo flow generates through
-     *their* resolver. Registration makes the flow reachable; it does not make its model resolvable,
-     and nothing in this epic currently says the demo's model must be one the host app can already
-     serve. That is a live gap, not a closed one.
+     *The registration line is the only edit the run applies to a config it did not author. That is
+     the boundary, and it is narrow because each candidate had to earn it separately — the `devtool`
+     block was inside it for one round and did not survive contact with its own type.*
+
+     **What survives this fix — and the general question that generates the list.** `modelResolver`
+     is a single **app-level** option on `createFlowState`, so on the guest branch our demo flow
+     generates through *their* resolver, while FIX-1159 pins a concrete `provider/model` string in
+     the flow we write. Each decision is right alone; **the pair produces a hardcoded model running
+     through a resolver we do not own**, and if it does not recognise that ID the mounted route and
+     every printed CLI command fail before streaming — so the guest proof cannot pass at all.
+
+     **The resolver cannot be asked what it supports.** Checked rather than assumed: `ModelResolver`
+     is `(modelId, blockName?, options?) => GeneratorModel` plus `resolveId(modelId, options?)`.
+     There is no `supports()`, no enumeration, and no capability surface — and because provider
+     packages load lazily, even a resolution that *returns* is not proof the model will generate.
+     **So "confirm against what the resolver supports" is not implementable**, and the remedy is the
+     honest one: **the run invokes the demo flow once, end to end, before it reports success, and
+     refuses with remediation naming the resolver if that invocation fails** — the developer may
+     supply a model ID their resolver does serve. This needs no new mechanism: the standing check
+     below already runs what the block prints. What is new is that it must run **against a guest host
+     whose resolver rejects our model**, which nothing currently does.
+
+     **The class, because two independent workers hit it tonight: category enumeration passes each
+     rule in isolation and the *pair* is wrong.** Standing question, applied whenever we change what
+     we install into a host we do not own — **what else do we pin that the host also decides?** The
+     live candidates, none of them closed:
+
+     - **The provider credential's variable name** — same root as the model; their resolver may use
+       a provider we never prompt for.
+     - **The store.** App-level like `modelResolver`, so the demo's sessions land in whatever store
+       their config opened, not the development one the author branch documents.
+     - **Module format and the 22.18 runtime floor.** Our flow file is TypeScript imported by *their*
+       config, so their `"type"` field and their Node version decide whether it loads at all — and
+       the floor is a rule we state while they own the runtime.
+     - **`handleExecuteAction`'s principal path**, which no read has yet enumerated.
+
+     *Also unresolved rather than absent: the guest whose config already declares a `devtool` block
+     still ends the run with a manual step (see the `devtool` bullet below).*
 
      **This is the fourth consequence to fall out of the resolver work** — DevTool listing, the
      additive-promise break, this, and the model-resolver gap above. Each fix was correct and each
@@ -527,7 +593,7 @@ call.
 
    **So the printed block is under a standing goal check, not a rule that fires when someone
    notices.** Every command the block prints is run against the emitted project, on **both**
-   topology branches **and both authorship branches**, and asserted on **real behaviour rather than
+   cell of **shipper × host** (below), and asserted on **real behaviour rather than
    exit status** — the DevTool page
    answers an authenticated API call, the printed flow invocation returns a streamed model
    response, the second-process call is accepted with the credential and refused without it. It is
@@ -537,17 +603,34 @@ call.
    gone rather than kept alongside it** — two rules covering one hazard is how the weaker one
    becomes the one people rely on.
 
-   **Two axes, not one — and enumerating the wrong one is how a branch goes unchecked.** Topology
-   (`mounted-route` / `second-process`) decides what the block *prints*; **authorship** — whether
-   the run wrote the config or the project already had one — decides what the run *installs*
-   (theme 8's resolver rule) and therefore what the printed commands can do. They are independent,
-   so covering topology alone leaves the **guest** case exercised by nothing: per-flow-only
-   resolver, an additively-applied registration line, no host resolver, degraded session listing,
-   and a `devtool` block applied or handed over depending on whether one already exists. **That is
-   the same defect this theme names one paragraph up, committed against this
-   theme's own check** — a rule was widened without widening the thing that feeds it. The guest
-   branch gets its own run; `second-process` × guest is the combination most likely to be dropped
-   as exotic, and it is the one where the fewest of our files exist.
+   **The axes are shipper × host, and getting this wrong left greenfield exempt from its own
+   block's check.** The first version keyed the check to *topology* × *authorship* — both of which
+   are **brownfield-internal** — while theme 9 gives this same block a **greenfield shipper**.
+   Greenfield therefore had no cell: its rendered block was exercised by one line, and FIX-548's
+   shipper-side check is text equality against the canonical source, which cannot notice that a
+   printed command does not run.
+
+   - **Shipper** — the greenfield template, or the brownfield install skill. Decides who renders
+     the block and what it can assume about the project.
+   - **Host** — the shape in front of us: a Next-style app taking a `mounted-route`, or a plain-Node
+     project taking a `second-process`; and for brownfield, whether the config is **ours or theirs**,
+     which decides what the run installs and therefore what the printed commands can do.
+
+   **Three live cases sat inside the old exemption**, none of them exotic: `npx fsdev dev` throwing
+   *"DevTool assets not found"* when the template's devtool declaration is missing or mis-versioned;
+   the **two-process filesystem-store race** that §1 lists among the defects that killed the
+   deterministic command, still reachable because both `npm run dev` and `npx fsdev dev` are printed;
+   and package-manager rendering, where this theme's only greenfield illustration hard-binds npm
+   while the value is supposed to come from detection — a brownfield artifact greenfield does not run.
+
+   **And the sentence that made the exemption feel principled is withdrawn: *"greenfield can always
+   run what it just wrote."*** True of the files the template writes. False of `fsdev dev`, which is
+   a separate package resolved at run time. **A shipper that authored the project still has to run
+   what it prints** — authorship covers the files, not the commands.
+
+   *`second-process` × guest remains the combination most likely to be dropped as exotic, and it is
+   the one where the fewest of our files exist — now one cell among several rather than the only
+   one anyone remembered to name.*
 
    **The finding that earns it, stated as the reason rather than as a fixed bug: securing the flow
    silently removed a rail.** Configuring a resolver **where the guard can see it** satisfies
@@ -673,11 +756,35 @@ call.
      all. `tsconfig.json` is **not** in the edit set for the chosen template shape, so it needs no
      rule here; an issue that finds it does has hit a cross-cutting question.
 
-     **(c) The stock serving scripts, greenfield only, narrowed to loopback.** *Named for `dev`
-     when it was written, which was the defect: we widened the contract for one key and never asked
-     what its siblings do. `create-next-app` ships exactly three — `dev`, `build`, `start` — and
-     `build` serves nothing, so the exception covers **`dev` and `start`**, both narrowed to
-     loopback.* `create-next-app`
+     **(c) The stock *development* serving script, greenfield only, narrowed to loopback.** *This
+     exception has now been wrong in both directions. It was written for `dev` alone, which was a
+     defect — we widened the contract for one key without asking what its siblings do. It was then
+     widened to `dev` **and** `start`, which was worse, and `start` has since been **withdrawn**
+     for the reasons directly below. `create-next-app` ships exactly three scripts — `dev`,
+     `build`, `start` — `build` serves nothing, and `start` is no longer ours to touch, so the
+     exception covers **`dev` only**.*
+
+     **Why `start` was withdrawn — it was redundant, and then it was harmful.** Redundant because
+     the justification below (*"no other control exists on this path"*) is **false for production**:
+     theme 8's config refusal already refuses a default-resolver flow there, adapter-independently.
+     Two rules covering one hazard is the shape this theme warns about one bullet down. Harmful
+     because theme 6 asserted *"a platform deploy never runs `next start`"* — true of Vercel, and
+     **false of Docker `CMD ["npm","start"]`, Render, Railway, Fly, Heroku and App Runner.** With
+     `scripts.start` hard-bound to `127.0.0.1`, and `-H` carrying **no environment binding** so
+     `HOST=0.0.0.0` cannot override it, the container binds loopback, the platform health check
+     never connects, and **the app reads as dead with no error to read.** No check caught it: §1's
+     greenfield production proof reaches the server over loopback, so it passes identically whether
+     `start` was narrowed or never touched.
+
+     **And it falsified the product statement**, which is the part that reached a person. *"The
+     generated app does not serve off-host until its authentication is configured"* — configuring
+     authentication lifts the config refusal but could never lift a hardcoded hostname, so the
+     "until" resolved to *never*. **The corrected statement is in theme 8**, and it is true because
+     the only production control is now the one that lifts.
+
+     *`dev` keeps the exception and its original justification intact:* development is where no
+     other control exists, and it is the one case where the justifying condition never clears —
+     nobody configures production authentication and then keeps running `npm run dev`. `create-next-app`
      writes `scripts.dev`; the template rewrites its value to bind `127.0.0.1` (theme 8). **This is
      a third exception, stated as one rather than smuggled into (a) or (b), because it fits
      neither** — the script's purpose is to be *run*, not replaced, so (a) does not reach it, and
@@ -685,7 +792,7 @@ call.
      Pretending otherwise would turn (a) into "anything `create-next-app` wrote that we find
      inconvenient", and the tightness of this set is the whole reason it is trustworthy.
 
-     **What justifies it is that no other control exists on this path.** The greenfield demo is a
+     **What justifies it is that no other control exists *in development*.** The greenfield demo is a
      **browser** page calling the mounted route, so the credential that protects brownfield cannot
      protect greenfield: any token the page can use is a token anyone who can load the page can
      read, and on an exposed dev server the attacker can load the page. **Loopback is the only
@@ -695,48 +802,25 @@ call.
      we own does the same while also putting two dev commands in a four-second-old project.
 
      **The exception is deliberately narrow.** Greenfield only — a project we created, holding no
-     developer content yet. One key, whose stock value we caused to exist seconds earlier. The edit
+     developer content yet. **One key, `dev`**, whose stock value we caused to exist seconds earlier,
+     and whose justifying condition never clears because nobody configures production authentication
+     and then keeps running `npm run dev`. The edit
      only ever *narrows* a bind, breaks nothing, and is a one-word revert the developer can make.
      **It does not reach brownfield**, where the script is theirs, the project is theirs, and theme
      6's promise is the one the objective actually sells.
 
-     **`start` is the worse of the two, and binding it is not sufficient.** `next start` also
-     defaults to `0.0.0.0`, and someone running `npm run build && npm start` is by definition not
-     on their laptop — so the same unauthenticated model-backed route is exposed on a real host,
-     billed to them. Binding it closes the self-hosted case, and **says something the owner must
-     hear: the generated app does not serve off-host until its authentication is configured.** For
-     a demo scaffold that is the right default; it is still a product statement, not a footnote.
-     **But it closes only one deployment mode** — a platform deploy never runs `next start`, so a
-     script bound to loopback protects nothing there. See theme 8's completion of the rule.
+     **The production case is theme 8's, not this exception's.** `next start` defaults to `0.0.0.0`,
+     and someone running `npm run build && npm start` is by definition not on their laptop — the same
+     unauthenticated model-backed route on a real host, billed to them. That hazard is real; the
+     answer to it is **theme 8's config refusal**, which is adapter-independent and lifts when
+     authentication is configured. Narrowing the script was tried and withdrawn above: it duplicated
+     a control that already existed, and broke every container and platform that starts an app with
+     `npm start`.
 
-     **And a hardcoded hostname cannot observe the condition that sentence states.** "Does not serve
-     off-host *until* its authentication is configured" is a conditional, but `--hostname 127.0.0.1`
-     baked into `scripts.start` is not: the developer who then configures a real resolver — the
-     exact thing theme 8 asks of them — deploys and is still unreachable, with nothing naming why.
-     **The control keeps applying after its justifying condition is gone**, and it lands wrong in
-     whichever direction the developer moves: unnarrowed it exposes a pre-auth self-host deploy,
-     narrowed it breaks a post-auth one, and both are the *same* deployment mode, so no fixed choice
-     is right for it.
+     *Recorded because the reasoning is reusable: the lever we reached for was the one we already
+     had permission to touch, not the one that fit the hazard. A script argument is a constant, and a
+     hazard whose condition is expected to clear needs a control that can observe it clearing.*
 
-     **The asymmetry that names the fix: the second-process branch already has a condition-linked
-     bind and this one does not.** `assertNetworkBindIsAuthenticated` returns early once every flow
-     authenticates, so on that branch the rail clears itself exactly when the condition clears. The
-     greenfield mounted-route branch has no equivalent because the process that binds is Next's, not
-     ours — our only lever there is a script argument, which is a string and cannot ask a question.
-     **So the rule is that the production bind must be condition-linked rather than fixed**, and a
-     `start` script that runs a preflight before `next start` is the shape that gets there: the
-     preflight imports the config the greenfield run authored and asks the framework's own predicate,
-     rather than inventing a second notion of "authentication is configured" that can drift from the
-     first. It refuses loudly with the guard's own message instead of binding somewhere surprising,
-     and `allowUnauthenticated` — which already exists — is the explicit opt-out for the deploy whose
-     protection sits in front of the app rather than inside it.
-
-     **Mechanism is FIX-548's, not this document's**; what is fixed here is that the bind may not be
-     a constant. Two honest limits: this stays inside exception (c)'s budget (still `start`, still
-     one key) but it does add a file to the generated project, which is **a further reason FIX-548's
-     re-approval is needed rather than a new one** — that re-approval is already open. And it does
-     **not** close the platform-deploy gap, since a platform deploy runs neither the script nor the
-     preflight; that gap remains theme 8's.
    - **No credential is written until the path is verifiably ignored — a precondition, not a
      report.** Before writing anything secret, the run asks **git** whether the target path is
      effectively ignored (`git check-ignore`). If it is, write. If it is not, **append the rule**
@@ -886,8 +970,9 @@ call.
    is listening for them — and correspondingly, **nothing else stops them if the developer removes
    the flag**, since the flow itself accepts any caller. *Brownfield*: the endpoint **is** reachable
    and probeable, and every call without the secret is **refused** — no model invocation, no key
-   spend, no acting as another user. **Greenfield does not also carry a credential**, and an earlier
-   round claimed it did — it has the bind and no credential. *Per-topology, not per-path: see the
+   spend, no acting as another user. **The greenfield template does not also carry a credential** — because *its* demo is a browser
+   page, not because it is greenfield — and an earlier round claimed it did; it has the bind and no
+   credential. *Per-topology, not per-path: see the
    control matrix below, which this sentence used to flatten.* **Brownfield cannot be fixed the same way** — theme
    6 forbids rewriting a `dev` script the developer authored, and printing a flag does not reach
    someone who starts their server from memory. **So the brownfield run configures a non-default
@@ -927,7 +1012,7 @@ call.
 
    | | Loopback bind | Credential | Why |
    |---|---|---|---|
-   | **Greenfield** (mounted-route) | **yes**, but split: `dev` **unconditionally**, `start` **condition-linked** (theme 6 (c)) | no | its demo is a browser page, so any token it holds an attacker reads from the same page |
+   | **Greenfield** (mounted-route) | **`dev` only** — theme 6 (c); production is the config refusal, not a bind | no | its demo is a browser page, so any token it holds an attacker reads from the same page |
    | **Brownfield, mounted-route** | no — their dev script, theme 6 forbids editing it | **yes** | the only control available |
    | **Brownfield, second-process** | **yes** — our printed `fsdev serve --host 127.0.0.1` | **yes** | **both**, because we author the start command *and* ship no browser client |
 
@@ -943,10 +1028,30 @@ call.
    production auth and then keeps running `npm run dev` — so a fixed bind is correct there. For a
    production command it clears the moment the developer does what theme 8 asks, so a fixed bind is
    wrong there *by construction*, whoever authored the command. The second-process branch gets this
-   right for free because `assertNetworkBindIsAuthenticated` **is** the condition; greenfield's
-   `start` got it wrong because a script argument is a constant and cannot ask. **A control whose
-   condition can clear must be able to observe it clearing** — otherwise it is not a control, it is
-   a permanent default wearing a rationale.
+   right for free because `assertNetworkBindIsAuthenticated` **is** the condition. The attempt to
+   narrow greenfield's `start` got it wrong because a script argument is a constant and cannot ask —
+   which is why that narrowing was withdrawn rather than made cleverer, and **production is now the
+   config refusal on every path**, the one control that lifts when the condition lifts. **A control
+   whose condition can clear must be able to observe it clearing** — otherwise it is not a control,
+   it is a permanent default wearing a rationale.
+
+   **So the corrected product statement, since the old one was false and had already been said out
+   loud:** *the generated app refuses to serve its demo flow in production until real authentication
+   is configured; once it is, the app serves normally wherever it is deployed — container, platform
+   or bare host. In development it also binds to the local machine only, which is a development
+   default the developer can change in one word.* The old form — *"does not serve off-host until its
+   authentication is configured"* — was false twice over: it promised a lift that a hardcoded
+   hostname could never deliver, and "off-host" described a bind when the actual control is a
+   refusal.
+
+   **The production refusal's predicate, stated because it is the fourth reader of "is this flow
+   authenticated" and was the only one not to say which question it asks.** It is **per-flow**, and
+   it is the same predicate `assertNetworkBindIsAuthenticated` applies: a flow whose
+   `authentication.resolvePrincipal` is absent, or is the default body-`userId` resolver by brand,
+   is unauthenticated. Not "any flow in the app", and not the host-level resolver. Stated because
+   its only scenario so far is greenfield, where all three readings agree and the check therefore
+   passes under any of them — the brownfield author branch is where they diverge, and it had no
+   check. *One predicate, four readers, one place it is written down.*
 
    **The second-process branch therefore has defence in depth, and that is a specified property
    rather than an accident** — theme 5 keeps `--host 127.0.0.1` in its printed command. **§1's proof
@@ -965,18 +1070,28 @@ call.
    reachable nor unauthenticated — and is the only one whose two controls can each be dropped
    without the other noticing, which is why both are asserted.
 
-   **Two other rules in this document are stated per *path* while their cause is something else, and
-   both are currently masked by Q6 being open.** Named rather than pre-emptively rewritten, because
-   rewriting them for an undecided answer is how the last flattening happened:
+   **Two other rules were flagged as stated per *path* while their cause is something else. A
+   non-author read has now settled both, and they resolve differently:**
 
-   - **Theme 6 exception (c) — "the stock serving scripts, greenfield only."** Its cause is *we
-     author the project*, and its content enumerates `create-next-app`'s three scripts. If Q6 ships
-     a second starter, that template's scripts are different and (c)'s enumeration does not describe
-     them. The exception survives; its script list is Next-specific and would need re-deriving.
-   - **The credential rule — "a brownfield-path requirement."** Its cause is *the demo ships no
-     browser client to leak the token*, not the path. Today those coincide because the one template
-     is a chat page. A Node starter's demo would be CLI and HTTP, so it could carry a credential —
-     and under Q6 option (a) this rule stops being about brownfield at all.
+   - **Theme 6 exception (c) — settled, and the *label* was the wrong part.** The enumeration is
+     correct and measured: `create-next-app@16.3.1` with the pinned flags writes exactly `dev`,
+     `build`, `start`. But (c)'s real key is not "greenfield" and not "we author the project" — it is
+     **"a serving script a third-party scaffolder we invoke wrote, which we then narrow"**, which
+     resolves identically on every Q6 branch. So relabelling decides nothing and Q6 does not mask it.
+     **What is actually missing is an assertion:** nothing checks the script set, so a future
+     `create-next-app` adding a fourth serving script under-covers (c) with every check still green.
+     The check belongs where the template is generated — assert the scaffolder's serving-script set
+     is exactly what (c) enumerates, and fail loudly when it is not.
+   - **The credential rule — confirmed, genuinely Q6-dependent, and contradicted in three places.**
+     Its cause is *the demo ships no browser client to leak the token*, not the path; theme 8's
+     matrix already carries that generalisation correctly. Three other sentences still state it per
+     path — theme 5's *"All of this is a brownfield-path requirement"*, this theme's *"greenfield
+     does not also carry a credential"*, and Q5's *"greenfield does not also take a credential"*.
+     Under Q6 option (a) they are **wrong** and must be re-keyed before a Node starter's demo is
+     specified, or it ships open. Under (b)/(c) they are *accidentally* true, which is worse than
+     being wrong in one way: they are exactly what a future reader generalises from. **All three
+     are corrected in place**, since the correct key is true on every branch and states no answer
+     to Q6.
 
    **The standing citation rule this theme now follows, because every defect of this shape has come
    from the same place:** this document's code-resting claims have held on every check; its
@@ -1444,7 +1559,7 @@ because a host-level resolver in *their* config would be inherited by *their* fl
 working app. The registration line and an absent `devtool` block are **applied** as additive edits;
 withholding them left nothing we author reachable at all (theme 5). No literal secret appears in this document, in the template, in a printed
 command, or in any committed file. **The mechanism is FIX-1159's** within that constraint;
-greenfield does **not** also take a credential — its demo is a browser page, so a token it could
+the greenfield **template** does **not** also take a credential — because its demo is a browser page, so a token it could
 present is one an attacker can read from the same page; loopback is its whole control, and theme 8
 states the comparison exactly.
 
@@ -1473,7 +1588,7 @@ lesson generalizes.** Securing the `FlowState` meant `fsdev dev` opened a DevToo
 failed authentication — the command the developer is told to run immediately after — and, less
 visibly, it satisfied `assertNetworkBindIsAuthenticated` and so **removed** a rail that had been
 refusing `fsdev serve` a network bind. Theme 5 now keeps the printed block under a **standing**
-goal check on both topology branches rather than a trigger someone has to notice.
+goal check keyed on shipper × host rather than a trigger someone has to notice.
 
 **What this costs, so the owner sees it rather than discovers it.** The brownfield first run is
 unchanged for the printed CLI command, which runs in-process and never crosses HTTP. It changes for
@@ -1637,4 +1752,6 @@ those narratives now live in
 - **The guest branch could not complete at all, and the boundary that caused it was mine.** Keying the resolver fix on *authorship* ("write no config we did not author") was wider than its hazard, which is **inheritance** and belongs to the host-level resolver alone. Verified: `resolveRuntimeSource` returns on a located config **before** `discoverFlows` — exclusive, not preferential — so the handed-back registration line meant **nothing we author is ever imported**; `serve` passes `requireConfig: true` and has no `--no-config`; `--flow-dir` is rejected outright; `--no-config` runs a different app. **A standing check required "on both authorship branches" therefore had a guest arm that could not be run** — worse than a false pass, which at least returns something. Re-keyed on the hazard, so the config falls under theme 6's additive contract like `.gitignore` and `package.json`: registration and an absent `devtool` block are **applied**, a *present* `devtool` block is handed over, the host-level resolver is still never written. **Fourth consequence of the resolver work** (DevTool listing → additive break → this → `modelResolver` is a single app-level option, so the guest's demo runs on *their* resolver and nothing yet says its model must be one they can serve). Conflicts with FIX-1159's decision 1, flagged not edited.
 - **A production control that could not notice its condition clearing.** Theme 6 (c) narrowed `start` to loopback while the prose claimed the app "does not serve off-host *until* authentication is configured" — a conditional implemented as a constant, so the developer who does what theme 8 asks deploys and is unreachable, told nothing. It lands wrong in *both* directions on the same deployment mode, so no fixed value is right. Named by contrast with the second-process branch, where `assertNetworkBindIsAuthenticated` **is** the condition and clears itself; greenfield's `start` is a script argument and cannot ask. Rule: the production bind must be condition-linked, mechanism FIX-548's. **Generalised into theme 8 as the third question under the matrix** — *can the justifying condition ever clear?* — which is what separates a `dev` bind (correctly fixed) from a `start` bind (wrong by construction). §1 gained the mirror assertion: with a resolver configured, production **must** be reachable off-host.
 - **Index and graph sweep, after a readiness claim survived three rounds in a table cell.** FIX-548's row still read "safe to take now — a mechanical set" after that claim was retracted in three prose locations; it is a scope increase (Small → Medium), a **reversed** decision (verified: `providerPreference` is consulted only inside `resolveIntent`, so a declared `provider/model` never reaches it), and a new **product statement**. Rows are the shape a prose sweep skims. Same sweep, reading Linear rather than the document: **FIX-1186 is a sub-issue of the epic and had no index row at all** — the index failing at its only job — and FIX-548 is `blocks`-blocked by FIX-1159, FIX-1160 **and FIX-1162**, the last of which this document forbids in bold. All flagged, not reconciled; the epic does not edit the graph. Q6 also carried a live trap: **two** of its three options begin "ship one", so an answer from memory of the withdrawn ask selects (c) while sounding like (b).
+- **Non-author pass over themes 5/6/8 — every code-resting claim confirmed, every finding in how rules are *keyed*.** Exactly the split predicted, and five findings followed. **(1)** The credential's startup refusal in the flow file was right about coverage and wrong about **blast radius**, which runs along *whose module graph imports our flow file*: on the guest branch their config imports it, `loadFsdevConfig` wraps the throw into a config-load failure, and **their whole app dies without `.env.local`**. Its check confirmed it *by observing the harm* — no bystander flow in the fixture. Split: startup refusal on the author branch, **request-time** refusal in our own resolver on the guest branch. **(2)** Exception (c)'s `start` half **withdrawn** — redundant against theme 8's config refusal, and harmful because *"a platform deploy never runs `next start`"* is false of Docker/Render/Railway/Fly/Heroku/App Runner, with `-H` carrying no env binding so `HOST=0.0.0.0` cannot override it: the container binds loopback and reads as dead. It also **falsified a product statement already relayed to the owner**; corrected in theme 8. **(3)** The standing check was keyed to topology × authorship, both brownfield-internal, leaving theme 9's **greenfield shipper** exempt from its own block — re-keyed to **shipper × host**, and *"greenfield can always run what it just wrote"* withdrawn (true of files, false of `fsdev dev`). **(4)** The `devtool` block is per-flow in the reasoning and **app-global in the type** — one `window.__FSD_DEVTOOL_CONFIG__` for every flow — so applying it would make the DevTool act as our identity against their flows; now handed over on the guest branch, never applied. **(5)** Theme 8's production refusal was a fourth reader of "is this flow authenticated" with **no stated predicate**, passing because its only scenario was greenfield where all readings agree; predicate now stated once, per-flow, matching the bind guard. *One flag it raised was refuted before folding: `@flow-state-dev/devtool`'s `publishConfig` rewrites the exports map, so the published package is fine.*
+- **The pair, not the rule, was wrong: a pinned model through a resolver we do not own.** FIX-1159 pinned a concrete `provider/model` (correct alone — the alternative threw at construction) and resolver installation was keyed to authorship (correct alone — it fixed the additive break). Together: the guest's demo runs on **their** app-level `modelResolver` with **our** hardcoded model, and if it is unrecognised every advertised command fails before streaming, so the guest proof cannot pass. **Verified the remedy question rather than assuming it — `ModelResolver` is a callable plus `resolveId`, with no `supports()` and no enumeration, and providers load lazily, so a resolver cannot be interrogated and a successful resolution is not proof.** So: invoke the demo once end to end during the run and **refuse with remediation** naming the resolver. Generalised to a standing question — *what else do we pin that the host also decides?* — with the credential variable name, the store, module format, the 22.18 floor, and `handleExecuteAction`'s principal path left open as candidates. **Two independent workers hit this class tonight**, so it is recorded as a check, not an anecdote.
 - **Attribution sweep** — every "the owner's" / "your call" line checked against an artifact. Q2's and Q3's decisions evidenced (epic PR comment, 2026-08-14) and now cite it; Q1 marked as the coordinator's from the objective; the brownfield direction change evidenced (2026-08-15); the one-template cut unevidenced and already reopened as Q6. No further claims reopened — three clean, two already corrected.
