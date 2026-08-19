@@ -61,8 +61,13 @@ they are stated once there rather than twice here.
   would otherwise read as a refusal.
 - *FIX-1159, second-process path* — the same against an existing plain-Node project: the printed
   command starts FSD, a call to it **carrying the generated credential** streams a real model
-  response, and the project's own server keeps running. **A call without it is refused** — that
-  negative half is what makes this a check of theme 8's control rather than of the happy path. **This must not be dropped as redundant with the run above.** It is a different
+  response, and the project's own server keeps running. **A call without it is refused, and the FSD
+  server is asserted to be listening on loopback only** — a connection attempt to it from a
+  non-loopback address must fail to connect. **Both halves are required because this topology is the
+  one with two controls and each can be dropped without the other noticing:** the per-flow resolver
+  makes every registered flow authenticate, so `assertNetworkBindIsAuthenticated` returns early and
+  **permits** a non-loopback bind — an implementer who drops `--host 127.0.0.1` gets no complaint
+  from the guard, and a credential-only proof passes unchanged. **This must not be dropped as redundant with the run above.** It is a different
   host and a different shape (theme 8), and **if Q6 lands on one template it is the epic's only Node
   coverage of any kind** (and it is load-bearing either way) — without it, Node detection and the second-process instruction can be
   entirely broken while every other proof here passes.
@@ -353,7 +358,8 @@ call.
      **Constraint 3 is the one that was missed, and it is live in a supported path rather than a
      corner case.** FIX-1159 explicitly proceeds when the project has its own `fsdev.config.*`:
      *"Not a collision — proceed. Write no config, write everything else, and hand back the one line
-     that registers the new flow in theirs."* So instructing that developer to add a host-level
+     that registers the new flow in theirs."* (FIX-1159 at `6b2c4093d`, the head this was read at —
+     see the citation rule at the end of this theme.) So instructing that developer to add a host-level
      resolver would make ours effective for **their** override-less flows, whose browser and HTTP
      clients carry none of our credential — **their working app starts returning 401s, silently,
      because we were invited in.** That is theme 6's promise broken directly.
@@ -762,7 +768,8 @@ call.
    the flag**, since the flow itself accepts any caller. *Brownfield*: the endpoint **is** reachable
    and probeable, and every call without the secret is **refused** — no model invocation, no key
    spend, no acting as another user. **Greenfield does not also carry a credential**, and an earlier
-   round claimed it did; one control each, chosen because it is the one that works on that path. **Brownfield cannot be fixed the same way** — theme
+   round claimed it did — it has the bind and no credential. *Per-topology, not per-path: see the
+   control matrix below, which this sentence used to flatten.* **Brownfield cannot be fixed the same way** — theme
    6 forbids rewriting a `dev` script the developer authored, and printing a flag does not reach
    someone who starts their server from memory. **So the brownfield run configures a non-default
    principal resolver on what it generates.** That is the condition
@@ -792,15 +799,62 @@ call.
    the credential, an unauthenticated caller is **refused**: no model call, no key spend, no acting
    as another user. What it does **not** do is stop the port listening — the developer's `next dev`
    still binds every interface, so the endpoint stays reachable and probeable by anyone on the
-   network, and what protects it is the secret rather than the absence of a route. **The two paths
-   therefore carry one control each, and they are not the same control**: greenfield binds loopback
-   (its browser client makes a credential unusable), brownfield requires a credential (its host's
-   dev script is not ours to bind). Neither is a weaker copy of the other and neither stacks on the
-   other — an earlier round claimed greenfield had "both layers", which was wrong in the same move
-   that wrongly claimed the dev script was ours. **What each leaves open is different, and that is
-   the honest comparison:** greenfield's endpoint is unreachable off-host but would be wide open if
-   the developer removes the flag; brownfield's stays reachable and probeable but refuses every
-   caller without the secret. Disclosed rather than engineered away.
+   network, and what protects it is the secret rather than the absence of a route.
+
+   **The controls vary by *topology*, not by path, and stating them per path is how this document
+   got it wrong twice in opposite directions.** An early round claimed greenfield had "both
+   layers"; the correction — "one control each" — was right about greenfield and **over-generalised
+   the other way**, flattening a per-topology fact into a per-path rule. The actual matrix:
+
+   | | Loopback bind | Credential | Why |
+   |---|---|---|---|
+   | **Greenfield** (mounted-route) | **yes** — our `dev`/`start` scripts | no | its demo is a browser page, so any token it holds an attacker reads from the same page |
+   | **Brownfield, mounted-route** | no — their dev script, theme 6 forbids editing it | **yes** | the only control available |
+   | **Brownfield, second-process** | **yes** — our printed `fsdev serve --host 127.0.0.1` | **yes** | **both**, because we author the start command *and* ship no browser client |
+
+   **The generalisation that actually holds is not about paths at all.** A path gets the **bind**
+   when *we author the command that starts the server* — greenfield's scripts, the second-process
+   branch's printed command — and not when the developer's own command starts it. It gets the
+   **credential** when *the demo ships no browser client to leak it*. Those two questions cut across
+   greenfield/brownfield rather than along it, which is why every attempt to state this per path has
+   been wrong.
+
+   **The second-process branch therefore has defence in depth, and that is a specified property
+   rather than an accident** — theme 5 keeps `--host 127.0.0.1` in its printed command. **§1's proof
+   of that path must assert the bind**, because nothing else will: the branch installs a per-flow
+   resolver, so every registered flow authenticates, and `assertNetworkBindIsAuthenticated` returns
+   early on `unauthenticated.length === 0` — **it permits a non-loopback bind.** Scenario: an
+   implementer reads "brownfield has no bind" and drops the flag. What does the check return?
+   **Pass** — the guard does not object and the proof only ever asserted credential acceptance and
+   refusal. *Severity stated honestly: the credential still refuses unauthenticated callers, so this
+   loses a layer we specified rather than opening the endpoint. It is a check that cannot fail, not
+   an exposure.*
+
+   **What each configuration leaves open, which is the honest comparison:** greenfield is
+   unreachable off-host but unguarded if the flag goes; brownfield mounted-route is reachable and
+   probeable but refuses every caller without the secret; brownfield second-process is neither
+   reachable nor unauthenticated — and is the only one whose two controls can each be dropped
+   without the other noticing, which is why both are asserted.
+
+   **Two other rules in this document are stated per *path* while their cause is something else, and
+   both are currently masked by Q6 being open.** Named rather than pre-emptively rewritten, because
+   rewriting them for an undecided answer is how the last flattening happened:
+
+   - **Theme 6 exception (c) — "the stock serving scripts, greenfield only."** Its cause is *we
+     author the project*, and its content enumerates `create-next-app`'s three scripts. If Q6 ships
+     a second starter, that template's scripts are different and (c)'s enumeration does not describe
+     them. The exception survives; its script list is Next-specific and would need re-deriving.
+   - **The credential rule — "a brownfield-path requirement."** Its cause is *the demo ships no
+     browser client to leak the token*, not the path. Today those coincide because the one template
+     is a chat page. A Node starter's demo would be CLI and HTTP, so it could carry a credential —
+     and under Q6 option (a) this rule stops being about brownfield at all.
+
+   **The standing citation rule this theme now follows, because every defect of this shape has come
+   from the same place:** this document's code-resting claims have held on every check; its
+   claims about *sibling specs* have not, because a sibling moves without telling us. So **cite
+   verified behaviour rather than a sibling's internals**, and where a sibling must be quoted,
+   **name the head it was read at** — as Q6 does for the package-manager gate — so the next reader
+   can tell staleness from disagreement.
 
    **The one option that would close it was considered and rejected, and the rejection is recorded
    here so the next person who notices the LAN gap finds an answer instead of reopening it.** That
@@ -1256,12 +1310,15 @@ forbids us editing it. The endpoint remains reachable and probeable; the secret 
 between a caller and the flow, rather than the absence of a route. **The question this section
 asked is answered — yes, we require a credential — and the guarantee is *different* from
 greenfield's rather than a lesser version of it.** Greenfield has **one** control, the loopback
-bind, and no credential at all: its demo is a browser page, so any token it could present is one an
-attacker reads from the same page. Brownfield has **one** control, the credential, and no bind: the
-dev server is theirs. **Neither path is defence-in-depth, and this sentence used to say greenfield
-"has both layers", which was wrong** — a reader deriving from this closed entry could have treated
-one of greenfield's controls as redundant and dropped it, leaving that path with none. What each
-leaves open is stated in theme 8. That is disclosed in theme 8 rather than treated as an open
+bind, and no credential: its demo is a browser page, so any token it could present is one an
+attacker reads from the same page. **Brownfield has one or two depending on topology** — the
+mounted-route branch has the credential only, since the developer's dev command starts the server;
+the **second-process** branch has both, because we author the printed `fsdev serve --host
+127.0.0.1` *and* ship no browser client. **Theme 8's matrix is the statement of record; this entry
+has now been wrong in both directions** — first claiming greenfield had "both layers", then
+answering that with a flat "one control each" that erased the second-process branch's two. Either
+error lets a reader drop a control as redundant. What each configuration leaves open is stated in
+theme 8. That is disclosed in theme 8 rather than treated as an open
 fork, because the only option that would close it is refusing to mount a route in a brownfield Next
 app at all, which trades the epic's headline integration for defence in depth over a control that
 already works.
@@ -1420,6 +1477,7 @@ those narratives now live in
 - **Length and sibling sweep** — §3 cut to four lines, §4 to its table, this log rebuilt; the reopened Q6's stale deferral entry corrected, and the bind guard's predicate stated once after a paraphrase got it wrong.
 - **Q6's substitute struck, and the recommendation re-derived** — `mkdir && <brownfield run>` does not exist: brownfield modifies an existing project, and FIX-1159 refuses the empty case at its `dev command` gate. Cutting the Node starter costs backend developers **no path**, not a worse one, so the recommendation changed from "ship one" to **(b) ship one *and* specify a minimal-project brownfield path, else (a) ship two**. Same turn: exception (c) widened to `start` after the sibling script went unchecked, theme 8's rule completed adapter-independently (the config refuses to serve a default-resolver flow outside development), and §3's citation to a non-existent POC withdrawn.
 - **§1 stopped answering Q6, and the production guard got a negative case** — gated §1 named "v1 ships one, the Node template is cut" as a *non-goal*, so approving the epic would have ratified Q6's least-recommended option without the reader knowing they were deciding it. Removed and swept by premise: theme 2's heading, its superseded asymmetry argument, and two residuals inside Q6 itself (including the struck substitute resurfacing in its cost line). **The adapter-independent production refusal — added one round earlier to close a security exposure — had nothing able to detect its absence**, the seventh instance of that defect; §1's greenfield proof and theme 5's negative list now require it to fire before any model invocation. And the brownfield credential must be declared at **both** resolver levels: the bind guard reads per-flow only, while host-scoped session listing reads host-level only and withholds rows for per-flow-authenticated flows — jointly satisfiable, and silently broken in opposite directions if only one is set.
+- **"One control each" was the mirror of the error it fixed.** An early round claimed greenfield had "both layers"; the correction flattened a **per-topology** fact into a **per-path** rule and erased that the plain-Node `second-process` branch has *both* the loopback bind and the credential. **The failure it enabled is a check that cannot fail**: that branch installs a per-flow resolver, so every flow authenticates, `assertNetworkBindIsAuthenticated` returns early on `unauthenticated.length === 0` and **permits** a non-loopback bind — an implementer dropping `--host 127.0.0.1` draws no complaint, and §1's proof asserted only credential acceptance and refusal. Severity stated honestly: a specified layer lost, not an endpoint opened. Replaced with a per-(path × topology) matrix and the generalisation that actually holds — **the bind follows *who authors the start command*, the credential follows *whether the demo ships a browser client*, and neither question runs along greenfield/brownfield.** §1's second-process proof now asserts the bind. Two further rules are flagged as stated per path with a different cause (theme 6's exception (c), the credential rule), left conditional on Q6 rather than rewritten for an undecided answer. **Third time a fix for over-claiming produced under-claiming or the reverse.**
 - **The two-level resolver fix broke the additive promise in someone else's repo, and the fix was mine.** A host-level resolver is inherited by every flow with no override (`pickPrincipalResolver`), and FIX-1159 *proceeds* when the project has its own config — so instructing that developer to add one would 401 their working flows, silently. No host-level resolver can avoid it: the guard branches on resolver **identity** (`isDefaultBodyUserIdPrincipalResolver` is a brand check) and the default's behaviour is *not to run the guard at all*, so any real function flips every override-less flow out of the no-enforcement branch — checked before choosing, because a third remedy would have beaten both offered ones. **Resolution is keyed on authorship**, the boundary theme 6 already uses: when the run writes the config, install at both levels; when the config is theirs, per-flow only in our own flow file, and the two config lines are *handed over* rather than applied. Cost, disclosed: the DevTool's session list will not show our flow in the guest case. Theme 6 also gained the general form — **the guarantee is about behaviour, not only files**, since every file rule can hold while a recommended one-line config change breaks their app.
 - **Status-claim sweep, after the answer-claim sweep missed a whole sentence shape** — §5's summary still read "Q4 is the only one open" one paragraph below the text establishing Q6 as open and blocking. The earlier sweep was keyed on Q6's *answer* (one/two, cut, ships one) and could not match a sentence about its *status*. Widened to anything asserting what is open, blocking, settled, or clear to proceed, and it found a second cluster the first shape would never have caught: **three places said Q6 blocks FIX-548's *re-approval*** when the corrected position is that the re-approval is safe and the *implementation* is what waits — a status error pointing the opposite way, capable of withholding an approval that was ready. Also narrowed Q5's "FIX-1159 is unblocked", too broad a claim for one question to make.
 - **Attribution sweep** — every "the owner's" / "your call" line checked against an artifact. Q2's and Q3's decisions evidenced (epic PR comment, 2026-08-14) and now cite it; Q1 marked as the coordinator's from the objective; the brownfield direction change evidenced (2026-08-15); the one-template cut unevidenced and already reopened as Q6. No further claims reopened — three clean, two already corrected.
