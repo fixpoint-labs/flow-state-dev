@@ -68,13 +68,26 @@ they are stated once there rather than twice here.
   refusal fires" and "their app is now dead" are the same observation, which is how the first
   version of the credential refusal passed while taking down the host's config. **And its resolver
   must be one that does not serve our pinned model**, so the demo's failure surfaces as a refusal
-  with remediation at install time rather than as the developer's first broken request. **And the
-  same fixture, built and started in production mode, must show the production refusal applying to
-  *our* flow while the host's own flow still serves.** That is the only place theme 8's refusal
-  predicate is falsifiable: greenfield has one flow, so per-flow, any-flow and host-level readings
-  all agree there and the check passes under any of them. Here they diverge, and an **any-flow**
-  reading would refuse the host's entire app in production — the same blast radius as the
-  import-time throw above, arrived at from a different direction.
+  with remediation at install time rather than as the developer's first broken request.
+
+  **What this fixture cannot prove is theme 8's production refusal, and requiring it here was the
+  fifth instance of a check that cannot fail — sitting inside the fix for the fourth.** The previous
+  revision had this same fixture, built and started in production mode, "show the production refusal
+  applying to *our* flow while the host's own flow still serves." Two independent reasons make that
+  unobservable. Our demo flow carries a **per-flow credential resolver** on the guest branch (theme
+  5), so under theme 8's own predicate it is *authenticated* and the refusal never reaches it — what
+  refuses an uncredentialed request is our resolver, identically in development and production,
+  whether the production guard is correct, wrong, or entirely absent. And the refusal's carrier is
+  **the generated config**, which the guest branch by definition does not write. The check was
+  therefore green against an absent guard and against every wrong predicate alike, which is the
+  contract in `docs/architecture/authentication.md:122-132` going unvalidated while looking proved.
+  **What the fixture does prove stays, relabelled to what it is:** an uncredentialed request to our
+  flow is refused **by our per-flow resolver**, no model invoked, while the host's own flow still
+  serves — the credential rail and theme 6's additive promise, not theme 8's guard.
+
+  *The production guard's scenario moved to the **author** branch, where the generated config exists
+  and the readings genuinely diverge. Theme 8's predicate paragraph carries it, stated by what turns
+  it red.*
 - *FIX-1159, second-process path* — the same against an existing plain-Node project: the printed
   command starts FSD, a call to it **carrying the generated credential** streams a real model
   response, and the project's own server keeps running. **A call without it is refused, and the FSD
@@ -1073,10 +1086,47 @@ call.
    authenticated" and was the only one not to say which question it asks.** It is **per-flow**, and
    it is the same predicate `assertNetworkBindIsAuthenticated` applies: a flow whose
    `authentication.resolvePrincipal` is absent, or is the default body-`userId` resolver by brand,
-   is unauthenticated. Not "any flow in the app", and not the host-level resolver. Stated because
-   its only scenario so far is greenfield, where all three readings agree and the check therefore
-   passes under any of them — the brownfield author branch is where they diverge, and it had no
-   check. *One predicate, four readers, one place it is written down.*
+   is unauthenticated. Not "any flow in the app", and not the host-level resolver.
+
+   **The check that makes the predicate falsifiable, stated by what turns it *red* — because stating
+   what turns it green is exactly how the last four passed.** Greenfield has one flow, so all three
+   readings agree there and any of them is green. The guest branch cannot carry it either: our flow
+   is per-flow authenticated there, so the refusal does not reach it, and no generated config exists
+   to hold the refusal at all (§1 records why the assertion placed there was unfalsifiable). It
+   belongs on the **author** branch, where the run writes the config, against a fixture whose
+   generated app is built and started in production mode with no authentication configured and
+   serves three flows:
+
+   1. **our demo flow**, carrying its own per-flow credential resolver — **serves**, given the
+      credential;
+   2. **a default-resolver flow** — no `authentication.resolvePrincipal` of its own and no
+      host-level resolver governing it — **refused before any model invocation**, with an error
+      naming the missing authentication;
+   3. **an authenticated bystander flow**, carrying its own non-default per-flow resolver —
+      **serves**.
+
+   **Red in every wrong direction.** Guard absent, or never implemented → (2) serves → **red**; this
+   is the case our own credential resolver was masking, and the one the previous check could not
+   reach. Predicate broadened to any-flow or app-level → (1) and (3) refused → **red**, which is the
+   blast radius that would refuse a host's entire app in production. Predicate narrowed to
+   host-level only → (2) serves → **red**. Only the per-flow reading stated above is green. **(2) is
+   the load-bearing member and the one most likely to be dropped as redundant** — without a flow the
+   guard is actually supposed to refuse, the fixture measures our credential resolver and reports it
+   as the guard.
+
+   *One predicate, four readers, one place it is written down — and now one scenario that can
+   disagree with it.*
+
+   **Unresolved, and surfaced rather than decided: does a flow governed only by the *host-level*
+   resolver count as authenticated for this refusal?** The predicate above says no — it excludes the
+   host-level resolver by construction, which is what makes it match the bind guard. But on the
+   author branch the run installs a host-level resolver *precisely* so that flows the developer adds
+   later with no override are covered, and theme 5 has the generated file say so. Under the stated
+   predicate every one of those flows is refused in production while being genuinely protected. Two
+   rules of this document disagree about the same flow, and the fixture above cannot settle it,
+   because the question is which answer we want rather than which one the code gives. **Flagged to
+   the coordinator rather than answered here:** it changes what the product statement means for the
+   developer's *second* flow, and no issue should implement the refusal past it.
 
    **The second-process branch therefore has defence in depth, and that is a specified property
    rather than an accident** — theme 5 keeps `--host 127.0.0.1` in its printed command. **§1's proof
@@ -1333,7 +1383,7 @@ section carries its path.*
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| FIX-1159 | The brownfield knowledge — deterministic detection scripts, the install skill's **content**, the shared next-steps block, and **the wiring contract both entry paths satisfy** (theme 9) | spec | [#1310](https://github.com/fixpoint-labs/flow-state-dev/pull/1310) | — | In spec review — re-shaped to **brownfield only, no command of its own**; the earlier approval was retracted with the direction change. **Not blocked by an open question** (Q5 resolved by constraint: the run configures a non-default principal resolver, mechanism this issue's) — **but its decision 1 now needs to change**: theme 5 has the run *apply* the flow-registration line as an additive edit, where that decision hands it back, and handed back it leaves nothing we author reachable on the guest branch. Also gains the devtool peer fix (theme 5) and the mounted-route proof (theme 9 (b)) |
+| FIX-1159 | The brownfield knowledge — deterministic detection scripts, the install skill's **content**, the shared next-steps block, and **the wiring contract both entry paths satisfy** (theme 9) | spec | [#1310](https://github.com/fixpoint-labs/flow-state-dev/pull/1310) | — | In spec review — re-shaped to **brownfield only, no command of its own**; the earlier approval was retracted with the direction change. **Not blocked by an open question** (Q5 resolved by constraint: the run configures a non-default principal resolver, mechanism this issue's) — **but its decision 1 now needs to change**: theme 5 has the run *apply* the flow-registration line as an additive edit, where that decision hands it back, and handed back it leaves nothing we author reachable on the guest branch. Also gains the devtool peer fix (theme 5), the mounted-route proof (theme 9 (b)), and the **author-branch production-guard fixture** (theme 8's predicate) — the guest fixture cannot carry that check, and the assertion that said it could was unfalsifiable |
 | FIX-1162 | Register the npm names the launch needs — the short CLI entry name and the scaffolding name | spec | [#1313](https://github.com/fixpoint-labs/flow-state-dev/pull/1313) | — | In spec review — **both names now registered at `0.0.0` to a personal account**; what remains is the publishing identity's write access (`npm owner add` / transfer) and the unproven `@flow-state-dev` scope. Owner operations, not agent work |
 | FIX-548 | `create-flow-state` — the deterministic greenfield path; template count pending **§5 Q6**, written against one (Next.js chat app), owned end to end | spec | [#1312](https://github.com/fixpoint-labs/flow-state-dev/pull/1312) | — | **Re-approval needed and NOT mechanical** — at `a3fc694` the spec takes five previously-unowned jobs into decision 3, **reverses decision 5** (verified: `providerPreference` is consulted only inside `resolveIntent`, so a declared `provider/model` never reaches it — the hijack scenario it guarded is unreachable on that path, not merely weakened), moves **Small → Medium**, and adds decision 8, a new **product statement** (*the generated app does not serve off-host until authentication is configured*). A scope change and a product statement are the owner's to read, not a sweep's to wave through. In Linear it is `blocks`-blocked by **FIX-1159, FIX-1160 and FIX-1162** — read from the graph, and over-tight against Sequencing, which calls the first two merge-order and forbids the third outright. Its spec is not edited by the epic. **Implementation is separately blocked by §5 Q6** — independent holds; clearing one does not clear the other |
 | FIX-1160 | The authoring pack **and the plugin that distributes the install skill** — agent-instructions file, authoring skills, install skill | spec | [#1311](https://github.com/fixpoint-labs/flow-state-dev/pull/1311) | — | Spec complete, approved at `dd9b656` — **approval needs re-taking**: theme 9 (d) hands it the agent-instructions block's normalization and equality check (posted to #1311). Scope had already grown: it is the brownfield path's only delivery channel |
@@ -1781,3 +1831,4 @@ those narratives now live in
 - **The pair, not the rule, was wrong: a pinned model through a resolver we do not own.** FIX-1159 pinned a concrete `provider/model` (correct alone — the alternative threw at construction) and resolver installation was keyed to authorship (correct alone — it fixed the additive break). Together: the guest's demo runs on **their** app-level `modelResolver` with **our** hardcoded model, and if it is unrecognised every advertised command fails before streaming, so the guest proof cannot pass. **Verified the remedy question rather than assuming it — `ModelResolver` is a callable plus `resolveId`, with no `supports()` and no enumeration, and providers load lazily, so a resolver cannot be interrogated and a successful resolution is not proof.** So: invoke the demo once end to end during the run and **refuse with remediation** naming the resolver. Generalised to a standing question — *what else do we pin that the host also decides?* — with the credential variable name, the store, module format, the 22.18 floor, and `handleExecuteAction`'s principal path left open as candidates. **Two independent workers hit this class tonight**, so it is recorded as a check, not an anecdote.
 - **Three corrections that had landed in the prose but not in the assertion beside it — the durable shape of the round.** Each of the two premises the previous pass flagged as unconfirmable produced a real defect within the hour, which is the sweep working at the only level it can: naming where it cannot see. **(1)** The credential refusal's check still demanded startup failure on **both** branches, sitting directly above the paragraphs explaining why an import-time throw takes down the guest's whole config. Split: author branch proves startup failure; guest branch proves the run **starts**, our flow **refuses**, and **a bystander flow of the host's still serves** — that last clause being the only assertion that fails if an implementer regresses to the throw. **(2)** The `devtool` reversal was over-corrected: "never applied" contradicted Q5's absent/present split and broke this theme's own standing check, which requires `fsdev dev` to answer an **authenticated** call. A rule that fails a check the same theme mandates is not cautious. **(3)** `"greenfield can always run what it just wrote"` was withdrawn in theme 5 and still standing verbatim in theme 6's rendering constraint, where a FIX-548 implementer would have read it as licence to skip the runtime command check — re-creating the unchecked greenfield cell the re-keying existed to close. **The rule: the explanation and the check are different artifacts, and only one of them runs.** Swept on that basis, which found one more — theme 8's production-refusal predicate was falsifiable nowhere, since greenfield has a single flow and per-flow, any-flow and host-level readings all agree there; asserted now on the guest fixture, where an **any-flow** reading would refuse the host's entire app in production.
 - **Attribution sweep** — every "the owner's" / "your call" line checked against an artifact. Q2's and Q3's decisions evidenced (epic PR comment, 2026-08-14) and now cite it; Q1 marked as the coordinator's from the objective; the brownfield direction change evidenced (2026-08-15); the one-template cut unevidenced and already reopened as Q6. No further claims reopened — three clean, two already corrected.
+- **The fifth check-that-cannot-fail, found inside the fix for the fourth.** Codex, at `91f1c4f`: the production-guard assertion the previous entry placed on the guest fixture targets our own demo flow, which that branch requires to carry a **per-flow credential resolver** — so an uncredentialed request is refused by *that* resolver, in development as much as in production, and the check is green whether the production guard is correct, wrong, or absent. **Verified and found wider than reported**: theme 8's predicate makes our guest flow *authenticated*, so the refusal was never going to reach it, and the refusal's carrier is the **generated config**, which the guest branch does not write — the scenario could not produce the behaviour it asserted. Moved to the **author** branch and restated by **what turns it red**: three flows in a production build — our credentialed flow, **a default-resolver flow the guard must refuse**, and an **authenticated bystander it must not** — so an absent guard, an any-flow broadening, and a host-level narrowing each fail it, and only the stated per-flow reading passes. The guest fixture keeps its real result under its real name (the credential rail and theme 6's additive promise). **Left open rather than decided:** whether a flow governed only by the *host-level* resolver counts as authenticated here — theme 8's predicate says no, theme 5 installs one on the author branch expressly to cover later flows, and the two disagree about the same flow. *The class is now five for five caught by a reader, never the author, and three of the five landed on a fix made in the same session.*
