@@ -5,6 +5,7 @@ import {
   createWorkRecorder,
   type UpsertableCollection,
 } from "../../src/sdk/work-recorder";
+import { observedFileOpStateSchema } from "../../src/sdk/work-collections";
 import type { TranslatedEvent } from "../../src/sdk/types";
 
 /**
@@ -155,6 +156,59 @@ describe("createWorkRecorder — file operations", () => {
     expect(files.writes).toHaveLength(1);
   });
 
+  it("counts a path's first applied operation", async () => {
+    const { files, recorder } = harness();
+    recorder.observe(fileCall("/work/src/checkout.ts"));
+    recorder.observe(fileSettled("/work/src/checkout.ts", "applied"));
+    await recorder.stop();
+
+    expect(files.rows.get(`${RUN}/work/src/checkout.ts`)).toMatchObject({
+      outcome: "applied",
+      appliedCount: 1,
+    });
+  });
+
+  it("folds repeated touches of one path into ONE row with a higher count", async () => {
+    // The whole point of the count: `lastKind` and `outcome` describe the last
+    // touch only, so without this a path touched nine times is indistinguishable
+    // from one touched once. The failing call is the discriminator for the
+    // semantics — the count is of operations that APPLIED, so a run that tried
+    // three times and landed twice must read 2, not 3.
+    const { files, recorder } = harness();
+    const path = "/work/src/checkout.ts";
+    recorder.observe(fileCall(path, "call_a"));
+    recorder.observe(fileSettled(path, "applied", "call_a"));
+    recorder.observe(fileCall(path, "call_b"));
+    recorder.observe(fileSettled(path, "applied", "call_b"));
+    recorder.observe(fileCall(path, "call_c"));
+    recorder.observe(fileSettled(path, "failed", "call_c"));
+    await recorder.stop();
+
+    expect([...files.rows.keys()]).toEqual([`${RUN}/work/src/checkout.ts`]);
+    expect(files.rows.get(`${RUN}/work/src/checkout.ts`)).toMatchObject({
+      outcome: "failed",
+      appliedCount: 2,
+    });
+  });
+
+  it("counts an applied call that an open sibling holds the ROW unsettled", async () => {
+    // The count is taken from the event's own outcome, not the row's folded one.
+    // `call_b` is still out, so the row is correctly `pending` — but `call_a`
+    // landed, and a count read off the row would report the path as never
+    // having been written.
+    const { files, recorder } = harness();
+    const path = "/work/src/checkout.ts";
+    recorder.observe(fileCall(path, "call_a"));
+    recorder.observe(fileCall(path, "call_b"));
+    recorder.observe(fileSettled(path, "applied", "call_a"));
+    await recorder.stop();
+
+    expect(files.rows.get(`${RUN}/work/src/checkout.ts`)).toMatchObject({
+      outcome: "pending",
+      appliedCount: 1,
+    });
+  });
+
   it("flushes on its own interval, without waiting to be stopped", async () => {
     // The half that keeps a killed run's record: a run cancelled between the
     // write and the end of the run has to have already persisted something.
@@ -299,6 +353,26 @@ describe("createWorkRecorder — file operations", () => {
       `${RUN}/work/src/checkout.ts`,
       `${OTHER_RUN}/work/src/checkout.ts`,
     ]);
+  });
+});
+
+describe("observedFileOpStateSchema", () => {
+  it("loads a row written before the count existed", () => {
+    // BP-030: the recorder must never break the run, and it parses whatever the
+    // store hands back. A legacy row reads `null` rather than `0` — the two say
+    // different things, and only `null` means "this row predates counting".
+    expect(
+      observedFileOpStateSchema.parse({
+        lastKind: "edited",
+        outcome: "applied",
+        lastTouchedAt: 1_700_000_000_000,
+      }),
+    ).toEqual({
+      lastKind: "edited",
+      outcome: "applied",
+      lastTouchedAt: 1_700_000_000_000,
+      appliedCount: null,
+    });
   });
 });
 

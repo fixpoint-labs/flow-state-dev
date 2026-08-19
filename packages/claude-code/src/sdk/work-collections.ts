@@ -60,6 +60,22 @@ export const observedFileOpStateSchema = z.object({
   outcome: outcomeSchema.nullable().default(null),
   /** Epoch millis of the last touch. */
   lastTouchedAt: z.number().nullable().default(null),
+  /**
+   * How many operations on this path the harness confirmed APPLIED.
+   *
+   * **Applied only, not every operation recorded** — and the first reason is
+   * decisive rather than a preference. An operation is recorded TWICE, once
+   * when its call is seen and once when its result arrives, so a count of
+   * everything recorded reads as double the work the run did. The second
+   * reason is what makes the number worth exposing: `outcome` beside it
+   * describes only the LAST settlement, so a count that folded attempts in
+   * with confirmations would leave nothing at all saying how many of a path's
+   * touches actually landed.
+   *
+   * Null on a row written before this field existed (BP-030), which is NOT the
+   * same as `0`: zero means this run touched the path and nothing applied.
+   */
+  appliedCount: z.number().nullable().default(null),
 });
 
 /**
@@ -105,7 +121,7 @@ export const observedFileOpsCollection = defineResourceCollection({
   // explicitly: adding a field to the schema does not silently publish it.
   client: {
     state: { read: true },
-    expose: ["lastKind", "outcome", "lastTouchedAt"],
+    expose: ["lastKind", "outcome", "lastTouchedAt", "appliedCount"],
   },
 });
 

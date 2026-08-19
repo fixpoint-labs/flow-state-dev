@@ -132,6 +132,8 @@ interface PendingFileEntry {
   lastKind?: ObservedFileOpKind;
   outcome: ObservedOutcome;
   lastTouchedAt: number;
+  /** Applied operations on this path so far. See the schema's `appliedCount`. */
+  appliedCount: number;
 }
 
 /** One buffered plan row. Absent fields are left alone by the upsert. */
@@ -172,6 +174,17 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
    * exists to avoid, and the recorder is the only writer of these rows.
    */
   const confirmedStatus = new Map<string, string>();
+  /**
+   * Applied operations per file row key.
+   *
+   * Held in memory for the same reason `confirmedStatus` above is: this run's
+   * rows are namespaced by `runId` and this recorder is their only writer, so
+   * the total is knowable without a read, and a read-back per event is the cost
+   * the coalesced flush exists to avoid. It cannot live on the buffered entry
+   * either — that is snapshotted and CLEARED on every flush, so a per-window
+   * tally would restart at zero and each write would overwrite the last.
+   */
+  const appliedCounts = new Map<string, number>();
   /**
    * Unsettled call ids per row key.
    *
@@ -361,11 +374,18 @@ export function createWorkRecorder(options: WorkRecorderOptions): WorkRecorder {
       event.outcome,
       event.op,
     );
+    // Counted from the EVENT's own outcome, never from the folded `outcome`
+    // above. A call that applied while a sibling call is still open on the path
+    // is held at `pending` for the ROW — correctly, since the path has an
+    // unresolved mutation — but the operation itself landed, and counting off
+    // the row would drop precisely the concurrent writes worth counting.
+    if (event.outcome === "applied") appliedCounts.set(key, (appliedCounts.get(key) ?? 0) + 1);
     pendingFiles.set(key, {
       ...pendingFiles.get(key),
       ...(meta !== undefined ? { lastKind: meta } : {}),
       outcome,
       lastTouchedAt: now(),
+      appliedCount: appliedCounts.get(key) ?? 0,
     });
     armTimer();
   };
