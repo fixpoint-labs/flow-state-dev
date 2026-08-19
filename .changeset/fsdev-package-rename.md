@@ -2,7 +2,7 @@
 "fsdev": minor
 ---
 
-The CLI package is now published as `fsdev` (previously `@flow-state-dev/cli`). The package name and the command you type are the same, so a zero-install run is `npx fsdev …` and installing it is `pnpm add -D fsdev`.
+The CLI package is now published as `fsdev` (previously `@flow-state-dev/cli`), so the package name and the command you type are the same string (FIX-1191). A zero-install run is `npx fsdev …` and installing it is `pnpm add -D fsdev`.
 
 The `fsdev` command itself is unchanged — same subcommands, same flags, same behaviour. Existing installs should swap the dependency name:
 
