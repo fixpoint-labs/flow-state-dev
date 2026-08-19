@@ -185,7 +185,7 @@ GET /sessions/<workstreamId>/resources/observed-file-ops?topicPrefix=observed-fi
   { "topic": "<requestId>/<invocation>/work/repo/src/checkout.ts",
     "storageKey": "observed-file-ops/<requestId>/<invocation>/work/repo/src/checkout.ts",
     "clientData": { "lastKind": "edited", "outcome": "applied",
-                    "lastTouchedAt": 1787021400123 } }
+                    "lastTouchedAt": 1787021400123, "appliedCount": 2 } }
 ] }
 ```
 
@@ -196,6 +196,14 @@ Each row's payload is on `clientData`. `outcome` has three values, not two:
 `pending` while a mutation has been seen and not yet settled, then `applied` or
 `failed`. A run that is killed mid-flight leaves its unsettled entries as
 `pending`, which is the honest answer about a write nobody confirmed.
+
+`appliedCount` sits beside it and counts confirmations, not attempts. Each
+operation is recorded twice, once when the call is seen and once when its
+result arrives, so a count of everything recorded would report double the work
+the run did. `outcome` describes only the last settlement, which is why a
+separate count is worth having: it says how many of a path's touches actually
+landed. Read `0` and `null` differently. `0` means the run touched the path and
+nothing applied. `null` means the row was written before the field existed.
 
 The plan record reads the same way, from `observed-plan`. A to-do item's status
 is the harness's own word for it, and stays empty until the harness reports one.

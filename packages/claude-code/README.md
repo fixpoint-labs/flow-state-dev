@@ -126,7 +126,7 @@ resource collections and writes into them as it goes:
 
 | Accessor | One entry per |
 |----------|---------------|
-| `observed-file-ops` | path the run's file-writing/editing tools touched — `lastKind`, `outcome` (`pending`/`applied`/`failed`), `lastTouchedAt`. Paths, never contents |
+| `observed-file-ops` | path the run's file-writing/editing tools touched — `lastKind`, `outcome` (`pending`/`applied`/`failed`), `lastTouchedAt`, `appliedCount`. Paths, never contents |
 | `observed-plan` | to-do item the run kept — `title`, `status`, `previousStatus`, `lastOutcome` |
 | `observed-gaps` | mutation the recorder understood and could not record — `kind` (`file`/`plan`/`run`) says which record it stands in for, plus the reason and the raw path |
 
@@ -140,6 +140,13 @@ All three declare client state reads, so
 `GET /sessions/:id/resources/observed-file-ops?topicPrefix=observed-file-ops/<requestId>/`
 returns them; each row's payload is on `clientData`. Follow `nextCursor` — the
 route pages.
+
+`appliedCount` counts only the operations on that path the harness confirmed
+applied, not the attempts: each one is recorded twice, once when the call is
+seen and once when its result arrives. `outcome` beside it describes only the
+last settlement, so the count is what says how many of a path's touches landed.
+`0` and `null` are different answers — `0` means the run touched the path and
+nothing applied, `null` means the row was written before the field existed.
 
 The file record covers tool-driven operations only. A run that edits through the
 shell makes no file-tool call, so nothing is recorded for it. Recording never
