@@ -13,7 +13,7 @@ import {
   EXIT_INTERNAL_ERROR,
 } from "../src";
 
-describe("fsdev", () => {
+describe("@flow-state-dev/fsdev", () => {
   it("exports the commander program", () => {
     expect(program).toBeDefined();
     expect(program.name()).toBe("fsdev");

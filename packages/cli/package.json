@@ -1,5 +1,5 @@
 {
-  "name": "fsdev",
+  "name": "@flow-state-dev/fsdev",
   "version": "0.0.0",
   "description": "The fsdev command-line interface for flow-state-dev.",
   "keywords": [

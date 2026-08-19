@@ -1,5 +1,5 @@
 /**
- * Public API surface for fsdev.
+ * Public API surface for @flow-state-dev/fsdev.
  * Re-exports shared infrastructure for use by downstream commands and tools.
  */
 export { program } from "./cli";

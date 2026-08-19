@@ -1,11 +1,11 @@
-# fsdev
+# @flow-state-dev/fsdev
 
 **The developer interface. Run flows, execute blocks, inspect definitions — all from the terminal.**
 
 ## Installation
 
 ```bash
-pnpm add -g fsdev
+pnpm add -g @flow-state-dev/fsdev
 ```
 
 ```bash
@@ -382,9 +382,9 @@ import {
   isBlockDefinition,
   parseInputArg,
   formatOutput,
-} from "fsdev";
+} from "@flow-state-dev/fsdev";
 
-import type { FlowRunResult, FlowEvent, BlockExecResult } from "fsdev";
+import type { FlowRunResult, FlowEvent, BlockExecResult } from "@flow-state-dev/fsdev";
 ```
 
 `discoverFlows` accepts an `onImportFailed` callback in its options object, invoked with a `FlowImportFailure` (`filePath`, `message`, `cause`) for each module that throws during import. Discovery continues with remaining modules; without the callback, failures are skipped silently.
@@ -400,9 +400,9 @@ import type { FlowRunResult, FlowEvent, BlockExecResult } from "fsdev";
 ## Scripts
 
 ```bash
-pnpm --filter fsdev build
-pnpm --filter fsdev typecheck
-pnpm --filter fsdev test
+pnpm --filter @flow-state-dev/fsdev build
+pnpm --filter @flow-state-dev/fsdev typecheck
+pnpm --filter @flow-state-dev/fsdev test
 ```
 
 ## Architecture reference

@@ -2,7 +2,7 @@
 "@flow-state-dev/bullmq": patch
 "@flow-state-dev/chat-sdk": patch
 "@flow-state-dev/claude-code": patch
-"fsdev": patch
+"@flow-state-dev/fsdev": patch
 "@flow-state-dev/client": patch
 "@flow-state-dev/contracts": patch
 "@flow-state-dev/devtool": patch

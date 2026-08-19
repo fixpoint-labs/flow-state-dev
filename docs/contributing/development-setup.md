@@ -90,7 +90,6 @@ Before first publish, verify the npm org is configured:
 - `@flow-state-dev` npm organization exists
 - automation token account is a member with publish permissions
 - package access defaults to public (or package-level `publishConfig.access` remains `public`)
-- **`fsdev` (the CLI) is unscoped** — it publishes outside the `@flow-state-dev` org, so an org-scoped token is not enough on its own. The publishing account needs rights to that standalone name, and the name has to be owned before the first release. Nothing else in the workspace is unscoped.
 
 ## Builds and the dev loop
 

@@ -13,8 +13,8 @@
  *
  * WHAT THIS MEASURES: "did the author of this release note name their issue" —
  * NOT "did this PR's diff touch the file". The two came apart during the
- * `@flow-state-dev/cli` -> `fsdev` rename (FIX-1191), which had to rewrite the
- * package key in thirteen old fragments (otherwise `changeset version` fails on
+ * `@flow-state-dev/cli` -> `@flow-state-dev/fsdev` rename (FIX-1191), which had to rewrite the
+ * package key in fourteen old fragments (otherwise `changeset version` fails on
  * a name that no longer resolves) and so was held answerable for a dozen
  * strangers' release notes, demanding ids it had no way to know.
  *
@@ -100,7 +100,7 @@ function parse(source) {
  * Deliberately an exact mapping, NOT a general "a package was swapped" rule.
  * A shape rule (compare bump levels, discard the names) was tried here and was
  * broken in review within the hour: because it ignored package identity,
- * replacing `"fsdev": patch` with `"@flow-state-dev/core": patch` read as
+ * replacing `"@flow-state-dev/fsdev": patch` with `"@flow-state-dev/core": patch` read as
  * mechanical, so a release note and its version bump could be retargeted onto
  * a different package with no issue reference and no complaint. Silently
  * moving a version bump is worse than the over-firing this exemption was
@@ -110,7 +110,7 @@ function parse(source) {
  * anything else, and trivially deletable once the last pre-rename fragment has
  * been released — a property no general rule has.
  */
-const RENAMED_PACKAGES = new Map([["@flow-state-dev/cli", "fsdev"]]);
+const RENAMED_PACKAGES = new Map([["@flow-state-dev/cli", "@flow-state-dev/fsdev"]]);
 
 /** `[name, bump]` per package a frontmatter bumps, in declaration order. */
 function packageBumps(frontmatter) {

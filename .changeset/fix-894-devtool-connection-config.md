@@ -1,7 +1,7 @@
 ---
 "@flow-state-dev/engine": minor
 "@flow-state-dev/node": minor
-"fsdev": minor
+"@flow-state-dev/fsdev": minor
 "@flow-state-dev/devtool": minor
 ---
 

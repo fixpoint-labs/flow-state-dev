@@ -5,7 +5,7 @@ title: "CLI"
 
 # CLI
 
-The `fsdev` package provides the `fsdev` command. Run flows and blocks from the terminal without a running server. Useful for development, testing, and automation.
+The `@flow-state-dev/fsdev` package provides the `fsdev` command. Run flows and blocks from the terminal without a running server. Useful for development, testing, and automation.
 
 ## What it is
 

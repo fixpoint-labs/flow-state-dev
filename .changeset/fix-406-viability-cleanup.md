@@ -1,7 +1,7 @@
 ---
 "@flow-state-dev/core": minor
 "@flow-state-dev/engine": minor
-"fsdev": minor
+"@flow-state-dev/fsdev": minor
 ---
 
 Viability-review cleanup pass:

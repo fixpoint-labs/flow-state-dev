@@ -1,7 +1,7 @@
 ---
 "@flow-state-dev/testing": patch
 "@flow-state-dev/patterns": patch
-"fsdev": patch
+"@flow-state-dev/fsdev": patch
 "@flow-state-dev/core": patch
 ---
 

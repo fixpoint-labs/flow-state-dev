@@ -1,4 +1,4 @@
-# fsdev
+# @flow-state-dev/fsdev
 
 ## Pre-1.0 history
 

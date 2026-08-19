@@ -6,10 +6,6 @@
  * `next.config.mjs` must list them in `transpilePackages`. Importing this
  * single source of truth keeps that list from drifting and avoids duplicating
  * the discovery logic across every app config.
- *
- * Scoped names only, deliberately: the unscoped `fsdev` (the CLI) is a terminal
- * binary that no app depends on or bundles, so it needs no transpilation. Add
- * an unscoped name here only when an app actually imports it.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";

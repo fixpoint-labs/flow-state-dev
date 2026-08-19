@@ -40,7 +40,7 @@
       "@flow-state-dev/scheduled/testing": ["packages/scheduled/src/testing.ts"],
       "@flow-state-dev/chat-sdk": ["packages/chat-sdk/src/index.ts"],
       "@flow-state-dev/chat-sdk/testing": ["packages/chat-sdk/src/testing.ts"],
-      "fsdev": ["packages/cli/src/index.ts"],
+      "@flow-state-dev/fsdev": ["packages/cli/src/index.ts"],
       "@flow-state-dev/patterns": ["packages/patterns/src/index.ts"],
       "@flow-state-dev/patterns/rlm": ["packages/patterns/src/rlm/index.ts"],
       "@flow-state-dev/orchestration": ["packages/orchestration/src/index.ts"],

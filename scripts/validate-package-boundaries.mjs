@@ -93,36 +93,45 @@ function walkTsFiles(dirPath, files = []) {
 }
 
 /**
- * Workspace packages published under an unscoped name, mapped to the internal
- * key `packageRules` uses.
+ * Packages whose published name is not `@flow-state-dev/<directory>`, mapped to
+ * the internal key `packageRules` uses — which is the DIRECTORY name.
  *
- * Matched on the exact first path segment, never by prefix. A prefix rule is
- * what blinded this validator when the CLI was renamed `@flow-state-dev/cli`
- * -> `fsdev` (FIX-1191): the package stopped matching `@flow-state-dev/`, so
- * every import of it was skipped and restricted packages could reach the CLI
- * with no allow/deny check and no cycle detection — silently, because a guard
- * that recognises nothing reports success.
+ * Matched on the exact full package name, never by scope prefix. That is the
+ * whole point, and it survived the CLI's name changing twice (FIX-1191):
+ *
+ *   - As unscoped `fsdev`, a scope-prefix rule skipped the package outright.
+ *   - As `@flow-state-dev/fsdev` it matches the scope again, which looks like
+ *     the prefix rule would now work. It does not: the rule takes the segment
+ *     after the scope (`fsdev`) and looks it up in `packages`, which holds
+ *     `cli`. It resolves to nothing and every import is skipped, exactly as
+ *     before.
+ *
+ * Both times the failure is silent, because a guard that recognises nothing
+ * reports success: restricted packages could import the CLI with no allow/deny
+ * check and no cycle detection while typecheck and the full suite stayed green.
+ * Do not "simplify" this back to a prefix test.
  */
-const unscopedPackages = new Map([["fsdev", "cli"]]);
+const PACKAGE_NAME_TO_KEY = new Map([["@flow-state-dev/fsdev", "cli"]]);
 
 function resolveWorkspacePackage(specifier) {
-  const [head, subpath] = specifier.split("/");
+  const [scope, name] = specifier.split("/");
+  const packageName = scope.startsWith("@") ? `${scope}/${name ?? ""}` : scope;
 
-  const unscoped = unscopedPackages.get(head);
-  if (unscoped !== undefined) {
-    return packages.includes(unscoped) ? unscoped : undefined;
+  const mapped = PACKAGE_NAME_TO_KEY.get(packageName);
+  if (mapped !== undefined) {
+    return packages.includes(mapped) ? mapped : undefined;
   }
 
-  if (head !== "@flow-state-dev") {
+  if (scope !== "@flow-state-dev") {
     return undefined;
   }
 
-  return packages.includes(subpath) ? subpath : undefined;
+  return packages.includes(name) ? name : undefined;
 }
 
 /** How a package is spelled in an import, for error messages. */
 function specifierFor(pkg) {
-  for (const [name, key] of unscopedPackages) {
+  for (const [name, key] of PACKAGE_NAME_TO_KEY) {
     if (key === pkg) return name;
   }
   return `@flow-state-dev/${pkg}`;
