@@ -1994,7 +1994,7 @@ await runGoal(async () => {
     .step(taskGoalToPrompt)
     .step(
       claudeCodeAgent({
-        sessionState: false,
+        detached: true,
         recordWork: true,
         // The plan tools are named so that a run which does not plan is the
         // HARNESS declining, not our configuration forbidding — otherwise A5's
