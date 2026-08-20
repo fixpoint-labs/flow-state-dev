@@ -241,6 +241,14 @@ export function forwardSignalToController(
  * already contains one moves (`a%b` keys under `a%25b`). That is the whole
  * exception — every other already-valid id, `[`, `]`, `.` and `...` included,
  * is unchanged byte for byte, so existing rows keep their keys.
+ *
+ * One boundary, for whoever reads this next: injectivity holds among ids
+ * encoded by THIS function, not across rows written before it existed. An id
+ * that was literally `a%2Fb` keyed itself raw back then, and `a/b` encodes to
+ * that same string now. Segregating the two would need a version segment,
+ * which would orphan every row rather than the one shape at risk — so the
+ * boundary is documented instead. It is safe to leave documented only while
+ * no released version wrote these rows; check before assuming that still holds.
  */
 function encodePathSegment(value: string): string {
   const escaped = value
