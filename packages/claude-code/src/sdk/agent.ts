@@ -224,6 +224,42 @@ export function forwardSignalToController(
  * workstream's runs apart.
  */
 /**
+ * Percent-escape the characters that stop a value being ONE resource-path
+ * segment.
+ *
+ * `normalizeResourcePath` — which every key composed from this namespace goes
+ * through — treats `/` and `\` as separators, rejects control characters
+ * outright, and rejects a segment that is exactly `..`. The request id reaches
+ * here straight from the caller (`sendOptions.requestId` rides the action
+ * request body into `ctx.request.identity.id`), so all four are reachable
+ * input, not hypotheticals.
+ *
+ * **The escaping is injective, and that is the point.** Stripping or replacing
+ * the offending characters would satisfy the normalizer just as well and be a
+ * worse bug: two distinct request ids would collapse onto ONE namespace, so two
+ * runs' file rows would merge under one key — trading a silent empty recorder
+ * for silent cross-run mixing, which looks healthy. `%` is escaped first, so
+ * nothing can collide with an escape sequence introduced here.
+ *
+ * Only those characters are touched, so `[`, `]` and `.` survive and every
+ * namespace that was already valid is unchanged byte for byte.
+ */
+function encodePathSegment(value: string): string {
+  const escaped = value
+    .replace(/%/g, "%25")
+    .replace(/\//g, "%2F")
+    .replace(/\\/g, "%5C")
+    .replace(
+      /[\x00-\x1f]/g,
+      (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`,
+    );
+  // Dots survive the escaping above untouched, so an all-dots value is still
+  // the one shape left that names a place rather than a thing — `..` is
+  // rejected by the normalizer, and `.` would silently mean "here".
+  return /^\.+$/.test(escaped) ? escaped.replace(/\./g, "%2E") : escaped;
+}
+
+/**
  * The key namespace for ONE run: `<requestId>/<invocation>`.
  *
  * **The request id alone is not the run's identity, and using it as one is a
@@ -245,6 +281,9 @@ export function forwardSignalToController(
  * one request did, while `<collection>/<requestId>/<invocation>/` narrows to a
  * single run. Replacing the request id outright would have made a row
  * impossible to correlate back to the request that caused it.
+ *
+ * Both parts are escaped into a single segment each — see
+ * {@link encodePathSegment} for why that escaping must not be lossy.
  */
 export function runNamespace(ctx: BlockContext): string {
   const identity = (
@@ -253,8 +292,16 @@ export function runNamespace(ctx: BlockContext): string {
   const path = identity?.blockPath;
   // A context without a block identity (a direct `execute`, a mock) has exactly
   // one invocation by construction, so a constant is the honest discriminator.
+  //
+  // The path is escaped too, and for the same reason the request id is: its
+  // user-controlled parts (a router branch name, a model-supplied tool name or
+  // call id) are escaped on the way in by the blockInstanceId grammar's own
+  // rules, which cover `%/[]:` — but not a backslash and not a control
+  // character, both of which this grammar cares about.
   const step =
-    typeof path === "string" && path.length > 0 ? path.replace(/\//g, ".") : "0";
+    typeof path === "string" && path.length > 0
+      ? encodePathSegment(path.replace(/\//g, "."))
+      : "0";
   // …and the ATTEMPT, because a retried block re-enters at the SAME path.
   // `executeBlock`'s retry loop increments an attempt counter and rebuilds the
   // instance id from `(request, path, attempt)` while leaving the path
@@ -263,7 +310,7 @@ export function runNamespace(ctx: BlockContext): string {
   // namespace: paths overwritten, and gap ordinals (which restart at 1 per
   // recorder) clobbering the earlier attempt's outright.
   const attempt = identity?.attempt ?? (ctx as { attempt?: number }).attempt ?? 0;
-  return `${ctx.request.identity.id}/${step}#${attempt}`;
+  return `${encodePathSegment(ctx.request.identity.id)}/${step}#${attempt}`;
 }
 
 function openWorkRecorder(ctx: BlockContext): WorkRecorder | null {
