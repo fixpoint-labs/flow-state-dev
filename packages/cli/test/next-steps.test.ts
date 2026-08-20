@@ -21,6 +21,7 @@ import {
   CANONICAL_NEXT_STEPS,
   PACKAGE_MANAGER_COMMAND_FORMS,
   assertCanonicalNextSteps,
+  assertEveryPortIsNamed,
   renderNextSteps,
   type NextStepsPackageManager,
   type NextStepsTopology,
@@ -162,14 +163,50 @@ describe("renderNextSteps", () => {
     }
   });
 
-  it("names a port on the sidecar server", () => {
-    // `fsdev serve` falls back to $PORT, then 3000 — and a second-process host is by definition
-    // a project already running a server, most often on 3000.
-    const second = renderNextSteps({ topology: "second-process", packageManager: "pnpm" });
-    expect(second).toContain("fsdev serve --host 127.0.0.1 --port 4201");
-    expect(second).toContain("http://127.0.0.1:4201");
-    // The word 3000 appears in the sentence explaining the flag; no URL or command may name it.
-    expect(second).not.toMatch(/:3000/);
+  it("names a port on every fsdev command that starts a listener", () => {
+    // The invariant, not the instance. `fsdev serve` defaults to $PORT then 3000 (a brownfield
+    // Next host almost always holds 3000) and `fsdev dev` defaults to 4200 (an Angular host holds
+    // that). Pinning them one at a time does not converge, so every binding command names a port
+    // from one range the block owns.
+    for (const topology of ["mounted-route", "second-process"] as NextStepsTopology[]) {
+      const rendered = renderNextSteps({ ...MOUNTED, topology, packageManager: "pnpm" });
+      for (const line of rendered.split("\n")) {
+        const subcommand = /(?:^|\s)fsdev\s+(\w[\w-]*)/.exec(line)?.[1];
+        if (subcommand === undefined) continue;
+        if (["run", "block", "chat", "benchmark"].includes(subcommand)) continue;
+        const port = /--port[= ](\d+)/.exec(line)?.[1];
+        expect(port, `\`${line.trim()}\` binds a port without naming one`).toBeDefined();
+        expect(Number(port)).toBeGreaterThanOrEqual(4210);
+        expect(Number(port)).toBeLessThanOrEqual(4219);
+      }
+      // And no URL in the block points at a default either.
+      expect(rendered).not.toMatch(/:3000\b/);
+      expect(rendered).not.toMatch(/:4200\b/);
+    }
+  });
+
+  it("refuses a block that adds a bare bind, or one outside the reserved range", () => {
+    // The invariant's own test. It runs from `assertCanonicalNextSteps` — the call every shipper
+    // already makes — so a future edit fails their suites too rather than reaching a developer as
+    // an EADDRINUSE on the one command they were told to type.
+    expect(() => assertEveryPortIsNamed(CANONICAL_NEXT_STEPS)).not.toThrow();
+
+    const bare = CANONICAL_NEXT_STEPS.replace("fsdev dev --port 4210", "fsdev dev");
+    expect(bare).not.toBe(CANONICAL_NEXT_STEPS);
+    expect(() => assertEveryPortIsNamed(bare)).toThrow(/prints `fsdev dev` with no --port/);
+
+    const strayPort = CANONICAL_NEXT_STEPS.replace("--port 4210", "--port 8080");
+    expect(() => assertEveryPortIsNamed(strayPort)).toThrow(/outside the range this block owns/);
+
+    // A command added later is covered without anyone remembering to cover it: the subcommand
+    // allowlist is default-deny.
+    expect(() => assertEveryPortIsNamed("  pnpm exec fsdev preview")).toThrow(
+      /prints `fsdev preview` with no --port/,
+    );
+    // …and a command that starts no listener is not asked to name one.
+    expect(() =>
+      assertEveryPortIsNamed(`  pnpm exec fsdev run hello send --input '{"userId":"u1"}'`),
+    ).not.toThrow();
   });
 
   it("never prints --allow-unauthenticated", () => {

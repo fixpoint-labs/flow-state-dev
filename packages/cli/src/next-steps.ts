@@ -81,14 +81,23 @@
  * A project whose dev script is called `list`, `config`, `why`, `add` or `link` is unremarkable,
  * and under the shortcut form the printed command silently does something else entirely.
  *
- * ## Why the sidecar names a port
+ * ## Ports: an invariant, not a list of fixes
  *
- * `fsdev serve` falls back to `$PORT`, then to 3000. A second-process host is by definition a
- * project already running a server, and 3000 is where it most often is — so the printed command
- * would reliably fail to bind. The block names **4201**: adjacent to the DevTool's 4200, so the
- * pair reads as one thing, and clear of the usual application defaults. A fixed literal rather
- * than a free-port probe, because this text is a canonical string a shipper asserts byte-for-byte
- * — probing at emit time would make it non-deterministic and give a help message a failure mode.
+ * **Every `fsdev` command this block prints binds its port explicitly, from one range the block
+ * owns: {@link RESERVED_PORTS}.** No bare bind survives anywhere in the emitted text.
+ *
+ * Stated as an invariant because fixing instances does not converge. `fsdev serve` falls back to
+ * `$PORT` then 3000, which a brownfield Next project almost always holds; pin that one and
+ * `fsdev dev`'s default 4200 is next, which an Angular host holds; pin that and there is another.
+ * Each fix narrows the hole and opens a smaller one. So the rule is applied once to the whole
+ * block and enforced by {@link assertCanonicalNextSteps}, which every shipper already calls — an
+ * edit that adds a port-binding command without a port fails a test rather than waiting for a
+ * reviewer.
+ *
+ * The range is **4210–4219**: the FSD neighbourhood, one step off the DevTool's familiar 4200 so
+ * it clears Angular's default too. Fixed literals rather than a free-port probe, because this
+ * text is a canonical string a shipper asserts byte-for-byte — probing at emit time would make it
+ * non-deterministic and give a help message a failure mode of its own.
  *
  * ## Invoking the CLI before it is installed
  *
@@ -159,24 +168,25 @@ export const CANONICAL_NEXT_STEPS = `Next steps
       your app, now serving FSD at {{mountPath}}
       → {{devUrl}}
 
-  {{exec}}{{execSep}} fsdev dev
+  {{exec}}{{execSep}} fsdev dev --port 4210
       the FSD DevTool, in a second process
-      → http://localhost:4200
+      → http://localhost:4210
 
   {{exec}}{{execSep}} fsdev run hello send --input '{"userId":"u1","message":"hi"}'
       run the demo flow from your terminal
 {{/mounted-route}}
 {{#second-process}}
-  {{exec}}{{execSep}} fsdev dev
+  {{exec}}{{execSep}} fsdev dev --port 4210
       the FSD API and the DevTool, in one process beside your own server
-      → http://localhost:4200
+      → http://localhost:4210
 
-  {{exec}}{{execSep}} fsdev serve --host 127.0.0.1 --port 4201
+  {{exec}}{{execSep}} fsdev serve --host 127.0.0.1 --port 4211
       the same API without the DevTool
-      → http://127.0.0.1:4201
-      Both flags are deliberate. --host 127.0.0.1 binds the listener to
-      loopback, so nothing off this machine can reach it; --port 4201 keeps
-      it clear of 3000, where your own server probably already is.
+      → http://127.0.0.1:4211
+      Every flag here is deliberate. --host 127.0.0.1 binds the listener to
+      loopback, so nothing off this machine can reach it; the ports are named
+      rather than left to default, so nothing FSD starts lands on one your own
+      server is already using.
 
   {{exec}}{{execSep}} fsdev run hello send --input '{"userId":"u1","message":"hi"}'
       run the demo flow from your terminal
@@ -207,6 +217,59 @@ Worth knowing before you build on this
 
 /** Every topology key the conditional syntax accepts. */
 const TOPOLOGIES: readonly NextStepsTopology[] = ["mounted-route", "second-process"];
+
+/** The contiguous range this block owns. See "Ports: an invariant, not a list of fixes" above. */
+const RESERVED_PORTS = { first: 4210, last: 4219 };
+
+/**
+ * `fsdev` subcommands that start no listener. **Default-deny**: anything not named here has to
+ * bind explicitly, so a subcommand added later is covered without anyone remembering to add it.
+ */
+const NON_BINDING_SUBCOMMANDS = new Set(["run", "block", "chat", "benchmark"]);
+
+/**
+ * Every `fsdev` command line in the block, so the invariant can be checked over the source.
+ *
+ * Scoped to `fsdev` commands on purpose. `{{run}} {{devScript}}` also binds a port, but it is the
+ * developer's own script and its port is a fact detection *reports* (`{{devUrl}}`) rather than one
+ * we get to choose — adding `--port` to somebody else's script would be the opposite of the rule.
+ */
+function fsdevCommandLines(text: string): string[] {
+  return text.split("\n").filter((line) => /(^|\s)fsdev\s+\w/.test(line));
+}
+
+/**
+ * Throw if any `fsdev` command in the block starts a listener without naming a port from the
+ * reserved range.
+ *
+ * Run over canonical from {@link assertCanonicalNextSteps} — the call every shipper already
+ * makes — so a bare bind added by a future edit fails a suite instead of reaching a developer as
+ * an `EADDRINUSE` on the one command they were told to type.
+ */
+export function assertEveryPortIsNamed(text: string): void {
+  for (const line of fsdevCommandLines(text)) {
+    const subcommand = /(?:^|\s)fsdev\s+(\w[\w-]*)/.exec(line)?.[1];
+    if (subcommand === undefined || NON_BINDING_SUBCOMMANDS.has(subcommand)) continue;
+
+    const port = /--port[= ](\d+)/.exec(line)?.[1];
+    if (port === undefined) {
+      throw new Error(
+        `The next-steps block prints \`fsdev ${subcommand}\` with no --port:\n  ${line.trim()}\n` +
+          `Every fsdev command in this block names its port, from ${RESERVED_PORTS.first}–${RESERVED_PORTS.last}. ` +
+          `A bare bind takes whichever default that command has, and the developer's own server ` +
+          `is often already on it.`,
+      );
+    }
+    const value = Number(port);
+    if (value < RESERVED_PORTS.first || value > RESERVED_PORTS.last) {
+      throw new Error(
+        `The next-steps block binds port ${value}, outside the range this block owns ` +
+          `(${RESERVED_PORTS.first}–${RESERVED_PORTS.last}):\n  ${line.trim()}\n` +
+          `Ports live in one contiguous range so there is a single place to move them.`,
+      );
+    }
+  }
+}
 
 /** Matches one conditional section, including the newline that ends each delimiter line. */
 function sectionPattern(key: string): RegExp {
@@ -367,6 +430,10 @@ function firstDifference(embedded: string): string | null {
  * @param label how to name the copy in the failure message (e.g. the file it was read from)
  */
 export function assertCanonicalNextSteps(embedded: string, label = "the embedded next-steps block"): void {
+  // The port invariant is checked here, over canonical, rather than in a test of its own: this is
+  // the call every shipper already makes, so an edit that adds a bare bind goes red in each of
+  // their suites too — there is nowhere for it to land quietly.
+  assertEveryPortIsNamed(CANONICAL_NEXT_STEPS);
   const difference = firstDifference(embedded);
   if (difference === null) return;
   throw new Error(
