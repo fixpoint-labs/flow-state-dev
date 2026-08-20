@@ -41,6 +41,12 @@ import {
   type DecisionSnapshotState,
 } from "../../decision-snapshot-resource";
 import { clampRatingToBand } from "../../lib/rating-engine";
+import {
+  hasTradeStance,
+  levelsForStance,
+  withoutLevelMetrics,
+  type TradeStance,
+} from "../../lib/trade-levels";
 import { clampTargetWeight, computeMandateGates } from "../../lib/mandate-gates";
 import { computePolicyGate } from "../../lib/policy-gate";
 import { computeEvidenceGate, deriveCriticalDataThin } from "../../lib/evidence-gate";
@@ -120,11 +126,19 @@ export const commitPortfolioManagerMemo = handler({
           dependsOn?: string[] | null;
           stopPrice?: number | null;
           targetPrice?: number | null;
+          reassessBelowPrice?: number | null;
+          invalidateAbovePrice?: number | null;
           sizePct?: number | null;
           holdingPeriod?: DecisionSnapshotState["holdingPeriod"];
         }
       | undefined;
     const traderDirection = traderState?.direction;
+    // Narrowed ONCE here so the stance is a `TradeStance` everywhere below — the
+    // snapshot's `direction` field and the `levelsForStance` gate read the same
+    // value, and neither needs a cast.
+    const traderStance: TradeStance = hasTradeStance(traderDirection)
+      ? traderDirection
+      : null;
 
     // Lineage enforcement: every dependency the trader named must be
     // dispositioned by the PM — carried forward as a live judgment or
@@ -376,12 +390,30 @@ export const commitPortfolioManagerMemo = handler({
     // the one the desk stands behind). Untouched when no clamp fired (preserve the
     // model's own precision/format).
     const sizeWasClamped = targetWeightPct < decision.portfolioFit.targetWeightPct;
-    const displayMetrics = sizeWasClamped
+    const sizedMetrics = sizeWasClamped
       ? {
           ...decision.metrics,
           size: `${Number.isInteger(targetWeightPct) ? targetWeightPct : targetWeightPct.toFixed(1)}%`,
         }
       : decision.metrics;
+
+    // The PM's memo carries NO price levels. They were only ever the trader's,
+    // copied in for display — and the desk supports the PM departing from the
+    // trader (it derives `agreesWithTrader` to record exactly that), so a PM
+    // Hold could carry a stop and a target, and a PM Buy could carry monitoring
+    // levels. Deriving them from the trader made the numbers right and left them
+    // filed under the wrong participant's decision.
+    //
+    // Attributing that at each consumer does not generalise: the hero can label
+    // them "trader proposal", but `formatMemoBlock` serializes this whole memo
+    // into the Phase 6 auditor's prompt under the heading "Portfolio decision"
+    // and has nowhere to put a label. So the levels leave the DATA. Anything
+    // that wants them reads the trader memo, which is what every corrected
+    // surface now does.
+    //
+    // This also strips the stale pair off a pre-FIX-780 PM record, whose old
+    // schema required `metrics.stop` / `metrics.target` on every stance.
+    const displayMetrics = withoutLevelMetrics(sizedMetrics);
 
     // Validate the LLM's suggested account LABEL against the real account list.
     // A hallucinated / absent label (or no portfolio) resolves to "" — never
@@ -485,15 +517,37 @@ export const commitPortfolioManagerMemo = handler({
       finalRating, // post-clamp value computed above
       decisionConfidence: decision.decisionConfidence,
       decisionSummary: decision.decisionSummary,
-      direction:
-        traderDirection === "long" ||
-        traderDirection === "short" ||
-        traderDirection === "flat"
-          ? traderDirection
-          : null,
+      direction: traderStance,
       entryPrice: null, // TODO(outcome-tracking): source from price-history resource
-      stopPrice: traderState?.stopPrice ?? null,
-      targetPrice: traderState?.targetPrice ?? null,
+      // FIX-780 — the four level fields pass through the WRITE half of the rule
+      // (`levelsForStance`) rather than being mirrored verbatim, because THIS IS
+      // A WRITE and its field names are claims: `stopPrice` asserts "the desk's
+      // stop".
+      //
+      // The trader's own commit applies the same gate, so for any run written
+      // after FIX-780 this is a no-op and the snapshot still equals the memo. It
+      // is NOT a no-op for a session written BEFORE the fix and resumed into
+      // Phase 5: that memo predates the gate, so a flat record carries its two
+      // monitoring levels in `stopPrice` / `targetPrice`. Mirroring verbatim
+      // copied that mislabeling into a durable record, and out through
+      // `run-summary` and `adopt-thesis` — which turns `snapshot.stopPrice` into
+      // a standing-thesis stop and a "Price through the stop level" TRIPWIRE.
+      // That is the defect escaping the report and becoming persistent user data
+      // with an alert attached, on a position the desk declined to take.
+      //
+      // The gate drops the pair the stance cannot carry, so a legacy flat record
+      // records no levels at all here. The numbers are not lost — the trader memo
+      // still holds them and the report renders them captioned and unlabeled —
+      // but they never enter a NAMED field again. Nothing in the old record says
+      // which number was which, so re-filing them as `reassessBelowPrice` would
+      // be the same guess wearing a stored value's authority that the legacy
+      // display rule already refuses.
+      ...levelsForStance(traderStance, {
+        stopPrice: traderState?.stopPrice,
+        targetPrice: traderState?.targetPrice,
+        reassessBelowPrice: traderState?.reassessBelowPrice,
+        invalidateAbovePrice: traderState?.invalidateAbovePrice,
+      }),
       sizePct: traderState?.sizePct ?? null,
       holdingPeriod: traderState?.holdingPeriod ?? null,
       // Risk-mandate decision (FIX-752) — the FIX-614 sensitivity-benchmark

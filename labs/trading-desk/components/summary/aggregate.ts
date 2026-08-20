@@ -60,12 +60,24 @@ export type DecisionSummary = {
   relativeRating: MemoState["relativeRating"];
 } | null;
 
-/** The trade levels (from the trader memo). Null when no trader memo. */
+/**
+ * The trade levels (from the trader memo). Null when no trader memo.
+ *
+ * All four price levels are carried raw; NOTHING here decides what they are
+ * called. That is `buildTradeLevelModel`'s job (`flows/analysis/lib/trade-levels`),
+ * which every display site reads so the summary list, the chart legend, the
+ * decision one-liner and the desk's own prompts can never disagree (FIX-780).
+ */
 export type TradeLevels = {
   direction: "long" | "short" | "flat" | null;
   sizePct: number | null;
   stopPrice: number | null;
   targetPrice: number | null;
+  /** Flat runs only; null on a directional run and on any record written
+   *  before FIX-780 (where the key is absent from storage entirely). */
+  reassessBelowPrice: number | null;
+  /** Flat runs only; see {@link TradeLevels.reassessBelowPrice}. */
+  invalidateAbovePrice: number | null;
   holdingPeriod: MemoState["holdingPeriod"];
   invalidationCriteria: string[] | null;
 } | null;
@@ -317,6 +329,11 @@ export function buildReportSummary(
           sizePct: trader.sizePct,
           stopPrice: trader.stopPrice,
           targetPrice: trader.targetPrice,
+          // `?? null` because a memo stored before FIX-780 has no monitoring
+          // keys at all: the read yields `undefined`, which the typed shape
+          // would otherwise carry into the components as a third state.
+          reassessBelowPrice: trader.reassessBelowPrice ?? null,
+          invalidateAbovePrice: trader.invalidateAbovePrice ?? null,
           holdingPeriod: trader.holdingPeriod,
           invalidationCriteria: trader.invalidationCriteria,
         }

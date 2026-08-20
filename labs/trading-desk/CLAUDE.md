@@ -274,9 +274,25 @@ sticks (ref-guarded, mirroring the auto-follow idiom).
 - **Charts are inline SVG / CSS bars — no chart library** (`charts/bar-group`,
   `charts/scenario-strip`, `charts/price-overlay`). A chart never renders against
   missing data; it shows a `ChartEmpty` gap note. The price overlay draws the
-  stored `priceHistory` close series with stop/target/fair-value/close overlay
-  lines; with `< 2` bars or a `source: "unavailable"` slice it falls back to a
-  trade-levels list.
+  stored `priceHistory` close series with the close line plus the decision's
+  price levels, which are **stance-dependent** (FIX-780): a directional call
+  draws stop + target, a flat call draws its two monitoring levels, and a report
+  stored before FIX-780 draws its two numbers unlabeled. With `< 2` bars or a
+  `source: "unavailable"` slice it falls back to a trade-levels list.
+- **One rule names every price level (FIX-780).** `flows/analysis/lib/trade-levels.ts`
+  is the single convergence point: `buildTradeLevelModel` decides what a stored
+  decision's levels are CALLED and `levelsForStance` decides which of them a run
+  may STORE. The levels list, the chart legend, the decision one-liner, and the
+  trade-proposal prompt block Phases 4 and 5 read all go through it — a new
+  renderer must read it rather than spell "stop" / "target" itself, which is how
+  a flat, no-position report came to say `stop 320 · target 195`. The components
+  stay dumb: they map `kind` to a colour and never to a name. A pre-fix flat
+  record is detected by data SHAPE (trade levels present, monitoring levels
+  absent); its `predatesLabelingFix` flag renders NOTHING on its own. The
+  disclosure is one entry (`PRE_FLAT_STANCE_LABELING_FIX_REASON`) in the reason
+  list of the report's single `ReportProvenanceNotice` (FIX-1063) — that
+  component takes a list precisely so a later fix adds an entry instead of a
+  second banner. **Never add a second "predates a fix" marker to this surface.**
 - **Price-history persistence:** `price-history-resource.ts` (leaf, BP-019) +
   `store-price-history.ts` (a `.tap()` after the spine tap in
   `orchestration/analyze.ts`). The tap reads the session `technicalData` spine
@@ -326,7 +342,7 @@ sticks (ref-guarded, mirroring the auto-follow idiom).
   reaches its component and is then hidden by a condition belonging to a
   different participant. The trader publishes in Phase 3 and the PM in Phase 5,
   so nesting the trade block inside `decision !== null` hid the trader's stored
-  stop, target, and invalidation criteria for the whole window between them, and
+  price levels and invalidation criteria for the whole window between them, and
   worst on runs where the price chart was already drawing those same levels. The
   trade block is therefore a SIBLING of the decision block in
   `decision-header.tsx`, labeled "trader proposal" so it can never be read as the

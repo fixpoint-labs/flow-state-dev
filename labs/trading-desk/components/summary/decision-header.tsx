@@ -17,6 +17,11 @@ import type {
   DecisionSummary,
   TradeLevels,
 } from "./aggregate";
+import {
+  buildTradeLevelModel,
+  storedTradeLevelsFrom,
+  tradeLineParts,
+} from "@/flows/analysis/lib/trade-levels";
 import { InvalidationList } from "./invalidation-list";
 import { cn } from "@/lib/utils";
 
@@ -183,10 +188,10 @@ export function DecisionHeader({
 
       {/* The trader's proposal is a SIBLING of the decision block, never nested
           inside it. The trader publishes in Phase 3 and the PM in Phase 5, so a
-          Summary opened in that window has a stored trade — with stop, target,
-          and what would invalidate it — while `decision` is still null. Nesting
-          this under the decision hid all of it, including on runs where the
-          price chart was already drawing the same stop and target lines. */}
+          Summary opened in that window has a stored trade — with its price
+          levels and what would invalidate it — while `decision` is still null.
+          Nesting this under the decision hid all of it, including on runs where
+          the price chart was already drawing those same levels. */}
       <TradeBlock trade={trade} />
     </section>
   );
@@ -199,7 +204,8 @@ export function DecisionHeader({
  */
 function TradeBlock({ trade }: { trade: TradeLevels }): ReactElement | null {
   if (trade === null) return null;
-  const parts = tradeLineParts(trade);
+  const levels = buildTradeLevelModel(storedTradeLevelsFrom(trade));
+  const parts = tradeLineParts(trade, levels);
   const criteria = trade.invalidationCriteria ?? [];
   if (parts.length === 0 && criteria.length === 0) return null;
 
@@ -213,26 +219,13 @@ function TradeBlock({ trade }: { trade: TradeLevels }): ReactElement | null {
           {parts.join(" · ")}
         </p>
       ) : null}
+      {/* No "predates a fix" note here. The report carries exactly ONE such
+          marker — the shared `ReportProvenanceNotice` at the top of the page,
+          which takes a list of reasons so a later fix adds an entry instead of
+          a second banner (FIX-1063). This block's job is to stop NAMING the two
+          numbers, which the captioned segment above does; the disclosure is the
+          notice's. */}
       <InvalidationList criteria={trade.invalidationCriteria} />
     </div>
   );
-}
-
-/**
- * The trade one-liner's segments, in display order. An unpublished leg
- * contributes no segment rather than a `—` placeholder, so an empty result means
- * the trader published no levels at all.
- */
-function tradeLineParts(
-  trade: NonNullable<TradeLevels>,
-): ReadonlyArray<string> {
-  const parts: string[] = [];
-  if (trade.direction !== null) parts.push(trade.direction.toUpperCase());
-  // `sizePct` is "% of NAV as the trader proposed it" — labeled exactly that,
-  // never a dollar amount (no account value in scope; spec 06 §9.1).
-  if (trade.sizePct !== null) parts.push(`${trade.sizePct}% NAV`);
-  if (trade.stopPrice !== null) parts.push(`stop ${trade.stopPrice}`);
-  if (trade.targetPrice !== null) parts.push(`target ${trade.targetPrice}`);
-  if (trade.holdingPeriod !== null) parts.push(trade.holdingPeriod);
-  return parts;
 }

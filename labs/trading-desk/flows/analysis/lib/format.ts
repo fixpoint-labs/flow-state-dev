@@ -17,6 +17,14 @@ import type { PortfolioContextInput } from "../flow-schema";
 import type { LensConvergenceState } from "../agents/lenses/lens-convergence-resource";
 import type { RewardToRiskState } from "../reward-to-risk-resource";
 import type { RiskMandate } from "./risk-mandate";
+import {
+  buildTradeLevelModel,
+  formatLegacyLevels,
+  hasTradeStance,
+  PRE_FLAT_STANCE_LABELING_FIX_REASON,
+  storedTradeLevelsFrom,
+  withDerivedLevelMetrics,
+} from "./trade-levels";
 import type { ThesisRecord } from "@/domain/portfolio/schema/thesis-schema";
 import {
   timeHorizonCategoryFor,
@@ -38,10 +46,31 @@ export function formatMemoBlock(label: string, memo: any): string {
   }
   lines.push(`Rating: ${memo.rating ?? "—"}`, `Headline: ${memo.headline}`);
   if (memo.metrics != null) {
-    const metricsLine = Object.entries(memo.metrics as Record<string, string>)
+    // The metrics map is free-form, so it carries a SECOND, untyped copy of the
+    // level names — and a memo written before FIX-780 has `stop` / `target`
+    // frozen into it. This is the one seam every memo's metrics are serialized
+    // through, so the correction belongs here rather than at each consumer: a
+    // memo that records a stance has its level entries re-derived from its typed
+    // fields, and one that records no stance (the analysts, the lenses, the
+    // researchers) is untouched. Without this, a resumed pre-fix session hands
+    // the risk officers and the PM `stop=$320, target=$195` two lines above the
+    // note saying the desk cannot say which is which.
+    //
+    // The stance test is `hasTradeStance`, NOT an absence test: `direction` is
+    // `.nullable().default(null)`, so a stance-less memo carries `null` and an
+    // `=== undefined` guard would send every analyst, lens, and research memo
+    // down the transform — stripping the `target` / `stop` the bull thesis
+    // deliberately publishes.
+    const metrics = hasTradeStance(memo.direction)
+      ? withDerivedLevelMetrics(
+          storedTradeLevelsFrom(memo),
+          memo.metrics as Record<string, string>,
+        )
+      : (memo.metrics as Record<string, string>);
+    const metricsLine = Object.entries(metrics)
       .map(([k, v]) => `${k}=${v}`)
       .join(", ");
-    lines.push(`Metrics: ${metricsLine}`);
+    if (metricsLine !== "") lines.push(`Metrics: ${metricsLine}`);
   }
   if (Array.isArray(memo.body)) {
     for (const section of memo.body as Array<{
@@ -60,7 +89,18 @@ export function formatMemoBlock(label: string, memo: any): string {
   return lines.join("\n");
 }
 
-/** Render the Phase 3 trade-proposal memo's typed extension fields. */
+/**
+ * Render the Phase 3 trade-proposal memo's typed extension fields.
+ *
+ * This block is what the Phase 4 risk personas and the Phase 5 PM actually read,
+ * so its level lines are named by the shared rule (`lib/trade-levels.ts`), not
+ * spelled here (FIX-780 decision 2). Before that rule existed, a flat proposal
+ * reached the risk officers as "Stop: $320 / Target: $195" and the desk's own
+ * later stages reasoned about a stop on a position that did not exist.
+ *
+ * Only the casing is this surface's own: prompt field names are capitalised
+ * here, the same name the screen shows in lower case.
+ */
 export function formatTradeProposalExtensions(memo: any): string {
   if (memo === undefined || memo === null) {
     return "(no trade proposal available)";
@@ -68,8 +108,31 @@ export function formatTradeProposalExtensions(memo: any): string {
   const lines: string[] = [];
   if (memo.direction != null) lines.push(`Direction: ${memo.direction}`);
   if (memo.sizePct != null) lines.push(`Size (% NAV): ${memo.sizePct}`);
-  if (memo.stopPrice != null) lines.push(`Stop: $${memo.stopPrice}`);
-  if (memo.targetPrice != null) lines.push(`Target: $${memo.targetPrice}`);
+  const levels = buildTradeLevelModel(storedTradeLevelsFrom(memo));
+  if (levels.predatesLabelingFix) {
+    // Reachable when a session written before FIX-780 is resumed and re-runs a
+    // later phase against its stored trader memo. Nothing in that memo says
+    // which number was which, so it is passed through unnamed rather than
+    // guessed at — the same call the screen makes for a legacy report.
+    //
+    // Caption and disclosure both come from the shared leaf rather than being
+    // spelled here: the desk must not tell the model one thing about these two
+    // numbers and the user another. Only the casing and the `$` are this
+    // surface's own, and the trailing sentence is the prompt-only directive —
+    // the model needs to be told what NOT to do with them, where a reader of the
+    // report just needs the fact.
+    const caption = formatLegacyLevels(levels.rows, (v) => `$${v}`);
+    lines.push(
+      `${caption.charAt(0).toUpperCase()}${caption.slice(1)}`,
+      `(${PRE_FLAT_STANCE_LABELING_FIX_REASON} Do not read them as a stop and a target.)`,
+    );
+  } else {
+    for (const row of levels.rows) {
+      lines.push(
+        `${row.label.charAt(0).toUpperCase()}${row.label.slice(1)}: $${row.value}`,
+      );
+    }
+  }
   if (memo.holdingPeriod != null)
     lines.push(`Holding period: ${memo.holdingPeriod}`);
   if (

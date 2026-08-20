@@ -147,8 +147,6 @@ function traderStructuredOutput() {
       metrics: {
         direction: "long",
         size: "1.4%",
-        stop: "$132",
-        target: "$185",
         conviction: "0.62",
       },
       body: [
@@ -161,6 +159,8 @@ function traderStructuredOutput() {
       sizePct: 1.4,
       stopPrice: 132,
       targetPrice: 185,
+      reassessBelowPrice: null,
+      invalidateAbovePrice: null,
       holdingPeriod: "months" as const,
       invalidationCriteria: [
         "weekly close below $132",

@@ -22,6 +22,10 @@ import type {
   MemoState,
   ThesisSection,
 } from "@/flows/analysis/resources";
+import {
+  tradeLevelChips,
+  type TradeLevelModel,
+} from "@/flows/analysis/lib/trade-levels";
 import { cn } from "@/lib/utils";
 
 const TIERS = ["Sell", "Underweight", "Hold", "Overweight", "Buy"] as const;
@@ -98,9 +102,67 @@ export type PmHeroProps = {
   // FIX-781 — always-on evidence-sufficiency gate. Null only on a legacy run
   // predating the gate (the panel is omitted, like the siblings above).
   evidenceDecision: EvidenceDecision | null;
+  // FIX-780 — the TRADER's price levels, named from its recorded stance and typed
+  // fields, rendered under their own "trader proposal" label. Null when the
+  // trader memo is not readable (no Phase 3 yet, or a still-loading resource):
+  // render no level block rather than the stored keys.
+  levels: TradeLevelModel | null;
 };
 
-const METRIC_ORDER = ["rating", "ticker", "window", "size", "stop", "target"] as const;
+/**
+ * The PM's own decision chips, in display order. PM metrics never include price
+ * levels; the trader's levels render as an attributed sibling via
+ * {@link TraderLevelChips}. The `<dt>` is the claim — never spell a level name
+ * here.
+ */
+const FIXED_METRIC_ORDER = ["rating", "ticker", "window", "size"] as const;
+
+/**
+ * The trader's price levels, as a labeled SIBLING of the PM's decision metrics —
+ * never chips inside that grid. Matches the Summary's "trader proposal" sibling
+ * (`decision-header.tsx`); same spelling on purpose.
+ *
+ * Attribution, not suppression: the desk supports the trader and the PM
+ * disagreeing, so a difference is shown, never hidden. When the trader published
+ * no levels this renders nothing — on a PM Buy off a flat trader that gap is
+ * real and stays visible rather than being filled from the PM's own stance.
+ */
+function TraderLevelChips({
+  levels,
+  agreesWithTrader,
+}: {
+  levels: TradeLevelModel | null;
+  agreesWithTrader: boolean | null;
+}): ReactElement | null {
+  const chips = tradeLevelChips(levels);
+  if (chips.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
+        trader proposal
+        {agreesWithTrader === false ? " · the decision above differs" : ""}
+      </span>
+      <dl
+        className={cn(
+          "grid grid-cols-3 gap-3 rounded-md border p-3 sm:grid-cols-6",
+          "border-[color:var(--c-border)] bg-[color:var(--c-surface)]",
+        )}
+        aria-label="Trader price levels"
+      >
+        {chips.map((chip) => (
+          <div key={chip.key} className="flex flex-col gap-0.5">
+            <dt className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
+              {chip.label}
+            </dt>
+            <dd className="text-[12.5px] text-[color:var(--c-fg)]">
+              {chip.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
 
 export function PmHero({
   agent,
@@ -123,6 +185,7 @@ export function PmHero({
   mandateDecision,
   policyDecision,
   evidenceDecision,
+  levels,
 }: PmHeroProps): ReactElement {
   const meta = AGENTS[agent];
   const idx = tierIndex(finalRating);
@@ -237,7 +300,7 @@ export function PmHero({
           )}
           aria-label="Decision metrics"
         >
-          {METRIC_ORDER.map((key) => (
+          {FIXED_METRIC_ORDER.map((key) => (
             <div key={key} className="flex flex-col gap-0.5">
               <dt className="font-mono text-[9.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
                 {key}
@@ -249,6 +312,8 @@ export function PmHero({
           ))}
         </dl>
       ) : null}
+
+      <TraderLevelChips levels={levels} agreesWithTrader={agreesWithTrader} />
 
       {portfolioFit !== null ? (
         <PortfolioFitPanel fit={portfolioFit} snapshotAsOf={snapshotAsOf} />

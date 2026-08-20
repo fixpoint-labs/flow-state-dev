@@ -68,6 +68,7 @@ import {
   COLLECTION_KEY_TO_SHORT,
   LENS_IDS,
   PHASE_2B_MEMO_KEYS,
+  PHASE_3_MEMO_KEYS,
   PHASE_5_MEMO_KEYS,
   shortNameForAgent,
   type AgentName,
@@ -75,6 +76,12 @@ import {
 } from "@/flows/analysis/registry";
 import type { MemoStatus } from "@/flows/analysis/resources";
 import { memosCollection } from "@/flows/analysis/resources";
+import {
+  buildTradeLevelModel,
+  hasTradeStance,
+  storedTradeLevelsFrom,
+  withDisplayLevelMetrics,
+} from "@/flows/analysis/lib/trade-levels";
 import type { ClientDataOf } from "@flow-state-dev/core";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { cn } from "@/lib/utils";
@@ -418,6 +425,20 @@ function MemoDoc({
     return item.clientData ?? null;
   }, [item, collectionKey]);
 
+  // FIX-780 — the chips a memo doc shows are level NAMES when the memo records a
+  // stance (the trader's row is `direction, size, stop, target, conviction`), so
+  // they fall under the one rule. Correcting them at commit is not enough: a doc
+  // opened from a historical report never runs a commit, and a pre-FIX-780 trader
+  // memo persisted `stop` / `target` on a flat call — so this view showed a
+  // stop-loss on a stand-aside decision. Memos with no stance (analysts, lenses,
+  // researchers) pass through untouched; a legacy pair is captioned, not dropped.
+  const displayMetrics = useMemo<Record<string, string> | null>(() => {
+    const metrics = data?.metrics ?? null;
+    if (metrics === null) return null;
+    if (!hasTradeStance(data?.direction)) return metrics;
+    return withDisplayLevelMetrics(storedTradeLevelsFrom(data), metrics);
+  }, [data]);
+
   if (status === "unavailable" || status === "pending") {
     return <PendingDoc agent={agent} />;
   }
@@ -485,7 +506,7 @@ function MemoDoc({
         label={data?.label ?? null}
         headline={data?.headline ?? null}
         rating={data?.rating ?? null}
-        metrics={data?.metrics ?? null}
+        metrics={displayMetrics}
         onJumpToTranscript={onJumpToTranscript}
       />
       {data?.body !== null && data?.body !== undefined && data.body.length > 0 && (
@@ -512,6 +533,23 @@ function PmHeroWithScenarios({
     "memos",
     PHASE_5_MEMO_KEYS.scenarioForecast.collectionKey,
   );
+
+  // FIX-780 — the hero's level chips are named from the TRADER's stance and
+  // typed levels, not from the PM's stored `metrics` keys. On a report reopened
+  // after the fact there is no commit to correct them, and a pre-fix PM record
+  // carries `stop` / `target` whatever the desk actually decided — so reading the
+  // stored keys showed a stop-loss on a stand-aside call. Same collection, same
+  // hook as the scenario memo above.
+  const { item: traderItem } = useResourceCollectionItem<MemoClientData>(
+    session,
+    "memos",
+    PHASE_3_MEMO_KEYS.trader.collectionKey,
+  );
+  const levels = useMemo(() => {
+    const td = traderItem?.clientData ?? null;
+    if (td === null) return null;
+    return buildTradeLevelModel(storedTradeLevelsFrom(td));
+  }, [traderItem]);
   const scenarioStrip = useMemo(() => {
     if (scenarioItem === null) return null;
     const sd = scenarioItem.clientData ?? null;
@@ -557,6 +595,7 @@ function PmHeroWithScenarios({
       mandateDecision={data?.mandateDecision ?? null}
       policyDecision={data?.policyDecision ?? null}
       evidenceDecision={data?.evidenceDecision ?? null}
+      levels={levels}
       />
     </div>
   );

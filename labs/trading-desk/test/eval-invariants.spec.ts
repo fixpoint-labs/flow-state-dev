@@ -96,6 +96,8 @@ function summary(overrides: Partial<RunSummary> = {}): RunSummary {
     sizePct: 4,
     stopPrice: 100,
     targetPrice: 150,
+    reassessBelowPrice: null,
+    invalidateAbovePrice: null,
     holdingPeriod: "quarters",
     decidedAt: "2026-06-25T00:00:00.000Z",
     mandateVerdict: GATES.verdict,
@@ -205,6 +207,8 @@ function healthyBundle(): RunArtifactsBundle {
       entryPrice: null,
       stopPrice: 100,
       targetPrice: 150,
+      reassessBelowPrice: null,
+      invalidateAbovePrice: null,
       sizePct: 4,
       holdingPeriod: "quarters",
       mandateId: "balanced",
@@ -247,6 +251,174 @@ describe("checkRun — healthy bundle", () => {
     expect(report.hard.failed).toBe(0);
     expect(report.hard.passed).toBeGreaterThan(5);
   });
+});
+
+/**
+ * FIX-780 — the snapshot↔trader mirror covers all four level fields, so a flat
+ * run's monitoring pair is checked for drift exactly like a directional run's
+ * stop and target. Without this the two new fields could silently disagree
+ * between the memo and the durable decision record, which is the record outcome
+ * tracking will later score a flat call against.
+ */
+describe("checkRun — snapshot ↔ trader level mirrors (FIX-780)", () => {
+  /** Turn the healthy bundle's directional run into a flat one. */
+  function flatBundle(): RunArtifactsBundle {
+    const b = healthyBundle();
+    const trader = b.memos.find(
+      (m) => m.key === ALL_MEMO_KEYS.trader.collectionKey,
+    )!.state as MemoState;
+    Object.assign(trader, {
+      direction: "flat",
+      sizePct: 0,
+      stopPrice: null,
+      targetPrice: null,
+      reassessBelowPrice: 195,
+      invalidateAbovePrice: 320,
+    });
+    Object.assign(b.decisionSnapshot!, {
+      direction: "flat",
+      sizePct: 0,
+      stopPrice: null,
+      targetPrice: null,
+      reassessBelowPrice: 195,
+      invalidateAbovePrice: 320,
+    });
+    return b;
+  }
+
+  it("passes for a flat run whose monitoring levels mirror", () => {
+    expect(
+      byId(checkRun(flatBundle()).checks, "decision-consistency/snapshot-trader")
+        ?.status,
+    ).toBe("pass");
+  });
+
+  it("fails when the snapshot's monitoring level drifts from the trader memo", () => {
+    const b = flatBundle();
+    b.decisionSnapshot!.invalidateAbovePrice = 999;
+    expect(
+      byId(checkRun(b).checks, "decision-consistency/snapshot-trader")?.status,
+    ).toBe("fail");
+  });
+
+  it("passes for a legacy run whose trader memo has no monitoring keys at all", () => {
+    // BP-030: the pre-FIX-780 corpus. The memo's absent key and the snapshot's
+    // null are the same absence, so this must read as agreement, not drift.
+    const b = healthyBundle();
+    const trader = b.memos.find(
+      (m) => m.key === ALL_MEMO_KEYS.trader.collectionKey,
+    )!.state as MemoState;
+    delete (trader as Record<string, unknown>).reassessBelowPrice;
+    delete (trader as Record<string, unknown>).invalidateAbovePrice;
+    expect(
+      byId(checkRun(b).checks, "decision-consistency/snapshot-trader")?.status,
+    ).toBe("pass");
+  });
+
+  it("passes when a resumed LEGACY flat run records no levels in the snapshot", () => {
+    // The durable-write case. A session written before FIX-780 and resumed into
+    // Phase 5 has a flat trader memo whose two MONITORING levels are still filed
+    // as `stopPrice` / `targetPrice` — that memo predates the commit gate. The
+    // snapshot write applies `levelsForStance`, so it records NO levels, and
+    // that is agreement with the rule, not drift from the memo.
+    const b = flatBundle();
+    const trader = b.memos.find(
+      (m) => m.key === ALL_MEMO_KEYS.trader.collectionKey,
+    )!.state as MemoState;
+    Object.assign(trader, {
+      stopPrice: 320,
+      targetPrice: 195,
+      reassessBelowPrice: null,
+      invalidateAbovePrice: null,
+    });
+    Object.assign(b.decisionSnapshot!, {
+      stopPrice: null,
+      targetPrice: null,
+      reassessBelowPrice: null,
+      invalidateAbovePrice: null,
+    });
+    expect(
+      byId(checkRun(b).checks, "decision-consistency/snapshot-trader")?.status,
+    ).toBe("pass");
+  });
+
+  /**
+   * A COMPLETED legacy report — both records in the pre-fix shape.
+   *
+   * This assertion used to demand a hard FAIL, on the reasoning that a
+   * mislabeled `stopPrice: 320` in the snapshot becomes a standing-thesis stop
+   * with a live tripwire. That consequence is now closed at its own seam:
+   * `adoptThesis` re-applies the stance gate on the READ, so a legacy record
+   * mints no level and no tripwire.
+   *
+   * What remains is two stored records that agree with each other perfectly —
+   * the same legacy pair, written by the same pre-fix run. That is not an
+   * internal CONTRADICTION, which is the only thing this check is entitled to
+   * report; it is a provenance fact. Ten of the thirteen recorded runs are flat,
+   * so hard-failing it told whoever ran the eval corpus that historical runs
+   * failed a consistency check they did not fail.
+   *
+   * This is NOT the check being widened to go green — the case below proves the
+   * regression it exists to catch still fails, and the legacy shape is still
+   * SURFACED as a soft flag rather than passing silently.
+   */
+  it("does not hard-fail a COMPLETED legacy flat run whose two records agree", () => {
+    const b = legacyCompletedBundle();
+    expect(
+      byId(checkRun(b).checks, "decision-consistency/snapshot-trader")?.status,
+    ).toBe("pass");
+  });
+
+  it("still SURFACES that legacy run as a soft flag, so the normalization is not silent", () => {
+    const b = legacyCompletedBundle();
+    const flag = byId(
+      checkRun(b).checks,
+      "decision-consistency/snapshot-legacy-levels",
+    );
+    expect(flag?.severity).toBe("soft");
+    expect(flag?.status).toBe("flag");
+    expect(flag?.detail).toContain("stopPrice 320");
+  });
+
+  it("still hard-fails when a POST-fix memo's snapshot skipped the stance gate", () => {
+    // The regression that actually matters, and the one the hard check is for:
+    // the trader memo is correctly gated (monitoring levels), but the snapshot
+    // carries a stop — meaning the write-side gate did not run. Both sides are
+    // normalized the same way and a real difference survives that.
+    const b = flatBundle();
+    Object.assign(b.decisionSnapshot!, {
+      stopPrice: 320,
+      targetPrice: 195,
+      reassessBelowPrice: null,
+      invalidateAbovePrice: null,
+    });
+    expect(
+      byId(checkRun(b).checks, "decision-consistency/snapshot-trader")?.status,
+    ).toBe("fail");
+  });
+
+  /** Both records in the pre-fix shape: a flat call whose two MONITORING levels
+   *  are filed as `stopPrice` / `targetPrice` in the memo AND in the snapshot,
+   *  because the whole run predates the stance gate. */
+  function legacyCompletedBundle(): RunArtifactsBundle {
+    const b = flatBundle();
+    const trader = b.memos.find(
+      (m) => m.key === ALL_MEMO_KEYS.trader.collectionKey,
+    )!.state as MemoState;
+    Object.assign(trader, {
+      stopPrice: 320,
+      targetPrice: 195,
+      reassessBelowPrice: null,
+      invalidateAbovePrice: null,
+    });
+    Object.assign(b.decisionSnapshot!, {
+      stopPrice: 320,
+      targetPrice: 195,
+      reassessBelowPrice: null,
+      invalidateAbovePrice: null,
+    });
+    return b;
+  }
 });
 
 describe("checkRun — rating-envelope", () => {

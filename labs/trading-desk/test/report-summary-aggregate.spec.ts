@@ -603,6 +603,25 @@ describe("buildReportSummary — trade invalidation criteria (FIX-1060)", () => 
     expect(summary.trade).not.toBeNull();
     expect(summary.trade?.invalidationCriteria).toBeNull();
   });
+
+  /**
+   * FIX-780 / BP-030. The `memo()` helper above deliberately does NOT list the
+   * two monitoring-level fields, so this memo is the shape a report stored
+   * before FIX-780 actually has: the keys are ABSENT, not null. The aggregate
+   * must hand the components the `null` they type against — an `undefined`
+   * leaking through is a third state every downstream null-check would miss.
+   */
+  it("normalizes a pre-FIX-780 trader memo's absent monitoring keys to null", () => {
+    const legacy = memo({ direction: "flat", stopPrice: 320, targetPrice: 195 });
+    expect("reassessBelowPrice" in legacy).toBe(false);
+
+    const summary = buildReportSummary(mapOf([["trader", legacy]]), null);
+    expect(summary.trade?.reassessBelowPrice).toBeNull();
+    expect(summary.trade?.invalidateAbovePrice).toBeNull();
+    // The record itself is untouched — relabeled, never re-interpreted.
+    expect(summary.trade?.stopPrice).toBe(320);
+    expect(summary.trade?.targetPrice).toBe(195);
+  });
 });
 
 /**

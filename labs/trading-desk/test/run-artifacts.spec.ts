@@ -76,6 +76,8 @@ function decisionSnapshot(
     entryPrice: null,
     stopPrice: 118.5,
     targetPrice: 165,
+    reassessBelowPrice: null,
+    invalidateAbovePrice: null,
     sizePct: 3.5,
     holdingPeriod: "quarters",
     mandateId: "balanced",

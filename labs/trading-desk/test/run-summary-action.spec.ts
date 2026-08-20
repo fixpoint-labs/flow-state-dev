@@ -27,6 +27,8 @@ const completedSnapshot: DecisionSnapshotState = {
   entryPrice: null,
   stopPrice: 120,
   targetPrice: 180,
+  reassessBelowPrice: null,
+  invalidateAbovePrice: null,
   sizePct: 4,
   holdingPeriod: "quarters",
   mandateId: "balanced",
