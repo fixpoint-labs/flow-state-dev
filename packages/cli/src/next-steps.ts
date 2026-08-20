@@ -21,20 +21,21 @@
  *
  * ## Command forms, measured rather than assumed
  *
- * Measured on npm 10.9.7 / pnpm 10.4.1 / yarn 1.22.22 against scripts and a bin that print what
- * actually reached them. `test/next-steps.test.ts` re-runs both tables through the real package
- * managers rather than asserting the strings look right.
+ * Measured on npm 10.9.7 / pnpm 10.4.1 / yarn 1.22.22 against scripts and a bin — named `fsdev`,
+ * like the real one — that print what actually reached them. `test/next-steps.test.ts` re-runs
+ * every working form below through the real package managers rather than asserting the strings
+ * look right; the losing forms are what those checks go red on when the fix is removed.
  *
  * **`{{exec}}` and `{{execSep}}`** — `npm exec` consumes a leading-dash argument as its own
  * configuration, and so does `yarn exec`:
  *
  * | invocation                                    | argv the bin received            |
  * |-----------------------------------------------|----------------------------------|
- * | `npm exec fsdevish serve --host 127.0.0.1`    | `["serve","127.0.0.1"]` — lost   |
- * | `npm exec -- fsdevish serve --host 127.0.0.1` | `["serve","--host","127.0.0.1"]` |
- * | `pnpm exec fsdevish serve --host 127.0.0.1`   | `["serve","--host","127.0.0.1"]` |
- * | `yarn exec fsdevish serve --host 127.0.0.1`   | `["serve"]` — lost               |
- * | `yarn exec -- fsdevish serve --host 127.0.0.1`| `["serve","--host","127.0.0.1"]` |
+ * | `npm exec fsdev serve --host 127.0.0.1`    | `["serve","127.0.0.1"]` — lost   |
+ * | `npm exec -- fsdev serve --host 127.0.0.1` | `["serve","--host","127.0.0.1"]` |
+ * | `pnpm exec fsdev serve --host 127.0.0.1`   | `["serve","--host","127.0.0.1"]` |
+ * | `yarn exec fsdev serve --host 127.0.0.1`   | `["serve"]` — lost               |
+ * | `yarn exec -- fsdev serve --host 127.0.0.1`| `["serve","--host","127.0.0.1"]` |
  *
  * **Yarn drops the flag too**, which "the separator npm needs and the others do not" did not
  * anticipate — under Yarn the loopback bind would silently not be applied.

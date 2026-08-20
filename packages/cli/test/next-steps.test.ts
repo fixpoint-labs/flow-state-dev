@@ -12,7 +12,7 @@
  *     command before; `npm exec` and `yarn exec` both eat `--host 127.0.0.1` without a `--`.
  */
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { readFileSync, chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer, get as httpGet } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -38,6 +38,13 @@ function matchesCanonical(embedded: string): boolean {
 }
 
 const MANAGERS: NextStepsPackageManager[] = ["npm", "pnpm", "yarn"];
+
+/** Script names that collide with a package manager builtin, and the marker each one prints. */
+const BUILTIN_COLLIDING_SCRIPTS = [
+  ["list", "--from-list-script"],
+  ["config", "--from-config-script"],
+  ["why", "--from-why-script"],
+] as const;
 
 const MOUNTED = {
   topology: "mounted-route" as const,
@@ -305,6 +312,49 @@ describe("the block says the same thing under every package manager", () => {
 // 3. The caveat constraint
 // ---------------------------------------------------------------------------
 
+describe("the module header quotes commands that exist", () => {
+  /** The leading block comment of `src/next-steps.ts` — the part that claims to report measurements. */
+  const header = (() => {
+    const source = readFileSync(resolve(import.meta.dirname, "../src/next-steps.ts"), "utf-8");
+    return source.slice(0, source.indexOf("*/") + 2);
+  })();
+
+  it("names the real binary in every command form it quotes", () => {
+    // The header's whole claim to authority is that it reports measurements. A table naming a
+    // binary nobody ships describes a run that never happened — which is what `fsdevish` was,
+    // residue from a pass taken while the package rename was in flight. Guarded rather than
+    // corrected, so a future rename cannot leave the table describing a binary again.
+    const invocations = [...header.matchAll(/(npm|pnpm|yarn)\s+exec\s+(?:--\s+)?([\w./@-]+)/g)];
+    expect(invocations.length, "the exec table is no longer where this check looks").toBeGreaterThan(0);
+    for (const [quoted, , binary] of invocations) {
+      expect(binary, `\`${quoted}\` names a binary that is not the one we ship`).toBe("fsdev");
+    }
+  });
+
+  it("carries no fsdev-shaped name that does not exist", () => {
+    const names = new Set([...header.matchAll(/\bfsdev[\w-]+/g)].map((match) => match[0]));
+    expect([...names], "the header invents a name").toEqual([]);
+  });
+
+  it("quotes only script names the fixture actually defines", () => {
+    // The run-form table's positive rows are re-run below, so each name it quotes has to be a
+    // script the probe project has — or the header is citing a measurement nobody takes.
+    // Scoped to table rows: prose elsewhere in the header uses `pnpm run dev` as an illustration
+    // and is not claiming a measurement.
+    const rows = header.split("\n").filter((line) => /^\s*\*\s*\|\s*`/.test(line));
+    expect(rows.length, "the header's tables are no longer where this check looks").toBeGreaterThan(0);
+    const quoted = new Set(
+      rows.flatMap((row) =>
+        [...row.matchAll(/`(?:npm|pnpm|yarn)\s+(?:run\s+)?([a-z][\w-]*)`/g)].map((match) => match[1]),
+      ),
+    );
+    expect(quoted.size).toBeGreaterThan(0);
+    for (const name of quoted) {
+      expect(BUILTIN_COLLIDING_SCRIPTS.map(([script]) => script)).toContain(name);
+    }
+  });
+});
+
 describe("the caveats describe today's behaviour and promise nothing about production", () => {
   it("makes no production claim and keys nothing to an environment", () => {
     // All three claims are false of the code: the bind guard runs only under `fsdev serve`,
@@ -412,6 +462,7 @@ function projectFor(manager: NextStepsPackageManager): string {
           // form (`pnpm list`, `yarn config`) the manager runs itself and the script never does.
           list: "node ./echo-argv.js --from-list-script",
           config: "node ./echo-argv.js --from-config-script",
+          why: "node ./echo-argv.js --from-why-script",
         },
       },
       null,
@@ -609,10 +660,7 @@ describe("the printed commands actually run", () => {
           // `pnpm list` prints a dependency tree and `yarn config` errors on a subcommand; in
           // both cases the developer's script never runs and nothing says so. Executed rather
           // than reasoned about, because which names are builtins is the manager's business.
-          for (const [devScript, marker] of [
-            ["list", "--from-list-script"],
-            ["config", "--from-config-script"],
-          ] as const) {
+          for (const [devScript, marker] of BUILTIN_COLLIDING_SCRIPTS) {
             const rendered = renderNextSteps({ ...MOUNTED, packageManager: manager, devScript });
             const { run } = PACKAGE_MANAGER_COMMAND_FORMS[manager];
             const line = rendered
