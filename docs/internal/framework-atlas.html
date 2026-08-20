@@ -203,33 +203,38 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
   <nav>
     <a class="grp">Orientation</a>
     <a href="#map">01 · The system map</a>
-    <a href="#packages">02 · Package inventory</a>
-    <a href="#boundaries">03 · Locked boundaries</a>
+    <a class="grp">How it fits together</a>
+    <a href="#dial">02 · What decides what runs next</a>
+    <a href="#substrate">03 · The shared substrate</a>
+    <a href="#workforce-layer">04 · Workforce: the unbuilt layer</a>
+    <a class="grp">The inventory</a>
+    <a href="#packages">05 · Package inventory</a>
+    <a href="#boundaries">06 · Locked boundaries</a>
     <a class="grp">The primitives</a>
-    <a href="#blocks">04 · Four block kinds</a>
-    <a href="#dsl">05 · Sequencer DSL</a>
-    <a href="#flows">06 · Flows &amp; actions</a>
-    <a href="#state">07 · State &amp; scopes</a>
-    <a href="#resources">08 · Resources</a>
-    <a href="#items">09 · Items &amp; streaming</a>
-    <a href="#execution">10 · Execution &amp; errors</a>
-    <a href="#capabilities">11 · Capabilities</a>
+    <a href="#blocks">07 · Four block kinds</a>
+    <a href="#dsl">08 · Sequencer DSL</a>
+    <a href="#flows">09 · Flows &amp; actions</a>
+    <a href="#state">10 · State &amp; scopes</a>
+    <a href="#resources">11 · Resources</a>
+    <a href="#items">12 · Items &amp; streaming</a>
+    <a href="#execution">13 · Execution &amp; errors</a>
+    <a href="#capabilities">14 · Capabilities</a>
     <a class="grp">Composition tier</a>
-    <a href="#utility">12 · Utility blocks</a>
-    <a href="#patterns">13 · Patterns</a>
-    <a href="#orchestration">14 · Orchestration</a>
-    <a href="#skills">15 · Skills &amp; workforce</a>
-    <a href="#memory">16 · Memory</a>
-    <a href="#tools">17 · Tools</a>
+    <a href="#utility">15 · Utility blocks</a>
+    <a href="#patterns">16 · Patterns</a>
+    <a href="#orchestration">17 · Orchestration</a>
+    <a href="#skills">18 · Skills &amp; agents</a>
+    <a href="#memory">19 · Memory</a>
+    <a href="#tools">20 · Tools</a>
     <a class="grp">Edges</a>
-    <a href="#transports">18 · Inbound transports</a>
-    <a href="#hosts">19 · Hosts &amp; stores</a>
-    <a href="#detached">20 · Detached work</a>
+    <a href="#transports">21 · Inbound transports</a>
+    <a href="#hosts">22 · Hosts &amp; stores</a>
+    <a href="#detached">23 · Detached work</a>
     <a class="grp">Surfaces</a>
-    <a href="#consumers">21 · Client, React, CLI</a>
-    <a href="#proving">22 · Proving ground</a>
+    <a href="#consumers">24 · Client, React, CLI</a>
+    <a href="#proving">25 · Proving ground</a>
     <a class="grp">Synthesis</a>
-    <a href="#lenses">23 · Refactor lenses</a>
+    <a href="#lenses">26 · Refactor lenses</a>
   </nav>
 </aside>
 
@@ -237,7 +242,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 <header class="masthead">
   <p class="eyebrow">Architecture inventory</p>
   <h1>Everything in the framework, and how it fits</h1>
-  <p class="standfirst">A complete map of <code>@flow-state-dev</code>: 27 packages built on four block primitives, a runtime that owns execution and streaming, and a composition tier that turns primitives into agents. Read top-to-bottom for the shape; jump by section for the detail.</p>
+  <p class="standfirst">A complete map of <code>@flow-state-dev</code>: 27 packages, four ways to decide what runs next, and six orthogonal systems underneath all of them. Sections 02&ndash;04 are how the pieces fit into one thing; the rest is the inventory of what each piece is.</p>
   <div class="stats">
     <div class="stat"><b>27</b><span>packages</span></div>
     <div class="stat"><b>~179k</b><span>lines of src</span></div>
@@ -253,7 +258,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
   <div class="sec-head"><span class="sec-num">01</span><h2>The system map</h2></div>
   <p class="lede">FSD is one framework with three distinct jobs, and almost every architectural question comes down to which of the three a piece of code belongs to.</p>
   <p><strong>Authoring</strong> is isomorphic: <code>contracts</code> and <code>core</code> give you the block primitives and the type contracts, and the composition libraries stack on top of them without ever touching a runtime. <strong>Running</strong> is server-only: <code>engine</code> owns execution, state, persistence, and the wire. <strong>Consuming</strong> is client-side: <code>client</code> speaks the wire, <code>react</code> wraps <code>client</code>, and nothing below them knows either exists.</p>
-  <p>The handoff between authoring and running is a flow definition. The handoff between running and consuming is JSON plus an SSE stream. Those two seams are the reason the boundary rules in §03 can be enforced at all.</p>
+  <p>The handoff between authoring and running is a flow definition. The handoff between running and consuming is JSON plus an SSE stream. Those two seams are the reason the boundary rules in §06 can be enforced at all.</p>
 
   <figure>
     <div class="fig-body">
@@ -365,12 +370,387 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
   </ol>
   <div class="note">
     <span class="lbl">Why this matters for a refactor</span>
-    <p>The philosophy already says the codebase carries known bloat and incoherence that accreted before the tenets were written down. This atlas is most useful read as a map of where that surface actually sits — §23 collects the specific tensions worth deciding on.</p>
+    <p>The philosophy already says the codebase carries known bloat and incoherence that accreted before the tenets were written down. This atlas is most useful read as a map of where that surface actually sits — §26 collects the specific tensions worth deciding on.</p>
+  </div>
+</section>
+
+<section id="dial">
+  <div class="sec-head"><span class="sec-num">02</span><h2>What decides what runs next</h2></div>
+  <p class="lede">Every workflow system answers one question: who decides what happens next, and when do they decide it? FSD refuses to pick a single answer. It ships four, on one substrate, and lets them nest inside each other.</p>
+
+  <p>This is the axis the whole framework is organized around, and it is the thing to hold in mind before reading any of the per-system sections below. A sequencer is not a lesser task board and a task board is not a worse sequencer — they sit at different points on a dial that trades <strong>predictability</strong> for <strong>adaptability</strong>, and the right answer depends on how much you know about the work before it starts.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 396" role="img" aria-label="The determinism dial: four control modes from left to right — sequencer decided by the author at build time, router decided by your code per call, task board decided by the running program during the run, and skill delegation decided by the model inside the turn — each with what it costs on resume and when to reach for it.">
+        <defs><marker id="d1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker></defs>
+
+        <text class="t-lbl" x="24" y="20">Shape known before the run</text>
+        <text class="t-lbl" x="928" y="20" text-anchor="end">Shape discovered during it</text>
+        <path class="ln" d="M30,32 L922,32" marker-end="url(#d1)" marker-start="url(#d1)"/>
+
+        <rect class="n-box" x="24" y="48" width="214" height="304" rx="5"/>
+        <rect x="24" y="48" width="214" height="4" fill="var(--k-sequencer)"/>
+        <text class="t-b" x="38" y="76" fill="var(--k-sequencer)">sequencer</text>
+        <text class="t-s" x="38" y="94">the pipeline you wrote</text>
+        <path class="ln-soft" d="M38,106 L224,106"/>
+        <text class="t-xs" x="38" y="124">DECIDED BY</text>
+        <text class="t-s" x="38" y="140">the author</text>
+        <text class="t-xs" x="38" y="164">DECIDED WHEN</text>
+        <text class="t-s" x="38" y="180">build time</text>
+        <text class="t-xs" x="38" y="204">SHAPE</text>
+        <text class="t-s" x="38" y="220">one fixed graph</text>
+        <text class="t-xs" x="38" y="244">ON RESUME</text>
+        <text class="t-s" x="38" y="260">same path, committed</text>
+        <text class="t-s" x="38" y="274">steps skipped</text>
+        <path class="ln-soft" d="M38,288 L224,288"/>
+        <text class="t-xs" x="38" y="306">REACH FOR IT WHEN</text>
+        <text class="t-xs" x="38" y="320">THE STEPS ARE KNOWN, THE</text>
+        <text class="t-xs" x="38" y="332">ORDER MATTERS, AND A TEST</text>
+        <text class="t-xs" x="38" y="344">SHOULD PIN IT</text>
+
+        <rect class="n-box" x="254" y="48" width="214" height="304" rx="5"/>
+        <rect x="254" y="48" width="214" height="4" fill="var(--k-router)"/>
+        <text class="t-b" x="268" y="76" fill="var(--k-router)">router</text>
+        <text class="t-s" x="268" y="94">a choice your code makes</text>
+        <path class="ln-soft" d="M268,106 L454,106"/>
+        <text class="t-xs" x="268" y="124">DECIDED BY</text>
+        <text class="t-s" x="268" y="140">your code</text>
+        <text class="t-xs" x="268" y="164">DECIDED WHEN</text>
+        <text class="t-s" x="268" y="180">per call, from input</text>
+        <text class="t-s" x="268" y="194">or state</text>
+        <text class="t-xs" x="268" y="212">SHAPE</text>
+        <text class="t-s" x="268" y="228">one of a fixed set</text>
+        <text class="t-xs" x="268" y="248">ON RESUME</text>
+        <text class="t-s" x="268" y="264">the recorded decision</text>
+        <text class="t-s" x="268" y="278">is re-validated</text>
+        <path class="ln-soft" d="M268,288 L454,288"/>
+        <text class="t-xs" x="268" y="306">REACH FOR IT WHEN</text>
+        <text class="t-xs" x="268" y="320">THE PATHS ARE BOUNDED —</text>
+        <text class="t-xs" x="268" y="332">MODE, INTENT, TENANT —</text>
+        <text class="t-xs" x="268" y="344">AND CODE CAN PICK</text>
+
+        <rect class="n-acc" x="484" y="48" width="214" height="304" rx="5"/>
+        <rect x="484" y="48" width="214" height="4" fill="var(--accent)"/>
+        <text class="t-b" x="498" y="76" fill="var(--accent)">task board</text>
+        <text class="t-s" x="498" y="94">a graph that grows as</text>
+        <text class="t-s" x="498" y="108">it drains</text>
+        <path class="ln-soft" d="M498,118 L684,118"/>
+        <text class="t-xs" x="498" y="134">DECIDED BY</text>
+        <text class="t-s" x="498" y="150">the running program</text>
+        <text class="t-xs" x="498" y="170">DECIDED WHEN</text>
+        <text class="t-s" x="498" y="186">during the run</text>
+        <text class="t-xs" x="498" y="208">SHAPE</text>
+        <text class="t-s" x="498" y="224">a dependency graph,</text>
+        <text class="t-s" x="498" y="238">extended mid-drain</text>
+        <text class="t-xs" x="498" y="256">ON RESUME</text>
+        <text class="t-s" x="498" y="272">the ledger is the truth,</text>
+        <text class="t-s" x="498" y="284">not the order</text>
+        <path class="ln-soft" d="M498,292 L684,292"/>
+        <text class="t-xs" x="498" y="306">REACH FOR IT WHEN</text>
+        <text class="t-xs" x="498" y="320">THE COUNT IS UNKNOWN, UNITS</text>
+        <text class="t-xs" x="498" y="332">DEPEND ON EACH OTHER, AND</text>
+        <text class="t-xs" x="498" y="344">CONCURRENCY MATTERS</text>
+
+        <rect class="n-box" x="714" y="48" width="214" height="304" rx="5"/>
+        <rect x="714" y="48" width="214" height="4" fill="var(--k-generator)"/>
+        <text class="t-b" x="728" y="76" fill="var(--k-generator)">skill delegation</text>
+        <text class="t-s" x="728" y="94">a plan the model writes</text>
+        <path class="ln-soft" d="M728,106 L914,106"/>
+        <text class="t-xs" x="728" y="124">DECIDED BY</text>
+        <text class="t-s" x="728" y="140">the model</text>
+        <text class="t-xs" x="728" y="164">DECIDED WHEN</text>
+        <text class="t-s" x="728" y="180">inside the turn</text>
+        <text class="t-xs" x="728" y="204">SHAPE</text>
+        <text class="t-s" x="728" y="220">whatever it plans</text>
+        <text class="t-xs" x="728" y="244">ON RESUME</text>
+        <text class="t-s" x="728" y="260">it plans again — the</text>
+        <text class="t-s" x="728" y="274">shape is not replayed</text>
+        <path class="ln-soft" d="M728,288 L914,288"/>
+        <text class="t-xs" x="728" y="306">REACH FOR IT WHEN</text>
+        <text class="t-xs" x="728" y="320">THE WORK RESISTS ADVANCE</text>
+        <text class="t-xs" x="728" y="332">CLASSIFYING, AND THE PLAYBOOK</text>
+        <text class="t-xs" x="728" y="344">SHOULD CHANGE WITHOUT A DEPLOY</text>
+
+        <text class="t-lbl" x="470" y="378" text-anchor="middle">Every one of them produces a block — so every one of them can be a step inside any other</text>
+      </svg>
+    </div>
+    <figcaption><b>The dial, not the menu.</b> Moving right buys adaptability and pays in tokens, latency, and replayability. Moving left buys a system you can test, resume, and reason about. Nothing forces a single choice for a whole application — the choice is per unit of work.</figcaption>
+  </figure>
+
+  <h3>They nest, which is the actual point</h3>
+  <p>Because all four terminate in <code>BlockDefinition</code>, the modes compose without adapters:</p>
+  <ul>
+    <li>A <strong>sequencer step</strong> can be a task board — <code>parallelTasks</code>, <code>supervisor</code>, and <code>planAndExecute</code> are exactly that.</li>
+    <li>A <strong>board worker</strong> can be a sequencer, so one node of a dynamic graph can be a fixed pipeline.</li>
+    <li>A <strong>generator</strong> holding a skill can command its own private board — the skill plans tasks, <code>runBoard</code> drains them.</li>
+    <li>A <strong>board task</strong> can spawn detached, re-entering later through that same board's runner in a child session.</li>
+  </ul>
+  <p>So the practical design move is not "which mode is this application?" but <strong>"at which point in this pipeline does the shape stop being knowable?"</strong> Everything before that point should be a sequencer. Everything after it needs a board or a skill. Most real systems put the boundary somewhere in the middle, and the framework's job is to make that seam invisible.</p>
+
+  <div class="note">
+    <span class="lbl">The cost that is easy to miss</span>
+    <p>Determinism is not only about test flakiness — it is about <strong>resume</strong>. A sequencer resumes by skipping committed steps. A router resumes by re-validating a recorded decision, and throws rather than silently branching elsewhere. A board resumes off its durable ledger. A model-written plan has no recorded shape to resume into: re-running re-plans. That is the real price of the right-hand end of the dial, and it is why the board sits between the two — it gives you a dynamic graph that is still <em>durable</em>.</p>
+  </div>
+</section>
+
+<section id="substrate">
+  <div class="sec-head"><span class="sec-num">03</span><h2>The shared substrate</h2></div>
+  <p class="lede">The four modes are interchangeable because they stand on identical ground. A board worker, a sequencer step, and a task a model just invented all receive the same <code>ctx</code> and reach the same six systems.</p>
+
+  <p>Those six systems are orthogonal because each answers a different question. That is the decomposition the framework is actually selling — most AI stacks tangle all six into one "agent" object, and then cannot vary any of them independently.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 336" role="img" aria-label="All four control modes resolve to one BlockContext, which reaches six orthogonal systems: blocks answer what runs, the control mode answers what runs next, scopes answer how long it is remembered, resources answer what is shared, items answer who sees it, and workstreams answer how long it may take.">
+        <defs><marker id="d2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker></defs>
+
+        <rect class="n-box" x="48" y="16" width="200" height="34" rx="4"/>
+        <rect x="48" y="16" width="4" height="34" fill="var(--k-sequencer)"/>
+        <text class="t-s" x="62" y="38">a sequencer step</text>
+        <rect class="n-box" x="264" y="16" width="200" height="34" rx="4"/>
+        <rect x="264" y="16" width="4" height="34" fill="var(--k-router)"/>
+        <text class="t-s" x="278" y="38">a router branch</text>
+        <rect class="n-box" x="480" y="16" width="200" height="34" rx="4"/>
+        <rect x="480" y="16" width="4" height="34" fill="var(--accent)"/>
+        <text class="t-s" x="494" y="38">a board worker</text>
+        <rect class="n-box" x="696" y="16" width="200" height="34" rx="4"/>
+        <rect x="696" y="16" width="4" height="34" fill="var(--k-generator)"/>
+        <text class="t-s" x="710" y="38">a model-planned task</text>
+
+        <path class="ln" d="M148,50 L148,72" marker-end="url(#d2)"/>
+        <path class="ln" d="M364,50 L364,72" marker-end="url(#d2)"/>
+        <path class="ln" d="M580,50 L580,72" marker-end="url(#d2)"/>
+        <path class="ln" d="M796,50 L796,72" marker-end="url(#d2)"/>
+
+        <rect class="n-acc" x="24" y="74" width="904" height="44" rx="4"/>
+        <text class="t-b" x="470" y="96" text-anchor="middle">one BlockContext</text>
+        <text class="t-s" x="470" y="111" text-anchor="middle">ctx.session · ctx.user · ctx.org · ctx.resources · ctx.emit · ctx.cap · ctx.requestHost</text>
+
+        <rect class="n-box" x="24" y="136" width="294" height="88" rx="4"/>
+        <text class="t-acc" x="38" y="156">what runs?</text>
+        <text class="t-b" x="38" y="178">blocks</text>
+        <text class="t-xs" x="38" y="196">HANDLER · GENERATOR · SEQUENCER · ROUTER</text>
+        <text class="t-xs" x="38" y="212">ONE run(input, ctx) — NOTHING ELSE TO LEARN</text>
+
+        <rect class="n-box" x="330" y="136" width="294" height="88" rx="4"/>
+        <text class="t-acc" x="344" y="156">what runs next?</text>
+        <text class="t-b" x="344" y="178">the control mode</text>
+        <text class="t-xs" x="344" y="196">THE DIAL IN §02 — AUTHOR, CODE, PROGRAM, MODEL</text>
+        <text class="t-xs" x="344" y="212">CHOSEN PER UNIT OF WORK, NOT PER APP</text>
+
+        <rect class="n-box" x="636" y="136" width="292" height="88" rx="4"/>
+        <text class="t-acc" x="650" y="156">how long is it remembered?</text>
+        <text class="t-b" x="650" y="178">scopes</text>
+        <text class="t-xs" x="650" y="196">REQUEST ⊂ SESSION ⊂ USER ⊂ ORG</text>
+        <text class="t-xs" x="650" y="212">CAS ON EVERY WRITE · PARTIAL SCHEMAS BUBBLE UP</text>
+
+        <rect class="n-box" x="24" y="234" width="294" height="88" rx="4"/>
+        <text class="t-acc" x="38" y="254">what is shared?</text>
+        <text class="t-b" x="38" y="276">resources</text>
+        <text class="t-xs" x="38" y="294">TYPED CONTAINERS WITH POLICY, NOT JUST STATE</text>
+        <text class="t-xs" x="38" y="310">THE TASK COLLECTION IS ONE OF THEM</text>
+
+        <rect class="n-box" x="330" y="234" width="294" height="88" rx="4"/>
+        <text class="t-acc" x="344" y="254">who sees it?</text>
+        <text class="t-b" x="344" y="276">items</text>
+        <text class="t-xs" x="344" y="294">ONE resolveItemVisibility, THREE AUDIENCES:</text>
+        <text class="t-xs" x="344" y="310">THE CLIENT · THE LLM'S HISTORY · THE TRACE</text>
+
+        <rect class="n-box" x="636" y="234" width="292" height="88" rx="4"/>
+        <text class="t-acc" x="650" y="254">how long may it take?</text>
+        <text class="t-b" x="650" y="276">workstreams</text>
+        <text class="t-xs" x="650" y="294">A CHILD SESSION THAT OUTLIVES THE REQUEST</text>
+        <text class="t-xs" x="650" y="310">DURABILITY DEPENDS ON THE TOPOLOGY</text>
+      </svg>
+    </div>
+    <figcaption><b>Six questions, six answers, no overlap.</b> <strong>Capabilities</strong> are the seventh thing — not another question, but the packaging that lets any combination of the six install as a single <code>uses</code> entry.</figcaption>
+  </figure>
+
+  <h3>Why the orthogonality earns its keep</h3>
+  <p>Because the six vary independently, you can change one without touching the rest. Make a chat pipeline concurrent by swapping a <code>forEach</code> for a board — the scopes, the resources, and the item routing are untouched. Hide a sub-agent's chatter from the user while keeping it in the parent's context — that is one <code>itemVisibility</code> field, not a rearchitecture. Move work off the request without rewriting it — <code>startDetached</code>, and the same block runs in a child session.</p>
+  <p>The two places the axes genuinely meet are worth knowing, because they are where the system gets its power:</p>
+  <ul>
+    <li><strong>Resources are how concurrent actors share.</strong> The <code>TaskCollection</code> is resource-backed, so the board's ledger is not a special store — it is the ordinary resource system under a task-shaped schema. That is why a board gets CAS, change events, client projection, and reactive blocks without asking for any of them.</li>
+    <li><strong>The board and the workstream meet at the runner.</strong> A detached dispatch carries a <code>boardId</code>, never a worker — it re-enters through the declaring board's runner, which re-reads the claimed row, re-verifies the claim, and only then routes to the assignee the durable row names. There is no path from a detached dispatch to a bare worker block, which is what makes "a task that outlives the turn" safe rather than a forgeable entry point.</li>
+  </ul>
+
+  <h3>One request, all the way down</h3>
+  <p>What the composition actually looks like when every mode is in play at once:</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 486" role="img" aria-label="A single request traced through nested control modes: an HTTP action enters a deterministic sequencer, which routes to a generator carrying a skill; the skill plans tasks onto a private board, the board drains workers concurrently, one worker spawns detached into a workstream, and the sequencer finishes with a synthesis handler. Each row is annotated with the substrate it touches.">
+        <text class="t-lbl" x="24" y="20">The call tree</text>
+        <text class="t-lbl" x="500" y="20">Mode</text>
+        <text class="t-lbl" x="620" y="20">What the substrate does at this depth</text>
+        <path class="ln-soft" d="M24,28 L928,28"/>
+        <path class="ln-soft" d="M604,36 L604,470"/>
+        <path class="ln-soft" d="M34,62 L34,82"/>
+        <path class="ln-soft" d="M58,92 L58,442"/>
+        <path class="ln-soft" d="M82,152 L82,172"/>
+        <path class="ln-soft" d="M106,182 L106,262"/>
+        <path class="ln-soft" d="M130,272 L130,352"/>
+        <path class="ln-soft" d="M154,362 L154,412"/>
+        <text class="t-s" x="24" y="56">POST /api/flows/desk/actions/ask</text>
+        <rect class="n-box-2" x="500" y="42" width="92" height="20" rx="10"/>
+        <text class="t-xs" x="546" y="56" text-anchor="middle">ENTRY</text>
+        <text class="t-xs" x="620" y="56">ActionCore RESOLVED · THE source GATE DECIDES AUTH</text>
+        <path class="ln-soft" d="M34,82 L41,82"/>
+        <text class="t-s" x="46" y="86">sequencer  handle</text>
+        <rect class="n-box-2" x="500" y="72" width="92" height="20" rx="10"/>
+        <rect x="500" y="72" width="3" height="20" fill="var(--k-sequencer)"/>
+        <text class="t-xs" x="546" y="86" text-anchor="middle">AUTHOR</text>
+        <text class="t-xs" x="620" y="86">ITS STATE SCHEMA BUBBLES UP INTO THE FLOW</text>
+        <path class="ln-soft" d="M58,112 L65,112"/>
+        <text class="t-s" x="70" y="116">handler  validate</text>
+        <text class="t-xs" x="620" y="116">ctx.session.patchState — CAS-GUARDED, NO-OP GUARDED</text>
+        <path class="ln-soft" d="M58,142 L65,142"/>
+        <text class="t-s" x="70" y="146">router  byMode</text>
+        <rect class="n-box-2" x="500" y="132" width="92" height="20" rx="10"/>
+        <rect x="500" y="132" width="3" height="20" fill="var(--k-router)"/>
+        <text class="t-xs" x="546" y="146" text-anchor="middle">CODE</text>
+        <text class="t-xs" x="620" y="146">router_decision PERSISTED — RESUME RE-VALIDATES IT</text>
+        <path class="ln-soft" d="M82,172 L89,172"/>
+        <text class="t-s" x="94" y="176">generator  analyst · uses [skills, memory]</text>
+        <text class="t-xs" x="620" y="176">CAPABILITY MERGE: RESOURCES AT BUILD, CONTEXT AT CALL</text>
+        <path class="ln-soft" d="M106,202 L113,202"/>
+        <text class="t-s" x="118" y="206">skill "research" matches</text>
+        <rect class="n-box-2" x="500" y="192" width="92" height="20" rx="10"/>
+        <rect x="500" y="192" width="3" height="20" fill="var(--k-generator)"/>
+        <text class="t-xs" x="546" y="206" text-anchor="middle">MODEL</text>
+        <text class="t-xs" x="620" y="206">SLASH → KEYWORD → CLASSIFIER · BODY JOINS THE PROMPT</text>
+        <path class="ln-soft" d="M106,232 L113,232"/>
+        <text class="t-s" x="118" y="236">addTask × 4  (assignee, deps)</text>
+        <text class="t-xs" x="620" y="236">ROWS LAND IN A RESOURCE-BACKED TaskCollection</text>
+        <path class="ln-soft" d="M106,262 L113,262"/>
+        <text class="t-s" x="118" y="266">runBoard</text>
+        <rect class="n-acc" x="500" y="252" width="92" height="20" rx="10"/>
+        <text class="t-xs" x="546" y="266" text-anchor="middle">PROGRAM</text>
+        <text class="t-xs" x="620" y="266">ONE DRAIN · DEPENDENCY-GATED · CAPPED CONCURRENCY</text>
+        <path class="ln-soft" d="M130,292 L137,292"/>
+        <text class="t-s" x="142" y="296">worker  analyst-a</text>
+        <text class="t-xs" x="620" y="296">CLAIM UNDER LEASE + CAS — NEVER TWO CLAIMS ON A ROW</text>
+        <path class="ln-soft" d="M130,322 L137,322"/>
+        <text class="t-s" x="142" y="326">worker  analyst-b</text>
+        <text class="t-xs" x="620" y="326">ITEMS STAMPED WITH THE TASK THAT PRODUCED THEM</text>
+        <path class="ln-soft" d="M130,352 L137,352"/>
+        <text class="t-s" x="142" y="356">worker  writer → startDetached</text>
+        <rect class="n-box-2" x="500" y="342" width="92" height="20" rx="10"/>
+        <rect x="500" y="342" width="3" height="20" fill="var(--warn)"/>
+        <text class="t-xs" x="546" y="356" text-anchor="middle">DETACHED</text>
+        <text class="t-xs" x="620" y="356">CHILD SESSION · RE-ENTERS VIA THE BOARD'S RUNNER</text>
+        <path class="ln-soft" d="M154,382 L161,382"/>
+        <text class="t-s" x="166" y="386">workstream — its own session cell</text>
+        <text class="t-xs" x="620" y="386">USER AND ORG STILL RESOLVE TO THE PARENT'S CELLS</text>
+        <path class="ln-soft" d="M154,412 L161,412"/>
+        <text class="t-s" x="166" y="416">sharedToWorkstream resources</text>
+        <text class="t-xs" x="620" y="416">RESOLVE AGAINST THE LINEAGE ROOT, NOT THIS SESSION</text>
+        <path class="ln-soft" d="M58,442 L65,442"/>
+        <text class="t-s" x="70" y="446">handler  synthesize</text>
+        <text class="t-xs" x="620" y="446">message ITEM → THE CLIENT AND THE NEXT TURN'S HISTORY</text>
+        <path class="ln-soft" d="M24,462 L928,462"/>
+        <text class="t-xs" x="24" y="478">FOUR MODES, ONE REQUEST, ONE ctx — AND EVERY LAYER ABOVE IS UNAWARE OF THE ONE BELOW IT</text>
+      </svg>
+    </div>
+    <figcaption><b>The seam is where the shape stops being knowable.</b> Above the generator, everything was decided when the code was written. Below it, the model decided. The framework's contribution is that the two halves are the same kind of object, share one context, and write to one durable record.</figcaption>
+  </figure>
+</section>
+
+<section id="workforce-layer">
+  <div class="sec-head"><span class="sec-num">04</span><h2>Workforce: the layer that isn't built</h2></div>
+  <p class="lede">Workforce is meant to be the top of the stack — teams of named agents that work together, powered by every system beneath them. Today it is 397 lines that define <em>what one agent is</em>, and nothing that defines <em>how a set of them relate</em>.</p>
+
+  <h3>What exists</h3>
+  <p>The <code>Agent</code> contract itself lives in <code>core</code> (so <code>orchestration</code> can type an injected <code>materializeAgent</code> without depending on <code>workforce</code>). An agent is a name, a description, a <strong>persona</strong>, a model, a tool allow-list, capabilities, and item visibility. <code>materializeAgent</code> turns that into a generator — resolving the persona into a system prompt, pulling tools and capabilities from catalogs, and binding <code>taskTools</code> to the active drain board when the agent is being materialized as a board worker.</p>
+  <p><code>definePersona</code> is the piece worth noticing: it is sugar over <code>defineResource</code> / <code>defineResourceCollection</code> with a content template, which means <strong>an agent's identity is a resource</strong> — editable at runtime, renderable from state, and addressable by path. That is the same move skills make with Markdown, applied to who an agent is rather than what it should do.</p>
+
+  <h3>Where teams actually happen today</h3>
+  <p>Not in <code>workforce</code>. The one place a set of agents collaborates is the <strong>skills delegation surface</strong>: a skill declaring <code>agents:</code> installs a private task board, materializes each declared agent as a board worker, seats every allowed tool in the <em>same assignee namespace</em> as those agents, and hands the executive generator the eight <code>taskTools</code> plus <code>runBoard</code>. The model then plans work as tasks with an <code>assignee</code> and <code>deps</code>, and drains the whole graph in one call.</p>
+  <p>That is a real multi-agent team, and it is complete. But it is a team <em>inside one skill</em> — the roster is that skill's frontmatter, the board is that generator's own state, and none of it outlives the turn or is addressable from anywhere else.</p>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 356" role="img" aria-label="What a team of agents needs, mapped to the layer that supplies it: seven capabilities are built — identity, tool surface, a place for work, a planning member, a shared workspace, per-member memory, and outliving the turn — while three are not: an agent carrying its own skills, an isolated context, and the team itself as a first-class object.">
+        <text class="t-lbl" x="24" y="20">What a team of agents needs</text>
+        <text class="t-lbl" x="330" y="20">The layer that supplies it</text>
+        <text class="t-lbl" x="782" y="20">Status</text>
+        <path class="ln-soft" d="M24,28 L928,28"/>
+
+        <text class="t-s" x="24" y="52">an identity per member</text>
+        <text class="t-xs" x="330" y="52">definePersona → A RESOURCE OR COLLECTION WITH A TEMPLATE</text>
+        <rect class="n-acc" x="782" y="38" width="146" height="20" rx="10"/>
+        <text class="t-xs" x="855" y="52" text-anchor="middle">BUILT</text>
+
+        <text class="t-s" x="24" y="82">a model and tool surface</text>
+        <text class="t-xs" x="330" y="82">materializeAgent → A GENERATOR, WORKER OR STANDALONE</text>
+        <rect class="n-acc" x="782" y="68" width="146" height="20" rx="10"/>
+        <text class="t-xs" x="855" y="82" text-anchor="middle">BUILT</text>
+
+        <text class="t-s" x="24" y="112">somewhere to put the work</text>
+        <text class="t-xs" x="330" y="112">THE TASK BOARD OVER A RESOURCE-BACKED COLLECTION</text>
+        <rect class="n-acc" x="782" y="98" width="146" height="20" rx="10"/>
+        <text class="t-xs" x="855" y="112" text-anchor="middle">BUILT</text>
+
+        <text class="t-s" x="24" y="142">a member that can plan</text>
+        <text class="t-xs" x="330" y="142">SKILLS DELEGATION — taskTools + runBoard</text>
+        <rect class="n-acc" x="782" y="128" width="146" height="20" rx="10"/>
+        <text class="t-xs" x="855" y="142" text-anchor="middle">BUILT</text>
+
+        <text class="t-s" x="24" y="172">a shared workspace</text>
+        <text class="t-xs" x="330" y="172">RESOURCES · COLLECTIONS · sharedToWorkstream</text>
+        <rect class="n-acc" x="782" y="158" width="146" height="20" rx="10"/>
+        <text class="t-xs" x="855" y="172" text-anchor="middle">BUILT</text>
+
+        <text class="t-s" x="24" y="202">memory per member</text>
+        <text class="t-xs" x="330" y="202">FOUR TIERS, ALREADY SUBJECT-SEPARATED</text>
+        <rect class="n-acc" x="782" y="188" width="146" height="20" rx="10"/>
+        <text class="t-xs" x="855" y="202" text-anchor="middle">BUILT</text>
+
+        <text class="t-s" x="24" y="232">a member that outlives a turn</text>
+        <text class="t-xs" x="330" y="232">WORKSTREAMS, RE-ENTERING VIA THE BOARD'S RUNNER</text>
+        <rect class="n-acc" x="782" y="218" width="146" height="20" rx="10"/>
+        <text class="t-xs" x="855" y="232" text-anchor="middle">BUILT</text>
+
+        <path class="ln-soft" d="M24,248 L928,248"/>
+
+        <text class="t-s" x="24" y="272">a member with its own playbooks</text>
+        <text class="t-xs" x="330" y="272">Agent.usesSkills — DECLARED IN THE TYPE, WARNS, IGNORED</text>
+        <rect class="n-box" x="782" y="258" width="146" height="20" rx="10" stroke="var(--k-router)"/>
+        <text class="t-xs" x="855" y="272" text-anchor="middle" fill="var(--k-router)">RESERVED</text>
+
+        <text class="t-s" x="24" y="302">a member with its own context</text>
+        <text class="t-xs" x="330" y="302">Agent.contextMode "fork" — WARNS, COMPOSES INLINE ANYWAY</text>
+        <rect class="n-box" x="782" y="288" width="146" height="20" rx="10" stroke="var(--k-router)"/>
+        <text class="t-xs" x="855" y="302" text-anchor="middle" fill="var(--k-router)">NOT HONORED</text>
+
+        <text class="t-s" x="24" y="332">the team itself, as a thing</text>
+        <text class="t-xs" x="330" y="332">createWorkforceCapability — RETURNS A BARE NAME + A TODO</text>
+        <rect class="n-box" x="782" y="318" width="146" height="20" rx="10" stroke="var(--k-router)"/>
+        <text class="t-xs" x="855" y="332" text-anchor="middle" fill="var(--k-router)">STUB</text>
+      </svg>
+    </div>
+    <figcaption><b>Seven of ten, and the three missing are the team-level ones.</b> Two are already declared in the <code>Agent</code> type and warn at materialization, so the intent is recorded in the code — which makes them a decision that has been deferred rather than one nobody made.</figcaption>
+  </figure>
+
+  <h3>What "a team" would mean, given what already exists</h3>
+  <p>Most of the machinery is there. An agent already has an editable identity, a model, tools, capabilities, and a place to do work. What a team layer would add is <strong>relationships and a lifetime</strong>:</p>
+  <ul>
+    <li><strong>A roster that is a thing, not a map.</strong> <code>createAgentRegistry</code> is a flat name-to-agent lookup with a duplicate check. A team has structure — who may assign to whom, who reviews whom, who is the executive. Today that structure exists only implicitly, as whatever the executive generator happens to plan.</li>
+    <li><strong>A workspace scoped to the team, not to a turn.</strong> The pieces exist (<code>sharedToWorkstream</code>, resource collections, the lineage root) but nothing binds them to a roster. A standing team wants a durable board its members return to, not a board that lives inside one generator's state.</li>
+    <li><strong>Composition of the two unwired fields.</strong> <code>usesSkills</code> would let a member carry its own playbooks rather than inheriting the coordinator's; <code>contextMode: "fork"</code> would give a member its own context window instead of composing inline. Both are the difference between "a prompt with a name" and "a participant".</li>
+  </ul>
+
+  <div class="tension">
+    <h5>The decision this stack is waiting on</h5>
+    <p>Everything below workforce got built because a running system needed it. Workforce is the one layer specified top-down — the <code>Agent</code> type carries two fields nothing resolves, and its capability factory returns a name and a TODO. That is the shape tenet 3 warns about: a contract taken on before there was a caller.</p>
+    <p>The generous reading is that it is a placeholder held deliberately while the layers underneath matured — and they did mature; seven of the ten needs above are now met by systems that did not exist when <code>Agent</code> was first written.</p>
+    <span class="ask">Is a team a new primitive, or is it a composition of a roster resource + a durable board + per-member skills? If it is the second, workforce may not need to grow at all — it may need to shrink to <code>defineAgent</code> + <code>materializeAgent</code> and let the team be assembled from parts that already work.</span>
   </div>
 </section>
 
 <section id="packages">
-  <div class="sec-head"><span class="sec-num">02</span><h2>Package inventory</h2></div>
+  <div class="sec-head"><span class="sec-num">05</span><h2>Package inventory</h2></div>
   <p class="lede">Twenty-seven workspace packages in eight tiers. Line counts are all of <code>src/</code> including tests, measured on this branch — they are a rough mass indicator, not a quality signal.</p>
 
   <div class="tw">
@@ -384,7 +764,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       <tr><td><code>patterns</code></td><td>Composition</td><td class="num">8,058</td><td class="num">54</td><td>Eight named multi-agent shapes composed over the task board, plus a benchmark adapter registry.</td><td>core, orchestration</td></tr>
       <tr><td><code>memory</code></td><td>Composition</td><td class="num">7,825</td><td class="num">32</td><td>Four memory tiers (working / episodic / semantic / digest), consolidation, hygiene janitor, recall tools, one composed capability.</td><td>core</td></tr>
       <tr><td><code>tools</code></td><td>Composition</td><td class="num">7,170</td><td class="num">53</td><td>Search (7 providers), fetch (3), crawl (2), sandboxed bash (5 adapters), MCP client manager.</td><td>core</td></tr>
-      <tr><td><code>workforce</code></td><td>Composition</td><td class="num">397</td><td class="num">8</td><td>Named agents: registry, persona definition and resolution, materialization into a block.</td><td>core, orchestration</td></tr>
+      <tr><td><code>workforce</code></td><td>Composition</td><td class="num">397</td><td class="num">8</td><td>Named agents: registry, persona definition and resolution, materialization into a block. The team layer above it is not built &mdash; see &sect;04.</td><td>core, orchestration</td></tr>
       <tr><td><code>@thought-fabric/core</code></td><td>Composition</td><td class="num">3,931</td><td class="num">17</td><td>Cognitive primitives: attention (salience, relevance), identity (constitution, perspective), metacognition (bias detection).</td><td>core</td></tr>
       <tr><td><code>ui</code></td><td>Composition</td><td class="num">387</td><td class="num">10</td><td>Generative component registry — link-card, info-card.</td><td>contracts, core</td></tr>
       <tr><td><code>store-sqlite</code></td><td>Persistence</td><td class="num">3,301</td><td class="num">16</td><td>SQLite-backed implementation of the store registry.</td><td>core, engine</td></tr>
@@ -415,7 +795,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 </section>
 
 <section id="boundaries">
-  <div class="sec-head"><span class="sec-num">03</span><h2>The locked boundaries</h2></div>
+  <div class="sec-head"><span class="sec-num">06</span><h2>The locked boundaries</h2></div>
   <p class="lede">Five dependency rules are declared canonical and unchangeable without architecture review. They are what makes the three-job split from §01 real rather than aspirational.</p>
 
   <figure>
@@ -478,7 +858,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 </section>
 
 <section id="blocks">
-  <div class="sec-head"><span class="sec-num">04</span><h2>Four block kinds</h2></div>
+  <div class="sec-head"><span class="sec-num">07</span><h2>Four block kinds</h2></div>
   <p class="lede">The whole framework rests on this: every piece of logic is exactly one of four kinds, and all four share one execution contract. That uniformity is what makes composition free.</p>
 
   <div class="kind-key">
@@ -596,7 +976,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 </section>
 
 <section id="dsl">
-  <div class="sec-head"><span class="sec-num">05</span><h2>The sequencer DSL</h2></div>
+  <div class="sec-head"><span class="sec-num">08</span><h2>The sequencer DSL</h2></div>
   <p class="lede">Twenty methods. Every one produces a typed <code>BlockValue</code> on the trace, so the execution tree stays reconstructable no matter how the pipeline branches.</p>
 
   <div class="dsl">
@@ -659,7 +1039,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 </section>
 
 <section id="flows">
-  <div class="sec-head"><span class="sec-num">06</span><h2>Flows and actions</h2></div>
+  <div class="sec-head"><span class="sec-num">09</span><h2>Flows and actions</h2></div>
   <p class="lede">A flow is the unit of deployment: it binds blocks to entry points, declares the state scopes they may touch, and decides what any of it is allowed to show a client.</p>
 
   <p>The concept that unifies the entry points is <code>ActionCore</code> — the executable unit plus its execution policy, independent of how it is addressed or authorized. Two address forms build on it, and the runtime records both identically.</p>
@@ -751,7 +1131,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 </section>
 
 <section id="state">
-  <div class="sec-head"><span class="sec-num">07</span><h2>State and scopes</h2></div>
+  <div class="sec-head"><span class="sec-num">10</span><h2>State and scopes</h2></div>
   <p class="lede">Four nested scopes, one operation set, and a hard structural rule: raw state never reaches a client.</p>
 
   <figure>
@@ -828,7 +1208,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 </section>
 
 <section id="resources">
-  <div class="sec-head"><span class="sec-num">08</span><h2>Resources</h2></div>
+  <div class="sec-head"><span class="sec-num">11</span><h2>Resources</h2></div>
   <p class="lede">Where state is the scope's own record, a resource is a named, typed container with a policy attached — who may read it, who may write it, whether a model may touch it, and how it reaches a client.</p>
 
   <p>A resource carries an intrinsic <code>scope</code> (<code>session</code>, <code>user</code>, or <code>org</code>) and lives in one flat map on a flow, a block, or a capability. The accessor key is a typed read handle for <code>ctx.resources.&lt;name&gt;</code>; persistence is keyed by <code>ref</code> identity, so two blocks declaring the same <code>DefinedResource</code> under different accessor names share one storage slot.</p>
@@ -854,7 +1234,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 </section>
 
 <section id="items">
-  <div class="sec-head"><span class="sec-num">09</span><h2>Items and streaming</h2></div>
+  <div class="sec-head"><span class="sec-num">12</span><h2>Items and streaming</h2></div>
   <p class="lede">Eighteen item types, three visibility categories, and one resolution function that decides who sees what. This is the subsystem most worth understanding before touching anything that renders.</p>
 
   <figure>
@@ -960,7 +1340,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 </section>
 
 <section id="execution">
-  <div class="sec-head"><span class="sec-num">10</span><h2>Execution and errors</h2></div>
+  <div class="sec-head"><span class="sec-num">13</span><h2>Execution and errors</h2></div>
   <p class="lede">A request is async by design: the POST returns 202 immediately, execution runs in the background, and the client watches it over SSE — then refetches the snapshot for the authoritative answer.</p>
 
   <figure>
@@ -1066,7 +1446,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 </section>
 
 <section id="capabilities">
-  <div class="sec-head"><span class="sec-num">11</span><h2>Capabilities</h2></div>
+  <div class="sec-head"><span class="sec-num">14</span><h2>Capabilities</h2></div>
   <p class="lede">A capability is a portable bundle — resources, state schemas, context, tools, helper functions — installed with one <code>uses: [cap]</code> entry instead of spreading four config slots by hand. It is the framework's answer to "how do I ship a feature that isn't a block?"</p>
 
   <figure>
@@ -1137,7 +1517,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 </section>
 
 <section id="utility">
-  <div class="sec-head"><span class="sec-num">12</span><h2>Utility blocks</h2></div>
+  <div class="sec-head"><span class="sec-num">15</span><h2>Utility blocks</h2></div>
   <p class="lede">Eleven factories in <code>core/utility</code>. Each returns a standard <code>BlockDefinition</code> — composable anywhere a hand-written block would go. The tier exists so a standard LLM operation isn't re-specified in every app.</p>
 
   <div class="tw"><table>
@@ -1160,7 +1540,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 </section>
 
 <section id="patterns">
-  <div class="sec-head"><span class="sec-num">13</span><h2>Patterns</h2></div>
+  <div class="sec-head"><span class="sec-num">16</span><h2>Patterns</h2></div>
   <p class="lede">Nine named multi-agent architectures. Six of them are thin compositions over the task board; the rest are standalone shapes.</p>
 
   <div class="tw"><table>
@@ -1187,7 +1567,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 </section>
 
 <section id="orchestration">
-  <div class="sec-head"><span class="sec-num">14</span><h2>Orchestration</h2></div>
+  <div class="sec-head"><span class="sec-num">17</span><h2>Orchestration</h2></div>
   <p class="lede">The largest composition package, and the one with the clearest internal layering: a task substrate at the bottom, a concurrent drain over it, and patterns and agents above.</p>
 
   <figure>
@@ -1336,8 +1716,8 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 </section>
 
 <section id="skills">
-  <div class="sec-head"><span class="sec-num">15</span><h2>Skills and workforce</h2></div>
-  <p class="lede">Two ways to make behaviour first-class without writing a block: a skill is Markdown anyone can edit at runtime; an agent is a named participant you can assign work to.</p>
+  <div class="sec-head"><span class="sec-num">18</span><h2>Skills and agents</h2></div>
+  <p class="lede">Two ways to make behaviour first-class without writing a block: a skill is Markdown anyone can edit at runtime; an agent is a named participant you can assign work to. This is the mechanism &mdash; <a href="#workforce-layer">&sect;04</a> is what it adds up to and where it stops.</p>
 
   <h3>Skills</h3>
   <p>A skill is a folder with a <code>SKILL.md</code> — YAML frontmatter plus a Markdown playbook, with supporting files reachable from the body via <code>${SKILL_DIR}</code>. When it activates, the body renders into the generator's system prompt. The whole runtime lives in <code>orchestration/src/skills</code>: a library, a directory reader and importer, an activation store, activators, an inline-activate path, seeding, and a worker materializer.</p>
@@ -1349,14 +1729,15 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
   </div>
 
   <h3>Workforce</h3>
-  <p>The smallest composition package in the repo at 397 lines, and deliberately so. It is Layer 2 over orchestration: <code>defineAgent</code>, <code>definePersona</code>, <code>createAgentRegistry</code>, <code>materializeAgent</code>, <code>agentBlock</code>, and <code>createWorkforceCapability</code>. An agent is a persona plus a model plus a tool set, registered once and named by board tasks thereafter. Personas can be resource-backed or collection-backed, which is what makes a roster editable at runtime rather than at build time.</p>
+  <p>The smallest composition package in the repo at 397 lines across 8 files. Six exports: <code>defineAgent</code>, <code>definePersona</code>, <code>createAgentRegistry</code>, <code>materializeAgent</code>, <code>agentBlock</code>, <code>createWorkforceCapability</code>. The <code>Agent</code> and <code>AgentRegistry</code> contracts themselves live in <code>core</code>, so <code>orchestration</code> can type an injected <code>materializeAgent</code> without depending on this package.</p>
+  <p>What it does and does not yet do &mdash; and why the team layer currently lives inside skills rather than here &mdash; is <a href="#workforce-layer">&sect;04</a>.</p>
 
   <h3>Thought fabric</h3>
   <p><code>@thought-fabric/core</code> is a separate namespace for cognitive-architecture primitives built on FSD rather than part of it: <strong>attention</strong> (salience scoring, relevance filtering), <strong>identity</strong> (constitution, perspective system with its own capability), and <strong>metacognition</strong> (bias detection). Its naming convention encodes category by word order — <code>perspectiveObserve</code> is a block, <code>addPerspective</code> is a helper — so the inversion signals the kind without documentation.</p>
 </section>
 
 <section id="memory">
-  <div class="sec-head"><span class="sec-num">16</span><h2>Memory</h2></div>
+  <div class="sec-head"><span class="sec-num">19</span><h2>Memory</h2></div>
   <p class="lede">Four tiers, each independent and opt-in, composed by one factory and installed with one capability. Working-only is a real configuration.</p>
 
   <div class="tw"><table>
@@ -1374,7 +1755,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 </section>
 
 <section id="tools">
-  <div class="sec-head"><span class="sec-num">17</span><h2>Tools</h2></div>
+  <div class="sec-head"><span class="sec-num">20</span><h2>Tools</h2></div>
   <p class="lede">Five tool families, each provider-abstracted so an app names a capability rather than a vendor. This is tenet 4 applied literally — the framework absorbs the shape of "search the web", not any one search API.</p>
 
   <div class="cards">
@@ -1389,7 +1770,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 </section>
 
 <section id="transports">
-  <div class="sec-head"><span class="sec-num">18</span><h2>Inbound transports</h2></div>
+  <div class="sec-head"><span class="sec-num">21</span><h2>Inbound transports</h2></div>
   <p class="lede">One two-field contract lets a webhook, a cron tick, an MCP tool call and an HTTP POST all reach the same runtime without any of them being a special case in it.</p>
 
   <figure>
@@ -1461,7 +1842,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 </section>
 
 <section id="hosts">
-  <div class="sec-head"><span class="sec-num">19</span><h2>Hosts and stores</h2></div>
+  <div class="sec-head"><span class="sec-num">22</span><h2>Hosts and stores</h2></div>
   <p class="lede">Where the runtime lives, and where its state goes. Both are swappable at the same seam, which is why the same flow runs under <code>fsdev run</code>, a Next.js route, and a BullMQ worker unchanged.</p>
 
   <h3>Host adapters</h3>
@@ -1482,11 +1863,11 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
     <span class="chip">ActiveRequestRegistry</span><span class="chip">ContentStore</span><span class="chip">ResourceStateStore</span>
     <span class="chip">CheckpointStore</span><span class="chip">TraceStore</span><span class="chip">SuspensionStore</span><span class="chip">LeaseStore</span>
   </div>
-  <p>Session, request, user and org stores extend a shared <code>DeltaStoreOps</code> — that shared base is what makes delta-verb routing (§07) uniform across every backing rather than re-implemented per adapter.</p>
+  <p>Session, request, user and org stores extend a shared <code>DeltaStoreOps</code> — that shared base is what makes delta-verb routing (§10) uniform across every backing rather than re-implemented per adapter.</p>
 </section>
 
 <section id="detached">
-  <div class="sec-head"><span class="sec-num">20</span><h2>Detached work</h2></div>
+  <div class="sec-head"><span class="sec-num">23</span><h2>Detached work</h2></div>
   <p class="lede">Work started with <code>ctx.requestHost.startDetached</code> runs in a <strong>workstream</strong> — a child session that keeps going after its originating request has returned. Where it actually runs, and whether it survives a redeploy, is entirely a function of deployment topology.</p>
 
   <div class="tw"><table>
@@ -1511,7 +1892,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 </section>
 
 <section id="consumers">
-  <div class="sec-head"><span class="sec-num">21</span><h2>Client, React, CLI, DevTool</h2></div>
+  <div class="sec-head"><span class="sec-num">24</span><h2>Client, React, CLI, DevTool</h2></div>
   <p class="lede">Four consumer surfaces over one wire. The layering is strict: <code>react</code> holds no transport logic, and <code>cli</code> holds no client at all.</p>
 
   <h3>client — six sub-clients</h3>
@@ -1558,7 +1939,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 </section>
 
 <section id="proving">
-  <div class="sec-head"><span class="sec-num">22</span><h2>The proving ground</h2></div>
+  <div class="sec-head"><span class="sec-num">25</span><h2>The proving ground</h2></div>
   <p class="lede">The repo separates "the units still behave" from "the feature actually works", and gives each its own home. That split is a philosophy tenet made structural.</p>
 
   <div class="cards">
@@ -1576,8 +1957,9 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 </section>
 
 <section id="lenses">
-  <div class="sec-head"><span class="sec-num">23</span><h2>Refactor lenses</h2></div>
+  <div class="sec-head"><span class="sec-num">26</span><h2>Refactor lenses</h2></div>
   <p class="lede">Nine tensions the inventory surfaces. None of these is a bug report — each is a place where the code and the stated grounding pull in slightly different directions, and where a decision would be worth more than another patch.</p>
+  <p>A tenth sits in <a href="#workforce-layer">&sect;04</a> rather than here, because it needs the stack drawn to make sense: <strong>workforce is the one layer specified top-down</strong>, and the question is whether a team is a new primitive or a composition of parts that already work.</p>
 
   <div class="tension">
     <h5>1 · The two mega-packages</h5>
