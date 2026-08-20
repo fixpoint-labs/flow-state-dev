@@ -44,6 +44,7 @@ const dcfSchema = z.object({
       "non-positive-fcf",
       "missing-net-debt",
       "missing-growth",
+      "missing-market-cap",
       "negative-equity-value",
     ])
     .nullable(),

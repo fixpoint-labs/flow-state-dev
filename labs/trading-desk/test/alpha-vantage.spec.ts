@@ -370,6 +370,75 @@ describe("fetchAlphaVantageInsiderTransactions", () => {
     });
   });
 
+  it("reports an ABSENT share_price as null, and keeps a measured 0", async () => {
+    // Both directions in one case, because they were the same value before
+    // FIX-1063. AV writes "None" for an absent field; the second row's "0" is a
+    // genuine non-cash transaction (this fixture's Derivative award) and must
+    // survive — the axis is observed vs unobserved, not falsy vs truthy.
+    mockFetchOnce({
+      data: [
+        { ...AV_ROWS.data[0], share_price: "None" },
+        AV_ROWS.data[1], // share_price: "0"
+      ],
+    });
+    const out = await fetchAlphaVantageInsiderTransactions({
+      ticker: "NVDA",
+      date: "2026-05-06",
+    });
+    expect(out.transactions[0]!.pricePerShare).toBeNull();
+    expect(out.transactions[1]!.pricePerShare).toBe(0);
+  });
+
+  it("DROPS a row whose direction flag is absent, rather than reporting a sale", async () => {
+    // The direction is the whole reading here. This adapter leaves
+    // `transactionCode` empty by design (AV ships no SEC code), so the SIGN of
+    // `shares` is the only thing that says buy or sell — and `=== "A" ? 1 : -1`
+    // turned "we don't know" into a reported DISPOSAL of 120,000 shares under a
+    // live `alphavantage` tag. An unknown direction has no honest partial
+    // reading to publish, exactly as a row with no share count doesn't.
+    mockFetchOnce({
+      data: [
+        { ...AV_ROWS.data[0], acquisition_or_disposal: undefined },
+        AV_ROWS.data[1], // a real "A" row survives alongside it
+      ],
+    });
+    const out = await fetchAlphaVantageInsiderTransactions({
+      ticker: "NVDA",
+      date: "2026-05-06",
+    });
+    expect(out.transactions).toHaveLength(1);
+    expect(out.transactions[0]!.shares).toBe(5000);
+  });
+
+  it.each([["an empty string", ""], ["AV's None marker", "None"], ["a junk code", "X"]])(
+    "drops a row whose direction flag is %s",
+    async (_label, flag) => {
+      mockFetchOnce({ data: [{ ...AV_ROWS.data[0], acquisition_or_disposal: flag }] });
+      const out = await fetchAlphaVantageInsiderTransactions({
+        ticker: "NVDA",
+        date: "2026-05-06",
+      });
+      expect(out.transactions).toHaveLength(0);
+    },
+  );
+
+  it("still reads a MEASURED direction, including in lower case", async () => {
+    // The over-application guard. Dropping unknowns must not start dropping
+    // rows the provider actually answered — that would delete evidence the desk
+    // gathered, the mirror defect.
+    mockFetchOnce({
+      data: [
+        { ...AV_ROWS.data[0], acquisition_or_disposal: "d" },
+        { ...AV_ROWS.data[1], acquisition_or_disposal: " A " },
+      ],
+    });
+    const out = await fetchAlphaVantageInsiderTransactions({
+      ticker: "NVDA",
+      date: "2026-05-06",
+    });
+    expect(out.transactions.map((t) => t.shares)).toEqual([-120000, 5000]);
+  });
+
   it("drops rows outside the 90-day window (client-side upper/lower bound)", async () => {
     mockFetchOnce({
       data: [
@@ -402,6 +471,43 @@ describe("fetchAlphaVantageInsiderTransactions", () => {
       date: "2026-05-06",
     });
     expect(out.transactions).toHaveLength(50);
+  });
+
+  it("spends the 50-row cap on PUBLISHABLE rows, not on rows it is about to drop", async () => {
+    // The cap is a prompt-budget control, so it has to be applied AFTER the
+    // validity drops. Capping first let rejected rows eat budget slots and hide
+    // usable filings behind them: with the first 50 in-window rows unreadable,
+    // the live path published an EMPTY alphavantage set while genuine filings
+    // sat just past the cut — a provider miss asserted from rows we discarded.
+    // The two drops reach this differently: the no-share-count drop predates
+    // FIX-1063 (so the interaction is inherited), the direction drop is ours.
+    const unreadable = Array.from({ length: 50 }, () => ({
+      transaction_date: "2026-04-15",
+      ticker: "X",
+      executive: "Insider",
+      executive_title: "Officer",
+      security_type: "Common Stock",
+      acquisition_or_disposal: "", // no readable direction — dropped
+      shares: "100",
+      share_price: "10",
+    }));
+    const readable = Array.from({ length: 5 }, (_, i) => ({
+      transaction_date: "2026-04-16",
+      ticker: "X",
+      executive: `Real Insider ${i}`,
+      executive_title: "Officer",
+      security_type: "Common Stock",
+      acquisition_or_disposal: "A",
+      shares: "700",
+      share_price: "10",
+    }));
+    mockFetchOnce({ data: [...unreadable, ...readable] });
+    const out = await fetchAlphaVantageInsiderTransactions({
+      ticker: "X",
+      date: "2026-05-06",
+    });
+    expect(out.transactions).toHaveLength(5);
+    expect(out.transactions.every((t) => t.shares === 700)).toBe(true);
   });
 });
 

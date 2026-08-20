@@ -110,6 +110,7 @@ function completedBundle(): RunArtifactsBundle {
     householdTickerWeightPct: null,
     citationIntegrity: null,
     hasUserThesis: false,
+    preDataHonestyFix: false,
     p2Contributions: { entries: [{ round: 1, agentName: "bullResearcher", text: "Bull opens with a specific claim." }] },
     memos,
   };

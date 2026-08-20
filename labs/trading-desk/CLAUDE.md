@@ -1605,7 +1605,9 @@ Then:
 1. Add the tool's input/output schemas to `tools/schemas.ts` (both
    `toolInputSchemas` and `toolOutputSchemas`, plus the file-name mapping
    for fixture loading).
-2. Add an empty-payload builder to `tools/empty-payloads.ts`.
+2. Add an empty-payload builder to `tools/empty-payloads.ts`. It emits `null`
+   for every unobserved numeric field (never `0`) and `[]` for collections —
+   see "The data-honesty contract" above. Widen the output schema to match.
 3. Re-export from `tools/index.ts`.
 4. Add to the appropriate analyst's `tools: [...]` list in
    `agents/analysts/analysts.ts`.
@@ -1756,11 +1758,62 @@ model call, hard-validates the result, and promotes it onto the spine tagged
 model call may fire even on `fast`), not analyst color. See [`docs/financials-recovery.md`](docs/financials-recovery.md). EDGAR is the authoritative
 US-filing source and answers even when Yahoo throttles its unauthenticated
 endpoint (a 200-with-no-data response the Yahoo mapper detects and treats as a
-miss). Non-US tickers have no EDGAR CIK and fall through to Yahoo. Statement
-fields are nullable: a field a provider doesn't report reads `null`
-(unobserved), never `0` — extends the nullable-PE discipline (FIX-692) to the
-statements. The legacy Yahoo `*History` quoteSummary modules were dropped:
-they returned zero-filled statements in current Yahoo responses.
+miss). Non-US tickers have no EDGAR CIK and fall through to Yahoo. The legacy
+Yahoo `*History` quoteSummary modules were dropped: they returned zero-filled
+statements in current Yahoo responses.
+
+## The data-honesty contract
+
+**A figure the desk did not observe is recorded as `null`, never as `0`** — in
+the raw payload, in the arithmetic built on it, in what the analysts read, and
+in the report. Nothing downstream may quietly turn an unavailable back into a
+zero to keep a ratio or a chart drawing. This is a real-money gate, not a
+data-quality nicety: a missing market cap enters the valuation arithmetic as a
+real zero, so enterprise value comes out equal to net debt and every EV
+multiple reads radically cheap on a name nobody has data for.
+
+The rule is **unobserved → null**, NOT *falsy → null*. A company measured at a
+0% operating margin, a genuine zero ROE, a name with no debt — those zeros are
+readings and they stay. Over-applying is a defect in its own right: it deletes
+evidence the desk actually gathered.
+
+**Status and provenance fields are bound by the same rule** — a verdict field
+must only ever describe work that actually happened, never that a code path
+executed (FIX-779). Switching a signal off *loudly* is a design choice;
+switching it off *silently* is a bug.
+
+Where the rule lives — read these before touching a producer:
+
+- **`lib/providers/observed.ts`** — the ONE shared `observedFinite` /
+  `observedIsoDay` leaf every sparse-but-successful adapter converts through
+  (`undefined`/non-numeric → `null`; a finite `0` → `0`). Never hand-roll a
+  per-file copy: two copies drift on exactly the edge cases where a drifted one
+  fabricates. Do NOT reuse the `!== 0` P/E helpers (`nullablePct` /
+  `nullableNumberFrom`) on margins or ROE — a zero P/E is non-physical, a zero
+  margin is a measurement.
+- **`flows/analysis/data-honesty-contract.ts`** — the version stamp for
+  legacy-report detection, and the enumerated list of surfaces that have
+  actually been audited. That header is canonical for what the stamp does and
+  does not promise; read the list before assuming a producer is covered.
+- **`tools/runtime/normalize-legacy-financials.ts`** — the ONE legacy read
+  boundary (zeros → null only on a `source: "unavailable"` payload). Consumers
+  are entitled to assume normalized inputs; **do not add a per-consumer
+  `if (x === 0)` check** — a consumer that needs one has found a gap in the
+  normalizer and should say so.
+- `flows/analysis/lib/composite-math.ts` is the stated exclusion: it
+  zero-weights a missing term but returns `missingInputs` alongside the score,
+  so it already labels rather than fabricates.
+
+> **The audit is not finished.** Only the producers enumerated in
+> `data-honesty-contract.ts` have been swept. The other adapters under
+> `lib/providers/` have NOT been checked for absence-awareness — that sweep is
+> tracked as its own work (FIX-1141). If you are touching a producer not on that
+> list, assume it may still zero-fill, and do not treat the contract stamp as
+> evidence that it doesn't.
+
+> Adding a data tool? Its empty-payload builder emits `null` for every
+> unobserved numeric, and its output schema must allow that. See the "Adding a
+> new tool" checklist below.
 
 `get_social_sentiment` is the only Phase 1 tool that routes between a
 handler and a generator. Fixture and unavailable are handlers; the

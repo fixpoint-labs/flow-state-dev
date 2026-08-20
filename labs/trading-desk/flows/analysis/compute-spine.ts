@@ -14,6 +14,7 @@ import { computeValuation } from "./lib/valuation";
 import { buildValuationSpine } from "./lib/valuation-spine";
 import { valuationSpineResource } from "./valuation-spine-resource";
 import { financialsDataResource } from "./financials-data-resource";
+import { normalizeLegacyFinancials } from "./tools/runtime/normalize-legacy-financials";
 import { quantDataResource } from "./quant-data-resource";
 import { technicalDataResource } from "./technical-data-resource";
 import { profileDataResource } from "./profile-data-resource";
@@ -36,7 +37,12 @@ export const computeAndStoreSpine = handler({
 
     // Read every input off the per-domain session spines the Phase 1 tools
     // populated. No warm-cache dependency.
-    const fin = ctx.resources.financialsData.state;
+    // One of the two persisted-`financialsData` read boundaries (FIX-1063). A
+    // session written before the honesty contract can carry zeros the desk
+    // never measured; normalizing HERE rather than in each consumer means the
+    // valuation math below is entitled to assume honestly-null inputs. No-op on
+    // post-fix data.
+    const fin = normalizeLegacyFinancials(ctx.resources.financialsData.state);
     const quant = ctx.resources.quantData.state;
     const tech = ctx.resources.technicalData.state;
     const profile = ctx.resources.profileData.state;

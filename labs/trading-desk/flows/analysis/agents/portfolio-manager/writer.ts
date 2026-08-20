@@ -54,6 +54,7 @@ import {
   type EvidenceDecision,
 } from "../../resources";
 import { financialsDataResource } from "../../financials-data-resource";
+import { normalizeLegacyFinancials } from "../../tools/runtime/normalize-legacy-financials";
 import { sessionStateSchema } from "../../state";
 import { valuationSpineResource, type ValuationSpineState } from "../../valuation-spine-resource";
 import {
@@ -329,7 +330,15 @@ export const commitPortfolioManagerMemo = handler({
     // can't default it to a wrong value (BP-030). Distinct from the `currentWeightPct`
     // echo above, which is a display partial-sum that coerces unpriced lots to 0.
     const scopedTickerWeightPct = householdTickerWeight(portfolio, tickerUpper);
-    const criticalDataThin = deriveCriticalDataThin(ctx.resources.financialsData?.state);
+    // The SECOND persisted-`financialsData` read boundary (FIX-1063). This one
+    // is not reachable from the spine's normalization: the PM commit reads the
+    // resource directly, so a resumed pre-fix session lands here without ever
+    // passing `compute-spine.ts`. Without it the evidence gate would score a
+    // legacy fabricated `marketCap: 0` as a measured market cap and let the
+    // desk add to a position on data it never had.
+    const criticalDataThin = deriveCriticalDataThin(
+      normalizeLegacyFinancials(ctx.resources.financialsData?.state),
+    );
     const preGateEvidenceTargetPct = targetWeightPct;
     const evidence = computeEvidenceGate({
       spineEvidenceBasis: spine?.evidenceBasis ?? null,

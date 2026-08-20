@@ -149,6 +149,42 @@ describe("computeValuation — null propagation", () => {
     expect(v.enterpriseValue.note).toBeDefined();
   });
 
+  /**
+   * The arithmetic consequence FIX-1063 exists to stop, asserted on VALUES
+   * rather than formatted strings.
+   *
+   * A market cap the provider never returned used to arrive here as a real
+   * zero. Enterprise value then came out equal to net debt with the entire
+   * equity value silently dropped, and every EV multiple read radically cheap
+   * — the exact input pattern behind a "this looks like a bargain" call on a
+   * name the desk has no data for. Note the contrast with the test directly
+   * above: a marketCap of literal `0` still produces a NUMBER for enterprise
+   * value (with a "net cash" note); an UNOBSERVED one produces no figure at
+   * all. That difference is the entire point of the change.
+   */
+  it("reports every market-cap-dependent figure as unavailable when marketCap is unobserved", () => {
+    const v = computeValuation({
+      ...base,
+      fundamentals: { ...base.fundamentals, marketCap: null },
+    });
+
+    expect(v.enterpriseValue.value).toBeNull();
+    expect(v.priceToBook.value).toBeNull();
+    expect(v.evToSales.value).toBeNull();
+    expect(v.evToEbit.value).toBeNull();
+    expect(v.evToFcf.value).toBeNull();
+    expect(v.fcfYield.value).toBeNull();
+    expect(v.priceToFcf.value).toBeNull();
+    expect(v.earningsYield.value).toBeNull();
+
+    // Figures that do NOT depend on the market cap are untouched — the change
+    // is narrowing along the market-cap axis only, and this is what
+    // establishes that. Net debt and ROA come off the balance sheet and the
+    // income statement, and both still compute.
+    expect(v.netDebt.value).toBeCloseTo(-27.5, 1);
+    expect(v.returnOnAssets.value).not.toBeNull();
+  });
+
   it("nulls operatingIncome-dependent metrics when operatingIncome <= 0", () => {
     const v = computeValuation({
       ...base,

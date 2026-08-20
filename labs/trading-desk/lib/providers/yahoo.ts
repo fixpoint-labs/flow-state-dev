@@ -20,6 +20,7 @@ import {
 } from "./yahoo-timeseries";
 import { mapYahooShortInterest } from "./yahoo-keystats";
 import type { FinancialPeriod } from "./financials-history";
+import { isObservedBar, observedFinite, observedIsoDay } from "./observed";
 
 type YahooClient = {
   chart: (
@@ -106,18 +107,33 @@ export async function fetchYahooChart(
     { period1, period2, interval: "1d" },
     { validateResult: false },
   );
+  // Every OHLCV leg must be OBSERVED for the bar to be usable (FIX-1063). A
+  // chart response can succeed and still carry a quote with `open`/`close` but
+  // no `high`/`low`/`volume`; defaulting those to `0` published a fabricated
+  // zero low and a zero-volume day under a live `yahoo` tag, straight into
+  // persisted price history, ATR/stochastic/OBV, and the short-interest volume
+  // filter. The bar is the unit of observation, so an incomplete one is dropped
+  // rather than zero-filled — the rule this filter already applied to
+  // `open`/`close`, now covering the whole tuple.
   const bars = (result.quotes ?? [])
-    .filter((q) => q.open != null && q.close != null)
     .map((q) => ({
-      date: (q.date instanceof Date ? q.date : new Date(q.date as string))
-        .toISOString()
-        .slice(0, 10),
-      open: Number(q.open ?? 0),
-      high: Number(q.high ?? 0),
-      low: Number(q.low ?? 0),
-      close: Number(q.close ?? 0),
-      volume: Number(q.volume ?? 0),
-    }));
+      date: observedIsoDay(q.date),
+      open: observedFinite(q.open),
+      high: observedFinite(q.high),
+      low: observedFinite(q.low),
+      close: observedFinite(q.close),
+      volume: observedFinite(q.volume),
+    }))
+    .filter(isObservedBar);
+  // Same rule as the Finnhub adapter: the drop filter can empty the series, and
+  // an empty series must not RESOLVE. Yahoo is the last provider in the price
+  // chain, so a resolved `bars: []` would publish an empty payload tagged
+  // `yahoo` instead of falling through to the `unavailable` empty payload —
+  // asserting a live provider answered with a real, empty series. No usable bar
+  // is provider no-data, so it throws and the caller's `catch` handles it.
+  if (bars.length === 0) {
+    throw new Error(`Yahoo chart returned no usable bars for ${input.ticker}`);
+  }
   return {
     source: "yahoo" as const,
     ticker: input.ticker,
@@ -136,19 +152,24 @@ export async function fetchYahooFundamentals(
   const detail = summary.summaryDetail ?? {};
   const fin = summary.financialData ?? {};
   const stats = summary.defaultKeyStatistics ?? {};
+  // A quoteSummary response can succeed and still omit fields. Those reads go
+  // through `observedNumberFrom` so an omission stays unobserved (FIX-1063);
+  // the P/E and dividend fields keep `nullableNumberFrom`, where a zero is
+  // itself non-physical (FIX-692).
+  const marketCapUsd = observedNumberFrom(detail.marketCap);
   return {
     source: "yahoo" as const,
     ticker: input.ticker,
     asOf: input.date,
     // Yahoo returns absolute USD; normalize to $B to match statements and fixtures.
-    marketCap: numberFrom(detail.marketCap) / 1_000_000_000,
+    marketCap: marketCapUsd == null ? null : marketCapUsd / 1_000_000_000,
     forwardPE:
       nullableNumberFrom(stats.forwardPE) ?? nullableNumberFrom(detail.forwardPE),
     trailingPE: nullableNumberFrom(detail.trailingPE),
-    priceToSales: numberFrom(detail.priceToSalesTrailing12Months),
-    returnOnEquity: numberFrom(fin.returnOnEquity),
-    operatingMargin: numberFrom(fin.operatingMargins),
-    grossMargin: numberFrom(fin.grossMargins),
+    priceToSales: observedNumberFrom(detail.priceToSalesTrailing12Months),
+    returnOnEquity: observedNumberFrom(fin.returnOnEquity),
+    operatingMargin: observedNumberFrom(fin.operatingMargins),
+    grossMargin: observedNumberFrom(fin.grossMargins),
     dividendYield: nullableNumberFrom(detail.dividendYield),
   };
 }
@@ -413,6 +434,23 @@ function nullableNumberFrom(raw: unknown): number | null {
   const n = numberFrom(raw);
   return Number.isFinite(n) && n !== 0 ? n : null;
 }
+
+/**
+ * ABSENCE-aware variant, for fields where `0` is a legitimate measurement —
+ * ROE, the margins, market cap, price-to-sales (FIX-1063).
+ *
+ * The body is the shared `observedFinite` leaf: Finnhub needs the identical
+ * rule, and two hand-written copies drift on exactly the edge cases (`NaN`,
+ * the `{ raw }` wrapper) where a drifted copy fabricates. This alias keeps the
+ * Yahoo-local name at the ~8 call sites below.
+ *
+ * Using `numberFrom` here defaulted a field Yahoo omitted to `0`, so a sparse
+ * but SUCCESSFUL response (the routine case — no failure, no `unavailable`
+ * tag, nothing marking the gap) published fabricated zeros under a live
+ * `yahoo` tag. Using `nullableNumberFrom` here would be the mirror error: it
+ * tests `n !== 0` and would destroy a genuinely measured 0% operating margin.
+ */
+const observedNumberFrom = observedFinite;
 
 /**
  * Multi-period statement history from the modern `fundamentals-timeseries`

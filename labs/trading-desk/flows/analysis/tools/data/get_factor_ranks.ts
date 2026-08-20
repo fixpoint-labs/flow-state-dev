@@ -62,8 +62,12 @@ async function fetchNameData(ticker: string, date: string): Promise<NameData> {
     const fundamentals = await getOrFetch("get_fundamentals", { ticker, date }, () =>
       fetchYahooFundamentals({ ticker, date }),
     );
-    value = fundamentals.operatingMargin !== 0 ? fundamentals.operatingMargin : null;
-    quality = fundamentals.returnOnEquity !== 0 ? fundamentals.returnOnEquity : null;
+    // The adapters now report an unobserved figure as `null` (FIX-1063), so
+    // the absence check belongs here rather than a `!== 0` coercion — which
+    // also discarded a genuinely measured 0% margin or zero ROE from the
+    // cross-section.
+    value = fundamentals.operatingMargin;
+    quality = fundamentals.returnOnEquity;
     size = logMarketCap(fundamentals.marketCap);
   } catch {}
 

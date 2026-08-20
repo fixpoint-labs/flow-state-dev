@@ -115,6 +115,19 @@ export const sessionStateSchema = z.object({
   // clamp rather than fabricating a full exit — never coerce to 0); 0 when the name
   // is not held (initiating). Frozen for the PM commit's policy gate (FIX-761).
   householdTickerWeightPct: z.number().nullable().default(null),
+  // The data-honesty contract this run was produced under (FIX-1063), stamped
+  // at `seedSession`. ABSENT/null → the run predates the contract and its
+  // stored figures may contain fabricated zeros; see
+  // `data-honesty-contract.ts` for what the stamp promises and why old reports
+  // are marked rather than repaired. Nullable-with-null-default is the
+  // established BP-030 shape here (the `householdTickerWeightPct` /
+  // `riskMandate` precedent), so a session persisted before this field existed
+  // parses and reads as pre-fix — which is the safe direction.
+  // Typed as a plain int rather than a literal so a record written by a LATER
+  // contract version still parses instead of throwing on read (BP-030 in the
+  // forward direction too); `isPreDataHonestyFix` is what decides, and it
+  // treats anything other than the current version as pre-fix.
+  dataHonestyContractVersion: z.number().int().nullable().default(null),
 });
 
 export type SessionState = z.infer<typeof sessionStateSchema>;

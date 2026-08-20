@@ -14,6 +14,7 @@ import type {
   TickerDatedProviderInput,
 } from "./types";
 import { INSIDER_ROW_CAP, INSIDER_WINDOW_DAYS, isoDateDaysBefore } from "./dates";
+import { isObservedBar, observedFinite, observedIsoDay } from "./observed";
 
 const FINNHUB_BASE = "https://finnhub.io/api/v1";
 
@@ -101,14 +102,42 @@ export async function fetchFinnhubCandles(
   if (data.s !== "ok" || !data.t) {
     throw new Error(`Finnhub /stock/candle returned no data for ${input.ticker}`);
   }
-  const bars = data.t.map((ts, i) => ({
-    date: new Date(ts * 1000).toISOString().slice(0, 10),
-    open: data.o?.[i] ?? 0,
-    high: data.h?.[i] ?? 0,
-    low: data.l?.[i] ?? 0,
-    close: data.c?.[i] ?? 0,
-    volume: data.v?.[i] ?? 0,
-  }));
+  // Every OHLCV leg must be OBSERVED for the bar to be usable (FIX-1063).
+  // Finnhub returns OHLCV as five PARALLEL ARRAYS, so a short or misaligned
+  // array silently indexed past its end and the `?? 0` turned that into a bar
+  // — including a bar with a CLOSE of zero, which is not merely dishonest but
+  // wrong: it feeds persisted price history and divides through
+  // `trailingReturn`. An incomplete bar is dropped rather than zero-filled,
+  // matching the Yahoo adapter through the same shared guard.
+  const bars = data.t
+    .map((ts, i) => {
+      // Guard the timestamp BEFORE the ms conversion: `null * 1000` is `0`, a
+      // perfectly finite number that `new Date` reads as a valid 1970-01-01.
+      // A null element in Finnhub's `t` array would otherwise date a bar to
+      // the epoch and pass `isObservedBar` — the date-axis twin of the
+      // fabricated zero this whole filter exists to stop.
+      const tsSeconds = observedFinite(ts);
+      return {
+        date: tsSeconds === null ? null : observedIsoDay(tsSeconds * 1000),
+        open: observedFinite(data.o?.[i]),
+        high: observedFinite(data.h?.[i]),
+        low: observedFinite(data.l?.[i]),
+        close: observedFinite(data.c?.[i]),
+        volume: observedFinite(data.v?.[i]),
+      };
+    })
+    .filter(isObservedBar);
+  // Dropping incomplete bars can empty the series, and an empty series must not
+  // RESOLVE: `get_price_history` only reaches its Yahoo fallback when this
+  // throws, so returning `bars: []` skipped a provider that could have answered
+  // and published an empty payload tagged `finnhub` — a live provenance tag on
+  // a series the provider never usably delivered. No usable bar is provider
+  // no-data, so it throws like every other Finnhub miss.
+  if (bars.length === 0) {
+    throw new Error(
+      `Finnhub /stock/candle returned no usable bars for ${input.ticker}`,
+    );
+  }
   return {
     source: "finnhub" as const,
     ticker: input.ticker,
@@ -137,9 +166,23 @@ export async function fetchFinnhubFundamentals(
     fetchJson<Metric>("/stock/metric", { symbol: input.ticker, metric: "all" }),
   ]);
   const m = metric.metric ?? {};
+  // ABSENCE-aware, not falsy-aware (FIX-1063). `/stock/metric` answers with
+  // `metric: {}` or an incomplete object routinely — a SUCCESSFUL response with
+  // fields missing, carrying no `unavailable` tag to mark the gap. So a field
+  // Finnhub did not return reads `null`, while a finite `0` it DID return stays
+  // `0`: a company measured at a 0% operating margin or a genuine zero ROE is a
+  // reading, not a gap. The `!== 0` helpers below are deliberately NOT used
+  // here — they would erase exactly those measurements.
+  // The shared leaf, not a local copy: Yahoo applies the identical rule, and
+  // two hand-written copies drift on exactly the edge cases where a drifted
+  // copy fabricates.
+  const observed = observedFinite;
   // Finnhub returns ratios as percentages for margins/ROE (e.g. 25.3 = 25.3%).
   // Normalize to fractions to match the Yahoo + fixture shape (0.253).
-  const pct = (v: number | undefined) => (typeof v === "number" ? v / 100 : 0);
+  const pct = (v: number | undefined): number | null => {
+    const n = observed(v);
+    return n == null ? null : n / 100;
+  };
   // P/E fields are nullable in the schema: null is the honest signal that the
   // metric is unavailable, never a backward-looking substitute (FIX-692). A
   // zero P/E is non-physical for a going concern, so it maps to null too —
@@ -147,18 +190,19 @@ export async function fetchFinnhubFundamentals(
   const num = (v: number | undefined): number | null =>
     typeof v === "number" && Number.isFinite(v) && v !== 0 ? v : null;
   // Nullable percent → fraction. 0/absent → null (a non-payer is unobserved,
-  // not "0% yield"); never default to 0 the way pct() does for ROE/margins.
+  // not "0% yield"); the `!== 0` test is what distinguishes it from pct().
   const nullablePct = (v: number | undefined): number | null =>
     typeof v === "number" && Number.isFinite(v) && v !== 0 ? v / 100 : null;
+  const marketCapMillions = observed(profile.marketCapitalization);
   return {
     source: "finnhub" as const,
     ticker: input.ticker,
     asOf: input.date,
     // Profile gives market cap in $M; normalize to $B to match statements and fixtures.
-    marketCap: (profile.marketCapitalization ?? 0) / 1_000,
+    marketCap: marketCapMillions == null ? null : marketCapMillions / 1_000,
     forwardPE: num(m.forwardPE),
     trailingPE: num(m.peTTM),
-    priceToSales: m.psTTM ?? 0,
+    priceToSales: observed(m.psTTM),
     returnOnEquity: pct(m.roeTTM),
     operatingMargin: pct(m.operatingMarginTTM),
     grossMargin: pct(m.grossMarginTTM),
@@ -386,18 +430,37 @@ export async function fetchFinnhubInsiderTransactions(
     from,
     to,
   });
-  const transactions = (data.data ?? []).slice(0, INSIDER_ROW_CAP).map((r) => ({
-    filingDate: r.filingDate ?? "",
-    transactionDate: r.transactionDate ?? r.filingDate ?? "",
-    insiderName: r.name ?? "",
-    insiderTitle: r.position ?? "",
-    transactionCode: r.transactionCode ?? "",
-    // Finnhub returns `change` as a signed delta (negative on sells); fall
-    // back to `share` if `change` is missing.
-    shares: typeof r.change === "number" ? r.change : (r.share ?? 0),
-    pricePerShare: r.transactionPrice ?? 0,
-    isDerivative: Boolean(r.isDerivative),
-  }));
+  const transactions = (data.data ?? [])
+    .map((r) => {
+      // Finnhub returns `change` as a signed delta (negative on sells); fall
+      // back to `share` if `change` is missing. A row carrying NEITHER has no
+      // share count and no direction, so there is no honest partial reading to
+      // publish — it is dropped, matching what the Alpha Vantage fallback
+      // already does with an unparseable `shares` (FIX-1063). This used to
+      // default to `0`, which published a transaction of zero shares that
+      // never happened.
+      const shares = observedFinite(r.change) ?? observedFinite(r.share);
+      if (shares === null) return null;
+      return {
+        filingDate: r.filingDate ?? "",
+        transactionDate: r.transactionDate ?? r.filingDate ?? "",
+        insiderName: r.name ?? "",
+        insiderTitle: r.position ?? "",
+        transactionCode: r.transactionCode ?? "",
+        shares,
+        // Absence-aware, not falsy-aware. A `0` Finnhub actually returned is a
+        // non-cash transaction (grant, gift, tax withholding) and stays `0`; an
+        // OMITTED price reads null. Defaulting it to `0` made the two cases
+        // indistinguishable.
+        pricePerShare: observedFinite(r.transactionPrice),
+        isDerivative: Boolean(r.isDerivative),
+      };
+    })
+    .filter((t): t is NonNullable<typeof t> => t !== null)
+    // Cap LAST, same reason as the Alpha Vantage path: the budget's 50 slots
+    // must go to rows that will actually be published, not to rows the
+    // no-share-count drop above is about to discard.
+    .slice(0, INSIDER_ROW_CAP);
   return {
     source: "finnhub" as const,
     ticker: input.ticker,

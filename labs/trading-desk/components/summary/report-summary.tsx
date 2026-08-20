@@ -77,7 +77,11 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
   const { clientData: spineRaw } = useResource(session, "valuationSpine");
   const { clientData: priceRaw } = useResource(session, "priceHistory");
   const { session: stop } = useClientData(session, {
-    session: ["stoppedReason", "stoppedMessage", "runComplete"],
+    session: [
+      "stoppedReason",
+      "stoppedMessage",
+      "runComplete",
+    ],
   });
 
   const stoppedReason = (stop?.stoppedReason ?? null) as string | null;
@@ -123,6 +127,10 @@ export function ReportSummary({ session }: ReportSummaryProps): ReactElement {
 
   return (
     <div className="flex flex-col gap-5">
+      {/* The provenance notice is NOT here. It mounts in `theses-pane.tsx`
+          above the Theses/Summary switch, because it discloses something about
+          the whole report and this branch is a render gate that would hide it
+          from anyone reading the Theses tab. */}
       <DecisionHeader
         ticker={summary.ticker}
         date={summary.date}

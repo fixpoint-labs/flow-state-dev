@@ -84,6 +84,7 @@ function bundle(sessionId: string): RunArtifactsBundle {
     householdTickerWeightPct: null,
     citationIntegrity: null,
     hasUserThesis: false,
+    preDataHonestyFix: false,
     p2Contributions: null,
     memos: [],
   };
