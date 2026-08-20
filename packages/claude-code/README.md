@@ -141,6 +141,12 @@ All three declare client state reads, so
 returns them; each row's payload is on `clientData`. Follow `nextCursor` — the
 route pages.
 
+The request id in that prefix is **percent-escaped** into one key segment, so a
+filter built from a raw id only matches when the id needs no escaping. Escape
+`%` first, then `/`, `\` and control characters, and `..` as `%2E%2E`; every
+other id — brackets, dots and `.`/`...` included — is used verbatim. An id with
+no such characters, which is the common case, needs nothing.
+
 `appliedCount` counts only the operations on that path the harness confirmed
 applied, not the attempts: each one is recorded twice, once when the call is
 seen and once when its result arrives. `outcome` beside it describes only the

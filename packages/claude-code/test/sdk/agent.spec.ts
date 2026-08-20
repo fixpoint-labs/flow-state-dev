@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
+import { normalizeResourcePath } from "@flow-state-dev/core/types";
 import {
   claudeCodeAgent,
   forwardSignalToController,
@@ -700,6 +701,30 @@ describe("claudeCodeAgent — recordWork", () => {
     RESULT_OK,
   ];
 
+  /**
+   * The same run, plus a plan create the harness never answers — so the run
+   * ends with a row owed to all THREE collections (a file op, a plan item, and
+   * a gap for the create that was lost).
+   */
+  const RECORDING_SCRIPT_WITH_GAP: SdkMessageLike[] = [
+    ...RECORDING_SCRIPT.slice(0, -1),
+    {
+      type: "assistant",
+      message: {
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu_lost",
+            name: "TaskCreate",
+            input: { subject: "Draft the follow-up", description: "…", activeForm: "Drafting" },
+          },
+        ],
+      },
+    },
+    // …and the stream ends without a result for it.
+    RESULT_OK,
+  ];
+
   it("is off by default and declares nothing", () => {
     const block = claudeCodeAgent({ resolveClaudeAgent: scriptedQuery([RESULT_OK]) });
     expect(block.declaredResources).toBeUndefined();
@@ -768,6 +793,109 @@ describe("claudeCodeAgent — recordWork", () => {
       status: "in_progress",
       lastOutcome: "applied",
     });
+  });
+
+  it("records all three collections when the request id carries path syntax", async () => {
+    // The request id is CALLER-SUPPLIED — `sendOptions.requestId` rides the
+    // action request body through to `ctx.request.identity.id` — and it goes
+    // into the namespace that keys all three collections. Raw, an id holding a
+    // `..` segment is rejected by `normalizeResourcePath`, so every file key,
+    // every plan key AND every gap key is unkeyable at once. The gap rows are
+    // the fallback that exists to record "we lost something", so when they die
+    // with the rest the run finishes CLEAN with three empty collections and
+    // nothing anywhere saying anything was dropped.
+    for (const requestId of ["release/../42", "tenant/a/run"]) {
+      const block = claudeCodeAgent({
+        resolveClaudeAgent: scriptedQuery(RECORDING_SCRIPT_WITH_GAP),
+        recordWork: true,
+        includePartialMessages: false,
+      });
+      const runtime = await createTestContext({
+        requestId,
+        declaredResources: block.declaredResources,
+      });
+      await block.config.execute?.({ prompt: "go" }, runtime.ctx as never);
+
+      const runId = runNamespace(runtime.ctx as never);
+      const resources = runtime.ctx.resources as unknown as Record<
+        string,
+        { list(): Promise<Array<{ path: string; state: Record<string, unknown> }>> }
+      >;
+
+      const fileRows = await resources["observed-file-ops"].list();
+      expect(fileRows.map((r) => r.path)).toEqual([`observed-file-ops/${runId}/work/notes.txt`]);
+      expect(fileRows[0].state).toMatchObject({ lastKind: "created", outcome: "applied" });
+
+      const planRows = await resources["observed-plan"].list();
+      expect(planRows.map((r) => r.path)).toEqual([`observed-plan/${runId}/5`]);
+
+      // The gap row matters most: it is the record OF a loss, so if it shares
+      // the doomed namespace there is nothing left to notice the failure by.
+      const gapRows = await resources["observed-gaps"].list();
+      expect(gapRows).toHaveLength(1);
+      expect(String(gapRows[0].state.reason)).toContain("Draft the follow-up");
+    }
+  });
+
+  it("keeps the request id to ONE key segment, whatever syntax it carries", () => {
+    // The invariant, stated against the normalizer that actually rejects these
+    // rather than against a copy of its rules: whatever a caller supplies, the
+    // composed namespace has to be a usable key, and the id has to stay one
+    // segment so the path segments after it belong to the file and nothing else.
+    const ids = [
+      "release/../42",
+      "..",
+      ".",
+      "a\\b",
+      `x${String.fromCharCode(7)}y`,
+      "100%",
+      "a/b/c",
+    ];
+    for (const id of ids) {
+      const ns = runNamespace({ request: { identity: { id } } } as never);
+      expect(() => normalizeResourcePath(`${ns}/work/notes.txt`)).not.toThrow();
+      expect(ns.split("/")).toHaveLength(2);
+    }
+  });
+
+  it("leaves an already-keyable request id byte for byte, bar one", () => {
+    // Rows written before this change are still keyed by the raw id, so an id
+    // the normalizer already accepted must key the same after it — otherwise
+    // the fix orphans the very records it exists to protect. `.` and `...` are
+    // in here because only `..` is rejected: escaping every run of dots would
+    // move rows that were keyed fine.
+    for (const id of ["plain-42", "a[1]", "x.y", ".", "...", "a-b_c", "req:1"]) {
+      const ns = runNamespace({ request: { identity: { id } } } as never);
+      expect(ns).toBe(`${id}/0#0`);
+    }
+    // The one exception, and it is forced: injectivity needs `%` escaped first,
+    // or a literal `a%2Fb` could not be told from an encoded `a/b`. An id
+    // carrying a `%` therefore moves, and that is a documented migration.
+    expect(runNamespace({ request: { identity: { id: "a%b" } } } as never)).toBe("a%25b/0#0");
+  });
+
+  it("keeps apart two request ids a lossy sanitiser would collide", () => {
+    // Stripping or replacing the offending characters would also be "safe", and
+    // is the wrong fix: it maps distinct ids onto ONE namespace, trading a
+    // silent empty recorder for silent CROSS-RUN MIXING — two runs' file rows
+    // merging under one key. That is worse, because the result looks healthy.
+    const ns = (id: string) => runNamespace({ request: { identity: { id } } } as never);
+    const collidable = [
+      ["a/b", "a%2Fb"],
+      ["a/b", "a-b"],
+      ["a/b", "ab"],
+      ["a..b", "a.b"],
+      ["..", "."],
+      ["x/y", "x\\y"],
+    ];
+    for (const [left, right] of collidable) {
+      expect(ns(left)).not.toBe(ns(right));
+    }
+    // And distinctness must survive the NORMALIZER, not just the encoder — it
+    // is the normalized key that two runs would actually end up sharing.
+    const ids = [...new Set(collidable.flat())];
+    const keys = ids.map((id) => normalizeResourcePath(`${ns(id)}/work/notes.txt`));
+    expect(new Set(keys).size).toBe(ids.length);
   });
 
   it("namespaces by INVOCATION, so two calls in one request do not merge", async () => {
