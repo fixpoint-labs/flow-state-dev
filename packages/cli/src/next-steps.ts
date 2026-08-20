@@ -2,51 +2,28 @@
  * The canonical "next steps" block — the paragraph a developer reads when FSD has just been
  * wired into a project, and the one authored source both entry paths render from.
  *
- * Two shippers print these steps: the brownfield install skill (FIX-1159) and the greenfield
- * `create-flow-state` command (FIX-548). They produce genuinely different text — a pnpm
- * brownfield run prints `pnpm run dev` and `pnpm exec fsdev dev`, greenfield prints `npm run dev`
- * and `npm exec -- fsdev dev` — so the shared artifact is the block's SOURCE, not its output.
- * Each shipper embeds {@link CANONICAL_NEXT_STEPS} verbatim in its own source and substitutes
- * at emit time; {@link assertCanonicalNextSteps} is how each one proves its copy has not
- * drifted. There is exactly one normalization and one equality, exported here, because two
- * shippers cannot drift apart on a comparison neither of them implements.
+ * Two shippers print these steps: the brownfield install skill and the greenfield
+ * `create-flow-state` command. They produce genuinely different text — a pnpm brownfield run
+ * prints `pnpm run dev`, greenfield prints `npm run dev` — so the shared artifact is the block's
+ * SOURCE, not its output. Each shipper embeds {@link CANONICAL_NEXT_STEPS} verbatim and
+ * substitutes at emit time; {@link assertCanonicalNextSteps} proves its copy has not drifted.
  *
- * ## Two syntaxes, and nothing else varies
+ * **Values** — `{{run}}`, `{{exec}}`, `{{execSep}}`, `{{devScript}}`, `{{devUrl}}`,
+ * `{{mountPath}}`, `{{devPort}}`, `{{servePort}}`. **Conditional sections** — `{{#mounted-route}}`
+ * and `{{#second-process}}`, a closed set of two, because a mounted-route host runs FSD inside the
+ * server it already has and a second-process host starts one beside it. **Every shipper embeds
+ * every branch and renders only its own** — trimming an unreachable branch looks like tidying and
+ * fails the comparison, which is what the comparison is for.
  *
- * - **Values** — `{{run}}`, `{{exec}}`, `{{execSep}}`, `{{devScript}}`, `{{devUrl}}`,
- *   `{{mountPath}}`. Filled from detection (brownfield) or from what the template just wrote
- *   (greenfield). Never hardcoded: a brownfield host may have renamed its dev script, moved its
- *   port, or set a `basePath` that prefixes every route it serves.
- * - **Conditional sections** — `{{#mounted-route}}…{{/mounted-route}}` and
- *   `{{#second-process}}…{{/second-process}}`. The key set is closed at those two topologies.
- *   A mounted-route host runs its own dev server with FSD answering inside it; a second-process
- *   host starts `fsdev serve` alongside the server already there. No package-manager
- *   substitution turns one process list into the other.
- *
- * **Every shipper embeds every branch and renders only its own.** `create-flow-state` never
- * renders `second-process`, and that branch still has to sit in its source identical to
- * canonical, because that is what the comparison reads. Trimming an unreachable branch looks
- * like tidying and breaks the check.
- *
- * ## What the caveats may say
- *
- * The caveats describe what the project does **today** and promise nothing about production.
- * They may not say the app refuses to serve in production, that it will serve normally once
- * authentication is configured, or that any control here is keyed to an environment — all three
- * are false of the code. The bind guard runs only under `fsdev serve`, never in
- * `packages/next`; it keys on the bind address, not on `NODE_ENV`; its enforcement is
- * whole-app; and it never sees a mounted route at all.
- *
- * This constraint is enforced from `test/next-steps.test.ts` rather than trusted, because the
- * equality check above makes canonical the *enforced* text: a shipper that corrected a false
- * claim in its own copy would read as drift and fail. **A pin has a direction, and withdrawals
- * travel against it** — so a false claim has to be kept out of canonical in the first place.
+ * **The caveats describe what the project does today and promise nothing about production** —
+ * enforced in `test/next-steps.test.ts`, because equality makes canonical the *enforced* text and
+ * a false claim in it cannot be corrected downstream.
  *
  * ## Command forms, measured rather than assumed
  *
- * Both forms were measured on npm 10.9.7 / pnpm 10.4.1 / yarn 1.22.22 against scripts and a bin
- * that print what actually reached them. `test/next-steps.test.ts` re-runs both tables through
- * the real package managers rather than asserting the strings look right.
+ * Measured on npm 10.9.7 / pnpm 10.4.1 / yarn 1.22.22 against scripts and a bin that print what
+ * actually reached them. `test/next-steps.test.ts` re-runs both tables through the real package
+ * managers rather than asserting the strings look right.
  *
  * **`{{exec}}` and `{{execSep}}`** — `npm exec` consumes a leading-dash argument as its own
  * configuration, and so does `yarn exec`:
@@ -62,50 +39,37 @@
  * **Yarn drops the flag too**, which "the separator npm needs and the others do not" did not
  * anticipate — under Yarn the loopback bind would silently not be applied.
  *
- * `{{exec}}` is `npm exec` rather than `npx` so the separator has something to attach to; the
- * two are equivalent otherwise, and `npx fsdev …` needs no separator at all.
+ * **`{{run}}` is `<manager> run <script>` for all three, never the shortcut form.** The script
+ * name is an arbitrary one detected in somebody else's manifest, and the shortcut loses to the
+ * manager's own builtins:
  *
- * **`{{run}}` is `<manager> run <script>` for all three, never the shortcut form.** `pnpm <name>`
- * and `yarn <name>` lose to the manager's own builtins, and the script name here is an arbitrary
- * one detected in somebody else's manifest:
- *
- * | invocation         | what ran                                      |
- * |--------------------|-----------------------------------------------|
+ * | invocation         | what ran                                         |
+ * |--------------------|--------------------------------------------------|
  * | `pnpm list`        | pnpm's dependency listing — the script never ran |
- * | `pnpm run list`    | the script                                    |
- * | `pnpm why`         | `ERR_PNPM_MISSING_PACKAGE_NAME`               |
- * | `yarn config`      | `error Invalid subcommand`                    |
- * | `yarn list`        | `error No lockfile in this directory`         |
- * | `yarn run config`  | the script                                    |
- *
- * A project whose dev script is called `list`, `config`, `why`, `add` or `link` is unremarkable,
- * and under the shortcut form the printed command silently does something else entirely.
+ * | `pnpm run list`    | the script                                       |
+ * | `pnpm why`         | `ERR_PNPM_MISSING_PACKAGE_NAME`                  |
+ * | `yarn config`      | `error Invalid subcommand`                       |
+ * | `yarn list`        | `error No lockfile in this directory`            |
+ * | `yarn run config`  | the script                                       |
  *
  * ## Ports: an invariant, not a list of fixes
  *
  * **Every `fsdev` command this block prints binds its port explicitly, from one range the block
  * owns: {@link RESERVED_PORTS}.** No bare bind survives anywhere in the emitted text.
  *
- * Stated as an invariant because fixing instances does not converge. `fsdev serve` falls back to
- * `$PORT` then 3000, which a brownfield Next project almost always holds; pin that one and
- * `fsdev dev`'s default 4200 is next, which an Angular host holds; pin that and there is another.
- * Each fix narrows the hole and opens a smaller one. So the rule is applied once to the whole
- * block and enforced by {@link assertCanonicalNextSteps}, which every shipper already calls — an
- * edit that adds a port-binding command without a port fails a test rather than waiting for a
- * reviewer.
+ * Stated as an invariant because fixing instances does not converge — `fsdev serve` defaults to
+ * 3000 (a Next host holds it), `fsdev dev` to 4200 (an Angular host holds it), and each pin opens
+ * a smaller hole. Enforced by {@link assertCanonicalNextSteps}, the call every shipper already
+ * makes.
  *
- * The range is **4210–4219**: the FSD neighbourhood, one step off the DevTool's familiar 4200 so
- * it clears Angular's default too. Fixed literals rather than a free-port probe, because this
- * text is a canonical string a shipper asserts byte-for-byte — probing at emit time would make it
- * non-deterministic and give a help message a failure mode of its own.
- *
- * ## Invoking the CLI before it is installed
- *
- * The published package is **`@flow-state-dev/fsdev`** and the binary it installs is `fsdev`
- * (from the `bin` key, not from the package name). So `npx @flow-state-dev/fsdev …` is the form
- * that works against a project the CLI is not yet a dependency of; a bare `npx fsdev` resolves
- * nothing. Every command in this block runs **after** the install, where `node_modules/.bin/fsdev`
- * exists, which is why the block prints `{{exec}} fsdev …`.
+ * **These are defaults chosen to be unlikely to collide, not ports anything can guarantee are
+ * free.** No fixed number clears a port; a machine can have any process on any of them. So the
+ * block tells the reader they can pass a different `--port`, which is worth more than any number
+ * we could pick. The one collision visible at emit time *is* handled: `{{devUrl}}` names the
+ * host's own port, and {@link allocatePorts} shifts off it deterministically. That uses an input
+ * we already hold, so the text stays a pure function of its inputs — unlike an availability
+ * probe, which would make a canonical string non-deterministic and give a help message a failure
+ * mode of its own.
  */
 
 /** The two host topologies FSD arrives in. The key set is closed; a third is a cross-cutting question. */
@@ -168,25 +132,23 @@ export const CANONICAL_NEXT_STEPS = `Next steps
       your app, now serving FSD at {{mountPath}}
       → {{devUrl}}
 
-  {{exec}}{{execSep}} fsdev dev --port 4210
+  {{exec}}{{execSep}} fsdev dev --port {{devPort}}
       the FSD DevTool, in a second process
-      → http://localhost:4210
+      → http://localhost:{{devPort}}
 
   {{exec}}{{execSep}} fsdev run hello send --input '{"userId":"u1","message":"hi"}'
       run the demo flow from your terminal
 {{/mounted-route}}
 {{#second-process}}
-  {{exec}}{{execSep}} fsdev dev --port 4210
+  {{exec}}{{execSep}} fsdev dev --port {{devPort}}
       the FSD API and the DevTool, in one process beside your own server
-      → http://localhost:4210
+      → http://localhost:{{devPort}}
 
-  {{exec}}{{execSep}} fsdev serve --host 127.0.0.1 --port 4211
+  {{exec}}{{execSep}} fsdev serve --host 127.0.0.1 --port {{servePort}}
       the same API without the DevTool
-      → http://127.0.0.1:4211
-      Every flag here is deliberate. --host 127.0.0.1 binds the listener to
-      loopback, so nothing off this machine can reach it; the ports are named
-      rather than left to default, so nothing FSD starts lands on one your own
-      server is already using.
+      → http://127.0.0.1:{{servePort}}
+      Keep the --host 127.0.0.1. It binds the listener to loopback, so nothing
+      off this machine can reach it.
 
   {{exec}}{{execSep}} fsdev run hello send --input '{"userId":"u1","message":"hi"}'
       run the demo flow from your terminal
@@ -195,6 +157,10 @@ export const CANONICAL_NEXT_STEPS = `Next steps
 {{/second-process}}
 
 Worth knowing before you build on this
+
+  The ports above are defaults, picked to be unlikely to clash with what you
+  already run. Nothing here can know they are free. If one is taken, pass a
+  different --port.
 
   The demo flow is closed over HTTP. A request to it has to carry
   Authorization: Bearer $FSD_DEMO_TOKEN, and that value is in .env.local.
@@ -220,6 +186,32 @@ const TOPOLOGIES: readonly NextStepsTopology[] = ["mounted-route", "second-proce
 
 /** The contiguous range this block owns. See "Ports: an invariant, not a list of fixes" above. */
 const RESERVED_PORTS = { first: 4210, last: 4219 };
+
+/** Every port in the reserved range, in order. */
+function reservedRange(): number[] {
+  const ports: number[] = [];
+  for (let port = RESERVED_PORTS.first; port <= RESERVED_PORTS.last; port++) ports.push(port);
+  return ports;
+}
+
+/**
+ * Pick the two ports the block prints, shifting off the host's own if it happens to sit in our
+ * range.
+ *
+ * This is the **one** collision visible at emit time. `devUrl` is a value the caller already
+ * supplies — the URL the project's own dev server serves on — so if that names 4210 we can see,
+ * without probing anything, that the command we are about to print will fail. Printing it anyway
+ * is indefensible.
+ *
+ * Deterministic and pure: same inputs, same ports, so the emitted text stays a function of its
+ * arguments and the canonical assertion still holds. It says nothing about *other* ports being
+ * free, which is why the block also tells the reader how to pass their own.
+ */
+function allocatePorts(devUrl: string | undefined): { devPort: string; servePort: string } {
+  const hostPort = devUrl === undefined ? null : Number(/:(\d+)/.exec(devUrl)?.[1] ?? Number.NaN);
+  const free = reservedRange().filter((port) => port !== hostPort);
+  return { devPort: String(free[0]), servePort: String(free[1]) };
+}
 
 /**
  * `fsdev` subcommands that start no listener. **Default-deny**: anything not named here has to
@@ -251,6 +243,9 @@ export function assertEveryPortIsNamed(text: string): void {
     const subcommand = /(?:^|\s)fsdev\s+(\w[\w-]*)/.exec(line)?.[1];
     if (subcommand === undefined || NON_BINDING_SUBCOMMANDS.has(subcommand)) continue;
 
+    // In the source the port is a placeholder; in the emitted text it is a number. Both are
+    // "named" — a bare bind is what this refuses, in either.
+    if (/--port[= ]\{\{\w+\}\}/.test(line)) continue;
     const port = /--port[= ](\d+)/.exec(line)?.[1];
     if (port === undefined) {
       throw new Error(
@@ -339,6 +334,7 @@ export function renderNextSteps(options: RenderNextStepsOptions): string {
     text = text.replace(sectionPattern(key), () => kept);
   }
 
+  const ports = allocatePorts(options.devUrl);
   const values: Record<string, string | undefined> = {
     run: forms.run,
     exec: forms.exec,
@@ -346,6 +342,8 @@ export function renderNextSteps(options: RenderNextStepsOptions): string {
     devScript: options.devScript === undefined ? undefined : shellQuote(options.devScript),
     devUrl: options.devUrl,
     mountPath: options.mountPath,
+    devPort: ports.devPort,
+    servePort: ports.servePort,
   };
 
   const missing: string[] = [];
@@ -367,6 +365,9 @@ export function renderNextSteps(options: RenderNextStepsOptions): string {
     );
   }
 
+  // The invariant holds over what is actually emitted, not only over the source: a placeholder is
+  // acceptable in canonical, a bare bind is acceptable nowhere.
+  assertEveryPortIsNamed(rendered);
   return rendered;
 }
 

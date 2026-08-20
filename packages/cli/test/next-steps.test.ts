@@ -185,17 +185,52 @@ describe("renderNextSteps", () => {
     }
   });
 
+  it("shifts off the host's own port when detection says it is inside our range", () => {
+    // The one collision visible at emit time. `devUrl` is already an input, so a block that
+    // printed `--port 4210` at a project whose own server is on 4210 would be printing a command
+    // we could see was going to fail.
+    const clash = renderNextSteps({ ...MOUNTED, devUrl: "http://localhost:4210", packageManager: "pnpm" });
+    expect(clash).toContain("fsdev dev --port 4211");
+    expect(clash).not.toMatch(/--port 4210\b/);
+
+    // Deterministic: the same inputs give the same ports, so the text stays a pure function of
+    // its arguments and the canonical assertion still holds.
+    expect(clash).toBe(
+      renderNextSteps({ ...MOUNTED, devUrl: "http://localhost:4210", packageManager: "pnpm" }),
+    );
+
+    // A host outside the range changes nothing.
+    const clear = renderNextSteps({ ...MOUNTED, devUrl: "http://localhost:3000", packageManager: "pnpm" });
+    expect(clear).toContain("fsdev dev --port 4210");
+  });
+
+  it("tells the reader the ports are defaults they can override", () => {
+    // No fixed number can clear a port — a machine can have any process on any of them. Saying
+    // so, plus how to pass a different one, is worth more than any number we could pick.
+    for (const topology of ["mounted-route", "second-process"] as NextStepsTopology[]) {
+      const rendered = renderNextSteps({ ...MOUNTED, topology, packageManager: "pnpm" });
+      expect(rendered).toContain("Nothing here can know they are free");
+      expect(rendered).toContain("pass a\n  different --port");
+    }
+    // And canonical claims nothing stronger than that anywhere.
+    expect(CANONICAL_NEXT_STEPS).not.toMatch(/\bclears?\b/i);
+    expect(CANONICAL_NEXT_STEPS).not.toMatch(/guarantee/i);
+  });
+
   it("refuses a block that adds a bare bind, or one outside the reserved range", () => {
     // The invariant's own test. It runs from `assertCanonicalNextSteps` — the call every shipper
     // already makes — so a future edit fails their suites too rather than reaching a developer as
     // an EADDRINUSE on the one command they were told to type.
     expect(() => assertEveryPortIsNamed(CANONICAL_NEXT_STEPS)).not.toThrow();
 
-    const bare = CANONICAL_NEXT_STEPS.replace("fsdev dev --port 4210", "fsdev dev");
+    const bare = CANONICAL_NEXT_STEPS.replace("fsdev dev --port {{devPort}}", "fsdev dev");
     expect(bare).not.toBe(CANONICAL_NEXT_STEPS);
     expect(() => assertEveryPortIsNamed(bare)).toThrow(/prints `fsdev dev` with no --port/);
 
-    const strayPort = CANONICAL_NEXT_STEPS.replace("--port 4210", "--port 8080");
+    const strayPort = renderNextSteps({ ...MOUNTED, packageManager: "pnpm" }).replace(
+      "--port 4210",
+      "--port 8080",
+    );
     expect(() => assertEveryPortIsNamed(strayPort)).toThrow(/outside the range this block owns/);
 
     // A command added later is covered without anyone remembering to cover it: the subcommand
