@@ -44,7 +44,7 @@ This repo uses Changesets for release coordination. Do not edit a root `changelo
 
 - Do not reference wave labels in runtime code or tests.
 - Keep exported API surfaces documented with concise, high-signal comments.
-- Preserve canonical package boundaries (`core`, `server`, `client`, `react`, `testing`, `cli`).
+- Preserve canonical package boundaries (`core`, `server`, `client`, `react`, `testing`, `fsdev`).
 - **Working memory is session-only — never commit it.** Orchestration state (the epic board, per-issue handle caches, any coordination scratch) lives in the **gitignored `.orchestration/`** directory. Never `git add`, commit, or open a PR for these files — commit only the actual issue work, in the issue's own worktree/branch. A PR whose diff is a board / status / scratch file is a bug; don't open it, and if one exists, close it.
 
 > **Orchestration reference.** How the epic and issue lifecycles compose — roles, gates (`spec approved`, `epic approved`), the epic-spec, and the spec-review bar and convergence rule — is defined once, with diagrams, in `docs/contributing/orchestration.md`. The orchestration skills and worker agents reference it. Three rules worth knowing without opening it: **parallel issue work always runs under an epic** (`epic-lifecycle`); **a spec is approved when it's directionally correct, not when nothing is left to nitpick** — below-the-bar review feedback goes to the implementer, and spec review converges in two rounds; and **a coordinator dispatches, it never does the work** — including work the user asks it for directly mid-run, which is the case that gets through (a request says *what* should happen, not *who* does it).
@@ -229,7 +229,7 @@ The rule, the per-artifact word budgets, and the density checks are canonical in
 
 This is a pnpm monorepo (pnpm@10.4.1, Node 22). No Docker, databases, or external services are required. All tests use mocked generators — no API keys needed for `pnpm test`.
 
-**Build order matters for typecheck.** `pnpm typecheck` requires `packages/core` to be built first (its `dist/` must exist). The update script handles this, but if you see TS6305 errors about missing output files, run `pnpm --filter @flow-state-dev/core build` before retrying. The full build order is: core → server + client → react + testing → cli (see `docs/contributing/development-setup.md`).
+**Build order matters for typecheck.** `pnpm typecheck` requires `packages/core` to be built first (its `dist/` must exist). The update script handles this, but if you see TS6305 errors about missing output files, run `pnpm --filter @flow-state-dev/core build` before retrying. The full build order is: core → server + client → react + testing → fsdev (see `docs/contributing/development-setup.md`).
 
 **Key commands** are documented in `CLAUDE.md` and `docs/contributing/development-setup.md`. Summary: `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm --filter <pkg> test`.
 

@@ -126,7 +126,7 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 | `@flow-state-dev/react`             | React hooks and renderers (wraps client)                                |
 | `@flow-state-dev/testing`           | Test harnesses and mocks                                                |
 | `@flow-state-dev/integration-tests` | Tier 1 flow integration suite (private)                                 |
-| `@flow-state-dev/cli`               | Terminal interface (`fsdev`)                                            |
+| `@flow-state-dev/fsdev`             | Terminal interface — the `fsdev` command                                |
 | `@flow-state-dev/devtool`           | Pre-built DevTool assets for `fsdev dev`                                |
 | `@flow-state-dev/store-sqlite`      | SQLite-backed persistent store                                          |
 | `@flow-state-dev/store-postgres`    | PostgreSQL-backed persistent store                                      |

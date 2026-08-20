@@ -30,7 +30,7 @@ pnpm test
 | `@flow-state-dev/client` | Isomorphic API client |
 | `@flow-state-dev/react` | React hooks and renderers |
 | `@flow-state-dev/testing` | Test harnesses and generator mocks |
-| `@flow-state-dev/cli` | Terminal interface (`fsdev`) |
+| `@flow-state-dev/fsdev` | Terminal interface — the `fsdev` command |
 
 ## Key constraints
 

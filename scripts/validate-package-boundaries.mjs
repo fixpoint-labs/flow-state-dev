@@ -92,13 +92,49 @@ function walkTsFiles(dirPath, files = []) {
   return files;
 }
 
+/**
+ * Packages whose published name is not `@flow-state-dev/<directory>`, mapped to
+ * the internal key `packageRules` uses — which is the DIRECTORY name.
+ *
+ * Matched on the exact full package name, never by scope prefix. That is the
+ * whole point, and it survived the CLI's name changing twice (FIX-1191):
+ *
+ *   - As unscoped `fsdev`, a scope-prefix rule skipped the package outright.
+ *   - As `@flow-state-dev/fsdev` it matches the scope again, which looks like
+ *     the prefix rule would now work. It does not: the rule takes the segment
+ *     after the scope (`fsdev`) and looks it up in `packages`, which holds
+ *     `cli`. It resolves to nothing and every import is skipped, exactly as
+ *     before.
+ *
+ * Both times the failure is silent, because a guard that recognises nothing
+ * reports success: restricted packages could import the CLI with no allow/deny
+ * check and no cycle detection while typecheck and the full suite stayed green.
+ * Do not "simplify" this back to a prefix test.
+ */
+const PACKAGE_NAME_TO_KEY = new Map([["@flow-state-dev/fsdev", "cli"]]);
+
 function resolveWorkspacePackage(specifier) {
-  if (!specifier.startsWith("@flow-state-dev/")) {
+  const [scope, name] = specifier.split("/");
+  const packageName = scope.startsWith("@") ? `${scope}/${name ?? ""}` : scope;
+
+  const mapped = PACKAGE_NAME_TO_KEY.get(packageName);
+  if (mapped !== undefined) {
+    return packages.includes(mapped) ? mapped : undefined;
+  }
+
+  if (scope !== "@flow-state-dev") {
     return undefined;
   }
 
-  const packageName = specifier.split("/")[1];
-  return packages.includes(packageName) ? packageName : undefined;
+  return packages.includes(name) ? name : undefined;
+}
+
+/** How a package is spelled in an import, for error messages. */
+function specifierFor(pkg) {
+  for (const [name, key] of PACKAGE_NAME_TO_KEY) {
+    if (key === pkg) return name;
+  }
+  return `@flow-state-dev/${pkg}`;
 }
 
 function detectCycles(graph) {
@@ -160,15 +196,15 @@ for (const pkg of packages) {
       graph.get(pkg).add(targetPkg);
 
       if (rules.deny?.has(targetPkg)) {
-        errors.push(`${filePath}: forbidden import from @flow-state-dev/${targetPkg}`);
+        errors.push(`${filePath}: forbidden import from ${specifierFor(targetPkg)}`);
       }
 
       if (!rules.allow.has(targetPkg)) {
-        errors.push(`${filePath}: package ${pkg} is not allowed to import @flow-state-dev/${targetPkg}`);
+        errors.push(`${filePath}: package ${pkg} is not allowed to import ${specifierFor(targetPkg)}`);
       }
 
       if (rules.typeOnly.has(targetPkg) && !isTypeOnly) {
-        errors.push(`${filePath}: import from @flow-state-dev/${targetPkg} must be type-only`);
+        errors.push(`${filePath}: import from ${specifierFor(targetPkg)} must be type-only`);
       }
     }
   }
