@@ -118,6 +118,44 @@ the result.
 passing it is required rather than tidy: a capability declares the schema through
 a channel the board's refusal cannot see.
 
+### Recording what a run did (`/sdk`)
+
+`recordWork: true` records the run's file operations and its own to-do list as
+state you can read afterwards. Off by default; on, the agent declares three
+resource collections and writes into them as it goes:
+
+| Accessor | One entry per |
+|----------|---------------|
+| `observed-file-ops` | path the run's file-writing/editing tools touched — `lastKind`, `outcome` (`pending`/`applied`/`failed`), `lastTouchedAt`, `appliedCount`. Paths, never contents |
+| `observed-plan` | to-do item the run kept — `title`, `status`, `previousStatus`, `lastOutcome` |
+| `observed-gaps` | mutation the recorder understood and could not record — `kind` (`file`/`plan`/`run`) says which record it stands in for, plus the reason and the raw path |
+
+```ts
+claudeCodeAgent({ detached: true, recordWork: true });
+```
+
+Entries are keyed as `<requestId>/<invocation>`, so a workstream reused across
+runs — and a request that runs the agent more than once — both answer per run.
+All three declare client state reads, so
+`GET /sessions/:id/resources/observed-file-ops?topicPrefix=observed-file-ops/<requestId>/`
+returns them; each row's payload is on `clientData`. Follow `nextCursor` — the
+route pages.
+
+`appliedCount` counts only the operations on that path the harness confirmed
+applied, not the attempts: each one is recorded twice, once when the call is
+seen and once when its result arrives. `outcome` beside it describes only the
+last settlement, so the count is what says how many of a path's touches landed.
+`0` and `null` are different answers — `0` means the run touched the path and
+nothing applied, `null` means the row was written before the field existed.
+
+The file record covers tool-driven operations only. A run that edits through the
+shell makes no file-tool call, so nothing is recorded for it. Recording never
+fails the run: what it cannot handle becomes a gap row.
+
+`createClaudeCodeAgentCapability({ recordWork: true })` takes the same option and
+needs it — the capability declares the collections itself, because a block in a
+capability's `tools` contributes no resource declarations to the flow.
+
 ## Limitations
 
 - No headless polling/streaming of cloud-task progress (CLI limitation).

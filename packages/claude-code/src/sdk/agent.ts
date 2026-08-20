@@ -23,9 +23,27 @@ import {
   emitTranslatedEvent,
   finalizeOpenItems,
 } from "./emit";
-import { createTranslateState, translateSdkMessage } from "./translate";
+import {
+  createTranslateState,
+  drainUnsettledObservations,
+  translateSdkMessage,
+} from "./translate";
+import {
+  createWorkRecorder,
+  type UpsertableCollection,
+  type WorkRecorder,
+} from "./work-recorder";
+import {
+  OBSERVED_FILE_OPS,
+  OBSERVED_GAPS,
+  OBSERVED_PLAN,
+  workRecorderResources,
+} from "./work-collections";
 import { defaultResolveClaudeAgent } from "./sdk-client";
-import { createClaudeAgentSessionProvider, type ClaudeAgentSession } from "./session";
+import {
+  createClaudeAgentSessionProvider,
+  type ClaudeAgentSession,
+} from "./session";
 import { ClaudeAgentRunError } from "./errors";
 import {
   sdkAgentHandleSchema,
@@ -117,6 +135,43 @@ export interface ClaudeCodeAgentOptions {
    * the workstream's own item history continues as normal.
    */
   detached?: boolean;
+  /**
+   * Record what the run DID, alongside the items that record what it said.
+   * Default `false`, which is byte-identical to the behaviour every existing
+   * caller has: nothing recorded, no resources declared.
+   *
+   * **This is the canonical explanation; everywhere else links here.**
+   *
+   * Set `true` and the block declares three session-scoped resource collections
+   * and writes into them as the run goes:
+   *
+   * - `observed-file-ops` — one entry per path the run's file-writing and
+   *   file-editing tools touched: how, when, and how the attempt settled. Not
+   *   the contents.
+   * - `observed-plan` — one entry per item on the run's own to-do list,
+   *   carrying its wording and its current and previous status. Deliberately
+   *   NOT the work queue that dispatched the run, so a run that decides to do
+   *   five more things cannot start five more jobs by writing a to-do list.
+   * - `observed-gaps` — one entry per mutation the recorder recognised and
+   *   could not record, so a missing row is never confused with a mutation that
+   *   never happened.
+   *
+   * All three are readable over the resource route that already ships, keyed
+   * under the run's own request id so a workstream reused across runs answers
+   * "what did this run do" rather than "what has this workstream ever done".
+   *
+   * **What the file record is, precisely.** It is a log of the file operations
+   * the run's file TOOLS performed, not an index of everything that changed on
+   * disk. A run that edits a file through the shell — a `sed -i`, a redirect, a
+   * `mv`, a formatter — performs no file-tool call, so nothing is recorded and
+   * the file does not appear.
+   *
+   * Recording never fails the run: anything the recorder cannot handle is
+   * skipped, written to `observed-gaps`, and noted as a status item. The gap
+   * ROW is the durable half — a status note dedupes on its own message and
+   * renders into a latest-wins slot, so two identical skips collapse to one.
+   */
+  recordWork?: boolean;
   /** Block name. Default `"claude-code-agent"`. */
   name?: string;
 }
@@ -137,7 +192,9 @@ function isErroredSubtype(subtype: SdkResultSubtype | null): boolean {
  * (returns a live, un-aborted controller). Forwards an already-aborted signal
  * synchronously, and a later abort via a one-shot listener.
  */
-export function forwardSignalToController(signal: AbortSignal | undefined): AbortController {
+export function forwardSignalToController(
+  signal: AbortSignal | undefined,
+): AbortController {
   const controller = new AbortController();
   if (signal?.aborted) {
     controller.abort();
@@ -145,6 +202,97 @@ export function forwardSignalToController(signal: AbortSignal | undefined): Abor
     signal?.addEventListener("abort", () => controller.abort(), { once: true });
   }
   return controller;
+}
+
+/**
+ * Open a {@link WorkRecorder} against the three collections the block declared,
+ * or return `null` with a status note when the two records are not on the
+ * context.
+ *
+ * The absent case is real rather than defensive: the declaration and the run
+ * are wired at different layers, and a flow that reaches this block without the
+ * refs registered would otherwise throw here — killing a coding run over
+ * bookkeeping, which is the one thing this feature must never do. A note makes
+ * the gap visible; the run continues unrecorded.
+ *
+ * `observed-gaps` is the one that may be absent without stopping recording: a
+ * run whose file and plan records still land is worth having, and the skips
+ * degrade to status notes alone. The two records are not optional that way —
+ * without them there is nothing to record into.
+ *
+ * Every entry is keyed under {@link runNamespace}, which is what keeps a reused
+ * workstream's runs apart.
+ */
+/**
+ * The key namespace for ONE run: `<requestId>/<invocation>`.
+ *
+ * **The request id alone is not the run's identity, and using it as one is a
+ * silent data-merging bug.** A generator holding this agent as a tool can call
+ * it several times inside a single request — the framework's own tool executor
+ * disambiguates each call by `stepNumber:toolCallId` precisely because that
+ * happens. Every such call is a separate coding run: its own files, its own
+ * to-do ids (the harness numbers those per agent session, so two runs both
+ * having a task `5` is ordinary), and its own gap ordinals, which restart at 1
+ * per recorder and would therefore overwrite each other outright.
+ *
+ * `blockPath` is the framework's per-invocation identity — derived from the
+ * block tree and the model step, so it is unique per call AND stable across a
+ * replay, which a minted id would not be. Slashes are flattened so one
+ * invocation stays one key segment.
+ *
+ * Two segments rather than one, deliberately: the request id stays the leading
+ * segment, so `topicPrefix=<collection>/<requestId>/` still selects everything
+ * one request did, while `<collection>/<requestId>/<invocation>/` narrows to a
+ * single run. Replacing the request id outright would have made a row
+ * impossible to correlate back to the request that caused it.
+ */
+export function runNamespace(ctx: BlockContext): string {
+  const identity = (
+    ctx as { _blockIdentity?: { blockPath?: string; attempt?: number } }
+  )._blockIdentity;
+  const path = identity?.blockPath;
+  // A context without a block identity (a direct `execute`, a mock) has exactly
+  // one invocation by construction, so a constant is the honest discriminator.
+  const step =
+    typeof path === "string" && path.length > 0 ? path.replace(/\//g, ".") : "0";
+  // …and the ATTEMPT, because a retried block re-enters at the SAME path.
+  // `executeBlock`'s retry loop increments an attempt counter and rebuilds the
+  // instance id from `(request, path, attempt)` while leaving the path
+  // untouched — so the framework's own invocation identity has three parts and
+  // this had two. Two attempts of one retried run would otherwise share a
+  // namespace: paths overwritten, and gap ordinals (which restart at 1 per
+  // recorder) clobbering the earlier attempt's outright.
+  const attempt = identity?.attempt ?? (ctx as { attempt?: number }).attempt ?? 0;
+  return `${ctx.request.identity.id}/${step}#${attempt}`;
+}
+
+function openWorkRecorder(ctx: BlockContext): WorkRecorder | null {
+  const resources = (ctx as { resources?: Record<string, unknown> }).resources;
+  const upsertable = (accessor: string): UpsertableCollection | undefined => {
+    const ref = resources?.[accessor] as UpsertableCollection | undefined;
+    return typeof ref?.upsert === "function" ? ref : undefined;
+  };
+  const files = upsertable(OBSERVED_FILE_OPS);
+  const plan = upsertable(OBSERVED_PLAN);
+  const gaps = upsertable(OBSERVED_GAPS);
+  if (files === undefined || plan === undefined) {
+    ctx.emit.status(
+      `Claude Code agent is not recording this run's work: the "${OBSERVED_FILE_OPS}" and ` +
+        `"${OBSERVED_PLAN}" collections are not registered on this flow.`,
+      { transient: false },
+    );
+    return null;
+  }
+  return createWorkRecorder({
+    runId: runNamespace(ctx),
+    files,
+    plan,
+    ...(gaps !== undefined ? { gaps } : {}),
+    // Non-transient so the note survives into the request record. It is still
+    // only a note: `emit.status` dedupes on the message and renders into a
+    // latest-wins slot, so the durable record of a skip is the gap ROW.
+    onSkipped: (message) => ctx.emit.status(message, { transient: false }),
+  });
 }
 
 /**
@@ -175,6 +323,7 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     includePartialMessages = true,
     onToolApproval,
     detached = false,
+    recordWork = false,
     name = "claude-code-agent",
   } = options;
 
@@ -188,10 +337,19 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
     // inspects this static definition (`assertDetachedBoardSupported`) and
     // rejects the board before any `execute` callback receives a context.
     ...(detached ? {} : { sessionStateSchema: claudeAgentSessionStateSchema }),
+    // Also static, and for a related reason: `defineFlow` collects declared
+    // resources off block definitions at build time. A collection nobody
+    // declared is not registered on the flow, so `findResourceConfig` misses and
+    // the read route answers 404 — at read time, on a build that succeeded.
+    ...(recordWork ? { resources: workRecorderResources } : {}),
     execute: async (input, ctx): Promise<SdkAgentHandle> => {
-      const promptText = (pickPrompt ? pickPrompt(input, ctx) : input.prompt)?.trim();
+      const promptText = (
+        pickPrompt ? pickPrompt(input, ctx) : input.prompt
+      )?.trim();
       if (!promptText) {
-        throw new ClaudeAgentRunError("claudeCodeAgent requires a non-empty prompt.");
+        throw new ClaudeAgentRunError(
+          "claudeCodeAgent requires a non-empty prompt.",
+        );
       }
 
       // With conversation state off, the provider is NOT CONSULTED AT ALL —
@@ -208,7 +366,9 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       // default provider's `release` is a no-op for exactly this reason.
       let session: ClaudeAgentSession = { sdkSessionId: null };
       if (!detached) {
-        const priorSessionId = (ctx.session.state as Record<string, unknown>)[SDK_SESSION_ID_KEY];
+        const priorSessionId = (ctx.session.state as Record<string, unknown>)[
+          SDK_SESSION_ID_KEY
+        ];
         session = await sessionProvider.resolve(
           typeof priorSessionId === "string" ? priorSessionId : "",
         );
@@ -229,11 +389,20 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
         includePartialMessages,
         abortController,
         ...(session.sdkSessionId ? { resume: session.sdkSessionId } : {}),
-        ...(onToolApproval ? { canUseTool: buildCanUseTool(onToolApproval, ctx) } : {}),
+        ...(onToolApproval
+          ? { canUseTool: buildCanUseTool(onToolApproval, ctx) }
+          : {}),
       };
 
-      const translateState = createTranslateState({ partialMessages: includePartialMessages });
+      const translateState = createTranslateState({
+        partialMessages: includePartialMessages,
+        // Only this seam can hand the SDK an input other than the one the
+        // `tool_use` block showed, so it is the only reason a call-time value
+        // might not be what actually executed.
+        inputsMayBeRevised: onToolApproval !== undefined,
+      });
       const emitState = createEmitState();
+      const recorder = recordWork ? openWorkRecorder(ctx) : null;
 
       let resultSubtype: SdkResultSubtype | null = null;
       let finalMessage: string | null = null;
@@ -241,93 +410,148 @@ export function claudeCodeAgent(options: ClaudeCodeAgentOptions = {}) {
       let usage: SdkAgentHandle["usage"] = null;
       let costUsd: number | null = null;
 
+      // Recorder shutdown is STRUCTURAL, not per-path. It used to be written out
+      // on the success path and again on the throw path, which made it one more
+      // step that anything running before it could skip — and three separate
+      // review findings were exactly that: a throwing report hook, an
+      // unanswered plan create, and `finalizeOpenItems` rejecting while
+      // persisting an incomplete item. Each was a different upstream step
+      // preventing the same shutdown from running.
+      //
+      // One `finally` retires the whole class. It runs on the success path, the
+      // SDK-throw path, an abort, and a throw from anything between the loop and
+      // the return — and it cannot drift out of sync with a sibling copy,
+      // because there isn't one.
       try {
-        for await (const message of resolved.query({ prompt: promptText, options: queryOptions })) {
-          // Capture the SDK session id from any message that carries it (the
-          // `system` init message does, well before the terminal result), so an
-          // aborted or failed run is still resumable.
-          const sid = (message as { session_id?: string }).session_id;
-          if (typeof sid === "string" && sid !== "") newSessionId = sid;
+        try {
+          for await (const message of resolved.query({
+            prompt: promptText,
+            options: queryOptions,
+          })) {
+            // Capture the SDK session id from any message that carries it (the
+            // `system` init message does, well before the terminal result), so an
+            // aborted or failed run is still resumable.
+            const sid = (message as { session_id?: string }).session_id;
+            if (typeof sid === "string" && sid !== "") newSessionId = sid;
 
-          const events = translateSdkMessage(message, translateState);
-          for (const event of events) {
-            await emitTranslatedEvent(event, ctx, emitState, name);
-            if (event.kind === "result") {
-              resultSubtype = event.subtype;
-              if (event.sessionId !== null) newSessionId = event.sessionId;
-              if (event.finalMessage !== null) finalMessage = event.finalMessage;
-              if (event.usage !== null) usage = event.usage;
-              if (event.costUsd !== null) costUsd = event.costUsd;
+            const events = translateSdkMessage(message, translateState);
+            // DELIVERY IS STRUCTURAL, like shutdown. Translation consumed this
+            // whole message and cleared its correlation maps for every call in
+            // it, so the events are now the only remaining record of what those
+            // calls did. Interleaving delivery with the emission `await` below
+            // made every event after the first one conditional on item
+            // persistence succeeding: one rejection and the rest were lost with
+            // nothing left to reconstruct them from — a settled `TaskCreate`
+            // would vanish from `observed-plan` AND `observed-gaps`, because the
+            // end-of-run drain finds no open create either.
+            //
+            // `observe` is synchronous and never throws, so handing it the whole
+            // batch first closes the window rather than guarding it.
+            for (const event of events) recorder?.observe(event);
+            for (const event of events) {
+              await emitTranslatedEvent(event, ctx, emitState, name);
+              if (event.kind === "result") {
+                resultSubtype = event.subtype;
+                if (event.sessionId !== null) newSessionId = event.sessionId;
+                if (event.finalMessage !== null)
+                  finalMessage = event.finalMessage;
+                if (event.usage !== null) usage = event.usage;
+                if (event.costUsd !== null) costUsd = event.costUsd;
+              }
+            }
+            // Partials path: the whole `assistant` message is the turn's close
+            // boundary. translate skips its text/thinking (already streamed), so
+            // close the open streaming items here before the next turn's deltas.
+            if (includePartialMessages && message.type === "assistant") {
+              await closeStreamingItems(ctx, emitState, name);
             }
           }
-          // Partials path: the whole `assistant` message is the turn's close
-          // boundary. translate skips its text/thinking (already streamed), so
-          // close the open streaming items here before the next turn's deltas.
-          if (includePartialMessages && message.type === "assistant") {
-            await closeStreamingItems(ctx, emitState, name);
+        } catch (err) {
+          await finalizeOpenItems(ctx, emitState, name);
+          // Persist the session id even on failure so the next request can resume
+          // the conversation the SDK actually created.
+          if (!detached && newSessionId !== null) {
+            await ctx.session.patchState(
+              SDK_SESSION_ID_KEY,
+              () => newSessionId,
+            );
           }
+          const wrapped = new ClaudeAgentRunError(
+            `Claude Code agent run failed: ${(err as Error).message}`,
+            { cause: (err as Error).message },
+          );
+          await emitTranslatedEvent(
+            { kind: "error", message: wrapped.message, code: wrapped.code },
+            ctx,
+            emitState,
+            name,
+          );
+          throw wrapped;
         }
-      } catch (err) {
+
         await finalizeOpenItems(ctx, emitState, name);
-        // Persist the session id even on failure so the next request can resume
-        // the conversation the SDK actually created.
-        if (!detached && newSessionId !== null) {
-          await ctx.session.patchState(SDK_SESSION_ID_KEY, () => newSessionId);
+
+        // Prefer the coalesced/whole assistant text the emitter tracked; fall
+        // back to the SDK result's text.
+        finalMessage = emitState.finalMessage ?? finalMessage;
+
+        const errored = isErroredSubtype(resultSubtype);
+        const handle: SdkAgentHandle = {
+          source: "sdk",
+          status: errored ? "errored" : "completed",
+          sessionId: newSessionId,
+          url: null,
+          dispatchedAt,
+          resultSubtype,
+          finalMessage,
+          toolsObserved: emitState.toolsObserved,
+          usage,
+          costUsd,
+        };
+
+        // Skipped wholesale when conversation state is off — a value written
+        // under an undeclared key is a silent corruption. The handle is still
+        // RETURNED; that is this block's output, not persisted state.
+        if (!detached) {
+          if (newSessionId !== null) {
+            await ctx.session.patchState(
+              SDK_SESSION_ID_KEY,
+              () => newSessionId,
+            );
+          }
+          await ctx.session.patchState(SDK_AGENT_RUNS_KEY, (prev) => [
+            ...((prev as SdkAgentHandle[] | undefined) ?? []),
+            handle,
+          ]);
         }
-        const wrapped = new ClaudeAgentRunError(
-          `Claude Code agent run failed: ${(err as Error).message}`,
-          { cause: (err as Error).message },
+
+        ctx.emit.status(
+          errored
+            ? `Claude Code agent run errored (${resultSubtype ?? "unknown subtype"}).`
+            : "Claude Code agent run completed.",
+          { transient: false },
         );
-        await emitTranslatedEvent(
-          { kind: "error", message: wrapped.message, code: wrapped.code },
-          ctx,
-          emitState,
-          name,
-        );
-        throw wrapped;
-      }
 
-      await finalizeOpenItems(ctx, emitState, name);
-
-      // Prefer the coalesced/whole assistant text the emitter tracked; fall
-      // back to the SDK result's text.
-      finalMessage = emitState.finalMessage ?? finalMessage;
-
-      const errored = isErroredSubtype(resultSubtype);
-      const handle: SdkAgentHandle = {
-        source: "sdk",
-        status: errored ? "errored" : "completed",
-        sessionId: newSessionId,
-        url: null,
-        dispatchedAt,
-        resultSubtype,
-        finalMessage,
-        toolsObserved: emitState.toolsObserved,
-        usage,
-        costUsd,
-      };
-
-      // Skipped wholesale when conversation state is off — a value written
-      // under an undeclared key is a silent corruption. The handle is still
-      // RETURNED; that is this block's output, not persisted state.
-      if (!detached) {
-        if (newSessionId !== null) {
-          await ctx.session.patchState(SDK_SESSION_ID_KEY, () => newSessionId);
+        return handle;
+      } finally {
+        // The last recording window, and anything still in flight. A clean run
+        // can still end with a plan create unanswered (`error_max_turns` ends
+        // the stream mid-exchange), so this is not a failure-path concern.
+        //
+        // Wrapped, because a throw HERE would replace the run's real outcome
+        // with a bookkeeping error — the precise inversion this feature exists
+        // to prevent, and the one place where "watching the work must never
+        // break the work" would be violated by the code that enforces it.
+        // Neither call is expected to throw; both are proved not to.
+        try {
+          for (const event of drainUnsettledObservations(translateState)) {
+            recorder?.observe(event);
+          }
+          await recorder?.stop();
+        } catch {
+          // Deliberately empty: see above.
         }
-        await ctx.session.patchState(SDK_AGENT_RUNS_KEY, (prev) => [
-          ...((prev as SdkAgentHandle[] | undefined) ?? []),
-          handle,
-        ]);
       }
-
-      ctx.emit.status(
-        errored
-          ? `Claude Code agent run errored (${resultSubtype ?? "unknown subtype"}).`
-          : "Claude Code agent run completed.",
-        { transient: false },
-      );
-
-      return handle;
     },
   });
 }
@@ -354,13 +578,17 @@ function buildCanUseTool(
     );
     const seq = ++decisionSeq;
     if (decision.decision === "allow") {
-      ctx.emit.status(`Approved tool: ${toolName} (#${seq}).`, { transient: false });
+      ctx.emit.status(`Approved tool: ${toolName} (#${seq}).`, {
+        transient: false,
+      });
       return {
         behavior: "allow",
         updatedInput: decision.updatedInput ?? toolInput,
       };
     }
-    ctx.emit.status(`Denied tool: ${toolName} (#${seq}).`, { transient: false });
+    ctx.emit.status(`Denied tool: ${toolName} (#${seq}).`, {
+      transient: false,
+    });
     return {
       behavior: "deny",
       message: decision.message ?? `Tool ${toolName} was denied.`,
