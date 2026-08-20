@@ -502,3 +502,112 @@ describe("claudeCodeAgent", () => {
   });
 
 });
+
+/**
+ * `detached: true` — the mode that runs the block as detached background work.
+ *
+ * The task board refuses a detached worker whose block (or any block under it)
+ * authors a `sessionStateSchema`, because every detached worker in a flow
+ * becomes a route on one shared Workstream flow. A background job is one run in
+ * one workstream, so the conversation state this block keeps — a resume handle
+ * and a run log — has no reader on that path. Detaching stops it being
+ * declared, stops the reads and writes that go with it, and stops the resume.
+ *
+ * The option is three-state — `true`, `false`, omitted — and omitted must keep
+ * meaning the default. So each state is asserted EXPLICITLY below rather than
+ * inferred from its neighbour, and both observable consequences are pinned for
+ * each: whether the schema is declared, and whether the SDK is handed a
+ * `resume`. A polarity slip reverses behaviour with no type error, since
+ * `boolean | undefined` accepts either sense of the flag.
+ */
+describe("claudeCodeAgent — detached", () => {
+  /** The read the board's refusal performs, spelled the same way. */
+  function authoredSessionStateSchema(block: unknown): unknown {
+    return (block as { config?: { sessionStateSchema?: unknown } }).config?.sessionStateSchema;
+  }
+
+  /**
+   * Run the block against a provider that ALWAYS returns a saved session, and
+   * report the `resume` the SDK was handed. `undefined` means the provider was
+   * never consulted.
+   *
+   * The assertion is on the OPTIONS HANDED TO THE SDK, not on the schema:
+   * suppressing the declaration and the `ctx.session` read while leaving the
+   * provider resolution intact would resume a prior conversation with every
+   * declared-schema assertion still passing. The shipped default provider
+   * returns nothing for an empty key, which is exactly why that would hide.
+   */
+  async function resumeHandedToSdk(options: { detached?: boolean }): Promise<unknown> {
+    const spy = vi.fn();
+    const resumingProvider = {
+      async resolve() {
+        return { sdkSessionId: "sess_saved" };
+      },
+      async release() {},
+    };
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
+      sessionProvider: resumingProvider,
+      ...options,
+    });
+    await testBlock(block, {
+      input: { prompt: "go" },
+      session: { state: { [SDK_SESSION_ID_KEY]: "sess_prior" } },
+    });
+    return spy.mock.calls[0][0].options?.resume;
+  }
+
+  it("declares the conversation-state schema and resumes when the option is omitted", async () => {
+    // BP-030. A caller who never heard of this option must be unaffected, and
+    // this is the assertion that fails if the default ever flips.
+    expect(authoredSessionStateSchema(claudeCodeAgent())).toBeDefined();
+    expect(await resumeHandedToSdk({})).toBe("sess_saved");
+  });
+
+  it("declares the conversation-state schema and resumes when `detached: false`", async () => {
+    // Spelled out rather than folded into the omitted case: `false` and
+    // `undefined` are different values arriving at the same read site, and only
+    // asserting both catches a read that collapses one into the other.
+    expect(authoredSessionStateSchema(claudeCodeAgent({ detached: false }))).toBeDefined();
+    expect(await resumeHandedToSdk({ detached: false })).toBe("sess_saved");
+  });
+
+  it("declares no schema and hands the SDK no `resume` when `detached: true`", async () => {
+    // The board's refusal reads exactly this field, on the block and on every
+    // block composed under it, before any context exists.
+    expect(authoredSessionStateSchema(claudeCodeAgent({ detached: true }))).toBeUndefined();
+    expect(await resumeHandedToSdk({ detached: true })).toBeUndefined();
+  });
+
+  it("writes no session state when `detached: true`", async () => {
+    // Suppressing only the DECLARATION would leave the writes landing under a
+    // key nothing declared — the silent-corruption shape the board's refusal
+    // exists to prevent, not a smaller version of the same behaviour.
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK]),
+      detached: true,
+    });
+    const { state, output, error } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(error).toBeNull();
+    expect(state.session[SDK_SESSION_ID_KEY]).toBeUndefined();
+    expect(state.session[SDK_AGENT_RUNS_KEY]).toBeUndefined();
+    // The run still happened and still reports what it observed — the handle is
+    // the return value, which is a different thing from persisted state.
+    expect((output as SdkAgentHandle).sessionId).toBe("sess_new");
+  });
+
+  it("writes session state when `detached: false`", async () => {
+    // The contrast that makes the assertion above able to fail: the same run on
+    // the in-session path DOES persist both keys.
+    const block = claudeCodeAgent({
+      resolveClaudeAgent: scriptedQuery([RESULT_OK]),
+      detached: false,
+    });
+    const { state, error } = await testBlock(block, { input: { prompt: "go" } });
+
+    expect(error).toBeNull();
+    expect(state.session[SDK_SESSION_ID_KEY]).toBe("sess_new");
+    expect(state.session[SDK_AGENT_RUNS_KEY]).toHaveLength(1);
+  });
+});

@@ -105,6 +105,47 @@ a live handle across requests rather than a parallel store. The default provider
 is thin because the SDK resumes cheaply by id; pass your own to hold a heavier
 resource (an open connection, for example).
 
+### Turning it off for background work
+
+A **workstream** is a child session dedicated to one background job, running
+outside the request that started it. If you dispatch the agent into one, set
+`detached: true`:
+
+```ts
+const agent = claudeCodeAgent({ detached: true });
+```
+
+Each job is then one run. Nothing is written to session state, and no prior SDK
+conversation is resumed — a second job addressed to the same workstream begins a
+new agent run. What the run did is still recorded: the workstream's own item
+stream holds its messages, reasoning, and tool calls in order, which is what you
+read the run back from.
+
+**The session id does not disappear.** The option governs session state and
+automatic resume, not the run's own result: the handle the block returns still
+carries the SDK `sessionId` it observed. When the agent runs as a task-board
+worker, that handle is the worker's output, and the board writes the output onto
+the task when it settles — so the id is persisted there. Worth knowing if you are
+reasoning about data retention, or if you plan to resume a run by hand later.
+
+The option is also required rather than optional there. Background workers share
+one flow, so two of them declaring the same session-state key would overwrite
+each other, and the task board refuses to build a background worker that declares
+session state.
+
+That refusal sees the worker block and the blocks composed inside it. It does
+**not** see a session-state schema contributed by a capability, which reaches a
+block through a separate channel that leaves no mark on the block itself. So a
+worker can be accepted while still carrying session state that way. If you attach
+this agent as a capability, pass the option there too — it takes the same one:
+
+```ts
+createClaudeCodeAgentCapability({ detached: true });
+```
+
+See [Background work](../server/background-work.md) for how a workstream is set
+up and read back.
+
 ## Tool approval
 
 By default the agent governs its own tools through the SDK's `permissionMode`. To

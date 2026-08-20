@@ -95,6 +95,29 @@ type ClaudeRemoteHandle = {
 A later request reads `ctx.session.state.claudeRemoteTasks` to reference prior
 dispatches.
 
+### Running as detached background work (`/sdk`)
+
+The SDK agent keeps its own session state — `sdkSessionId` (the run it resumes)
+and `sdkAgentRuns` (the handles it has returned). Pass `detached: true` to run it
+as background work instead, which switches that off:
+
+```ts
+claudeCodeAgent({ detached: true });
+```
+
+Nothing is declared, read, or written, and the SDK is handed no `resume`, so each
+run starts fresh. Use it when the agent runs as background work on a task board:
+those workers share one flow, so the board refuses one whose block declares
+session state. The run's own history is the workstream's item stream instead.
+
+The returned handle still carries the SDK `sessionId`, and as a worker's output
+it is persisted with the task — the option governs session state and resume, not
+the result.
+
+`createClaudeCodeAgentCapability({ detached: true })` takes the same option, and
+passing it is required rather than tidy: a capability declares the schema through
+a channel the board's refusal cannot see.
+
 ## Limitations
 
 - No headless polling/streaming of cloud-task progress (CLI limitation).
@@ -138,6 +161,7 @@ for the full surface.
 | Auth | claude.ai subscription | Anthropic credentials |
 | Progress | Watch via `/tasks`, claude.ai, mobile | Streamed live as flow-state-dev items |
 | Session | Cloud session handle | Persistent, resumed across requests |
+| As background work | Already fire-and-forget | Task-board worker with `detached: true`; the workstream's item stream is the run's record |
 | Reach for it when | Offloading long autonomous work | A real agent in the loop, observed step by step |
 
 ## Running tests
