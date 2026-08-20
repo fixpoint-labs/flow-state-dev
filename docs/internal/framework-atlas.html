@@ -234,7 +234,8 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
     <a href="#consumers">24 · Client, React, CLI</a>
     <a href="#proving">25 · Proving ground</a>
     <a class="grp">Synthesis</a>
-    <a href="#lenses">26 · Refactor lenses</a>
+    <a href="#ledger">26 · The removal ledger</a>
+    <a href="#lenses">27 · Refactor lenses</a>
   </nav>
 </aside>
 
@@ -246,11 +247,11 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
   <div class="stats">
     <div class="stat"><b>27</b><span>packages</span></div>
     <div class="stat"><b>~179k</b><span>lines of src</span></div>
-    <div class="stat"><b>630</b><span>test files</span></div>
+    <div class="stat"><b>7,655</b><span>tests</span></div>
     <div class="stat"><b>4</b><span>block kinds</span></div>
     <div class="stat"><b>20</b><span>sequencer ops</span></div>
     <div class="stat"><b>18</b><span>item types</span></div>
-    <div class="stat"><b>129</b><span>doc pages</span></div>
+    <div class="stat"><b>23</b><span>deprecations</span></div>
   </div>
 </header>
 
@@ -1953,13 +1954,166 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
     <div class="card"><h5>apps/docs</h5><span class="role">129 pages</span><p>Docusaurus site across 21 sections, with its own voice standard and an outsider rule — docs describe what the thing does, never how it was built.</p></div>
   </div>
 
-  <p><strong>630 test files</strong> sit inside the packages, weighted toward the two big ones: 184 in <code>engine</code>, 122 in <code>core</code>, 66 in <code>orchestration</code>. The framework's own verification hierarchy is explicit in <code>AGENTS.md</code>: <code>fsdev run</code> is the default for a flow change, <code>pnpm test</code> for unit-level changes, and the kitchen sink in a browser for UI-layer changes.</p>
+  <p><strong>7,655 declared test cases</strong> across 630 files sit inside the packages — 61 of those are <code>it.each</code> blocks that expand to more at runtime, so the executed count is higher. The weight follows the mass: 1,878 in <code>core</code>, 1,803 in <code>engine</code>, 937 in <code>orchestration</code>, 459 in <code>memory</code>. The framework's own verification hierarchy is explicit in <code>AGENTS.md</code>: <code>fsdev run</code> is the default for a flow change, <code>pnpm test</code> for unit-level changes, and the kitchen sink in a browser for UI-layer changes.</p>
+</section>
+
+
+<section id="ledger">
+  <div class="sec-head"><span class="sec-num">26</span><h2>The removal ledger</h2></div>
+  <p class="lede">Two kinds of entry: surface already <strong>marked</strong> <code>@deprecated</code> in the code, and surface <strong>proposed</strong> for removal, reduction, or extraction but not yet marked. The first is a cleanup list. The second is a set of boundary decisions.</p>
+
+  <h3>Already marked — 23 deprecations across 6 packages</h3>
+  <p>Every one names its replacement, so none of these is a research task. Twenty-five of the twenty-seven packages are <code>public</code>; only <code>integration-tests</code> and <code>ui</code> are <code>private</code> today, which means everything below is currently published surface.</p>
+
+  <div class="tw"><table>
+    <thead><tr><th>Package</th><th class="num">Marks</th><th>What is deprecated</th><th>Replacement</th></tr></thead>
+    <tbody>
+      <tr><td><code>patterns</code></td><td class="num">7</td><td><code>shared/legacy-plan-types.ts</code> — <code>BasePlan</code>, <code>BasePlanTask</code>, the plan/task collection aliases, <code>PlanMeta</code>, <code>PlanTaskUpdate</code></td><td><code>Task</code> / <code>TaskCollection</code> from <code>orchestration</code>; the <code>task-board-meta</code> and <code>task-change</code> component shapes</td></tr>
+      <tr><td><code>core</code></td><td class="num">6</td><td><code>clientData</code> on session/user/org config (×3), the collection-key helper, a <code>ResourceRef</code> alias, a generator tool-type alias</td><td><code>client.derived</code>; <code>resolveCollectionKey</code>; <code>ResourceRef</code>; <code>GeneratorTool</code></td></tr>
+      <tr><td><code>react</code></td><td class="num">4</td><td>The module-singleton <code>FlowContext</code> (×3, flagged unsafe) and a <code>CollectionItem</code> back-compat shape</td><td><code>&lt;FlowProvider&gt;</code> and <code>useFlowContext()</code> inside its tree</td></tr>
+      <tr><td><code>contracts</code></td><td class="num">3</td><td>The removed <code>context</code> item type (×2) and an <code>ItemVisibility</code> alias</td><td>Generator context slots; <code>ItemVisibility</code></td></tr>
+      <tr><td><code>vercel</code></td><td class="num">2</td><td>The heartbeat re-export shim and its config option</td><td>SSE heartbeat injection now lives in <code>engine</code></td></tr>
+      <tr><td><code>memory</code></td><td class="num">1</td><td>The LLM filter strategy</td><td>Superseded when the prepare gate split into per-source pools</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="note">
+    <span class="lbl">The pattern in the list</span>
+    <p>Four of the six clusters are <strong>old-and-new side by side</strong> — a superseding change that landed without deleting what it replaced. That is the exact shape tenet 3 names: <em>a change that supersedes a path deletes it in the same change</em>. The <code>patterns</code> cluster is the largest and the clearest: seven aliases pointing at a substrate that has been canonical since the task-board migration.</p>
+  </div>
+
+  <h3>Proposed — the boundary moves</h3>
+
+  <figure>
+    <div class="fig-body">
+      <svg viewBox="0 0 940 424" role="img" aria-label="Disposition map for seven proposed package moves: contracts merging into core (contradicted by evidence), tools splitting into search, sandbox and MCP-client packages, patterns absorbing into orchestration, the utility catalog pruned, chat-sdk replaced by a signals package, thought-fabric extracted to its own repository, and cli renamed to fsdev.">
+        <defs>
+          <marker id="l1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--accent)"/></marker>
+          <marker id="l1x" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--k-router)"/></marker>
+        </defs>
+
+        <text class="t-lbl" x="24" y="20">Today</text>
+        <text class="t-lbl" x="427" y="20" text-anchor="middle">Proposed move</text>
+        <text class="t-lbl" x="600" y="20">Target shape</text>
+        <path class="ln-soft" d="M24,28 L928,28"/>
+
+        <rect class="n-box" x="24" y="44" width="230" height="34" rx="4"/>
+        <text class="t-s" x="38" y="66">contracts</text>
+        <path class="ln-x" d="M258,61 L594,61" marker-end="url(#l1x)"/>
+        <text class="t-xs" x="427" y="55" text-anchor="middle" fill="var(--k-router)">MERGE — EVIDENCE SAYS NO</text>
+        <rect class="n-box" x="600" y="44" width="328" height="34" rx="4" stroke="var(--k-router)"/>
+        <text class="t-s" x="614" y="66">core</text>
+
+        <rect class="n-box" x="24" y="92" width="230" height="34" rx="4"/>
+        <text class="t-s" x="38" y="114">tools</text>
+        <path class="ln-acc" d="M258,109 L594,109" marker-end="url(#l1)"/>
+        <text class="t-xs" x="427" y="103" text-anchor="middle">SPLIT BY CONCERN</text>
+        <rect class="n-box-2" x="600" y="92" width="104" height="34" rx="4"/>
+        <text class="t-xs" x="612" y="113">web tools</text>
+        <rect class="n-box-2" x="712" y="92" width="104" height="34" rx="4"/>
+        <text class="t-xs" x="724" y="113">bash sandboxes</text>
+        <rect class="n-box-2" x="824" y="92" width="104" height="34" rx="4"/>
+        <text class="t-xs" x="836" y="113">mcp client</text>
+
+        <rect class="n-box" x="24" y="140" width="230" height="34" rx="4"/>
+        <text class="t-s" x="38" y="162">patterns</text>
+        <path class="ln-acc" d="M258,157 L594,157" marker-end="url(#l1)"/>
+        <text class="t-xs" x="427" y="151" text-anchor="middle">ABSORB THE USEFUL WRAPPERS</text>
+        <rect class="n-acc" x="600" y="140" width="328" height="34" rx="4"/>
+        <text class="t-s" x="614" y="162">orchestration — board wrappers land here</text>
+
+        <rect class="n-box" x="24" y="188" width="230" height="34" rx="4"/>
+        <text class="t-s" x="38" y="210">core/utility — 11 factories</text>
+        <path class="ln-acc" d="M258,205 L594,205" marker-end="url(#l1)"/>
+        <text class="t-xs" x="427" y="199" text-anchor="middle">PRUNE TO WHAT IS USED</text>
+        <rect class="n-box-2" x="600" y="188" width="328" height="34" rx="4"/>
+        <text class="t-s" x="614" y="210">keyedRouter + what patterns actually consume</text>
+
+        <rect class="n-box" x="24" y="236" width="230" height="34" rx="4"/>
+        <text class="t-s" x="38" y="258">chat-sdk</text>
+        <path class="ln-acc" d="M258,253 L594,253" marker-end="url(#l1)"/>
+        <text class="t-xs" x="427" y="247" text-anchor="middle">GENERALISE</text>
+        <rect class="n-box-2" x="600" y="236" width="328" height="34" rx="4"/>
+        <text class="t-s" x="614" y="258">signals — outside integrations, one abstraction</text>
+
+        <rect class="n-box" x="24" y="284" width="230" height="34" rx="4"/>
+        <text class="t-s" x="38" y="306">@thought-fabric/core</text>
+        <path class="ln-acc" d="M258,301 L594,301" marker-end="url(#l1)"/>
+        <text class="t-xs" x="427" y="295" text-anchor="middle">EXTRACT</text>
+        <rect class="n-grp" x="600" y="284" width="328" height="34" rx="4"/>
+        <text class="t-s" x="614" y="306">its own repository — a consumer, not a layer</text>
+
+        <rect class="n-box" x="24" y="332" width="230" height="34" rx="4"/>
+        <text class="t-s" x="38" y="354">@flow-state-dev/cli</text>
+        <path class="ln-acc" d="M258,349 L594,349" marker-end="url(#l1)"/>
+        <text class="t-xs" x="427" y="343" text-anchor="middle">RENAME</text>
+        <rect class="n-box-2" x="600" y="332" width="328" height="34" rx="4"/>
+        <text class="t-s" x="614" y="354">fsdev — the bin is already called that</text>
+
+        <path class="ln-soft" d="M24,382 L928,382"/>
+        <text class="t-xs" x="24" y="400">NET CHANGE IN PACKAGE COUNT: ABOUT MINUS ONE. THE WIN IS BOUNDARY CLARITY, NOT MASS —</text>
+        <text class="t-xs" x="24" y="414">WHICH IS THE RIGHT TRADE WHEN INCOHERENCE OUTRANKS BLOAT.</text>
+      </svg>
+    </div>
+    <figcaption><b>Six of the seven survive contact with the evidence.</b> The one that does not is the <code>contracts</code> merge — the premise behind it turns out not to hold. Details below.</figcaption>
+  </figure>
+
+  <div class="tw"><table>
+    <thead><tr><th>Move</th><th>What the code says</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>thought-fabric → its own repo</strong></td>
+        <td>Two in-repo consumers, both in <code>apps/kitchen-sink</code> (<code>cognition.ts</code>, <code>bias-check.ts</code>). No framework package imports it. It already lives under a separate npm scope.</td>
+        <td>Clean extraction. It is a consumer of FSD, not a layer of it, and the scope name already says so.</td>
+      </tr>
+      <tr>
+        <td><strong>tools → separate packages</strong></td>
+        <td><code>bash</code> is 4,454 of 7,170 lines (62%) with 5 sandbox adapters. <code>search</code>+<code>fetch</code>+<code>crawl</code> together are 1,725 across 12 providers. <code>mcp</code> is 604.</td>
+        <td>The split lines are already the directory lines. <code>bash</code> alone justifies a package; the MCP <em>client</em> and the MCP <em>server</em> package are opposite ends of one protocol and are worth naming as such.</td>
+      </tr>
+      <tr>
+        <td><strong>patterns → reduce, absorb into orchestration</strong></td>
+        <td><strong>Every importer of <code>patterns</code> is a demo or a lab</strong> — kitchen-sink, pattern-benchmark, trading-desk. No framework package imports it. <code>parallelTasks</code> and <code>rlm</code> have zero importers anywhere.</td>
+        <td>Strong. Six of nine patterns are already thin compositions over the board; moving those into <code>orchestration</code> puts them next to the primitive they wrap and removes a package whose only consumers are demos.</td>
+      </tr>
+      <tr>
+        <td><strong>utilities → reduce</strong></td>
+        <td>Of 11 factories: <code>contextReducer</code>, <code>memoryExtractor</code> and <code>intentRouter</code> have <strong>zero consumers anywhere</strong>. <code>keyedRouter</code> has 9 and is load-bearing — <code>core</code>'s own router and workstream core, plus the task board's runner and worker step. <code>decomposer</code> and <code>combiner</code> are consumed only by patterns. The remaining five appear once or twice, in kitchen-sink or labs.</td>
+        <td>Confirmed, with a caveat: <code>keyedRouter</code> is not a utility in the same sense as the rest — it is infrastructure the framework itself runs on, and should probably move rather than be pruned alongside them.</td>
+      </tr>
+      <tr>
+        <td><strong>chat-sdk → a signals package</strong></td>
+        <td><strong>Zero in-repo importers.</strong> The four apparent hits in <code>core</code> and <code>engine</code> are prose in comments describing the one-way dependency, not imports.</td>
+        <td>Nothing in the workspace is holding it in place, so the replacement can be designed on its merits rather than around existing callers.</td>
+      </tr>
+      <tr>
+        <td><strong>contracts → merge back into core</strong></td>
+        <td><strong>The premise does not hold.</strong> Across <code>client</code> and <code>react</code> there are 33 imports of <code>core</code> and <strong>every one is <code>import type</code> or <code>export type</code></strong> — erased at compile, no runtime edge. Their only runtime workspace imports are 3 from <code>contracts</code>.</td>
+        <td>The split is doing exactly its job. See the note below — there is still a real question here, but it is not the one the merge would answer.</td>
+      </tr>
+      <tr>
+        <td><strong>cli → fsdev</strong></td>
+        <td>The package is <code>@flow-state-dev/cli</code>; its bin is already <code>fsdev</code>, and every doc and skill refers to <code>fsdev run</code> / <code>fsdev dev</code>.</td>
+        <td>Purely a package-name change bringing the published name in line with what everything already calls it.</td>
+      </tr>
+    </tbody>
+  </table></div>
+
+  <div class="tension">
+    <h5>The contracts merge, restated as the question it actually is</h5>
+    <p><code>contracts</code> exists so browser code can value-import the item taxonomy without pulling <code>core</code> into the bundle. That boundary is intact and enforced: <code>client</code> and <code>react</code> are type-only on <code>core</code>, and merging the two would create the runtime edge the split was built to prevent.</p>
+    <p>But the split is <strong>2,350 lines across 19 files serving 3 runtime import sites</strong> — one item-store helper, one deep-equal, one items barrel. That is the live question: not "should the boundary exist" but "is the whole of <code>contracts</code> on the right side of it?" A smaller <code>contracts</code> holding only what browsers actually execute, with the rest folded back into <code>core</code> as types, would keep the property and shrink the surface.</p>
+    <span class="ask">Before merging: check what those 3 runtime imports pull transitively. If it is a small closure, the answer is a smaller <code>contracts</code>, not no <code>contracts</code>. If it is most of the package, the split is already right-sized and should be left alone.</span>
+  </div>
+
+  <h3>Making things private is the cheaper half</h3>
+  <p>Twenty-five of twenty-seven packages are published. For anything on the list above that is not ready to delete, <code>private: true</code> costs one line, stops the surface growing new external callers, and is reversible — where a deletion, once published consumers exist, is not. It is the move that buys time without the contract.</p>
 </section>
 
 <section id="lenses">
-  <div class="sec-head"><span class="sec-num">26</span><h2>Refactor lenses</h2></div>
+  <div class="sec-head"><span class="sec-num">27</span><h2>Refactor lenses</h2></div>
   <p class="lede">Nine tensions the inventory surfaces. None of these is a bug report — each is a place where the code and the stated grounding pull in slightly different directions, and where a decision would be worth more than another patch.</p>
-  <p>A tenth sits in <a href="#workforce-layer">&sect;04</a> rather than here, because it needs the stack drawn to make sense: <strong>workforce is the one layer specified top-down</strong>, and the question is whether a team is a new primitive or a composition of parts that already work.</p>
+  <p>Two of them now have an owner's decision attached and live in <a href="#ledger">&sect;26</a> instead: the superseded paths, and the packages proposed for extraction, splitting, or merge. A tenth sits in <a href="#workforce-layer">&sect;04</a>, because it needs the stack drawn to make sense: <strong>workforce is the one layer specified top-down</strong>, and the question is whether a team is a new primitive or a composition of parts that already work.</p>
 
   <div class="tension">
     <h5>1 · The two mega-packages</h5>
@@ -1991,9 +2145,9 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <div class="tension">
     <h5>5 · Superseded paths that outlived their supersession</h5>
-    <p>24 <code>@deprecated</code> markers across the framework packages. <code>patterns/src/shared/legacy-plan-types.ts</code> plus a <code>legacyWorkerAdapter</code> and a comment recording that the runtime plan-emit helpers were retired. Two generator loop implementations side by side — the FSD-owned step loop and the legacy SDK-driven <code>generate({ maxSteps })</code> path.</p>
-    <p>The generator pair has a stated reason (fallback model groups and older custom adapters genuinely need the old path). The others read more like residue. Tenet 3 says a change that supersedes a path deletes it in the same change — old and new side by side is how incoherence starts.</p>
-    <span class="ask">Which of these have a removal condition someone could actually check, and which are just still there? Naming the condition is most of the work.</span>
+    <p>23 <code>@deprecated</code> marks across 6 packages, each naming its replacement. Four of the six clusters are old-and-new landing side by side rather than the new path deleting the old one.</p>
+    <p>This one now has a decision attached — take them out, or make the package private where a deletion is not yet safe. The itemised list is <a href="#ledger">&sect;26</a>.</p>
+    <span class="ask">What remains open is the general rule, not the list: a supersession that does not delete is how the next 23 accumulate. Is that a review checklist line, or is it already BP-038 and simply not enforced?</span>
   </div>
 
   <div class="tension">
