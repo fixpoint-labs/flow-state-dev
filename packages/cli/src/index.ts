@@ -29,3 +29,18 @@ export type { ParsedInput } from "./chat/parse";
 export type { FlowActionTarget } from "./chat/targets";
 export type { ChatRenderer } from "./chat/render";
 export { registerUiCommand } from "./commands/ui";
+export {
+  CANONICAL_NEXT_STEPS,
+  PACKAGE_MANAGER_COMMAND_FORMS,
+  renderNextSteps,
+  compareToCanonicalNextSteps,
+  assertCanonicalNextSteps,
+} from "./next-steps";
+export type {
+  NextStepsTopology,
+  NextStepsPackageManager,
+  PackageManagerCommandForms,
+  NextStepsValues,
+  RenderNextStepsOptions,
+  NextStepsComparison,
+} from "./next-steps";

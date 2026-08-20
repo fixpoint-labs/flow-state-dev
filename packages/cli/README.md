@@ -389,6 +389,30 @@ import type { FlowRunResult, FlowEvent, BlockExecResult } from "@flow-state-dev/
 
 `discoverFlows` accepts an `onImportFailed` callback in its options object, invoked with a `FlowImportFailure` (`filePath`, `message`, `cause`) for each module that throws during import. Discovery continues with remaining modules; without the callback, failures are skipped silently.
 
+### The next-steps block
+
+Tools that wire FSD into a project — a scaffolder, or a coding assistant following an install skill — print the same closing paragraph: which servers now exist, what each is for, which ports they land on, and the caveats that come with them. That text is authored once here.
+
+```ts
+import {
+  CANONICAL_NEXT_STEPS,
+  renderNextSteps,
+  assertCanonicalNextSteps,
+} from "@flow-state-dev/fsdev";
+
+renderNextSteps({
+  topology: "mounted-route", // or "second-process"
+  packageManager: "pnpm", // npm | pnpm | yarn
+  devScript: "serve",
+  devUrl: "http://localhost:4000",
+  mountPath: "/api/flows",
+});
+```
+
+`CANONICAL_NEXT_STEPS` is the source: one text with two conditional branches and six named placeholders. A tool embeds it verbatim in its own source, renders the branch its host shape needs, and calls `assertCanonicalNextSteps` on its embedded copy from its own tests — that is what keeps two tools from drifting apart on what they tell a developer. Embed **both** branches even if you only ever render one; the comparison reads the whole block.
+
+`renderNextSteps` throws rather than printing an unfilled placeholder, and refuses a package manager it has no command forms for. The `second-process` branch needs neither a dev script nor a mount path, so a project without one is not an error.
+
 ## Dependencies
 
 - `@flow-state-dev/core` — block/flow type definitions
