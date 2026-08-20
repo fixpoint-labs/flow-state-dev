@@ -225,24 +225,22 @@ export function forwardSignalToController(
  */
 /**
  * Percent-escape the characters that stop a value being ONE resource-path
- * segment.
- *
- * `normalizeResourcePath` — which every key composed from this namespace goes
- * through — treats `/` and `\` as separators, rejects control characters
- * outright, and rejects a segment that is exactly `..`. The request id reaches
+ * segment: `/`, `\`, control characters, and a segment of exactly `..` — the
+ * four `normalizeResourcePath` rejects or splits on. The request id reaches
  * here straight from the caller (`sendOptions.requestId` rides the action
  * request body into `ctx.request.identity.id`), so all four are reachable
  * input, not hypotheticals.
  *
- * **The escaping is injective, and that is the point.** Stripping or replacing
- * the offending characters would satisfy the normalizer just as well and be a
- * worse bug: two distinct request ids would collapse onto ONE namespace, so two
- * runs' file rows would merge under one key — trading a silent empty recorder
- * for silent cross-run mixing, which looks healthy. `%` is escaped first, so
- * nothing can collide with an escape sequence introduced here.
+ * **The escaping is injective, and that is the point.** Stripping the offending
+ * characters would satisfy the normalizer just as well and be a worse bug: two
+ * distinct request ids would collapse onto ONE namespace and merge two runs'
+ * rows under one key — trading a silent empty recorder for silent cross-run
+ * mixing, which looks healthy.
  *
- * Only those characters are touched, so `[`, `]` and `.` survive and every
- * namespace that was already valid is unchanged byte for byte.
+ * **What this costs:** injectivity requires escaping `%` first, so an id that
+ * already contains one moves (`a%b` keys under `a%25b`). That is the whole
+ * exception — every other already-valid id, `[`, `]`, `.` and `...` included,
+ * is unchanged byte for byte, so existing rows keep their keys.
  */
 function encodePathSegment(value: string): string {
   const escaped = value
@@ -253,10 +251,12 @@ function encodePathSegment(value: string): string {
       /[\x00-\x1f]/g,
       (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`,
     );
-  // Dots survive the escaping above untouched, so an all-dots value is still
-  // the one shape left that names a place rather than a thing — `..` is
-  // rejected by the normalizer, and `.` would silently mean "here".
-  return /^\.+$/.test(escaped) ? escaped.replace(/\./g, "%2E") : escaped;
+  // Dots survive the escaping above untouched, so `..` — the one segment the
+  // normalizer rejects outright — is still reachable and needs its own branch.
+  // Exactly `..`, not any run of dots: `.` and `...` are accepted keys today,
+  // and widening this would move rows that are keyed fine. A literal `%2E%2E`
+  // escapes to `%252E%252E` above, so it cannot collide with what this emits.
+  return escaped === ".." ? "%2E%2E" : escaped;
 }
 
 /**

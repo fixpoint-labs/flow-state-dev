@@ -858,6 +858,22 @@ describe("claudeCodeAgent — recordWork", () => {
     }
   });
 
+  it("leaves an already-keyable request id byte for byte, bar one", () => {
+    // Rows written before this change are still keyed by the raw id, so an id
+    // the normalizer already accepted must key the same after it — otherwise
+    // the fix orphans the very records it exists to protect. `.` and `...` are
+    // in here because only `..` is rejected: escaping every run of dots would
+    // move rows that were keyed fine.
+    for (const id of ["plain-42", "a[1]", "x.y", ".", "...", "a-b_c", "req:1"]) {
+      const ns = runNamespace({ request: { identity: { id } } } as never);
+      expect(ns).toBe(`${id}/0#0`);
+    }
+    // The one exception, and it is forced: injectivity needs `%` escaped first,
+    // or a literal `a%2Fb` could not be told from an encoded `a/b`. An id
+    // carrying a `%` therefore moves, and that is a documented migration.
+    expect(runNamespace({ request: { identity: { id: "a%b" } } } as never)).toBe("a%25b/0#0");
+  });
+
   it("keeps apart two request ids a lossy sanitiser would collide", () => {
     // Stripping or replacing the offending characters would also be "safe", and
     // is the wrong fix: it maps distinct ids onto ONE namespace, trading a
