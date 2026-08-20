@@ -4,10 +4,10 @@
  *
  * Two shippers print these steps: the brownfield install skill (FIX-1159) and the greenfield
  * `create-flow-state` command (FIX-548). They produce genuinely different text — a pnpm
- * brownfield run prints `pnpm dev` and `pnpm exec fsdev dev`, greenfield prints `npm run dev`
+ * brownfield run prints `pnpm run dev` and `pnpm exec fsdev dev`, greenfield prints `npm run dev`
  * and `npm exec -- fsdev dev` — so the shared artifact is the block's SOURCE, not its output.
  * Each shipper embeds {@link CANONICAL_NEXT_STEPS} verbatim in its own source and substitutes
- * at emit time; {@link compareToCanonicalNextSteps} is how each one proves its copy has not
+ * at emit time; {@link assertCanonicalNextSteps} is how each one proves its copy has not
  * drifted. There is exactly one normalization and one equality, exported here, because two
  * shippers cannot drift apart on a comparison neither of them implements.
  *
@@ -44,24 +44,51 @@
  *
  * ## Command forms, measured rather than assumed
  *
- * `{{execSep}}` exists because `npm exec` consumes a leading-dash argument as its own config.
- * Measured on npm 10.9.7 / pnpm 10.4.1 / yarn 1.22.22 against a bin that prints its argv:
+ * Both forms were measured on npm 10.9.7 / pnpm 10.4.1 / yarn 1.22.22 against scripts and a bin
+ * that print what actually reached them. `test/next-steps.test.ts` re-runs both tables through
+ * the real package managers rather than asserting the strings look right.
  *
- * | invocation                                  | argv the bin received          |
- * |---------------------------------------------|--------------------------------|
- * | `npm exec fsdevish serve --host 127.0.0.1`  | `["serve","127.0.0.1"]` — lost |
+ * **`{{exec}}` and `{{execSep}}`** — `npm exec` consumes a leading-dash argument as its own
+ * configuration, and so does `yarn exec`:
+ *
+ * | invocation                                    | argv the bin received            |
+ * |-----------------------------------------------|----------------------------------|
+ * | `npm exec fsdevish serve --host 127.0.0.1`    | `["serve","127.0.0.1"]` — lost   |
  * | `npm exec -- fsdevish serve --host 127.0.0.1` | `["serve","--host","127.0.0.1"]` |
- * | `pnpm exec fsdevish serve --host 127.0.0.1` | `["serve","--host","127.0.0.1"]` |
- * | `yarn exec fsdevish serve --host 127.0.0.1` | `["serve"]` — lost             |
- * | `yarn exec -- fsdevish serve --host 127.0.0.1` | `["serve","--host","127.0.0.1"]` |
+ * | `pnpm exec fsdevish serve --host 127.0.0.1`   | `["serve","--host","127.0.0.1"]` |
+ * | `yarn exec fsdevish serve --host 127.0.0.1`   | `["serve"]` — lost               |
+ * | `yarn exec -- fsdevish serve --host 127.0.0.1`| `["serve","--host","127.0.0.1"]` |
  *
- * **Yarn drops the flag too**, which the spec's "the separator npm needs and the others do not"
- * did not anticipate — under Yarn the loopback bind would silently not be applied. So the
- * separator is emitted for npm and Yarn, and `test/next-steps.test.ts` re-runs the table above
- * through the real package managers rather than asserting the strings look right.
+ * **Yarn drops the flag too**, which "the separator npm needs and the others do not" did not
+ * anticipate — under Yarn the loopback bind would silently not be applied.
  *
  * `{{exec}}` is `npm exec` rather than `npx` so the separator has something to attach to; the
  * two are equivalent otherwise, and `npx fsdev …` needs no separator at all.
+ *
+ * **`{{run}}` is `<manager> run <script>` for all three, never the shortcut form.** `pnpm <name>`
+ * and `yarn <name>` lose to the manager's own builtins, and the script name here is an arbitrary
+ * one detected in somebody else's manifest:
+ *
+ * | invocation         | what ran                                      |
+ * |--------------------|-----------------------------------------------|
+ * | `pnpm list`        | pnpm's dependency listing — the script never ran |
+ * | `pnpm run list`    | the script                                    |
+ * | `pnpm why`         | `ERR_PNPM_MISSING_PACKAGE_NAME`               |
+ * | `yarn config`      | `error Invalid subcommand`                    |
+ * | `yarn list`        | `error No lockfile in this directory`         |
+ * | `yarn run config`  | the script                                    |
+ *
+ * A project whose dev script is called `list`, `config`, `why`, `add` or `link` is unremarkable,
+ * and under the shortcut form the printed command silently does something else entirely.
+ *
+ * ## Why the sidecar names a port
+ *
+ * `fsdev serve` falls back to `$PORT`, then to 3000. A second-process host is by definition a
+ * project already running a server, and 3000 is where it most often is — so the printed command
+ * would reliably fail to bind. The block names **4201**: adjacent to the DevTool's 4200, so the
+ * pair reads as one thing, and clear of the usual application defaults. A fixed literal rather
+ * than a free-port probe, because this text is a canonical string a shipper asserts byte-for-byte
+ * — probing at emit time would make it non-deterministic and give a help message a failure mode.
  *
  * ## Invoking the CLI before it is installed
  *
@@ -98,8 +125,8 @@ export const PACKAGE_MANAGER_COMMAND_FORMS: Readonly<
   Record<NextStepsPackageManager, Readonly<PackageManagerCommandForms>>
 > = {
   npm: { run: "npm run", exec: "npm exec", execSep: " --" },
-  pnpm: { run: "pnpm", exec: "pnpm exec", execSep: "" },
-  yarn: { run: "yarn", exec: "yarn exec", execSep: " --" },
+  pnpm: { run: "pnpm run", exec: "pnpm exec", execSep: "" },
+  yarn: { run: "yarn run", exec: "yarn exec", execSep: " --" },
 };
 
 /** Values a shipper fills in. The mounted-route three are absent on a second-process host. */
@@ -144,11 +171,12 @@ export const CANONICAL_NEXT_STEPS = `Next steps
       the FSD API and the DevTool, in one process beside your own server
       → http://localhost:4200
 
-  {{exec}}{{execSep}} fsdev serve --host 127.0.0.1
+  {{exec}}{{execSep}} fsdev serve --host 127.0.0.1 --port 4201
       the same API without the DevTool
-      → http://127.0.0.1:3000, or the port $PORT names
-      Keep the --host 127.0.0.1. It binds the listener to loopback, so
-      nothing off this machine can reach it.
+      → http://127.0.0.1:4201
+      Both flags are deliberate. --host 127.0.0.1 binds the listener to
+      loopback, so nothing off this machine can reach it; --port 4201 keeps
+      it clear of 3000, where your own server probably already is.
 
   {{exec}}{{execSep}} fsdev run hello send --input '{"userId":"u1","message":"hi"}'
       run the demo flow from your terminal
@@ -189,6 +217,31 @@ function sectionPattern(key: string): RegExp {
 const PLACEHOLDER_PATTERN = /\{\{[^}]*\}\}/g;
 
 /**
+ * Everything a POSIX shell passes through untouched. Deliberately narrow: `~` (home expansion),
+ * `{}` (brace expansion) and `,` are outside it even though a script name rarely contains them.
+ */
+const SHELL_SAFE = /^[A-Za-z0-9._:/@=+-]+$/;
+
+/**
+ * Quote a value that lands in a **command position** in the rendered block.
+ *
+ * `devScript` is the one such value, and it is read out of somebody else's `package.json` — so in
+ * the brownfield case it is input we did not author. A name carrying a space renders as two
+ * arguments and the printed command addresses the wrong script; one carrying `;`, `&&`, `$(…)` or
+ * a backtick is interpreted by the shell the developer pastes it into. Single quotes are the only
+ * POSIX construct that suspends *all* expansion, and `'\''` is how a literal quote survives them.
+ *
+ * The common case stays readable: `dev` and `dev:web` come back unquoted.
+ *
+ * `devUrl` and `mountPath` are not quoted, and that is not an oversight — neither sits in a
+ * command position. They are display text on their own lines, so a shell never reads them.
+ */
+function shellQuote(value: string): string {
+  if (value.length > 0 && SHELL_SAFE.test(value)) return value;
+  return `'${value.split("'").join(`'\\''`)}'`;
+}
+
+/**
  * Render the block for one topology and one package manager.
  *
  * Throws when a value the rendered branch needs was not supplied, rather than emitting a
@@ -227,7 +280,7 @@ export function renderNextSteps(options: RenderNextStepsOptions): string {
     run: forms.run,
     exec: forms.exec,
     execSep: forms.execSep,
-    devScript: options.devScript,
+    devScript: options.devScript === undefined ? undefined : shellQuote(options.devScript),
     devUrl: options.devUrl,
     mountPath: options.mountPath,
   };
@@ -272,57 +325,52 @@ function normalize(text: string): string {
   return lines.map((line) => (line === "" ? line : line.slice(common))).join("\n");
 }
 
-/** What {@link compareToCanonicalNextSteps} reports. */
-export interface NextStepsComparison {
-  /** True when the embedded copy is the canonical block after normalization. */
-  matches: boolean;
-  /** On a mismatch: the first differing line, with its number, in both texts. */
-  reason?: string;
-}
-
 /**
- * Compare a shipper's embedded copy against canonical.
+ * The first line on which a copy differs from canonical, or `null` when it does not.
  *
  * Equality over the **whole** block, every branch included — never presence and never a
  * substring. The regression this exists to catch is a copy with the branch that shipper cannot
  * reach trimmed out of it, which a presence check passes.
  *
- * The comparison is exported rather than run here over every shipper's copy on purpose: a check
- * written here cannot tell *not yet* from *never*. Demanding a copy that has not shipped yet
- * fails; tolerating its absence passes forever. So each shipper invokes this from its own test
- * suite, and the assertion lands exactly when the copy does.
+ * Comparing line by line after a length check means the loop always finds a difference when the
+ * texts differ, so there is no "same lines, different length" case to report.
  */
-export function compareToCanonicalNextSteps(embedded: string): NextStepsComparison {
+function firstDifference(embedded: string): string | null {
   const actual = normalize(embedded);
   const expected = normalize(CANONICAL_NEXT_STEPS);
-  if (actual === expected) return { matches: true };
+  if (actual === expected) return null;
 
   const actualLines = actual.split("\n");
   const expectedLines = expected.split("\n");
   const limit = Math.max(actualLines.length, expectedLines.length);
   for (let i = 0; i < limit; i++) {
     if (actualLines[i] === expectedLines[i]) continue;
-    return {
-      matches: false,
-      reason:
-        `line ${i + 1} differs.\n` +
-        `  canonical: ${expectedLines[i] === undefined ? "<end of block>" : JSON.stringify(expectedLines[i])}\n` +
-        `  embedded:  ${actualLines[i] === undefined ? "<end of block>" : JSON.stringify(actualLines[i])}`,
-    };
+    return (
+      `line ${i + 1} differs.\n` +
+      `  canonical: ${expectedLines[i] === undefined ? "<end of block>" : JSON.stringify(expectedLines[i])}\n` +
+      `  embedded:  ${actualLines[i] === undefined ? "<end of block>" : JSON.stringify(actualLines[i])}`
+    );
   }
-  return { matches: false, reason: "the two blocks differ in length but not in any line" };
+  /* c8 ignore next */
+  throw new Error("unreachable: the texts differ but no line does");
 }
 
 /**
- * Throw unless `embedded` is the canonical block. The form shippers call from their own tests.
+ * Throw unless `embedded` is the canonical block. **The only comparison surface** — a shipper
+ * asserts, it never inspects a verdict, so there is one thing to call and one way to fail.
+ *
+ * The assertion is exported rather than run here over every shipper's copy on purpose: a check
+ * written here cannot tell *not yet* from *never*. Demanding a copy that has not shipped yet
+ * fails; tolerating its absence passes forever. So each shipper invokes this from its own test
+ * suite, and the assertion lands exactly when the copy does.
  *
  * @param label how to name the copy in the failure message (e.g. the file it was read from)
  */
 export function assertCanonicalNextSteps(embedded: string, label = "the embedded next-steps block"): void {
-  const result = compareToCanonicalNextSteps(embedded);
-  if (result.matches) return;
+  const difference = firstDifference(embedded);
+  if (difference === null) return;
   throw new Error(
-    `${label} has drifted from the canonical next-steps block in @flow-state-dev/fsdev: ${result.reason}\n` +
+    `${label} has drifted from the canonical next-steps block in @flow-state-dev/fsdev: ${difference}\n` +
       `Copy CANONICAL_NEXT_STEPS across verbatim, including the branch this shipper never renders.`,
   );
 }

@@ -411,7 +411,7 @@ renderNextSteps({
 
 `CANONICAL_NEXT_STEPS` is the source: one text with two conditional branches and six named placeholders. A tool embeds it verbatim in its own source, renders the branch its host shape needs, and calls `assertCanonicalNextSteps` on its embedded copy from its own tests — that is what keeps two tools from drifting apart on what they tell a developer. Embed **both** branches even if you only ever render one; the comparison reads the whole block.
 
-`renderNextSteps` throws rather than printing an unfilled placeholder, and refuses a package manager it has no command forms for. The `second-process` branch needs neither a dev script nor a mount path, so a project without one is not an error.
+`renderNextSteps` throws rather than printing an unfilled placeholder, and refuses a package manager it has no command forms for. The `second-process` branch needs neither a dev script nor a mount path, so a project without one is not an error. `devScript` is shell-quoted when it needs to be, so a script name carrying a space or a metacharacter still renders as one argument.
 
 ## Dependencies
 

