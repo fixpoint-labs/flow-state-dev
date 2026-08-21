@@ -137,14 +137,22 @@ report("D. proof.txt in launch dir", landedInLaunch);
 report("D. hooks fired", log.map(([n]) => n));
 
 // --- Verdict ----------------------------------------------------------------
+// The question that decides the design is "is this a third placement strategy the FRAMEWORK
+// can choose at run start?" — not "can the host provision a directory once the model asks?".
+// Probe D's own prompt instructs the model to call `EnterWorktree`, so nothing measured here
+// can confirm the former. The printed verdict answers the question the spec asks (§12); the
+// mechanical result stays in the WHY.
 const hostFlagWorks = listA.length > 1;
-const hostHookControlsPlacement = landedInTarget && !landedInLaunch;
+const hostHookProvisions = landedInTarget && !landedInLaunch;
 
 verdict(
-  hostHookControlsPlacement ? "CONFIRMED" : "REFUTED",
-  hostHookControlsPlacement
-    ? "`WorktreeCreate` is a host-implemented PROVISIONING hook, not an observer: the host returns " +
-      "`worktreePath` and the run relocates there — including a plain non-git directory. " +
-      `The launch dir is a git repo only for the built-in path (host --worktree: ${hostFlagWorks ? "works" : "no"}).`
-    : "the host could not steer placement through the hook — see the probes above.",
+  "REFUTED",
+  hostHookProvisions
+    ? "not a placement the framework can choose. `WorktreeCreate` IS a host-implemented " +
+      "PROVISIONING hook rather than an observer — the host returns `worktreePath` and the run " +
+      "relocates there, including into a plain non-git directory — but it fires only when the " +
+      "MODEL invokes `EnterWorktree`, which probe D's prompt had to ask for. That makes it a " +
+      "mid-run relocation seam, not a placement strategy. " +
+      `The built-in flag needs a git repo and picks its own path (host --worktree: ${hostFlagWorks ? "works" : "no"}).`
+    : "the host could not steer placement through the hook at all — see the probes above.",
 );
