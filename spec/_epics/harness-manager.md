@@ -4,23 +4,38 @@
 
 **Objective.** Nothing has yet driven one real issue end to end through the Conductor seam.
 Every piece under that seam works on its own — the board claims and routes, `claudeCodeAgent`
-runs, `startDetached` spawns, `settleParentTask` closes the row — and no one has put a real
-issue through the join between them. This epic does exactly that, once, on real work, and
-treats the join as the thing under test rather than the parts.
+runs, `startDetached` spawns, and a detached run settles its own task row — and no one has put a
+real issue through the join between them. This epic does exactly that, once, on real work, and
+treats the join as the thing under test rather than the parts. The hardest case is **a run that
+asks something on its first turn**, before anything has been observed about it; this set is
+designed against that case, not against the happy one.
 
 > **Outcome** — A real issue in this repo goes from a task row to an open PR driven by
 > Conductor rather than by a person in a Claude session, including at least one point where
 > the run needed a decision and got one without anybody opening a terminal.
 >
-> **Proof** — LAB-139's goal check: one real Linear issue (recommended: FIX-1196) driven from
+> **Proof** — LAB-139's goal check: one real Linear issue (recommended: **FIX-1177** — one
+> defect, one call site, an existing validation shape on the same function to match) driven from
 > a conductor task row to an open PR, where the run posted a question to the inbox, the answer
-> went back in through `steer`, and the run finished on it. Readable off the run's own `runs/*`
-> row, the inbox row, and the PR.
+> went back in, and the run finished on it. Readable off the run's own `runs/*` row, the inbox
+> row, and the PR.
+>
+> **What the Proof does not show** — two limits, both deliberate, stated so it is not oversold:
+> - **The ask is forced, not spontaneous.** LAB-139's implement prompt *requires* the run to
+>   confirm one named decision through the inbox before it opens the PR. That is a chosen
+>   experimental design: it isolates the variable under test — the channel, not the model's
+>   judgment about when to reach for it. Whether a run asks unprompted is the *next* epic's
+>   evidence, not this one's, and nobody should read the Proof as a run spontaneously deciding
+>   it needed help.
+> - **The operator is present.** Holding the task in `awaiting_review` tests the join and the
+>   first-turn ask. It does **not** test *"questions live in resources while nobody is
+>   watching"* — that needs the cold path, which is out of scope here on purpose.
 >
 > **Lead measure** — the set's goal-proven issues, named: FIX-150 · LAB-138 · LAB-139.
 >
-> **Not doing** — the mail/relay layer (FIX-1197 owns it; questions ride the hot path here,
-> held in `awaiting_review` while the operator is present) · the parked-task cold path
+> **Not doing** — the mail/relay layer (FIX-1197 owns it; questions ride the hot path here, held
+> in `awaiting_review` while the operator is present — **whether a detached run's task can be
+> held that way at all is under settlement, §5 first entry**) · the parked-task cold path
 > (`pending feedback` + a settle-time watch) · resume-with-continuity for a steered run
 > (FIX-1179 — a steer restarts the coding agent with a re-stated prompt, and that is accepted)
 > · the spec and review phase records and the durable approval gate between phases · the
@@ -44,13 +59,11 @@ is that the ask-and-answer path is where the design bet actually gets tested and
 own spec rather than a section in someone else's. **Kept as two, with the seam named**: if
 LAB-139's spec finds it cannot describe its own loop without restating LAB-138's, that is the
 signal they should have been one issue, and merging them then is cheaper than discovering it
-at implementation. FIX-150 is not in question, and it is **not on the Proof's critical
-path**. What it buys this epic is one line: a run's files come back as state, and the agent is
-fenced into its workspace. That is not what LAB-134 already delivered —
-`claudeCodeAgent({ recordWork: true })` shipped the *index* of a run's file writes and
-deliberately left the file **contents** out of scope, and the contents are exactly what FIX-150
-is for. Its spec is already approved and it subsumes a live data-loss bug (FIX-998), so it runs
-on its own track (theme 8) and the manager adopts the projection when it lands.
+at implementation. *(Re-raised by both automated reviews and ruled on by the product owner —
+§5, decided.)* FIX-150 is not in question and is **not on the Proof's critical path** (theme 4).
+It buys this epic one line: a run's files come back as state and the agent is fenced into its
+workspace — which is *not* what LAB-134 delivered, since `claudeCodeAgent({ recordWork: true })`
+shipped the *index* of a run's file writes and left the **contents** out of scope.
 
 **Which project objective this serves.** `docs/objectives.md` Goal 1, *validate through real
 usage*. This is the framework driving its own development on real models — the most demanding
@@ -68,6 +81,16 @@ verified.** [LAB-68](https://linear.app/fixpoint-labs/issue/LAB-68/conductor-the
 (Done) is the previous generation of this work and delivered layer zero: a coding run is an FSD
 session, and its file writes and todos are readable as state.
 
+**One inventory correction, checked in source rather than assumed.** A detached run's row is
+**not** settled through `RequestHost.settleParentTask`. That verb refuses by name
+(`no-parent-task`) unless a host wires `inputs.parentTask`, and `createFlowState.ts` leaves it
+unwired on purpose. The real path is `packages/orchestration/src/task-board/detached-runner.ts`,
+where the Workstream settles its own task through the same ticket-fenced recorders the inline
+drain uses — *"not a second settlement path."* The board does settle a detached run; it just
+does not do it through the verb the Atlas names. **LAB-138 builds against the runner's fenced
+write-back** — wanting the verb instead means budgeting the `parentTask` wiring as framework
+work, not assuming a seam.
+
 ## 2. Themes & long-horizon direction
 
 1. **The coordinator stays small on purpose.** The bet under test is that the session a person
@@ -76,44 +99,23 @@ session, and its file writes and todos are readable as state.
    whether it keeps that true. An issue that finds itself wanting to hold run history in the
    coordinator has hit this theme, not a local design problem — comment up on the epic PR.
 
-2. **One manager, three records — not three adapters.** The Atlas's §7 argument: phases differ
-   in a *prompt builder*, a *done-condition predicate* and a *readable set*, not in three block
-   sequences. This epic writes the manager and **exactly one record (implement)**. The claim
-   that a fourth phase costs a record is what the *next* epic tests; nothing here should make
-   that harder. Concretely: a manager that cannot be pointed at a different record without
-   editing the manager has broken this theme.
+2. **One manager, one record — a constraint this epic honours, not a claim it tests.** The
+   Atlas's §7 argument is that phases differ in a *prompt builder*, a *done-condition predicate*
+   and a *readable set*, not in three block sequences. This epic writes the manager and
+   **exactly one record (implement)** — and writing one record **cannot falsify** "a fourth
+   phase costs a record, not an adapter." At best it yields a non-regression constraint; at
+   worst an implement-shaped manager that nothing here would catch. So the theme binds as a
+   constraint: **a manager that cannot be pointed at a different record without editing the
+   manager has broken it.** The claim itself is the *next* epic's to test, and no evidence from
+   this one should be cited for it.
 
 3. **Gaps go in the framework, never in conductor** — LAB-68's standing rule, carried forward.
    The tell that this has gone wrong is **a capability only conductor can call**. When an issue
    needs something the framework doesn't have, the work is to add it to the framework layer,
-   not to grow a conductor-shaped shortcut.
+   not to grow a conductor-shaped shortcut. This is why the inbox is built as an ordinary
+   user-scoped resource collection rather than as a new capability (§5, decided).
 
-4. **Everything under this seam already works; this epic is the join.** The board claims and
-   routes, `claudeCodeAgent` runs, `startDetached` spawns, `settleParentTask` closes the row.
-   The surprises live in the join — particularly **a run that asks something on its first
-   turn**, before anything has been observed about it. Design against that case, not against
-   the happy one.
-
-5. **Questions ride the hot path.** A run holds its task in `awaiting_review` while its
-   question is open, which keeps a worker slot occupied for as long as the person takes. The
-   durable alternative needs the relay layer FIX-1197 is building; this epic **adopts that when
-   it lands** rather than waiting for it. No issue in this set builds a cold path. **Whether a
-   detached run's task can be held in `awaiting_review` at all is under settlement** — §5, first
-   entry. This theme is the decision; it is not yet the verified premise.
-
-6. **A steer restarts the coding agent.** Nothing can hand a prior SDK session id into a
-   detached run today (FIX-1179), so answering a question re-states the prompt and pays again
-   for context the agent had already read. Correct and expensive; **accepted, and not to be
-   worked around.** An issue that finds itself building continuity machinery has left this
-   epic's scope.
-
-7. **The inbox is a plain resource collection, not a new framework capability.** FIX-1075 asks
-   exactly the right scoping question — *what does an inbox capability add that a shared
-   resource collection does not?* — and the answer here is *nothing this epic needs*. Building
-   it as an ordinary user-scoped collection keeps theme 3 intact and gives FIX-1075 the
-   evidence it asked for. FIX-1056 is the same gap seen from the steering side.
-
-8. **Sequencing — and FIX-150 is not a dependency.** LAB-138 lands before LAB-139: the
+4. **Sequencing — and FIX-150 is not a dependency.** LAB-138 lands before LAB-139: the
    ask-and-answer path needs a run that is already watched and settled. They can be *specced*
    in parallel; they cannot merge out of order. **FIX-150 runs on its own track, and the Proof
    does not wait on it.** LAB-138 provisions the run's working directory with a plain
@@ -129,12 +131,12 @@ session, and its file writes and todos are readable as state.
 |---|---|---|---|---|---|
 | [LAB-138](https://linear.app/fixpoint-labs/issue/LAB-138/the-harness-manager-a-task-row-becomes-a-watched-settled-coding-run) | The manager loop — a task row becomes a watched, settled coding run. Provisions the run's working directory with a plain `git worktree add` — the seam FIX-150's PR (c) later subsumes | spec | — | — | Needs spec |
 | [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof.** Blocked by LAB-138. Its spec should not close while §5's `awaiting_review` claim is under settlement | spec | — | — | Needs spec |
-| [FIX-150](https://linear.app/fixpoint-labs/issue/FIX-150/workspaces-if-validated-workspacerunner-block-and-virtual-filesystem) | Workspaces — the file-projection component. Large, three PRs (a component · b shell-tool migration · c coding-agent path). Subsumes FIX-998. **Own track — carries no dependency edge into the Proof** (theme 8) | spec | [#1345](https://github.com/fixpoint-labs/flow-state-dev/pull/1345) — **approved** | — | Needs implementation |
+| [FIX-150](https://linear.app/fixpoint-labs/issue/FIX-150/workspaces-if-validated-workspacerunner-block-and-virtual-filesystem) | Workspaces — the file-projection component. Large, three PRs (a component · b shell-tool migration · c coding-agent path). Subsumes FIX-998. **Own track — carries no dependency edge into the Proof** (theme 4) | spec | [#1345](https://github.com/fixpoint-labs/flow-state-dev/pull/1345) — **approved** | — | Needs implementation |
 
 *FIX-150 is on team **flow-state**, not Labs; it is a sub-issue of LAB-140 across teams. Its
 spec gate is already passed (`spec approved` on #1345), so it enters at implementation. It is a
 member of this set because the manager will adopt its projection — not because anything here
-waits on it (theme 8).*
+waits on it (theme 4).*
 
 ## 5. Open cross-cutting questions
 
@@ -143,44 +145,42 @@ waits on it (theme 8).*
   this PR (#1362). The claim, as put: the runner records a successful return as `completed` and
   the task mirror is request-scoped, so a detached run cannot hold its task open across turns —
   which would make the inbox/`steer` flow as designed inexpressible without an extra wake seam,
-  or without the cold path this epic excludes. **It is load-bearing on theme 5** (questions ride
-  the hot path) **and on LAB-139**, whose Proof *is* that flow. A POC is settling it now rather
-  than the thread arguing it; the verdict is folded here when it returns. **Until then, theme 5's
-  premise is asserted, not checked** — LAB-139's spec should not close on a design that assumes
-  it, and the objective should not be signed off believing it has been verified.
+  or without the cold path this epic excludes. **It is load-bearing on the hot-path decision**
+  (questions ride the hot path) **and on LAB-139**, whose Proof *is* that flow. A POC is settling
+  it now rather than the thread arguing it; the verdict is folded here when it returns. **Until
+  then, the hot-path premise is asserted, not checked** — LAB-139's spec should not close on a
+  design that assumes it, and the objective should not be signed off believing it has been
+  verified.
 
 - **Where conductor's own code lives.** Both LAB-138 and LAB-139 write into the same place and
   neither can settle it alone, so it is the epic's to answer. Raised at epic drafting. **Blocks
   nothing yet** — it blocks LAB-138's spec at the point where that spec has to name a package.
-  Put to the product owner on the epic PR as a live fork; the ask is reproduced here so the
-  record survives the thread:
+  **The product owner's call, live on the epic PR ([#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362))**,
+  where the fork is put in full: a published `@flow-state-dev/conductor` with a release story,
+  or an unpublished home nothing outside this repo can depend on. Recommendation: **unpublished,
+  concretely `labs/conductor/`** — an existing pattern rather than an invention, since `labs/`
+  already holds `knowledge-hub` and `trading-desk`, and `labs/knowledge-hub/src/inbox.ts`
+  already implements the inbox as a plain user-scoped collection.
 
-  > **A supported public package, or an unpublished one we can churn?**
-  >
-  > *Plain terms:* conductor is the thing that drives our own development. The choice is
-  > whether we publish it as `@flow-state-dev/conductor` — a public surface with a release
-  > story, a changelog, and a dependency graph other packages can point at — or keep it as an
-  > unpublished app / workspace-private package that nothing outside this repo can depend on.
-  >
-  > *Trade-off:* publishing makes it a product people can adopt, and makes every later change
-  > to it a compatibility question. Keeping it private promises nothing and costs nothing to
-  > rewrite, at the price of it reading as an internal tool rather than something the framework
-  > offers.
-  >
-  > *My recommendation:* **unpublished, for now.** The design is still moving — this epic
-  > exists precisely because the join has never been run once — and theme 2 says the phase
-  > machine is the *next* epic's subject. Publishing a surface whose shape we expect to change
-  > buys adoption we are not ready to support. Prior art agrees in one direction: PR #1297
-  > explored a deterministic-driver shape and was not merged.
-  >
-  > *What would change my mind:* if conductor is meant to be something customers run — a
-  > selling point rather than our own tooling — then it should be published from the start,
-  > because retrofitting a public surface onto a private one is a rename plus a migration note
-  > for everyone already importing the private path.
-  >
-  > *If I'm wrong:* going private-then-public later costs a rename and one release note.
-  > Going public-then-churning costs a broken dependency for anyone who adopted it, and the
-  > pressure not to churn is what quietly freezes a design we said was still moving.
+- **~~Do LAB-138 and LAB-139 merge into one issue?~~** *Decided: no — two, as composed.* Both
+  automated reviews on this PR pushed to fold them (one "definite", one "lean fold"); **the
+  product owner ruled against**, because §1's necessity check already interrogates the split and
+  names a concrete reconsideration trigger. That trigger is the only route back to this.
+
+- **~~Do questions ride the hot path, or wait for the relay layer?~~** *Decided: the hot path* —
+  a run holds its task in `awaiting_review` while its question is open, costing a held worker
+  slot for as long as the person takes. FIX-1197's relay is adopted when it lands; no issue here
+  builds a cold path. *(Decision settled; its premise is the open claim above.)*
+
+- **~~Does a steer resume the coding agent, or restart it?~~** *Decided: it restarts it.* Nothing
+  can hand a prior SDK session id into a detached run today (FIX-1179), so an answer re-states
+  the prompt and pays again for context already read. Expensive and accepted — an issue building
+  continuity machinery has left scope.
+
+- **~~Is the inbox a new framework capability?~~** *Decided: no — a plain user-scoped resource
+  collection.* FIX-1075 asks the right scoping question and the answer here is *nothing this
+  epic needs*; a plain collection keeps theme 3 intact and gives FIX-1075 its evidence.
+  FIX-1056 is the same gap from the steering side.
 
 ---
 
@@ -198,6 +198,17 @@ waits on it (theme 8).*
   collection), and opened the package-location fork to the product owner.
 - **After epic review, round 1** — moved this document's metadata below the objective so the
   problem leads; corrected the FIX-150 story, which had been stated two ways: it is a member of
-  the set on its own track, **not** a dependency of the Proof, and theme 8 now names LAB-138's
-  interim `git worktree add` seam explicitly. Recorded the reviewer's `awaiting_review` /
-  wake-seam claim in §5 as an open claim under settlement rather than folding either side of it.
+  the set on its own track, **not** a dependency of the Proof, and the sequencing theme now names
+  LAB-138's interim `git worktree add` seam explicitly. Recorded the reviewer's `awaiting_review`
+  / wake-seam claim in §5 as an open claim under settlement rather than folding either side of it.
+- **After epic review, round 2** — cut §2 from eight themes to four and §5's embedded fork to a
+  pointer, because a coordination artifact longer than the specs it coordinates has stopped
+  coordinating; the hot-path, steer and inbox decisions were restating §1 and are now §5 entries
+  carrying their answers. Reframed theme 2 as a constraint this epic *honours* rather than
+  evidence it *produces*, because one record cannot falsify the phase-machine claim. Corrected
+  the seam inventory in source — settlement runs through the detached runner's fenced recorders,
+  not `settleParentTask`, which `createFlowState` leaves unwired — against a review assertion to
+  the contrary. Swapped the Proof issue to FIX-1177 (FIX-1196 is a CLI-wide policy call by its
+  own description) and named the forced ask and the operator-present limit, so the Proof is not
+  read as more than it is. Recorded the owner's two-issue ruling, and `labs/conductor/` as the
+  concrete unpublished option.
