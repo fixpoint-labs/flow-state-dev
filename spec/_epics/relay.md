@@ -13,16 +13,17 @@
 
 ## 1. Purpose & objective *(the `epic approved` sign-off surface)*
 
+**The problem, in plain terms. A session, once it is running, is a dead end — nothing in the
+system can reach it.** FSD can start a session, and it can start a detached child of one, but
+there is no way back in to one that already exists. So a workstream that hits a question has
+nowhere to put it — it finishes or it fails. A schedule that fires can only begin something
+new. Those are the same hole seen from two sides, which is why cron is inside this epic rather
+than beside it.
+
 **Objective. Make an existing session reachable from inside the system.** A background
 workstream can raise a question without ending. A coordinator can steer a workstream that is
 already running. Two top-level sessions can keep each other informed. A schedule can fire onto
 a named session instead of only ever starting a new one.
-
-**The problem, in plain terms.** FSD can start a session, and it can start a detached child of
-one. Nothing can reach a session that already exists. So a workstream that hits a question has
-nowhere to put it — it finishes or it fails. A schedule that fires can only begin something
-new. Those are the same hole seen from two sides, which is why cron is inside this epic rather
-than beside it.
 
 The consumer is **Conductor**, a meta-harness driving coding-agent runs across many sessions.
 One known, committed consumer is what keeps this from being speculative surface (tenet 3).
@@ -182,13 +183,33 @@ can cite one.
    detached durable execution) entirely for the workstream case. A **top-level** session may still
    block, using the existing durable suspend/resume. **One author-facing verb, two
    implementations** — documented as one verb rather than shipped as two. **Constrains issues 1
-   and 5**, and issue 5 is what makes the workstream half representable at all.
+   and 5**, and issue 5 is what makes the workstream half representable at all. Because the
+   answer is a *new* message rather than the sender's handle resolving, something has to
+   correlate it with the question that was asked — theme 6, and §5 Q1b.
 
 6. **Two send modes, not three — and acceptance is the acknowledgement on both.** *(Amended by
    the owner. Still two modes; what changed is that the receipt is not a third one.)*
    Fire-and-forget and wait-for-response are genuinely different intents and both are needed.
    **Every send awaits acceptance before returning.** Fire-and-forget returns there;
    wait-for-response carries on and waits for the answer (theme 14).
+
+   **What correlates an answer with the question it answers is not yet named — and
+   wait-for-response does not work without it.** *(Epic review, round 2.)* The mode is
+   specified; the identifier is not. It has to be carried on the message and echoed on the
+   reply, or a sender with more than one ask outstanding cannot tell which one a message
+   answers — or that it is an answer at all. **§5 Q1b, the sending `requestId` on the sender's
+   identity, is the leading candidate**, and this is a second, independent argument for it: Q1b
+   was justified only by reply-routing granularity and §3 Q4's discoverability gap, which made
+   it a convenience. A send mode that does not function without it makes it load-bearing.
+   **Q1b stays open** — the owner hedged, and the field is issue 1's spec to settle. What is
+   settled here is that wait-for-response owes an answer to it.
+
+   **The reply is a new inbound message, not a resolution of the sender's handle.** Stated
+   plainly because the opposite reading is easy to reach for: on the workstream path the answer
+   re-enters as fresh inbound work (theme 5), so `DispatchHandle.finished` resolves *the
+   recipient's handling of the message that was sent* — a different event from *the answer
+   arriving*. Nothing in this epic awaits `finished` for an answer, and a design that did would
+   be waiting on the wrong event.
 
    **The receipt already exists in shipped code** — `DispatchHandle.accepted`,
    `packages/engine/src/transports/types.ts:186-227`. Its doc comment is unusually explicit, so
@@ -507,7 +528,7 @@ cell is empty by design, not by omission.
 
 | # | Proposed issue | What it delivers | Depends on | Linear | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|---|---|---|
-| 1 | The address, the send verb, and what a sender may legally address | the recipient address as a **`sessionId`** on the envelope, a **server-derived sender identity** (its `sessionId`, and possibly the sending `requestId` — open, §5 Q1b), the send verb, both send modes, **acceptance as the acknowledgement on both** (theme 6) and the **sender-side answer timeout, default 30 min** (theme 14), the self-addressed refusal, and the agent-facing tool — core + engine + tools | — | not filed | spec | — | — | Proposed |
+| 1 | The address, the send verb, and what a sender may legally address | the recipient address as a **`sessionId`** on the envelope, a **server-derived sender identity** (its `sessionId`, and possibly the sending `requestId` — open, §5 Q1b), the send verb, both send modes **and the reply-correlation identifier wait-for-response requires** (theme 6, §5 Q1b), **acceptance as the acknowledgement on both** (theme 6) and the **sender-side answer timeout, default 30 min** (theme 14), the self-addressed refusal, and the agent-facing tool — core + engine + tools | — | not filed | spec | — | — | Proposed |
 | 2 | Per-adapter delivery | in-process for a Node host; through the `FlowDispatcher` seam so a queue-backed deployment gets durability for free; **plus a configurable in-process admission budget** (theme 14, §3 Q4) — the arbiter's hardcoded 30 s silently drops an already-accepted delivery, and `Infinity`/omitted is the unbounded case the gate already supports | 1 | not filed | spec | — | — | Proposed |
 | 3 | The sibling-spawn verb | an independent, self-managing session with its own flow kind and addressable key, resolving `flow.actions` like any other caller and talking back by message rather than `settleParentTask` | 1 | not filed | spec | — | — | Proposed |
 | 4 | Cron: a schedule addresses a session and fires as a message | the schema field, the resolver, and the one dispatch envelope; absent address preserves today's behaviour exactly | 1 | not filed | spec | — | — | Proposed |
@@ -602,8 +623,8 @@ Q1.
 
 The owner stated the recipient address as a `sessionId` and the sender as "sessionId (and **maybe**
 requestId for senders)". The hedge is recorded as a hedge: **this is an open detail for issue 1's
-spec to settle**, not a decision the epic makes. Two things argue for carrying it, recorded here so
-whoever specs issue 1 has the case in hand rather than rebuilding it:
+spec to settle**, not a decision the epic makes. Three things argue for carrying it, recorded here
+so whoever specs issue 1 has the case in hand rather than rebuilding it:
 
 - **Reply routing granularity.** A sender's `sessionId` routes a reply back to the *session*. The
   `requestId` of the sending request is what would route it back to the **specific request that
@@ -612,9 +633,18 @@ whoever specs issue 1 has the case in hand rather than rebuilding it:
   bare `failed` record on the recipient with **no reason recorded and no link to what sent it**
   (`RequestRecord` carries no error field; `ConcurrencyQueueTimeoutError` is swallowed). A sending
   `requestId` on the envelope is a concrete correlation handle for that, and cheap.
+- **Wait-for-response needs *some* correlation identifier to work at all.** *(Epic review, round
+  2.)* Theme 6 specifies the mode; nothing said what matches an arriving answer to the question it
+  answers, and on the workstream path the answer is a separate inbound message rather than the
+  sender's handle resolving. An identifier carried on the message and echoed on the reply is what
+  closes that, and the sending `requestId` is the obvious candidate. This argument is different in
+  kind from the two above: they are conveniences, this is a send mode that is under-specified
+  without one.
 
-Neither argument is decisive against the cost of a second identity field, which is why it stays
-open. **Scope:** issue 1's spec. **Blocks nothing** — the address itself is settled without it.
+None of the three is decisive about the *shape* — a correlation identifier is required, but
+whether it is the sending `requestId` or a field carried beside it is issue 1's call — which is why
+this stays open. **Scope:** issue 1's spec. **Blocks no other issue** — the address itself is
+settled without it — but issue 1 cannot specify wait-for-response without answering it.
 
 ### Q2. The name
 
@@ -735,3 +765,23 @@ on it. **This is the composition half of the objective gate** — see §1's nece
   was hedged by the owner ("maybe"), so it is recorded as **§5 Q1b — an open detail for issue 1's
   spec**, with the case for it (reply-to-the-specific-request routing; a correlation handle for
   the §3 Q4 discoverability gap) written down but not decided.
+- **Epic review, round 2 — the reply-correlation gap, and §1 now leads with the problem. This
+  spends the last of the epic PR's two-round budget: the epic-spec is converged.** Remaining and
+  future epic-PR threads are carried as **implementer notes** on the issue each belongs to rather
+  than folded here. Two findings, both on the doc.
+  (1) **Wait-for-response had no reply correlation.** The mechanism as reported — that the mode
+  awaits `DispatchHandle.finished` and so resolves on the recipient's run instead of the answer —
+  is not what this document specifies; theme 5 says the reply arrives as a *new inbound message*,
+  and nothing here awaits `finished` for an answer. *The gap underneath it is real and ours:* the
+  mode was specified without ever naming **what matches an arriving answer to the question it
+  answers**. Theme 6 now requires a correlation identifier carried on the message and echoed on
+  the reply, and states plainly that `finished` resolves the *recipient's handling of the message
+  sent*, which is a different event from *the answer arriving*. **§5 Q1b — the sending `requestId`
+  — is the leading candidate**, and this is its third and first non-optional argument: it moves
+  Q1b from a convenience to **load-bearing for a send mode**, and **does not settle it** (the
+  owner hedged; the field is issue 1's spec to settle). Theme 5 and §4's issue-1 cell
+  cross-reference it so the mode and the identifier are not read apart again.
+  (2) **§1 led with the objective before the problem**, against BP-039 — worst on the one section
+  the gate signs off, since it makes the direction harder to assess independently of its proposed
+  solution. Reordered: problem first, objective second, nothing dropped.
+  **No re-division — the five issues stand**, and **§5 Q1's door question is untouched**.
