@@ -9,7 +9,8 @@
  *     equality check below would then actively defend the false claim in every shipper's copy;
  *  4. the commands actually run — the strings are executed through the real package managers,
  *     never matched against a pattern. A plausible-looking transcript has hidden a broken
- *     command before; `npm exec` and `yarn exec` both eat `--host 127.0.0.1` without a `--`.
+ *     command before. Both separators are pinned this way: `npm exec` and `yarn exec` eat a
+ *     leading-dash ARGUMENT without a `--`, and every manager eats a leading-dash script NAME.
  */
 import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { readFileSync, chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -506,8 +507,9 @@ function projectFor(manager: NextStepsPackageManager): string {
           // Two script names a shell would take apart if the block printed them bare.
           "my script": "node ./echo-argv.js --from-space-script",
           "dev; echo pwned": "node ./echo-argv.js --from-metachar-script",
-          // A name every package manager reads as one of its own options. The block refuses it;
-          // this fixture is what proves the refusal is warranted rather than superstition.
+          // A name every package manager reads as one of its own options. The block emits the
+          // end-of-options separator for it; this fixture is what proves the printed command
+          // actually reaches the script.
           "--help": "node ./echo-argv.js --from-dash-script",
           // Two names that collide with a package manager's own builtins. Under the shortcut
           // form (`pnpm list`, `yarn config`) the manager runs itself and the script never does.
