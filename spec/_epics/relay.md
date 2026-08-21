@@ -59,6 +59,12 @@ the reply arrives as a new inbound message, nothing suspends — only works if a
 loses its place, and the headline case does not land. It also depends on nothing, so carrying it
 costs the set no sequencing.
 
+**That necessity is now settled by run rather than argued.** §3's settlement took the
+counter-claim — that the board's existing `awaitReview` / `resumeFromReview` already covers the
+cold path — and **refuted** it: parking works and resuming works, but a parked task holds its
+launching request open, so *the request may end* is not available today. What stays open is not
+whether the status is needed but **where it is filed** (§5 Q5).
+
 Issue 3, the sibling-spawn verb, is second-weakest: a second verb in an epic whose point is a
 first one. It stays because it is the same missing layer — same addressing, same per-adapter
 delivery — so building it later means touching both again. **Tripwire:** if it grows a delivery
@@ -183,7 +189,8 @@ can cite one.
    detached durable execution) entirely for the workstream case. A **top-level** session may still
    block, using the existing durable suspend/resume. **One author-facing verb, two
    implementations** — documented as one verb rather than shipped as two. **Constrains issues 1
-   and 5**, and issue 5 is what makes the workstream half representable at all. Because the
+   and 5**, and issue 5 is what makes the workstream half representable at all — settled by run,
+   not assumed: the board's existing park holds its launching request open (§3's settlement). Because the
    answer is a *new* message rather than the sender's handle resolving, something has to
    correlate it with the question that was asked — theme 6, and §5 Q1b.
 
@@ -518,6 +525,75 @@ their evidence. Q1's cross-user refusal was promoted from evidence here to §1, 
 since restated it as a **design invariant** — never a user-to-user send — rather than a boundary
 the design leans on.
 
+### Settlement — does the board's existing park already cover the cold path? **REFUTED.**
+
+**A settlement, not a fifth characterization check.** Q1–Q4 above are characterization: the
+design was asserting things from a code read, so the POC ran them. This is a different
+instrument with a different trigger — two bot reviewers asserted **opposite** answers about how
+the shipped code behaves, the claim was argued twice, and it was run to a verdict rather than
+argued a third time ([`orchestration.md`](../../docs/contributing/orchestration.md) → "Settling
+a disputed claim"). It costs the epic PR no review round. It is recorded here so a sibling issue
+cannot reopen it.
+
+**The claim.** The task board's existing parked-task mechanism (`awaitReview` /
+`resumeFromReview`) already supports the cold path — a worker parks a task, **its request ends**,
+and a later separate request resumes it — so a new `pending feedback` status is unnecessary.
+
+**Verdict: REFUTED.** The *request ends* half is false. The gap is real, and **issue 5 stays in
+the set on its merits** rather than on theme 5's assertion.
+
+**What ran** — two throwaway vitest scenarios on the real `taskBoard` / `awaitReview` /
+`resumeFromReview` path:
+
+| scenario | observed |
+|---|---|
+| **(A)** park and never resume | `elapsedMs=840 drainSettled=true finalStatus=awaiting_review` — the drain returns only when its iteration budget is silently exhausted, abandoning the task mid-park |
+| **(B)** park, checkpoint at 120 ms, then resume | `drainSettledBeforeResume=false drainDoneAfterResume=true` |
+
+**Anti-game check — this is what makes the verdict trustworthy.** Moving the resume *before* the
+checkpoint flips `drainSettledBeforeResume` to `true` and fails the assertion. So (B)
+discriminates real timing rather than hard-coding its own result.
+
+**Mechanism.** `awaiting_review` is the one non-terminal status deliberately excluded from every
+board-exit path (`boardQuiescence` / `inFlightCount` in `quiescence.ts` / `shared.ts`), so the
+launching request's `.waitForCondition` stays open for the whole parked duration — in both
+`onIdle` modes, and on a detached board too.
+
+**First-party corroboration**, `packages/orchestration/src/task-board/shared.ts:140-144`: *"an
+`awaiting_review` row is parked for an external actor whichever way it was dispatched… it keeps
+holding the drain open. A detached board that parks for review therefore still blocks its
+launching request; closing that is a separate question… not this one."*
+
+**And it is already asserted in a committed test.**
+`test/task-board/durable-board-freshness.test.ts` asserts `drainDoneBeforeResume === false`;
+re-run clean (67 files / 1170 tests pass).
+
+**What the counter-assertion got right — recorded so the verdict is not read wider than it is.**
+The *resume* half works. `resumeFromReview` writes `task.feedback`, and `buildWorkerInput`
+(`blocks/worker-step.ts`) spreads `feedback: task.feedback` onto the re-claimed worker's input,
+delivered as a plain string. Only *the request ends* is false.
+
+**Two secondary findings, both favourable to issue 5, with their honesty labels:**
+
+- **Ran.** A parked row's lease is neither reclaimed nor needs renewal — `leaseLapsed`
+  (`tasks/collection/internal.ts:531-534`) short-circuits to `false` for any non-`in_progress`
+  status, by explicit design. A slow human cannot have the task reclaimed or retried out from
+  under them.
+- **Reasoned, not run.** Restart survival follows from the store adapter's general durability
+  guarantee: parked state (`status`, `feedback`, `leaseUntil`) lives in the ordinary
+  resource-backed collection store, and nothing about parking is in-memory-only. **Not verified
+  by execution** — do not read it as such.
+
+**The residual gap issue 5 must build** — the useful output of the settlement: **a park mode that
+does not hold the drain's own request open.** Either an exit path that lets `boardQuiescence`
+return something other than "continue" while a task sits parked, or routing review-parking
+through the same `runsElsewhere` exclusion that detached dispatch already gets for
+`in_progress`.
+
+**Changed:** §1's necessity check now rests on evidence; §4's issue-5 cell carries the residual
+gap; §5 **Q5's necessity half is settled and its placement half is not**. **No re-division — the
+five issues stand.**
+
 ---
 
 ## 4. Running index
@@ -532,7 +608,7 @@ cell is empty by design, not by omission.
 | 2 | Per-adapter delivery | in-process for a Node host; through the `FlowDispatcher` seam so a queue-backed deployment gets durability for free; **plus a configurable in-process admission budget** (theme 14, §3 Q4) — the arbiter's hardcoded 30 s silently drops an already-accepted delivery, and `Infinity`/omitted is the unbounded case the gate already supports | 1 | not filed | spec | — | — | Proposed |
 | 3 | The sibling-spawn verb | an independent, self-managing session with its own flow kind and addressable key, resolving `flow.actions` like any other caller and talking back by message rather than `settleParentTask` | 1 | not filed | spec | — | — | Proposed |
 | 4 | Cron: a schedule addresses a session and fires as a message | the schema field, the resolver, and the one dispatch envelope; absent address preserves today's behaviour exactly | 1 | not filed | spec | — | — | Proposed |
-| 5 | A `pending feedback` task status | "parked awaiting external input; the request may end; a later request resumes this task" — a genuine addition, not a rename of `awaiting_review` | — | not filed | spec | — | — | Proposed |
+| 5 | A `pending feedback` task status | "parked awaiting external input; the request may end; a later request resumes this task" — a genuine addition, not a rename of `awaiting_review`. **Necessity settled by run, not asserted** (§3's settlement, REFUTED): today's `awaitReview` parks and `resumeFromReview` resumes, but `awaiting_review` is excluded from every board-exit path, so the launching request stays open for the whole park. **The residual gap to build:** a park mode that does not hold the drain's own request open — either an exit path letting `boardQuiescence` stop returning "continue" while a task sits parked, or routing review-parking through the same `runsElsewhere` exclusion detached dispatch already gets for `in_progress` | — | not filed | spec | — | — | Proposed |
 
 **The agent-facing tool is deliberately inside issue 1, not beside it.** The constraint is that
 the programmatic sender and the tool are the *same verb*, differing only in who calls them.
@@ -710,9 +786,23 @@ with real code in front of you. Recorded here so a second issue does not re-open
 
 ### Q5. Does `pending feedback` belong in this epic or its own?
 
-It is a dependency of the design either way (theme 5). The epic proposes carrying it as issue 5,
-unblocked and startable immediately. The alternative is filing it outside the epic and depending
-on it. **This is the composition half of the objective gate** — see §1's necessity check.
+**Two halves, and only one of them is settled. Keep them apart.**
+
+**Settled — that it is needed at all.** It is a dependency of the design either way (theme 5),
+and that is no longer an assertion. §3's settlement ran the counter-claim that `awaitReview` /
+`resumeFromReview` already covers the cold path and **refuted** it: the park and the resume both
+work, but the parked task keeps its launching request open, so *the request may end* is not
+available today. Recorded so it is not reopened; the residual gap to build is in §4's issue-5
+cell.
+
+**Open — where it is filed.** Whether it rides inside this epic as issue 5, or is filed outside
+it with a `relates-to` and depended on, is a **composition** question the verdict does not touch.
+The epic proposes carrying it as issue 5, unblocked and startable immediately. A reviewer argued
+for filing it outside on composition grounds — it is a task-board addition, not a messaging one,
+and an epic whose point is a message layer absorbing a board status is what makes a set harder to
+reason about later. **That argument survives the verdict entirely:** proving the status is
+necessary says nothing about which epic should own it. **This is the composition half of the
+objective gate** — see §1's necessity check.
 
 ---
 
@@ -784,4 +874,34 @@ on it. **This is the composition half of the objective gate** — see §1's nece
   (2) **§1 led with the objective before the problem**, against BP-039 — worst on the one section
   the gate signs off, since it makes the direction harder to assess independently of its proposed
   solution. Reordered: problem first, objective second, nothing dropped.
+  **No re-division — the five issues stand**, and **§5 Q1's door question is untouched**.
+- **Settlement — the parked-task cold path. Claim REFUTED; the five issues stand.** *(Folded
+  **outside** the epic PR's two-round budget, which stays spent and the doc stays converged: a
+  settlement records a claim so it cannot be reopened, which is the opposite of reopening review.
+  Nothing else was folded in this pass.)* *The claim:* two bot reviewers asserted opposite answers
+  to the same factual claim — that `awaitReview` / `resumeFromReview` already supports a worker
+  parking a task, **its request ending**, and a later separate request resuming it, making a
+  `pending feedback` status unnecessary. Asserted and counter-asserted, so it was run rather than
+  argued a third time. *What ran:* two throwaway vitest scenarios on the real `taskBoard` path —
+  park-and-never-resume settled the drain only on a silently exhausted iteration budget
+  (`elapsedMs=840 drainSettled=true finalStatus=awaiting_review`), and park-checkpoint-resume read
+  `drainSettledBeforeResume=false drainDoneAfterResume=true`. Moving the resume *before* the
+  checkpoint flips that flag and fails the assertion, so the check discriminates real timing
+  rather than hard-coding a result. Corroborated first-party at `task-board/shared.ts:140-144`
+  and by the committed `durable-board-freshness.test.ts`, which already asserts
+  `drainDoneBeforeResume === false` (suite re-run clean: 67 files / 1170 tests). *Why:*
+  `awaiting_review` is the one non-terminal status excluded from every board-exit path, so the
+  launching request's `.waitForCondition` stays open for the whole park — in both `onIdle` modes
+  and on a detached board. *What the counter-assertion got right, so the verdict is not read
+  wider than it is:* the **resume** half works — `resumeFromReview` writes `task.feedback` and
+  `buildWorkerInput` spreads it onto the re-claimed worker as a plain string. Only *the request
+  ends* is false. *Two secondary findings, both favourable to issue 5:* a parked row's lease is
+  neither reclaimed nor needs renewal (**ran** — `leaseLapsed` short-circuits for any
+  non-`in_progress` status), and restart survival follows from the store adapter's general
+  durability guarantee (**reasoned, not run** — not verified by execution). *What it changed:*
+  §3 gains the settlement, marked as a settlement rather than a fifth characterization check;
+  §4's issue-5 cell gains **the residual gap to build** — a park mode that does not hold the
+  drain's own request open; §5 **Q5's necessity half is now settled and its placement half stays
+  open**, because the composition argument for filing it outside the epic survives the verdict
+  untouched; §1's necessity check and theme 5 now rest on evidence rather than assertion.
   **No re-division — the five issues stand**, and **§5 Q1's door question is untouched**.
