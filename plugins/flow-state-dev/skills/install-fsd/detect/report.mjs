@@ -52,6 +52,23 @@ export function meetsNodeFloor(version, floor = NODE_FLOOR) {
   return aPatch >= bPatch;
 }
 
+/**
+ * What a developer is told when their config is past what this reads.
+ *
+ * **This is scope, not a defect.** The detector handles simple projects; anything else is an
+ * agent's job. So the message says that plainly rather than implying we tried and failed — and it
+ * gives two ways forward, because being turned away has to be cheap.
+ */
+const HANDOFF =
+  "This detector only reads a few simple config shapes on purpose — a plain object exported " +
+  "directly, or assigned to a name and exported. Yours is past that, and guessing at it is how a " +
+  "run scaffolds into the wrong place.";
+
+const BY_HAND =
+  "Two ways forward: ask a coding agent to wire FSD in for you (it can read your config properly), " +
+  "or follow https://flow-state.dev/docs/getting-started/existing-project to do it by hand. " +
+  "Nothing has been written.";
+
 /** One refusal: a machine-readable code, what a developer is told, and what fixes it. */
 function refusal(code, message, remediation) {
   return { code, message, remediation };
@@ -167,10 +184,10 @@ export function buildReport(targetDir, { env = process.env, nodeVersion = proces
   if (settings !== null && !settings.pageExtensions.readable) {
     refusals.push(
       refusal(
-        "page-extensions-unreadable",
-        `pageExtensions in ${nextConfig.path} is not a plain array of strings, and reading it would ` +
-          `mean running your config, which I don't do.`,
-        "Tell me which extensions are enabled, or make the setting a plain array.",
+        "config-past-what-i-read",
+        `I can't read ${displayPath(nextConfig.path, writeRoot)} safely — ${settings.pageExtensions.why ?? "pageExtensions is not a plain array of strings"}.\n` +
+          HANDOFF,
+        BY_HAND,
       ),
     );
   } else if (settings !== null && routeExtension === null) {
@@ -186,9 +203,10 @@ export function buildReport(targetDir, { env = process.env, nodeVersion = proces
   if (settings !== null && !settings.basePath.readable) {
     refusals.push(
       refusal(
-        "base-path-unreadable",
-        `basePath in ${nextConfig.path} is not a plain string, so I can't tell where the mount would answer.`,
-        "Tell me the basePath, or make the setting a plain string.",
+        "config-past-what-i-read",
+        `I can't read ${displayPath(nextConfig.path, writeRoot)} safely — ${settings.basePath.why ?? "basePath is not a plain string"}, so I can't tell where the mount would answer.\n` +
+          HANDOFF,
+        BY_HAND,
       ),
     );
   }

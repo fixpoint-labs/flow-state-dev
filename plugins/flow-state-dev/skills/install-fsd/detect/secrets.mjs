@@ -187,12 +187,22 @@ function destinationsFor(key, resolution, { writeRoot, own, provenance }) {
       continue;
     }
 
-    if (answer.status === "empty" && answer.path !== null) {
-      destinations.push({ path: answer.path, reason: `${key} is an empty assignment here, and this is the line ${runtime} resolves` });
-      continue;
-    }
-    if (answer.status === "unreadable" && answer.path !== null) {
-      destinations.push({ path: answer.path, reason: `${key} here expands a variable ${runtime} resolves and we do not` });
+    if ((answer.status === "empty" || answer.status === "unreadable") && answer.path !== null) {
+      const inWriteRoot = answer.path.startsWith(`${writeRoot}/`);
+      const why =
+        answer.status === "empty"
+          ? `${key} is an empty assignment here, and this is the line ${runtime} resolves`
+          : `${key} here expands a variable ${runtime} resolves and we do not`;
+      if (provenance === PROVENANCE.generated && !inWriteRoot) {
+        // **We author this value, so it never leaves the target app.** An empty
+        // `FSD_DEMO_TOKEN=` in an ancestor is still an ancestor: filling it writes a shared auth
+        // token into a directory that is not this project, and every sibling app inherits it.
+        // The non-empty ancestor case already chose `own`; the empty one has to make the same
+        // choice, and it did not — the pair inside one branch.
+        destinations.push({ path: own, reason: `${key} will be generated here (the line ${runtime} finds is outside this project)` });
+      } else {
+        destinations.push({ path: answer.path, reason: why });
+      }
       continue;
     }
     // Absent for this runtime: the write root's own file is where it goes, whether the developer

@@ -10,6 +10,55 @@ node detect.mjs [directory] [--json | --prose] [--provider OPENAI_API_KEY]
 - `1` — at least one refusal fired. The report is still on stdout and names each one with its remediation
 - `2` — the script was called wrongly
 
+## Scope: simple projects
+
+> *"I'm fine on shrinking the claim for now. I still think having an agent do the work will be the long term solution, this is used when we have simple enough projects to add to."*
+>
+> — the owner, on this detector's scope
+
+**This detector is for simple projects. Complex ones are an agent's job.**
+
+That is a deliberate scope call, not a limitation waiting to be lifted. A config past the shapes below is not a gap to close by parsing harder — the right response is to say so and hand the project off. Being turned away is cheap; being scaffolded into the wrong directory is not.
+
+It is also what makes this surface finite. An earlier version tried to handle whatever config it met and got it wrong in a new way each round — a commented-out setting won, then a helper object above the real call won, then a second live assignment won, then an unanchored read won. Those were not four bugs. They were one open-ended promise, and the fix is to invert the default: **a shape is unreadable unless it is on the list.**
+
+### The shapes it reads
+
+A settings module (`next.config.*`), exactly one of:
+
+1. `module.exports = { … }`
+2. `export default { … }`
+3. `const NAME = { … }` — with or without a TypeScript type annotation — then `export default NAME` or `module.exports = NAME`
+
+A call's options (`createFlowState({ … })`, `defineFlow({ … })`), exactly one of:
+
+4. a single call in the file, given a direct object literal
+
+Inside an accepted object, a value is read only when it is a plain string literal or a plain array of string literals.
+
+### What that costs, measured
+
+Against ten config shapes real Next apps use, **it reads four and hands off six** (`test/accepted-shapes.test.mjs` pins this, so the number cannot drift without someone deciding it should). Four of the six are wrapper plugins — `@next/mdx`, `@sentry/nextjs`, `@next/bundle-analyzer`, `next-intl`.
+
+Wrapper plugins are the real cost, and refusing them is deliberate rather than lazy: the wrapper can change the very settings we are reading (`@next/mdx` commonly rewrites `pageExtensions`), so reading the object it wraps and hoping is exactly the guessing this design removed.
+
+All three Next apps in this repository are read cleanly.
+
+### What a refusal looks like
+
+```
+I can't read next.config.mjs safely — the exported value `withMDX` is not a
+plain object literal.
+This detector only reads a few simple config shapes on purpose — a plain object
+exported directly, or assigned to a name and exported. Yours is past that, and
+guessing at it is how a run scaffolds into the wrong place.
+
+    Two ways forward: ask a coding agent to wire FSD in for you (it can read
+    your config properly), or follow
+    https://flow-state.dev/docs/getting-started/existing-project to do it by
+    hand. Nothing has been written.
+```
+
 ## What this is for
 
 Adding FSD to a project someone already has is a reading problem before it is a writing problem, and a coding assistant guessing at these facts is the failure this exists to prevent. So they are derived deterministically and handed over as a report the assistant reads and does not overrule.
