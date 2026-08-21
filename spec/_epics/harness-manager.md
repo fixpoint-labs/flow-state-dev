@@ -97,7 +97,9 @@ session, and its file writes and todos are readable as state.
 5. **Questions ride the hot path.** A run holds its task in `awaiting_review` while its
    question is open, which keeps a worker slot occupied for as long as the person takes. The
    durable alternative needs the relay layer FIX-1197 is building; this epic **adopts that when
-   it lands** rather than waiting for it. No issue in this set builds a cold path.
+   it lands** rather than waiting for it. No issue in this set builds a cold path. **Whether a
+   detached run's task can be held in `awaiting_review` at all is under settlement** — §5, first
+   entry. This theme is the decision; it is not yet the verified premise.
 
 6. **A steer restarts the coding agent.** Nothing can hand a prior SDK session id into a
    detached run today (FIX-1179), so answering a question re-states the prompt and pays again
@@ -126,7 +128,7 @@ session, and its file writes and todos are readable as state.
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
 | [LAB-138](https://linear.app/fixpoint-labs/issue/LAB-138/the-harness-manager-a-task-row-becomes-a-watched-settled-coding-run) | The manager loop — a task row becomes a watched, settled coding run. Provisions the run's working directory with a plain `git worktree add` — the seam FIX-150's PR (c) later subsumes | spec | — | — | Needs spec |
-| [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof.** Blocked by LAB-138 | spec | — | — | Needs spec |
+| [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof.** Blocked by LAB-138. Its spec should not close while §5's `awaiting_review` claim is under settlement | spec | — | — | Needs spec |
 | [FIX-150](https://linear.app/fixpoint-labs/issue/FIX-150/workspaces-if-validated-workspacerunner-block-and-virtual-filesystem) | Workspaces — the file-projection component. Large, three PRs (a component · b shell-tool migration · c coding-agent path). Subsumes FIX-998. **Own track — carries no dependency edge into the Proof** (theme 8) | spec | [#1345](https://github.com/fixpoint-labs/flow-state-dev/pull/1345) — **approved** | — | Needs implementation |
 
 *FIX-150 is on team **flow-state**, not Labs; it is a sub-issue of LAB-140 across teams. Its
