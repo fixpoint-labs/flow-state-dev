@@ -8,7 +8,7 @@
  * SOURCE, not its output. Each shipper embeds {@link CANONICAL_NEXT_STEPS} verbatim and
  * substitutes at emit time; {@link assertCanonicalNextSteps} proves its copy has not drifted.
  *
- * **Values** — `{{run}}`, `{{exec}}`, `{{execSep}}`, `{{devScript}}`, `{{devUrl}}`,
+ * **Values** — `{{run}}`, `{{runSep}}`, `{{exec}}`, `{{execSep}}`, `{{devScript}}`, `{{devUrl}}`,
  * `{{mountPath}}`, `{{devPort}}`, `{{servePort}}`. **Conditional sections** — `{{#mounted-route}}`
  * and `{{#second-process}}`, a closed set of two, because a mounted-route host runs FSD inside the
  * server it already has and a second-process host starts one beside it. **Every shipper embeds
@@ -129,7 +129,7 @@ export interface RenderNextStepsOptions extends NextStepsValues {
 export const CANONICAL_NEXT_STEPS = `Next steps
 
 {{#mounted-route}}
-  {{run}} {{devScript}}
+  {{run}}{{runSep}} {{devScript}}
       your app, now serving FSD at {{mountPath}}
       → {{devUrl}}
 
@@ -209,18 +209,14 @@ function reservedRange(): number[] {
  * free, which is why the block also tells the reader how to pass their own.
  */
 function allocatePorts(devUrl: string | undefined): { devPort: string; servePort: string } {
-  const free = reservedRange().filter((port) => port !== hostPortOf(devUrl));
+  const hostPort = hostPortOf(devUrl);
+  const free = reservedRange().filter((port) => port !== hostPort);
   return { devPort: String(free[0]), servePort: String(free[1]) };
 }
 
 /**
- * The port a dev URL serves on, or `null` when it names none.
- *
- * **Parsed with `new URL`, not with a regex.** `/:(\d+)/` finds the first colon-digits anywhere in
- * the string, which in `http://[::1]:4210` is the `1` inside the IPv6 address — so the guard above
- * compared 1 against the reserved range, never matched, and printed `--port 4210` into a host that
- * owns it. That is the same failure the guard was added to prevent, reintroduced by hand-rolling
- * authority parsing. `URL` knows where the authority ends; we do not need to.
+ * The port a dev URL serves on, or `null` when it names none. Parsed with `URL`, which knows where
+ * an authority ends — an IPv6 host is why a regex does not.
  */
 function hostPortOf(devUrl: string | undefined): number | null {
   if (devUrl === undefined) return null;
@@ -320,29 +316,22 @@ function shellQuote(value: string): string {
 }
 
 /**
- * Refuse a script name the package manager would read as one of its own options.
+ * The end-of-options separator a **script name** needs — the sibling of `{{execSep}}`.
  *
- * **Shell quoting does not help here, and that is the point.** `npm run '--help'` still prints
- * npm's help: the shell hands `--help` to npm intact, and npm's *own* option parser takes it
- * before the script name is ever looked up. Measured on all three managers — every one of them
- * runs its own help and exits 0, so the developer types the one command we gave them and nothing
- * happens.
+ * `{{execSep}}` exists because a leading-dash *argument* is eaten by the manager's option parser.
+ * A script *name* has the identical problem and never got the sibling: `npm run --help` prints
+ * npm's help, exits 0, and never runs the script, and quoting does not reach it because the shell
+ * hands `--help` to npm intact. Measured on npm, pnpm and Yarn — `<manager> run -- --help` runs
+ * the script on all three.
  *
- * The alternative was emitting `<manager> run -- <script>` always, which does work everywhere.
- * Rejected on measurement: Yarn prints *"scripts don't require `--` for options to be forwarded.
- * In a future version, any explicit `--` will be forwarded as-is"* on **every** invocation — so
- * every ordinary Yarn user would read a deprecation warning forever to accommodate a script name
- * essentially nobody has. Refusing keeps the common path clean and turns the pathological one
- * into an error the caller sees instead of a command the developer runs.
+ * **Conditional on the name, not on the manager**, which is what keeps the common path clean.
+ * Yarn Classic warns whenever an explicit `--` is present, so emitting it always would put a
+ * deprecation line in front of every ordinary render; emitting it only for a dash-named script
+ * confines the warning to the rare command. `test/next-steps.test.ts` pins that behaviour by
+ * executing it, so a change in those semantics goes red here rather than reaching a developer.
  */
-function assertRunnableScriptName(devScript: string): void {
-  if (!devScript.startsWith("-")) return;
-  throw new Error(
-    `The dev script is named ${JSON.stringify(devScript)}, which every package manager reads as ` +
-      `one of its own options — \`npm run ${devScript}\` prints npm's help and never runs the ` +
-      `script, and quoting does not change that.\n` +
-      `Rename the script, or print the steps without it.`,
-  );
+function runSeparatorFor(devScript: string | undefined): string {
+  return devScript !== undefined && devScript.startsWith("-") ? " --" : "";
 }
 
 /**
@@ -380,12 +369,12 @@ export function renderNextSteps(options: RenderNextStepsOptions): string {
     text = text.replace(sectionPattern(key), () => kept);
   }
 
-  if (options.devScript !== undefined) assertRunnableScriptName(options.devScript);
   const ports = allocatePorts(options.devUrl);
   const values: Record<string, string | undefined> = {
     run: forms.run,
     exec: forms.exec,
     execSep: forms.execSep,
+    runSep: runSeparatorFor(options.devScript),
     devScript: options.devScript === undefined ? undefined : shellQuote(options.devScript),
     devUrl: options.devUrl,
     mountPath: options.mountPath,

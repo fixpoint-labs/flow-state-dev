@@ -234,24 +234,30 @@ describe("renderNextSteps", () => {
     ).toContain("fsdev dev --port 4210");
   });
 
-  it("does not crash on a dev URL it cannot parse", () => {
-    expect(() =>
-      renderNextSteps({ ...MOUNTED, devUrl: "not a url at all", packageManager: "pnpm" }),
-    ).not.toThrow();
+  it("falls back to the default ports on a dev URL it cannot parse", () => {
+    // Not just "does not throw": an unparseable value must claim NO port, or a malformed input
+    // silently shifts the ports. Covering what the guard READS, not only the case it was for.
+    const rendered = renderNextSteps({ ...MOUNTED, devUrl: "not a url at all", packageManager: "pnpm" });
+    expect(rendered).toContain("fsdev dev --port 4210");
+    expect(rendered).toContain("http://localhost:4210");
+    // The whole reserved range stays as issued — nothing shifted off a port we could not read.
+    expect(rendered).not.toMatch(/--port 421[1-9]/);
   });
 
-  it("refuses a dev script the package manager would read as its own option", () => {
-    // Shell quoting does not reach this: the shell hands `--help` to npm intact and npm's own
-    // option parser takes it before the script name is looked up.
+  it("carries the end-of-options separator for a dash-named script, and only for one", () => {
+    // The sibling of `{{execSep}}`: a leading-dash script NAME is eaten by the manager's option
+    // parser exactly as a leading-dash argument is. Conditional on the name, so the common path
+    // stays clean.
     for (const packageManager of MANAGERS) {
-      expect(() =>
-        renderNextSteps({ ...MOUNTED, packageManager, devScript: "--help" }),
-      ).toThrow(/reads as one of its own options/);
-      expect(() => renderNextSteps({ ...MOUNTED, packageManager, devScript: "-p" })).toThrow();
+      const { run } = PACKAGE_MANAGER_COMMAND_FORMS[packageManager];
+      expect(renderNextSteps({ ...MOUNTED, packageManager, devScript: "--help" })).toContain(
+        `${run} -- --help`,
+      );
+      expect(renderNextSteps({ ...MOUNTED, packageManager, devScript: "dev" })).toContain(`${run} dev\n`);
+      expect(renderNextSteps({ ...MOUNTED, packageManager, devScript: "dev" })).not.toContain(`${run} --`);
     }
-    // An ordinary name is unaffected.
-    expect(() => renderNextSteps({ ...MOUNTED, packageManager: "pnpm", devScript: "dev" })).not.toThrow();
   });
+
 
   it("tells the reader the ports are defaults they can override", () => {
     // No fixed number can clear a port — a machine can have any process on any of them. Saying
@@ -716,22 +722,31 @@ describe("the printed commands actually run", () => {
       );
 
       it.runIf(managerAvailable(manager))(
-        "would run the manager's own help for a leading-dash script, which is why we refuse it",
+        "runs a dash-named dev script through the separator the block prints",
         () => {
-          // The measurement behind the refusal, executed rather than asserted. `--help` reaches
-          // the manager's option parser and its own help runs — exit 0, script never invoked.
+          // The positive path, executed. Without the separator the manager handles its own
+          // option and the script never runs; with it, the script runs and says so.
           const bare = runPrintedCommandRaw(manager, `${PACKAGE_MANAGER_COMMAND_FORMS[manager].run} --help`);
-          expect(bare.stdout).not.toContain("ARGV=");
-          // And the separator form, which is the fix we did NOT take: it works, but Yarn prints a
-          // deprecation warning on every invocation — including for ordinary script names — so a
-          // refusal costs less than making every Yarn user read that forever.
-          const separated = runPrintedCommandRaw(
-            manager,
-            `${PACKAGE_MANAGER_COMMAND_FORMS[manager].run} -- --help`,
+          expect(bare.stdout, "the bare form should reach the manager's own help").not.toContain("ARGV=");
+
+          const rendered = renderNextSteps({ ...MOUNTED, packageManager: manager, devScript: "--help" });
+          const { run } = PACKAGE_MANAGER_COMMAND_FORMS[manager];
+          const line = rendered
+            .split("\n")
+            .map((l) => l.trim())
+            .find((l) => l.startsWith(`${run} `));
+          expect(line).toBe(`${run} -- --help`);
+
+          const printed = runPrintedCommandRaw(manager, line!);
+          expect(printed.stdout, `\`${line}\` did not reach the script`).toContain(
+            "ARGV=[\"--from-dash-script\"]",
           );
-          expect(separated.stdout).toContain("ARGV=");
+
+          // Yarn Classic warns whenever an explicit `--` is present. Pinned by execution, scoped
+          // to the rendered dash line, so a change in those semantics goes red here rather than
+          // reaching a developer.
           if (manager === "yarn") {
-            expect(`${separated.stdout}${separated.stderr}`).toMatch(/don't require "--"/);
+            expect(`${printed.stdout}${printed.stderr}`).toMatch(/don't require "--"/);
           }
         },
         60_000,
