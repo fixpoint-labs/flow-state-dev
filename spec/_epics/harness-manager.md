@@ -1,7 +1,9 @@
 # Epic-spec — The harness manager
 
 **Epic issue:** [LAB-140](https://linear.app/fixpoint-labs/issue/LAB-140/the-harness-manager-drive-one-real-issue-through-a-conductor-phase) ·
-**Branch:** `epic/harness-manager` · **Project:** Development Workflow Orchestration (Labs)
+**Branch:** `epic/harness-manager` ·
+**Epic PR:** [#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362) (never merged) ·
+**Project:** Development Workflow Orchestration (Labs)
 
 ## 1. Purpose & objective *(the gated sign-off surface)*
 
