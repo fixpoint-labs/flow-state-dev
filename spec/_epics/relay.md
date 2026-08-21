@@ -31,8 +31,11 @@ One known, committed consumer is what keeps this from being speculative surface 
 **What sign-off certifies.** The objective and the grouping — that cron rides on this layer
 rather than keeping a transport of its own, and that a spawn verb and a send verb are the same
 missing layer. It certifies **no** issue's contracts: the verb's name and the config surface it
-hangs off are open (§5), and the five-issue division in §4 is a proposal. **The gate is the last
-cheap moment to redraw the set** — after it, redrawing costs specs already written.
+hangs off are open (§5), and the division in §4 — **now six proposed issues**, the five plus the
+owner-proposed watch seam — is a proposal. **The gate is the last cheap moment to redraw the
+set** — after it, redrawing costs specs already written. It is also the moment the set is under
+*opposite* pressure from two directions at once, which §4's composition note states rather than
+smooths.
 
 **What the address *is* is settled; what a sender may address is not.** The owner has stated it:
 **a recipient is a `sessionId`**, and a sender is identified by its own `sessionId` — possibly
@@ -52,7 +55,20 @@ a question, its request ends, a later message resumes the task; a schedule with 
 still starts a new session per run — the preserved-behaviour check; a schedule **with** an
 address fires as a new request on that session.
 
-**Holistic necessity — five issues or four?** The cut candidate is issue 5, the `pending
+**The set contains no consumer of its own objective — and the watch seam would be one. Raised at
+the gate by the coordinator, not by the owner, because nobody has made this argument.** The five
+original issues build a verb plus four adjacent things; the proof that the send verb is *useful*
+lives outside the epic, in Conductor. The proposed watch seam (issue 6, §4) is a direct consumer
+of the objective sentence above: a task row settles → a message reaches a session that was not
+running → something happens. That is an end-to-end goal check on the real path, landing in
+precisely the blank spot the paragraph above measures — where `goals/**` covers neither scheduled
+dispatch nor concurrency arbitration. **Recorded as an argument for inclusion, not a decision.**
+The gate answers it.
+
+**Holistic necessity — and it now runs in both directions.** *(Two reviewers want the set smaller;
+the owner has proposed making it larger. The composition note in §4 states that tension and the
+coordinator's proposed resolution; this paragraph covers only the original cut candidates.)* The
+cut candidate is issue 5, the `pending
 feedback` task status: a task-board addition, not a messaging one. It stays because theme 5 —
 the reply arrives as a new inbound message, nothing suspends — only works if a task can be
 *parked* while its request ends. Without it a workstream that asks either holds a loop open or
@@ -69,6 +85,10 @@ Issue 3, the sibling-spawn verb, is second-weakest: a second verb in an epic who
 first one. It stays because it is the same missing layer — same addressing, same per-adapter
 delivery — so building it later means touching both again. **Tripwire:** if it grows a delivery
 path of its own, it should have been its own epic and should be pulled out rather than absorbed.
+**It is now also the coordinator's proposed swap-out** if the watch seam comes in — see §4's
+composition note. That proposal does not change this paragraph's reasoning; it weighs it against
+a candidate that fits the objective more directly, and **only the owner can pull issue 3**, since
+keeping it was an explicit owner call.
 
 **Deliberately not doing** — named, not silent:
 
@@ -116,9 +136,18 @@ queue-backed deployment. Evidence and the options are §5 Q3; nothing is promise
 a delivery **accepted at 0 ms** is **dropped at 30 001 ms** when the recipient stays busy past the
 arbiter's hardcoded budget, with the sender long since returned and reading `completed`. A
 receipt that can be followed by a silent loss is worse than no receipt, so **a configurable
-admission budget is in scope** — issue 2 (§4), theme 14. It is small: `Infinity`/omitted already
-disables the timeout in the shipped gate, and Q4 ran the same scenario through it and the
+admission budget is in scope** — **issue 1** (§4), theme 14. It is small: `Infinity`/omitted
+already disables the timeout in the shipped gate, and Q4 ran the same scenario through it and the
 delivery landed. Nothing about the *durable* path changes; that stays FIX-830's.
+
+**It sits on issue 1, not issue 2 — a correction, recorded because the earlier text said issue 2.**
+Issue 2 depends on issue 1 and theme 13 requires issue 1 to land first, so filing the budget on
+issue 2 would ship an acknowledged send API while the 30-second admission budget is still
+hardcoded — which is exactly the accepted-then-silently-dropped delivery this paragraph forbids.
+The receipt and the budget need each other (theme 14), so they land together. Q4 proved the fix
+is one parameter threaded through an option `createInboundTransportHost` already accepts
+(`:106-113`), so moving it costs issue 1 almost nothing and costs issue 2 a dependency it no
+longer needs.
 
 ---
 
@@ -325,7 +354,11 @@ can cite one.
     of completion, possibly long-running and concurrent, tracked by a board the session does not
     itself run. A message is a collaboration mechanism that works *while a task is in process* —
     it is what makes steering possible. **Tasks go downward; messages go upward and sideways.** An
-    issue that finds itself adding a message field to a task row has hit this line. The same
+    issue that finds itself adding a message field to a task row has hit this line. **Proposed
+    issue 6 (watch) is the first thing in the set to touch that line deliberately, and it stays on
+    the right side of it:** the board **triggers** and Relay **delivers** — the row records nothing
+    about the message and the message carries no board semantics. An issue-6 spec that starts
+    storing message state on the row has crossed here. The same
     boundary sets the default for board writes: a workstream **requests** a plan change and the
     top session decides. Once addressed messaging exists, a request costs no more than a mutation
     would, and single-writer is what keeps the board reasonable about. Whether some workstreams may
@@ -339,6 +372,12 @@ can cite one.
 13. **Sequencing: issue 1 lands first; issue 5 is independent.** Issues 2, 3 and 4 all consume the
     address and the verb, so none can merge before issue 1 — they can be *specced* in parallel.
     Issue 5 depends on nothing in the set and can start immediately.
+
+    **Proposed issue 6 (watch) joins the first group** — it consumes the send verb rather than
+    building a second delivery path, so it cannot merge before issue 1 either. It is the one
+    member of that group that also collides with issue 5, which is a *spec-ordering* constraint
+    rather than a merge one: §5 Q6b requires one spec to own the `countWaitable` /
+    `boardQuiescence` surface, or the two to be explicitly sequenced, **before either is specced**.
 
 14. **Two clocks, two jobs — and the admission budget must become configurable.**
     *(Added by owner amendment; **corrected by §3's Q4 run**, which superseded the reasoning this
@@ -391,8 +430,13 @@ can cite one.
     budget is this theme's, and shipping one without the other is what produces a silent drop
     the sender was told was fine.
 
-    **Constrains issues 1 and 2** — issue 2 owns the configurable budget (see §4); issue 4
-    inherits it, since a schedule that waits for an answer is the same shape.
+    **Constrains issue 1, which now owns both halves** — the receipt *and* the configurable budget
+    (see §4). *(Corrected: this theme previously assigned the budget to issue 2.)* The reason is
+    the sentence directly above — shipping the receipt without the budget is what produces a
+    silent drop the sender was told was fine — and theme 13 puts issue 1 first, so a split across
+    the two issues would guarantee exactly that window. Issue 2 still owns per-adapter delivery
+    and consumes the parameter; issue 4 inherits it, since a schedule that waits for an answer is
+    the same shape.
 
 ---
 
@@ -513,12 +557,14 @@ shipped one *only* in that the budget is a parameter set to `Infinity` — injec
 patched. **The delivery landed:** `receive` completed after waiting 34.7 s, its message on the
 recipient's session. So a configurable budget at the arbiter is a parameter, not a redesign.
 
-**Changed:** nothing in §1's objective, and no re-division — **the five issues stand**. What moved
+**Changed:** nothing in §1's objective, and no re-division — **the five issues stand** *(true of
+this run; the set has since been proposed at six — §4)*. What moved
 is one scope cell and one theme. **Theme 14 is corrected, not extended:** it had recorded the
 30 s constant as a deliberate *non-change* on the reasoning that a verb acking on `accepted` is
 never inside the arbiter's wait; Q4 superseded that reasoning — the budget bounds the delivery,
-not the caller — so a **configurable admission budget is now in scope**, on **issue 2** (§4), and
-§1's named risk says so. The two-clocks half of theme 14 stands, and Q2's phantom-record cost
+not the caller — so a **configurable admission budget is now in scope**, on **issue 2** (§4)
+*— superseded: the budget was later moved to **issue 1**, see theme 14 and §4* — and §1's named
+risk says so. The two-clocks half of theme 14 stands, and Q2's phantom-record cost
 still argues against merely *raising* the number: a longer wrong number is still a wrong number.
 Theme 6 and theme 14's addition were owner amendments rather than run outcomes; the runs supply
 their evidence. Q1's cross-user refusal was promoted from evidence here to §1, where the owner has
@@ -592,7 +638,8 @@ through the same `runsElsewhere` exclusion that detached dispatch already gets f
 
 **Changed:** §1's necessity check now rests on evidence; §4's issue-5 cell carries the residual
 gap; §5 **Q5's necessity half is settled and its placement half is not**. **No re-division — the
-five issues stand.**
+five issues stand** *(true of this settlement; the owner has since proposed a sixth, and issue 5's
+residual gap collides with it — §5 Q6b)*.
 
 ---
 
@@ -604,15 +651,87 @@ cell is empty by design, not by omission.
 
 | # | Proposed issue | What it delivers | Depends on | Linear | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|---|---|---|
-| 1 | The address, the send verb, and what a sender may legally address | the recipient address as a **`sessionId`** on the envelope, a **server-derived sender identity** (its `sessionId`, and possibly the sending `requestId` — open, §5 Q1b), the send verb, both send modes **and the reply-correlation identifier wait-for-response requires** (theme 6, §5 Q1b), **acceptance as the acknowledgement on both** (theme 6) and the **sender-side answer timeout, default 30 min** (theme 14), the self-addressed refusal, and the agent-facing tool — core + engine + tools | — | not filed | spec | — | — | Proposed |
-| 2 | Per-adapter delivery | in-process for a Node host; through the `FlowDispatcher` seam so a queue-backed deployment gets durability for free; **plus a configurable in-process admission budget** (theme 14, §3 Q4) — the arbiter's hardcoded 30 s silently drops an already-accepted delivery, and `Infinity`/omitted is the unbounded case the gate already supports | 1 | not filed | spec | — | — | Proposed |
+| 1 | The address, the send verb, and what a sender may legally address | the recipient address as a **`sessionId`** on the envelope, a **server-derived sender identity** (its `sessionId`, and possibly the sending `requestId` — open, §5 Q1b), the send verb, both send modes **and the reply-correlation identifier wait-for-response requires** (theme 6, §5 Q1b), **acceptance as the acknowledgement on both** (theme 6) and the **sender-side answer timeout, default 30 min** (theme 14), **the configurable in-process admission budget** (theme 14, §3 Q4 — *moved here from issue 2*: the receipt and the budget ship together or the send API acks deliveries the arbiter can still silently drop, and theme 13 lands this issue first), the self-addressed refusal, and the agent-facing tool — core + engine + tools | — | not filed | spec | — | — | Proposed |
+| 2 | Per-adapter delivery | in-process for a Node host; through the `FlowDispatcher` seam so a queue-backed deployment gets durability for free. **The configurable admission budget is no longer here** — it moved to issue 1 (theme 14); issue 2 consumes the parameter rather than introducing it | 1 | not filed | spec | — | — | Proposed |
 | 3 | The sibling-spawn verb | an independent, self-managing session with its own flow kind and addressable key, resolving `flow.actions` like any other caller and talking back by message rather than `settleParentTask` | 1 | not filed | spec | — | — | Proposed |
 | 4 | Cron: a schedule addresses a session and fires as a message | the schema field, the resolver, and the one dispatch envelope; absent address preserves today's behaviour exactly | 1 | not filed | spec | — | — | Proposed |
-| 5 | A `pending feedback` task status | "parked awaiting external input; the request may end; a later request resumes this task" — a genuine addition, not a rename of `awaiting_review`. **Necessity settled by run, not asserted** (§3's settlement, REFUTED): today's `awaitReview` parks and `resumeFromReview` resumes, but `awaiting_review` is excluded from every board-exit path, so the launching request stays open for the whole park. **The residual gap to build:** a park mode that does not hold the drain's own request open — either an exit path letting `boardQuiescence` stop returning "continue" while a task sits parked, or routing review-parking through the same `runsElsewhere` exclusion detached dispatch already gets for `in_progress` | — | not filed | spec | — | — | Proposed |
+| 5 | A `pending feedback` task status | "parked awaiting external input; the request may end; a later request resumes this task" — a genuine addition, not a rename of `awaiting_review`. **Necessity settled by run, not asserted** (§3's settlement, REFUTED): today's `awaitReview` parks and `resumeFromReview` resumes, but `awaiting_review` is excluded from every board-exit path, so the launching request stays open for the whole park. **The residual gap to build:** a park mode that does not hold the drain's own request open — either an exit path letting `boardQuiescence` stop returning "continue" while a task sits parked, or routing review-parking through the same `runsElsewhere` exclusion detached dispatch already gets for `in_progress`. **Collides with proposed issue 6** over that same machinery — §5 Q6b, to be resolved before either is specced | — | not filed | spec | — | — | Proposed |
+| 6 | **Watch — register interest in a task row without claiming it** *(owner-proposed, 2026-08-21)* | a **watch** relationship beside today's only one, **claim**: register interest in a row, take no lease, hold nothing up, block nobody; when the row reaches a **terminal** state, deliver the row's **outcome** as an **addressed message** through issue 1's send verb. **Scope, as the owner set it:** terminal transitions only (mid-run progress and questions are FIX-1056's steering direction); it delivers the row's outcome, **not** an authored reply from the worker — a worker with something of its own to say uses the send verb; and it says nothing about which strand an arriving turn joins | 1 | not filed | spec | — | — | **Proposed (owner, at the gate)** |
 
 **The agent-facing tool is deliberately inside issue 1, not beside it.** The constraint is that
 the programmatic sender and the tool are the *same verb*, differing only in who calls them.
 Co-location is the strongest guarantee against the two drifting apart.
+
+### Issue 6 — the watch seam, as the owner framed it
+
+**This is a set change proposed by the owner, not a review fold.** It is recorded here because
+the objective gate approves the *division*, so a division that no longer matches the document
+would put the gate on the wrong thing. The owner's framing, verbatim: *"this is a seam we think
+is missing. It is not filed anywhere in Linear, and there is no affordance for it in the
+codebase."*
+
+**What is missing.** A task board has exactly one relationship to a row today — **claim**:
+exclusive, lease-fenced, one holder. There is no way to say *"I am not doing this task. Tell me
+when it is done."*
+
+**Polling cannot cover it, because the interested party is not running — verified, not asserted.**
+`countWaitable` (`packages/orchestration/src/task-board/shared.ts:184-198`) does
+`if (isHandedOff(row, now, runsElsewhere)) continue;` at `:195`, and its doc comment states the
+intent plainly: *"Count rows in `statuses`, minus the `in_progress` ones `runsElsewhere` places
+outside this drain."* `isHandedOff` (`shared.ts:111-120`, FIX-1074, *"One predicate, one answer"*)
+returns true for an `in_progress` row that `runsElsewhere` claims and whose lease has not lapsed.
+So the launching board **does not wait** for a handed-off row — it reports the hand-off and
+retires. When the workstream settles later, there is provably nobody there. **This is stated
+design, not an oversight**, which is why the answer is a registry rather than a longer poll.
+
+**Nothing existing covers it** — the owner's survey, recorded so an issue-6 spec does not repeat
+it:
+
+| Surface | Why it is not this |
+|---|---|
+| `ctx.requestHost` | The whole cross-session surface, and it is closed at four verbs with no watch among them (`packages/core/src/types/request-host.ts:218-273`) |
+| `parentTask()` | *"one coordinate, one row"* (`request-host.ts:240-241`) — the row **you** were assigned, not one you are interested in |
+| `livenessOf` | An optional hint by its own doc, and lineage-filtered (`request-host.ts:256-273`, theme 10) |
+| `ctx.response.subscribeToItems` | *"on this response"* (`packages/core/src/types/block.ts:123`, `:141`) — the same request, which is the one thing not available |
+| `.waitForCondition` | Needs a response emitter and **holds the caller open** (`packages/core/src/blocks/sequencer-methods.ts:370`) — again the thing not available |
+| `reactTo` | Runs *"in-session — awaited inline as part of the mutating turn"* (`packages/engine/src/context/reactive-dispatch.ts:9`), so a child settling fires it in the **child's** turn |
+| `resource_change` | Reaches whoever streams the *mutating* request (`packages/engine/src/context/resource-registry.ts:749`) — the child's SSE, not the parent's session |
+
+**It respects both epic boundaries, and here is why.** *No fan-out* (§1): each watch names **one**
+recipient, so three watchers are **three addressed messages, not one broadcast** — the registry is
+many-holders and every delivery is one-to-one. *Messages do not ride the board* (theme 11): the
+board **triggers**, Relay **delivers**; the row records nothing about the message and the message
+carries no board semantics.
+
+**A consumer is already hand-rolling it.** **LAB-138** (*"The harness manager — a task row becomes
+a watched, settled coding run"*, Backlog) specifies a done-condition predicate *"re-evaluated on
+each wake (not computed once)"* and instructs the dispatcher to *"treat a liveness check as a
+hint, never proof — corroborate against the durable row before re-dispatching."* That is a
+dispatcher polling a row it owns because **registering interest is not expressible**.
+
+**It consumes issue 1's verb rather than building a second delivery path**, which is what keeps it
+from becoming the parallel seam `RequestHost` is being cleaned of elsewhere (FIX-1124). An issue-6
+spec that grows its own delivery has left the epic's shape, exactly as issue 3's tripwire says.
+
+**Its real cost is an open question, and the owner named it: see §5 Q6.**
+
+### Composition — the set is under opposite pressure from two directions
+
+Stated rather than smoothed, because the gate is where it gets answered.
+
+- **Smaller.** Two independent reviewers recommend cutting to **three** issues: drop
+  sibling-spawn (issue 3), externalise `pending feedback` (issue 5, §5 Q5's placement half).
+- **Larger.** The owner proposes adding the watch seam (issue 6).
+
+**The coordinator's proposal: swap rather than grow — watch in, sibling-spawn out.** The argument
+is fit to the objective, not size: sibling-spawn **creates** a session; watch **reaches one that
+is not running**, which is §1's objective verbatim. The owner, the coordinator and two reviewers
+have now separately judged spawn the weakest fit in the set. A swap holds the set at five while
+improving coherence, instead of making the "too large" critique more correct.
+
+**This is a proposal, not a decision.** Pulling issue 3 would reverse an explicit owner call, and
+only the owner can do that. Recorded here so the gate answers one composition question with all
+of the pressure visible, rather than answering the additions and the cuts separately.
 
 Epic PR (this doc, never merged):
 [#1357](https://github.com/fixpoint-labs/flow-state-dev/pull/1357).
@@ -624,6 +743,7 @@ Epic PR (this doc, never merged):
 | **FIX-441** — cross-flow event bus (Backlog) | **Superseded by this epic.** Its `NotificationFlow` fan-out subscriber shape is the thing ruled out in §1. Its own subscriber half was already superseded by FIX-825. Recommend closing as superseded with a pointer here |
 | **FIX-1056** — no channel to steer a running workstream (Backlog) | The same seam from the steering side. **Should survive as the carrier**: it holds the evidence and the owner decision. Its decision of 2026-08-10 is quoted in §5 Q1 |
 | **FIX-1075** — inbox capability (Backlog) | The same seam from the receiving side; FIX-1075 says so itself. Folds into issue 1 |
+| **LAB-138** — the harness manager (Backlog) | A **consumer already hand-rolling the watch seam**: it polls a row it owns because registering interest is not expressible. Evidence for proposed issue 6, not a dependency of it — LAB-138 keeps working either way, more simply if issue 6 lands |
 | **FIX-830** — BullMQ sunset (In Spec Review) | **Constrains**: build to the `FlowDispatcher` seam (theme 1). Also owns durable arbitration, which is why §5 Q3 does not pull it inward |
 | **FIX-1124** — delete `parentTask`/`settleParentTask` from `RequestHost` | No direct conflict, but it sets the precedent theme 9 encodes: a stateless verb taking an explicit address is fine, a per-request bound one is not |
 | **FIX-1122** — `WorkstreamAddress` | A **board coordinate** `(boardId, coordinate, topic)`, explicitly frozen at that content. **Not** the session address this epic needs; reusable for the workstream-side coordinate only |
@@ -759,7 +879,8 @@ without a session — `"session"` resolves to `undefined` when the envelope has 
 So: in-process a recipient gets FIFO with a 30-second give-up; on a queue-backed deployment it
 gets nothing. **That 30 seconds is an admission budget, not a sender's timeout** — theme 14 — and
 §3's Q4 ran what the give-up costs: an already-accepted delivery is dropped at 30 001 ms with the
-sender reading `completed`. **Making that budget configurable is in scope** (theme 14, issue 2);
+sender reading `completed`. **Making that budget configurable is in scope** (theme 14, **issue 1**
+— moved there from issue 2, see §1 and §4);
 this open question is about the *durable* path only, where the epic promises nothing. Two options:
 
 - **Promise nothing beyond what the deployed dispatcher gives, and document it plainly.** Cheap,
@@ -802,7 +923,45 @@ for filing it outside on composition grounds — it is a task-board addition, no
 and an epic whose point is a message layer absorbing a board status is what makes a set harder to
 reason about later. **That argument survives the verdict entirely:** proving the status is
 necessary says nothing about which epic should own it. **This is the composition half of the
-objective gate** — see §1's necessity check.
+objective gate** — see §1's necessity check, and §4's composition note, which now carries the
+*other* direction of pressure on the same question.
+
+### Q6. What is a watch's own lifetime?
+
+**Named by the owner when they proposed the seam, and recorded unanswered because it is the real
+cost of issue 6.** A watch is a registration that outlives the turn that made it, so two things
+have to be decided before one can be built:
+
+- **Who clears a watch when the watcher dies?** The watcher is by definition a session that is
+  not running. Nothing in the current design gives the registry a way to learn that the party it
+  would deliver to has gone — and `livenessOf` cannot be that mechanism (theme 10: it answers
+  only for the caller's own lineage, by design, and this epic does not widen it).
+- **What happens when the row never settles?** Stated plainly rather than as an edge case: **a
+  row that never reaches a terminal state is the ordinary shape of abandoned work**, not a rare
+  failure. A registry with no lifetime rule therefore **leaks by default**, not exceptionally.
+
+**Unanswered here, and the epic has no lean to record.** The shape of the answer — a TTL, an
+owner-scoped sweep, piggy-backing the row's own lease, or refusing to register without an expiry
+— is genuinely open, and picking one is issue 6's spec if issue 6 is admitted. **Blocks nothing
+today**; it is the question that decides whether issue 6 is small.
+
+### Q6b. Watch and `pending feedback` touch the same machinery — who owns that surface?
+
+**A cross-issue collision, raised at the gate by the coordinator, to be resolved before either
+issue is specced.** This is exactly the kind of conflict a later `cross-spec-review` pass would
+catch, and catching it there costs two written specs — so it is recorded now.
+
+Proposed issue 6 and issue 5 have **different intents on adjacent code**: issue 5 is *"the
+worker's own request may end"*; watch is *"a third party is told later."* Both land on
+`countWaitable` (`packages/orchestration/src/task-board/shared.ts:184-198`), `boardQuiescence`,
+and what a drain waits for — the same functions §4's issue-5 cell already names as its residual
+gap. Filed independently, the two specs will contend over them.
+
+**The requirement, either way: one spec owns that surface, or the two are explicitly sequenced.**
+There is no third option — two specs each proposing their own exit path for a parked or watched
+row is the failure mode. **Blocks:** issue 5's spec and issue 6's spec, nothing else. It does
+make issue 5, previously the one issue depending on nothing, no longer free-standing *for spec
+purposes*; its merge order is still unconstrained (theme 13).
 
 ---
 
@@ -905,3 +1064,52 @@ objective gate** — see §1's necessity check.
   open**, because the composition argument for filing it outside the epic survives the verdict
   untouched; §1's necessity check and theme 5 now rest on evidence rather than assertion.
   **No re-division — the five issues stand**, and **§5 Q1's door question is untouched**.
+- **Owner-proposed set change — the watch seam enters as proposed issue 6. Six proposed issues,
+  and the set is now under opposite pressure from two directions.** *(A **set change proposed by
+  the owner**, not a review fold. The epic PR's two-round budget stays spent and the doc stays
+  converged: the objective gate approves the **division**, so a division the document no longer
+  matches would put the gate on the wrong thing. **Nothing else was folded from the open review
+  threads.** Nothing is filed in Linear — the gate precedes creation.)*
+  *What the owner proposed:* a **watch** relationship beside today's only one, **claim**. Register
+  interest in a task row, take no lease, hold nothing up, block nobody; on the row reaching a
+  **terminal** state, its **outcome** is delivered as an addressed message. Their framing: *"this
+  is a seam we think is missing. It is not filed anywhere in Linear, and there is no affordance
+  for it in the codebase."* Scoped by them to terminal transitions only (mid-run progress and
+  questions stay FIX-1056's steering direction), to the **row's outcome** rather than an authored
+  reply, and silent about which strand an arriving turn joins.
+  *Why polling cannot cover it — verified rather than assumed:* the interested party is not
+  running. `countWaitable` (`task-board/shared.ts:184-198`) skips handed-off rows at `:195`, and
+  `isHandedOff` (`shared.ts:111-120`, FIX-1074) is true for a leased `in_progress` row that
+  `runsElsewhere` claims — so the launching board reports the hand-off and retires, and when the
+  workstream settles there is provably nobody there. Stated design, not an oversight. The owner's
+  survey of the seven surfaces that might have covered it — `requestHost`, `parentTask`,
+  `livenessOf`, `subscribeToItems`, `.waitForCondition`, `reactTo`, `resource_change` — is
+  recorded in §4 with file:line for each. **LAB-138** is already hand-rolling it.
+  *Two additions raised at the gate by the coordinator, attributed as such:* (1) **watch could be
+  this epic's proof, an argument for inclusion nobody had made** — the set otherwise builds a verb
+  plus four adjacent things and contains **no consumer of its own objective**; recorded in §1's
+  objective linkage. (2) **A collision with issue 5** over `countWaitable` / `boardQuiescence` /
+  what a drain waits for — **§5 Q6b**, requiring one spec to own that surface or the two to be
+  explicitly sequenced, **before either is specced**.
+  *And the owner's own open question, recorded unanswered as **§5 Q6**:* the **watch's own
+  lifetime** — who clears a watch when the watcher dies, and what happens when the row never
+  settles. The never-settles case is the ordinary shape of abandoned work, not an edge case, so a
+  registry without a lifetime rule **leaks by default**. That is issue 6's real cost.
+  *Composition, stated rather than smoothed (§4):* two independent reviewers recommend cutting to
+  **three** issues (drop sibling-spawn, externalise `pending feedback`) while the owner proposes
+  adding watch. **The coordinator proposes a swap, not growth — watch in, sibling-spawn out**:
+  spawn *creates* a session, watch *reaches one that is not running*, which is §1's objective
+  verbatim, and owner, coordinator and two reviewers have now separately judged spawn the weakest
+  fit. **Marked a proposal, not a decision** — pulling issue 3 reverses an explicit owner call and
+  only the owner can do that. The gate answers it.
+  **§5 Q1's door question is untouched and stays open.**
+- **Deferred decision landed — the configurable admission budget moves from issue 2 to issue 1.**
+  Decided earlier by the coordinator and not yet in the document. *Why:* issue 2 depends on issue
+  1 and theme 13 lands issue 1 first, so leaving the budget on issue 2 would ship an acknowledged
+  send API while the arbiter's 30-second budget is still hardcoded — precisely the
+  accepted-then-silently-dropped delivery §1 and theme 14 forbid. §3's Q4 proved the fix is one
+  parameter through the `arbiter` option `createInboundTransportHost` already accepts
+  (`:106-113`), so the move costs issue 1 almost nothing. *Reconciled:* theme 14's "constrains"
+  line, §4's issue-1 and issue-2 cells, §1's named-risk scope paragraph, and §5 Q3's
+  cross-reference; §3's Q4 "Changed" record keeps its original wording with a superseded marker,
+  since it is a dated log of what was true then.
