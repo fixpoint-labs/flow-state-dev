@@ -249,6 +249,106 @@ path. Persistence is Postgres-shaped (FIX-772): embedded PGlite in dev (persiste
 under `.fsdev/pglite`, survives restarts) and real Postgres via `DATABASE_URL` in
 deployment. The store backing is wired in `db/portfolio-db.ts` / `lib/server.ts`.
 
+## Theses view
+
+The **Theses** tab is the per-participant memo reader: a phase-grouped sidebar
+picks a memo, and `components/theses/theses-pane.tsx`'s `MemoDoc` dispatches on
+`(agentName, status)` to a renderer. Most memos fall through to the generic
+`ThesisHeader + ThesisBody`; five participants have dedicated cards.
+
+- **Routing is registry-DERIVED, never a hand-maintained list.** `LENS_AGENTS`,
+  `TRADER_AGENTS`, and `RISK_AGENTS` live in
+  `components/theses/memo-renderer-routing.ts` — a plain module, not exports on
+  the pane — and are built from `PHASE_2B_MEMO_KEYS` / `PHASE_3_MEMO_KEYS` /
+  `PHASE_4_MEMO_KEYS`, so a participant added to a phase registry is routed by
+  construction rather than by somebody remembering. Adding a sixth dedicated
+  renderer means adding a set the same way — not an `agent === "..."` literal.
+  `test/memo-renderer-routing.spec.ts` asserts each set equals its registry
+  exactly and that the three are disjoint (the dispatch is an ordered if-chain,
+  so an overlap would silently let one card win).
+- **A memo renderer NEVER authors a price-level label.** Same rule as the
+  Summary view: read `flows/analysis/lib/trade-levels.ts`. Pack the input with
+  `storedTradeLevelsFrom(record)` (never hand-assemble the five-field literal —
+  that is how a surface comes to read three of the four levels), name the levels
+  with `buildTradeLevelModel`, and format the one-liner with `tradeLineParts`.
+  Map a row's `kind` to a colour, never to a name. The monitoring label
+  constants are deliberately unexported, which is the guarantee: there is no way
+  to spell the words in `components/theses/**`.
+- **A stored `metrics` bag is a SECOND, unconstrained copy of typed values, and
+  each card needs its own answer.** `ThesisMetrics` renders whatever keys it is
+  handed, verbatim. The trader card strips the level keys
+  (`withoutLevelMetrics`) and denylists `direction` / `size` / `holdingPeriod`,
+  because its structured trade line already draws them and nothing forces the
+  free-form copy to agree with the typed field. The risk personas drop entries
+  whose VALUE is the `"—"` sentinel their prompts fill unused keys with (a
+  rendered empty cell asserts a slot for a measurement nobody took). The
+  consolidated assessment denylists `calibration` + the three adjustment axes,
+  all four of which mirror typed fields it renders structurally. **Every one of
+  these is a denylist or a value filter, never an allowlist of today's keys** —
+  an allowlist silently swallows a metric a later schema adds, which is the exact
+  defect these cards exist to fix.
+- **The verdict renders once, and the structured fields are the ones that
+  render.** Every memo carries a free-form `rating` string that nothing forces to
+  agree with the typed fields a dedicated card draws beside it, so a card that
+  drew both could contradict itself. Both dedicated cards therefore suppress the
+  header's rating chip: the trader's `rating` and `direction` are two separate
+  `long | short | flat` enums, so the card shows `direction` (the field the levels
+  were named from); the risk memos are worse, because the persona prompts PIN
+  `rating` to a literal regardless of what the memo concludes — conservative to
+  `"size correct"` while naming `smaller` as the typical
+  `proposedAdjustments.sizing`, aggressive to `"upsize"` while allowing
+  `unchanged` — so the header contradicted the structured verdict on the TYPICAL
+  path, and the consolidated assessment's free-form `rating` is independent of
+  its typed `confidenceCalibration`. **This is a property of the shape, not of a
+  participant** — a header verdict rendered beside structured verdicts nothing
+  reconciles — so check it for every new card, and suppress via a model whose
+  `rating` is typed as the literal `null` (`traderHeaderModel` /
+  `riskHeaderModel`), which makes reintroducing the stored value a compile error
+  rather than something review has to catch. Still open on the generic
+  fall-through renderer for `PmHero` (its `metrics.rating` chip sits beside the
+  typed `finalRating` tier bar) and `ScenarioPanel` (whose prompt tells it to put
+  the `distribution` tag in `rating`, which the panel also draws) — both
+  pre-existing, neither routed by a card FIX-1061 added.
+- **A card's optional sub-field never gates a sibling that is present.** The
+  assessment's `recommendedAdjustments.*.rationale` and `.attributedTo` are two
+  separate required `z.string()`s, neither `.min(1)`, so a schema-valid memo can
+  persist an empty rationale beside a populated attribution. Nesting attribution
+  inside the rationale's render condition hid who supported an adjustment that
+  still rendered — while the Summary tab's `RiskPanel` drew it anyway, so one
+  stored record read two ways on two surfaces. When two surfaces show the same
+  field, match the existing treatment rather than inventing a third.
+- **Shared presentational leaves are imported, never re-implemented.**
+  `LabeledBulletList` (an empty list renders nothing), `InvalidationList`,
+  and `components/risk-vocabulary.ts` (`SEVERITY` glyphs, `CALIBRATION_CLASS`,
+  and `ADJUSTMENT_AXES`, shared with the Summary's `RiskPanel`). "Match the
+  existing behaviour" is how this surface acquired duplicate copies of one rule;
+  import it instead. **Where colour carries meaning it is part of the shared
+  vocabulary, not a per-surface choice** — an "overconfident" calibration
+  verdict must read as a warning on the Theses tab and the Summary tab alike, so
+  both index one `CALIBRATION_CLASS`.
+- **Do NOT add a second provenance marker.** `ReportProvenanceBanner` is mounted
+  above the Theses/Summary tab switch so the disclosure is gated only on the
+  report being pre-fix. A memo renderer reads no `dataHonestyContractVersion`,
+  calls no `isPreDataHonestyFix`, and renders no notice of its own.
+- **Both card contracts take `onJumpToTranscript` and forward it to the shared
+  header.** It is the only navigation affordance a memo has, and re-routing a
+  memo into a new card is exactly how it gets silently deleted — no view-model
+  test would notice.
+- **Rules live in pure helpers, because most JSX is unreachable from the
+  node-env suite.** `test/trader-proposal-card.spec.ts`,
+  `test/risk-critique-card.spec.ts`, and `test/memo-renderer-field-coverage.spec.ts`
+  (a walker that fails when a schema grows a field no card renders or excludes
+  with a reason) cover the helpers. Where the rule IS the rendered output — a
+  colour that carries meaning — assert it by rendering the card with
+  `renderToStaticMarkup` from `react-dom/server` and reading the class off the
+  markup; no DOM, no jsdom, and it works in the existing node env. Live wiring
+  (selection, streaming, the drawer) is still verified by opening a finished
+  report in the running app.
+- **Still on the generic renderer:** the research manager, the two debaters, and
+  the thesis validator carry structured fields (`unresolvedDisagreements`,
+  `blindSpots`, `supportingEvidence`, `contradictingEvidence`) nothing draws. A
+  flagged follow-up, not a silent gap.
+
 ## Summary view
 
 Each report has a **Theses | Summary** tab toggle inside `ThesesPane`. The
