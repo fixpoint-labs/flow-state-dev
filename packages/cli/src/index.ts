@@ -29,3 +29,14 @@ export type { ParsedInput } from "./chat/parse";
 export type { FlowActionTarget } from "./chat/targets";
 export type { ChatRenderer } from "./chat/render";
 export { registerUiCommand } from "./commands/ui";
+// Three names, not six. A shipper embeds the block, renders it, and asserts its own copy —
+// the command-form table and the comparison verdict are how `renderNextSteps` and
+// `assertCanonicalNextSteps` do their jobs, and publishing them would make narrowing this
+// surface a breaking change later (BP-004).
+export { CANONICAL_NEXT_STEPS, renderNextSteps, assertCanonicalNextSteps } from "./next-steps";
+export type {
+  NextStepsTopology,
+  NextStepsPackageManager,
+  NextStepsValues,
+  RenderNextStepsOptions,
+} from "./next-steps";
