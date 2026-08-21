@@ -1339,7 +1339,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
     <span class="chip">resource.changed</span><span class="chip">session.metadata.changed</span>
     <span class="chip">request.completed</span><span class="chip">request.incomplete</span><span class="chip">request.failed</span>
   </div>
-  <p>Every event carries <code>{ stream, requestId, sequence_number, ts, type }</code>. The cursor is <code>${requestId}:${sequence_number}</code>, and resume accepts both <code>Last-Event-ID</code> and a <code>starting_after</code> query param — both are locked contracts.</p>
+  <p>There are two streams and the envelope differs between them. A <strong>request</strong> event carries <code>{ stream: "request", requestId, sequence_number, ts, type }</code> and its cursor is <code>${requestId}:${sequence_number}</code>. A <strong>user</strong> event carries <code>userId</code> in place of <code>requestId</code>, and its cursor is <code>${userId}:${sequence_number}</code> — <code>createStreamEventId</code> branches on <code>event.stream</code> to pick between them. Reading <code>requestId</code> off a user-stream event finds nothing, which matters because resource and scope changes arrive there. Resume accepts both <code>Last-Event-ID</code> and a <code>starting_after</code> query param on either stream; both are locked contracts.</p>
 </section>
 
 <section id="execution">
@@ -1644,7 +1644,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <text class="t-xs" x="452" y="382">FINISHES BEFORE THAT REQUEST DOES, UNLESS IT IS EXPLICITLY DETACHED</text>
       </svg>
     </div>
-    <figcaption><b>The board is the only drain.</b> Six of the nine patterns are compositions over this loop rather than independent orchestrators — which is why a change to claim semantics or termination policy propagates to all of them at once.</figcaption>
+    <figcaption><b>The board is the only drain.</b> Seven of the nine patterns are compositions over this loop rather than independent orchestrators — which is why a change to claim semantics or termination policy propagates to all of them at once.</figcaption>
   </figure>
 
   <h3>The task record</h3>
@@ -1828,7 +1828,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <text class="t-xs" x="230" y="286">A CONFORMANCE SUITE IN @flow-state-dev/testing IS WHAT MAKES A CUSTOM ADAPTER TRUSTWORTHY</text>
       </svg>
     </div>
-    <figcaption><b>The source string is load-bearing.</b> It is the one trusted fact about where a request came from, which is why authorization decisions are derived from it rather than from anything in the body or metadata (BP-031). The known set is <code>http</code>, <code>mcp</code>, <code>webhook</code>, <code>scheduled</code>, <code>notification</code>; custom transports pick their own.</figcaption>
+    <figcaption><b>The source string is load-bearing, but it is not the auth gate.</b> It is the one trusted fact about where a request came from, so routing decisions derive from it rather than from anything in the body or metadata (BP-031) — <code>resolveActionCore</code> uses it to stop caller-controlled metadata from selecting an event-only handler. That is provenance routing, not authentication. Caller identity comes from <code>host.resolvePrincipal</code> (a flow&rsquo;s own <code>authentication.resolvePrincipal</code> wins over the host&rsquo;s), and management-route ownership is checked separately in <code>authorizeManagementRoute</code>. An adapter that satisfies the source gate and stops there has skipped both.<br><br>The five adapters stamp <code>http</code>, <code>mcp</code>, <code>webhook</code>, <code>scheduled</code> and <code>chat</code>; <code>workstream</code> is a sixth real value, set by the detached re-entry path rather than an adapter, and checked by both <code>public-reentry</code> and the concurrency arbiter. Custom transports pick their own. Worth flagging: the documented known-set in <code>core/src/types/auth.ts</code> reads <code>http</code>, <code>mcp</code>, <code>webhook</code>, <code>scheduled</code>, <code>notification</code> — it omits <code>chat</code> and <code>workstream</code>, and names <code>notification</code>, which appears nowhere in the code as a source value. The doc comment is drifting in both directions.</figcaption>
   </figure>
 
   <h4>What each adapter adds beyond the contract</h4>
