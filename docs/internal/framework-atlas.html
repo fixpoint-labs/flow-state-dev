@@ -249,8 +249,8 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
     <div class="stat"><b>~179k</b><span>lines of src</span></div>
     <div class="stat"><b>7,655</b><span>tests</span></div>
     <div class="stat"><b>4</b><span>block kinds</span></div>
-    <div class="stat"><b>20</b><span>sequencer ops</span></div>
-    <div class="stat"><b>18</b><span>item types</span></div>
+    <div class="stat"><b>24</b><span>sequencer ops</span></div>
+    <div class="stat"><b>17</b><span>item types</span></div>
     <div class="stat"><b>23</b><span>deprecations</span></div>
   </div>
 </header>
@@ -321,8 +321,8 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <text class="t-lbl" x="372" y="156">pluggable edges</text>
         <rect class="n-box" x="372" y="164" width="236" height="56" rx="3"/>
         <text class="t-b" x="384" y="184">inbound transports</text>
-        <text class="t-s" x="384" y="200">http · mcp · webhook · scheduled</text>
-        <text class="t-s" x="384" y="213">chat-sdk · voice-openai</text>
+        <text class="t-s" x="384" y="200">http · mcp · webhook</text>
+        <text class="t-s" x="384" y="213">scheduled · chat-sdk</text>
         <rect class="n-box" x="372" y="232" width="236" height="56" rx="3"/>
         <text class="t-b" x="384" y="252">stores</text>
         <text class="t-s" x="384" y="268">memory · filesystem · sqlite</text>
@@ -978,7 +978,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
 <section id="dsl">
   <div class="sec-head"><span class="sec-num">08</span><h2>The sequencer DSL</h2></div>
-  <p class="lede">Twenty methods. Every one produces a typed <code>BlockValue</code> on the trace, so the execution tree stays reconstructable no matter how the pipeline branches.</p>
+  <p class="lede">Twenty-four methods on <code>SequencerDefinition</code> — the twenty-two composition operations below, plus <code>.connectInput()</code> and <code>.validate()</code>, which wire and check rather than compose. Every operation produces a typed <code>BlockValue</code> on the trace, so the execution tree stays reconstructable no matter how the pipeline branches.</p>
 
   <div class="dsl">
     <div class="dsl-grp" style="--gc:var(--k-sequencer)">
@@ -1031,12 +1031,13 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <li>exitIf(cond)<i>early exit from the chain</i></li>
         <li>throwIf(cond, error)<i>invariant check</i></li>
         <li>rescue(handlers)<i>recover by error type</i></li>
+        <li>waitForCondition(pred, opts)<i>event-driven wait, no polling</i></li>
       </ul>
     </div>
   </div>
 
   <p>Two properties are worth holding onto when reasoning about a redesign. First, <strong>side chains are non-aborting by default</strong> — a failure there does not stop the main chain unless <code>waitForSideChain({ failOnError: true })</code> promotes it. Second, <strong>conditional step variants are preferred over wrapper sequencers</strong> (BP-036): <code>.sideChainIf</code> / <code>.tapIf</code> / <code>.stepIf</code> with an inline connector, rather than wrapping a block in a sequencer whose only job is the condition.</p>
-  <p>Schema propagation runs both at build time (<code>.validate()</code>, with known limitations) and as a runtime chokepoint. Sequencers also carry their own state schema, which bubbles into the flow's session schema alongside the state schemas that leaf blocks declare.</p>
+  <p>Schema propagation runs both at build time (<code>.validate()</code>, with known limitations) and as a runtime chokepoint. Sequencers also carry their own <code>stateSchema</code>, but it is <strong>per-execution instance state</strong> reached through <code>ctx.self</code> — it does not merge into the flow’s session schema. Session-scoped persistence is a separate declaration (<code>sessionStateSchema</code>, contributed by capabilities and flow scope config); confusing the two gives a block the wrong lifetime.</p>
 </section>
 
 <section id="flows">
@@ -1109,7 +1110,8 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       <tr><td><code>session</code> / <code>user</code> / <code>org</code></td><td>Per-scope <code>stateSchema</code>, <code>resources</code>, and a <code>client</code> projection block.</td></tr>
       <tr><td><code>resources</code></td><td>Flat map of <code>DefinedResource</code>s; scope is intrinsic to each definition.</td></tr>
       <tr><td><code>tools</code></td><td>Flow-level tool configuration available to generators beneath it.</td></tr>
-      <tr><td>transport blocks</td><td><code>chat</code>, <code>webhooks</code>, <code>schedules</code>, <code>voice</code>, <code>mcp</code>, <code>concurrency</code> — each validated at registration.</td></tr>
+      <tr><td>transport blocks</td><td><code>chat</code>, <code>webhooks</code>, <code>schedules</code>, <code>voice</code>, <code>mcp</code> — each validated at registration.</td></tr>
+      <tr><td><code>request</code></td><td>Per-request policy, including the flow-wide <code>concurrency</code> default. There is no top-level <code>concurrency</code> slot — resolution is <code>action.concurrency ?? flow.request?.concurrency ?? "allow"</code>.</td></tr>
       <tr><td>lifecycle hooks</td><td><code>onStarted</code>, <code>onCompleted</code>, <code>onErrored</code>, <code>onFinished</code>, <code>onStepErrored</code>. Past tense is canonical.</td></tr>
     </tbody>
   </table></div>
@@ -1236,7 +1238,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
 <section id="items">
   <div class="sec-head"><span class="sec-num">12</span><h2>Items and streaming</h2></div>
-  <p class="lede">Eighteen item types, three visibility categories, and one resolution function that decides who sees what. This is the subsystem most worth understanding before touching anything that renders.</p>
+  <p class="lede">Seventeen live item types &mdash; thirteen in the <code>OutputItem</code> union plus four trace records &mdash; three visibility categories, and one resolution function that decides who sees what. (An eighteenth, <code>context</code>, survives only as a deprecated compatibility type and is out of the union; it is in the removal ledger, not the table below.) This is the subsystem most worth understanding before touching anything that renders.</p>
 
   <figure>
     <div class="fig-body">
@@ -1320,7 +1322,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       <tr><td><code>suspension</code></td><td><code>ctx.suspend()</code></td><td class="ctr">✓</td><td class="ctr">—</td><td>persistent; carries <code>allow: ResumeAction[]</code></td></tr>
       <tr><td><code>suspension_resume</code></td><td>resume continuation</td><td class="ctr">✓</td><td class="ctr">—</td><td>persistent, not rendered — the audit record</td></tr>
       <tr><td><code>continuation</code></td><td>runtime, crash-recovery re-entry</td><td class="ctr">✓</td><td class="ctr">—</td><td>persistent; marks the seam in the durable log</td></tr>
-      <tr><td><code>block_trace</code></td><td>every block, auto</td><td class="ctr">—</td><td class="ctr">—</td><td>persistent</td></tr>
+      <tr><td><code>block_trace</code></td><td>every block, auto</td><td class="ctr">—</td><td class="ctr">—</td><td>persistent <em>unless</em> the originating block is <code>transient</code> — those stream live but are never retained, so poll-loop traces vanish on reload</td></tr>
       <tr><td><code>router_decision</code></td><td>router, on selection</td><td class="ctr">—</td><td class="ctr">—</td><td>persistent; resume validates against it</td></tr>
       <tr><td><code>state_snapshot</code></td><td>sequencer, at step boundaries</td><td class="ctr">—</td><td class="ctr">—</td><td>side-channelled to the checkpoint store</td></tr>
       <tr><td><code>generator_step</code></td><td>generator loop, per step</td><td class="ctr">—</td><td class="ctr">—</td><td>persistent, replay-only</td></tr>
@@ -1452,7 +1454,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 900 330" role="img" aria-label="Capability resolution split into two phases: static entries resolved at build time contribute resources and state schemas, while both static and dynamic entries contribute context, tools and helper functions at runtime; three generator singletons resolve last-wins among capabilities with block-level config overriding all of them.">
+      <svg viewBox="0 0 900 330" role="img" aria-label="Capability resolution split into two phases: static entries resolved at build time contribute resources and state schemas, while both static and dynamic entries contribute context and tools at runtime; helper functions and the three generator singletons come from static entries only, resolving last-wins among capabilities with block-level config overriding all of them.">
         <defs><marker id="a11" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker></defs>
 
         <rect class="n-acc" x="286" y="14" width="328" height="46" rx="4"/>
@@ -1478,24 +1480,24 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <text class="t-xs" x="50" y="295">MAP MERGED WITH SAME-REF DEDUP</text>
 
         <rect class="n-grp" x="476" y="98" width="400" height="212" rx="5"/>
-        <text class="t-lbl" x="490" y="118">Runtime — static and dynamic alike</text>
+        <text class="t-lbl" x="490" y="118">Runtime — resolved per call</text>
         <rect class="n-box" x="490" y="126" width="372" height="40" rx="3"/>
         <text class="t-s" x="502" y="144">context</text>
-        <text class="t-xs" x="502" y="158">GENERATOR ONLY · APPENDED · COLLAPSED BY XML TAG NAME</text>
+        <text class="t-xs" x="502" y="158">STATIC + DYNAMIC · APPENDED · COLLAPSED BY XML TAG</text>
         <rect class="n-box" x="490" y="172" width="372" height="40" rx="3"/>
         <text class="t-s" x="502" y="190">tools</text>
-        <text class="t-xs" x="502" y="204">GENERATOR ONLY · ARRAYS APPENDED AT RUNTIME</text>
+        <text class="t-xs" x="502" y="204">STATIC + DYNAMIC · ARRAYS APPENDED AT RUNTIME</text>
         <rect class="n-box" x="490" y="218" width="372" height="40" rx="3"/>
         <text class="t-s" x="502" y="236">fns</text>
-        <text class="t-xs" x="502" y="250">EXPOSED AT ctx.cap.{name} WITH FULL TYPE INFERENCE</text>
+        <text class="t-xs" x="502" y="250">STATIC ONLY · AT ctx.cap.{name}, FULLY TYPED</text>
         <rect class="n-box-2" x="490" y="264" width="372" height="36" rx="3"/>
         <text class="t-s" x="502" y="282">model · providerOptions · caching</text>
-        <text class="t-xs" x="502" y="295">SINGLETONS — LAST CAPABILITY WINS · BLOCK-LEVEL BEATS ALL</text>
+        <text class="t-xs" x="502" y="295">STATIC ONLY · LAST CAP WINS · BLOCK-LEVEL BEATS ALL</text>
 
-        <text class="t-xs" x="450" y="322" text-anchor="middle" fill="var(--k-router)">A DYNAMIC ENTRY CONTRIBUTES CONTEXT AND TOOLS ONLY — RESOURCES MUST BE DECLARED STATICALLY SOMEWHERE</text>
+        <text class="t-xs" x="450" y="322" text-anchor="middle" fill="var(--k-router)">A DYNAMIC ENTRY CONTRIBUTES CONTEXT AND TOOLS — NOTHING ELSE. fns, THE SINGLETONS AND RESOURCES ARE STATIC-ONLY</text>
       </svg>
     </div>
-    <figcaption><b>The two-phase split is the whole design.</b> Resources have to exist before the flow is built, so they can only come from static entries; context and tools are assembled per call, so a resolver can decide them from <code>ctx</code>. That constraint is what makes conditional capabilities possible without making resource wiring conditional.</figcaption>
+    <figcaption><b>The two-phase split is the whole design.</b> Resources have to exist before the flow is built, so they can only come from static entries; context and tools are assembled per call, so a resolver can decide them from <code>ctx</code>. That constraint is what makes conditional capabilities possible without making resource wiring conditional. The asymmetry inside the runtime column is the easy thing to miss: <code>fns</code> is read off the block's statically resolved capability list when <code>ctx.cap</code> is built, and the generator singletons are settled during the build-time merge. A capability reachable only through a dynamic <code>uses</code> resolver contributes context and tools and nothing else &mdash; its <code>fns</code> never appear on <code>ctx.cap</code>, and its <code>model</code> is never installed.</figcaption>
   </figure>
 
   <h4>Capabilities shipped in the framework</h4>
@@ -1776,7 +1778,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 900 296" role="img" aria-label="Inbound transport pipeline: six adapters each expose a source string and a createBindings function; the router collects all bindings and validates route uniqueness, each adapter constructs an InboundRequestEnvelope, and every envelope enters the same runtime through the source gate.">
+      <svg viewBox="0 0 900 296" role="img" aria-label="Inbound transport pipeline: five adapters each expose a source string and a createBindings function; the router collects all bindings and validates route uniqueness, each adapter constructs an InboundRequestEnvelope, and every envelope enters the same runtime through the source gate.">
         <defs><marker id="a18" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--ink-3)"/></marker>
         <marker id="a18a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="var(--accent)"/></marker></defs>
 
@@ -1786,8 +1788,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <rect class="n-box" x="24" y="98" width="164" height="28" rx="3"/><text class="t-s" x="34" y="117">webhook — provider events</text>
         <rect class="n-box" x="24" y="132" width="164" height="28" rx="3"/><text class="t-s" x="34" y="151">scheduled — cron, dynamic</text>
         <rect class="n-box" x="24" y="166" width="164" height="28" rx="3"/><text class="t-s" x="34" y="185">chat-sdk — mentions</text>
-        <rect class="n-box" x="24" y="200" width="164" height="28" rx="3"/><text class="t-s" x="34" y="219">voice — speech in and out</text>
-        <rect class="n-grp" x="24" y="234" width="164" height="28" rx="3"/><text class="t-xs" x="34" y="252">YOUR OWN — PICK A source</text>
+        <rect class="n-grp" x="24" y="200" width="164" height="28" rx="3"/><text class="t-xs" x="34" y="218">YOUR OWN — PICK A source</text>
 
         <path class="ln" d="M188,146 L228,146" marker-end="url(#a18)"/>
 
@@ -1837,9 +1838,10 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       <tr><td><code>webhook</code></td><td>Declaration in <code>core</code> / runtime in <code>engine</code>; provider mechanics at mount vs routing on the flow; per-request registry lookup by <code>flowKind</code>-in-URL; idempotency and concurrency.</td></tr>
       <tr><td><code>scheduled</code></td><td>A <code>schedules</code> config block, two-phase auth, an idempotency cache, overlap policy, a listing endpoint, and dynamic schedules that carry their core inline (and therefore do not recover).</td></tr>
       <tr><td><code>chat-sdk</code></td><td>Registration-time validation, mount-time discovery, a dispatch model and fan-out semantics, principal resolution.</td></tr>
-      <tr><td><code>voice</code></td><td>A TTS pipeline with sentence buffering, a streaming audio path (<code>content.audio.delta</code>), a transcription endpoint, and a provider-agnostic contract that <code>voice-openai</code> implements.</td></tr>
     </tbody>
   </table></div>
+
+  <p><strong>Voice is not one of these.</strong> It is easy to file alongside them &mdash; it is a way in, it has a flow-level <code>voice</code> config slot, and <code>voice-openai</code> sits in the package table as a transport. But it implements no <code>source</code> and no <code>createBindings</code>: <code>@flow-state-dev/voice-openai</code> exports a <code>VoiceProvider</code>, and the engine's own HTTP routes consume it for transcription and TTS. The seam is a provider slot inside the runtime, not an adapter in front of it. An extension author who follows the adapter contract to add a voice backend is at the wrong seam &mdash; and the reverse, modelling a genuine new inbound source on the voice provider, is the more expensive mistake.</p>
 </section>
 
 <section id="hosts">
@@ -1933,7 +1935,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       <tr><td><code>list</code> · <code>add</code> · <code>ui</code></td><td>Discovery, scaffolding, and the UI surface.</td></tr>
     </tbody>
   </table></div>
-  <p>The CLI is the reason <code>engine</code> has to be usable without a server: it resolves a flow or a block from disk, builds a runtime with a SQLite store, and runs it directly. NDJSON traces and stderr logs from <code>fsdev run</code> are the primary debugging surface.</p>
+  <p>The CLI is the reason <code>engine</code> has to be usable without a server: it resolves a flow or a block from disk, builds a runtime, and runs it directly. The backing store depends on the command: <code>fsdev run</code> defaults to filesystem stores rooted at <code>.fsdev/data</code>, while <code>chat</code> and <code>dev</code> default to SQLite at <code>.fsdev/data/fsdev.db</code>. Config mode uses whatever stores the application declares. NDJSON traces and stderr logs from <code>fsdev run</code> are the primary debugging surface.</p>
 
   <h3>devtool and ui</h3>
   <p><code>@flow-state-dev/devtool</code> is 11.6k lines of pre-built assets served by <code>fsdev dev</code>, built from <code>apps/devtool</code> and consuming only public APIs from <code>client</code> and <code>react</code>. It renders the trace channel, the debug-vs-client state split, and resource load observation. <code>@flow-state-dev/ui</code> is much smaller — a generative component registry (link-card, info-card) for the <code>component</code> item type.</p>
@@ -2073,8 +2075,8 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       </tr>
       <tr>
         <td><strong>patterns → reduce, absorb into orchestration</strong></td>
-        <td><strong>Every importer of <code>patterns</code> is a demo or a lab</strong> — kitchen-sink, pattern-benchmark, trading-desk. No framework package imports it. <code>parallelTasks</code> and <code>rlm</code> have zero importers anywhere.</td>
-        <td>Strong. Six of nine patterns are already thin compositions over the board; moving those into <code>orchestration</code> puts them next to the primitive they wrap and removes a package whose only consumers are demos.</td>
+        <td><strong>Every importer of <code>patterns</code> is a demo or a lab</strong> — kitchen-sink, pattern-benchmark, trading-desk. No framework package imports it (<code>integration-tests</code> declares the dependency but imports nothing from it). <code>rlm</code> has zero importers outside its own directory. <code>parallelTasks</code> is <em>not</em> dead: <code>patterns/src/benchmark/adapters.ts</code> materializes it into <code>parallelTasksBenchmarkAdapter</code>, which ships in <code>defaultBenchmarkRegistry</code> under the key <code>parallel-tasks</code>.</td>
+        <td>Strong. Six of nine patterns are already thin compositions over the board; moving those into <code>orchestration</code> puts them next to the primitive they wrap and removes a package whose only consumers are demos. One caveat: the benchmark registry is an in-package consumer, so any pattern that moves has to take its benchmark adapter with it or the registry loses a row.</td>
       </tr>
       <tr>
         <td><strong>utilities → reduce</strong></td>
@@ -2166,7 +2168,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <div class="tension">
     <h5>8 · Persistence is an exception list on the item registry</h5>
-    <p>Of 18 item types: <code>status</code> is always transient; <code>state_change</code> is transient in prod and persistent in dev; <code>resource_change</code> is transient by default; <code>component</code> is a keyed upsert per <code>(requestId, key)</code>; <code>state_snapshot</code> is stripped from the request log and side-channelled to the checkpoint store; <code>generator_step</code> is persistent but replay-only and never in a <code>GET</code>.</p>
+    <p>Of the 17 live item types: <code>status</code> is always transient; <code>state_change</code> is transient in prod and persistent in dev; <code>resource_change</code> is transient by default; <code>component</code> is a keyed upsert per <code>(requestId, key)</code>; <code>state_snapshot</code> is stripped from the request log and side-channelled to the checkpoint store; <code>generator_step</code> is persistent but replay-only and never in a <code>GET</code>.</p>
     <p>That is six distinct persistence behaviours encoded per type, alongside a separate three-category visibility axis that <em>is</em> modelled explicitly.</p>
     <span class="ask">Visibility got a resolution function and three named categories. Should persistence get the same treatment — a declared axis rather than a column of exceptions?</span>
   </div>
