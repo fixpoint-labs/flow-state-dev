@@ -71,6 +71,8 @@ path of its own, it should have been its own epic and should be pulled out rathe
   and **cross-session progress polling**, which is a later mechanism and not a small addition
   (theme 10).
 - **A new queueing mechanism** — the concurrency policy already arbitrates on the session key.
+  Still true, and **making its admission budget configurable is not one** (theme 14): it is a
+  parameter on the arbiter that exists, and the unbounded case already works in the shipped gate.
   (Delivery receipt is **no longer** on this list: acceptance already exists in shipped code and
   every send awaits it — theme 6, amended.)
 - **Cross-user messaging. Same-owner only in v1** — confirmed by the owner. The objective's "two
@@ -86,8 +88,15 @@ arbitration entirely when an external dispatcher is configured, deferring it to 
 substrate (FIX-830); in-process, the gate is a per-process map and a queued waiter gives up
 after 30 seconds. So "arbitration already exists" is **true in-process and false on the durable
 path**. For a busy recipient that means two messages can run against one session at once on a
-queue-backed deployment, and a queued message can be dropped in-process. Evidence and the
-options are §5 Q3; nothing is promised here.
+queue-backed deployment. Evidence and the options are §5 Q3; nothing is promised here.
+
+**The in-process half of that risk is no longer a risk to accept — it is scope.** §3's Q4 ran it:
+a delivery **accepted at 0 ms** is **dropped at 30 001 ms** when the recipient stays busy past the
+arbiter's hardcoded budget, with the sender long since returned and reading `completed`. A
+receipt that can be followed by a silent loss is worse than no receipt, so **a configurable
+admission budget is in scope** — issue 2 (§4), theme 14. It is small: `Infinity`/omitted already
+disables the timeout in the shipped gate, and Q4 ran the same scenario through it and the
+delivery landed. Nothing about the *durable* path changes; that stays FIX-830's.
 
 ---
 
@@ -199,6 +208,14 @@ can cite one.
    > lapses and the owner recovers the row. That is the designed recovery path for every way a
    > child can die, and no dispatch milestone improves on it.
 
+   **And it is more self-limiting than its own doc comment says.** "A caller that acks on it
+   never acks a request that never runs" is quoted above because it is what the code claims;
+   §3's **Q4** falsified it on the in-process `queue` path. A delivery accepted at **0 ms** was
+   dropped at **30 001 ms** when the recipient stayed busy past the arbiter's admission budget,
+   and nothing told the sender. So acceptance means *the recipient's queue took it*, never *it
+   will run* — which is why theme 14 now puts that budget in scope rather than leaving the
+   receipt to carry a guarantee it does not have.
+
    **The verb has to tolerate acceptance being absent.** It is `readonly accepted?:` — optional
    "because a custom dispatcher may not distinguish acceptance from completion. Every dispatcher
    this package ships does." A send running against a custom dispatcher gets no ack and must
@@ -270,21 +287,39 @@ can cite one.
     address and the verb, so none can merge before issue 1 — they can be *specced* in parallel.
     Issue 5 depends on nothing in the set and can start immediately.
 
-14. **Two clocks, two jobs — the arbiter's admission budget is not the sender's answer timeout.**
-    *(Added by owner amendment; the sharp part of theme 6.)* `QUEUE_WAIT_TIMEOUT_MS = 30_000`
-    (`packages/engine/src/transports/concurrency/arbiter.ts:40`) is an **admission** timeout: how
-    long the arbiter holds a *kickoff* waiting for the recipient's concurrency key to free. It
-    bites a caller that is awaiting the kickoff. A send verb that acks on `accepted` (theme 6)
-    and then waits for the **answer** on its own clock is never inside the arbiter's wait, so the
-    30 seconds is not that verb's number.
+14. **Two clocks, two jobs — and the admission budget must become configurable.**
+    *(Added by owner amendment; **corrected by §3's Q4 run**, which superseded the reasoning this
+    theme originally rested on.)*
 
-    **This epic does not propose changing that constant.** Recorded as a deliberate non-change,
-    because "just raise the timeout" is the obvious wrong fix and someone will suggest it. §3's
-    Q2 run is the argument: a queue-wait timeout today costs **30 s of dead time**, leaves a
+    **The two clocks stand, and that half is unchanged.** `QUEUE_WAIT_TIMEOUT_MS = 30_000`
+    (`packages/engine/src/transports/concurrency/arbiter.ts:40`) is an **admission** budget: how
+    long the arbiter holds a *kickoff* waiting for the recipient's concurrency key to free. The
+    sender's **answer** timeout is a different thing on a different clock. Conflating them is
+    still the error to avoid, and "just raise the 30 s so the sender waits longer" is still the
+    obvious wrong fix.
+
+    **What was wrong.** This theme originally recorded the constant as a *deliberate non-change*,
+    on the reasoning that a verb acking on `accepted` (theme 6) is never inside the arbiter's
+    wait, so the budget is not that verb's number. That reasoning is **superseded**. The budget
+    does not bound a *caller*; it bounds the **delivery**, whoever is or is not awaiting it.
+    `runExclusive` "rejects with `ConcurrencyQueueTimeoutError` and **never runs `fn`**"
+    (`packages/engine/src/utils/keyed-async-gate.ts:39-44`). Q4 ran it: a delivery **accepted at
+    0 ms** was **dropped at 30 001 ms** because the recipient stayed busy for 35 s, and the sender
+    — already returned, reading `completed` — was never told.
+
+    **So: the admission budget must be configurable**, with `Infinity`/omitted as the unbounded
+    case. That case is already supported rather than new work: `runExclusive`'s timer is guarded
+    by `waitTimeoutMs !== undefined && waitTimeoutMs !== Infinity && waitTimeoutMs > 0`
+    (`keyed-async-gate.ts:141-145`), and Q4 ran the same 35 s scenario through an arbiter whose
+    only difference is that budget, set to `Infinity`. The delivery landed. The fix is therefore
+    **a parameter at the arbiter**, not a structural change — but the epic only gets to say that
+    because it was run.
+
+    **Raising the number is still not the fix.** Q2's cost stands as the argument against merely
+    setting a bigger constant: a queue-wait timeout costs the full budget in dead time, leaves a
     **`failed`** record on the recipient's session for a run that never started, and the sender
-    reports **`completed`**, because the error surfaces inside the sending block and nothing
-    propagates it. At 30 minutes that is a half-hour phantom. Raising the budget scales the
-    damage; not waiting on it is the fix.
+    reports **`completed`**. At 30 minutes that is a half-hour phantom. A longer wrong number is
+    still a wrong number — the budget has to be the *deployment's* call, including "don't expire".
 
     **The sender-side answer timeout: default 30 minutes, explicitly configurable.**
     Wait-for-response takes its own timeout, generous on purpose. What actually detects a dead
@@ -294,27 +329,28 @@ can cite one.
     not the primary safety mechanism, and a short default would fire on healthy slow work rather
     than catch anything the lease does not already catch. **This supersedes any reading elsewhere
     in this document that 30 s is the relevant number for a sender** — 30 s is the arbiter's
-    number, and only for a caller awaiting admission.
+    number, and it is the *delivery's* deadline, not the sender's.
 
-    **What the non-change does *not* buy, stated so issue 2 does not discover it.** The 30 s
-    budget still bounds how long a *queued delivery* may wait for admission, whoever is or is not
-    awaiting it. A recipient busy longer than that is §1's named risk ("a queued message can be
-    dropped in-process"), and a 30-minute sender timeout does not rescue it. **Unverified by
-    run** — Q3 exercised a 4 s busy window, not a 30 s one — so issue 2's spec should check it
-    rather than inherit it.
+    **Why acceptance alone is not enough, stated so issue 1 does not ship the receipt and stop.**
+    Q4 is the case where `accepted` resolves and the message still never arrives, so acceptance
+    answers *the recipient's queue took it*, never *it will run*. A send that acks on acceptance
+    and a delivery that can expire behind it need each other: the receipt is theme 6's, the
+    budget is this theme's, and shipping one without the other is what produces a silent drop
+    the sender was told was fine.
 
-    **Constrains issues 1 and 2**; issue 4 inherits it, since a schedule that waits for an answer
-    is the same shape.
+    **Constrains issues 1 and 2** — issue 2 owns the configurable budget (see §4); issue 4
+    inherits it, since a schedule that waits for an answer is the same shape.
 
 ---
 
 ## 3. Shape of the whole *(POC)*
 
-**Built:** a characterization POC of the three things the design was asserting from a code read —
+**Built:** a characterization POC of the four things the design was asserting from a code read —
 that a running block can re-enter `host.dispatch` onto another live session, that a self-addressed
-wait deadlocks, and that a queued delivery outlives the request that sent it. Not an end-state
-POC: the division in §4 is still unchecked against an assembled surface, and §5 Q1 remains a
-design question no run settles.
+wait deadlocks, that a queued delivery outlives the request that sent it, and that the arbiter's
+admission budget does or does not drop an already-accepted delivery. Not an end-state POC: the
+division in §4 is still unchecked against an assembled surface, and §5 Q1 remains a design
+question no run settles.
 
 **See it:** `spec-poc/epic-relay/` on this branch.
 
@@ -322,11 +358,12 @@ design question no run settles.
 pnpm tsx spec-poc/epic-relay/q1-inside-out-dispatch.ts       # instant
 pnpm tsx spec-poc/epic-relay/q2-self-addressed-deadlock.ts   # ~35s, on purpose
 pnpm tsx spec-poc/epic-relay/q3-delivery-outlives-sender.ts  # ~10s
+pnpm tsx spec-poc/epic-relay/q4-admission-budget-drop.ts     # ~80s, on purpose
 ```
 
 **In-process only.** `arbiter.ts:22-27` and `createInboundTransportHost.ts:299-301` skip
 arbitration entirely under an external dispatcher, so nothing below speaks to the durable path
-(§5 Q3, §1's named risk). All three remain unchecked by run.
+(§5 Q3, §1's named risk). All four remain unchecked by run there.
 
 **Showed — Q1, the tracer bullet: it works, and identity is the sharp edge.** A block in
 `sess_sender` dispatched onto a live peer session and the second request ran to completion,
@@ -386,14 +423,50 @@ modes. The run also confirms `accepted` is present on the in-process path
 (`acceptedPresent: true`), which the type does not guarantee.
 
 **What Q3 did not test:** a recipient busy longer than `QUEUE_WAIT_TIMEOUT_MS`. The 4 s window is
-comfortably inside the arbiter's 30 s admission budget, so this run says nothing about whether a
-queued delivery survives a *long*-busy recipient (theme 14, §1's named risk).
+comfortably inside the arbiter's 30 s admission budget. **Q4 tested exactly that window.**
 
-**Changed:** nothing in §1's objective, §4, or the five-issue division. All three premises held.
-What changed is theme 6 and the addition of theme 14, both by owner amendment rather than by the
-run — the run supplies their evidence. Q3's other contribution is negative and useful: the
-long-busy case is still unchecked, and issue 2's spec should check it rather than inherit it.
-Q1's cross-user refusal has been promoted from evidence here to a stated boundary in §1.
+**Showed — Q4: CONFIRMED. An accepted delivery is silently dropped at 30 s, and the sender is
+told it succeeded.** Same shape as Q3 with one number changed — the recipient holds its
+concurrency key for **35 s**, past the budget. The sender awaited `accepted`, got it at
+**0 ms**, returned in **4 ms**, and never awaited `finished`. The delivery then died:
+
+| | observed |
+|---|---|
+| the handler | **never ran** — no side effect, nothing in `received` |
+| recipient's `receive` record | **`failed`**, `startedAtMs` 1787347096195 → `failedAtMs` 1787347126196 (**30 001 ms**, never started) |
+| recipient's session items | `seed` + `busy` only — **no message from the sender** |
+| sender's record | **`completed`** |
+| host warn/error logs · unhandled rejections · leftover `activeRequests` | **none, none, none** |
+
+**Is the drop discoverable? Barely, and not as itself.** There *is* a `failed` request record on
+the recipient's session and the sender holds its `requestId`, so a coordinator that knows to poll
+can find it — better than "you notice the answer never came". But that is the whole of it.
+`RequestRecord` carries no error field (`stores/types.ts:117-172`), so nothing records **why**;
+`startedAtMs` is stamped at enqueue, so the row reads as a run that took 30 s and failed rather
+than one that never began; and `ConcurrencyQueueTimeoutError` **never surfaces anywhere** —
+`void finished.catch(() => {})` (`createInboundTransportHost.ts:692`) marks the rejection handled,
+so it is swallowed, not merely unobserved. Acceptance at 0 ms plus loss at 30 s is what makes the
+receipt insufficient on its own (theme 14, theme 6).
+
+**And the fix is small — run, not read.** `runExclusive`'s timer is guarded by
+`waitTimeoutMs !== undefined && waitTimeoutMs !== Infinity && waitTimeoutMs > 0`
+(`keyed-async-gate.ts:141-145`). Isolated on the real gate, one held key and three waiters:
+`waitTimeoutMs=300` → `ConcurrencyQueueTimeoutError`, fn never ran; **`Infinity` → fn ran**;
+**omitted → fn ran**. Then the identical 35 s scenario against an arbiter differing from the
+shipped one *only* in that the budget is a parameter set to `Infinity` — injected through the
+`arbiter` option `createInboundTransportHost` already takes (`:106-113`), with no engine code
+patched. **The delivery landed:** `receive` completed after waiting 34.7 s, its message on the
+recipient's session. So a configurable budget at the arbiter is a parameter, not a redesign.
+
+**Changed:** nothing in §1's objective, and no re-division — **the five issues stand**. What moved
+is one scope cell and one theme. **Theme 14 is corrected, not extended:** it had recorded the
+30 s constant as a deliberate *non-change* on the reasoning that a verb acking on `accepted` is
+never inside the arbiter's wait; Q4 superseded that reasoning — the budget bounds the delivery,
+not the caller — so a **configurable admission budget is now in scope**, on **issue 2** (§4), and
+§1's named risk says so. The two-clocks half of theme 14 stands, and Q2's phantom-record cost
+still argues against merely *raising* the number: a longer wrong number is still a wrong number.
+Theme 6 and theme 14's addition were owner amendments rather than run outcomes; the runs supply
+their evidence. Q1's cross-user refusal was promoted from evidence here to a stated boundary in §1.
 
 ---
 
@@ -406,7 +479,7 @@ cell is empty by design, not by omission.
 | # | Proposed issue | What it delivers | Depends on | Linear | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|---|---|---|
 | 1 | The address, the send verb, and what a sender may legally address | `to` on the envelope, the send verb, both send modes, **acceptance as the acknowledgement on both** (theme 6) and the **sender-side answer timeout, default 30 min** (theme 14), the self-addressed refusal, and the agent-facing tool — core + engine + tools | — | not filed | spec | — | — | Proposed |
-| 2 | Per-adapter delivery | in-process for a Node host; through the `FlowDispatcher` seam so a queue-backed deployment gets durability for free | 1 | not filed | spec | — | — | Proposed |
+| 2 | Per-adapter delivery | in-process for a Node host; through the `FlowDispatcher` seam so a queue-backed deployment gets durability for free; **plus a configurable in-process admission budget** (theme 14, §3 Q4) — the arbiter's hardcoded 30 s silently drops an already-accepted delivery, and `Infinity`/omitted is the unbounded case the gate already supports | 1 | not filed | spec | — | — | Proposed |
 | 3 | The sibling-spawn verb | an independent, self-managing session with its own flow kind and addressable key, resolving `flow.actions` like any other caller and talking back by message rather than `settleParentTask` | 1 | not filed | spec | — | — | Proposed |
 | 4 | Cron: a schedule addresses a session and fires as a message | the schema field, the resolver, and the one dispatch envelope; absent address preserves today's behaviour exactly | 1 | not filed | spec | — | — | Proposed |
 | 5 | A `pending feedback` task status | "parked awaiting external input; the request may end; a later request resumes this task" — a genuine addition, not a rename of `awaiting_review` | — | not filed | spec | — | — | Proposed |
@@ -520,8 +593,10 @@ without a session — `"session"` resolves to `undefined` when the envelope has 
 (`arbiter.ts:101-105`), which is exactly today's scheduled-dispatch case.
 
 So: in-process a recipient gets FIFO with a 30-second give-up; on a queue-backed deployment it
-gets nothing. **That 30 seconds is an admission budget, not a sender's timeout** — theme 14, and
-this epic does not propose changing it. Two options:
+gets nothing. **That 30 seconds is an admission budget, not a sender's timeout** — theme 14 — and
+§3's Q4 ran what the give-up costs: an already-accepted delivery is dropped at 30 001 ms with the
+sender reading `completed`. **Making that budget configurable is in scope** (theme 14, issue 2);
+this open question is about the *durable* path only, where the epic promises nothing. Two options:
 
 - **Promise nothing beyond what the deployed dispatcher gives, and document it plainly.** Cheap,
   honest, and additive later — a stronger promise can be added without breaking anyone.
@@ -568,3 +643,17 @@ on it. **This is the composition half of the objective gate** — see §1's nece
   **cross-user messaging stated as out of scope in §1** — same-owner only in v1. Q3 added to the
   POC and run: delivery outlives the sending request (CONFIRMED), and acceptance resolves while
   the message is still queued.
+- **Correction — the admission budget drops accepted deliveries, and theme 14 was wrong about
+  why that did not matter.** *What was recorded:* theme 14 held the arbiter's
+  `QUEUE_WAIT_TIMEOUT_MS = 30_000` as a **deliberate non-change**, reasoning that a send verb
+  acking on `accepted` is never inside the arbiter's wait, so the constant is not that verb's
+  number. That was settled by reading, and it was wrong. *What ran:* §3's **Q4** — the Q3 shape
+  with the recipient busy **35 s** instead of 4 s. The delivery was accepted at **0 ms** and
+  dropped at **30 001 ms**; the handler never ran; the recipient's record reads a bare `failed`
+  with no reason and an enqueue-time `startedAtMs`; nothing reached the recipient's item history,
+  the logs, or an unhandled rejection; the sender read `completed`. A second phase ran the same
+  scenario through an arbiter differing only in a configurable budget set to `Infinity` — already
+  supported by the shipped gate's guard — and the delivery landed. *What it changed:* theme 14
+  rewritten — the two clocks stand, the non-change does not, and **a configurable admission
+  budget is now in scope on issue 2**; §1's named risk and §4's issue-2 cell updated to match;
+  §5 Q3 narrowed to the durable path. **No re-division — the five issues stand.**

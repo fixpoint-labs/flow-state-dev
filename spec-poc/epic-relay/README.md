@@ -1,4 +1,4 @@
-# spec-poc/epic-relay — the three things the epic asserted from a code read
+# spec-poc/epic-relay — the four things the epic asserted from a code read
 
 **POC code on a never-merged branch** (`epic/relay`, epic FIX-1197, PR #1357). Throwaway.
 Please don't review it as code — review what it showed. It dies with the PR.
@@ -7,12 +7,16 @@ The epic's size claim ("five issues, not a subsystem") rests on *routing, queuei
 arbitration and session resolution all already exist; only the address, the send verb and
 per-adapter delivery are missing.* That was established by reading. These scripts run it.
 
+Q4 is the correction: "queueing already exists" turned out to hold only for a recipient busy
+less than 30 seconds, which was also settled by reading, and wrongly.
+
 ## Run it
 
 ```
 pnpm tsx spec-poc/epic-relay/q1-inside-out-dispatch.ts       # instant
 pnpm tsx spec-poc/epic-relay/q2-self-addressed-deadlock.ts   # ~35s, on purpose
 pnpm tsx spec-poc/epic-relay/q3-delivery-outlives-sender.ts  # ~10s
+pnpm tsx spec-poc/epic-relay/q4-admission-budget-drop.ts     # ~80s, on purpose
 ```
 
 No server, no store, no keys. `createInMemoryStores` + `createInboundTransportHost`, one
@@ -129,6 +133,53 @@ is what makes acceptance usable as the acknowledgement on both send modes. `acce
 was `true`, which the type does not guarantee — `readonly accepted?:` is optional because a
 custom dispatcher may not distinguish acceptance from completion.
 
-**Not tested:** a recipient busy longer than `QUEUE_WAIT_TIMEOUT_MS` (30s, `arbiter.ts:40`).
-The 4s window sits comfortably inside the admission budget, so this says nothing about whether
-a queued delivery survives a *long*-busy recipient. That is theme 14's open edge.
+**Not tested here:** a recipient busy longer than `QUEUE_WAIT_TIMEOUT_MS` (30s, `arbiter.ts:40`).
+The 4s window sits comfortably inside the admission budget, so Q3 says nothing about whether a
+queued delivery survives a *long*-busy recipient. **Q4 tests exactly that, and it does not.**
+
+## Q4 — is an accepted delivery dropped past the admission budget, and does anything record it?
+
+Same shape as Q3 with one number changed: the recipient holds its key for **35s**, past the
+arbiter's 30s budget. The sender awaits `accepted` and returns without awaiting `finished`.
+
+```
+accepted:            present true, at 0ms; sender's request completed in 4ms
+handler ever ran:    NO — no side effect, `received` is empty for this session
+recipient's receive: status failed, startedAtMs 1787347096195, failedAtMs 1787347126196
+                                                                (= 30001ms, never started)
+recipient's items:   seed + busy only — no message from the sender
+sender's record:     completed
+activeRequests left: []      host warn/error logs: []      unhandled rejections: []
+VERDICT: CONFIRMED
+```
+
+**CONFIRMED.** A delivery the sender was told was accepted is dropped when the recipient stays
+busy past 30 seconds. Acceptance at 0 ms and silent loss at 30 s is the combination that makes a
+receipt insufficient on its own.
+
+**Discoverability, precisely.** It is *not* invisible: there is a **`failed` request record on
+the recipient's session**, and the sender holds its `requestId`, so a coordinator that knows to
+poll can find it. But that is the whole of it. `RequestRecord` has no error field
+(`stores/types.ts:117-172`), so nothing records *why*; `startedAtMs` is stamped at enqueue, so
+the row reads as a run that lasted 30s and failed rather than one that never began; nothing
+lands in the recipient's item history; the host logged nothing; and `ConcurrencyQueueTimeoutError`
+never surfaced at all — `void finished.catch(() => {})` (`createInboundTransportHost.ts:692`)
+marks the rejection handled, so it is swallowed rather than unhandled. The sender, meanwhile,
+reads **`completed`** — the same asymmetry Q2 found.
+
+**Phase B — the fix, run rather than described.** `runExclusive`'s timer is guarded by
+`waitTimeoutMs !== undefined && waitTimeoutMs !== Infinity && waitTimeoutMs > 0`
+(`keyed-async-gate.ts:141-145`), so `Infinity` (or omitting it) disables the admission timeout.
+Isolated on the real gate first — one held key, three waiters:
+
+```
+waitTimeoutMs=300: ConcurrencyQueueTimeoutError — fn NEVER RAN
+waitTimeoutMs=Infinity: fn RAN
+waitTimeoutMs omitted: fn RAN
+```
+
+Then the identical 35s scenario against an arbiter differing from the shipped one *only* in that
+the budget is a parameter, set to `Infinity` — injected through the `arbiter` option
+`createInboundTransportHost` already takes (`:106-113`), no engine code patched. The delivery
+**lands**: `receive` completed, the message is on the recipient's session, having waited 34.7s.
+So the eventual fix is a configurable budget at the arbiter, not a structural change.

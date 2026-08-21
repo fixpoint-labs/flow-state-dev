@@ -3,7 +3,7 @@
  * Throwaway. Not to be reviewed as code, never merged, dies with the PR.
  * See `spec-poc/README.md` and `spec/_epics/relay.md` §3.
  *
- * Shared shell for the two Relay questions: an in-memory engine host plus a
+ * Shared shell for the Relay questions: an in-memory engine host plus a
  * flow whose actions can be dispatched at each other.
  *
  * THE ONE HACK THAT IS ALSO THE FINDING: `HOST` below is a module-level
@@ -22,6 +22,7 @@ import {
 } from "../../packages/engine/src";
 import type { InboundTransportHost } from "../../packages/engine/src/transports/types";
 import type { StoreRegistry } from "../../packages/engine/src/stores/types";
+import type { ConcurrencyArbiter } from "../../packages/engine/src/transports/concurrency/arbiter";
 
 export const FLOW_KIND = "relay-poc";
 
@@ -256,7 +257,26 @@ export function buildFlow(concurrency?: "queue" | "allow") {
   })({ id: FLOW_KIND });
 }
 
-export function boot(concurrency?: "queue" | "allow"): {
+/**
+ * Everything the host logged at warn/error. Q4 asks whether a dropped delivery
+ * is discoverable *anywhere*, and "the host logged it" is one of the places
+ * that has to be checked rather than assumed. Q1-Q3 do not read this; the
+ * console output they relied on is unchanged.
+ */
+export const hostLogs: Array<{ level: "warn" | "error"; message: string; context?: unknown }> =
+  [];
+
+export function boot(
+  concurrency?: "queue" | "allow",
+  /**
+   * Q4 only. `createInboundTransportHost` already takes an arbiter
+   * (`createInboundTransportHost.ts:106-113`, defaulting to a fresh one), which
+   * is what lets Q4 run the same scenario against a *configurable* admission
+   * budget without patching engine code. Omitted -> the shipped arbiter with
+   * its hardcoded 30s, exactly as Q1-Q3 ran.
+   */
+  arbiter?: ConcurrencyArbiter
+): {
   host: InboundTransportHost;
   stores: StoreRegistry;
 } {
@@ -266,13 +286,20 @@ export function boot(concurrency?: "queue" | "allow"): {
   const host = createInboundTransportHost({
     registry,
     stores,
+    ...(arbiter !== undefined ? { arbiter } : {}),
     resolvePrincipal: defaultBodyUserIdPrincipalResolver,
     // Quiet: the default logger writes every block trace to stdout and buries
     // the report. Warnings and errors still surface.
     runtimeConfig: {
       logger: {
-        warn: (m, c) => console.warn("[warn]", m, c),
-        error: (m, c) => console.error("[error]", m, c)
+        warn: (m, c) => {
+          hostLogs.push({ level: "warn", message: String(m), context: c });
+          console.warn("[warn]", m, c);
+        },
+        error: (m, c) => {
+          hostLogs.push({ level: "error", message: String(m), context: c });
+          console.error("[error]", m, c);
+        }
       }
     }
   });
