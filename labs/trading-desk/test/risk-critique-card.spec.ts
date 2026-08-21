@@ -23,9 +23,11 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  adjustmentHasNote,
   riskAdjustmentRows,
   riskCardVariant,
   riskDisplayMetrics,
+  riskHeaderModel,
   riskRaisedEntries,
   type RiskMemoData,
 } from "../components/theses/risk-critique-card";
@@ -35,7 +37,6 @@ function riskMemo(overrides: Partial<RiskMemoData> = {}): RiskMemoData {
   return {
     label: "Conservative Risk",
     headline: "Size is too large for the invalidation distance",
-    rating: "reduce size",
     metrics: null,
     body: null,
     citations: null,
@@ -254,5 +255,165 @@ describe("an empty list is missing signal, never a finding", () => {
       }),
     );
     expect(entries[0]?.severity).toBe("medium");
+  });
+});
+
+describe("the header never states a verdict the structured sections contradict", () => {
+  // The defect this closes, in the desk's own words. `conservative.prompt.md`
+  // line 11 pins the officer's `rating` to the literal string "size correct",
+  // UNCONDITIONALLY. Line 35 of the same prompt names `smaller` as the TYPICAL
+  // answer for `proposedAdjustments.sizing`. `rating` is `z.string()` in
+  // `personaCritiqueOutputSchema` with nothing tying it to the typed field.
+  //
+  // So the ordinary conservative memo carries a header verdict and a structured
+  // verdict that say opposite things, and the reader cannot tell which is true.
+  // Every fixture below is built on that DISAGREEMENT on purpose: a fixture
+  // whose two copies agree cannot fail on this defect, so it would certify the
+  // bug rather than catch it.
+
+  it("suppresses a conservative officer's pinned rating while it wants the position smaller", () => {
+    const memo = riskMemo({
+      label: "Conservative Risk",
+      posture: "conservative",
+      proposedAdjustments: {
+        sizing: "smaller",
+        holdingPeriod: "shorter",
+        invalidation: "tighter",
+      },
+    });
+    // The stored rating the prompt pins, reintroduced the only way it still
+    // can be — from outside the card's own data type.
+    const stored = { ...memo, rating: "size correct" } as RiskMemoData;
+
+    const header = riskHeaderModel("persona", stored);
+    expect(header.rating).toBeNull();
+
+    // ...and the verdict the reader is left with is the structured one, which
+    // is the opposite of what the suppressed header claimed.
+    expect(
+      riskAdjustmentRows(stored).map((r) => `${r.label} ${r.direction}`),
+    ).toContain("sizing smaller");
+  });
+
+  it("suppresses an aggressive officer's pinned rating when it moved nothing", () => {
+    // `aggressive.prompt.md` line 11 pins `rating` to "upsize"; line 28 allows
+    // `unchanged`. The header would announce an upsize the memo never asked for.
+    const stored = {
+      ...riskMemo({
+        posture: "aggressive",
+        proposedAdjustments: {
+          sizing: "unchanged",
+          holdingPeriod: "unchanged",
+          invalidation: "unchanged",
+        },
+      }),
+      rating: "upsize",
+    } as RiskMemoData;
+
+    expect(riskHeaderModel("persona", stored).rating).toBeNull();
+    expect(
+      riskAdjustmentRows(stored).map((r) => `${r.label} ${r.direction}`),
+    ).toContain("sizing unchanged");
+  });
+
+  it("suppresses the assessment's free-form rating against its typed calibration", () => {
+    // The consolidated assessment has the same shape: `rating` is free-form and
+    // independent of the typed `confidenceCalibration` enum beside it.
+    const stored = {
+      ...riskMemo({
+        confidenceCalibration: "overconfident",
+        calibrationRationale: "The base rate for this setup is well below the memo's",
+      }),
+      rating: "calibrated as proposed",
+    } as RiskMemoData;
+
+    const header = riskHeaderModel("assessment", stored);
+    expect(header.rating).toBeNull();
+    expect(stored.confidenceCalibration).toBe("overconfident");
+  });
+
+  it("still hands the header its filtered metrics — suppression is of the rating only", () => {
+    // The rating rule must not become a reason the chip grid goes missing.
+    const stored = {
+      ...riskMemo({
+        posture: "conservative",
+        metrics: {
+          stance: "Wants the position smaller until the disclosure lands",
+          structuralChange: "—",
+          scopeChange: "—",
+          exitDiscipline: "Stop sits inside one day's range",
+          stopMechanics: "—",
+          followOn: "—",
+        },
+      }),
+      rating: "size correct",
+    } as RiskMemoData;
+
+    const header = riskHeaderModel("persona", stored);
+    expect(header.rating).toBeNull();
+    expect(header.metrics).toEqual({
+      stance: "Wants the position smaller until the disclosure lands",
+      exitDiscipline: "Stop sits inside one day's range",
+    });
+  });
+});
+
+describe("attribution survives an empty rationale", () => {
+  // `recommendedAdjustments.*.rationale` and `.attributedTo` are two separate
+  // required `z.string()`s — neither is `.min(1)`, so a schema-valid memo can
+  // persist an empty rationale beside a populated attribution. The Summary
+  // tab's RiskPanel draws `(attributedTo)` unconditionally, so when the card
+  // hid attribution alongside the missing rationale the same stored record
+  // read two different ways on two surfaces.
+
+  it("keeps the attribution on a row whose rationale is empty", () => {
+    const rows = riskAdjustmentRows(
+      riskMemo({
+        recommendedAdjustments: {
+          sizing: {
+            direction: "smaller",
+            rationale: "",
+            attributedTo: "conservative",
+          },
+          holdingPeriod: null,
+          invalidation: null,
+        },
+      }),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.rationale).toBeNull();
+    expect(rows[0]?.attributedTo).toBe("conservative");
+    // The row must still draw its trailing note, or the attribution the row
+    // carries never reaches the screen — which is the defect.
+    expect(adjustmentHasNote(rows[0]!)).toBe(true);
+  });
+
+  it("draws a note when either half is present, and none when neither is", () => {
+    const base = { label: "sizing", direction: "smaller" };
+    expect(
+      adjustmentHasNote({
+        ...base,
+        rationale: "Range is too tight",
+        attributedTo: "conservative",
+      }),
+    ).toBe(true);
+    expect(
+      adjustmentHasNote({ ...base, rationale: "Range is too tight", attributedTo: null }),
+    ).toBe(true);
+    expect(
+      adjustmentHasNote({ ...base, rationale: null, attributedTo: "conservative" }),
+    ).toBe(true);
+    // A persona's bare direction carries neither half — no note, no empty parens.
+    expect(adjustmentHasNote({ ...base, rationale: null, attributedTo: null })).toBe(false);
+  });
+
+  it("leaves a persona's bare direction without a note", () => {
+    const rows = riskAdjustmentRows(
+      riskMemo({
+        proposedAdjustments: { sizing: "smaller", holdingPeriod: null, invalidation: null },
+      }),
+    );
+    expect(rows[0]?.attributedTo).toBeNull();
+    expect(adjustmentHasNote(rows[0]!)).toBe(false);
   });
 });

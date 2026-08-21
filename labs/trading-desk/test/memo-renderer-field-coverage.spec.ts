@@ -104,7 +104,6 @@ const TRADER: Coverage = {
 
 const PERSONA: Coverage = {
   rendered: [
-    "rating",
     "posture",
     "raisedRisks[].description",
     "raisedRisks[].severity",
@@ -122,12 +121,14 @@ const PERSONA: Coverage = {
     "metrics.followOn",
     ...Object.keys(SHARED_CHROME),
   ],
-  excluded: {},
+  excluded: {
+    rating:
+      "a free-form string beside the typed verdicts this card draws structurally, with nothing forcing them to agree. The persona prompts pin it unconditionally — conservative to \"size correct\" while asking for `sizing: smaller`, aggressive to \"upsize\" while allowing `unchanged` — so the header contradicted the memo on the typical path. The card shows the verdict once, from the structured fields.",
+  },
 };
 
 const ASSESSMENT: Coverage = {
   rendered: [
-    "rating",
     "criticalRisks[].description",
     "criticalRisks[].severity",
     "criticalRisks[].raisedBy",
@@ -145,13 +146,20 @@ const ASSESSMENT: Coverage = {
     "recommendedAdjustments.invalidation.attributedTo",
     "confidenceCalibration",
     "calibrationRationale",
-    "metrics.calibration",
-    "metrics.sizing",
-    "metrics.invalidation",
-    "metrics.holdingPeriod",
     ...Object.keys(SHARED_CHROME),
   ],
-  excluded: {},
+  excluded: {
+    rating:
+      "a free-form string independent of both the typed `confidenceCalibration` enum and the `recommendedAdjustments` this card draws structurally. Nothing forces it to agree with either, so the header's rating chip is suppressed and the verdict renders once, from the typed fields.",
+    "metrics.calibration":
+      "the free-form copy of the typed `confidenceCalibration` this card draws structurally. `ASSESSMENT_STRUCTURED_METRIC_KEYS` denylists it so the calibration verdict renders once, from the typed enum, rather than twice from two sources nothing forces to agree.",
+    "metrics.sizing":
+      "the free-form copy of `recommendedAdjustments.sizing.direction`, which the Wants section draws structurally with its rationale and attribution. Denylisted so the axis renders once, from the typed field.",
+    "metrics.invalidation":
+      "the free-form copy of `recommendedAdjustments.invalidation.direction`, which the Wants section draws structurally with its rationale and attribution. Denylisted so the axis renders once, from the typed field.",
+    "metrics.holdingPeriod":
+      "the free-form copy of `recommendedAdjustments.holdingPeriod.direction`, which the Wants section draws structurally with its rationale and attribution. Denylisted so the axis renders once, from the typed field.",
+  },
 };
 
 const cases: Array<[string, ZodTypeAny, Coverage]> = [

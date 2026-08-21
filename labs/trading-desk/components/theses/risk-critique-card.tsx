@@ -34,6 +34,30 @@
  *    the structured sections already draw, never an allowlist of today's keys:
  *    a metric a later schema adds must still reach the screen.
  *
+ * **The verdict renders once, from the structured fields.** A risk memo's
+ * `rating` is a free-form `z.string()` and nothing ties it to the typed fields
+ * beside it, so a card that drew both could contradict itself — and on the
+ * TYPICAL path it does: `conservative.prompt.md` pins `rating` to the literal
+ * `"size correct"` unconditionally while naming `smaller` as the typical
+ * `proposedAdjustments.sizing`, so the header announced "size correct" above a
+ * verdict asking for the position to be cut. The aggressive persona has the
+ * same shape pinned to `"upsize"`, the neutral one to `"size correct + hedge"`,
+ * and the assessment's free-form `rating` is independent of both its typed
+ * `confidenceCalibration` and its `recommendedAdjustments`. All four are one
+ * defect, so the fix is one rule: the structured sections are canonical and the
+ * header's rating chip is suppressed (`riskHeaderModel`). This mirrors the
+ * trader card's rule 3, and `rating` is absent from `RiskMemoData` entirely so
+ * reading it again is a compile error rather than something review must catch.
+ *
+ * **Attribution is independent of the rationale it sits beside.**
+ * `recommendedAdjustments.*.rationale` and `.attributedTo` are two separate
+ * required `z.string()`s and neither is `.min(1)`, so a schema-valid memo can
+ * persist an empty rationale next to a populated attribution. Nesting the
+ * attribution inside the rationale's condition hid WHO supported an adjustment
+ * that still rendered — while the Summary tab's `RiskPanel` drew it anyway, so
+ * one stored record read two ways on two surfaces. `adjustmentHasNote` gates
+ * the pair; each half draws on its own presence.
+ *
  * Absence stays absent and empty renders nothing: a null field contributes no
  * row, and a section whose list is empty renders neither heading nor chrome. An
  * empty dismissed-risks list is missing signal, never a desk that dismissed
@@ -83,11 +107,14 @@ export type DismissedRiskEntry = {
  * the dispatcher already holds (the `LensMemoData` precedent). Persona fields
  * and assessment fields are both optional here because a memo carries one set
  * or the other; the variant decides which are read.
+ *
+ * `rating` is deliberately ABSENT. The stored field exists on every risk memo
+ * and this card must never draw it (see the file header) — leaving it out of the
+ * type is what makes reading it a compile error instead of a review catch.
  */
 export type RiskMemoData = {
   label: string | null;
   headline: string | null;
-  rating: string | null;
   metrics: Record<string, string> | null;
   body: ReadonlyArray<ThesisSection> | null;
   citations: ReadonlyArray<MemoCitation> | null;
@@ -168,6 +195,31 @@ export function riskDisplayMetrics(
   return Object.keys(kept).length > 0 ? kept : null;
 }
 
+/** What the shared header is given on a risk card. Both fields are overrides of
+ *  the memo's stored values — see the file header's two rules. */
+export type RiskHeaderModel = {
+  /** Always null: the verdict is the structured sections', so the header shows
+   *  no second (and, on the typical conservative memo, contradicting) one.
+   *  Typed as the literal so reintroducing a stored `rating` here is a compile
+   *  error, not a review catch — the trader card's `TraderHeaderModel`
+   *  precedent. */
+  rating: null;
+  /** The stored bag filtered per variant. Null when nothing survives, so no
+   *  empty grid renders. */
+  metrics: Record<string, string> | null;
+};
+
+/** The header model for one risk memo: no rating, and the variant's metrics. */
+export function riskHeaderModel(
+  variant: RiskCardVariant,
+  data: RiskMemoData | null,
+): RiskHeaderModel {
+  return {
+    rating: null,
+    metrics: riskDisplayMetrics(variant, data?.metrics),
+  };
+}
+
 /** One rendered adjustment: the axis name and the direction it was moved,
  *  plus the assessment's reasoning where it has one. */
 export type AdjustmentRow = {
@@ -176,6 +228,18 @@ export type AdjustmentRow = {
   rationale: string | null;
   attributedTo: string | null;
 };
+
+/**
+ * Whether an adjustment row has a trailing note to draw beside its direction.
+ *
+ * The two halves are INDEPENDENT — see the file header. A persona's bare
+ * direction carries neither, and renders no note rather than empty parentheses;
+ * an assessment row carrying only an attribution still renders it, matching what
+ * the Summary tab's `RiskPanel` shows for the same stored record.
+ */
+export function adjustmentHasNote(row: AdjustmentRow): boolean {
+  return row.rationale !== null || row.attributedTo !== null;
+}
 
 /**
  * The adjustment rows a risk memo publishes, in the axes' declared order.
@@ -245,6 +309,7 @@ export function RiskCritiqueCard({
   onJumpToTranscript,
 }: RiskCritiqueCardProps): ReactElement {
   const variant = riskCardVariant(agent);
+  const header = riskHeaderModel(variant, data);
   const raised = riskRaisedEntries(data);
   const adjustments = riskAdjustmentRows(data);
   const dismissed = data?.dismissedRisks ?? [];
@@ -258,8 +323,8 @@ export function RiskCritiqueCard({
         agent={agent}
         label={data?.label ?? null}
         headline={data?.headline ?? null}
-        rating={data?.rating ?? null}
-        metrics={riskDisplayMetrics(variant, data?.metrics)}
+        rating={header.rating}
+        metrics={header.metrics}
         onJumpToTranscript={onJumpToTranscript}
       />
 
@@ -337,13 +402,12 @@ export function RiskCritiqueCard({
                 <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-[color:var(--c-fg-muted)]">
                   {adj.label} {adj.direction}
                 </span>
-                {adj.rationale !== null ? (
+                {adjustmentHasNote(adj) ? (
                   <span>
                     {adj.rationale}
                     {adj.attributedTo !== null ? (
                       <span className="text-[color:var(--c-fg-faint)]">
-                        {" "}
-                        ({adj.attributedTo})
+                        {adj.rationale !== null ? " " : ""}({adj.attributedTo})
                       </span>
                     ) : null}
                   </span>

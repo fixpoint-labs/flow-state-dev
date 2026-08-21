@@ -284,10 +284,36 @@ picks a memo, and `components/theses/theses-pane.tsx`'s `MemoDoc` dispatches on
   these is a denylist or a value filter, never an allowlist of today's keys** —
   an allowlist silently swallows a metric a later schema adds, which is the exact
   defect these cards exist to fix.
-- **The stance renders once.** The trader's `rating` and `direction` are two
-  separate `long | short | flat` enums with no equality enforced between them, so
-  the trader card suppresses the header's rating chip and shows `direction` — the
-  field the levels were named from.
+- **The verdict renders once, and the structured fields are the ones that
+  render.** Every memo carries a free-form `rating` string that nothing forces to
+  agree with the typed fields a dedicated card draws beside it, so a card that
+  drew both could contradict itself. Both dedicated cards therefore suppress the
+  header's rating chip: the trader's `rating` and `direction` are two separate
+  `long | short | flat` enums, so the card shows `direction` (the field the levels
+  were named from); the risk memos are worse, because the persona prompts PIN
+  `rating` to a literal regardless of what the memo concludes — conservative to
+  `"size correct"` while naming `smaller` as the typical
+  `proposedAdjustments.sizing`, aggressive to `"upsize"` while allowing
+  `unchanged` — so the header contradicted the structured verdict on the TYPICAL
+  path, and the consolidated assessment's free-form `rating` is independent of
+  its typed `confidenceCalibration`. **This is a property of the shape, not of a
+  participant** — a header verdict rendered beside structured verdicts nothing
+  reconciles — so check it for every new card, and suppress via a model whose
+  `rating` is typed as the literal `null` (`traderHeaderModel` /
+  `riskHeaderModel`), which makes reintroducing the stored value a compile error
+  rather than something review has to catch. Still open on the generic
+  fall-through renderer for `PmHero` (its `metrics.rating` chip sits beside the
+  typed `finalRating` tier bar) and `ScenarioPanel` (whose prompt tells it to put
+  the `distribution` tag in `rating`, which the panel also draws) — both
+  pre-existing, neither routed by a card FIX-1061 added.
+- **A card's optional sub-field never gates a sibling that is present.** The
+  assessment's `recommendedAdjustments.*.rationale` and `.attributedTo` are two
+  separate required `z.string()`s, neither `.min(1)`, so a schema-valid memo can
+  persist an empty rationale beside a populated attribution. Nesting attribution
+  inside the rationale's render condition hid who supported an adjustment that
+  still rendered — while the Summary tab's `RiskPanel` drew it anyway, so one
+  stored record read two ways on two surfaces. When two surfaces show the same
+  field, match the existing treatment rather than inventing a third.
 - **Shared presentational leaves are imported, never re-implemented.**
   `LabeledBulletList` (an empty list renders nothing), `InvalidationList`,
   and `components/risk-vocabulary.ts` (`SEVERITY` glyphs + `ADJUSTMENT_AXES`,
