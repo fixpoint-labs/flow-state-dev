@@ -207,11 +207,66 @@ can cite one.
 
 ## 3. Shape of the whole *(POC)*
 
-**Built:** none this dispatch. The division in §4 has not been checked against an assembled
-end-state, and "the shape is obvious" is not the claim being made — the claim is that §5 Q1 is
-the fork worth spending on, and it is a design question a rough end-state would not settle. If
-the objective gate leaves the set unclear, the trigger to reach for is an end-state POC of
-issues 1 + 3 together, since those two are the ones most likely to want the same seam.
+**Built:** a characterization POC of the two things the size claim was asserting from a code
+read — that a running block can re-enter `host.dispatch` onto another live session, and that a
+self-addressed wait deadlocks. Not an end-state POC: the division in §4 is still unchecked
+against an assembled surface, and §5 Q1 remains a design question no run settles.
+
+**See it:** `spec-poc/epic-relay/` on this branch.
+
+```
+pnpm tsx spec-poc/epic-relay/q1-inside-out-dispatch.ts       # instant
+pnpm tsx spec-poc/epic-relay/q2-self-addressed-deadlock.ts   # ~35s, on purpose
+```
+
+**In-process only.** `arbiter.ts:22-27` and `createInboundTransportHost.ts:299-301` skip
+arbitration entirely under an external dispatcher, so nothing below speaks to the durable path
+(§5 Q3, §1's named risk). Both remain unchecked by run.
+
+**Showed — Q1, the tracer bullet: it works, and identity is the sharp edge.** A block in
+`sess_sender` dispatched onto a live peer session and the second request ran to completion,
+landed a request record on the *recipient*, and its message is in the recipient's
+`ctx.session.items.all()`. The sender's own history stays clean. But the principal is a plain
+field on the envelope and **nothing at the seam checks it**:
+
+| sender | recipient owner | envelope principal | outcome |
+|---|---|---|---|
+| user_a | user_a | `user_a` | ran |
+| user_a | user_b | `user_a` | refused — `UserBindingMismatchError` |
+| user_a | user_b | `user_b` | **ran, as `user_b`** |
+
+What catches row 2 is `createExecutionContext.ts:631` — a *consistency* check between the
+envelope and the session record's owner, not an authority check. Name the owner and it passes.
+So theme 9's "the sender's identity server-derived" is now proven necessary rather than argued:
+a `dispatch`-shaped verb has the exposure `startDetached` avoids by closing over identity.
+
+The same guard is also a constraint the epic did not record: **with an honest principal, a
+session can only be addressed by its own owner.** Every cross-user reading of §1's "two
+top-level sessions keep each other informed" meets an existing refusal. That belongs in §5 Q1's
+evidence, not §1's objective — the ask does not change, its boundary does.
+
+**The `ctx` gap — the shape of the send verb, and it is short.** Four things the block had to
+reach for: **`host.dispatch` itself** (not on `BlockContext` in any form; the POC uses a
+module-level hack, and `ctx.requestHost` was `undefined` besides being closed at four
+session-less verbs); **`flowKind`** (ctx names neither the recipient's flow nor its own);
+**`source`** (no inside-world `InboundSource` exists — the POC lies and says `"http"`); and a
+**server-derived principal** (`ctx.session.identity.userId` exists, so the value is recoverable
+— the gap is that nothing forces the verb to use it). `sessionId`, `orgId` and `tenantId` all
+read off `ctx.session.identity`.
+
+**Showed — Q2: the deadlock is real and it fails safe, but louder than theme 7 assumes.** Under
+`request: { concurrency: "queue" }`, a request awaiting its own session timed out at **30016ms**
+with `ConcurrencyQueueTimeoutError: Timed out after 30000ms waiting for concurrency key
+"sess_talks_to_itself" to free up.` It does **not** hang. Three details strengthen the
+refuse-at-definition-or-dispatch case rather than weaken it: 30 seconds of dead time on a live
+session; the recipient request left **`failed`** in the store, a run on the session's own history
+that never started; and the sender reporting **`completed`**, because the timeout surfaces inside
+the sending block and nothing propagates it. The control run confirms theme 7's other half —
+self-addressed fire-and-forget queues behind the sender and completes.
+
+**Changed:** nothing in §1, §2 or §4. Both premises held. What the run adds is evidence under
+themes 7 and 9 and under §5 Q1 — the cross-user refusal is a fact issue 1's spec now inherits
+rather than discovers.
 
 ---
 
