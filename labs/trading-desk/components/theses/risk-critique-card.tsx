@@ -1,78 +1,33 @@
 /**
  * RiskCritiqueCard — dedicated doc renderer for the four Phase 4 risk memos:
- * the three persona critiques and the consolidated risk assessment.
- *
- * Each risk memo commits an ARGUMENT: the risks it raised with severities, the
- * adjustments it wants on size / holding period / invalidation, the risks it
- * deliberately dismissed and why, and — on the consolidated assessment — a
- * confidence-calibration verdict. All of it reaches the browser on memo state
- * and the generic `ThesisHeader + ThesisBody` fall-through drew none of it.
+ * three persona critiques and the consolidated assessment. One component, two
+ * variants, because the two shapes overlap on most of their sections.
  *
  * PURELY PRESENTATIONAL. No transport, no schema, no commit, no stored field.
  *
- * **One component, two variants, because there are two shapes.** The personas
- * share `personaCritiqueOutputSchema`; the consolidated assessment does not.
- * They overlap on raised risks, adjustments, and dismissed risks — enough that
- * two files would be two copies of three sections — so the differences live in
- * the variant branch, not in a second component.
+ * Three rules, each in an exported pure helper because a rule inside JSX has no
+ * reachable test in this node-env suite: the metrics filter is a DENYLIST and
+ * never an allowlist (`metrics` is unconstrained, so an allowlist swallows what
+ * a later schema adds); the verdict renders once from the structured fields,
+ * with the free-form `rating` suppressed and absent from `RiskMemoData` so
+ * reading it again is a compile error; and attribution renders independently of
+ * the rationale beside it, since neither string is `.min(1)`.
  *
- * **The metrics bag needs a different answer per variant, and that is the
- * subtle part.** `ThesisMetrics` renders whatever keys it is handed, verbatim:
+ * Absence stays absent: a null field contributes no row, and an empty list
+ * renders neither heading nor chrome. Severity glyphs, calibration colours, and
+ * axis labels are imported from `components/risk-vocabulary.ts`, shared with
+ * the Summary's `RiskPanel`, so the two surfaces cannot drift.
  *
- *  - A **persona's** bag has six required keys and the prompts fill the ones
- *    irrelevant to that posture with the literal `"—"` (a BP-016 consequence,
- *    not a mistake). Rendering those draws a grid of empty cells, and an empty
- *    cell asserts the desk had a slot for a measurement it never took. So the
- *    persona filter drops entries by VALUE — the non-measurements — and keeps
- *    every populated key, including `stance`, which is a free-form one-line
- *    summary and NOT a mirror of the typed `posture` enum.
- *  - The **assessment's** bag is four always-populated keys — `calibration`,
- *    `sizing`, `invalidation`, `holdingPeriod` — and every one of them mirrors
- *    a typed field this same card renders structurally. A value filter keeps
- *    all four, so the card would print each verdict twice from two sources
- *    nothing forces to agree. So the assessment filter is a DENYLIST of what
- *    the structured sections already draw, never an allowlist of today's keys:
- *    a metric a later schema adds must still reach the screen.
- *
- * **The verdict renders once, from the structured fields.** A risk memo's
- * `rating` is a free-form `z.string()` and nothing ties it to the typed fields
- * beside it, so a card that drew both could contradict itself — and on the
- * TYPICAL path it does: `conservative.prompt.md` pins `rating` to the literal
- * `"size correct"` unconditionally while naming `smaller` as the typical
- * `proposedAdjustments.sizing`, so the header announced "size correct" above a
- * verdict asking for the position to be cut. The aggressive persona has the
- * same shape pinned to `"upsize"`, the neutral one to `"size correct + hedge"`,
- * and the assessment's free-form `rating` is independent of both its typed
- * `confidenceCalibration` and its `recommendedAdjustments`. All four are one
- * defect, so the fix is one rule: the structured sections are canonical and the
- * header's rating chip is suppressed (`riskHeaderModel`). This mirrors the
- * trader card's rule 3, and `rating` is absent from `RiskMemoData` entirely so
- * reading it again is a compile error rather than something review must catch.
- *
- * **Attribution is independent of the rationale it sits beside.**
- * `recommendedAdjustments.*.rationale` and `.attributedTo` are two separate
- * required `z.string()`s and neither is `.min(1)`, so a schema-valid memo can
- * persist an empty rationale next to a populated attribution. Nesting the
- * attribution inside the rationale's condition hid WHO supported an adjustment
- * that still rendered — while the Summary tab's `RiskPanel` drew it anyway, so
- * one stored record read two ways on two surfaces. `adjustmentHasNote` gates
- * the pair; each half draws on its own presence.
- *
- * Absence stays absent and empty renders nothing: a null field contributes no
- * row, and a section whose list is empty renders neither heading nor chrome. An
- * empty dismissed-risks list is missing signal, never a desk that dismissed
- * nothing, and an axis a memo left null is never filled in as "unchanged".
- *
- * Severity glyphs and the adjustment-axis vocabulary are imported from
- * `components/risk-vocabulary.ts` — the same constants `RiskPanel` draws the
- * Summary tab's risk block from, so the two surfaces cannot drift.
+ * The class-level why, for every memo renderer: `CLAUDE.md` → "Theses view".
  */
 import type { ReactElement } from "react";
 import { ThesisHeader } from "./thesis-header";
 import { ThesisBody } from "./thesis-body";
 import {
   ADJUSTMENT_AXES,
+  CALIBRATION_CLASS,
   SEVERITY,
+  type RiskCalibration,
   type RiskSeverity,
 } from "@/components/risk-vocabulary";
 import {
@@ -104,13 +59,11 @@ export type DismissedRiskEntry = {
 
 /**
  * The risk memo fields this card reads — a structural subset of the client data
- * the dispatcher already holds (the `LensMemoData` precedent). Persona fields
- * and assessment fields are both optional here because a memo carries one set
- * or the other; the variant decides which are read.
+ * the dispatcher already holds (the `LensMemoData` precedent). Persona and
+ * assessment fields are both optional: a memo carries one set or the other.
  *
- * `rating` is deliberately ABSENT. The stored field exists on every risk memo
- * and this card must never draw it (see the file header) — leaving it out of the
- * type is what makes reading it a compile error instead of a review catch.
+ * `rating` is deliberately ABSENT, which is what makes drawing it a compile
+ * error rather than a review catch.
  */
 export type RiskMemoData = {
   label: string | null;
@@ -139,7 +92,7 @@ export type RiskMemoData = {
     invalidation: AdjustmentDetail | null;
   } | null;
   /** Assessment only. */
-  confidenceCalibration: string | null;
+  confidenceCalibration: RiskCalibration | null;
   calibrationRationale: string | null;
 };
 
@@ -151,23 +104,18 @@ export type AdjustmentDetail = {
 };
 
 /**
- * The value a persona writes into a metrics key its posture does not use.
- *
- * Spelled by the risk prompts (`prompts/_partials/phase4-metrics-note.md`: fill
- * the rest with "—"). Matched on the VALUE, so an unrecognized new key is never
- * swallowed — only a non-measurement is.
+ * The value a persona writes into a metrics key its posture does not use
+ * (`prompts/_partials/phase4-metrics-note.md`). Matched on the VALUE, so an
+ * unrecognized new key is never swallowed — only a non-measurement is.
  */
 const NON_MEASUREMENT = "—";
 
 /**
- * The assessment metrics keys its structured sections already draw:
- * `calibration` is the confidence-calibration verdict, and the other three are
- * the recommended-adjustment axes.
+ * The assessment metrics keys its structured sections already draw: the
+ * calibration verdict and the three adjustment axes.
  *
- * A DENYLIST, and never to be inverted into an allowlist of the keys known
- * today — `metrics` is an unconstrained `Record<string, string>`, so an
- * allowlist would silently swallow a metric a later schema adds, which is the
- * exact defect this card exists to fix.
+ * A DENYLIST. Never invert it into an allowlist of today's keys — that silently
+ * swallows a metric a later schema adds, the exact defect this card fixes.
  */
 const ASSESSMENT_STRUCTURED_METRIC_KEYS: ReadonlySet<string> = new Set([
   "calibration",
@@ -175,8 +123,9 @@ const ASSESSMENT_STRUCTURED_METRIC_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The metrics chips a risk card shows, per variant — the two rules in the file
- * header. Null when nothing survives, so no empty grid renders.
+ * The metrics chips a risk card shows, per variant: the assessment drops what
+ * its structured sections draw, a persona drops the non-measurements. Null when
+ * nothing survives, so no empty grid renders.
  */
 export function riskDisplayMetrics(
   variant: RiskCardVariant,
@@ -195,14 +144,12 @@ export function riskDisplayMetrics(
   return Object.keys(kept).length > 0 ? kept : null;
 }
 
-/** What the shared header is given on a risk card. Both fields are overrides of
- *  the memo's stored values — see the file header's two rules. */
+/** What the shared header is given on a risk card. Both fields override the
+ *  memo's stored values. */
 export type RiskHeaderModel = {
-  /** Always null: the verdict is the structured sections', so the header shows
-   *  no second (and, on the typical conservative memo, contradicting) one.
-   *  Typed as the literal so reintroducing a stored `rating` here is a compile
-   *  error, not a review catch — the trader card's `TraderHeaderModel`
-   *  precedent. */
+  /** Always null — the structured sections own the verdict. Typed as the
+   *  literal so reintroducing a stored `rating` is a compile error
+   *  (`TraderHeaderModel` precedent). */
   rating: null;
   /** The stored bag filtered per variant. Null when nothing survives, so no
    *  empty grid renders. */
@@ -232,23 +179,22 @@ export type AdjustmentRow = {
 /**
  * Whether an adjustment row has a trailing note to draw beside its direction.
  *
- * The two halves are INDEPENDENT — see the file header. A persona's bare
- * direction carries neither, and renders no note rather than empty parentheses;
- * an assessment row carrying only an attribution still renders it, matching what
- * the Summary tab's `RiskPanel` shows for the same stored record.
+ * Exported and named on purpose: it is the named form of the rule that
+ * attribution renders independently of its rationale, so a test can reference
+ * the rule rather than re-derive it. Inlining the condition is what hid a
+ * populated attribution behind an empty rationale.
  */
 export function adjustmentHasNote(row: AdjustmentRow): boolean {
   return row.rationale !== null || row.attributedTo !== null;
 }
 
 /**
- * The adjustment rows a risk memo publishes, in the axes' declared order.
+ * The adjustment rows a risk memo publishes, in the axes' declared order — one
+ * walk over `ADJUSTMENT_AXES` for both shapes.
  *
- * One walk over `ADJUSTMENT_AXES` for both shapes: a persona stores a bare
- * direction per axis, the assessment a direction plus rationale and
- * attribution. An axis the memo left null contributes no row — never an
- * "unchanged" the desk did not say. (`"unchanged"` IS in each direction enum,
- * so a memo that deliberately recommends no change still renders one.)
+ * An axis the memo left null contributes no row, never an "unchanged" the desk
+ * did not say. (`"unchanged"` IS in each direction enum, so a memo that
+ * deliberately recommends no change still renders one.)
  */
 export function riskAdjustmentRows(data: RiskMemoData | null): AdjustmentRow[] {
   if (data === null) return [];
@@ -274,8 +220,8 @@ export function riskAdjustmentRows(data: RiskMemoData | null): AdjustmentRow[] {
 /**
  * The risks this memo raised, whichever field carries them: a persona's
  * `raisedRisks` or the assessment's attributed `criticalRisks`. An empty list
- * is the prompt's instruction (aggressive and conservative emit `[]`), not a
- * finding — so it collapses to no section rather than "raised: none".
+ * is missing signal, not a finding, so it collapses to no section rather than
+ * rendering "raised: none".
  */
 export function riskRaisedEntries(
   data: RiskMemoData | null,
@@ -340,7 +286,12 @@ export function RiskCritiqueCard({
           <h3 className="font-mono text-[10.5px] uppercase tracking-wider text-[color:var(--c-fg-faint)]">
             Confidence calibration
           </h3>
-          <span className="font-mono text-[12px] uppercase tracking-wider text-[color:var(--c-fg)]">
+          <span
+            className={cn(
+              "font-mono text-[12px] uppercase tracking-wider",
+              CALIBRATION_CLASS[data.confidenceCalibration],
+            )}
+          >
             {data.confidenceCalibration}
           </span>
           {rationale !== null ? (
@@ -367,10 +318,10 @@ export function RiskCritiqueCard({
                   <span
                     className={cn(
                       "shrink-0 font-mono text-[10px] uppercase tracking-wider",
-                      sev?.cls,
+                      sev.cls,
                     )}
                   >
-                    {sev?.glyph} {sev?.label}
+                    {sev.glyph} {sev.label}
                   </span>
                   <span>
                     {risk.description}

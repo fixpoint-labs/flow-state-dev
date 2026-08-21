@@ -1,19 +1,18 @@
 /**
- * The risk debate's shared display vocabulary: how a severity is drawn, and
- * what the three adjustment axes are called and in what order.
+ * The risk debate's shared display vocabulary: how a severity is drawn, how a
+ * calibration verdict is coloured, and what the three adjustment axes are
+ * called and in what order.
  *
- * Extracted from `components/summary/risk-panel.tsx` (FIX-1061), where both
- * were module-private, at the point a SECOND surface needed them — the Theses
- * tab's per-persona risk card. Two glyph maps diverge the first time anyone
- * restyles a severity, and two axis lists diverge the first time anyone renames
- * an axis, so both live here and both surfaces import them.
+ * Two surfaces draw the same risk memo — the Summary's `RiskPanel` and the
+ * Theses tab's `RiskCritiqueCard` — and every constant here is one a second
+ * copy of would let them drift. Import them; do not re-spell them.
  *
- * Presentation only. Neither constant decides anything: the severities and the
- * axis directions are stored fields the risk memos committed, and nothing here
- * infers, defaults, or re-orders a verdict.
+ * Presentation only. Nothing here decides anything: the severities, verdicts,
+ * and axis directions are stored fields the risk memos committed, and nothing
+ * here infers, defaults, or re-orders one.
  *
  * A leaf beside `agent-badge.tsx` rather than under `summary/` or `theses/`,
- * because it now belongs to neither one.
+ * because it belongs to neither one.
  */
 
 /** The severity a risk was raised at, as the risk schemas spell it. */
@@ -47,3 +46,21 @@ export const ADJUSTMENT_AXES = [
 
 /** One adjustment axis key — `"sizing" | "holdingPeriod" | "invalidation"`. */
 export type AdjustmentAxisKey = (typeof ADJUSTMENT_AXES)[number]["key"];
+
+/** The consolidated assessment's confidence-calibration verdict, as the risk
+ *  schema spells it. */
+export type RiskCalibration = "overconfident" | "calibrated" | "underconfident";
+
+/**
+ * Colour class per calibration verdict: both miscalibrations read as a warning,
+ * a calibrated desk reads as live.
+ *
+ * The colour IS the signal here — "overconfident" has to look like a warning
+ * wherever it appears — so the Summary's `RiskPanel` and the Theses tab's
+ * `RiskCritiqueCard` index this one map rather than each choosing a treatment.
+ */
+export const CALIBRATION_CLASS: Record<RiskCalibration, string> = {
+  overconfident: "text-[color:var(--c-warn)]",
+  calibrated: "text-[color:var(--c-live)]",
+  underconfident: "text-[color:var(--c-warn)]",
+};

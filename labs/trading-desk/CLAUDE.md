@@ -257,12 +257,15 @@ picks a memo, and `components/theses/theses-pane.tsx`'s `MemoDoc` dispatches on
 `ThesisHeader + ThesisBody`; five participants have dedicated cards.
 
 - **Routing is registry-DERIVED, never a hand-maintained list.** `LENS_AGENTS`,
-  `TRADER_AGENTS`, and `RISK_AGENTS` are built from `PHASE_2B_MEMO_KEYS` /
-  `PHASE_3_MEMO_KEYS` / `PHASE_4_MEMO_KEYS`, so a participant added to a phase
-  registry is routed by construction rather than by somebody remembering. Adding
-  a sixth dedicated renderer means adding a set the same way — not an `agent ===
-  "..."` literal. `test/memo-renderer-routing.spec.ts` asserts each set equals
-  its registry exactly and that the three are disjoint.
+  `TRADER_AGENTS`, and `RISK_AGENTS` live in
+  `components/theses/memo-renderer-routing.ts` — a plain module, not exports on
+  the pane — and are built from `PHASE_2B_MEMO_KEYS` / `PHASE_3_MEMO_KEYS` /
+  `PHASE_4_MEMO_KEYS`, so a participant added to a phase registry is routed by
+  construction rather than by somebody remembering. Adding a sixth dedicated
+  renderer means adding a set the same way — not an `agent === "..."` literal.
+  `test/memo-renderer-routing.spec.ts` asserts each set equals its registry
+  exactly and that the three are disjoint (the dispatch is an ordered if-chain,
+  so an overlap would silently let one card win).
 - **A memo renderer NEVER authors a price-level label.** Same rule as the
   Summary view: read `flows/analysis/lib/trade-levels.ts`. Pack the input with
   `storedTradeLevelsFrom(record)` (never hand-assemble the five-field literal —
@@ -316,9 +319,13 @@ picks a memo, and `components/theses/theses-pane.tsx`'s `MemoDoc` dispatches on
   field, match the existing treatment rather than inventing a third.
 - **Shared presentational leaves are imported, never re-implemented.**
   `LabeledBulletList` (an empty list renders nothing), `InvalidationList`,
-  and `components/risk-vocabulary.ts` (`SEVERITY` glyphs + `ADJUSTMENT_AXES`,
-  shared with the Summary's `RiskPanel`). "Match the existing behaviour" is how
-  this surface acquired duplicate copies of one rule; import it instead.
+  and `components/risk-vocabulary.ts` (`SEVERITY` glyphs, `CALIBRATION_CLASS`,
+  and `ADJUSTMENT_AXES`, shared with the Summary's `RiskPanel`). "Match the
+  existing behaviour" is how this surface acquired duplicate copies of one rule;
+  import it instead. **Where colour carries meaning it is part of the shared
+  vocabulary, not a per-surface choice** — an "overconfident" calibration
+  verdict must read as a warning on the Theses tab and the Summary tab alike, so
+  both index one `CALIBRATION_CLASS`.
 - **Do NOT add a second provenance marker.** `ReportProvenanceBanner` is mounted
   above the Theses/Summary tab switch so the disclosure is gated only on the
   report being pre-fix. A memo renderer reads no `dataHonestyContractVersion`,
@@ -327,12 +334,16 @@ picks a memo, and `components/theses/theses-pane.tsx`'s `MemoDoc` dispatches on
   header.** It is the only navigation affordance a memo has, and re-routing a
   memo into a new card is exactly how it gets silently deleted — no view-model
   test would notice.
-- **The JSX wiring is not reachable from the node-env suite.** The routing sets
-  and every rule above live in pure helpers with `.spec.ts` coverage
-  (`test/trader-proposal-card.spec.ts`, `test/risk-critique-card.spec.ts`,
-  `test/memo-renderer-field-coverage.spec.ts` — a walker that fails when a schema
-  grows a field no card renders or excludes with a reason). The wiring itself is
-  verified by opening a finished report in the running app.
+- **Rules live in pure helpers, because most JSX is unreachable from the
+  node-env suite.** `test/trader-proposal-card.spec.ts`,
+  `test/risk-critique-card.spec.ts`, and `test/memo-renderer-field-coverage.spec.ts`
+  (a walker that fails when a schema grows a field no card renders or excludes
+  with a reason) cover the helpers. Where the rule IS the rendered output — a
+  colour that carries meaning — assert it by rendering the card with
+  `renderToStaticMarkup` from `react-dom/server` and reading the class off the
+  markup; no DOM, no jsdom, and it works in the existing node env. Live wiring
+  (selection, streaming, the drawer) is still verified by opening a finished
+  report in the running app.
 - **Still on the generic renderer:** the research manager, the two debaters, and
   the thesis validator carry structured fields (`unresolvedDisagreements`,
   `blindSpots`, `supportingEvidence`, `contradictingEvidence`) nothing draws. A

@@ -11,9 +11,8 @@
  *   - `published` otherwise → `ThesisHeader` + `ThesisBody`.
  *   - `error` → red marker + error message.
  *
- * The three dedicated-renderer arms route off registry-DERIVED sets
- * (`LENS_AGENTS` / `TRADER_AGENTS` / `RISK_AGENTS`), never a hand-maintained
- * list, so a participant added to a phase registry is routed by construction.
+ * The three dedicated-renderer arms route off the registry-derived sets in
+ * `memo-renderer-routing.ts`, never a hand-maintained list.
  *
  * Live status is derived from the memos collection itself: the collection
  * opts into `client: { live: true }` (FIX-739), so `useResourceCollectionList`
@@ -66,6 +65,11 @@ import { ReportThesisPanel } from "./report-thesis-panel";
 import { LensCard } from "./lens-card";
 import { TraderProposalCard } from "./trader-proposal-card";
 import { RiskCritiqueCard } from "./risk-critique-card";
+import {
+  LENS_AGENTS,
+  RISK_AGENTS,
+  TRADER_AGENTS,
+} from "./memo-renderer-routing";
 import { ScenarioPanel } from "./scenario-panel";
 import { WritingSkeleton } from "./writing-skeleton";
 import { ReportSummary } from "@/components/summary/report-summary";
@@ -75,10 +79,7 @@ import {
   AGENTS,
   ALL_MEMO_KEYS,
   COLLECTION_KEY_TO_SHORT,
-  LENS_IDS,
-  PHASE_2B_MEMO_KEYS,
   PHASE_3_MEMO_KEYS,
-  PHASE_4_MEMO_KEYS,
   PHASE_5_MEMO_KEYS,
   shortNameForAgent,
   type AgentName,
@@ -101,28 +102,6 @@ type ThesesPaneProps = {
    *  then shows no jump control. */
   onJumpToTranscript?: (agent: AgentName) => void;
 };
-
-/** The four phase-2b lens agents, derived READ-ONLY from the Slice-5
- *  `PHASE_2B_MEMO_KEYS` registry. A `published` memo for one of these agents
- *  renders as a dedicated `LensCard` rather than the generic memo doc. */
-export const LENS_AGENTS: ReadonlySet<AgentName> = new Set(
-  LENS_IDS.map((id) => PHASE_2B_MEMO_KEYS[id].agentName),
-);
-
-/** The phase-3 trade participant, derived READ-ONLY from `PHASE_3_MEMO_KEYS`
- *  the way `LENS_AGENTS` is derived above. A `published` memo for this agent
- *  renders as a `TraderProposalCard` rather than the generic memo doc. */
-export const TRADER_AGENTS: ReadonlySet<AgentName> = new Set(
-  Object.values(PHASE_3_MEMO_KEYS).map((entry) => entry.agentName as AgentName),
-);
-
-/** The four phase-4 risk participants (three persona critiques + the
- *  consolidated assessment), derived READ-ONLY from `PHASE_4_MEMO_KEYS`. A
- *  `published` memo for one of these renders as a `RiskCritiqueCard`, which
- *  picks its own variant off the agent. */
-export const RISK_AGENTS: ReadonlySet<AgentName> = new Set(
-  Object.values(PHASE_4_MEMO_KEYS).map((entry) => entry.agentName as AgentName),
-);
 
 /** Order memos are expected to publish in. Auto-follow walks back-to-front. */
 const PUBLISH_ORDER: ReadonlyArray<AnyMemoShortName> = [

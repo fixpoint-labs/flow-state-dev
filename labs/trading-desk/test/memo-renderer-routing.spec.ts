@@ -10,16 +10,15 @@
  * card. (The `memo-step-coverage.spec.ts` precedent, one layer up the stack.)
  *
  * What this does NOT catch, stated rather than glossed: a deleted `MemoDoc`
- * branch. The sets can be correct while nothing reads them, and the JSX that
- * reads them is unreachable from a node-env suite. That residual is verified by
- * hand — see FIX-1061 spec §10.
+ * branch in `theses-pane.tsx`. The sets can be correct while nothing reads
+ * them. That residual is verified by hand.
  */
 import { describe, expect, it } from "vitest";
 import {
   LENS_AGENTS,
   RISK_AGENTS,
   TRADER_AGENTS,
-} from "../components/theses/theses-pane";
+} from "../components/theses/memo-renderer-routing";
 import {
   PHASE_1_MEMO_KEYS,
   PHASE_2_MEMO_KEYS,

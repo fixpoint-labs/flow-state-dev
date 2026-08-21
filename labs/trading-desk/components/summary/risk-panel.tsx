@@ -9,13 +9,17 @@
  * "calibrated" — that would assert a review nobody performed. The not-advice
  * framing is carried by the persistent StatusBar disclaimer.
  *
- * The severity glyphs and the three adjustment axes moved to
- * `components/risk-vocabulary.ts` in FIX-1061, when the Theses tab's per-persona
- * risk card became their second consumer. Import them; do not re-spell them here.
+ * The severity glyphs, the calibration colours, and the three adjustment axes
+ * live in `components/risk-vocabulary.ts`, shared with the Theses tab's
+ * per-persona risk card. Import them; do not re-spell them here.
  */
 import type { ReactElement } from "react";
 import type { RiskVerdict } from "./aggregate";
-import { ADJUSTMENT_AXES, SEVERITY } from "@/components/risk-vocabulary";
+import {
+  ADJUSTMENT_AXES,
+  CALIBRATION_CLASS,
+  SEVERITY,
+} from "@/components/risk-vocabulary";
 import { cn } from "@/lib/utils";
 
 export type RiskPanelProps = {
@@ -27,15 +31,6 @@ export type RiskPanelProps = {
   /** Calibration verdict + recommended adjustments from the same risk memo. */
   verdict: RiskVerdict;
   keyDependencies: ReadonlyArray<string>;
-};
-
-const CALIBRATION_CLASS: Record<
-  NonNullable<RiskVerdict["confidenceCalibration"]>,
-  string
-> = {
-  overconfident: "text-[color:var(--c-warn)]",
-  calibrated: "text-[color:var(--c-live)]",
-  underconfident: "text-[color:var(--c-warn)]",
 };
 
 /**

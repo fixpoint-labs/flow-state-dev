@@ -1,28 +1,18 @@
 /**
- * Field-coverage guard for the trader and risk memo renderers (FIX-1061).
+ * Field-coverage guard for the trader and risk memo renderers.
  *
- * **Why a renderer needs one.** FIX-1061 exists because typed fields sat in
- * stored memo state that no surface read: a schema grew, the renderer did not,
- * and nothing failed. That is the hardest failure mode to notice, because
- * nothing breaks — a reader simply never learns something the desk computed.
- * This test makes it break.
+ * A schema grows a field, the renderer does not, and nothing fails — the reader
+ * simply never learns something the desk computed. This test makes it fail.
  *
- * The paths are DERIVED from the schemas at test time, never transcribed, and
- * the walk recurses into nested objects and into array element shapes. A
- * top-level-only walk would pass while `criticalRisks[].raisedBy`,
- * `dismissedRisks[].dismissalCategory`, and `recommendedAdjustments.*.rationale`
- * went undrawn — and the attribution fields are most of what makes a critique
- * readable. A walker that misses them is a hand-maintained list wearing a
- * walker's clothes.
+ * Paths are DERIVED from the schemas at test time and the walk recurses into
+ * arrays and nested objects: a top-level-only walk would pass while
+ * `criticalRisks[].raisedBy` and `recommendedAdjustments.*.rationale` went
+ * undrawn, and the attribution fields are most of what makes a critique
+ * readable.
  *
- * Every leaf must be RENDERED or EXCLUDED **with a stated reason naming why the
- * report does not show it**. An exclusion without a reason is how the list
- * quietly degrades back into a hand-maintained one, one entry at a time — and
- * the reason is what keeps "we decided not to show this" distinguishable from
- * "nobody noticed this existed", which is the whole value of the mechanism.
- *
- * Note what is NOT excluded: `metrics`. Both cards draw it themselves, each
- * through its own filter, so it is covered rather than excluded.
+ * Every leaf must be RENDERED or EXCLUDED with a stated reason. The reason is
+ * what keeps "we decided not to show this" distinguishable from "nobody noticed
+ * this existed".
  */
 import { describe, expect, it } from "vitest";
 import { z, type ZodTypeAny } from "zod";

@@ -21,6 +21,8 @@
  * Both filters are asserted in both directions, because a filter that dropped
  * the whole bag would pass the "the bad keys vanished" half on its own.
  */
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   adjustmentHasNote,
@@ -31,6 +33,9 @@ import {
   riskRaisedEntries,
   type RiskMemoData,
 } from "../components/theses/risk-critique-card";
+import { RiskCritiqueCard } from "../components/theses/risk-critique-card";
+import { RiskPanel } from "../components/summary/risk-panel";
+import type { RiskCalibration } from "../components/risk-vocabulary";
 import { PHASE_4_MEMO_KEYS, type AgentName } from "../flows/analysis/registry";
 
 function riskMemo(overrides: Partial<RiskMemoData> = {}): RiskMemoData {
@@ -415,5 +420,78 @@ describe("attribution survives an empty rationale", () => {
     );
     expect(rows[0]?.attributedTo).toBeNull();
     expect(adjustmentHasNote(rows[0]!)).toBe(false);
+  });
+});
+
+/**
+ * The calibration verdict is one of the few rules whose whole content is the
+ * rendered output: the COLOUR is the signal, so a helper test cannot see it.
+ * Both surfaces are rendered with `renderToStaticMarkup` (no DOM needed) and the
+ * class on the verdict span is read straight off the markup.
+ */
+const ASSESSMENT_AGENT = PHASE_4_MEMO_KEYS.riskAssessment.agentName as AgentName;
+
+/** The class attribute of the span whose only text is `verdict`. */
+function verdictClass(html: string, verdict: string): string {
+  const match = html.match(
+    new RegExp(`<span class="([^"]*)"[^>]*>${verdict}</span>`),
+  );
+  if (match === null) throw new Error(`no verdict span for "${verdict}"`);
+  return match[1];
+}
+
+function cardMarkup(verdict: RiskCalibration): string {
+  return renderToStaticMarkup(
+    createElement(RiskCritiqueCard, {
+      agent: ASSESSMENT_AGENT,
+      data: riskMemo({ confidenceCalibration: verdict }),
+    }),
+  );
+}
+
+function panelMarkup(verdict: RiskCalibration): string {
+  return renderToStaticMarkup(
+    createElement(RiskPanel, {
+      criticalRisks: [],
+      keyDependencies: [],
+      verdict: {
+        confidenceCalibration: verdict,
+        calibrationRationale: null,
+        recommendedAdjustments: null,
+      },
+    }),
+  );
+}
+
+const VERDICTS: RiskCalibration[] = [
+  "overconfident",
+  "calibrated",
+  "underconfident",
+];
+
+describe("the calibration verdict signals its severity on both surfaces", () => {
+  for (const verdict of VERDICTS) {
+    it(`draws "${verdict}" identically on the Theses card and the Summary panel`, () => {
+      // The two surfaces read the SAME stored field. If only one colours it,
+      // the Theses tab under-signals on data the Summary tab flags.
+      const card = verdictClass(cardMarkup(verdict), verdict);
+      const panel = verdictClass(panelMarkup(verdict), verdict);
+      expect(card).toBe(panel);
+    });
+  }
+
+  it("colours a miscalibrated desk as a warning and a calibrated one as live", () => {
+    // The rule the colour encodes, not merely that some class is present: a
+    // map that returned one class for all three verdicts would pass the
+    // agreement test above and still delete the signal.
+    expect(verdictClass(cardMarkup("overconfident"), "overconfident")).toContain(
+      "--c-warn",
+    );
+    expect(
+      verdictClass(cardMarkup("underconfident"), "underconfident"),
+    ).toContain("--c-warn");
+    expect(verdictClass(cardMarkup("calibrated"), "calibrated")).toContain(
+      "--c-live",
+    );
   });
 });
