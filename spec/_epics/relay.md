@@ -6,6 +6,7 @@
 > → "The epic-spec".
 >
 > **Epic issue:** FIX-1197 · **Branch:** `epic/relay` (never merged, never deleted) ·
+> **Epic PR:** [#1357](https://github.com/fixpoint-labs/flow-state-dev/pull/1357) ·
 > **Project:** Orchestration Primitives · **Team:** FIX
 
 ---
@@ -231,6 +232,9 @@ cell is empty by design, not by omission.
 **The agent-facing tool is deliberately inside issue 1, not beside it.** The constraint is that
 the programmatic sender and the tool are the *same verb*, differing only in who calls them.
 Co-location is the strongest guarantee against the two drifting apart.
+
+Epic PR (this doc, never merged):
+[#1357](https://github.com/fixpoint-labs/flow-state-dev/pull/1357).
 
 ### The relationship map — issues this epic touches but does not contain
 
