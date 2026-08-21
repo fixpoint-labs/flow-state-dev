@@ -11,7 +11,7 @@
  *     never matched against a pattern. A plausible-looking transcript has hidden a broken
  *     command before; `npm exec` and `yarn exec` both eat `--host 127.0.0.1` without a `--`.
  */
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { readFileSync, chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer, get as httpGet } from "node:http";
 import { tmpdir } from "node:os";
@@ -209,6 +209,48 @@ describe("renderNextSteps", () => {
     // A host outside the range changes nothing.
     const clear = renderNextSteps({ ...MOUNTED, devUrl: "http://localhost:3000", packageManager: "pnpm" });
     expect(clear).toContain("fsdev dev --port 4210");
+  });
+
+  it("reads the host's port out of an IPv6 dev URL, not the digits inside the address", () => {
+    // `/:(\d+)/` finds the first colon-digits anywhere in the string, which in `http://[::1]:4210`
+    // is the `1` inside the address — so the collision guard compared 1 against the reserved
+    // range, never matched, and printed `--port 4210` into a host that owns it. The guard
+    // reintroducing the failure it was added to prevent.
+    const clash = renderNextSteps({
+      ...MOUNTED,
+      devUrl: "http://[::1]:4210",
+      packageManager: "pnpm",
+    });
+    expect(clash).toContain("fsdev dev --port 4211");
+    expect(clash).not.toMatch(/--port 4210\b/);
+
+    // An IPv6 host outside the range still leaves the defaults alone.
+    expect(
+      renderNextSteps({ ...MOUNTED, devUrl: "http://[::1]:3000", packageManager: "pnpm" }),
+    ).toContain("fsdev dev --port 4210");
+    // A bracketed host with no port names no port.
+    expect(
+      renderNextSteps({ ...MOUNTED, devUrl: "http://[::1]", packageManager: "pnpm" }),
+    ).toContain("fsdev dev --port 4210");
+  });
+
+  it("does not crash on a dev URL it cannot parse", () => {
+    expect(() =>
+      renderNextSteps({ ...MOUNTED, devUrl: "not a url at all", packageManager: "pnpm" }),
+    ).not.toThrow();
+  });
+
+  it("refuses a dev script the package manager would read as its own option", () => {
+    // Shell quoting does not reach this: the shell hands `--help` to npm intact and npm's own
+    // option parser takes it before the script name is looked up.
+    for (const packageManager of MANAGERS) {
+      expect(() =>
+        renderNextSteps({ ...MOUNTED, packageManager, devScript: "--help" }),
+      ).toThrow(/reads as one of its own options/);
+      expect(() => renderNextSteps({ ...MOUNTED, packageManager, devScript: "-p" })).toThrow();
+    }
+    // An ordinary name is unaffected.
+    expect(() => renderNextSteps({ ...MOUNTED, packageManager: "pnpm", devScript: "dev" })).not.toThrow();
   });
 
   it("tells the reader the ports are defaults they can override", () => {
@@ -458,6 +500,9 @@ function projectFor(manager: NextStepsPackageManager): string {
           // Two script names a shell would take apart if the block printed them bare.
           "my script": "node ./echo-argv.js --from-space-script",
           "dev; echo pwned": "node ./echo-argv.js --from-metachar-script",
+          // A name every package manager reads as one of its own options. The block refuses it;
+          // this fixture is what proves the refusal is warranted rather than superstition.
+          "--help": "node ./echo-argv.js --from-dash-script",
           // Two names that collide with a package manager's own builtins. Under the shortcut
           // form (`pnpm list`, `yarn config`) the manager runs itself and the script never does.
           list: "node ./echo-argv.js --from-list-script",
@@ -517,6 +562,22 @@ function managerAvailable(manager: NextStepsPackageManager): boolean {
   }
   if (manager === "yarn") return version.startsWith("1.");
   return version.length > 0;
+}
+
+/** Run one command line in the probe project, tolerating a non-zero exit, and return its output. */
+function runPrintedCommandRaw(
+  manager: NextStepsPackageManager,
+  line: string,
+): { stdout: string; stderr: string } {
+  // spawnSync, not execFileSync: a non-zero exit is an ordinary outcome here, and execFileSync
+  // discards stderr on success — which is exactly where Yarn prints the deprecation warning this
+  // check is reading.
+  const result = spawnSync("/bin/sh", ["-c", line], {
+    cwd: projectFor(manager),
+    encoding: "utf-8",
+    env: { ...process.env, npm_config_yes: "true" },
+  });
+  return { stdout: String(result.stdout ?? ""), stderr: String(result.stderr ?? "") };
 }
 
 /** Run one printed command line in the probe project and return the argv the binary saw. */
@@ -649,6 +710,28 @@ describe("the printed commands actually run", () => {
             expect(runPrintedCommand(manager, line!), `\`${line}\` did not reach the script`).toEqual([
               marker,
             ]);
+          }
+        },
+        60_000,
+      );
+
+      it.runIf(managerAvailable(manager))(
+        "would run the manager's own help for a leading-dash script, which is why we refuse it",
+        () => {
+          // The measurement behind the refusal, executed rather than asserted. `--help` reaches
+          // the manager's option parser and its own help runs — exit 0, script never invoked.
+          const bare = runPrintedCommandRaw(manager, `${PACKAGE_MANAGER_COMMAND_FORMS[manager].run} --help`);
+          expect(bare.stdout).not.toContain("ARGV=");
+          // And the separator form, which is the fix we did NOT take: it works, but Yarn prints a
+          // deprecation warning on every invocation — including for ordinary script names — so a
+          // refusal costs less than making every Yarn user read that forever.
+          const separated = runPrintedCommandRaw(
+            manager,
+            `${PACKAGE_MANAGER_COMMAND_FORMS[manager].run} -- --help`,
+          );
+          expect(separated.stdout).toContain("ARGV=");
+          if (manager === "yarn") {
+            expect(`${separated.stdout}${separated.stderr}`).toMatch(/don't require "--"/);
           }
         },
         60_000,

@@ -209,9 +209,28 @@ function reservedRange(): number[] {
  * free, which is why the block also tells the reader how to pass their own.
  */
 function allocatePorts(devUrl: string | undefined): { devPort: string; servePort: string } {
-  const hostPort = devUrl === undefined ? null : Number(/:(\d+)/.exec(devUrl)?.[1] ?? Number.NaN);
-  const free = reservedRange().filter((port) => port !== hostPort);
+  const free = reservedRange().filter((port) => port !== hostPortOf(devUrl));
   return { devPort: String(free[0]), servePort: String(free[1]) };
+}
+
+/**
+ * The port a dev URL serves on, or `null` when it names none.
+ *
+ * **Parsed with `new URL`, not with a regex.** `/:(\d+)/` finds the first colon-digits anywhere in
+ * the string, which in `http://[::1]:4210` is the `1` inside the IPv6 address — so the guard above
+ * compared 1 against the reserved range, never matched, and printed `--port 4210` into a host that
+ * owns it. That is the same failure the guard was added to prevent, reintroduced by hand-rolling
+ * authority parsing. `URL` knows where the authority ends; we do not need to.
+ */
+function hostPortOf(devUrl: string | undefined): number | null {
+  if (devUrl === undefined) return null;
+  try {
+    const port = new URL(devUrl).port;
+    return port === "" ? null : Number(port);
+  } catch {
+    // Not a URL we can parse. Nothing is claimed about its port rather than guessing at one.
+    return null;
+  }
 }
 
 /**
@@ -301,6 +320,32 @@ function shellQuote(value: string): string {
 }
 
 /**
+ * Refuse a script name the package manager would read as one of its own options.
+ *
+ * **Shell quoting does not help here, and that is the point.** `npm run '--help'` still prints
+ * npm's help: the shell hands `--help` to npm intact, and npm's *own* option parser takes it
+ * before the script name is ever looked up. Measured on all three managers — every one of them
+ * runs its own help and exits 0, so the developer types the one command we gave them and nothing
+ * happens.
+ *
+ * The alternative was emitting `<manager> run -- <script>` always, which does work everywhere.
+ * Rejected on measurement: Yarn prints *"scripts don't require `--` for options to be forwarded.
+ * In a future version, any explicit `--` will be forwarded as-is"* on **every** invocation — so
+ * every ordinary Yarn user would read a deprecation warning forever to accommodate a script name
+ * essentially nobody has. Refusing keeps the common path clean and turns the pathological one
+ * into an error the caller sees instead of a command the developer runs.
+ */
+function assertRunnableScriptName(devScript: string): void {
+  if (!devScript.startsWith("-")) return;
+  throw new Error(
+    `The dev script is named ${JSON.stringify(devScript)}, which every package manager reads as ` +
+      `one of its own options — \`npm run ${devScript}\` prints npm's help and never runs the ` +
+      `script, and quoting does not change that.\n` +
+      `Rename the script, or print the steps without it.`,
+  );
+}
+
+/**
  * Render the block for one topology and one package manager.
  *
  * Throws when a value the rendered branch needs was not supplied, rather than emitting a
@@ -335,6 +380,7 @@ export function renderNextSteps(options: RenderNextStepsOptions): string {
     text = text.replace(sectionPattern(key), () => kept);
   }
 
+  if (options.devScript !== undefined) assertRunnableScriptName(options.devScript);
   const ports = allocatePorts(options.devUrl);
   const values: Record<string, string | undefined> = {
     run: forms.run,
