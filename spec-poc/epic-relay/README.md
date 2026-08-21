@@ -1,21 +1,22 @@
-# spec-poc/epic-relay — the two things the epic asserted from a code read
+# spec-poc/epic-relay — the three things the epic asserted from a code read
 
 **POC code on a never-merged branch** (`epic/relay`, epic FIX-1197, PR #1357). Throwaway.
 Please don't review it as code — review what it showed. It dies with the PR.
 
 The epic's size claim ("five issues, not a subsystem") rests on *routing, queueing,
 arbitration and session resolution all already exist; only the address, the send verb and
-per-adapter delivery are missing.* That was established by reading. These two scripts run it.
+per-adapter delivery are missing.* That was established by reading. These scripts run it.
 
 ## Run it
 
 ```
 pnpm tsx spec-poc/epic-relay/q1-inside-out-dispatch.ts       # instant
 pnpm tsx spec-poc/epic-relay/q2-self-addressed-deadlock.ts   # ~35s, on purpose
+pnpm tsx spec-poc/epic-relay/q3-delivery-outlives-sender.ts  # ~10s
 ```
 
 No server, no store, no keys. `createInMemoryStores` + `createInboundTransportHost`, one
-flow (`harness.ts`) with four actions: `seed`, `send`, `receive`, `inspect`.
+flow (`harness.ts`) with five actions: `seed`, `send`, `receive`, `busy`, `inspect`.
 
 If the run dies with `FSDEV_DEFAULT_MODEL was set, but no intents are declared`, your shell
 has FSDEV intent env vars set; prefix with
@@ -95,3 +96,39 @@ refusing at definition or dispatch time rather than documenting it:
 
 The control run confirms theme 7's other half: self-addressed **fire-and-forget** works. It
 queues behind the sender and runs to completion the moment the sender returns.
+
+## Q3 — does a queued delivery outlive the SENDER's request?
+
+Fire-and-forget's entire value rests on "delivery is attached to the process, not to the
+originating web request". Nobody had run it. If it were false, delivery would need an owner
+other than the sending request — a real scope change to issue 2.
+
+Shape: `sess_busy_recipient` is held mid-run for 4s under `concurrency: "queue"`; a
+*different* session dispatches `receive` onto it fire-and-forget and returns without
+awaiting; the sender's own request is verified terminal in the store; then the recipient's
+records are polled.
+
+```
+sender's request:   status completed, wallClockMs 4
+                    acceptedPresent true, acceptedAfterMs 0
+recipient after:    receive → completed   (polledForMs 3807)
+                    busy    → completed
+handler actually ran: { sessionId: sess_busy_recipient, from: sess_sender }
+VERDICT: CONFIRMED
+```
+
+**CONFIRMED.** The queued `receive` ran to completion after the sender was terminal, and the
+recipient's handler really executed — the message is on the recipient's session, not merely a
+row in the store.
+
+The second reading is the one the amended theme 6 needed: `handle.accepted` settled at **0ms**,
+*while the run was still sitting behind the busy recipient's concurrency key*. That is the doc
+comment's "In-process, `queue` policy … the run itself is still waiting behind its concurrency
+key" (`packages/engine/src/transports/types.ts:186-227`) observed rather than inferred, and it
+is what makes acceptance usable as the acknowledgement on both send modes. `acceptedPresent`
+was `true`, which the type does not guarantee — `readonly accepted?:` is optional because a
+custom dispatcher may not distinguish acceptance from completion.
+
+**Not tested:** a recipient busy longer than `QUEUE_WAIT_TIMEOUT_MS` (30s, `arbiter.ts:40`).
+The 4s window sits comfortably inside the admission budget, so this says nothing about whether
+a queued delivery survives a *long*-busy recipient. That is theme 14's open edge.

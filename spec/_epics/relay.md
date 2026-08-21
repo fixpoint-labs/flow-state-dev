@@ -67,9 +67,19 @@ path of its own, it should have been its own epic and should be pulled out rathe
 - **Session discovery.** Which sessions exist and what each is working on is consumer-owned
   domain state — a resource collection each coordinator writes, read into a role's context
   through a formatter. No framework session registry (tenet 4).
-- **Widening `livenessOf`**, which answers only for the caller's own lineage by design (theme 10).
-- **Delivery receipts** (theme 6), and **a new queueing mechanism** — the concurrency policy
-  already arbitrates on the session key.
+- **Widening `livenessOf`**, which answers only for the caller's own lineage by design (theme 10),
+  and **cross-session progress polling**, which is a later mechanism and not a small addition
+  (theme 10).
+- **A new queueing mechanism** — the concurrency policy already arbitrates on the session key.
+  (Delivery receipt is **no longer** on this list: acceptance already exists in shipped code and
+  every send awaits it — theme 6, amended.)
+- **Cross-user messaging. Same-owner only in v1** — confirmed by the owner. The objective's "two
+  top-level sessions keep each other informed" means two sessions with the **same owner**. With an
+  honestly ctx-derived principal a session is addressable only by its own owner:
+  `packages/engine/src/context/createExecutionContext.ts:631` throws `UserBindingMismatchError`
+  when the envelope's `userId` differs from the session record's owner, and the POC ran it (§3).
+  Reaching across users would be a deliberate decision **against an existing refusal**, not
+  something this epic delivers.
 
 **Named risk: arbitration is in-process only, and this epic does not fix it.** The host skips
 arbitration entirely when an external dispatcher is configured, deferring it to the durable
@@ -149,11 +159,58 @@ can cite one.
    implementations** — documented as one verb rather than shipped as two. **Constrains issues 1
    and 5**, and issue 5 is what makes the workstream half representable at all.
 
-6. **Two send modes, not three.** Fire-and-forget and wait-for-response are genuinely different
-   intents and both are needed. **Delivery receipt is deliberately excluded:** it answers "did it
-   arrive", which only matters if you cannot otherwise tell, and a durable row already tells you.
-   Add it only if delivery turns out to be lossy — that is, only if a path exists where a message
-   is accepted and then silently dropped. **Constrains issues 1 and 2.**
+6. **Two send modes, not three — and acceptance is the acknowledgement on both.** *(Amended by
+   the owner. Still two modes; what changed is that the receipt is not a third one.)*
+   Fire-and-forget and wait-for-response are genuinely different intents and both are needed.
+   **Every send awaits acceptance before returning.** Fire-and-forget returns there;
+   wait-for-response carries on and waits for the answer (theme 14).
+
+   **The receipt already exists in shipped code** — `DispatchHandle.accepted`,
+   `packages/engine/src/transports/types.ts:186-227`. Its doc comment is unusually explicit, so
+   it is quoted rather than paraphrased:
+
+   > Resolves once the request has been *accepted* — discoverable, with nothing left that could
+   > make it silently not exist. It does not wait for execution to finish, and it rejects when
+   > acceptance fails, so a caller that acks on it never acks a request that never runs.
+
+   Under the in-process `queue` policy that is exactly "accepted, queued, keep waiting":
+
+   > **In-process, `queue` policy** (FIX-999): the same enqueue-time writes. The run itself is
+   > still waiting behind its concurrency key.
+
+   Acceptance resolves once the `activeRequests` entry and the `in_progress` record have
+   committed — the request is discoverable — **while the message is still sitting behind a busy
+   recipient's session key**. §3's Q3 run measured it: acceptance settled in **0 ms** while the
+   recipient was mid-run, and the delivery was admitted ~3.8 s later.
+
+   **It is deliberately self-limiting, and the verb must not over-promise on it:**
+
+   > **Acceptance is discoverability, not safety, and it is not trying to be.** Setup continues
+   > after it and can still fail without recording anything.
+
+   > What acceptance buys is therefore *visibility*, not safety: a fire-and-forget caller holds
+   > no `finished`, so without this a registration failure is silent and the row waits out its
+   > lease with nothing anywhere saying why.
+
+   And what actually catches a dead recipient is not the receipt:
+
+   > What protects a caller that handed over durable work is that work's own lease: if the run
+   > dies at any point — during setup, mid-execution, or by the process going away — the lease
+   > lapses and the owner recovers the row. That is the designed recovery path for every way a
+   > child can die, and no dispatch milestone improves on it.
+
+   **The verb has to tolerate acceptance being absent.** It is `readonly accepted?:` — optional
+   "because a custom dispatcher may not distinguish acceptance from completion. Every dispatcher
+   this package ships does." A send running against a custom dispatcher gets no ack and must
+   degrade rather than fail.
+
+   **Why the earlier reasoning is superseded.** This theme previously excluded delivery receipt
+   on the grounds that it answers *did it arrive*, and a durable row already answers that. The
+   row does answer that. A receipt is answering a different question — ***am I right to still be
+   waiting*** — which the row cannot answer, and that is the question that licenses a long
+   sender-side timeout (theme 14).
+
+   **Constrains issues 1 and 2.**
 
 7. **Make the self-addressed deadlock unrepresentable, not documented.** Self-addressed plus
    wait-for-response must be **refused at definition or dispatch time**. Under `queue`
@@ -184,6 +241,16 @@ can cite one.
     hop re-checks the principal, which is what stops a chain being followed out of its tenant. A
     sibling therefore learns about a sibling by **message**, not by probing liveness.
 
+    **Future direction — cross-session progress polling, and its known wall.** The owner has
+    raised periodic "is the target session still making progress" polls as a later, more mature
+    mechanism than a sender-side timeout. **Not in this epic**, and worth recording *why it is
+    not a small addition*: `livenessOf` filters every answer through `isDescendantSession`
+    (`packages/engine/src/context/liveness-read.ts:131`, resolved at
+    `create-request-host.ts:433,493`) plus a `flowKind` equality check (`liveness-read.ts:127`),
+    so a **peer** session's request returns `false` — indistinguishable from an unknown id. That
+    filter is deliberate containment and **is not to be widened**. Cross-session progress needs
+    something genuinely new, not a relaxed predicate.
+
 11. **Messages are not tasks, and the board stays single-writer.** A task has a goal and a sense
     of completion, possibly long-running and concurrent, tracked by a board the session does not
     itself run. A message is a collaboration mechanism that works *while a task is in process* —
@@ -203,25 +270,63 @@ can cite one.
     address and the verb, so none can merge before issue 1 — they can be *specced* in parallel.
     Issue 5 depends on nothing in the set and can start immediately.
 
+14. **Two clocks, two jobs — the arbiter's admission budget is not the sender's answer timeout.**
+    *(Added by owner amendment; the sharp part of theme 6.)* `QUEUE_WAIT_TIMEOUT_MS = 30_000`
+    (`packages/engine/src/transports/concurrency/arbiter.ts:40`) is an **admission** timeout: how
+    long the arbiter holds a *kickoff* waiting for the recipient's concurrency key to free. It
+    bites a caller that is awaiting the kickoff. A send verb that acks on `accepted` (theme 6)
+    and then waits for the **answer** on its own clock is never inside the arbiter's wait, so the
+    30 seconds is not that verb's number.
+
+    **This epic does not propose changing that constant.** Recorded as a deliberate non-change,
+    because "just raise the timeout" is the obvious wrong fix and someone will suggest it. §3's
+    Q2 run is the argument: a queue-wait timeout today costs **30 s of dead time**, leaves a
+    **`failed`** record on the recipient's session for a run that never started, and the sender
+    reports **`completed`**, because the error surfaces inside the sending block and nothing
+    propagates it. At 30 minutes that is a half-hour phantom. Raising the budget scales the
+    damage; not waiting on it is the fix.
+
+    **The sender-side answer timeout: default 30 minutes, explicitly configurable.**
+    Wait-for-response takes its own timeout, generous on purpose. What actually detects a dead
+    recipient is the **lease** — "if the run dies at any point … the lease lapses and the owner
+    recovers the row … no dispatch milestone improves on it"
+    (`packages/engine/src/transports/types.ts:212-217`). So the sender's clock is a **backstop**,
+    not the primary safety mechanism, and a short default would fire on healthy slow work rather
+    than catch anything the lease does not already catch. **This supersedes any reading elsewhere
+    in this document that 30 s is the relevant number for a sender** — 30 s is the arbiter's
+    number, and only for a caller awaiting admission.
+
+    **What the non-change does *not* buy, stated so issue 2 does not discover it.** The 30 s
+    budget still bounds how long a *queued delivery* may wait for admission, whoever is or is not
+    awaiting it. A recipient busy longer than that is §1's named risk ("a queued message can be
+    dropped in-process"), and a 30-minute sender timeout does not rescue it. **Unverified by
+    run** — Q3 exercised a 4 s busy window, not a 30 s one — so issue 2's spec should check it
+    rather than inherit it.
+
+    **Constrains issues 1 and 2**; issue 4 inherits it, since a schedule that waits for an answer
+    is the same shape.
+
 ---
 
 ## 3. Shape of the whole *(POC)*
 
-**Built:** a characterization POC of the two things the size claim was asserting from a code
-read — that a running block can re-enter `host.dispatch` onto another live session, and that a
-self-addressed wait deadlocks. Not an end-state POC: the division in §4 is still unchecked
-against an assembled surface, and §5 Q1 remains a design question no run settles.
+**Built:** a characterization POC of the three things the design was asserting from a code read —
+that a running block can re-enter `host.dispatch` onto another live session, that a self-addressed
+wait deadlocks, and that a queued delivery outlives the request that sent it. Not an end-state
+POC: the division in §4 is still unchecked against an assembled surface, and §5 Q1 remains a
+design question no run settles.
 
 **See it:** `spec-poc/epic-relay/` on this branch.
 
 ```
 pnpm tsx spec-poc/epic-relay/q1-inside-out-dispatch.ts       # instant
 pnpm tsx spec-poc/epic-relay/q2-self-addressed-deadlock.ts   # ~35s, on purpose
+pnpm tsx spec-poc/epic-relay/q3-delivery-outlives-sender.ts  # ~10s
 ```
 
 **In-process only.** `arbiter.ts:22-27` and `createInboundTransportHost.ts:299-301` skip
 arbitration entirely under an external dispatcher, so nothing below speaks to the durable path
-(§5 Q3, §1's named risk). Both remain unchecked by run.
+(§5 Q3, §1's named risk). All three remain unchecked by run.
 
 **Showed — Q1, the tracer bullet: it works, and identity is the sharp edge.** A block in
 `sess_sender` dispatched onto a live peer session and the second request ran to completion,
@@ -264,9 +369,31 @@ that never started; and the sender reporting **`completed`**, because the timeou
 the sending block and nothing propagates it. The control run confirms theme 7's other half —
 self-addressed fire-and-forget queues behind the sender and completes.
 
-**Changed:** nothing in §1, §2 or §4. Both premises held. What the run adds is evidence under
-themes 7 and 9 and under §5 Q1 — the cross-user refusal is a fact issue 1's spec now inherits
-rather than discovers.
+**Showed — Q3: CONFIRMED. Delivery outlives the sender's request, and acceptance resolves while
+the message is still queued.** Fire-and-forget's whole value rests on "delivery is attached to
+the process, not to the originating web request", and nobody had run it. Under
+`request: { concurrency: "queue" }`, `sess_busy_recipient` was held mid-run for 4 s; a *different*
+session, `sess_sender`, dispatched onto it fire-and-forget and returned without awaiting; the
+sender's own request reached `completed` in the store in **4 ms**. The queued `receive` was then
+admitted once the recipient's in-flight work finished and ran to **`completed`** — after the
+sender was terminal — landing its message on the recipient's session (`from: sess_sender`).
+
+The second reading is the one theme 6 needed: the send awaited `handle.accepted` and it settled
+at **`acceptedAfterMs: 0`** — acceptance resolved immediately, *while the run was still sitting
+behind the busy recipient's concurrency key*. That is "accepted, queued, keep waiting" observed
+rather than inferred, and it is what makes acceptance usable as the acknowledgement on both send
+modes. The run also confirms `accepted` is present on the in-process path
+(`acceptedPresent: true`), which the type does not guarantee.
+
+**What Q3 did not test:** a recipient busy longer than `QUEUE_WAIT_TIMEOUT_MS`. The 4 s window is
+comfortably inside the arbiter's 30 s admission budget, so this run says nothing about whether a
+queued delivery survives a *long*-busy recipient (theme 14, §1's named risk).
+
+**Changed:** nothing in §1's objective, §4, or the five-issue division. All three premises held.
+What changed is theme 6 and the addition of theme 14, both by owner amendment rather than by the
+run — the run supplies their evidence. Q3's other contribution is negative and useful: the
+long-busy case is still unchecked, and issue 2's spec should check it rather than inherit it.
+Q1's cross-user refusal has been promoted from evidence here to a stated boundary in §1.
 
 ---
 
@@ -278,7 +405,7 @@ cell is empty by design, not by omission.
 
 | # | Proposed issue | What it delivers | Depends on | Linear | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|---|---|---|
-| 1 | The address, the send verb, and what a sender may legally address | `to` on the envelope, the send verb, both send modes, the self-addressed refusal, and the agent-facing tool — core + engine + tools | — | not filed | spec | — | — | Proposed |
+| 1 | The address, the send verb, and what a sender may legally address | `to` on the envelope, the send verb, both send modes, **acceptance as the acknowledgement on both** (theme 6) and the **sender-side answer timeout, default 30 min** (theme 14), the self-addressed refusal, and the agent-facing tool — core + engine + tools | — | not filed | spec | — | — | Proposed |
 | 2 | Per-adapter delivery | in-process for a Node host; through the `FlowDispatcher` seam so a queue-backed deployment gets durability for free | 1 | not filed | spec | — | — | Proposed |
 | 3 | The sibling-spawn verb | an independent, self-managing session with its own flow kind and addressable key, resolving `flow.actions` like any other caller and talking back by message rather than `settleParentTask` | 1 | not filed | spec | — | — | Proposed |
 | 4 | Cron: a schedule addresses a session and fires as a message | the schema field, the resolver, and the one dispatch envelope; absent address preserves today's behaviour exactly | 1 | not filed | spec | — | — | Proposed |
@@ -393,7 +520,8 @@ without a session — `"session"` resolves to `undefined` when the envelope has 
 (`arbiter.ts:101-105`), which is exactly today's scheduled-dispatch case.
 
 So: in-process a recipient gets FIFO with a 30-second give-up; on a queue-backed deployment it
-gets nothing. Two options:
+gets nothing. **That 30 seconds is an admission budget, not a sender's timeout** — theme 14, and
+this epic does not propose changing it. Two options:
 
 - **Promise nothing beyond what the deployed dispatcher gives, and document it plainly.** Cheap,
   honest, and additive later — a stronger promise can be added without breaking anyone.
@@ -431,3 +559,12 @@ on it. **This is the composition half of the objective gate** — see §1's nece
   reachable from inside the system. Fan-out ruled out rather than deferred; cron folded in as a
   sender rather than left beside as a transport; the in-process-only arbitration limit recorded
   as a named risk rather than discovered later.
+- **Owner amendment — the receipt, and the two clocks.** Delivery receipt is no longer excluded:
+  it answers *am I right to still be waiting*, not *did it arrive*, and it already ships as
+  `DispatchHandle.accepted`. Theme 6 rewritten so acceptance is the acknowledgement on **both**
+  send modes rather than a third mode; theme 14 added, separating the arbiter's 30 s **admission**
+  budget (deliberately unchanged) from a sender-side **answer** timeout defaulting to 30 minutes.
+  Cross-session progress polling recorded as future direction with its wall (theme 10);
+  **cross-user messaging stated as out of scope in §1** — same-owner only in v1. Q3 added to the
+  POC and run: delivery outlives the sending request (CONFIRMED), and acceptance resolves while
+  the message is still queued.

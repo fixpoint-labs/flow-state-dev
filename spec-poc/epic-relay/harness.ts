@@ -69,7 +69,49 @@ export type SendSpec = {
   asUserId: string;
   /** true → await the recipient's run; false → fire and forget. */
   wait: boolean;
+  /**
+   * Q3 only, opt-in so Q1/Q2 are unchanged: await `handle.accepted` before the
+   * fire-and-forget branch returns. That is the acknowledgement the amended
+   * theme 6 proposes every send awaits (`DispatchHandle.accepted`,
+   * `packages/engine/src/transports/types.ts:186-227`).
+   */
+  ackAccepted?: boolean;
 };
+
+/**
+ * Await acceptance without ever hanging on it. `accepted` is `readonly
+ * accepted?:` on the type, so its absence is a legal shape and reported rather
+ * than crashed on; a non-settling one is a finding, not something to wait out.
+ */
+async function awaitAcceptance(
+  accepted: Promise<void> | undefined,
+  started: number
+): Promise<Record<string, unknown>> {
+  if (accepted === undefined) {
+    return { acceptedPresent: false };
+  }
+  const BUDGET_MS = 10_000;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const budget = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`accepted did not settle within ${BUDGET_MS}ms`)),
+      BUDGET_MS
+    );
+  });
+  try {
+    await Promise.race([accepted, budget]);
+    return { acceptedPresent: true, acceptedAfterMs: Date.now() - started };
+  } catch (error) {
+    return {
+      acceptedPresent: true,
+      acceptedFailed:
+        error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+      acceptedFailedAfterMs: Date.now() - started
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** What `receive` saw. Read back after the run. */
 export const received: Array<Record<string, unknown>> = [];
@@ -110,7 +152,8 @@ export function buildFlow(concurrency?: "queue" | "allow") {
           to: z.string(),
           text: z.string(),
           asUserId: z.string(),
-          wait: z.boolean()
+          wait: z.boolean(),
+          ackAccepted: z.boolean().optional()
         }),
         block: handler<SendSpec, Record<string, unknown>>({
           name: "send",
@@ -140,12 +183,18 @@ export function buildFlow(concurrency?: "queue" | "allow") {
               };
             }
             if (!input.wait) {
+              const ack =
+                input.ackAccepted === true
+                  ? await awaitAcceptance(handle.accepted, started)
+                  : {};
               return {
                 gap,
                 me,
                 dispatched: true,
                 mode: "fire-and-forget",
-                requestId: handle.requestId
+                requestId: handle.requestId,
+                ...ack,
+                elapsedMs: Date.now() - started
               };
             }
             try {
@@ -171,6 +220,22 @@ export function buildFlow(concurrency?: "queue" | "allow") {
                 elapsedMs: Date.now() - started
               };
             }
+          }
+        })
+      },
+
+      /**
+       * Occupies a session's concurrency key for a while, so Q3 can dispatch at
+       * a recipient that is genuinely mid-run rather than merely idle.
+       */
+      busy: {
+        inputSchema: z.object({ ms: z.number() }),
+        block: handler<{ ms: number }, { busyForMs: number }>({
+          name: "busy",
+          execute: async (input, ctx) => {
+            ctx.emit.message(`busy for ${input.ms}ms`);
+            await new Promise((resolve) => setTimeout(resolve, input.ms));
+            return { busyForMs: input.ms };
           }
         })
       },
