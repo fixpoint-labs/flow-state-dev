@@ -1,10 +1,5 @@
 # Epic-spec — The harness manager
 
-**Epic issue:** [LAB-140](https://linear.app/fixpoint-labs/issue/LAB-140/the-harness-manager-drive-one-real-issue-through-a-conductor-phase) ·
-**Branch:** `epic/harness-manager` ·
-**Epic PR:** [#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362) (never merged) ·
-**Project:** Development Workflow Orchestration (Labs)
-
 ## 1. Purpose & objective *(the gated sign-off surface)*
 
 **Objective.** Nothing has yet driven one real issue end to end through the Conductor seam.
@@ -49,9 +44,13 @@ is that the ask-and-answer path is where the design bet actually gets tested and
 own spec rather than a section in someone else's. **Kept as two, with the seam named**: if
 LAB-139's spec finds it cannot describe its own loop without restating LAB-138's, that is the
 signal they should have been one issue, and merging them then is cheaper than discovering it
-at implementation. FIX-150 is not in question — a coding run's files have to live somewhere
-and come back as state, its spec is already approved, and it subsumes a live data-loss bug
-(FIX-998).
+at implementation. FIX-150 is not in question, and it is **not on the Proof's critical
+path**. What it buys this epic is one line: a run's files come back as state, and the agent is
+fenced into its workspace. That is not what LAB-134 already delivered —
+`claudeCodeAgent({ recordWork: true })` shipped the *index* of a run's file writes and
+deliberately left the file **contents** out of scope, and the contents are exactly what FIX-150
+is for. Its spec is already approved and it subsumes a live data-loss bug (FIX-998), so it runs
+on its own track (theme 8) and the manager adopts the projection when it lands.
 
 **Which project objective this serves.** `docs/objectives.md` Goal 1, *validate through real
 usage*. This is the framework driving its own development on real models — the most demanding
@@ -112,24 +111,41 @@ session, and its file writes and todos are readable as state.
    it as an ordinary user-scoped collection keeps theme 3 intact and gives FIX-1075 the
    evidence it asked for. FIX-1056 is the same gap seen from the steering side.
 
-8. **Sequencing.** LAB-138 lands before LAB-139 — the ask-and-answer path needs a run that is
-   already watched and settled. They can be *specced* in parallel; they cannot merge out of
-   order. FIX-150 is independent of both on the Conductor axis and is already through its spec
-   gate, so it runs on its own track; the run in LAB-139's Proof needs its files to live
-   somewhere, which is what makes it a member of this set rather than a neighbour.
+8. **Sequencing — and FIX-150 is not a dependency.** LAB-138 lands before LAB-139: the
+   ask-and-answer path needs a run that is already watched and settled. They can be *specced*
+   in parallel; they cannot merge out of order. **FIX-150 runs on its own track, and the Proof
+   does not wait on it.** LAB-138 provisions the run's working directory with a plain
+   `git worktree add` and hands it down — a seam named on purpose — until FIX-150's PR (c)
+   subsumes it, at which point the manager adopts the workspace projection with no reshaping.
+   Nothing in this set is *blocked by* FIX-150: an accepted deferral and a blocking dependency
+   read identically in a dependency column and mean opposite things, so the distinction is
+   stated here rather than left to be inferred.
 
 ## 4. Running index
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| [LAB-138](https://linear.app/fixpoint-labs/issue/LAB-138/the-harness-manager-a-task-row-becomes-a-watched-settled-coding-run) | The manager loop — a task row becomes a watched, settled coding run | spec | — | — | Needs spec |
+| [LAB-138](https://linear.app/fixpoint-labs/issue/LAB-138/the-harness-manager-a-task-row-becomes-a-watched-settled-coding-run) | The manager loop — a task row becomes a watched, settled coding run. Provisions the run's working directory with a plain `git worktree add` — the seam FIX-150's PR (c) later subsumes | spec | — | — | Needs spec |
 | [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof.** Blocked by LAB-138 | spec | — | — | Needs spec |
-| [FIX-150](https://linear.app/fixpoint-labs/issue/FIX-150/workspaces-if-validated-workspacerunner-block-and-virtual-filesystem) | Workspaces — the file-projection component. Large, three PRs (a component · b shell-tool migration · c coding-agent path). Subsumes FIX-998 | spec | [#1345](https://github.com/fixpoint-labs/flow-state-dev/pull/1345) — **approved** | — | Needs implementation |
+| [FIX-150](https://linear.app/fixpoint-labs/issue/FIX-150/workspaces-if-validated-workspacerunner-block-and-virtual-filesystem) | Workspaces — the file-projection component. Large, three PRs (a component · b shell-tool migration · c coding-agent path). Subsumes FIX-998. **Own track — carries no dependency edge into the Proof** (theme 8) | spec | [#1345](https://github.com/fixpoint-labs/flow-state-dev/pull/1345) — **approved** | — | Needs implementation |
 
 *FIX-150 is on team **flow-state**, not Labs; it is a sub-issue of LAB-140 across teams. Its
-spec gate is already passed (`spec approved` on #1345), so it enters at implementation.*
+spec gate is already passed (`spec approved` on #1345), so it enters at implementation. It is a
+member of this set because the manager will adopt its projection — not because anything here
+waits on it (theme 8).*
 
 ## 5. Open cross-cutting questions
+
+- **Can a detached worker's task be parked in `awaiting_review` and continued by a later
+  request?** *Open claim — **under settlement**, verdict lands on this PR.* Raised by review on
+  this PR (#1362). The claim, as put: the runner records a successful return as `completed` and
+  the task mirror is request-scoped, so a detached run cannot hold its task open across turns —
+  which would make the inbox/`steer` flow as designed inexpressible without an extra wake seam,
+  or without the cold path this epic excludes. **It is load-bearing on theme 5** (questions ride
+  the hot path) **and on LAB-139**, whose Proof *is* that flow. A POC is settling it now rather
+  than the thread arguing it; the verdict is folded here when it returns. **Until then, theme 5's
+  premise is asserted, not checked** — LAB-139's spec should not close on a design that assumes
+  it, and the objective should not be signed off believing it has been verified.
 
 - **Where conductor's own code lives.** Both LAB-138 and LAB-139 write into the same place and
   neither can settle it alone, so it is the epic's to answer. Raised at epic drafting. **Blocks
@@ -166,6 +182,11 @@ spec gate is already passed (`spec approved` on #1345), so it enters at implemen
 
 ---
 
+**Epic issue:** [LAB-140](https://linear.app/fixpoint-labs/issue/LAB-140/the-harness-manager-drive-one-real-issue-through-a-conductor-phase) ·
+**Branch:** `epic/harness-manager` ·
+**Epic PR:** [#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362) (never merged) ·
+**Project:** Development Workflow Orchestration (Labs)
+
 ## Epic evolution
 
 - **Epic drafted** — three issues under one outcome: a real issue driven from a task row to an
@@ -173,3 +194,8 @@ spec gate is already passed (`spec approved` on #1345), so it enters at implemen
   way. Kept LAB-138 and LAB-139 as two issues with the seam named, recorded the three settled
   cross-cutting decisions (hot-path questions · steer restarts · the inbox is a plain
   collection), and opened the package-location fork to the product owner.
+- **After epic review, round 1** — moved this document's metadata below the objective so the
+  problem leads; corrected the FIX-150 story, which had been stated two ways: it is a member of
+  the set on its own track, **not** a dependency of the Proof, and theme 8 now names LAB-138's
+  interim `git worktree add` seam explicitly. Recorded the reviewer's `awaiting_review` /
+  wake-seam claim in §5 as an open claim under settlement rather than folding either side of it.
