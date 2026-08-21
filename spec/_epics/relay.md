@@ -29,10 +29,16 @@ One known, committed consumer is what keeps this from being speculative surface 
 
 **What sign-off certifies.** The objective and the grouping — that cron rides on this layer
 rather than keeping a transport of its own, and that a spawn verb and a send verb are the same
-missing layer. It certifies **no** issue's contracts: the address shape, the verb's name, and
-the config surface it hangs off are all open (§5), and the five-issue division in §4 is a
-proposal. **The gate is the last cheap moment to redraw the set** — after it, redrawing costs
-specs already written.
+missing layer. It certifies **no** issue's contracts: the verb's name and the config surface it
+hangs off are open (§5), and the five-issue division in §4 is a proposal. **The gate is the last
+cheap moment to redraw the set** — after it, redrawing costs specs already written.
+
+**What the address *is* is settled; what a sender may address is not.** The owner has stated it:
+**a recipient is a `sessionId`**, and a sender is identified by its own `sessionId` — possibly
+carrying the `requestId` of the sending request as well (open, §5 Q1b). Messages never travel
+from one user to another. What remains the load-bearing fork is the **door** — whether a sender
+resolves `flow.actions` or a narrower author-declared inside-world surface (§5 Q1). That question
+is untouched by the address being named, and it is what the objective gate is asking about.
 
 **Where this lands against the project objective.** [`docs/objectives.md`](../../docs/objectives.md)
 measures *goals passing over goals defined*. A grep across `goals/**` finds **no goal covering
@@ -75,13 +81,22 @@ path of its own, it should have been its own epic and should be pulled out rathe
   parameter on the arbiter that exists, and the unbounded case already works in the shipped gate.
   (Delivery receipt is **no longer** on this list: acceptance already exists in shipped code and
   every send awaits it — theme 6, amended.)
-- **Cross-user messaging. Same-owner only in v1** — confirmed by the owner. The objective's "two
-  top-level sessions keep each other informed" means two sessions with the **same owner**. With an
-  honestly ctx-derived principal a session is addressable only by its own owner:
-  `packages/engine/src/context/createExecutionContext.ts:631` throws `UserBindingMismatchError`
-  when the envelope's `userId` differs from the session record's owner, and the POC ran it (§3).
-  Reaching across users would be a deliberate decision **against an existing refusal**, not
-  something this epic delivers.
+- **Cross-user messaging. Not a scope cut — a design invariant.** The owner's wording is
+  categorical: *"we are never sending from one user to another."* This is not "same-owner in v1"
+  with a later widening implied; messaging is **within one owner, by construction**, and there is
+  no open decision behind it. The objective's "two top-level sessions keep each other informed"
+  means two sessions with the **same owner**, always.
+
+  Two consequences, both of which make the epic *smaller*:
+
+  - **`UserBindingMismatchError` is a guard against a bug, not a boundary the design leans on.**
+    `packages/engine/src/context/createExecutionContext.ts:631` throws when the envelope's
+    `userId` differs from the session record's owner, and the POC ran it (§3). A correctly-built
+    sender never exercises that path — the principal is the same on both ends by construction. It
+    stays as a backstop for an incorrectly-built one.
+  - **The epic does not have to solve cross-user authorization at all.** It was never in the five
+    issues; it is now a **stated non-goal** rather than an unexamined gap. No issue owes a design
+    for it, and no reviewer should read its absence as an omission.
 
 **Named risk: arbitration is in-process only, and this epic does not fix it.** The host skips
 arbitration entirely when an external dispatcher is configured, deferring it to the durable
@@ -125,7 +140,8 @@ can cite one.
    `sessionId?` already at `:78`) and `DispatchEnvelope` (`engine/src/transports/dispatcher.ts:16-35`).
    **Constrains issues 1, 2 and 4:** the address goes on the envelope that exists and delivery
    goes through the seam that exists. An issue adding a parallel dispatch path has left the
-   epic's shape.
+   epic's shape. **The address on that envelope is a `sessionId`** (theme 9) — the field the
+   envelope already carries at `:78`, not a new coordinate type.
 
    **`startDetached` is not that verb, and cannot be made into it.** It derives the child key
    from `[principal, parent session, seed]`; the child "inherits tenant, user, org and flow kind
@@ -249,6 +265,15 @@ can cite one.
    And the sender's identity comes from the execution context, never from the caller — BP-031,
    never make auth or routing decisions from caller-controllable input. **Constrains issues 1
    and 3.**
+
+   **The address is a `sessionId`, on both ends** — stated by the owner, so an issue spec builds
+   to it rather than re-deriving it. The **recipient** is named by `sessionId`. The **sender** is
+   identified by its own `sessionId`, and **possibly also by the `requestId` of the sending
+   request** — the requestId half is an open detail for issue 1's spec, not a decision here
+   (§5 Q1b). Neither value is caller-supplied: both read off the execution context
+   (`ctx.session.identity`, §3's ctx-gap list). Since sender and recipient are the same owner by
+   construction (§1), the address carries no user coordinate and no cross-user authorization
+   question rides on it.
 
 10. **`livenessOf`'s lineage filter is containment, not an oversight — this epic does not widen
     it.** `packages/engine/src/context/liveness-read.ts` filters every answer through
@@ -382,10 +407,12 @@ envelope and the session record's owner, not an authority check. Name the owner 
 So theme 9's "the sender's identity server-derived" is now proven necessary rather than argued:
 a `dispatch`-shaped verb has the exposure `startDetached` avoids by closing over identity.
 
-The same guard is also a constraint the epic did not record: **with an honest principal, a
-session can only be addressed by its own owner.** Every cross-user reading of §1's "two
-top-level sessions keep each other informed" meets an existing refusal. That belongs in §5 Q1's
-evidence, not §1's objective — the ask does not change, its boundary does.
+The same guard also shows, mechanically, that **with an honest principal a session can only be
+addressed by its own owner.** Since the owner has since stated same-owner as a **design
+invariant** rather than a boundary (§1) — *"we are never sending from one user to another"* — row
+2 is not the design leaning on a refusal; it is what a *bug* would hit. A correctly-built sender
+never reaches it. Row 3 is the finding that still bites: naming another owner in the envelope
+passes, which is why theme 9's server-derived identity is a requirement and not a preference.
 
 **The `ctx` gap — the shape of the send verb, and it is short.** Four things the block had to
 reach for: **`host.dispatch` itself** (not on `BlockContext` in any form; the POC uses a
@@ -466,7 +493,9 @@ not the caller — so a **configurable admission budget is now in scope**, on **
 §1's named risk says so. The two-clocks half of theme 14 stands, and Q2's phantom-record cost
 still argues against merely *raising* the number: a longer wrong number is still a wrong number.
 Theme 6 and theme 14's addition were owner amendments rather than run outcomes; the runs supply
-their evidence. Q1's cross-user refusal was promoted from evidence here to a stated boundary in §1.
+their evidence. Q1's cross-user refusal was promoted from evidence here to §1, where the owner has
+since restated it as a **design invariant** — never a user-to-user send — rather than a boundary
+the design leans on.
 
 ---
 
@@ -478,7 +507,7 @@ cell is empty by design, not by omission.
 
 | # | Proposed issue | What it delivers | Depends on | Linear | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|---|---|---|
-| 1 | The address, the send verb, and what a sender may legally address | `to` on the envelope, the send verb, both send modes, **acceptance as the acknowledgement on both** (theme 6) and the **sender-side answer timeout, default 30 min** (theme 14), the self-addressed refusal, and the agent-facing tool — core + engine + tools | — | not filed | spec | — | — | Proposed |
+| 1 | The address, the send verb, and what a sender may legally address | the recipient address as a **`sessionId`** on the envelope, a **server-derived sender identity** (its `sessionId`, and possibly the sending `requestId` — open, §5 Q1b), the send verb, both send modes, **acceptance as the acknowledgement on both** (theme 6) and the **sender-side answer timeout, default 30 min** (theme 14), the self-addressed refusal, and the agent-facing tool — core + engine + tools | — | not filed | spec | — | — | Proposed |
 | 2 | Per-adapter delivery | in-process for a Node host; through the `FlowDispatcher` seam so a queue-backed deployment gets durability for free; **plus a configurable in-process admission budget** (theme 14, §3 Q4) — the arbiter's hardcoded 30 s silently drops an already-accepted delivery, and `Infinity`/omitted is the unbounded case the gate already supports | 1 | not filed | spec | — | — | Proposed |
 | 3 | The sibling-spawn verb | an independent, self-managing session with its own flow kind and addressable key, resolving `flow.actions` like any other caller and talking back by message rather than `settleParentTask` | 1 | not filed | spec | — | — | Proposed |
 | 4 | Cron: a schedule addresses a session and fires as a message | the schema field, the resolver, and the one dispatch envelope; absent address preserves today's behaviour exactly | 1 | not filed | spec | — | — | Proposed |
@@ -513,6 +542,13 @@ Epic PR (this doc, never merged):
 document.** Where the epic has a lean, it is marked as the epic's lean rather than a decision.
 
 ### Q1. What may a sender legally address?
+
+**Still open, and still the load-bearing fork.** One half of the addressing space *is* settled:
+the owner has stated that a recipient is a **`sessionId`** and that messaging never crosses
+users (§1). That answers **which sessions exist to be addressed** — the same owner's, always. It
+does **not** answer this question, which is about **what a sender may name once it has a session
+in hand**: the flow's caller-addressed `actions`, or a narrower author-declared inside-world
+surface. Nothing below is settled by the address being named.
 
 **The first design question of the build, not a detail inside it.** `RequestHost` is closed at
 four verbs — `startDetached`, `parentTask`, `settleParentTask`, `livenessOf?`
@@ -557,6 +593,28 @@ that is the common case rather than the exception, (b) is a second door for one 
 right for the sibling half at least.
 
 **Blocks:** issue 1's spec, and therefore 2, 3 and 4. Issue 5 is unaffected.
+
+### Q1b. Does the sender's identity carry a `requestId` as well as a `sessionId`?
+
+**A separate, much smaller question than Q1 — deliberately not merged into it.** Q1 is the door;
+this is one field on the sender's side of the envelope, and answering it settles nothing about
+Q1.
+
+The owner stated the recipient address as a `sessionId` and the sender as "sessionId (and **maybe**
+requestId for senders)". The hedge is recorded as a hedge: **this is an open detail for issue 1's
+spec to settle**, not a decision the epic makes. Two things argue for carrying it, recorded here so
+whoever specs issue 1 has the case in hand rather than rebuilding it:
+
+- **Reply routing granularity.** A sender's `sessionId` routes a reply back to the *session*. The
+  `requestId` of the sending request is what would route it back to the **specific request that
+  asked** — which matters exactly where a session has more than one question outstanding.
+- **A handle for the discoverability gap.** §3's **Q4** run showed a dropped delivery leaving a
+  bare `failed` record on the recipient with **no reason recorded and no link to what sent it**
+  (`RequestRecord` carries no error field; `ConcurrencyQueueTimeoutError` is swallowed). A sending
+  `requestId` on the envelope is a concrete correlation handle for that, and cheap.
+
+Neither argument is decisive against the cost of a second identity field, which is why it stays
+open. **Scope:** issue 1's spec. **Blocks nothing** — the address itself is settled without it.
 
 ### Q2. The name
 
@@ -641,7 +699,8 @@ on it. **This is the composition half of the objective gate** — see §1's nece
   budget (deliberately unchanged — *superseded by the next entry*) from a sender-side **answer**
   timeout defaulting to 30 minutes.
   Cross-session progress polling recorded as future direction with its wall (theme 10);
-  **cross-user messaging stated as out of scope in §1** — same-owner only in v1. Q3 added to the
+  **cross-user messaging stated as out of scope in §1** — recorded then as "same-owner only in
+  v1", *superseded by the last entry: it is a design invariant, not a v1 boundary*. Q3 added to the
   POC and run: delivery outlives the sending request (CONFIRMED), and acceptance resolves while
   the message is still queued.
 - **Correction — the admission budget drops accepted deliveries, and theme 14 was wrong about
@@ -658,3 +717,21 @@ on it. **This is the composition half of the objective gate** — see §1's nece
   rewritten — the two clocks stand, the non-change does not, and **a configurable admission
   budget is now in scope on issue 2**; §1's named risk and §4's issue-2 cell updated to match;
   §5 Q3 narrowed to the durable path. **No re-division — the five issues stand.**
+- **Owner comment — the address is a `sessionId`, and same-owner is an invariant, not a v1 cut.**
+  On §3's identity table: *"when we say sender and recipient, we mean sessionId (and maybe
+  requestId for senders). We are never sending from one user to another."*
+  *What it settled:* (1) **Same-owner is a design invariant.** §1's "cross-user messaging" bullet
+  was a **scope boundary** phrased as "same-owner only in v1", which implied a limitation awaiting
+  a later decision. It is not one — there is no open decision behind it. Reframed in §1 and §3;
+  two consequences stated explicitly because both *reduce* scope: `UserBindingMismatchError`
+  (`createExecutionContext.ts:631`) is a guard against a bug rather than a boundary the design
+  leans on, and **cross-user authorization is now a stated non-goal of the epic** rather than an
+  unexamined gap. (2) **The address shape.** The recipient is a `sessionId`; the sender is
+  identified by its own `sessionId`. Recorded in theme 9, theme 2, §1 and §4's issue-1 cell.
+  *What it explicitly did not settle:* **§5 Q1's door question is untouched and stays open** —
+  whether a sender resolves `flow.actions` or a narrower author-declared inside-world surface is
+  still the load-bearing fork the objective gate asks about. Knowing *which sessions* may be
+  addressed says nothing about *what may be named* on one. And the `requestId`-on-the-sender half
+  was hedged by the owner ("maybe"), so it is recorded as **§5 Q1b — an open detail for issue 1's
+  spec**, with the case for it (reply-to-the-specific-request routing; a correlation handle for
+  the §3 Q4 discoverability gap) written down but not decided.
