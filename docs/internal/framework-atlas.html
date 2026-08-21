@@ -473,16 +473,16 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
         <text class="t-xs" x="728" y="332">CLASSIFYING, AND THE PLAYBOOK</text>
         <text class="t-xs" x="728" y="344">SHOULD CHANGE WITHOUT A DEPLOY</text>
 
-        <text class="t-lbl" x="470" y="378" text-anchor="middle">Every one of them produces a block — so every one of them can be a step inside any other</text>
+        <text class="t-lbl" x="470" y="378" text-anchor="middle">Each one reaches a block — two directly, two through one named handle</text>
       </svg>
     </div>
     <figcaption><b>The dial, not the menu.</b> Moving right buys adaptability and pays in tokens, latency, and replayability. Moving left buys a system you can test, resume, and reason about. Nothing forces a single choice for a whole application — the choice is per unit of work.</figcaption>
   </figure>
 
   <h3>They nest, which is the actual point</h3>
-  <p>Because all four terminate in <code>BlockDefinition</code>, the modes compose without adapters:</p>
+  <p>The modes compose, but not because all four <em>are</em> blocks. Two are: a sequencer and a router each build a <code>BlockDefinition</code> directly. The other two reach one through a single named handle &mdash; <code>taskBoard()</code> returns a <code>TaskBoardHandle</code> whose <code>.drain</code> is the block, and <code>createSkillsLibrary()</code> returns a <code>DefinedCapability</code> that becomes composable once a generator installs it. Those two handles are the whole adapter surface, which is why the nesting still feels free:</p>
   <ul>
-    <li>A <strong>sequencer step</strong> can be a task board — <code>parallelTasks</code>, <code>supervisor</code>, and <code>planAndExecute</code> are exactly that.</li>
+    <li>A <strong>sequencer step</strong> can be a task board&rsquo;s drain — <code>.step(board.drain)</code>. <code>parallelTasks</code>, <code>supervisor</code>, <code>planAndExecute</code> and <code>eventActors</code> are all exactly that.</li>
     <li>A <strong>board worker</strong> can be a sequencer, so one node of a dynamic graph can be a fixed pipeline.</li>
     <li>A <strong>generator</strong> holding a skill can command its own private board — the skill plans tasks, <code>runBoard</code> drains them.</li>
     <li>A <strong>board task</strong> can spawn detached, re-entering later through that same board's runner in a child session.</li>
@@ -1544,7 +1544,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
 <section id="patterns">
   <div class="sec-head"><span class="sec-num">16</span><h2>Patterns</h2></div>
-  <p class="lede">Nine named multi-agent architectures. Six of them are thin compositions over the task board; the rest are standalone shapes.</p>
+  <p class="lede">Nine named multi-agent architectures. Seven of them are thin compositions over the task board; the other two are standalone shapes.</p>
 
   <div class="tw"><table>
     <thead><tr><th>Pattern</th><th>Shape</th><th>Built on the board</th></tr></thead>
@@ -1555,7 +1555,7 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       <tr><td><code>routedSpecialists</code></td><td>A controller dispatches to specialists over a shared workspace, with a check loop.</td><td class="ctr">✓</td></tr>
       <tr><td><code>roundRobin</code></td><td>Fixed-roster turn-taking with a referee and a synthesis step.</td><td class="ctr">✓</td></tr>
       <tr><td><code>debate</code></td><td>Paired adversarial contributors, a transcript resource, a judge verdict, then synthesis.</td><td class="ctr">✓</td></tr>
-      <tr><td><code>eventActors</code></td><td>Topic-matched actors over an append-only workspace — pattern-compiled subscriptions rather than a drain.</td><td class="ctr">—</td></tr>
+      <tr><td><code>eventActors</code></td><td>Topic-matched actors over an append-only workspace. Subscriptions are pattern-compiled, but the fan-out is a board: it constructs <code>taskBoard(&#123;&hellip;&#125;)</code> and ends on <code>.step(board.drain)</code>, so board changes to claim, wake, concurrency and termination reach it.</td><td class="ctr">✓</td></tr>
       <tr><td><code>responseAuditor</code></td><td>Parallel analyzers over one response, aggregated to annotations with a display threshold.</td><td class="ctr">—</td></tr>
       <tr><td><code>rlm</code></td><td>Recursive Language Model — the model never sees full context, it explores via <code>peek</code> / <code>grep</code> / <code>chunk</code> tools and recursive sub-queries.</td><td class="ctr">—</td></tr>
     </tbody>
@@ -1724,7 +1724,8 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
 
   <h3>Skills</h3>
   <p>A skill is a folder with a <code>SKILL.md</code> — YAML frontmatter plus a Markdown playbook, with supporting files reachable from the body via <code>${SKILL_DIR}</code>. When it activates, the body renders into the generator's system prompt. The whole runtime lives in <code>orchestration/src/skills</code>: a library, a directory reader and importer, an activation store, activators, an inline-activate path, seeding, and a worker materializer.</p>
-  <p>Activation is three-tiered and runs before the main generator: a literal <code>/&lt;skill-name&gt;</code> slash match, then a local keyword scan, then a fast LLM classifier when neither decides. The matched bodies are written into session state so the main generator runs once with them already in context.</p>
+  <p>There are two activation paths, and the up-front one is the optional half. The primary path is a per-generator binding: <code>.with(&#123; active, allowed, activeState, dynamicActivation &#125;)</code> &mdash; skills can be statically active, and the <code>dynamicActivation</code> preset installs a model-facing <code>loadSkill</code> tool so the generator can pull one mid-turn. The optional path is <code>createSkillActivator</code>, which runs <em>before</em> the main generator and is three-tiered: a literal <code>/&lt;skill-name&gt;</code> slash match, then a local keyword scan, then a fast LLM classifier when neither decides.</p>
+  <p>The lifetime is the part worth getting right. There is no session-global active-skills bag: activation state defaults to the <strong>generator&rsquo;s own block state</strong> and is therefore request-scoped &mdash; it does not carry into the next turn. Pass <code>activeState: &#123; scope, field &#125;</code> to store it at a named <code>request</code>&#8239;/&#8239;<code>session</code>&#8239;/&#8239;<code>user</code>&#8239;/&#8239;<code>org</code> scope when it should be shared across generators or survive the turn.</p>
   <p>The delegation path is where skills meet the board. A skill declaring <code>agents:</code> installs a private task board, the <code>taskTools</code> capability (eight tools including <code>addTask</code> and <code>completeTask</code>), and a <code>runBoard</code> tool. The generator plans work as tasks with an <code>assignee</code> and <code>deps</code>, then drains the whole graph with one call. An assignee can also name one of the generator's own tools, which runs as a direct call with no model turn.</p>
   <div class="note">
     <span class="lbl">Capability or skill?</span>
@@ -2075,8 +2076,8 @@ td code { background: none; padding: 0; color: var(--ink); font-weight: 500; }
       </tr>
       <tr>
         <td><strong>patterns → reduce, absorb into orchestration</strong></td>
-        <td><strong>Every importer of <code>patterns</code> is a demo or a lab</strong> — kitchen-sink, pattern-benchmark, trading-desk. No framework package imports it (<code>integration-tests</code> declares the dependency but imports nothing from it). <code>rlm</code> has zero importers outside its own directory. <code>parallelTasks</code> is <em>not</em> dead: <code>patterns/src/benchmark/adapters.ts</code> materializes it into <code>parallelTasksBenchmarkAdapter</code>, which ships in <code>defaultBenchmarkRegistry</code> under the key <code>parallel-tasks</code>.</td>
-        <td>Strong. Six of nine patterns are already thin compositions over the board; moving those into <code>orchestration</code> puts them next to the primitive they wrap and removes a package whose only consumers are demos. One caveat: the benchmark registry is an in-package consumer, so any pattern that moves has to take its benchmark adapter with it or the registry loses a row.</td>
+        <td><strong>No shipping framework package imports <code>patterns</code></strong> — its consumers are kitchen-sink, pattern-benchmark, trading-desk, and the Tier&nbsp;1 suite. <code>integration-tests</code> is the one that is not a demo: three files import public subpaths (<code>patterns/plan-and-execute</code>, <code>patterns/supervisor</code>, <code>patterns/eventActors</code>), so the Tier&nbsp;1 fixtures and the wake-storm scenario move with any pattern that moves. <code>rlm</code> has zero importers outside its own directory. <code>parallelTasks</code> is <em>not</em> dead: <code>patterns/src/benchmark/adapters.ts</code> materializes it into <code>parallelTasksBenchmarkAdapter</code>, which ships in <code>defaultBenchmarkRegistry</code> under the key <code>parallel-tasks</code>.</td>
+        <td>Strong. Seven of nine patterns are already thin compositions over the board; moving those into <code>orchestration</code> puts them next to the primitive they wrap and removes a package whose only consumers are demos. One caveat: the benchmark registry is an in-package consumer, so any pattern that moves has to take its benchmark adapter with it or the registry loses a row.</td>
       </tr>
       <tr>
         <td><strong>utilities → reduce</strong></td>
