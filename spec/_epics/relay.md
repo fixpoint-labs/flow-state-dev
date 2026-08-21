@@ -638,7 +638,8 @@ on it. **This is the composition half of the objective gate** — see §1's nece
   it answers *am I right to still be waiting*, not *did it arrive*, and it already ships as
   `DispatchHandle.accepted`. Theme 6 rewritten so acceptance is the acknowledgement on **both**
   send modes rather than a third mode; theme 14 added, separating the arbiter's 30 s **admission**
-  budget (deliberately unchanged) from a sender-side **answer** timeout defaulting to 30 minutes.
+  budget (deliberately unchanged — *superseded by the next entry*) from a sender-side **answer**
+  timeout defaulting to 30 minutes.
   Cross-session progress polling recorded as future direction with its wall (theme 10);
   **cross-user messaging stated as out of scope in §1** — same-owner only in v1. Q3 added to the
   POC and run: delivery outlives the sending request (CONFIRMED), and acceptance resolves while
