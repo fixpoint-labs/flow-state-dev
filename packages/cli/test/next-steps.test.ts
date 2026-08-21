@@ -9,9 +9,10 @@
  *     equality check below would then actively defend the false claim in every shipper's copy;
  *  4. the commands actually run — the strings are executed through the real package managers,
  *     never matched against a pattern. A plausible-looking transcript has hidden a broken
- *     command before; `npm exec` and `yarn exec` both eat `--host 127.0.0.1` without a `--`.
+ *     command before. Both separators are pinned this way: `npm exec` and `yarn exec` eat a
+ *     leading-dash ARGUMENT without a `--`, and every manager eats a leading-dash script NAME.
  */
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { readFileSync, chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer, get as httpGet } from "node:http";
 import { tmpdir } from "node:os";
@@ -210,6 +211,54 @@ describe("renderNextSteps", () => {
     const clear = renderNextSteps({ ...MOUNTED, devUrl: "http://localhost:3000", packageManager: "pnpm" });
     expect(clear).toContain("fsdev dev --port 4210");
   });
+
+  it("reads the host's port out of an IPv6 dev URL, not the digits inside the address", () => {
+    // `/:(\d+)/` finds the first colon-digits anywhere in the string, which in `http://[::1]:4210`
+    // is the `1` inside the address — so the collision guard compared 1 against the reserved
+    // range, never matched, and printed `--port 4210` into a host that owns it. The guard
+    // reintroducing the failure it was added to prevent.
+    const clash = renderNextSteps({
+      ...MOUNTED,
+      devUrl: "http://[::1]:4210",
+      packageManager: "pnpm",
+    });
+    expect(clash).toContain("fsdev dev --port 4211");
+    expect(clash).not.toMatch(/--port 4210\b/);
+
+    // An IPv6 host outside the range still leaves the defaults alone.
+    expect(
+      renderNextSteps({ ...MOUNTED, devUrl: "http://[::1]:3000", packageManager: "pnpm" }),
+    ).toContain("fsdev dev --port 4210");
+    // A bracketed host with no port names no port.
+    expect(
+      renderNextSteps({ ...MOUNTED, devUrl: "http://[::1]", packageManager: "pnpm" }),
+    ).toContain("fsdev dev --port 4210");
+  });
+
+  it("falls back to the default ports on a dev URL it cannot parse", () => {
+    // Not just "does not throw": an unparseable value must claim NO port, or a malformed input
+    // silently shifts the ports. Covering what the guard READS, not only the case it was for.
+    const rendered = renderNextSteps({ ...MOUNTED, devUrl: "not a url at all", packageManager: "pnpm" });
+    expect(rendered).toContain("fsdev dev --port 4210");
+    expect(rendered).toContain("http://localhost:4210");
+    // The whole reserved range stays as issued — nothing shifted off a port we could not read.
+    expect(rendered).not.toMatch(/--port 421[1-9]/);
+  });
+
+  it("carries the end-of-options separator for a dash-named script, and only for one", () => {
+    // The sibling of `{{execSep}}`: a leading-dash script NAME is eaten by the manager's option
+    // parser exactly as a leading-dash argument is. Conditional on the name, so the common path
+    // stays clean.
+    for (const packageManager of MANAGERS) {
+      const { run } = PACKAGE_MANAGER_COMMAND_FORMS[packageManager];
+      expect(renderNextSteps({ ...MOUNTED, packageManager, devScript: "--help" })).toContain(
+        `${run} -- --help`,
+      );
+      expect(renderNextSteps({ ...MOUNTED, packageManager, devScript: "dev" })).toContain(`${run} dev\n`);
+      expect(renderNextSteps({ ...MOUNTED, packageManager, devScript: "dev" })).not.toContain(`${run} --`);
+    }
+  });
+
 
   it("tells the reader the ports are defaults they can override", () => {
     // No fixed number can clear a port — a machine can have any process on any of them. Saying
@@ -458,6 +507,10 @@ function projectFor(manager: NextStepsPackageManager): string {
           // Two script names a shell would take apart if the block printed them bare.
           "my script": "node ./echo-argv.js --from-space-script",
           "dev; echo pwned": "node ./echo-argv.js --from-metachar-script",
+          // A name every package manager reads as one of its own options. The block emits the
+          // end-of-options separator for it; this fixture is what proves the printed command
+          // actually reaches the script.
+          "--help": "node ./echo-argv.js --from-dash-script",
           // Two names that collide with a package manager's own builtins. Under the shortcut
           // form (`pnpm list`, `yarn config`) the manager runs itself and the script never does.
           list: "node ./echo-argv.js --from-list-script",
@@ -517,6 +570,22 @@ function managerAvailable(manager: NextStepsPackageManager): boolean {
   }
   if (manager === "yarn") return version.startsWith("1.");
   return version.length > 0;
+}
+
+/** Run one command line in the probe project, tolerating a non-zero exit, and return its output. */
+function runPrintedCommandRaw(
+  manager: NextStepsPackageManager,
+  line: string,
+): { stdout: string; stderr: string } {
+  // spawnSync, not execFileSync: a non-zero exit is an ordinary outcome here, and execFileSync
+  // discards stderr on success — which is exactly where Yarn prints the deprecation warning this
+  // check is reading.
+  const result = spawnSync("/bin/sh", ["-c", line], {
+    cwd: projectFor(manager),
+    encoding: "utf-8",
+    env: { ...process.env, npm_config_yes: "true" },
+  });
+  return { stdout: String(result.stdout ?? ""), stderr: String(result.stderr ?? "") };
 }
 
 /** Run one printed command line in the probe project and return the argv the binary saw. */
@@ -649,6 +718,37 @@ describe("the printed commands actually run", () => {
             expect(runPrintedCommand(manager, line!), `\`${line}\` did not reach the script`).toEqual([
               marker,
             ]);
+          }
+        },
+        60_000,
+      );
+
+      it.runIf(managerAvailable(manager))(
+        "runs a dash-named dev script through the separator the block prints",
+        () => {
+          // The positive path, executed. Without the separator the manager handles its own
+          // option and the script never runs; with it, the script runs and says so.
+          const bare = runPrintedCommandRaw(manager, `${PACKAGE_MANAGER_COMMAND_FORMS[manager].run} --help`);
+          expect(bare.stdout, "the bare form should reach the manager's own help").not.toContain("ARGV=");
+
+          const rendered = renderNextSteps({ ...MOUNTED, packageManager: manager, devScript: "--help" });
+          const { run } = PACKAGE_MANAGER_COMMAND_FORMS[manager];
+          const line = rendered
+            .split("\n")
+            .map((l) => l.trim())
+            .find((l) => l.startsWith(`${run} `));
+          expect(line).toBe(`${run} -- --help`);
+
+          const printed = runPrintedCommandRaw(manager, line!);
+          expect(printed.stdout, `\`${line}\` did not reach the script`).toContain(
+            "ARGV=[\"--from-dash-script\"]",
+          );
+
+          // Yarn Classic warns whenever an explicit `--` is present. Pinned by execution, scoped
+          // to the rendered dash line, so a change in those semantics goes red here rather than
+          // reaching a developer.
+          if (manager === "yarn") {
+            expect(`${printed.stdout}${printed.stderr}`).toMatch(/don't require "--"/);
           }
         },
         60_000,

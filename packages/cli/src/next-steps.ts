@@ -8,7 +8,7 @@
  * SOURCE, not its output. Each shipper embeds {@link CANONICAL_NEXT_STEPS} verbatim and
  * substitutes at emit time; {@link assertCanonicalNextSteps} proves its copy has not drifted.
  *
- * **Values** — `{{run}}`, `{{exec}}`, `{{execSep}}`, `{{devScript}}`, `{{devUrl}}`,
+ * **Values** — `{{run}}`, `{{runSep}}`, `{{exec}}`, `{{execSep}}`, `{{devScript}}`, `{{devUrl}}`,
  * `{{mountPath}}`, `{{devPort}}`, `{{servePort}}`. **Conditional sections** — `{{#mounted-route}}`
  * and `{{#second-process}}`, a closed set of two, because a mounted-route host runs FSD inside the
  * server it already has and a second-process host starts one beside it. **Every shipper embeds
@@ -129,7 +129,7 @@ export interface RenderNextStepsOptions extends NextStepsValues {
 export const CANONICAL_NEXT_STEPS = `Next steps
 
 {{#mounted-route}}
-  {{run}} {{devScript}}
+  {{run}}{{runSep}} {{devScript}}
       your app, now serving FSD at {{mountPath}}
       → {{devUrl}}
 
@@ -209,9 +209,24 @@ function reservedRange(): number[] {
  * free, which is why the block also tells the reader how to pass their own.
  */
 function allocatePorts(devUrl: string | undefined): { devPort: string; servePort: string } {
-  const hostPort = devUrl === undefined ? null : Number(/:(\d+)/.exec(devUrl)?.[1] ?? Number.NaN);
+  const hostPort = hostPortOf(devUrl);
   const free = reservedRange().filter((port) => port !== hostPort);
   return { devPort: String(free[0]), servePort: String(free[1]) };
+}
+
+/**
+ * The port a dev URL serves on, or `null` when it names none. Parsed with `URL`, which knows where
+ * an authority ends — an IPv6 host is why a regex does not.
+ */
+function hostPortOf(devUrl: string | undefined): number | null {
+  if (devUrl === undefined) return null;
+  try {
+    const port = new URL(devUrl).port;
+    return port === "" ? null : Number(port);
+  } catch {
+    // Not a URL we can parse. Nothing is claimed about its port rather than guessing at one.
+    return null;
+  }
 }
 
 /**
@@ -301,6 +316,25 @@ function shellQuote(value: string): string {
 }
 
 /**
+ * The end-of-options separator a **script name** needs — the sibling of `{{execSep}}`.
+ *
+ * `{{execSep}}` exists because a leading-dash *argument* is eaten by the manager's option parser.
+ * A script *name* has the identical problem and never got the sibling: `npm run --help` prints
+ * npm's help, exits 0, and never runs the script, and quoting does not reach it because the shell
+ * hands `--help` to npm intact. Measured on npm, pnpm and Yarn — `<manager> run -- --help` runs
+ * the script on all three.
+ *
+ * **Conditional on the name, not on the manager**, which is what keeps the common path clean.
+ * Yarn Classic warns whenever an explicit `--` is present, so emitting it always would put a
+ * deprecation line in front of every ordinary render; emitting it only for a dash-named script
+ * confines the warning to the rare command. `test/next-steps.test.ts` pins that behaviour by
+ * executing it, so a change in those semantics goes red here rather than reaching a developer.
+ */
+function runSeparatorFor(devScript: string | undefined): string {
+  return devScript !== undefined && devScript.startsWith("-") ? " --" : "";
+}
+
+/**
  * Render the block for one topology and one package manager.
  *
  * Throws when a value the rendered branch needs was not supplied, rather than emitting a
@@ -340,6 +374,7 @@ export function renderNextSteps(options: RenderNextStepsOptions): string {
     run: forms.run,
     exec: forms.exec,
     execSep: forms.execSep,
+    runSep: runSeparatorFor(options.devScript),
     devScript: options.devScript === undefined ? undefined : shellQuote(options.devScript),
     devUrl: options.devUrl,
     mountPath: options.mountPath,
