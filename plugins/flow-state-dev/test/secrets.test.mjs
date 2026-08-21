@@ -305,6 +305,29 @@ describe("the demo token is reused, never rotated, and never adopted from an anc
     expect(own.reasons.join(" ")).toContain("reused");
   });
 
+  it.each([
+    ["non-empty", "FSD_DEMO_TOKEN=another-apps-token\n"],
+    ["empty", "FSD_DEMO_TOKEN=\n"],
+  ])("never writes a generated secret outside the app — ancestor assignment is %s", (_kind, ancestor) => {
+    // **The pair, tested as a pair.** The non-empty branch already chose the app's own file; the
+    // EMPTY one picked the ancestor and would have written a shared auth token into a directory
+    // that is not this project, where every sibling app inherits it. The write barrier violated
+    // on an entirely ordinary layout, and the reason it survived is that only one half of the
+    // branch had a test.
+    const root = makeTree({
+      ".env.local": ancestor,
+      "package.json": manifest({ workspaces: ["apps/*"] }),
+      "apps/web/package.json": manifest({ packageManager: "npm@10.0.0" }),
+    });
+    const app = join(root, "apps/web");
+    const report = buildReport(app);
+    expect(report.secretFiles.map((f) => f.path)).toContain(join(app, ".env.local"));
+    expect(
+      report.secretFiles.map((f) => f.path),
+      "the ancestor must never be a destination for a secret we author",
+    ).not.toContain(join(root, ".env.local"));
+  });
+
   it("writes a fresh token locally when one exists only in an ancestor", () => {
     // That token belongs to another app: next dev cannot see it, and a workspace-wide token means
     // one leak reaches every sibling.

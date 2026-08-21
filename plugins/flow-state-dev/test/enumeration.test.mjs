@@ -101,6 +101,37 @@ describe("every static read of a foreign source file goes through source-scan.mj
     },
   );
 
+  it("every caller reads a setting from an accepted region, never unanchored", () => {
+    // **The gap this check used to have.** `settingValue` went THROUGH source-scan.mjs and still
+    // did not anchor to the effective export — so the check caught a bypass and missed an
+    // incomplete rule applied through the shared entry point. Consolidating duplication into one
+    // file is not the same as making the one rule complete, so the assertion is about every
+    // caller's arguments rather than about the entry point existing.
+    //
+    // The code enforces this too — `settingValue` throws without a region — but a throw only
+    // fires on a path someone runs. This fails on a path nobody has run yet.
+    const callers = modules.filter((name) => name !== "source-scan.mjs");
+    let checked = 0;
+    for (const name of callers) {
+      const source = readFileSync(join(detectDir, name), "utf-8");
+      for (const call of source.matchAll(/\b(settingValue|declaredLiteral)\s*\(/g)) {
+        checked++;
+        const args = source.slice(call.index + call[0].length, source.indexOf(";", call.index));
+        const region = splitArgs(args)[2];
+        expect(
+          region,
+          `${name}: ${call[1]}(...) is called with no region — an unanchored read is the gap this rule closes`,
+        ).toBeDefined();
+        expect(
+          /Region\s*\(|region\b/.test(region),
+          `${name}: ${call[1]}(...) must be given a region from exportedObjectRegion() or callArgumentRegion(), got ${region.trim()}`,
+        ).toBe(true);
+      }
+    }
+    // Vacuity: there must be callers to check.
+    expect(checked).toBeGreaterThan(0);
+  });
+
   it("the detector actually detects — otherwise the rule above passes on everything", () => {
     // The vacuity guard, and it earned its place: the first version of it asserted source-scan
     // itself matched RAW_SCAN, which it does not, because it blanks comments into `code` and
@@ -111,6 +142,26 @@ describe("every static read of a foreign source file goes through source-scan.mj
     expect(RAW_SCAN.test("const hit = settingValue(source, \"basePath\");")).toBe(false);
   });
 });
+
+/** Split a call's argument text on top-level commas. */
+function splitArgs(text) {
+  const parts = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "(" || ch === "[" || ch === "{") depth++;
+    else if (ch === ")" || ch === "]" || ch === "}") {
+      if (depth === 0) break;
+      depth--;
+    } else if (ch === "," && depth === 0) {
+      parts.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(text.slice(start));
+  return parts;
+}
 
 describe("cleanup", () => {
   it("removes fixtures", () => {

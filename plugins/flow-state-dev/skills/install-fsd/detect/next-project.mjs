@@ -19,7 +19,7 @@ import {
   NEXT_MINIMUM_MAJOR,
 } from "./constants.mjs";
 import { ancestorsFrom, readIfPresent, readManifest } from "./fs-util.mjs";
-import { plainString, plainStringArray, settingValue } from "./source-scan.mjs";
+import { exportedObjectRegion, plainString, plainStringArray, settingValue } from "./source-scan.mjs";
 
 /**
  * Resolution 4 — the app root, resolved the way Next's `findDir` resolves it: `./app` is checked
@@ -96,8 +96,12 @@ export function resolveNextSettings(configPath) {
     };
   }
 
-  const extensionsHit = settingValue(source, "pageExtensions");
-  const basePathHit = settingValue(source, "basePath");
+  // The shape is accepted first; the settings are read only from inside it. A config we do not
+  // recognise yields `unreadable` for every setting, which the report turns into a refusal that
+  // names the file — not a silent fall-back to Next's defaults.
+  const region = exportedObjectRegion(source);
+  const extensionsHit = settingValue(source, "pageExtensions", region);
+  const basePathHit = settingValue(source, "basePath", region);
 
   const extensions = extensionsHit.unreadable
     ? null

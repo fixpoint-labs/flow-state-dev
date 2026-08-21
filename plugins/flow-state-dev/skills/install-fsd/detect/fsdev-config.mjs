@@ -11,7 +11,13 @@ import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { DEMO_FLOW, FSDEV_CONFIG_FILENAMES, GENERATED_MARKER } from "./constants.mjs";
 import { readIfPresent } from "./fs-util.mjs";
-import { declaredLiteral, importMap, settingValue, splitTopLevel } from "./source-scan.mjs";
+import {
+  callArgumentRegion,
+  declaredLiteral,
+  importMap,
+  settingValue,
+  splitTopLevel,
+} from "./source-scan.mjs";
 
 /**
  * Resolution 8. Every candidate in the CLI's precedence order, with the winner named.
@@ -77,7 +83,7 @@ export function inspectRegistry(configPath) {
   // **Anchored on the `createFlowState` call, not on the first `flows:` in the file.** A helper
   // object defined above it is not the registry, and taking the first match reported a live
   // registry that already owns our demo kind as free.
-  const hit = settingValue(source, "flows", { anchor: "createFlowState(" });
+  const hit = settingValue(source, "flows", callArgumentRegion(source, "createFlowState"));
   const raw = hit.unreadable ? null : hit.raw;
   // We do not execute their config, the same rule as for `pageExtensions` and `basePath`. A
   // registry built from a spread or an imported module is not statically extendable, and neither
@@ -148,6 +154,6 @@ function kindOf(modulePath) {
   if (modulePath === null) return null;
   const source = readIfPresent(modulePath);
   if (source === null) return null;
-  const literal = declaredLiteral(source, "kind", { anchor: "defineFlow(" });
+  const literal = declaredLiteral(source, "kind", callArgumentRegion(source, "defineFlow"));
   return literal === null || literal.unreadable !== undefined ? null : literal;
 }

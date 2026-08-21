@@ -1,23 +1,40 @@
 /**
- * The one source-scanning walker, shared by everything that reads a fact out of somebody else's
- * config without executing it.
+ * The one source-scanning reader — and it reads a **narrow, enumerated set of config shapes**,
+ * not whatever it finds.
  *
- * This existed twice — once in `next-project.mjs` for `pageExtensions`/`basePath`, once in
- * `fsdev-config.mjs` for `flows` — and both copies carried the same defect: they took the **first
- * textual match**, so a commented-out `// basePath: '/old'` or a helper `const example = { flows:
- * {} }` sitting above the real one won. One walker, one anchoring rule, one place to fix.
+ * > *"I'm fine on shrinking the claim for now. I still think having an agent do the work will be
+ * > the long term solution, this is used when we have simple enough projects to add to."*
+ * > — the owner, on this detector's scope
  *
- * **Comments are removed before anything is searched.** A value inside a comment is not a value;
- * matching one is reading source rather than reading a setting. Comment bodies are replaced with
- * spaces rather than deleted so every offset in the stripped text still lines up with the
- * original, which is what lets a caller report a line number.
+ * **The detector's job is simple projects.** A config past the accepted shapes is not a gap to
+ * close by parsing harder — it is out of scope by design, and the right response is to say so and
+ * hand the project to an agent or to the by-hand docs. Being turned away is cheap; being
+ * scaffolded into the wrong directory is not.
  *
- * **Ambiguity is reported, never resolved.** If a key is assigned more than once after comments
- * are gone, or the anchor a caller asked for is not unique, the answer is `unreadable`. That is
- * the same posture the rest of this module already takes toward a setting it cannot read
- * statically: refuse and say why, rather than pick one and be silently wrong.
+ * That inversion is what makes this surface finite. The earlier version tried to handle whatever
+ * it met and got it wrong in a new way each round — a commented-out setting, a helper object
+ * above the real call, a second live assignment, an unanchored read. Those are not four bugs;
+ * they are one open-ended promise. **A shape is `undetermined` unless it is on the list below.**
+ *
+ * ## The accepted shapes
+ *
+ * For a settings module (`next.config.*`), exactly one of:
+ *   1. `module.exports = { … }`  — a direct object literal
+ *   2. `export default { … }`    — a direct object literal
+ *   3. `const NAME = { … }` (with or without a TypeScript type annotation) followed by
+ *      `export default NAME` or `module.exports = NAME`
+ *
+ * For a call's options (`createFlowState({ … })`), exactly one of:
+ *   4. a single call in the file, given a direct object literal
+ *
+ * Within an accepted object, a setting's value is read only when it is a plain string literal or
+ * a plain array of string literals. Everything else — a function export, a wrapper call like
+ * `withMDX({…})`, a ternary, a spread, a computed value, two live assignments of one key — is
+ * `undetermined`, and the caller refuses with the reason attached.
+ *
+ * **Comments and string bodies are blanked before anything is searched**, so a value inside a
+ * comment or an unrelated string is never mistaken for an assignment.
  */
-
 /**
  * Blank out line and block comments — and, when `strings` is set, the insides of string and
  * template literals too. Length is preserved either way, so every offset still lines up with the
@@ -99,30 +116,129 @@ export function valueAt(source, start) {
 }
 
 /**
- * Every assignment of `key` in `source`, after comments and string bodies are blanked, optionally
- * restricted to the region after `anchor`'s single occurrence.
+ * The region of `source` that holds the exported settings object, or why it is not on the list.
  *
- * @returns `{ raw, line }` when exactly one assignment exists; `{ unreadable: <why> }` when none
- *   is anchorable or more than one is.
+ * This is the whitelist. It matches the three accepted module shapes and nothing else — so a
+ * config wrapped in `withMDX(...)`, exporting a function, or picking between objects at runtime is
+ * turned away by construction rather than parsed hopefully.
  */
-export function settingValue(source, key, { anchor = null } = {}) {
+export function exportedObjectRegion(source) {
   const code = blankNonCode(source);
 
-  let from = 0;
-  if (anchor !== null) {
-    const occurrences = [...code.matchAll(new RegExp(anchor.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"))];
-    if (occurrences.length === 0) return { unreadable: `no ${anchor} call found` };
-    // More than one anchor and we cannot say which object is the exported one. Reporting the
-    // first is how a helper defined above the real call came to win.
-    if (occurrences.length > 1) return { unreadable: `${occurrences.length} ${anchor} calls found` };
-    from = occurrences[0].index;
+  // Shapes 1 and 2: a direct object literal on the export.
+  const direct = /(?:module\s*\.\s*exports|export\s+default)\s*=?\s*\{/.exec(code);
+  if (direct !== null) {
+    const start = direct.index + direct[0].length - 1;
+    const end = matchingBrace(code, start);
+    if (end === -1) return { unreadable: "the exported object literal is not closed" };
+    // A second export of any kind means we cannot say which one runs.
+    const exports = [...code.matchAll(/(?:module\s*\.\s*exports|export\s+default)\s*=?/g)];
+    if (exports.length > 1) return { unreadable: `${exports.length} exports found; only one is readable` };
+    if (hasTopLevelSpread(code, start, end)) return { unreadable: "the exported object spreads in another value" };
+    return { start, end };
   }
 
+  // Shape 3: `const NAME = { … }` exported by name.
+  const named = /(?:module\s*\.\s*exports\s*=|export\s+default)\s+([A-Za-z_$][\w$]*)\s*;?/.exec(code);
+  if (named !== null) {
+    // A TypeScript type annotation sits between the name and the `=` —
+    // `const nextConfig: NextConfig = { … }` is what `create-next-app` emits for a TS project,
+    // so refusing it turns away the single most ordinary shape there is. Found by running the
+    // whitelist against real-world configs rather than against our own three.
+    const declaration = new RegExp(
+      `(?:const|let|var)\\s+${named[1]}\\s*(?::[^=]+)?=\\s*\\{`,
+    ).exec(code);
+    if (declaration === null) {
+      return { unreadable: `the exported value \`${named[1]}\` is not a plain object literal` };
+    }
+    const start = declaration.index + declaration[0].length - 1;
+    const end = matchingBrace(code, start);
+    if (end === -1) return { unreadable: "the exported object literal is not closed" };
+    if (hasTopLevelSpread(code, start, end)) return { unreadable: "the exported object spreads in another value" };
+    return { start, end };
+  }
+
+  return { unreadable: "no plain object export found" };
+}
+
+/**
+ * The region holding the object literal passed to the single `name(...)` call in `source`.
+ *
+ * More than one call, or an argument that is not a direct object literal, is `undetermined` — a
+ * helper defined above the real call is exactly how a live registry came to read as empty.
+ */
+export function callArgumentRegion(source, name) {
+  const code = blankNonCode(source);
+  const calls = [...code.matchAll(new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\(`, "g"))];
+  if (calls.length === 0) return { unreadable: `no ${name}(...) call found` };
+  if (calls.length > 1) return { unreadable: `${calls.length} ${name}(...) calls found; only one is readable` };
+
+  const afterParen = calls[0].index + calls[0][0].length;
+  const braceAt = code.slice(afterParen).search(/\S/);
+  if (braceAt === -1 || code[afterParen + braceAt] !== "{") {
+    return { unreadable: `${name}(...) is not given a plain object literal` };
+  }
+  const start = afterParen + braceAt;
+  const end = matchingBrace(code, start);
+  if (end === -1) return { unreadable: `the object given to ${name}(...) is not closed` };
+  if (hasTopLevelSpread(code, start, end)) {
+    return { unreadable: `the object given to ${name}(...) spreads in another value` };
+  }
+  return { start, end };
+}
+
+/**
+ * Does the object literal at `[start, end]` spread something in at its top level?
+ *
+ * A spread is accepted syntax and an unaccepted *shape*: `{ ...base, basePath: '/portal' }` reads
+ * cleanly and tells us nothing, because `base` can set any key — including the one we just read,
+ * if it appears after. The object being right there is what makes this worth checking rather than
+ * assuming; the earlier whitelist accepted it for exactly that reason.
+ */
+function hasTopLevelSpread(code, start, end) {
+  return splitTopLevel(code.slice(start + 1, end)).some((part) => part.startsWith("..."));
+}
+
+/** Index of the `}` closing the `{` at `open`, or -1. */
+function matchingBrace(code, open) {
+  let depth = 0;
+  for (let i = open; i < code.length; i++) {
+    if (code[i] === "{") depth++;
+    else if (code[i] === "}" && --depth === 0) return i;
+  }
+  return -1;
+}
+
+/**
+ * The value of `key` inside an **already-accepted region**, or why it cannot be read.
+ *
+ * `region` is required and has no default. That is the enforcement: a caller cannot read a
+ * setting without first having the shape accepted by {@link exportedObjectRegion} or
+ * {@link callArgumentRegion}, so "went through the shared entry point" and "applied the whole
+ * rule" are the same thing. Consolidating the duplicated walkers into this file did not achieve
+ * that by itself — the entry point still accepted an unanchored read, which is how an incomplete
+ * rule kept passing through it.
+ *
+ * @returns `{ raw, line }` for exactly one assignment, `{ raw: null }` when unassigned, or
+ *   `{ unreadable }` when the region is not on the list or the key is assigned more than once.
+ */
+export function settingValue(source, key, region) {
+  if (region === undefined || region === null) {
+    throw new Error(
+      `settingValue("${key}") was called with no region. Read the shape first with ` +
+        `exportedObjectRegion() or callArgumentRegion(); an unanchored read is how a ` +
+        `commented-out or helper value came to win.`,
+    );
+  }
+  if (region.unreadable !== undefined) return { unreadable: region.unreadable };
+
+  const code = blankNonCode(source);
+  const scope = code.slice(region.start, region.end + 1);
+
   const pattern = new RegExp(`(^|[\\s{,;(])${key}\\s*:\\s*`, "g");
-  pattern.lastIndex = from;
   const hits = [];
   let match;
-  while ((match = pattern.exec(code)) !== null) hits.push(match.index + match[0].length);
+  while ((match = pattern.exec(scope)) !== null) hits.push(region.start + match.index + match[0].length);
 
   if (hits.length === 0) return { raw: null, line: null };
   if (hits.length > 1) {
@@ -222,8 +338,8 @@ export function importMap(source) {
  *
  * @returns the literal, `null` when unassigned, or `{ unreadable }` when it cannot be resolved
  */
-export function declaredLiteral(source, key, { anchor = null } = {}) {
-  const hit = settingValue(source, key, { anchor });
+export function declaredLiteral(source, key, region) {
+  const hit = settingValue(source, key, region);
   if (hit.unreadable) return { unreadable: hit.unreadable };
   if (hit.raw === null) return null;
   const literal = plainString(hit.raw);

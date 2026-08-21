@@ -163,6 +163,58 @@ describe("pageExtensions and basePath come from the config Next would load", () 
   });
 });
 
+describe("the accepted config shapes are a whitelist, and everything else is handed off", () => {
+  const withConfig = (contents) =>
+    makeTree({
+      "package.json": nextManifest({ packageManager: "pnpm@9.0.0" }),
+      "app/page.tsx": page,
+      "next.config.js": contents,
+    });
+
+  it.each([
+    ["module.exports = { … }", "module.exports = { basePath: '/portal' }\n"],
+    ["export default { … }", "export default { basePath: '/portal' }\n"],
+    ["const NAME = { … }; export default NAME", "const cfg = { basePath: '/portal' }\nexport default cfg\n"],
+    ["const NAME = { … }; module.exports = NAME", "const cfg = { basePath: '/portal' }\nmodule.exports = cfg\n"],
+  ])("accepts %s", (_name, contents) => {
+    const report = buildReport(withConfig(contents));
+    expect(codes(report)).not.toContain("config-past-what-i-read");
+    expect(report.mount.path).toBe("/portal/api/flows");
+  });
+
+  it.each([
+    ["a wrapper call", "const withMDX = require('@next/mdx')()\nmodule.exports = withMDX({ basePath: '/portal' })\n"],
+    ["a function export", "module.exports = () => ({ basePath: '/portal' })\n"],
+    ["an async function export", "export default async function config() { return { basePath: '/x' } }\n"],
+    ["a runtime choice", "const a = { basePath: '/a' }\nconst b = { basePath: '/b' }\nmodule.exports = process.env.CI ? a : b\n"],
+    ["a spread", "module.exports = { ...base, basePath: '/portal' }\n"],
+    ["two exports", "export default { basePath: '/a' }\nmodule.exports = { basePath: '/b' }\n"],
+  ])("hands off %s, and says so in the developer's terms", (_name, contents) => {
+    // Out of scope by design: the detector is for simple projects, and a config past that is an
+    // agent's job. A spread is the interesting one — the object literal is right there, and it is
+    // still refused, because what it spreads in could set anything.
+    const report = buildReport(withConfig(contents));
+    const refusal = report.refusals.find((r) => r.code === "config-past-what-i-read");
+    expect(refusal, `${_name} should have been handed off`).toBeDefined();
+    expect(refusal.message).toContain("only reads a few simple config shapes on purpose");
+    expect(refusal.remediation).toContain("ask a coding agent");
+    expect(refusal.remediation).toContain("Nothing has been written");
+  });
+
+  it("still applies Next's documented default when there is no config at all", () => {
+    // The whitelist narrows what we READ, not what we accept as a project. No config is not an
+    // unreadable config.
+    const root = makeTree({
+      "package.json": nextManifest({ packageManager: "pnpm@9.0.0" }),
+      "app/page.tsx": page,
+    });
+    const report = buildReport(root);
+    expect(codes(report)).not.toContain("config-past-what-i-read");
+    expect(report.routeExtension.value).toBe("ts");
+    expect(report.mount.path).toBe("/api/flows");
+  });
+});
+
 describe("the route extension follows pageExtensions", () => {
   it("defaults to ts with no next.config", () => {
     const settings = resolveNextSettings(null);
@@ -196,7 +248,7 @@ describe("the route extension follows pageExtensions", () => {
       "next.config.js": "module.exports = { pageExtensions: buildExtensions() }\n",
     });
     const report = buildReport(root);
-    expect(codes(report)).toContain("page-extensions-unreadable");
+    expect(codes(report)).toContain("config-past-what-i-read");
     expect(report.routeExtension.readable).toBe(false);
   });
 });
@@ -270,7 +322,7 @@ describe("the mount URL carries basePath", () => {
       ].join("\n"),
     });
     const report = buildReport(root);
-    expect(codes(report)).toContain("base-path-unreadable");
+    expect(codes(report)).toContain("config-past-what-i-read");
     expect(report.mount.basePathReadable).toBe(false);
   });
 
@@ -280,7 +332,7 @@ describe("the mount URL carries basePath", () => {
       "app/page.tsx": page,
       "next.config.js": "module.exports = { basePath: `/${process.env.PREFIX}` }\n",
     });
-    expect(codes(buildReport(root))).toContain("base-path-unreadable");
+    expect(codes(buildReport(root))).toContain("config-past-what-i-read");
   });
 });
 
