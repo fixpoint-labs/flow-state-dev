@@ -465,7 +465,7 @@ re-run on every re-entry). For recovery, use `.rescue()`.
 
 Helpers shared across the framework. `cloneValue`, `deepMerge`, and `deepEqual` operate on the same JSON-serializable state trees and live here as the single canonical home — no per-package copies.
 
-> The pure, dependency-free helpers `deepEqual` / `looseDeepEqual`, `mapLimit`, and the string-case utilities (`camelToKebab`, `normalizeTagName`) now live in [`@flow-state-dev/contracts`](../contracts) and are re-exported from these same `@flow-state-dev/core/helpers` paths. Import them from `core` exactly as before; browser packages can value-import them from `contracts` without core's heavy runtime.
+> The pure, dependency-free helpers `deepEqual` / `looseDeepEqual`, `mapLimit`, `toError`, and the string-case utilities (`camelToKebab`, `normalizeTagName`) now live in [`@flow-state-dev/contracts`](../contracts) and are re-exported from these same `@flow-state-dev/core/helpers` paths. Import them from `core` exactly as before; browser packages can value-import them from `contracts` without core's heavy runtime.
 
 - **`cloneValue(value)`** — structural deep copy via the platform `structuredClone`, falling back to a JSON round-trip. Stores clone records on read/write so callers can't mutate stored state through a retained reference.
 - **`deepMerge(base, override)`** — recursive merge returning a new object. Scalars and arrays in `override` replace; nested plain objects merge; `base` is never mutated.
