@@ -133,6 +133,7 @@ async function seedRequest(
     id: string;
     flowKind: string;
     userId: string;
+    tenantId?: string;
     status?: RequestRecord["status"];
   }
 ): Promise<void> {
@@ -142,6 +143,7 @@ async function seedRequest(
     flowKind: init.flowKind,
     actionName: "run",
     userId: init.userId,
+    tenantId: init.tenantId,
     source: "http",
     status: init.status ?? "in_progress",
     startedAtMs: now,
@@ -362,6 +364,31 @@ describe("session creation ownership", () => {
 });
 
 describe("request-addressed routes", () => {
+  it("does not let the same user abort a request in another tenant", async () => {
+    const { router, stores } = buildRouter([secureFlow()]);
+    await seedRequest(stores, {
+      id: "r-tenant-b",
+      flowKind: "secure",
+      userId: "alice",
+      tenantId: "tenant-b"
+    });
+
+    const res = await call(
+      router,
+      "POST",
+      ["secure", "requests", "r-tenant-b", "abort"],
+      {
+        headers: {
+          "x-verified-user": "alice",
+          "x-tenant-id": "tenant-a"
+        }
+      }
+    );
+
+    expect(res.status).toBe(404);
+    expect((await stores.request.get("r-tenant-b"))?.abortRequested).not.toBe(true);
+  });
+
   it("denies aborting another user's in-flight request", async () => {
     const { router, stores } = buildRouter([secureFlow()]);
     await seedRequest(stores, { id: "r1", flowKind: "secure", userId: "alice" });

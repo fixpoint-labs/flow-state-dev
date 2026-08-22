@@ -95,6 +95,12 @@ The guard answers two questions per request:
    `403`. Authentication alone would only change *which* caller can read every
    user's data.
 
+Request-addressed routes also enforce the tenant boundary before checking the
+owner. The stored request record — or its active-request entry before
+persistence — must match the inbound `tenantId`. A cross-tenant match returns
+`404`, so equal `userId` values in different tenants never grant access to
+request control or inspection.
+
 Route subjects, and the owner each is checked against:
 
 | Subject | Routes | Owner |
@@ -131,12 +137,15 @@ The two halves are a pair: the rail says "configure a resolver before you
 expose this", and the guard is what makes configuring one protect the whole
 surface.
 
-### Two rules the guard depends on
+### Rules the guard depends on
 
 - **The governing flow comes from the stored record** (`session.flowKind`,
   `record.flowKind`), never the `:flowKind` path segment. Otherwise naming a
   flow with a permissive resolver would authenticate a request against a
   record belonging to a strict one (BP-031).
+- **Request records are tenant-bound before owner authorization.** Persisted
+  records and active-request fallbacks must match the inbound `tenantId`; a
+  mismatch is indistinguishable from an unknown request.
 - **No body is parsed at this layer.** A body is a single-use stream the route
   handler still needs, and deriving auth from caller-supplied body fields is
   what BP-031 exists to prevent. Resolvers read the `Request` — headers,
