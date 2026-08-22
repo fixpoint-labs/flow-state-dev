@@ -2,13 +2,16 @@
  * Per-request state container and scope state operation builder.
  *
  * The container is a same-request read-through cache over a scope's state.
- * `applyMutation` dispatches between two write paths:
+ * `applyMutation` dispatches between three write paths:
  *   - In-memory scopes (no `persist`) serialize through `withScopeLock`,
  *     commit `version + 1` directly, and never throw
  *     `ConcurrentModificationError`.
- *   - External-store scopes (`persist` defined) drive the classic
- *     `runWithCAS` retry loop. A successful or conflicting persist refreshes
- *     the container via `container.commit(state, version)`; CAS still owns
+ *   - Request-scope persist (`persist` + `serialize`) holds the same lock
+ *     across mutate and persist. One write, no retry budget. A persist
+ *     conflict is unexpected and throws `ConcurrentModificationError`.
+ *   - Session/user/org persist (`persist` without `serialize`) drives
+ *     `runWithCAS`. A successful or conflicting persist refreshes the
+ *     container via `container.commit(state, version)`; CAS still owns
  *     `ConcurrentModificationError` at the durable boundary.
  *
  * Each scope op also computes a `CASMutationHint` that describes its intent
@@ -25,6 +28,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import { deepEqual } from "@flow-state-dev/core/helpers";
 import {
+  ConcurrentModificationError,
   runWithCAS,
   isCommutativeHint,
   type CASMutationHint,
@@ -97,11 +101,20 @@ export type ScopeStateOpsOptions<TState extends object> = {
    */
   persist?: CASPersist<TState>;
   /**
+   * When true with `persist` set, mutators serialize through
+   * `withScopeLock` and persist once under that lock. Request scope uses
+   * this: the store write stays (crash recovery), but a wide same-process
+   * fan-out does not exhaust CAS retries. Session/user/org omit it and
+   * keep `runWithCAS`.
+   */
+  serialize?: boolean;
+  /**
    * Total budget for an in-memory mutation (queue wait + execution). Throws
    * `ScopeMutationTimeoutError` when exceeded. Defaults to the flow's
    * `request.mutationTimeoutMs` (resolved by `createExecutionContext`).
-   * Ignored when `persist` is set — external-store CAS uses its own retry
-   * semantics. Set to `Infinity` to disable.
+   * Ignored on the CAS persist path — `runWithCAS` uses its own retry
+   * semantics. Honored on the in-memory path and on `serialize` + persist.
+   * Set to `Infinity` to disable.
    */
   mutationTimeoutMs?: number;
 };
@@ -109,17 +122,20 @@ export type ScopeStateOpsOptions<TState extends object> = {
 /**
  * Apply a mutator to the container's state.
  *
- * Two-tier dispatch:
+ * Three-tier dispatch:
  * - When `persist` is undefined the scope is in-memory: `withScopeLock`
  *   serializes mutators per-container, the deep-equal short-circuit
  *   skips persist + version bump on no-op writes, and a successful
  *   commit bumps the version by one. No retries, no
  *   `ConcurrentModificationError`. The `hint` is ignored — there is no
  *   external store to route to.
- * - When `persist` is defined the scope is external-store backed:
- *   `runWithCAS` drives the optimistic load → mutate → persist cycle with
- *   exponential backoff. The `hint` is forwarded to the persist callback
- *   unchanged across retries (it describes user intent, not derived state).
+ * - When `persist` is defined and `serialize` is true (request scope):
+ *   the same lock covers mutate and persist. No CAS retry. A persist
+ *   conflict throws `ConcurrentModificationError`.
+ * - When `persist` is defined without `serialize`: `runWithCAS` drives
+ *   the optimistic load → mutate → persist cycle with exponential
+ *   backoff. The `hint` is forwarded to the persist callback unchanged
+ *   across retries (it describes user intent, not derived state).
  *   `ConcurrentModificationError` still surfaces on retry exhaustion
  *   because a remote authority can advance the version underneath us.
  */
@@ -148,6 +164,33 @@ async function applyMutation<TState extends object>(
         committed = true;
       },
       { timeoutMs: options?.mutationTimeoutMs }
+    );
+    return committed;
+  }
+
+  if (options?.serialize === true) {
+    let committed = false;
+    await withScopeLock(
+      container,
+      async () => {
+        const current = container.read();
+        const next = await mutator(current);
+        if (deepEqual(current, next)) return;
+
+        const result = await persist(next, container.getVersion(), hint);
+        if (!result.ok) {
+          if (result.currentState !== undefined) {
+            container.commit(result.currentState, result.currentVersion);
+          }
+          throw new ConcurrentModificationError(
+            "State update failed due to concurrent modifications",
+            1
+          );
+        }
+        container.commit(next, result.version);
+        committed = true;
+      },
+      { timeoutMs: options.mutationTimeoutMs }
     );
     return committed;
   }
