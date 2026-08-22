@@ -25,6 +25,15 @@
  * what carries the honesty instead, and the published rating is marked
  * unanchored from it. Check what the ABSENCE of a thing causes before withholding
  * it.
+ *
+ * AND THIS PARAGRAPH IS NOT THE MECHANISM. It named the trap and the call site
+ * one directory over fell into a variant of it anyway: `capability.ts` guarded
+ * the spine but not the envelope, so the withheld path threw a TypeError inside
+ * `formatRatingEnvelope` instead of degrading — killing the very rating this
+ * design exists to keep publishing. What actually holds the contract is
+ * `test/valuation-spine-capability.spec.ts`, which runs the SHIPPED capability
+ * preset against a withheld spine. Add a consumer of `envelope`, add an arm
+ * there; do not rely on a reader having read this.
  */
 import type { z } from "zod";
 import type {
@@ -50,7 +59,7 @@ type Cashflow = z.infer<typeof cashflowSchema>;
  *  each of them landed — the disclosure the report carries and the marker the
  *  run records. Null when the set IS coherent (the ordinary case). */
 export type PeriodDisclosure = {
-  reason: "settled-for-less-than-seen" | "periods-disagree";
+  reason: "settled-for-less-than-seen" | "periods-disagree" | "period-unstated";
   income: string | null;
   balance: string | null;
   cashflow: string | null;

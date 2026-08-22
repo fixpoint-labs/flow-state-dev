@@ -345,6 +345,142 @@ describe("a prospectus-recovered statement paired with a filings one", () => {
   });
 });
 
+/**
+ * A LEGACY RECORD: real figures, `periodEnd` null only because the row was
+ * stored before the key existed (`.nullable().default(null)` re-parses it that
+ * way). This is the population the guard exists for, and the shape a filter on
+ * the period alone could not tell apart from the unavailable path.
+ *
+ * Every fixture here is built with FULL FIGURES on purpose. A fixture built
+ * from unavailable statements passes with or without the fix and would certify
+ * the bug.
+ */
+describe("LEGACY RECORDS — populated statements with no stated period", () => {
+  describe("all three legacy", () => {
+    const { spine, valuation, periodDisclosure } = assembleSpine(
+      spineSet({ income: null, balance: null, cashflow: null }),
+    );
+
+    it("is REJECTED — it never established a shared period, so it cannot claim one", () => {
+      // The pre-fix build returned `coherent: true` here: with no periods to
+      // compare, the compatibility loop never executed at all.
+      expect(periodDisclosure?.reason).toBe("period-unstated");
+    });
+
+    it("withholds the cross-statement outputs and the spanning multiples", () => {
+      expect(spine.expectedReturn).toBeNull();
+      expect(spine.envelope).toBeNull();
+      expect(spine.evidenceBasis).toBe("thin");
+      expect(valuation.evToSales.value).toBeNull();
+      expect(valuation.roic.value).toBeNull();
+    });
+
+    it("keeps the single-statement figures — withhold is not 'blank the spine'", () => {
+      expect(valuation.priceToBook.value).not.toBeNull();
+      expect(valuation.earningsYield.value).not.toBeNull();
+    });
+
+    it("publishes the rating unanchored", () => {
+      expect(publishRating(spine, "Buy").ratingUnanchored).toBe(true);
+    });
+  });
+
+  describe("one legacy statement alongside two dated peers", () => {
+    // The subtler half: the two dated peers AGREE, so the old filter compared
+    // them, found them compatible, and declared the set coherent — while the
+    // legacy statement (from any year at all) was fed into the cross-statement
+    // valuations anyway.
+    const { spine, valuation, periodDisclosure } = assembleSpine(
+      spineSet({ income: ANCHOR, balance: null, cashflow: ANCHOR }),
+    );
+
+    it("is REJECTED even though the two dated statements agree", () => {
+      expect(periodDisclosure?.reason).toBe("period-unstated");
+    });
+
+    it("withholds the spanning figures the legacy statement would have entered", () => {
+      expect(spine.envelope).toBeNull();
+      expect(valuation.roic.value).toBeNull();
+      expect(valuation.netLeverage.value).toBeNull();
+    });
+
+    it("names the periods it did and did not have", () => {
+      expect(spine.periodDisclosure?.income).toBe(ANCHOR);
+      expect(spine.periodDisclosure?.balance).toBeNull();
+    });
+  });
+
+  describe("a FIGURELESS statement alongside two dated peers", () => {
+    // The control. Same missing period, no figures — genuinely unavailable, so
+    // it makes no claim and the set is still coherent. Without this arm a fix
+    // that simply withheld on every null period would pass everything above
+    // while withholding on every ordinary data-outage run.
+    const empty = {
+      source: "unavailable" as const,
+      ticker: "TEST",
+      asOf: "2026-05-06",
+      periodEnd: null,
+      totalAssets: null,
+      totalLiabilities: null,
+      totalEquity: null,
+      cashAndEquivalents: null,
+      totalDebt: null,
+      unit: "USD billions",
+    };
+    const fin = spineSet({ income: ANCHOR, balance: ANCHOR, cashflow: ANCHOR });
+
+    it("is ACCEPTED — no figures, so no claim to disagree with", () => {
+      const disclosure = statementSetDisclosure({
+        ...fin,
+        balanceSheet: empty,
+        balanceSheetPeriodObservation: OBS(null, null),
+      });
+      expect(disclosure).toBeNull();
+    });
+  });
+
+  describe("the analyst layer sees it too", () => {
+    it("detects a legacy statement from the analyst's own payloads", () => {
+      // The second valuation site computes BEFORE the spine exists, so a guard
+      // that only reached the spine would leave the live memo combining a
+      // legacy statement across periods.
+      expect(
+        analystStatementDisclosure({
+          incomeStatement: income(ANCHOR),
+          balanceSheet: balance(null),
+          cashflow: cashflow(ANCHOR),
+        })?.reason,
+      ).toBe("period-unstated");
+    });
+  });
+
+  describe("the disclosure a reader is shown", () => {
+    it("says the period could NOT BE ESTABLISHED, and does not claim a disagreement", () => {
+      // Printing "these do NOT describe the same fiscal period" here would be a
+      // second false claim: the desk never compared two known periods.
+      const text = formatPeriodMismatch({
+        reason: "period-unstated",
+        income: ANCHOR,
+        balance: null,
+        cashflow: ANCHOR,
+      });
+      expect(text).toContain("CANNOT ESTABLISH");
+      expect(text).toContain("no period stated");
+      expect(text).not.toContain("do NOT describe the same fiscal period");
+    });
+
+    it("still says DISAGREE on the outright-disagreement path", () => {
+      const text = formatPeriodMismatch({
+        reason: "periods-disagree",
+        income: ANCHOR,
+        balance: OLDER,
+        cashflow: ANCHOR,
+      });
+      expect(text).toContain("do NOT describe the same fiscal period");
+    });
+  });
+});
+
 describe("only one statement present", () => {
   it("has no cross-statement figure to withhold, so it is not a period mismatch", () => {
     // The envelope is absent for the ORDINARY reason here. Attributing that to

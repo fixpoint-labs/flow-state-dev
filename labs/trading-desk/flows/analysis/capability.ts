@@ -643,7 +643,18 @@ export const tradingDesk = defineCapability({
         },
         ratingEnvelope: (_input, ctx) => {
           const spine = ctx.resources.valuationSpine?.state;
-          if (!spine) return null;
+          // The ENVELOPE, not just the spine (FIX-1113). A spine that withheld
+          // its cross-statement outputs carries `envelope: null`, and
+          // `formatRatingEnvelope` dereferences its argument on the first line —
+          // so guarding only the spine throws for every generator that opted
+          // into this capability, BEFORE the portfolio manager can publish the
+          // unanchored rating the withholding path exists to preserve.
+          //
+          // Suppressing the tag loses no honesty: `<valuationSpine>` above
+          // renders its WITHHELD form and names the three periods. `ctx.resources`
+          // is `Record<string, any>` at this boundary, so nothing here is
+          // type-checked — the guard is the only mechanism.
+          if (!spine?.envelope) return null;
           return formatRatingEnvelope(spine.envelope);
         },
       },

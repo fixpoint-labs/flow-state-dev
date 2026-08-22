@@ -115,10 +115,17 @@ describe("consecutivePeriodPair", () => {
 
 // ---------------------------------------------------------------------------
 
+/** A statement that CARRIES FIGURES. Undated-with-figures is the legacy shape,
+ *  so `figureless: false` is the default here and the unavailable path is the
+ *  one that has to say so explicitly. */
 const OBS = (returned: string | null, observedNewest: string | null = null) => ({
   observedNewest,
   returned,
+  figureless: false,
 });
+
+/** The genuinely unavailable statement: no figures, hence no period. */
+const NO_FIGURES = { observedNewest: null, returned: null, figureless: true };
 
 describe("isCoherentStatementSet — detection, and it needs BOTH parts", () => {
   it("passes a set that agrees at one period", () => {
@@ -206,14 +213,65 @@ describe("isCoherentStatementSet — detection, and it needs BOTH parts", () => 
     expect(v.reason).toBeNull();
   });
 
-  it("does not compare a statement that declares no period at all", () => {
+  it("does not compare a FIGURELESS statement that declares no period at all", () => {
     // The unavailable path carries no figures and so no period. It has no claim
     // to disagree with; the other two still decide the set.
+    const v = isCoherentStatementSet({
+      income: OBS("2025-09-27", "2025-09-27"),
+      balance: NO_FIGURES,
+      cashflow: OBS("2025-09-27", "2025-09-27"),
+    });
+    expect(v.coherent).toBe(true);
+  });
+
+  it("REJECTS a POPULATED statement that declares no period — the legacy shape", () => {
+    // Same missing period as the case above, opposite verdict, and the pair is
+    // what pins the contract. This statement has real figures, so it enters the
+    // cross-statement valuations while its period is unknown — the set cannot be
+    // declared to share one. Filtering on the period alone could not tell these
+    // two apart, so it certified the legacy record as coherent.
     const v = isCoherentStatementSet({
       income: OBS("2025-09-27", "2025-09-27"),
       balance: OBS(null, null),
       cashflow: OBS("2025-09-27", "2025-09-27"),
     });
-    expect(v.coherent).toBe(true);
+    expect(v.coherent).toBe(false);
+    expect(v.reason).toBe("period-unstated");
+  });
+
+  it("REJECTS three populated statements that all declare no period", () => {
+    // The worst shape and the one the old filter was most obviously blind to:
+    // nothing to compare, so the loop never ran and the function returned
+    // `coherent: true` — declaring a shared fiscal period it never established.
+    const v = isCoherentStatementSet({
+      income: OBS(null, null),
+      balance: OBS(null, null),
+      cashflow: OBS(null, null),
+    });
+    expect(v.coherent).toBe(false);
+    expect(v.reason).toBe("period-unstated");
+  });
+
+  it("names outright DISAGREEMENT ahead of an unstated period", () => {
+    // Two dated statements that clash, plus a legacy third. Both findings are
+    // real; the disagreement is the more specific one and is what the reader
+    // can act on, so it wins the `reason`.
+    const v = isCoherentStatementSet({
+      income: OBS("2025-09-27", "2025-09-27"),
+      balance: OBS("2024-09-28", "2024-09-28"),
+      cashflow: OBS(null, null),
+    });
+    expect(v.coherent).toBe(false);
+    expect(v.reason).toBe("periods-disagree");
+  });
+
+  it("still reports UNIFORM STALENESS ahead of everything else", () => {
+    // Part (a) runs first and is unchanged by the figureless distinction.
+    const v = isCoherentStatementSet({
+      income: OBS("2024-09-28", "2025-09-27"),
+      balance: OBS(null, null),
+      cashflow: OBS("2024-09-28", "2024-09-28"),
+    });
+    expect(v.reason).toBe("settled-for-less-than-seen");
   });
 });

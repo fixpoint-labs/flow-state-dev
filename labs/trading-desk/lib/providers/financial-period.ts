@@ -154,12 +154,27 @@ export type PeriodObservation = {
   returned: string | null;
 };
 
+/**
+ * One statement as the SET-level check sees it: where its resolution landed,
+ * plus whether the payload carries any figures at all.
+ *
+ * `figureless` is REQUIRED rather than defaulted. The distinction it draws —
+ * "no figures, so no claim" versus "real figures at an unknown period" — is
+ * invisible in the period alone, and a default would let a caller skip the
+ * decision silently, which is the bug this field exists to close.
+ */
+export type StatementPeriodInput = PeriodObservation & {
+  /** True only for a genuinely unavailable statement: no figures returned.
+   *  A populated statement is NOT figureless even when it states no period. */
+  figureless: boolean;
+};
+
 export type StatementSetVerdict = {
   coherent: boolean;
   /** The periods the three statements settled on, for the disclosure. */
   periods: { income: string | null; balance: string | null; cashflow: string | null };
   /** Which half failed, so a reader is not left inferring it. */
-  reason: "settled-for-less-than-seen" | "periods-disagree" | null;
+  reason: "settled-for-less-than-seen" | "periods-disagree" | "period-unstated" | null;
 };
 
 /**
@@ -175,7 +190,9 @@ export type StatementSetVerdict = {
  *
  *   (a) No statement settled for less than it saw. Per-statement and local, so
  *       it survives the fan-out with no ordering discipline.
- *   (b) The three returned periods are mutually compatible.
+ *   (b) The three returned periods are mutually compatible, AND every statement
+ *       that carries figures actually states a period. An undated statement is
+ *       skipped only when it is figureless — see the comment on (b) below.
  *
  * (b) ALONE IS NOT ENOUGH, and simplifying to it is the live trap: "do the
  * three periods match" passes UNIFORM STALENESS — three statements that all
@@ -188,9 +205,9 @@ export type StatementSetVerdict = {
  * limit — closing it costs a provider request per statement per run.
  */
 export function isCoherentStatementSet(observations: {
-  income: PeriodObservation;
-  balance: PeriodObservation;
-  cashflow: PeriodObservation;
+  income: StatementPeriodInput;
+  balance: StatementPeriodInput;
+  cashflow: StatementPeriodInput;
 }): StatementSetVerdict {
   const periods = {
     income: observations.income.returned,
@@ -209,18 +226,44 @@ export function isCoherentStatementSet(observations: {
     }
   }
 
-  // (b) — mutual compatibility across the three returned periods. A statement
-  // with no period at all (the unavailable path) carries no claim to disagree
-  // with, so it is not compared.
-  const present = [periods.income, periods.balance, periods.cashflow].filter(
-    (p): p is string => p != null && p !== "",
-  );
+  // (b) — mutual compatibility across the three returned periods.
+  //
+  // AN UNDATED STATEMENT IS ONLY SAFE TO SKIP WHEN IT CARRIES NO FIGURES.
+  // The genuinely unavailable path returns no figures and so makes no claim to
+  // disagree with. A statement carrying REAL FIGURES but stating no period is
+  // the opposite case: it still enters the cross-statement valuations, while
+  // its period is unknown — so the set cannot be declared to share one.
+  //
+  // LEGACY RECORDS ARE EXACTLY THAT CASE, and they are the population this
+  // guard exists for. `periodEnd` is `.nullable().default(null)`, so a
+  // statement stored before the key existed re-parses with real figures and a
+  // null period. Filtering on the period alone made the check UNABLE TO FAIL on
+  // them: three legacy statements left the compared list empty, the loop never
+  // ran, and the function returned `coherent: true` — declaring a shared fiscal
+  // period it had never established.
+  const present: string[] = [];
+  let undatedWithFigures = false;
+  for (const o of [observations.income, observations.balance, observations.cashflow]) {
+    const period = o.returned != null && o.returned !== "" ? o.returned : null;
+    if (period == null) {
+      if (!o.figureless) undatedWithFigures = true;
+      continue;
+    }
+    present.push(period);
+  }
+
+  // Outright disagreement is decided FIRST: it is the more specific finding,
+  // and it lets the disclosure name the two years that actually clashed.
   for (let i = 0; i < present.length; i++) {
     for (let j = i + 1; j < present.length; j++) {
       if (!samePeriod(present[i], present[j])) {
         return { coherent: false, periods, reason: "periods-disagree" };
       }
     }
+  }
+
+  if (undatedWithFigures) {
+    return { coherent: false, periods, reason: "period-unstated" };
   }
 
   return { coherent: true, periods, reason: null };

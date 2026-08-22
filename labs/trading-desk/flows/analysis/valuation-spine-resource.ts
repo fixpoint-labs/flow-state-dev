@@ -83,7 +83,7 @@ const ratingEnvelopeSchema = z.object({
  *  presence is the run marker that makes "how often does this fire" answerable
  *  from ordinary runs. */
 const periodDisclosureSchema = z.object({
-  reason: z.enum(["settled-for-less-than-seen", "periods-disagree"]),
+  reason: z.enum(["settled-for-less-than-seen", "periods-disagree", "period-unstated"]),
   income: z.string().nullable(),
   balance: z.string().nullable(),
   cashflow: z.string().nullable(),

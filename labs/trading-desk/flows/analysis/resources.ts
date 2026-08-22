@@ -385,7 +385,7 @@ export const memoStateSchema = z.object({
   ratingUnanchored: z.boolean().nullable().default(null),
   periodDisclosure: z
     .object({
-      reason: z.enum(["settled-for-less-than-seen", "periods-disagree"]),
+      reason: z.enum(["settled-for-less-than-seen", "periods-disagree", "period-unstated"]),
       income: z.string().nullable(),
       balance: z.string().nullable(),
       cashflow: z.string().nullable(),

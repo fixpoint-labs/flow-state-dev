@@ -24,6 +24,7 @@ import type { FinancialsDataState } from "../financials-data-resource";
 import {
   isCoherentStatementSet,
   type PeriodObservation,
+  type StatementPeriodInput,
 } from "@/lib/providers/financial-period";
 import type { PeriodDisclosure } from "./valuation-spine";
 
@@ -38,13 +39,44 @@ function declared(payload: PeriodBearing): string | null {
   return typeof end === "string" && end !== "" ? end : null;
 }
 
+/**
+ * Keys every statement payload carries whether or not the provider returned any
+ * figures. Everything else on the object is a figure.
+ *
+ * Listed as METADATA rather than listing the figures, because the three
+ * statements have different figure names and this adapter is generic over all
+ * three. The failure direction is deliberate: a future metadata key that is
+ * NUMERIC and unlisted would read as a figure, making an empty statement look
+ * populated — which withholds. Wrong in the safe direction. Listing figures
+ * instead would fail the other way, silently skipping a statement whose new
+ * figure key nobody added.
+ */
+const STATEMENT_METADATA_KEYS = new Set(["source", "ticker", "asOf", "periodEnd", "unit"]);
+
+/**
+ * True when the payload carries no figures at all — the genuinely unavailable
+ * statement, which is the ONLY undated statement safe to leave out of the
+ * mutual-compatibility check.
+ *
+ * A statement with real figures and a null `periodEnd` (a record stored before
+ * `periodEnd` existed) is NOT figureless, and must not be treated as one.
+ */
+function figureless(payload: PeriodBearing): boolean {
+  if (payload == null || typeof payload !== "object") return true;
+  return !Object.entries(payload).some(
+    ([key, value]) =>
+      !STATEMENT_METADATA_KEYS.has(key) && typeof value === "number" && Number.isFinite(value),
+  );
+}
+
 function observationFor(
   payload: PeriodBearing,
   recorded: PeriodObservation | undefined,
-): PeriodObservation {
+): StatementPeriodInput {
   return {
     observedNewest: recorded?.observedNewest ?? null,
     returned: recorded?.returned ?? declared(payload),
+    figureless: figureless(payload),
   };
 }
 
@@ -120,9 +152,19 @@ export function analystStatementDisclosure(payloads: {
  */
 export function formatPeriodMismatch(disclosure: PeriodDisclosure | null): string {
   if (disclosure == null) return "";
+  // THE LEAD SENTENCE TRACKS THE REASON, because the two are different claims.
+  // "these disagree" asserts the desk compared two known periods and found them
+  // different. On the `period-unstated` path it did not: a statement carries
+  // figures and states no period, so what the desk knows is that it CANNOT tell.
+  // Printing the disagreement sentence there would be its own false claim —
+  // the exact defect this guard exists to stop.
+  const lead =
+    disclosure.reason === "period-unstated"
+      ? "The desk CANNOT ESTABLISH that the three financial statements below describe the same fiscal period — at least one carries figures but states no period:"
+      : "The three financial statements below do NOT describe the same fiscal period:";
   return [
     "<periodMismatch>",
-    "The three financial statements below do NOT describe the same fiscal period:",
+    lead,
     `  income statement: ${disclosure.income ?? "no period stated"}`,
     `  balance sheet:    ${disclosure.balance ?? "no period stated"}`,
     `  cash flow:        ${disclosure.cashflow ?? "no period stated"}`,

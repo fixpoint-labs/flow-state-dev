@@ -42,7 +42,7 @@ export const decisionSnapshotStateSchema = z.object({
   /** The three periods, for a reader who asks WHICH years disagreed. */
   periodDisclosure: z
     .object({
-      reason: z.enum(["settled-for-less-than-seen", "periods-disagree"]),
+      reason: z.enum(["settled-for-less-than-seen", "periods-disagree", "period-unstated"]),
       income: z.string().nullable(),
       balance: z.string().nullable(),
       cashflow: z.string().nullable(),
