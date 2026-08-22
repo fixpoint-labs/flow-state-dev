@@ -74,7 +74,7 @@ You get a line on stderr at each dispatch that loses the override:
 
 On `fsdev run`, `--seed-session` lets you start with specific session state for debugging. Pass inline JSON or a file path. The seeded fields are merged into session state before execution. Handy for reproducing issues that depend on prior session state.
 
-Session is the only scope you can seed. `--seed-user` and `--seed-org` still appear in `--help` and are accepted without error, but they seed nothing — the values are recorded in the `--capture` payload and otherwise ignored. They are being removed; don't reach for them.
+Session is the only scope you can seed.
 
 ## Background work
 
