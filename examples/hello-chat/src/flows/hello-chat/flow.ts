@@ -58,20 +58,19 @@ const chatGenerator = generator({
 const incrementMessageCount = handler({
   name: "increment-message-count",
   inputSchema: z.string(),
-  outputSchema: z.string(),
   sessionStateSchema: z.object({ messageCount: z.number().default(0) }),
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     const count = ctx.session.state.messageCount ?? 0;
     await ctx.session.patchState({ messageCount: count + 1 });
-    return input;
   },
 });
 
-// Pipeline: generator → counter. The sequencer pipes the generator's
-// text output directly into the handler's input.
+// Pipeline: generator → counter. `.tap()` runs the counter for its state
+// change only — the generator's text stays the pipeline's output, and the
+// counter contributes no item of its own.
 const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema: chatInputSchema })
   .step(chatGenerator)
-  .step(incrementMessageCount);
+  .tap(incrementMessageCount);
 
 // Flow definition: one action ("chat"), session-scoped state.
 // userMessage extracts the display text from the action input so the
