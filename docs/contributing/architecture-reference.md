@@ -154,7 +154,7 @@ Purposes and default models live in the catalog — don't restate them here.
 - Each `clientData` compute function receives only its own scope's state and resources (single-scope context)
 - Generator context uses `contextFn()` for typed scope access, not raw state dumps
 - `defineResource()` for portable resource declarations
-- Blocks declare resources via `sessionResources`, `userResources`, `projectResources` (using `defineResource()` values)
+- Blocks declare resources via `sessionResources`, `userResources`, `orgResources` (using `defineResource()` values)
 - Sequencers collect `declaredResources` from all child blocks automatically
 - `defineFlow` merges block-declared resources into flow scope configs; flow-level wins over block-level
 - Same `defineResource()` reference across blocks = no conflict; different references for same name = build-time error

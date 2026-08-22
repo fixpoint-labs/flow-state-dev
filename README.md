@@ -55,7 +55,7 @@ Any block or sequence of blocks can be used as a tool. A single tool call can tr
 
 **Resumable streaming out of the box.** Items stream over SSE as blocks execute. Disconnect mid-response? Reconnect with a sequence cursor and pick up exactly where you left off. No data loss. No duplicate events.
 
-**Resources: hybrid memory and filesystem.** Each resource combines rich text content with structured atomic state — like files that carry metadata. An artifact can hold a document's full text alongside its title, tags, and timestamps. Scoped to sessions, users, or projects. Projections derive client-safe views from state and resources, giving the frontend exactly the shape it needs without manual data wiring.
+**Resources: hybrid memory and filesystem.** Each resource combines rich text content with structured atomic state — like files that carry metadata. An artifact can hold a document's full text alongside its title, tags, and timestamps. Scoped to sessions, users, or orgs. Projections derive client-safe views from state and resources, giving the frontend exactly the shape it needs without manual data wiring.
 
 **First-class error handling.** Retry policies per block. Type-based rescue routing. Non-aborting work queues for side-chain operations. Normalized error model with codes, scopes, and retry signals.
 
