@@ -1,9 +1,7 @@
 /**
- * React context provider and legacy singleton for shared flow defaults.
+ * React context provider for shared flow defaults.
  *
- * Canonical app usage: wrap your tree in `<FlowProvider>`.
- * Legacy/non-React usage: `setFlowContext()` / `getFlowContext()` still work
- * but are non-canonical and unsafe for SSR/concurrent rendering.
+ * Wrap your tree in `<FlowProvider>` and read defaults with `useFlowContext()`.
  */
 import {
   createContext,
@@ -108,42 +106,4 @@ export function FlowProvider(props: FlowProviderProps): ReactNode {
  */
 export function useFlowContext(): FlowContextValue {
   return useContext(FlowCtx);
-}
-
-// ---------------------------------------------------------------------------
-// Legacy module-singleton API (deprecated, non-canonical for app usage)
-// ---------------------------------------------------------------------------
-
-let currentFlowContext: FlowContextValue = {};
-
-/**
- * @deprecated Use `<FlowProvider>` instead. Module-singleton context is unsafe
- * for SSR and concurrent rendering.
- */
-export function setFlowContext(value: FlowContextValue): void {
-  currentFlowContext = { ...value };
-}
-
-/**
- * @deprecated Use `useFlowContext()` inside a `<FlowProvider>` tree instead.
- */
-export function getFlowContext(): FlowContextValue {
-  return { ...currentFlowContext };
-}
-
-/**
- * @deprecated Use `<FlowProvider>` instead.
- */
-export function withFlowContext<TValue>(
-  value: FlowContextValue,
-  run: () => TValue
-): TValue {
-  const previous = currentFlowContext;
-  currentFlowContext = { ...value };
-
-  try {
-    return run();
-  } finally {
-    currentFlowContext = previous;
-  }
 }

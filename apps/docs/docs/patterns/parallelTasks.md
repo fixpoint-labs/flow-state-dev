@@ -100,8 +100,8 @@ parallelTasks({
   synthesizer?: BlockDefinition;
 
   // How to handle individual sub-task failures:
-  //   "skip"  — exclude failed sub-tasks from synthesis (default)
-  //   "fail"  — abort the entire coordination on any failure
+  //   "skip" — exclude failed sub-tasks from synthesis (default)
+  //   "fail" — abort the entire coordination on any failure
   onSubTaskError?: "skip" | "fail";
 
   // Output schema for the synthesized result.
@@ -134,7 +134,7 @@ import {
 
 import type {
   ParallelTasksConfig,
-  SubTaskErrorStrategy,  // use "skip" or "fail"
+  SubTaskErrorStrategy,  // "skip" | "fail"
 } from "@flow-state-dev/patterns";
 ```
 
@@ -190,7 +190,33 @@ By default (`onSubTaskError: "skip"`), failed sub-tasks are excluded from the sy
 
 With `onSubTaskError: "fail"`, any sub-task failure throws and aborts the entire coordination.
 
-Use `"skip"` or `"fail"`. A config that sets `onSubTaskError: "retry"` keeps running: the block logs a warning when it is constructed and falls back to `"skip"`. Retries are configured separately. Bound them with `maxTotalRetries`, or set `maxAttempts` on each planned task.
+Use `"skip"` or `"fail"`. A config that sets `onSubTaskError: "retry"` keeps running: the block logs a warning when it is constructed and falls back to `"skip"`. Retries are configured separately, per sub-task rather than per block.
+
+### Retrying a failed sub-task
+
+`onSubTaskError` decides what happens once a sub-task has run out of attempts. The retries themselves come from the task board underneath, and they are set per sub-task rather than per block.
+
+Give sub-tasks a retry budget by having a [custom planner](#custom-planner) put `maxAttempts` on each task it emits. When a sub-task that still has attempts left fails, the board re-queues it and hands the error back to the worker as `feedback`, so the next attempt can see what went wrong:
+
+```ts
+const retryingPlanner = generator({
+  name: "retrying-planner",
+  outputSchema: z.object({
+    tasks: z.array(z.object({ goal: z.string(), maxAttempts: z.number() })),
+  }),
+  prompt: "Break the goal into sub-tasks. Give each one maxAttempts: 3.",
+  user: (input) => input.goal,
+});
+
+const researchBlock = parallelTasks({
+  name: "research",
+  worker: researchWorker,
+  planner: retryingPlanner,
+  maxTotalRetries: 20,
+});
+```
+
+`maxTotalRetries` bounds how many retries the whole board may authorize across every sub-task. It defaults to 50, and `0` means each sub-task runs exactly once. Full semantics are in [Bounding the retries](../orchestration/task-board#bounding-the-retries).
 
 ## Composability
 

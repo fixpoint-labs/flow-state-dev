@@ -241,7 +241,6 @@ defineFlow({
   tools: {
     defaults: {
       timeoutMs: 30000,
-      concurrency: "parallel",
       retry: { maxAttempts: 2 },
     },
     onToolStarted: (event, ctx) => { /* ... */ },

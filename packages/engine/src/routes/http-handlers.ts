@@ -136,8 +136,6 @@ export type CreateFlowRouteHandlersOptions = {
    * buffering). See {@link RuntimeConfig}.
    */
   runtimeConfig: RuntimeConfig;
-  maxConcurrentStreams?: number;
-  staleStreamTtlMs?: number;
   onError?: (error: Error, context: { method: string; path: string }) => void;
   /**
    * Host-level fallback resolver. Per-flow `authentication.resolvePrincipal`
@@ -225,13 +223,6 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     debugAllowAnonymousLocal: options.debugAllowAnonymousLocal,
     debugCountLimit: options.debugCountLimit
   });
-  // FIX-569: the legacy active-streams registry (and its `maxConcurrentStreams`
-  // / `staleStreamTtlMs` knobs) is gone. Live tail is owned by the store
-  // interface; long-running flows are no longer at risk of registry eviction.
-  // The options remain on `CreateFlowRouteHandlersOptions` for source-compat
-  // but have no effect.
-  void options.maxConcurrentStreams;
-  void options.staleStreamTtlMs;
   const seams = options.internalSeams ?? NOOP_INTERNAL_ROUTE_SEAMS;
 
   // Resolve the host-level SSE heartbeat default once, then thread the

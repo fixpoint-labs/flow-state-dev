@@ -17,7 +17,7 @@ import type {
   ResourceCollectionRef,
 } from "@flow-state-dev/core/types";
 import type { SkillState } from "@flow-state-dev/core";
-import { getCollection } from "./internal/get-collection";
+import { resolveResourceCollection } from "../tasks";
 import {
   skillActivatorStateSchema,
   matchedSkillSchema,
@@ -101,7 +101,7 @@ export function createSkillClassifierSequencer(opts: SkillClassifierOptions) {
     outputSchema: skillClassifierOutputSchema,
     itemVisibility: { client: false, history: false },
     prompt: async (_input, ctx) => {
-      const collection = getCollection(ctx, opts.collectionKey);
+      const collection = resolveResourceCollection(ctx, opts.collectionKey);
       const skills = await listSkillsForPrompt(collection, cap, allowedSet);
       if (skills.length === 0) {
         return [
@@ -131,7 +131,7 @@ export function createSkillClassifierSequencer(opts: SkillClassifierOptions) {
     outputSchema: z.object({ accepted: z.boolean() }),
     sequencerStateSchema: skillActivatorStateSchema,
     execute: async (input, ctx) => {
-      const collection = getCollection(ctx, opts.collectionKey);
+      const collection = resolveResourceCollection(ctx, opts.collectionKey);
       const validNames = new Set<string>();
       if (collection) {
         for (const ref of await collection.list()) {

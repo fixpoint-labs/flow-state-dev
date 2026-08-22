@@ -81,7 +81,7 @@ fsdev run support-triage triageTicket -i '{"ticketId": "T1"}' \
   --seed-session '{"openTicketCount": 3}'
 ```
 
-`--seed-session` accepts inline JSON or a file path. Use it when you want a known session state before the action runs.
+`--seed-session` accepts inline JSON or a file path. Use it when you want a known session state before the action runs — simulating a scenario like "the session already has 5 messages."
 
 ### Intent overrides in CI and testing
 
