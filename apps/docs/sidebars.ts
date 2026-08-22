@@ -153,12 +153,18 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: "category",
-          label: "fsdev",
+          label: "Dev tools",
           items: [
-            "cli/overview",
-            "cli/configuration",
-            "cli/agent-dev-loop",
-            "cli/interactive-chat",
+            {
+              type: "category",
+              label: "CLI",
+              items: [
+                "cli/overview",
+                "cli/configuration",
+                "cli/agent-dev-loop",
+                "cli/interactive-chat",
+              ],
+            },
             {
               type: "category",
               label: "DevTool",

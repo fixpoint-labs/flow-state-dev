@@ -1,12 +1,12 @@
 ---
 sidebar_position: 1
-title: fsdev
+title: CLI
 sidebar_label: Overview
 ---
 
-# fsdev
+# CLI
 
-`fsdev` is the terminal interface to the engine. Install `@flow-state-dev/fsdev` and you can run a flow, isolate a block, hold a chat, or start the DevTool, without standing up a Next.js app first.
+The CLI is how you run the engine from the terminal. The command is `fsdev`. Install `@flow-state-dev/fsdev` and you can run a flow, isolate a block, hold a chat, or start the DevTool, without standing up a Next.js app first.
 
 ## Commands
 
@@ -20,7 +20,7 @@ sidebar_label: Overview
 | `fsdev benchmark <file>` | Score a `defineBenchmark` file. |
 | `fsdev ui add <name>` | Install a component from the UI registry. |
 
-Flags, NDJSON events, and exit codes live in the [fsdev API](/docs/api/cli).
+Flags, NDJSON events, and exit codes live in the [CLI API](/docs/api/cli).
 
 `run`, `block`, and `chat` call the engine in-process: no HTTP server, no SSE, no network. `dev` and `serve` start a host. See [Engine setup](/docs/server/setup) and [Deployment](/guides/deployment).
 
@@ -135,5 +135,5 @@ Shutdown treats it as in-process work, so the process waits for it the way it wa
 
 - [Agent Dev Loop](./agent-dev-loop.md) — The recommended edit → `fsdev run` → read NDJSON loop, with worked examples and `jq` recipes. If you're iterating on a flow, start here.
 - [Interactive Chat](./interactive-chat.md) — Hold a live, multi-turn session over your flows with `fsdev chat`.
-- [fsdev API](/docs/api/cli) — Full command reference, NDJSON event types, programmatic API, exit codes.
+- [CLI API](/docs/api/cli) — Full command reference, NDJSON event types, programmatic API, exit codes.
 - [Development Tips](/guides/development-tips) — Workflow patterns for using the CLI in daily development.

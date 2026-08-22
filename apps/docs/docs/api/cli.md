@@ -1,10 +1,10 @@
 ---
 sidebar_position: 6
-title: fsdev API
-sidebar_label: fsdev
+title: CLI API
+sidebar_label: CLI
 ---
 
-# fsdev API
+# CLI API
 
 `@flow-state-dev/fsdev` — Terminal interface for running flows, executing blocks, and inspecting definitions.
 

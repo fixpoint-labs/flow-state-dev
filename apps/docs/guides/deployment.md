@@ -93,7 +93,7 @@ If your app already default-exports a FlowState from a committed `fsdev.config.*
 PORT=3000 fsdev serve
 ```
 
-See the [fsdev API](/docs/api/cli) for the full flag set and guard behavior, and [Host adapters](/docs/server/host-adapters) for the `serve()` wrapper underneath.
+See the [CLI API](/docs/api/cli) for the full flag set and guard behavior, and [Host adapters](/docs/server/host-adapters) for the `serve()` wrapper underneath.
 
 ## Keeping the process alive (pm2 / systemd)
 

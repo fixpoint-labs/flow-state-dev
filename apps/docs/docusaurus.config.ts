@@ -143,7 +143,7 @@ const config: Config = {
               to: "/guides/building-a-chat-app",
             },
             { label: "Engine setup", to: "/docs/server/setup" },
-            { label: "fsdev", to: "/docs/cli/overview" },
+            { label: "Dev tools", to: "/docs/cli/overview" },
           ],
         },
         {
