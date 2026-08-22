@@ -10,25 +10,39 @@ finding out.
 **Objective.** Remove the lying surfaces this epic names, and leave the rest of the
 framework alone. A developer who hits one of these particular traps today stops hitting it.
 
-**What "landed" means — one criterion, not one per cut kind.** Every removal in §4's member
-set takes away **nothing a consumer could have been relying on to work**, by one of three
-routes: the capability still exists under its canonical name, or there was never a working
-capability behind that name, or nothing outside this repo could reach it. Phrasing it as
-"was not doing its job" would already be too narrow — an internal duplicate *was* doing its
-job; what makes it removable is that its contract-identical twin survives.
+**What "landed" means — one criterion, two routes.** Every removal in §4's member set takes
+one of these two, and which one it takes is the thing being approved:
 
-Where a removal nevertheless changes something observable — FIX-1210's seed flags drop two
-keys from `--capture` output — the changeset enumerates it rather than leaving a consumer to
-find out.
+- **Nothing is lost.** Nothing outside this repo could reach it, or a contract-identical twin
+  survives, or the name never delivered the capability it advertised. There is nobody to
+  migrate and nothing to announce beyond the changeset.
+- **Something that works today stops working at that name**, with a named successor and the
+  change disclosed in a changeset. This is a **migration**, and it is not incidental: it is
+  four of the cuts, across three PRs — the superseded aliases and compat shims (#1390, imports
+  resolve today), `FSDEV_DEBUG_ITEMS` (#1390, a live fallback today at
+  `trace-observability.ts:24`, silently inert after), the org-store rename (#1389,
+  `createFilesystemProjectStore` works today), and scope-config `clientData` (#1391, which
+  warns and normalizes today at `defineFlow.ts:86` and throws at `defineFlow` after).
 
-**Earlier drafts wrote this per-cut and were false for at least one category every time.**
-"Every option removed was unread" is true of dead knobs and false of lying knobs, which are
-read — into a report of themselves. "Every name dropped has a canonical replacement" is true
-of aliases and renames and false of internal deletions, which deliberately have none:
-requiring a successor for an unreachable internal symbol would be the unused-export sweep
-this epic refuses. The gate below admits six categories that reach the criterion by different
-routes, so **a success criterion that names a specific cut kind has narrowed too far.** That
-is the tell, and it is the failure this section kept repeating.
+**So this epic is a cleanup *plus* a migration, and saying only the first half would be a
+lying surface on the sign-off page of the epic against lying surfaces.** An earlier draft
+promised that every removal took away nothing anyone could have relied on to work. Reaching
+for a single criterion above all six cut kinds, it landed on one that is false for those four
+— aliases resolve, the old store factories construct, `clientData` normalizes, the env var is
+read. What you are approving is both halves: the cleanup costs nobody anything, and the
+migration costs any out-of-repo consumer a minor version bump and a named, documented change.
+That price is what theme 5 already calls a pre-1.0 minor.
+
+Where a removal on *either* route changes something observable — FIX-1210's seed flags drop
+two keys from `--capture` output — the changeset enumerates it rather than leaving a consumer
+to find out.
+
+**The tell that a criterion has narrowed too far** is that it states something true of one cut
+*kind*: "every option removed was unread" is true of dead knobs and false of lying knobs,
+which are read, into a report of themselves; "every name dropped has a canonical replacement"
+is true of aliases and renames and false of internal deletions, which deliberately have none.
+Naming which cuts migrate is **not** that failure — it is the scope of the second route, and
+it stays enumerated because the owner is approving exactly that.
 
 **What this deliberately does not promise.** Not that the framework as a whole has no lying
 surface. An earlier draft said exactly that, and it was a promise nine merged PRs cannot
@@ -71,7 +85,7 @@ So the bar depends on what is being cut:
 
 | Cutting | The evidence that counts |
 |---|---|
-| **Public surface** (reachable from a package's `src/index.ts` or its `exports` map) | A **named successor with an equivalent contract**. A grep is not sufficient and never was. If you cannot name what replaces it, it is not a leftover. A **rename** satisfies this by shipping its successor in the same change — the test there is that the contract is identical and the new name is exported before the old one goes, not that the new name predates the PR. **One exception, and only one:** a public **lying knob** has no successor because it never delivered a capability — the row below governs it instead, and its enumeration requirement is what protects the consumer in place of a successor. That exception is available to lying knobs and to nothing else |
+| **Public surface** (reachable from a package's `src/index.ts` or its `exports` map) | A **named successor with an equivalent contract**. A grep is not sufficient and never was. If you cannot name what replaces it, it is not a leftover. A **rename** satisfies this by shipping its successor in the same change — the test there is that the contract is identical and the new name is exported before the old one goes, not that the new name predates the PR. **One exception, and it turns on what is true of the thing, not on which label it carries:** a public name needs no successor when it **never delivered a capability** — whether nothing ever read it (a dead knob) or it was read only into a report of itself (a lying knob). There is nothing for a successor to replace. Where such a removal still changes something observable, the enumeration requirement in the lying-knob row applies to it too. This reaches **nothing that works**: an alias, a shim, or a rename whose old name does today what it says is a migration, and a migration names its successor |
 | **A dead knob** | The **read that does not exist** — the option is declared and destructured, and no code consumes it |
 | **A lying knob** | **Two things, both required.** First, the **promise it breaks**: the surface text that advertises it — help string, JSDoc, docs page — set against the code path showing it never does that. Second, **every observable surface the removal changes**, enumerated and disclosed in the changeset. Deliberately a higher bar than the dead knob's, because a read *does* exist: something downstream may be consuming the echo even though nothing consumes the intent, and the enumeration is what makes that visible instead of assumed |
 | **Internal surface** (not reachable from any package entry) | A repo-wide grep with **zero** referents, plus the check that it is absent from the entry and the `exports` map |
@@ -408,8 +422,12 @@ still open on individual PRs is review feedback, and it lives on those PRs, not 
   FIX-1210's `--seed-user` / `--seed-org` — public CLI names that go with no successor at all.
   They do not need one: they never seeded anything, so there is no capability to replace, and
   what a consumer actually loses is two keys in `--capture` output, which #1387's changeset
-  enumerates. The recommendation holds on the honest version of the claim — **nobody loses
-  something that worked** — which covers both routes where the successor rule alone did not.
+  enumerates. "Nobody loses something that worked" was the next draft's fix and is false in the
+  other direction — the aliases and the rename *do* work today, which is the whole reason this
+  question is a sign-off rather than a formality. The honest claim is: **nobody loses a
+  capability.** Either the name has a successor with an equivalent contract, or it never
+  delivered one. Some consumers will have to change an import; none will lose something they
+  can no longer do.
 
   **What would change the recommendation:** evidence that a specific removed name has real
   external users — a support thread, an issue, a known integrator on it. We have no telemetry
@@ -783,3 +801,32 @@ still open on individual PRs is review feedback, and it lives on those PRs, not 
   change what the product owner decides get folded; wording, shape and consistency findings are
   noted and skipped. This document is a coordination artifact that never merges, and the ten
   sub-PRs are what ship.
+- **The universal success criterion was false, and is now one criterion with two routes.** The
+  previous round replaced a set of per-cut-kind criteria with a single one — every removal takes
+  away nothing a consumer could have relied on to work — and over-corrected. Reaching for a
+  claim above all six cut kinds landed on one that is false for four of the cuts: the superseded
+  aliases and shims resolve today, `FSDEV_DEBUG_ITEMS` is read today at
+  `trace-observability.ts:24`, `createFilesystemProjectStore` constructs today, and
+  scope-config `clientData` warns and normalizes today at `defineFlow.ts:86`. All four stop
+  working. That is a **migration**, and three PRs carry one.
+  The criterion now admits two routes — nothing is lost, or something that works is removed with
+  a named successor and a changeset — and §1 says plainly that this epic is a cleanup *plus* a
+  migration. Denying the second half on the sign-off page would have been a lying surface inside
+  the epic against lying surfaces. Two routes is the floor; six would be the per-kind list the
+  previous round correctly removed, and §1 now distinguishes the two failures explicitly.
+  The same false claim had propagated into §5's first recommendation ("nobody loses something
+  that worked"), which is false of the aliases and the rename. Corrected to the claim that
+  survives both routes: **nobody loses a capability** — either the name has a successor with an
+  equivalent contract, or it never delivered one.
+- **The public-name exception now turns on a property, not a label.** It was scoped to lying
+  knobs, which left a proven *public dead knob* with no removal path at all — nothing to succeed
+  it, because nothing worked, and no exception admitting it. The spec names two live candidates
+  (`displayMode`, `alwaysRun`), so this was not hypothetical. A public name now needs no
+  successor when it **never delivered a capability**, whether unread or read only into a report
+  of itself, with the enumeration requirement following wherever a removal changes something
+  observable. Deliberately worded to reach nothing that works: an alias, a shim or a rename
+  whose old name does today what it says is a migration and names its successor.
+- **Folding stops here.** From this point, findings that would change what the product owner
+  decides, or that identify a false claim, get folded; everything else is noted and skipped.
+  Recorded on the threads as well as here, so the next automated reviewer sees the rule rather
+  than silence.
