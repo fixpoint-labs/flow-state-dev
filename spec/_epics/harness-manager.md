@@ -161,8 +161,8 @@ down an altitude; push it into the issue spec that will write it.*
    the SDK surface — the one carrying detached dispatch, `recordWork` and the session handle —
    forwards no `cwd` (`sdk/work-recorder.ts:109-112` says so outright), while the CLI dispatch
    path *does* take one per dispatch (`cli/dispatch.ts:39-40,84` → `pty-exec.ts:134`). LAB-138
-   picks the surface on that evidence. Left unstated, the Proof run edits the conductor's own
-   checkout instead of the run's workspace.
+   picks the surface on that evidence — which **theme 7 adds to**, on the same fork. Left
+   unstated, the Proof run edits the conductor's own checkout instead of the run's workspace.
 
 5. **A normal return always settles the task `completed` — so park by suspending, hold the claim
    with a configured lease, and check the handle before settling.** `buildDetachedRunner`'s body
@@ -226,11 +226,41 @@ down an altitude; push it into the issue spec that will write it.*
    resumable in-process. That 404 is the guard doing its job. **An issue that reaches for the
    allow-list has hit this theme, not a bug** — theme 5's in-process resume action is the route.
 
+7. **The runner is a named seam, and its contract must be satisfiable by a harness that is not
+   Claude Code.** This epic drives Claude Code only, and **proving a second harness is explicitly
+   not in scope** — nothing here builds one, tests one, or waits on one. But the Atlas frames
+   Conductor as a *meta-harness* whose harness is swappable, and the runner is where that lives,
+   so a contract only Claude Code can satisfy forecloses it silently. A **documented-not-executed**
+   check of OpenAI's Codex CLI and Cursor's agent CLI (docs only — neither is installed here) found
+   the seam drawn almost right, with one clause that is not:
+
+   - **The bound is the caller's, not the harness's.** `maxTurns` is a Claude Code notion; neither
+     other CLI exposes a turn or time cap (one closed the request as *not planned*). So the runner
+     must be a **killable subprocess** and the manager enforces the bound by wall-clock kill of the
+     child. `maxTurns` is demoted to an optional, adapter-specific knob — not part of the shared
+     contract.
+   - **A machine-readable result is an exit code plus a final JSON object, not a JSON *stream*.**
+     One CLI returns a single terminal object; the other returns an event stream the caller must
+     scan for the terminal event. The adapter normalises; the manager sees one shape.
+   - **Token usage is adapter-optional.** One reports it, the other's is undocumented. The manager
+     must work without it.
+   - **The unattended/permission posture lives in each adapter's config**, not in the shared
+     contract — a graded sandbox and a binary force flag are not one knob, and modelling them as
+     one misrepresents both.
+
+   **The second-order consequence is the useful part: a contract shaped this way says the seam is
+   process-spawn, not an in-process SDK call.** That is exactly the shape that bit us on the Claude
+   Code SDK path, whose in-process surface forwards no `cwd` while its CLI dispatch does (theme 4).
+   It is **evidence into LAB-138's surface fork, not a resolution of it** — against it sits what the
+   SDK surface uniquely carries (`detached`, `recordWork`, the session handle from layer zero), and
+   LAB-138's spec weighs both with the source open. What *is* settled here: the bound is implemented
+   as a caller-side kill, never by passing `maxTurns` down.
+
 ## 4. Running index
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| [LAB-138](https://linear.app/fixpoint-labs/issue/LAB-138/the-harness-manager-a-task-row-becomes-a-watched-settled-coding-run) | The manager loop — a task row becomes a watched, settled coding run. Provisions the run's working directory and owns the **per-run `cwd` seam** that makes handing it down possible (theme 4). Settles on a **handle-status check**, not on a normal return (theme 5) | spec | — | — | Needs spec |
+| [LAB-138](https://linear.app/fixpoint-labs/issue/LAB-138/the-harness-manager-a-task-row-becomes-a-watched-settled-coding-run) | The manager loop — a task row becomes a watched, settled coding run. Provisions the run's working directory and owns the **per-run `cwd` seam** that makes handing it down possible (theme 4). Settles on a **handle-status check**, not on a normal return (theme 5). The runner contract it defines must hold for a harness that is not Claude Code, and its bound is a caller-side kill (theme 7) | spec | — | — | Needs spec |
 | [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof** (FIX-1166). Blocked by LAB-138. Builds theme 5's park-and-wake — `ctx.suspend()` plus an in-process resume action — and the **board-level claim/lease option on `taskBoard`** that lets a parked run keep its claim for a human-scale window (framework work; §5) | spec | — | — | Needs spec |
 | [FIX-150](https://linear.app/fixpoint-labs/issue/FIX-150/workspaces-if-validated-workspacerunner-block-and-virtual-filesystem) | Workspaces — the file-projection component. Large, three PRs (a component · b shell-tool migration · c coding-agent path). Subsumes FIX-998. **Own track — carries no dependency edge into the Proof** (theme 4) | spec | [#1345](https://github.com/fixpoint-labs/flow-state-dev/pull/1345) — **approved** | — | Needs implementation |
 
@@ -407,3 +437,17 @@ waits on it (theme 4).*
   lines — Outcome, Proof, Lead measure, Not doing, Kill line — are unchanged; this was a
   completeness correction to a mechanism the epic-spec should not have specified at this
   altitude in the first place.**
+- **Constraint fold — the runner contract was not portable, and one clause said so.** Not a review
+  round; the budget is spent and the spec has converged. The product owner asked whether a second
+  harness should be proven alongside Claude Code. The answer is **no** — that is unchanged and now
+  stated in theme 7 in the same breath as the constraint, so nobody reads the constraint as a
+  commitment. But the paper check behind the answer (Codex CLI and Cursor's agent CLI, **documented
+  not executed**) found the runner seam drawn almost right with one Claude-Code-only clause: a
+  turn/time bound. Neither other CLI exposes one, so **theme 7** makes the bound the caller's — a
+  killable subprocess and a wall-clock kill — and demotes `maxTurns` to an adapter knob, with the
+  result shape, token usage and permission posture named as adapter-normalised rather than shared.
+  Its second-order consequence is the part worth having: **the seam is process-spawn, not an
+  in-process SDK call**, which is new evidence on one side of LAB-138's `cwd` surface fork (theme
+  4) and is **routed there rather than resolved here** — the SDK surface still uniquely carries
+  `detached`, `recordWork` and the session handle. **§1's five lines are unchanged.** This epic
+  still drives Claude Code only.
