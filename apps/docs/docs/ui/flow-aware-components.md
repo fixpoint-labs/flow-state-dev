@@ -8,7 +8,7 @@ Components that consume Flow State item types directly. They subscribe to sessio
 
 ## ChatAssistant
 
-A pre-wired `RendererRegistry` that maps every standard item type to its default component. The fastest way to render a working chat surface — drop it onto `FlowProvider` and you get sensible defaults for messages, reasoning, tool calls, sources, plans, errors, and approval gates (`suspension: Approval`).
+A pre-wired `RendererRegistry` that maps every standard item type to its default component. Drop it onto `FlowProvider` and you get defaults for messages, reasoning, tool calls, sources, errors, and approval gates (`suspension: Approval`). The default registry mounts `<TaskPlan />` from each `task-board-meta` item.
 
 ```bash
 fsdev ui add chat-assistant
@@ -25,12 +25,15 @@ import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 </FlowProvider>
 ```
 
-Sources are excluded from the default map (`source: false`) so you can render them grouped via `<SourcesGroup>`. Override entries individually:
+Sources are excluded from the default map (`source: false`) so you can render them grouped via `<SourcesGroup>`. To suppress the default board, spread the existing `component` map first so the other keyed renderers stay:
 
 ```tsx
 const renderers = {
   ...chatAssistantRenderers,
-  component: { plan: false },   // suppress plan rendering
+  component: {
+    ...chatAssistantRenderers.component,
+    "task-board-meta": false,
+  },
 };
 ```
 
