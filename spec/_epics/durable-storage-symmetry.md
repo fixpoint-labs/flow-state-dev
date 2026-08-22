@@ -5,7 +5,7 @@
 | **Epic issue** | [FIX-1157](https://linear.app/fixpoint-labs/issue/FIX-1157/reconcile-the-two-durable-storage-primitives-symmetry-not-merger) (`Epic` · `Enabler`) |
 | **Project** | Framework simplification & cleanup |
 | **Branch / doc** | `epic/durable-storage-symmetry` · `spec/_epics/durable-storage-symmetry.md` |
-| **PR** | Never merged, never deleted — open for the life of the epic |
+| **PR** | [#1365](https://github.com/fixpoint-labs/flow-state-dev/pull/1365) — never merged, never deleted; open for the life of the epic |
 | **Gate** | An approving human comment or review on the epic PR, or the owner's `epic approved` label, signs off §1 only |
 
 Code citations are against `origin/main` at `6aa1bea`.
