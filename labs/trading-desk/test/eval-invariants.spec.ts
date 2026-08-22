@@ -519,6 +519,17 @@ describe("checkRun — rating-envelope", () => {
     // fired on — otherwise this test would pass for the wrong reason.
     expect(byId(report.checks, "rating-envelope/final-within-band")?.status).toBe("skipped");
     expect(byId(report.checks, "rating-envelope/band-recompute")?.status).toBe("fail");
+    // Pinned check-id set — see the `mandate/dial-sanity` sibling test's
+    // comment for why. `pm-band-present` and `clamp-implies-edge` correctly
+    // cannot run here (both need `band`, which is null in this exact shape);
+    // `band-recompute` is the one that does not, and its presence here is
+    // the regression guard.
+    expect(
+      report.checks
+        .filter((r) => r.id.startsWith("rating-envelope/"))
+        .map((r) => r.id)
+        .sort(),
+    ).toEqual(["rating-envelope/band-recompute", "rating-envelope/final-within-band"]);
   });
 
   it("control: a legacy spine-less run still skips band-recompute (nothing to recompute against)", () => {
@@ -645,6 +656,68 @@ describe("checkRun — mandate", () => {
     b.decisionSnapshot!.mandateVerdict = null;
     const report = checkRun(b);
     expect(byId(report.checks, "mandate/mirror-present")?.status).toBe("fail");
+    // Pinned check-id set (Codex re-audit, FIX-1113 — "is there a way to make
+    // the class visible rather than found one at a time"). This is the exact
+    // shape `mandate/dial-sanity` went silently absent from. Every id in
+    // this group that reads `decision`/`snapshot` correctly cannot run here
+    // (mirror-present's own hard-fail is the reason) — `dial-sanity` is the
+    // one that reads neither, and its presence in this pinned list is the
+    // regression guard: a future change that re-introduces the same "gated
+    // by a condition it does not depend on" shape changes this SET, not
+    // just one check's status, and a changed pinned list forces a reviewed
+    // answer to "why did this id appear or disappear", rather than a silent
+    // drift no test would catch. Scoped to one prefix, on one already-named
+    // scenario — not a general framework, and not a claim that every
+    // scenario needs this (most don't: the bug only bites when an id is
+    // independent of what gates its neighbours, which is a fact about THAT
+    // id, not something a generic assertion can derive).
+    expect(
+      report.checks
+        .filter((r) => r.id.startsWith("mandate/"))
+        .map((r) => r.id)
+        .sort(),
+    ).toEqual(["mandate/dial-sanity", "mandate/mirror-present"]);
+  });
+
+  it("THE BUG (Codex re-audit, FIX-1113): dial-sanity still runs when a mandate-aware run drops its mandate mirror, rather than going silent", () => {
+    // `mandate/dial-sanity` reads only `mandate.capacityVetoCapPct` /
+    // `mandate.unclearedCapPct` — nothing about `decision`/`snapshot` — but
+    // sat after the "mandate-aware run missing its mirror" hard-fail+return,
+    // which DOES need them. On that malformed combination the check id was
+    // simply absent from the report, not even reported as skipped.
+    const b = healthyBundle();
+    b.decisionSnapshot!.mandateVerdict = null;
+    const report = checkRun(b);
+    expect(byId(report.checks, "mandate/mirror-present")?.status).toBe("fail");
+    expect(byId(report.checks, "mandate/dial-sanity")?.status).toBe("pass");
+  });
+
+  it("control: dial-sanity hard-fails when the caps are actually inverted", () => {
+    const b = healthyBundle();
+    b.riskMandate = { ...b.riskMandate!, capacityVetoCapPct: b.riskMandate!.unclearedCapPct + 1 };
+    const report = checkRun(b);
+    expect(byId(report.checks, "mandate/dial-sanity")?.status).toBe("fail");
+  });
+
+  it("control: a genuinely mandate-blind run still skips dial-sanity (nothing to check it against)", () => {
+    const b = healthyBundle();
+    b.riskMandate = null;
+    const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
+    const pm = b.memos.find((m) => m.key === pmKey)!.state as MemoState;
+    pm.mandateDecision = null;
+    b.decisionSnapshot!.mandateId = null;
+    b.decisionSnapshot!.mandateVerdict = null;
+    b.decisionSnapshot!.rewardToRiskLossAdjustedGlr = null;
+    b.decisionSnapshot!.worstCaseReturnPct = null;
+    b.decisionSnapshot!.capacityVetoed = null;
+    const report = checkRun(b);
+    expect(byId(report.checks, "mandate/dial-sanity")?.status).toBe("skipped");
+  });
+
+  it("control: a healthy bundle still hard-passes dial-sanity", () => {
+    const b = healthyBundle();
+    const report = checkRun(b);
+    expect(byId(report.checks, "mandate/dial-sanity")?.status).toBe("pass");
   });
 
   it("fails when the snapshot capacity-veto mirror disagrees with recomputation", () => {
@@ -1263,6 +1336,24 @@ describe("checkRun — valuation/abstention-honesty (FIX-1113 P2)", () => {
     const report = checkRun(b);
     expect(byId(report.checks, "valuation/abstention-honesty")?.status).toBe("fail");
     expect(byId(report.checks, "valuation/dcf-abstention")?.status).toBe("fail");
+    // Pinned check-id set — see the `mandate/dial-sanity` sibling test's
+    // comment for why. `fair-value-abstention` correctly cannot validate a
+    // null fairValue (it now gets its own explicit skip, not silence);
+    // `triangulation` correctly skips (this spine's triangulation leg is
+    // null, unrelated to the fairValue corruption). `dcf-abstention`'s
+    // presence here is the regression guard: it reads only `dcf`, which is
+    // populated and contradictory in this test.
+    expect(
+      report.checks
+        .filter((r) => r.id.startsWith("valuation/"))
+        .map((r) => r.id)
+        .sort(),
+    ).toEqual([
+      "valuation/abstention-honesty",
+      "valuation/dcf-abstention",
+      "valuation/fair-value-abstention",
+      "valuation/triangulation",
+    ]);
   });
 
   it("control: a genuinely withheld spine (dcf null too) still skips dcf-abstention, not fails it", () => {

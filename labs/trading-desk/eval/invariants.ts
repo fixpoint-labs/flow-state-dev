@@ -588,8 +588,27 @@ function checkMandate(bundle: RunArtifactsBundle, c: Checks, memos: MemoMap): vo
       );
     }
     c.skip("mandate/verdict", "hard", "mandate-blind run (no mandate / reward-to-risk substrate)");
+    c.skip("mandate/dial-sanity", "hard", "mandate-blind run — no mandate dials to check for sanity");
     return;
   }
+
+  // Dial sanity: the hard capacity cap must be the tighter one. Runs here,
+  // right after `mandate` is confirmed non-null, rather than after the
+  // decision/snapshot mirror check below (Codex re-audit, FIX-1113 — the
+  // same defect just fixed twice elsewhere in this file: a check gated by a
+  // condition it does not depend on). This reads ONLY `mandate` — nothing
+  // about `decision` or `snapshot` — so a mandate-aware run that dropped its
+  // decision mirror must not also silence this, independent, always-checkable
+  // fact about the mandate's own dials.
+  if (mandate.capacityVetoCapPct <= mandate.unclearedCapPct) {
+    c.hardPass("mandate/dial-sanity", "capacityVetoCapPct ≤ unclearedCapPct");
+  } else {
+    c.hardFail(
+      "mandate/dial-sanity",
+      `capacityVetoCapPct ${mandate.capacityVetoCapPct} > unclearedCapPct ${mandate.unclearedCapPct}`,
+    );
+  }
+
   // The run WAS mandate-aware (both dials and figure present), so the mandate
   // decision MUST be mirrored — a dropped mirror is a regression, not blindness.
   if (snapshot == null || decision == null || snapshot.mandateVerdict == null) {
@@ -677,16 +696,6 @@ function checkMandate(bundle: RunArtifactsBundle, c: Checks, memos: MemoMap): vo
     c.hardFail(
       "mandate/reward-mirrors",
       `PM mandate reward-to-risk mirror drift: ${figureMismatches.join("; ")}`,
-    );
-  }
-
-  // Dial sanity: the hard capacity cap must be the tighter one.
-  if (mandate.capacityVetoCapPct <= mandate.unclearedCapPct) {
-    c.hardPass("mandate/dial-sanity", "capacityVetoCapPct ≤ unclearedCapPct");
-  } else {
-    c.hardFail(
-      "mandate/dial-sanity",
-      `capacityVetoCapPct ${mandate.capacityVetoCapPct} > unclearedCapPct ${mandate.unclearedCapPct}`,
     );
   }
 
