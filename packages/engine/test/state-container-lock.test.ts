@@ -224,3 +224,112 @@ describe("applyMutation — external-store (CAS) branch", () => {
     expect(container.read().count).toBe(3);
   });
 });
+
+describe("applyMutation — persist + serialize (request-scope) branch", () => {
+  function versionedPersist<TState extends { count: number }>(): {
+    persist: CASPersist<TState>;
+    persistCount: () => number;
+  } {
+    let store: TState = { count: 0 } as TState;
+    let storeVersion = 0;
+    let persistCount = 0;
+    const persist: CASPersist<TState> = async (state, expectedVersion) => {
+      persistCount += 1;
+      if (expectedVersion !== storeVersion) {
+        return {
+          ok: false,
+          currentState: store,
+          currentVersion: storeVersion
+        };
+      }
+      storeVersion += 1;
+      store = state;
+      return { ok: true, version: storeVersion };
+    };
+    return { persist, persistCount: () => persistCount };
+  }
+
+  it("throws ConcurrentModificationError on a wide persist fan-out without serialize", async () => {
+    type State = { count: number };
+    const container = createStateContainer<State>({ count: 0 }, 0);
+    const { persist } = versionedPersist<State>();
+    const ops = createScopeStateOps<State>(container, {
+      persist,
+      cas: { maxRetries: 3, baseDelayMs: 0 }
+    });
+
+    const N = 8;
+    const results = await Promise.allSettled(
+      Array.from({ length: N }, () =>
+        ops.atomicState((state) => ({ count: state.count + 1 }))
+      )
+    );
+
+    expect(
+      results.some(
+        (r) =>
+          r.status === "rejected" &&
+          r.reason instanceof ConcurrentModificationError
+      )
+    ).toBe(true);
+  });
+
+  it("commits every write on a wide persist fan-out when serialize is set", async () => {
+    type State = { count: number };
+    const container = createStateContainer<State>({ count: 0 }, 0);
+    const { persist, persistCount } = versionedPersist<State>();
+    const ops = createScopeStateOps<State>(container, {
+      persist,
+      serialize: true
+    });
+
+    const N = 8;
+    await expect(
+      Promise.all(
+        Array.from({ length: N }, () =>
+          ops.atomicState((state) => ({ count: state.count + 1 }))
+        )
+      )
+    ).resolves.toEqual(Array.from({ length: N }, () => true));
+
+    expect(container.read().count).toBe(N);
+    expect(container.getVersion()).toBe(N);
+    expect(persistCount()).toBe(N);
+  });
+
+  it("preserves FIFO order and skips persist on no-op writes when serialize is set", async () => {
+    type State = { values: number[] };
+    const container = createStateContainer<State>({ values: [] }, 0);
+    let persistCount = 0;
+    let storeVersion = 0;
+    const persist: CASPersist<State> = async (state, expectedVersion) => {
+      persistCount += 1;
+      if (expectedVersion !== storeVersion) {
+        return {
+          ok: false,
+          currentState: container.read() as State,
+          currentVersion: storeVersion
+        };
+      }
+      storeVersion += 1;
+      return { ok: true, version: storeVersion };
+    };
+    const ops = createScopeStateOps<State>(container, {
+      persist,
+      serialize: true
+    });
+
+    const N = 8;
+    await Promise.all(
+      Array.from({ length: N }, (_, i) =>
+        ops.atomicState((state) => ({ values: [...state.values, i] }))
+      )
+    );
+    expect(container.read().values).toEqual(Array.from({ length: N }, (_, i) => i));
+    expect(await ops.atomicState((state) => ({ values: state.values }))).toBe(
+      false
+    );
+    expect(persistCount).toBe(N);
+    expect(container.getVersion()).toBe(N);
+  });
+});

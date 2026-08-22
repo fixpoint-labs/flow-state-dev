@@ -114,7 +114,7 @@ Deliberately unconditional, each for a stated reason rather than because it was 
 - **`create({ replace: true })`** writes at `"any"`. It is an explicit overwrite of a key the caller has decided it owns; opting out of the version check is the posture being requested
 - **`deleteAll`** takes no expected version at all. It is a scope operation, not a key operation — a bulk lifecycle mark over every live key
 - **the two seed helpers in `@flow-state-dev/testing`** pass `"any"` when priming a fresh scope, where no concurrent writer exists by construction
-- **scope state** — `request` / `session` / `user` / `org` — is not this driver's at all. It keeps `runWithCAS`, and `createScopePersist` downgrades to `"any"` for commutative hints on adapters advertising a delta verb, as described above
+- **scope state** — `session` / `user` / `org` keep `runWithCAS`. Request scope persists under `withScopeLock` (`serialize: true`) so a same-process fan-out does not exhaust the CAS retry budget. `createScopePersist` still downgrades to `"any"` for commutative hints on adapters advertising a delta verb, as described above
 
 The collection-item HTTP routes write this store directly, outside the registry and its queue, so they carry their own versions and surface a conflict to the client rather than retrying it. Their request/response contract — including when a caller sees a 409 — is [the resource client reference](./resources-and-client-data.md)'s, not this document's.
 
