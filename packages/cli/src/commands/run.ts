@@ -96,7 +96,6 @@ export function registerRunCommand(program: Command): void {
     .option("--dotenv <path>", "Load a specific .env file, e.g. an app's (repeatable, resolved from cwd)", collectValues, undefined)
     .option("--config <path>", "Path to an fsdev config file (default: fsdev.config.{ts,mts,js,mjs} in cwd)")
     .option("--no-config", "Ignore fsdev.config.* and use directory discovery")
-    .option("--format <format>", "Output format", "json")
     .option("--quiet", "Suppress runtime logs on stderr (NDJSON on stdout still emitted)")
     .option("--log-level <level>", "Stderr log level: debug | info | warn | error (default: info)")
     .option("--capture <path>", "Write the full structured run output to a JSON file")
@@ -131,7 +130,6 @@ export interface RunCommandOptions {
    * is `--no-config`; `true`/absent means search for `fsdev.config.*` in cwd.
    */
   config?: string | boolean;
-  format?: string;
   /** Suppress all runtime logs on stderr. */
   quiet?: boolean;
   /** Minimum runtime log level emitted to stderr (default: "info"). */
