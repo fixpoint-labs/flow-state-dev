@@ -2,10 +2,12 @@
 
 ## 1. Purpose & objective *(the gated sign-off surface)*
 
-**Objective.** Make the framework's surface tell the truth about itself. Today a developer
-who copies an example from our docs can hit code that fails typecheck, or pass an option
-that is accepted, typed, and then silently ignored. Both cost the same thing: the developer
-trusts the surface, the surface lies, and they lose an afternoon finding out. When this epic
+**The problem.** A developer copies an example from our docs and hits code that fails
+typecheck. Or they pass an option that is accepted, typed, and then silently ignored. Both
+cost the same thing: they trust the surface, the surface lies, and they lose an afternoon
+finding out.
+
+**Objective.** Make the framework's surface tell the truth about itself. When this epic
 lands, the framework has **no lying surface**: docs match the tree, an accepted option is
 read, and a superseded name is gone. Real exports that nothing in this repo happens to call
 are not lies — they stay, and saying so here is what stops a later sweeper reading this
@@ -112,27 +114,30 @@ above was not doing its job.
    minor bump and a one-line rename for an out-of-repo caller. That price is what makes these
    decidable at engineering altitude; a cut whose blast radius exceeds it escalates.
 
-6. **Sequencing: one hard constraint, and a soft order beneath it.** Every slice is based on
-   `main`, not stacked, so with a single exception they may merge in any order and none should
-   be held for another.
+6. **Sequencing: no ordering gate, one soft order.** Every slice is based on `main`, not
+   stacked, so they may merge in any order and none needs to be held for another.
 
-   **Hard — #1394 (docs, FIX-1213) must not merge before #1387 (unread options, FIX-1210).**
-   #1394's CLI page states that `fsdev run --seed-user` and `--seed-org` are still accepted,
-   seed nothing, and are being removed. #1387 is the change that removes them. In that order the
-   sentence is true when it publishes and true afterwards. Reversed, `main` carries published
-   documentation announcing a removal that has not happened, against a CLI whose `--help` still
-   advertises both flags — a *new* lying surface, introduced by the epic whose whole objective is
-   removing them.
+   **There was a hard constraint here and it was wrong** — worth recording, because it was
+   asserted from the *spec's own description* of #1394 rather than from #1394's diff, which is
+   the same mistake that produced the `/cli` false positive above. The claim was that #1394's
+   CLI page announces `--seed-user` / `--seed-org` as accepted-but-inert and being removed, so
+   it had to land after #1387 removed them.
 
-   Checked against the tree rather than assumed. On `main`, `packages/cli/src/commands/run.ts`
-   declares both options and reads them in exactly one place: they are echoed verbatim into the
-   `--capture` payload, so neither ever reaches a store. On `origin/cleanup/unread-options` the
-   options, their type fields and that echo are all gone, and three agent skills under
-   `.agents/skills/` that still invoked `--seed-user` are fixed in the same branch.
+   #1394 says no such thing. It **deletes** the two flag rows from `apps/docs/docs/api/cli.md`,
+   `apps/docs/docs/cli/agent-dev-loop.md` and `packages/cli/README.md`, and rewrites the *State
+   seeding* section of `apps/docs/docs/cli/overview.md` to describe `--seed-session` only,
+   closing with: *"Session is the only scope you can seed."*
 
-   This is the only ordering rule in the set whose violation costs correctness rather than a
-   rebase, which is why it is stated separately from the guidance below. Everything else here is
-   guidance.
+   That sentence is **already true on `main`**. `packages/cli/src/commands/run.ts` declares both
+   options and reads them in exactly one place — lines 429–430 echo them verbatim into the
+   `--capture` payload — so neither has ever reached a store. It stays true after #1387 deletes
+   them. Both merge orders publish a true page, so there is nothing here to gate on.
+
+   What survives is a preference, not a rule: until #1387 lands, `fsdev run --help` still
+   advertises two flags the docs no longer list. That is a CLI surface and #1387 is the change
+   that fixes it, which argues mildly for #1387 first — the same direction the soft order below
+   already points. One practical note: both branches drop `--seed-user` from the same four
+   `.agents/skills/*` files, so whichever lands second rebases there.
 
    **Soft — barrel-heavy breaking slices first, docs last.**
    Twenty-nine files are touched by more than one slice — all barrel and index files. Calling
@@ -143,8 +148,8 @@ above was not doing its job.
    thrash**: the barrel-heavy breaking slices (FIX-1209, FIX-1210) first, FIX-1211 next, and
    **FIX-1213 (docs) last**, so the docs land against the code they describe rather than
    drifting between merges. FIX-1155, FIX-1212, FIX-1214 and FIX-1215 touch almost nothing
-   shared and can go whenever. This half is guidance, not a gate — merging out of *this* order
-   costs a rebase, not correctness. The constraint above it is the one that is a gate.
+   shared and can go whenever. This is guidance, not a gate — merging out of this order costs a
+   rebase, not correctness. Nothing in this set costs correctness.
 
 7. **A change that doesn't serve the objective is a satellite, not a member.** Two qualify, both
    trapped in #1369: FIX-1155 (a request-scope race fix) and FIX-1214 (BP-012 items-log residue).
@@ -166,9 +171,16 @@ and a POC cannot tell you anything about that.
 
 ## 4. Running index
 
-**Eight PRs serve the objective. Two more ride alongside as satellites** — they were trapped
-in #1369 and are worth landing, but approving §1 does not authorise them and the epic does not
-wait on them.
+**Nine issues serve the objective, eight of them with a PR open today. Two more ride alongside
+as satellites** — they were trapped in #1369 and are worth landing, but approving §1 does not
+authorise them and the epic does not wait on them.
+
+**This index carries handles, not status.** Issue ids, PR numbers and what each delivers are
+stable; CI results, review-thread counts and merge-readiness are not, and a committed snapshot
+of them goes stale within hours while still reading as guidance. An earlier revision of this
+table carried all four and was wrong twice inside one afternoon — the second time because a
+ninth member (FIX-1220) was filed four minutes after the snapshot was taken. Live state lives
+on the PRs. Ask GitHub, not this file.
 
 **This epic is coordinated by hand, not by `epic-lifecycle`, and that is the whole reason the
 route column reads `direct`.** Review raised a sharp mechanical objection to an earlier draft:
@@ -177,45 +189,43 @@ the coordinator re-derives each child's route from its Linear category on every 
 an asserted `direct` would simply be overwritten, and every child would acquire a spec-approval
 gate. That objection is correct against the automated path.
 
-It does not apply here, because no coordinator is running this epic. The work was already done
-and evidenced in #1369; each child is a PR that exists, not an approach awaiting a decision. A
-spec gate in front of a finished, reviewable diff buys nothing. `direct` in the table below is a
+It does not apply here, because no coordinator is running this epic. Eight of the nine members
+were already written and evidenced in #1369 — they are diffs that exist, not approaches awaiting
+a decision, and a spec gate in front of a finished, reviewable diff buys nothing. The ninth
+(FIX-1220) is unstarted but arrives with its evidence already gathered during #1392's review, so
+a spec would restate what its issue body already says. `direct` in the table below is a
 **description of how these are actually being run**, not an instruction to a coordinator.
+
+**The ceremony was waived deliberately, by the product owner, not skipped.** The instruction
+standing over this epic was to turn the work into an epic *without* creating specs or issues for
+anything not already filed. So there is no Spec-PR column, no per-child spec-approval gate, and
+no `epic-lifecycle` routing — not because those were overlooked, but because a set whose
+implementation predates its epic gets nothing from them. Reviewers have asked for each of these
+more than once; this paragraph is the answer.
 
 **If anyone later runs `epic-lifecycle` against FIX-1208, this is the thing to know first:** it
 will re-derive `spec` for every child and stall the set behind gates for documents nobody needs.
 Either relabel the children to a category that derives `direct`, or don't run the coordinator on
 this epic. It was never built for a set whose implementation predates its epic.
 
-**Reading the two tables below, if what you are deciding is what to merge.** They are refreshed
-from the live PRs at **2026-08-22 19:05 UTC** — heads, checks and thread counts are a snapshot of
-that moment, not a standing claim. Three things are worth knowing before the rows:
-
-- **Nothing has failed.** Across all ten there is not one failing check. Where `CI` reads
-  *running*, the long `Typecheck & Test` job had not finished; every job that has finished is
-  green. #1392 is the exception only in that it took a new head at 19:05 and restarted its run.
-- **`Threads` counts GitHub's unresolved review threads, and splits out the ones still awaiting a
-  reply** — that split is the number that matters, not the total. An answered-but-unresolved
-  thread is a decision recorded and left visible, which is why #1387 can carry nine and still be
-  mergeable. An unanswered one is a reviewer finding nobody has responded to yet. The line between
-  *mergeable* and *mid-round* below is whether the **whole** review pass is unanswered: four PRs
-  (#1392, #1395, #1396, #1388) are in that state and are not merge candidates today; the handful of
-  unanswered items elsewhere are late-arriving nits on PRs whose substantive rounds are closed.
-- **One row is gated by something other than its own state:** #1394 is clean but must wait for
-  #1387 (theme 6, the hard constraint).
-
 ### Members — completion is these
 
-| Issue | What it delivers | Route | Kind | PR · head | CI | Threads | State |
-|---|---|---|---|---|---|---|---|
-| [FIX-1213](https://linear.app/fixpoint-labs/issue/FIX-1213) | Docs and agent skills stop teaching contracts that aren't on the tree | direct | docs | [#1394](https://github.com/fixpoint-labs/flow-state-dev/pull/1394) · `4548548` | running | 0 open (13 resolved) | Clean — **hold until #1387 merges** (theme 6) |
-| [FIX-1209](https://linear.app/fixpoint-labs/issue/FIX-1209) | Superseded aliases, compat shims, unused internal barrels removed | direct | breaking minor | [#1390](https://github.com/fixpoint-labs/flow-state-dev/pull/1390) · `52c46fc` | green | 1 open, **1** unanswered | Mergeable — one late P2 on the changeset's `CollectionItem` migration note |
-| [FIX-1210](https://linear.app/fixpoint-labs/issue/FIX-1210) | Options accepted but never read | direct | breaking minor | [#1387](https://github.com/fixpoint-labs/flow-state-dev/pull/1387) · `cada1fe` | green | 9 open, **3** unanswered | Mergeable — merge this **before** #1394 |
-| [FIX-1211](https://linear.app/fixpoint-labs/issue/FIX-1211) | Duplicate helpers collapsed to one implementation each | direct | patch | [#1392](https://github.com/fixpoint-labs/flow-state-dev/pull/1392) · `96317e2` | re-running | 14 open, **13** unanswered | Mid-round — a full review pass is unanswered |
-| [FIX-1212](https://linear.app/fixpoint-labs/issue/FIX-1212) | Engine org-store factories renamed off `Project` | direct | breaking minor | [#1389](https://github.com/fixpoint-labs/flow-state-dev/pull/1389) · `5b3093e` | green | 0 open | **Ready** — the cleanest row in the set |
-| [FIX-1215](https://linear.app/fixpoint-labs/issue/FIX-1215) | Scope-config `clientData` shim removed | direct | **behaviour** | [#1391](https://github.com/fixpoint-labs/flow-state-dev/pull/1391) · `d436306` | running | 2 open, **2** unanswered | Mergeable, but §5 asks whether the hard throw should ship at all |
-| [FIX-1216](https://linear.app/fixpoint-labs/issue/FIX-1216) | Unused internal surface and truly-dead symbols removed | direct | patch | [#1395](https://github.com/fixpoint-labs/flow-state-dev/pull/1395) · `522d359` | green | 10 open, **9** unanswered | Mid-round — three reviewers dispute the changeset's package bumps |
-| [FIX-1217](https://linear.app/fixpoint-labs/issue/FIX-1217) | Remaining duplicate internal helpers collapsed | direct | patch | [#1396](https://github.com/fixpoint-labs/flow-state-dev/pull/1396) · `465c197` | running | 6 open, **6** unanswered | Mid-round — no reply yet to the opening pass |
+| Issue | What it delivers | Route | Kind | PR |
+|---|---|---|---|---|
+| [FIX-1209](https://linear.app/fixpoint-labs/issue/FIX-1209) | Superseded aliases, compat shims, unused internal barrels removed | direct | breaking minor | [#1390](https://github.com/fixpoint-labs/flow-state-dev/pull/1390) |
+| [FIX-1210](https://linear.app/fixpoint-labs/issue/FIX-1210) | Options accepted but never read | direct | breaking minor | [#1387](https://github.com/fixpoint-labs/flow-state-dev/pull/1387) |
+| [FIX-1211](https://linear.app/fixpoint-labs/issue/FIX-1211) | Duplicate helpers collapsed to one implementation each | direct | patch | [#1392](https://github.com/fixpoint-labs/flow-state-dev/pull/1392) |
+| [FIX-1212](https://linear.app/fixpoint-labs/issue/FIX-1212) | Engine org-store factories renamed off `Project` | direct | breaking minor | [#1389](https://github.com/fixpoint-labs/flow-state-dev/pull/1389) |
+| [FIX-1213](https://linear.app/fixpoint-labs/issue/FIX-1213) | Docs and agent skills stop teaching contracts that aren't on the tree | direct | docs | [#1394](https://github.com/fixpoint-labs/flow-state-dev/pull/1394) |
+| [FIX-1215](https://linear.app/fixpoint-labs/issue/FIX-1215) | Scope-config `clientData` shim removed | direct | **behaviour** | [#1391](https://github.com/fixpoint-labs/flow-state-dev/pull/1391) |
+| [FIX-1216](https://linear.app/fixpoint-labs/issue/FIX-1216) | Unused internal surface and truly-dead symbols removed | direct | patch | [#1395](https://github.com/fixpoint-labs/flow-state-dev/pull/1395) |
+| [FIX-1217](https://linear.app/fixpoint-labs/issue/FIX-1217) | Remaining duplicate internal helpers collapsed | direct | patch | [#1396](https://github.com/fixpoint-labs/flow-state-dev/pull/1396) |
+| [FIX-1220](https://linear.app/fixpoint-labs/issue/FIX-1220) | Legacy AI SDK `experimental_*` reads dropped from `createAiSdkModelResolver` | direct | **behaviour** (SDK floor) | not started — [#1400](https://github.com/fixpoint-labs/flow-state-dev/issues/1400) |
+
+**FIX-1220 is the one member with no PR.** It was split out of #1392 during review — the two
+deletions are an `ai@^7` floor decision, not a duplicate collapse, so they did not belong in a
+PR whose contract was "behaviour-preserving throughout". Filed with its evidence, unstarted.
+Completion waits on it like any other member.
 
 ### Satellites — related to the epic, deliberately NOT children of it
 
@@ -224,10 +234,13 @@ objective gate ramps **every** sub-issue and has no member/satellite concept, so
 would have authorised them regardless of what this table said. They are now linked to FIX-1208
 with `relates-to` rather than parented, which is what makes the separation real.
 
-| Issue | What it delivers | Route | Kind | PR · head | CI | Threads | State |
-|---|---|---|---|---|---|---|---|
-| [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state writes serialize before persist | direct | bugfix | [#1388](https://github.com/fixpoint-labs/flow-state-dev/pull/1388) · `2e888cb` | running | 5 open, **1** unanswered | Mid-round — a **new P1** landed at 19:01 and has no reply |
-| [FIX-1214](https://linear.app/fixpoint-labs/issue/FIX-1214) | State-only blocks stop echoing input into the items log | direct | behaviour | [#1393](https://github.com/fixpoint-labs/flow-state-dev/pull/1393) · `be33a32` | running | 1 open, **0** unanswered | **Ready** — every finding answered, two tests re-strengthened after |
+| Issue | What it delivers | Route | Kind | PR |
+|---|---|---|---|---|
+| [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state writes serialize before persist | direct | bugfix | [#1388](https://github.com/fixpoint-labs/flow-state-dev/pull/1388) |
+| [FIX-1214](https://linear.app/fixpoint-labs/issue/FIX-1214) | State-only blocks stop echoing input into the items log | direct | behaviour | [#1393](https://github.com/fixpoint-labs/flow-state-dev/pull/1393) |
+
+Verified in Linear rather than asserted: FIX-1155's parent is FIX-1157, FIX-1214 has no parent,
+and FIX-1208's children are the nine members above and nothing else.
 
 **Why FIX-1214 is a satellite and FIX-1215 is not**, since both change behaviour. FIX-1215
 removes a superseded shim — a §1 category, and a caller on `clientData` is holding a name that
@@ -269,7 +282,7 @@ all of the above as one 266-file change.
 more engineering work — each has been researched to the point where what remains is a business
 call about what we are willing to break and how much of this we are willing to keep open. Every
 other *cross-cutting* decision has been made and is recorded in the evolution log below; what is
-still open on individual PRs is review feedback, and §4's `Threads` column is where that lives.
+still open on individual PRs is review feedback, and it lives on those PRs, not here.
 
 - **Do we land the pre-1.0 minors that drop leftover public names?** Raised by the original PR,
   and the one question its author flagged for sign-off. This is the durable record; theme 5 sets
@@ -294,6 +307,14 @@ still open on individual PRs is review feedback, and §4's `Threads` column is w
   #1391 makes it throw at `defineFlow` — the app fails to start rather than starting with a
   deprecated key. Both are defensible; the fork is how much notice we owe someone who has not
   read a changelog.
+
+  **Why this sits here and not on #1391**, since only #1391 changes if it flips: the *question*
+  is not #1391's. "How much notice does a pre-1.0 removal owe a consumer who has not read a
+  changelog" is the same question the first bullet asks about names, asked about behaviour, and
+  the answers have to agree — landing minors that drop names while also refusing to fail loudly
+  on a removed key would be two different policies in one epic. #1391 is where the answer costs
+  something concrete, which is why it is the example. If a future removal takes a different
+  answer here, this stops being cross-cutting and goes to its PR.
 
   **The trade being accepted:** throwing means a consumer still on the old key discovers it the
   first time they boot, loudly, with an error naming the replacement — instead of shipping for
@@ -332,10 +353,10 @@ still open on individual PRs is review feedback, and §4's `Threads` column is w
   PRs, pushing its completion further out. Splitting them off keeps this set closable this week
   and pays a re-familiarisation cost later, plus a second objective gate.
 
-  *Recommendation: a separate epic, and not immediately.* Ten PRs is already more than this set
-  can carry; Tier 2 is public-name removals, which is precisely the category §1 says needs the
-  most careful evidence, and that deserves its own objective rather than riding one approved for
-  something else.
+  *Recommendation: a separate epic, and not immediately.* Ten open PRs plus an unstarted ninth
+  member is already more than this set can carry; Tier 2 is public-name removals, which is
+  precisely the category §1 says needs the most careful evidence, and that deserves its own
+  objective rather than riding one approved for something else.
 
   **What would change the recommendation:** if Tier 2 turns out to overlap the same barrel and
   index files these ten already touch, doing it separately means paying the 29-file rebase tax a
@@ -401,9 +422,10 @@ still open on individual PRs is review feedback, and §4's `Threads` column is w
   coordinated by hand — a coordinator would re-derive the `spec` route from the `Improvement`
   category and stall a set whose implementation already exists behind gates for documents nobody
   needs.
-- **All ten PRs opened** — eight members and two satellites, every one ready for review rather than
+- **Ten PRs opened** — eight members and two satellites, every one ready for review rather than
   draft so the automated reviewers engage. The set that replaces #1369's single 266-file change is
-  now on the board; #1369 itself can be closed as superseded.
+  now on the board; #1369 itself can be closed as superseded. (A ninth member, FIX-1220, was added
+  later and has no PR — see below.)
 - **After the fifth review round** — clarified that a rename satisfies the public-surface bar by
   shipping its successor in the same change. As written, the bar demanded a successor that already
   existed, which would have disqualified FIX-1212 (the org-store rename creates
@@ -434,12 +456,15 @@ still open on individual PRs is review feedback, and §4's `Threads` column is w
   a change no consumer can observe. Recorded because the correction ran against my own
   instruction, and because it is not an exception to theme 5 — theme 5 governs public-name
   removals, and this is a bugfix that removes no name.
-- **Merge order acquired its first hard constraint** — #1394 must not merge before #1387 (theme 6).
-  Until now every slice was based on `main` and genuinely order-independent, with only a soft
-  preference to reduce rebase thrash. #1394's CLI page now describes `--seed-user` / `--seed-org`
-  as accepted-but-inert and being removed, which is true only once #1387 lands. Recorded as a
-  constraint rather than a preference because the two carry different costs: the soft order buys
-  fewer rebases, this one prevents publishing a false claim about our own CLI.
+- **~~Merge order acquired its first hard constraint~~ — retracted, the constraint was fictional.**
+  A previous round added a hard gate: #1394 (docs) must not merge before #1387 (unread options),
+  because #1394's CLI page was said to describe `--seed-user` / `--seed-org` as accepted-but-inert
+  and being removed. Checked against #1394's actual diff, it says nothing of the kind — it deletes
+  the two flag rows and states *"Session is the only scope you can seed"*, which is already true
+  on `main`, where both flags are only echoed into the `--capture` payload and never reach a
+  store. Both merge orders publish a true page. The gate was derived from this document's own
+  prose rather than from the branch, which is the same failure that produced the `/cli` false
+  positive. The set is order-independent again; theme 6 keeps only its soft order.
 - **Two code findings routed out rather than absorbed** — FIX-1218 (`requireUser: false` throws a
   500 on every dispatch without a `defaultUserId`) and FIX-1219 (the scheduled-dispatch header
   comment states the wrong auth/idempotency order). The docs slice found both while checking prose
@@ -453,3 +478,15 @@ still open on individual PRs is review feedback, and §4's `Threads` column is w
   Review", which every row said and which told a reader deciding what to merge nothing. The
   refresh is what surfaced that four PRs (#1392, #1395, #1396, #1388) are carrying unanswered
   review passes rather than being merge candidates, and that #1388 took a new P1 at 19:01.
+- **Live PR state taken back out of the index** — the refresh above was the wrong instrument, and
+  the evidence is that it was stale twice the same afternoon. Heads, CI, thread counts and
+  readiness change hourly; a committed file cannot track them and reads as guidance while it
+  drifts. The index now carries handles only. A reader deciding what to merge asks GitHub.
+- **A ninth member surfaced** — FIX-1220, split out of #1392's review, was parented to FIX-1208 at
+  19:09 and was missing from an index snapshotted at 19:05. Added. It is the one member with no PR
+  yet, which also settles a reviewer's structural objection in the honest direction: the claim
+  that every child already exists as a reviewable diff was true when written and is not true now.
+- **Fixed FIX-1210's Linear title**, which still promised "retire the `claude --remote`
+  experiment" after this document had dropped that cut. Verified first that no cleanup branch
+  touches `packages/claude-code` at all, so the tracker was the only place the retired promise
+  survived — a lying surface inside the epic against lying surfaces.
