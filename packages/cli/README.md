@@ -50,7 +50,6 @@ Options:
 | `--seed-session <json\|path>` | Seed session-level state (JSON or file path) |
 | `--flow-dir <path>` | Override flow discovery root (repeatable) |
 | `--dotenv <path>` | Load a specific `.env` file before the cwd walk-up (repeatable, resolved from cwd) |
-| `--format <format>` | Output format (default: `json`) |
 | `--quiet` | Suppress `[flow-state] *` runtime logs on stderr |
 | `--log-level <level>` | Stderr log level: `debug \| info \| warn \| error` (default: `info`) |
 | `--capture <path>` | Write the full structured run output to a JSON file (additive with stdout) |
