@@ -65,7 +65,6 @@ Narrative: [Flows](/docs/fundamentals/flows), [Actions](/docs/fundamentals/actio
 | `costEstimator` | `CostEstimator` | — | Custom USD cost estimate from model usage. |
 | `isolateUserState` | `boolean` | `false` | Key user state (and the default for user resources) per flow kind. A resource's own `flowIsolation` always wins. |
 | `isolateOrgState` | `boolean` | `false` | Org-scope equivalent of `isolateUserState`. |
-| `defaultBlockRenderer` | renderer or `false` | — | Default UI renderer for blocks in this flow. |
 
 `mcp`, `chat`, `webhooks`, and `schedules` belong on the definition. Passing them to the factory call (`defineFlow({ ... })({ mcp: ... })`) is rejected.
 
