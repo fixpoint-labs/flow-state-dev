@@ -58,7 +58,7 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 
 ## Scopes and State
 
-- Hierarchy: `request → session → user → project` → [State and Scopes](../architecture/state-and-scopes.md)
+- Hierarchy: `request → session → user → org` → [State and Scopes](../architecture/state-and-scopes.md)
 - State ops (atomic): `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`
 - Session metadata: `ctx.session.setMetadata({ title?, description?, tags?, metadata? })` — first-class fields, emits `session.metadata.changed` SSE event
 - CAS + bounded retries for concurrency safety
