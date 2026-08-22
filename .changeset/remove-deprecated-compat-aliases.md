@@ -7,7 +7,7 @@
 "@flow-state-dev/vercel": minor
 ---
 
-Remove deprecated exports, compatibility shims, and one runtime env-var fallback. These are not one kind of cut, so they are grouped below by what you actually have to do: **rename an import**, **redesign against a different contract** (six names have no drop-in successor, and one of them will happily compile into something that does not work), or **change an environment variable**. Start with the last of those — `FSDEV_DEBUG_ITEMS` is the only removal here that will not fail your build, so it is worth reading even if you use none of the names below. (FIX-1209)
+Remove deprecated exports, compatibility shims, and one runtime env-var fallback. These are not one kind of cut, so they are grouped below by what you actually have to do: **rename an import** (one of them also moves to a different package), **redesign against a different contract** (six names have no drop-in successor, and one of them will happily compile into something that does not work), or **change an environment variable**. Start with the last of those — `FSDEV_DEBUG_ITEMS` is the only removal here that will not fail your build, so it is worth reading even if you use none of the names below. (FIX-1209)
 
 **Renamed — change the import, nothing else.** These were exact aliases of a live name:
 
@@ -16,8 +16,16 @@ Remove deprecated exports, compatibility shims, and one runtime env-var fallback
 | `ToolBinding` | `GeneratorTool` | `core` |
 | `ResourceHandle` | `ResourceRef` | `core` |
 | `resolveNamespaceKey` | `resolveCollectionKey` | `core` |
-| `CollectionItem` | `CollectionItemHandle` | `react` |
 | `PlanStep` / `PlanStepSchema` | `PlanTask` / `PlanTaskSchema` | `patterns` |
+
+**Renamed *and* moved — change the name and the package.** `CollectionItem` (`react`) was a deprecated alias exported only from `@flow-state-dev/react`. Its successor `CollectionItemHandle` is exported only from `@flow-state-dev/client`, where it already lived, so a name-only edit will not resolve:
+
+```diff
+- import type { CollectionItem } from "@flow-state-dev/react";
++ import type { CollectionItemHandle } from "@flow-state-dev/client";
+```
+
+Add `@flow-state-dev/client` to your dependencies if you only depended on `@flow-state-dev/react`. React deliberately does not re-export the type: it is how `CollectionListPage` and `CollectionItemState` already reach callers, and those appear in the same hook result signatures (`UseResourceCollectionResult`, `UseResourceCollectionListResult`, `UseResourceCollectionItemResult`). If you already import from `@flow-state-dev/client`, nothing changes there — `CollectionItem` was never exported from that package.
 
 **Removed with no equivalent successor — a caller needs to redesign, not rename.** Where a live name is pointed at below, it is a *different contract*, not a drop-in:
 
