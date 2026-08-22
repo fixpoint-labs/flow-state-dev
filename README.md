@@ -51,7 +51,7 @@ That's a streaming chat with conversation history, session state, and atomic cou
 
 Any block or sequence of blocks can be used as a tool. A single tool call can trigger an entire multi-step pipeline — your AI's tools can be as sophisticated as any other part of your workflow.
 
-**Scoped state that scales.** Four isolation levels — request, session, user, project — each with atomic operations (`patchState`, `incState`, `pushState`, `atomicState`). Every block declares only the state fields it needs. Type-safe all the way down.
+**Scoped state that scales.** Four isolation levels — request, session, user, org — each with atomic operations (`patchState`, `incState`, `pushState`, `atomicState`). Every block declares only the state fields it needs. Type-safe all the way down.
 
 **Resumable streaming out of the box.** Items stream over SSE as blocks execute. Disconnect mid-response? Reconnect with a sequence cursor and pick up exactly where you left off. No data loss. No duplicate events.
 
