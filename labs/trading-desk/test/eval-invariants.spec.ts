@@ -1112,6 +1112,75 @@ describe("checkRun — valuation", () => {
   });
 });
 
+/**
+ * FIX-1113 P2 — `valuation/abstention-honesty` skipped on ANY null fair-value
+ * leg, regardless of `periodDisclosure`. A withheld spine (the three financial
+ * statements could not be placed at one fiscal period) is coherent by
+ * construction — every cross-statement leg is withheld together. A null
+ * fair-value leg with a sibling leg (dcf / triangulation / setupScore /
+ * envelope) still populated is not a withholding at all: it is a corrupted
+ * artifact, and the old code reported it as a benign skip because the early
+ * `return` did not depend on `periodDisclosure`.
+ */
+describe("checkRun — valuation/abstention-honesty (FIX-1113 P2)", () => {
+  it("hard-fails a null fair-value leg with NO periodDisclosure while a sibling leg is still populated (corrupted, not withheld)", () => {
+    const b = healthyBundle();
+    // The healthy fixture's spine already carries a populated `setupScore`
+    // and `envelope`; corrupt only `fairValue` and leave `periodDisclosure`
+    // null (its ordinary, anchored value) and the siblings untouched.
+    b.valuationSpine!.fairValue = null;
+    const report = checkRun(b);
+    expect(byId(report.checks, "valuation/abstention-honesty")?.status).toBe(
+      "fail",
+    );
+  });
+
+  it("hard-fails a null fair-value leg with periodDisclosure SET but a sibling leg still populated (a mismatched withholding)", () => {
+    const b = healthyBundle();
+    b.valuationSpine!.fairValue = null;
+    b.valuationSpine!.periodDisclosure = {
+      reason: "periods-disagree",
+      income: "2026-03-31",
+      balance: "2025-12-31",
+      cashflow: "2025-12-31",
+      observedNewest: null,
+      anyUndatedWithFigures: false,
+    };
+    // setupScore / envelope are still populated (from the healthy fixture) —
+    // a genuine withholding would have withheld them too.
+    const report = checkRun(b);
+    expect(byId(report.checks, "valuation/abstention-honesty")?.status).toBe(
+      "fail",
+    );
+  });
+
+  // Control arm: a GENUINELY withheld spine — periodDisclosure set AND every
+  // cross-statement leg withheld along with fair value — must still skip.
+  // Without this, the fix above would read as "always fail the honest case
+  // too", which is the wrong direction to be wrong in.
+  it("(control) still skips a genuinely withheld spine — periodDisclosure set and every cross-statement leg withheld", () => {
+    const b = healthyBundle();
+    b.valuationSpine!.expectedReturn = null;
+    b.valuationSpine!.fairValue = null;
+    b.valuationSpine!.dcf = null;
+    b.valuationSpine!.triangulation = null;
+    b.valuationSpine!.setupScore = null;
+    b.valuationSpine!.envelope = null;
+    b.valuationSpine!.periodDisclosure = {
+      reason: "periods-disagree",
+      income: "2026-03-31",
+      balance: "2025-12-31",
+      cashflow: "2025-12-31",
+      observedNewest: null,
+      anyUndatedWithFigures: false,
+    };
+    const report = checkRun(b);
+    expect(byId(report.checks, "valuation/abstention-honesty")?.status).toBe(
+      "skipped",
+    );
+  });
+});
+
 describe("checkRun — citations & null-honesty", () => {
   it("fails when a published analyst memo has a null dataQuality", () => {
     const b = healthyBundle();

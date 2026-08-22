@@ -1153,17 +1153,42 @@ function checkValuation(bundle: RunArtifactsBundle, c: Checks): void {
   }
   if (spine.fairValue == null) {
     // WITHHELD, not absent (FIX-1113): the statements did not share a fiscal
-    // period, so the cross-statement legs were never computed. There is no
-    // shape to check for internal contradiction — a withheld spine is coherent
-    // by construction, and asserting a populated shape here would fail the
-    // CORRECT implementation.
-    c.skip(
-      "valuation/abstention-honesty",
-      "hard",
-      spine.periodDisclosure != null
-        ? `valuation withheld — the three statements do not share one fiscal period (${spine.periodDisclosure.reason})`
-        : "valuation spine carries no fair-value leg",
-    );
+    // period, so the cross-statement legs were never computed together. A
+    // withheld spine is coherent BY CONSTRUCTION — `periodDisclosure` is set
+    // AND every other cross-statement leg was withheld alongside fair value
+    // (see `buildValuationSpine`'s withheld branch: expectedReturn / dcf /
+    // triangulation / setupScore / envelope all null). That is the ONLY state
+    // this check may treat as a benign skip.
+    //
+    // Checking `periodDisclosure` alone is not enough (P2 fix, FIX-1113): a
+    // corrupted artifact can carry a null fair-value leg with a sibling leg
+    // — dcf, triangulation, setupScore, or the rating envelope — still
+    // populated, with or without a `periodDisclosure`. That state is not a
+    // withholding at all, and the old unconditional `return` here reported it
+    // as a benign skip regardless. This is the tool that judges our own work,
+    // so a check that cannot fail is the same severity class as a false claim.
+    const genuinelyWithheld =
+      spine.periodDisclosure != null &&
+      spine.expectedReturn == null &&
+      spine.dcf == null &&
+      spine.triangulation == null &&
+      spine.setupScore == null &&
+      spine.envelope == null;
+
+    if (genuinelyWithheld) {
+      c.skip(
+        "valuation/abstention-honesty",
+        "hard",
+        `valuation withheld — the three statements do not share one fiscal period (${spine.periodDisclosure!.reason})`,
+      );
+    } else {
+      c.hardFail(
+        "valuation/abstention-honesty",
+        spine.periodDisclosure != null
+          ? "fair value is null and periodDisclosure is set, but a sibling cross-statement leg (expectedReturn/dcf/triangulation/setupScore/envelope) is still populated — not a coherent withholding"
+          : "fair value is null with no periodDisclosure to explain it, while a sibling cross-statement leg is still populated — the spine is malformed, not withheld",
+      );
+    }
     return;
   }
 

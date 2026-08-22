@@ -602,6 +602,9 @@ export const commitPortfolioManagerMemo = handler({
       decisionConfidence: decision.decisionConfidence,
       summary: decision.decisionSummary.slice(0, 160),
       decidedAt,
+      // FIX-1113 — mirrors the memo's own field so the Past Reports LIST can
+      // badge an unanchored rating without loading per-session state.
+      ratingUnanchored,
     };
     await ctx.session.setMetadata({
       metadata: { decision: decisionMeta, reportStatus: "complete" },

@@ -31,6 +31,14 @@ export const reportDecisionMetaSchema = z.object({
   /** ISO timestamp the decision committed. Distinct from `session.createdAt`,
    *  which is when the tuple was first created — a re-run reuses the session. */
   decidedAt: z.string(),
+  // FIX-1113 — true when the rating envelope was withheld because the three
+  // financial statements could not be placed at one fiscal period, so
+  // `finalRating` above publishes unbounded rather than clamped. Mirrors the
+  // PM memo's own `ratingUnanchored` field so the Past Reports LIST can badge
+  // it without loading per-session state. `.default(false)` so a record
+  // written before this field existed parses as anchored — the ordinary case,
+  // never a false alarm on a legacy row.
+  ratingUnanchored: z.boolean().default(false),
 });
 export type ReportDecisionMeta = z.infer<typeof reportDecisionMetaSchema>;
 

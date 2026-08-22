@@ -70,6 +70,20 @@ function DecisionChip({ row }: { row: ReportRowData }): ReactElement {
       style={{ color: ratingColor(row.decision.finalRating) }}
     >
       {row.decision.finalRating}
+      {/* FIX-1113 — the envelope was withheld (three financial statements
+          could not be placed at one fiscal period), so this rating publishes
+          unbounded rather than clamped. A reader scanning the list must see
+          that before opening the report, not only inside it. */}
+      {row.decision.ratingUnanchored ? (
+        <span
+          className="text-[color:var(--c-warn)]"
+          title="Rating unanchored — the model-implied envelope was withheld because the financial statements could not be placed at one fiscal period"
+          aria-label="rating unanchored"
+        >
+          {" "}
+          ⚠
+        </span>
+      ) : null}
       <span className="text-[color:var(--c-fg-faint)]">
         {" · "}
         {row.decision.decisionConfidence.toFixed(2)}
