@@ -14,8 +14,20 @@ framework alone. A developer who hits one of these particular traps today stops 
 one of these two, and which one it takes is the thing being approved:
 
 - **Nothing is lost.** Nothing outside this repo could reach it, or a contract-identical twin
-  survives, or the name never delivered the capability it advertised. There is nobody to
-  migrate and nothing to announce beyond the changeset.
+  survives **and both names are internal**, or the name never delivered the capability it
+  advertised. There is nobody to migrate and nothing to announce beyond the changeset.
+
+  **The twin clause is scoped to internal surface, and that scope is the whole of it.** A
+  surviving twin makes a removal lossless only when reaching it costs no caller outside this
+  repo an edit — which is true when both copies are internal, because the PR repoints every
+  caller in the same change. It is false the moment the survivor is a second *public* name:
+  `ResourceHandle` and `ResourceRef` are contract-identical and `ResourceRef` survives, yet
+  #1390 dropping the alias still costs an out-of-repo caller an import change. Unqualified,
+  that clause put the aliases on this route *and* on the migration below — the same cut on
+  both, with this one ending "nothing to announce" while the other requires a named successor
+  and disclosure, so a reader taking the first would skip a disclosure the cut owes. The twin
+  is why a *working* internal duplicate is still removable; it never widens the route past
+  internal surface.
 - **Something that works today stops working at that name**, with a named successor and the
   change disclosed in a changeset. This is a **migration**, and it is not incidental: it is
   four of the cuts, across three PRs — the superseded aliases and compat shims (#1390, imports
@@ -42,7 +54,11 @@ to find out.
 which are read, into a report of themselves; "every name dropped has a canonical replacement"
 is true of aliases and renames and false of internal deletions, which deliberately have none.
 Naming which cuts migrate is **not** that failure — it is the scope of the second route, and
-it stays enumerated because the owner is approving exactly that.
+it stays enumerated because the owner is approving exactly that. Nor is scoping a route's
+clause by *surface*, internal against public, that failure: reachability is what decides
+whether anyone outside this repo has to be told, which is the entire difference between the
+two routes. A clause that decides the route on a cut's **kind** has narrowed too far; one
+that decides it on who can reach the name is the route doing its job.
 
 **What this deliberately does not promise.** Not that the framework as a whole has no lying
 surface. An earlier draft said exactly that, and it was a promise nine merged PRs cannot
@@ -89,7 +105,7 @@ So the bar depends on what is being cut:
 | **A dead knob** | The **read that does not exist** — the option is declared and destructured, and no code consumes it |
 | **A lying knob** | **Two things, both required.** First, the **promise it breaks**: the surface text that advertises it — help string, JSDoc, docs page — set against the code path showing it never does that. Second, **every observable surface the removal changes**, enumerated and disclosed in the changeset. Deliberately a higher bar than the dead knob's, because a read *does* exist: something downstream may be consuming the echo even though nothing consumes the intent, and the enumeration is what makes that visible instead of assumed |
 | **Internal surface** (not reachable from any package entry) | A repo-wide grep with **zero** referents, plus the check that it is absent from the entry and the `exports` map |
-| **An internal duplicate** | The clone bodies are **contract-identical**, shown side by side |
+| **An internal duplicate** | **Two things.** The clone bodies are **contract-identical**, shown side by side; and **both names are internal** by the row above — the survivor as much as the copy being dropped. Contract-identity alone is what a public alias also has, and an alias is a migration; the surface check is what keeps the two apart |
 
 Cuts land with their evidence in the PR body, not as an assertion.
 
@@ -830,3 +846,23 @@ still open on individual PRs is review feedback, and it lives on those PRs, not 
   decides, or that identify a false claim, get folded; everything else is noted and skipped.
   Recorded on the threads as well as here, so the next automated reviewer sees the rule rather
   than silence.
+- **The two routes were not mutually exclusive — the twin clause is now scoped to internal
+  surface.** Route 1's "a contract-identical twin survives" was literally satisfied by a public
+  alias (`ResourceHandle` goes, `ResourceRef` survives, contracts identical), while §1 already
+  enumerated those same aliases under route 2. The same cut sat on both routes, and in the
+  dangerous direction: route 1 ends *"nothing to announce beyond the changeset"* and route 2
+  requires a named successor plus disclosure, so a reader applying route 1 to an alias would
+  skip the migration disclosure — the gate stopped determining which handling a cut requires.
+  A twin only does no-loss work when reaching it costs no caller outside this repo an edit,
+  which is true of two internal copies collapsed in one PR and false of a public alias. Scoped
+  by **surface**, not by cut kind — the previous rewrite correctly refused a per-kind list, and
+  the *tell* paragraph now says outright that scoping a route by reachability is not that
+  failure, because reachability is the difference between the two routes.
+  The same round checked FIX-1210's other half and **declined it**: the seed flags stay on
+  route 1. What `--capture` loses is `command.seedUser` / `command.seedOrg`, written at
+  `run.ts:429-430` as `options.seedUser ?? null` — a verbatim echo of the caller's own
+  argument, already `null` for anyone not passing the flag, and unreadable afterwards only
+  because the flag it echoed is gone. That is not a capability, so the third clause ("never
+  delivered the capability it advertised") is the right home, and the observable change is
+  handled by the rider that already spans *either* route. #1387's changeset discharges it:
+  *"The `--capture` JSON drops the matching `options.seedUser` and `options.seedOrg` keys."*
