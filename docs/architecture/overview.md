@@ -113,7 +113,7 @@ Actions are the flow's public API. Clients call them by name. Each action maps t
 Four nested state scopes, each with typed atomic operations:
 
 ```
-request → session → user → project
+request → session → user → org
 (one run)  (conversation)  (across sessions)  (shared across users)
 ```
 

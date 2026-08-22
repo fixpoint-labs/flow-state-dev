@@ -357,7 +357,7 @@ defineFlow({
       },
     },
   },
-  project: {
+  org: {
     client: {
       derived: {
         sharedConfig: (ctx) => ctx.state.config ?? {},
@@ -374,14 +374,13 @@ Generators use `contextFn()` to pull typed data from scopes into model context â
 ```ts
 import { contextFn } from "@flow-state-dev/core";
 
-const myContext = contextFn({
-  sessionStateSchema: z.object({ mode: z.string() }),
-  sessionResources: { plan: planResource },
-  fn: (ctx) => {
-    const steps = ctx.session.resources.plan?.state.steps ?? [];
-    return `Current mode: ${ctx.session.state.mode}\nPlan steps: ${steps.join(", ")}`;
+const myContext = contextFn(
+  { session: z.object({ mode: z.string() }) },
+  ({ session }, ctx) => {
+    const steps = ctx.resources.plan?.state.steps ?? [];
+    return `Current mode: ${session.mode}\nPlan steps: ${steps.join(", ")}`;
   },
-});
+);
 
 const chatGenerator = generator({
   name: "chat",

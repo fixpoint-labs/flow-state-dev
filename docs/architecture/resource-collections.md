@@ -2,12 +2,13 @@
 
 Static resources are declared by name at definition time. You know up front that there's a `plan` resource and an `artifacts` resource. Resource collections handle the case where you don't know how many instances you'll need. An AI managing files, accumulating per-topic observations, or creating workspaces on the fly — these are collection problems.
 
-A collection defines a shared schema and pattern. Instances are created and destroyed at runtime. The property name you assign in `sessionResources` (or `userResources`, `projectResources`) is the key you use to access the collection at runtime — not the pattern string.
+A collection defines a shared schema and pattern. Instances are created and destroyed at runtime. The property name you assign in the flat `resources` map is the key you use to access the collection at runtime — not the pattern string.
 
 ```ts
 import { defineResourceCollection } from "@flow-state-dev/core";
 
 const filesCollection = defineResourceCollection({
+  scope: "session",
   pattern: "files/**",
   stateSchema: z.object({ language: z.string().default("text") }),
   maxInstances: 200,
@@ -17,10 +18,10 @@ const filesCollection = defineResourceCollection({
 // In a block definition:
 const fileManager = handler({
   name: "file-manager",
-  sessionResources: { files: filesCollection },
-  //                   ^^^^^ this property name = ctx.session.resources.files
+  resources: { files: filesCollection },
+  //           ^^^^^ this property name = ctx.resources.files
   execute: async (input, ctx) => {
-    const files = ctx.session.resources.files;
+    const files = ctx.resources.files;
     // ...
   },
 });
@@ -30,14 +31,14 @@ For background on resources in general, see [Resources and Client Data](./resour
 
 ## How access keys work
 
-The property name in `sessionResources` determines how you access the collection on `ctx.session.resources`. The pattern string only affects **storage keys** for instances.
+The property name in `resources` determines how you access the collection on `ctx.resources`. The pattern string only affects **storage keys** for instances.
 
 ```ts
 // You declare:
-sessionResources: { docs: myCollection }
+resources: { docs: myCollection }
 
 // You access:
-ctx.session.resources.docs  // ← property name, not the pattern
+ctx.resources.docs  // ← property name, not the pattern
 
 // Instances are stored under pattern-resolved keys:
 // "documents/readme.md", "documents/src/utils.ts", etc.
@@ -62,7 +63,7 @@ Constraints:
 
 ## Runtime API — `ResourceCollectionRef`
 
-At runtime, collection entries on scope resource registries (`ctx.session.resources`, `ctx.user.resources`, `ctx.project.resources`) are `ResourceCollectionRef<TState>` instances. There is one ref type regardless of `prefetchMode`; the mode changes loading cost, not the API.
+At runtime, collection entries on the flat `ctx.resources` registry are `ResourceCollectionRef<TState>` instances. There is one ref type regardless of `prefetchMode`; the mode changes loading cost, not the API. The collection's intrinsic `scope` routes storage.
 
 ### Core operations
 
@@ -70,7 +71,7 @@ All lookups (`get`, `getOptional`, `list`, `count`) return Promises — always `
 
 ```ts
 execute: async (input, ctx) => {
-  const files = ctx.session.resources.files;
+  const files = ctx.resources.files;
 
   // Create a new instance — returns a ResourceRef
   const ref = await files.create("readme.md", { language: "markdown" });
@@ -124,15 +125,16 @@ When a pattern has `[name]` segments, pass an object key instead of a string:
 
 ```ts
 const topicNotes = defineResourceCollection({
+  scope: "session",
   pattern: "[topic]/notes",
   stateSchema: z.object({ entries: z.array(z.string()).default([]) }),
 });
 
 // Register under any property name you want:
-sessionResources: { notes: topicNotes }
+resources: { notes: topicNotes }
 
 // At runtime:
-const notes = ctx.session.resources.notes;
+const notes = ctx.resources.notes;
 const ref = await notes.create({ topic: "react" }, { entries: [] });
 // Storage key: "react/notes"
 
@@ -162,6 +164,7 @@ Collections support per-instance lifecycle hooks for logging, side effects, or c
 
 ```ts
 defineResourceCollection({
+  scope: "session",
   pattern: "files/**",
   stateSchema: fileSchema,
   onInstanceCreated: (key, state, ctx) => {
@@ -215,9 +218,9 @@ Collections work with block-level resource declarations the same way static reso
 ```ts
 const fileManager = handler({
   name: "file-manager",
-  sessionResources: { files: filesCollection },
+  resources: { files: filesCollection },
   execute: async (input, ctx) => {
-    const ref = await ctx.session.resources.files.create("output.md", {
+    const ref = await ctx.resources.files.create("output.md", {
       language: "markdown",
     });
     return input;
@@ -225,7 +228,7 @@ const fileManager = handler({
 });
 ```
 
-Sequencers collect collection declarations from child blocks. `defineFlow` merges them into scope configs. Conflict detection applies: two blocks declaring different collection refs for the same name will throw at build time. If both blocks reference the same `defineResourceCollection()` instance, the merge succeeds.
+Sequencers collect collection declarations from child blocks. `defineFlow` merges them into the flow's `resources` map. Conflict detection applies: two blocks declaring different collection refs for the same name will throw at build time. If both blocks reference the same `defineResourceCollection()` instance, the merge succeeds.
 
 ## When to use collections vs static resources
 

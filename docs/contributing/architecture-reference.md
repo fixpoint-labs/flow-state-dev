@@ -58,7 +58,7 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 
 ## Scopes and State
 
-- Hierarchy: `request → session → user → project` → [State and Scopes](../architecture/state-and-scopes.md)
+- Hierarchy: `request → session → user → org` → [State and Scopes](../architecture/state-and-scopes.md)
 - State ops (atomic): `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`
 - Session metadata: `ctx.session.setMetadata({ title?, description?, tags?, metadata? })` — first-class fields, emits `session.metadata.changed` SSE event
 - CAS + bounded retries for concurrency safety
@@ -154,9 +154,9 @@ Purposes and default models live in the catalog — don't restate them here.
 - Each `clientData` compute function receives only its own scope's state and resources (single-scope context)
 - Generator context uses `contextFn()` for typed scope access, not raw state dumps
 - `defineResource()` for portable resource declarations
-- Blocks declare resources via `sessionResources`, `userResources`, `projectResources` (using `defineResource()` values)
+- Blocks and flows declare resources via a flat `resources` map (using `defineResource()` values); each resource's `scope` (`"session"` | `"user"` | `"org"`) routes storage. Access at runtime is `ctx.resources.<key>`
 - Sequencers collect `declaredResources` from all child blocks automatically
-- `defineFlow` merges block-declared resources into flow scope configs; flow-level wins over block-level
+- `defineFlow` merges block-declared resources into the flow's `resources` map; flow-level wins over block-level
 - Same `defineResource()` reference across blocks = no conflict; different references for same name = build-time error
 - Collection snapshots emit `count` always and `prefetched` when `prefetchWindow > 0`; per-item `clientData` is gated by `client.state.read`. Lazy reads via `GET /sessions/:id/resources/:ref` and a flow-static manifest at `GET /sessions/:id/manifest` (FIX-427).
 

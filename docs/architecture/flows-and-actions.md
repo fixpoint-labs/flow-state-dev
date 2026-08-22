@@ -78,13 +78,15 @@ Otherwise omit it — the block's schema is the source of truth, and the runtime
 
 ## Scope Configuration
 
-Flows configure state and resources across four scopes:
+Flows configure state across four scopes. Resources live in a single flat `resources` map; each resource's intrinsic `scope` (`"session"` | `"user"` | `"org"`) routes storage.
 
 ```ts
 defineFlow({
   kind: "my-flow",
   requireUser: true,
   actions: { /* ... */ },
+
+  resources: { /* accessor → defineResource / defineResourceCollection */ },
 
   request: {
     stateSchema: z.object({ /* per-request state */ }),
@@ -97,19 +99,16 @@ defineFlow({
 
   session: {
     stateSchema: z.object({ mode: z.enum(["plan", "edit"]).default("plan") }),
-    resources: { /* concrete persisted resources */ },
     client: { /* expose / derived views for the client */ },
   },
 
   user: {
     stateSchema: z.object({ /* per-user state */ }),
-    resources: { /* ... */ },
     client: { /* ... */ },
   },
 
-  project: {
-    stateSchema: z.object({ /* project-wide state */ }),
-    resources: { /* ... */ },
+  org: {
+    stateSchema: z.object({ /* org-wide state */ }),
     client: { /* ... */ },
   },
 });
@@ -179,21 +178,21 @@ session: {
 
 ### Automatic Resource Collection
 
-Blocks can declare resource dependencies directly via `sessionResources`, `userResources`, and `projectResources` (using `defineResource()` values). When `defineFlow` is called, it collects `declaredResources` from all action blocks and merges them into the flow's scope configs. Flow-level resource declarations take priority — blocks bring defaults, and the flow can override them:
+Blocks declare resource dependencies via `resources` (using `defineResource()` values). When `defineFlow` is called, it collects `declaredResources` from all action blocks and merges them into the flow's `resources` map. Flow-level declarations take priority — blocks bring defaults, and the flow can override them:
 
 ```ts
 // Block declares its resource dependency
 const planManager = handler({
   name: "plan-manager",
-  sessionResources: { plan: planResource },
-  execute: async (input, ctx) => { /* ... */ },
+  resources: { plan: planResource },
+  execute: async (input, ctx) => { /* ctx.resources.plan */ },
 });
 
-// defineFlow merges block-declared resources into session.resources
+// defineFlow merges block-declared resources into flow.resources
 const flow = defineFlow({
   kind: "my-app",
   actions: { manage: { block: planManager } },
-  // session.resources will automatically include { plan: planResource }
+  // flow.resources will include { plan: planResource }
   // even without declaring it here
 });
 ```
