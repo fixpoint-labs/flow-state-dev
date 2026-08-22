@@ -7,7 +7,7 @@
 "@flow-state-dev/vercel": minor
 ---
 
-Remove deprecated exports and compatibility shims. Nothing in this repo referenced them. They are not all the same kind of cut, so they are listed separately — some are safe to rename, some are not. (FIX-1209)
+Remove deprecated exports, compatibility shims, and one runtime env-var fallback. These are not one kind of cut, so they are grouped below by what you actually have to do: **rename an import**, **redesign against a different contract** (six names have no drop-in successor, and one of them will happily compile into something that does not work), or **change an environment variable**. Start with the last of those — `FSDEV_DEBUG_ITEMS` is the only removal here that will not fail your build, so it is worth reading even if you use none of the names below. (FIX-1209)
 
 **Renamed — change the import, nothing else.** These were exact aliases of a live name:
 
