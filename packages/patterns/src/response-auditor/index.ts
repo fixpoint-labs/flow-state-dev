@@ -48,6 +48,9 @@ export type {
  *
  * Stores the captured context in sequencer state for downstream blocks.
  * Wired as `.tap()` — state-only, no echoed output (BP-012 / BP-014).
+ *
+ * @remarks Compose this with `.tap(captureContext)`, never `.step(captureContext)`.
+ * It returns nothing, so as a `.step()` it hands `undefined` to the next step.
  */
 export const captureContext = handler({
   name: "capture-context",
