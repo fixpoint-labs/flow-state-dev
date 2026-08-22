@@ -71,7 +71,6 @@ export interface ParallelTasksConfig<
    * How to handle individual sub-task failures.
    * - `skip` (default): exclude failed sub-tasks; pass completed results to synthesizer
    * - `fail`: abort entire coordination on any failure
-   * - `retry`: not supported — treated as `skip` with a one-time construction warning
    */
   onSubTaskError?: SubTaskErrorStrategy;
 
