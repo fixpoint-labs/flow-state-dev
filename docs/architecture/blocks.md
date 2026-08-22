@@ -95,7 +95,7 @@ const research = sequencer({
   name: "research",
   stateSchema: z.object({ progress: z.number().default(0) }),
   defaultState: { progress: 0 },
-}).step(updateProgress);
+}).tap(updateProgress);
 ```
 
 When sequencer state mutates, runtime emits a `state_change` item with `scope: "block_instance"` and the sequencer `blockInstanceId` in item provenance for client routing.
@@ -110,12 +110,10 @@ const validate = handler({
   targetStateSchemas: {
     research: z.object({ progress: z.number() })
   },
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     await ctx.targets.research?.patchState({ progress: 50 });
 
-    // Dynamic fallback remains available
-    const anyTarget = ctx.getTarget("research");
-    return input;
+    // Dynamic fallback remains available: ctx.getTarget("research")
   }
 });
 ```
@@ -137,9 +135,8 @@ const planResource = defineResource({
 const planManager = handler({
   name: "plan-manager",
   sessionResources: { plan: planResource },
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     await ctx.session.resources.plan.patchState({ steps: ["step1"] });
-    return input;
   },
 });
 
@@ -150,7 +147,7 @@ Resource declarations are supported on all block kinds: handler, generator, and 
 
 ## Handler
 
-The simplest block. Takes input, runs synchronous or async logic, returns output.
+The simplest block. Takes input, runs synchronous or async logic, returns output — unless it only mutates state, in which case it returns nothing, declares no `outputSchema`, and is chained with `.tap()` rather than `.step()` (BP-012, BP-014). The counter below is that shape.
 
 ```ts
 import { handler } from "@flow-state-dev/core";
@@ -159,12 +156,10 @@ import { z } from "zod";
 const incrementCounter = handler({
   name: "increment-counter",
   inputSchema: z.string(),
-  outputSchema: z.string(),
   sessionStateSchema: z.object({ messageCount: z.number().default(0) }),
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     const count = ctx.session.state.messageCount ?? 0;
     await ctx.session.patchState({ messageCount: count + 1 });
-    return input;
   },
 });
 ```
@@ -299,7 +294,7 @@ import { sequencer } from "@flow-state-dev/core";
 
 const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema: chatInputSchema })
   .step(chatGenerator)
-  .step(incrementCounter);
+  .tap(incrementCounter);
 ```
 
 ### DSL Methods (20 total)
@@ -353,7 +348,7 @@ pipeline
   .step(handler, {
     name: "validate",
     outputSchema: z.string(),
-    execute: async (input, ctx) => { /* ... */ return input; }
+    execute: async (input, ctx) => { /* ... */ return input.trim(); }
   });
 ```
 
