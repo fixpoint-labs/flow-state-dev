@@ -402,7 +402,7 @@ The default is `0` (no prefetched window).
 
 ### Server-side projections still work
 
-Scope-level `clientData` functions that call `collection.list()` continue to work. Lazy snapshots changed what the server *emits*, not what it *loads* — the full `persisted` map is still available to the projection function.
+Scope-level `client.derived` functions that call `collection.list()` continue to work. Lazy snapshots changed what the server *emits*, not what it *loads* — the full `persisted` map is still available to the projection function.
 
 ### Migration from earlier versions
 

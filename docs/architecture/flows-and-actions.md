@@ -98,19 +98,19 @@ defineFlow({
   session: {
     stateSchema: z.object({ mode: z.enum(["plan", "edit"]).default("plan") }),
     resources: { /* concrete persisted resources */ },
-    clientData: { /* derived views for the client */ },
+    client: { derived: { /* derived views for the client */ } },
   },
 
   user: {
     stateSchema: z.object({ /* per-user state */ }),
     resources: { /* ... */ },
-    clientData: { /* ... */ },
+    client: { derived: { /* ... */ } },
   },
 
   project: {
     stateSchema: z.object({ /* project-wide state */ }),
     resources: { /* ... */ },
-    clientData: { /* ... */ },
+    client: { derived: { /* ... */ } },
   },
 });
 ```
@@ -160,18 +160,20 @@ session: {
       writable: true,
     },
   },
-  clientData: {
-    activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
-    messageCount: (ctx) => ctx.state.messageCount ?? 0,
+  client: {
+    derived: {
+      activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
+      messageCount: (ctx) => ctx.state.messageCount ?? 0,
+    },
   },
 },
 ```
 
 **Key rules:**
-- Client-facing values are exposed through `clientData` entries — every entry is client-visible
+- Client-facing values are exposed through the scope's `client` config — `expose` passes named state fields through verbatim, `derived` computes views; both are client-visible
 - Generator context should use `contextFn()` for typed scope access
 - Use `defineResource()` for portable resource reuse
-- Each `clientData` compute function receives only its own scope's state and resources
+- Each `client.derived` compute function receives only its own scope's state and resources
 
 ### Automatic Resource Collection
 

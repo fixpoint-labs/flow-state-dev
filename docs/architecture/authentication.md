@@ -197,7 +197,7 @@ defineFlow({
 });
 ```
 
-The same enforcement applies to `user.clientData` and to any resource (block-
+The same enforcement applies to `user.client` and to any resource (block-
 declared or flow-level) with `scope: "user"`. Catching the conflict at
 startup — rather than at request time — surfaces a class of integration
 mistakes immediately.

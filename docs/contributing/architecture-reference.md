@@ -150,8 +150,8 @@ Purposes and default models live in the catalog — don't restate them here.
 ## Resources and Client Data
 
 - Concrete resources are persisted, attached to scopes
-- `clientData` entries are derived views — every entry is client-visible (no `client: true/false` toggle)
-- Each `clientData` compute function receives only its own scope's state and resources (single-scope context)
+- A scope's `client` config is what crosses to the browser — `expose` for named state fields verbatim, `derived` for computed views; every entry is client-visible (no `client: true/false` toggle)
+- Each `client.derived` compute function receives only its own scope's state and resources (single-scope context)
 - Generator context uses `contextFn()` for typed scope access, not raw state dumps
 - `defineResource()` for portable resource declarations
 - Blocks declare resources via `sessionResources`, `userResources`, `projectResources` (using `defineResource()` values)
