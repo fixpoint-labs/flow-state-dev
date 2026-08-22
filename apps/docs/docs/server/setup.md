@@ -42,18 +42,7 @@ Move this config object to an `fsdev.config.ts` at your project root that defaul
 
 Construction validates your config up front. An empty `stores` map or a `defaultProfile` that names a profile you didn't declare throws right away, not on the first request.
 
-The full field list, including defaults, is in [Runtime options](/docs/configuration/runtime). Common options:
-
-| Option | Purpose |
-|--------|---------|
-| `flows` | Map of stable keys to flow instances. |
-| `models` | Model resolver config. `default` is the fallback model id; `intents` maps named intents to ordered candidate lists. Auto-wires the Vercel AI Gateway when `AI_GATEWAY_API_KEY` is set. |
-| `voice` | Runtime voice provider (`{ provider }`). Speak defaults also live on the flow's `voice` block. |
-| `stores` | Named store profiles. See below. |
-| `defaultProfile` | Which profile to use when no `FSD_ENV` is set. |
-| `settings` | Instance-level config read inside blocks via `ctx.settings`. |
-| `onError` | HTTP-level error sink. |
-| `errorCapture` | Block-aware sink for routing runtime block failures to an external service. |
+`flows` and `stores` are the two required fields; everything else has a default. The full field list, with types and defaults, is in [Runtime options](/docs/configuration/runtime).
 
 ```ts
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";

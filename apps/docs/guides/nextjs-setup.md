@@ -115,6 +115,8 @@ export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 ```
 
+The handler is only half of the Vercel wiring. A non-inline action returns `202` and keeps running, and Vercel will freeze the function the moment the response is sent. Keeping it alive is a `createFlowState` option, not a handler option — pass `onBackgroundWork: (p) => after(() => p)` where you build the runtime. [Deploying to Vercel](/guides/deploying-to-vercel) has the full setup.
+
 **Why a catch-all?** The framework uses path-based routing: `/api/flows/:kind/actions/:action`, `/api/flows/:kind/requests/:requestId/stream`, etc. A single `[...path]` segment captures the rest of the path. The router parses it and dispatches to the right handler. One file, full API.
 
 **What this creates:**

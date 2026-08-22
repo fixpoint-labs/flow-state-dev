@@ -18,15 +18,16 @@ import { createClient } from "@flow-state-dev/client";
 const client = createClient({
   flowKind: "hello-chat",
   userId: "devuser",
-  baseUrl: "/api/flows",
 });
 ```
+
+Every request path the client builds already starts with `/api/flows`. Leave `baseUrl` off when the API is mounted on the same origin — setting it to `"/api/flows"` produces `/api/flows/api/flows/…`.
 
 | Field | Type | Default | What it does |
 |-------|------|---------|--------------|
 | `flowKind` | `string` | required | Which flow to call. |
 | `userId` | `string` | required | Caller identity sent on every request. The server still resolves the principal from your auth hook; this is the client's claim. |
-| `baseUrl` | `string` | — | API prefix. In Next.js this is often `/api/flows`. |
+| `baseUrl` | `string` | same origin | Prefix put in front of `/api/flows/…`. Omit it for a same-origin app (Next.js route handler, the `node` host). Set an origin such as `https://api.example.com` when the API lives elsewhere. |
 | `fetcher` | `typeof fetch` | global `fetch` | Custom fetch (tests, extra headers). |
 
 `createTypedClient({ flow, userId, ... })` adds the same connection fields and types `sendAction` from the flow instance.
@@ -40,14 +41,14 @@ Passed per call, not at client construction.
 | `sessionId` | `string` | new ephemeral session | Existing session to continue. |
 | `requestId` | `string` | minted | Correlate a client-generated id with the server request. |
 | `orgId` | `string` | — | Bind the request to an org. Required when any block set `requireOrg`. |
-| `metadata` | object | — | Session metadata (title, tags, …) accepted by the session API. |
+| `metadata` | object | — | Request metadata. Stored on the request record and visible in traces. Session `title` and `tags` are set through the session API, not here. |
 
 ## `FlowProvider`
 
 ```tsx
 import { FlowProvider } from "@flow-state-dev/react";
 
-<FlowProvider flowKind="hello-chat" userId="devuser" baseUrl="/api/flows">
+<FlowProvider flowKind="hello-chat" userId="devuser">
   <Chat />
 </FlowProvider>
 ```
@@ -57,7 +58,7 @@ import { FlowProvider } from "@flow-state-dev/react";
 | `flowKind` | `string` | Default flow for hooks. |
 | `userId` | `string` | Default caller id. |
 | `sessionId` | `string` | Default session. `useFlow({ autoCreateSession: true })` can mint one instead. |
-| `baseUrl` | `string` | API prefix forwarded to the client. |
+| `baseUrl` | `string` | Forwarded to the client. Same rule: omit it for a same-origin app. |
 | `renderers` | `RendererRegistry` | Custom item renderers. Nested providers merge; child keys override. |
 | `children` | `ReactNode` | The tree that may call hooks. |
 

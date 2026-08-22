@@ -33,50 +33,9 @@ Narrative pages teach the concepts. The catalogs are field lists: name, type, de
 | Map `intent/chat` to a fallback chain | [Models](/docs/fundamentals/models) |
 | Persist across restarts | [Persistence](/docs/persistence/overview) |
 
-## A minimal stack
+## Seeing all three at once
 
-```ts title="src/flows/hello-chat/flow.ts"
-import { defineFlow, generator } from "@flow-state-dev/core";
-import { z } from "zod";
-
-const inputSchema = z.object({ message: z.string() });
-
-export default defineFlow({
-  kind: "hello-chat",
-  actions: {
-    chat: {
-      inputSchema,
-      block: generator({
-        name: "chat",
-        model: "intent/chat",
-        prompt: "You are a helpful assistant.",
-        inputSchema,
-        history: true,
-        user: (input) => input.message,
-        itemVisibility: { client: true, history: true },
-      }),
-      userMessage: (input) => input.message,
-    },
-  },
-})();
-```
-
-```ts title="fsdev.config.ts"
-import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
-import chatFlow from "./src/flows/hello-chat/flow";
-
-export default createFlowState({
-  flows: { chat: chatFlow },
-  models: { default: "openai/gpt-5.4-mini", intents: { chat: ["openai/gpt-5.4-mini"] } },
-  stores: { default: { primary: inMemoryStores() } },
-});
-```
-
-```bash title=".env.local"
-OPENAI_API_KEY=sk-...
-```
-
-The same `createFlowState` handle mounts as your HTTP API and as the `fsdev` CLI. One object, two entry points. See [App configuration](/docs/cli/configuration).
+[Quick Start](/docs/getting-started/quick-start) builds the smallest app that uses every layer: a flow file, a `createFlowState` handle, and a `.env.local`. The same handle mounts as your HTTP API and as the `fsdev` CLI — one object, two entry points. See [App configuration](/docs/cli/configuration).
 
 ## What this section does not list
 

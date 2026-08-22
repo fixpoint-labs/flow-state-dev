@@ -18,7 +18,7 @@ import { createClient } from "@flow-state-dev/client";
 const client = createClient({
   flowKind: "my-app",
   userId: "user_1",
-  baseUrl: "/api", // optional, defaults to same origin
+  // baseUrl: "https://api.example.com", // only when the API is on another origin
 });
 
 const { requestId } = await client.sendAction("chat", { message: "Hello" });
@@ -80,7 +80,7 @@ If you'd rather have those events folded into a ready-to-render item list than h
 ```ts
 import { createSessionClient } from "@flow-state-dev/client";
 
-const sessions = createSessionClient({ baseUrl: "/api" });
+const sessions = createSessionClient();
 ```
 
 **Creating sessions with metadata:**

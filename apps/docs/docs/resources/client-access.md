@@ -394,7 +394,7 @@ The `@flow-state-dev/client` package exports `createResourceClient` for direct H
 ```ts
 import { createResourceClient } from "@flow-state-dev/client";
 
-const resources = createResourceClient({ baseUrl: "/api" });
+const resources = createResourceClient();
 
 // Fetch content for a single resource
 const { content } = await resources.getResourceContent(sessionId, "soul");

@@ -83,12 +83,7 @@ const sidebars: SidebarsConfig = {
             "resources/client-access",
             "resources/searching",
             "resources/manifest",
-            {
-              type: "category",
-              label: "Advanced",
-              collapsed: true,
-              items: ["advanced/resource-templates-markdown"],
-            },
+            "advanced/resource-templates-markdown",
           ],
         },
         {
@@ -98,12 +93,7 @@ const sidebars: SidebarsConfig = {
             "streaming/overview",
             "streaming/emitting-items",
             "streaming/items",
-            {
-              type: "category",
-              label: "Advanced",
-              collapsed: true,
-              items: ["streaming/trace-channel"],
-            },
+            "streaming/trace-channel",
           ],
         },
         {

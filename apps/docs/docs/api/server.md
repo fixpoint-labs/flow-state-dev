@@ -24,22 +24,7 @@ const flowstate = createFlowState({
 });
 ```
 
-Selected options:
-
-| Option | Type | Notes |
-|--------|------|-------|
-| `flows` | `Record<string, FlowInstance>` | Required. Stable key to flow instance. |
-| `models` | `FlowStateModelsConfig` | `{ default?, intents?, ... }`. Auto-wires AI Gateway via `AI_GATEWAY_API_KEY`. |
-| `modelResolver` | `ModelResolver` | Escape hatch: a pre-built resolver (test mocks, custom resolvers). Used instead of `models`. |
-| `voice` | `{ provider?: VoiceProvider }` | A voice provider for TTS/STT, e.g. `new OpenAIVoiceProvider(...)`. See [Voice](/docs/advanced/voice). |
-| `stores` | `StoresConfig` | Required. Named profiles of capability slots. |
-| `defaultProfile` | `string` | Active profile when `FSD_ENV` is unset. |
-| `settings` | `TSettings` | Read in blocks via `ctx.settings`. |
-| `onError` | `(error, ctx) => void` | `ctx` is `{ method, path }`. HTTP-level sink. |
-| `errorCapture` | `(event: ErrorCaptureEvent) => void \| Promise<void>` | Opt-in, block-aware sink for routing runtime block failures to Sentry, Datadog, etc. See [Error capture](/docs/advanced/error-capture). |
-| `onBackgroundWork` | `(p) => void` | Serverless keep-alive, e.g. `(p) => after(() => p)`. |
-| `defaultSseHeartbeatMs` | `number` | Wire-level SSE heartbeat cadence. |
-| `detachedDrainTimeoutMs` | `number` | Ceiling on how long `dispose()` waits for in-process background work. Default `30000`. `0` skips the wait. See [Shutdown](#shutdown). |
+`flows` and `stores` are required; the rest have defaults. Every option, with its type and default, is catalogued in [Runtime options](/docs/configuration/runtime) — including the model, store, worker, durability, and sweeper groups.
 
 Construction is synchronous and validates config (empty `stores`, unknown `defaultProfile`) by throwing `FlowStateConfigError`. Stores initialize lazily on first `getRouter()` / `ready()`.
 

@@ -81,21 +81,14 @@ Disconnect mid-response, reconnect with a cursor, and continue from the last seq
 
 ## Where settings live
 
-Settings live in three places. Each catalog sits next to the concept it configures: [Flow options](/docs/configuration/flow) after Flows, [Block options](/docs/configuration/blocks) after Blocks, [Runtime options](/docs/configuration/runtime) after Engine setup. The [Configuration map](/docs/configuration/overview) at the end of Core is the lookup when you already know which object you are editing.
-
-| Layer | Object | Typical file |
-|-------|--------|--------------|
-| Flow | `defineFlow({ ... })` | `src/flows/<name>/flow.ts` |
-| Runtime | `createFlowState({ ... })` | `fsdev.config.ts` |
-| Environment | keys, `FSD_ENV`, intent overrides | `.env.local` |
+Settings live in three layers: the flow (`defineFlow`), the runtime (`createFlowState`), and the environment. Each field catalog sits next to the concept it configures, so you meet it while learning that concept. When you already know which object you are editing, the [Configuration map](/docs/configuration/overview) routes you straight to the field list.
 
 ## What else ships
 
 All optional. Skip anything you are not using.
 
 - **React hooks** — `FlowProvider`, `useSession`, `ItemsRenderer` for the stream and session state
-- **Dev tools** — the CLI (`fsdev`) and the DevTool. Same `createFlowState` handle as the engine. See [CLI](/docs/cli/overview) and [DevTool](/docs/devtool/overview).
-- **DevTool** — inspect blocks, items, and state while a flow runs
+- **Dev tools** — the [CLI](/docs/cli/overview) runs flows from a terminal; the [DevTool](/docs/devtool/overview) inspects blocks, items, and state while one runs. Both mount the same `createFlowState` handle as the engine.
 - **Testing** — `testBlock` / `testFlow` with mocked generators
 - **Models** — provider-agnostic ids, named intents, retry and fallback on the resolver
 

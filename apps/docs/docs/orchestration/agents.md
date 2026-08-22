@@ -15,18 +15,9 @@ Agents live in `@flow-state-dev/workforce`. The type contracts they satisfy are 
 
 ## defineAgent
 
-`defineAgent` builds a validated agent definition. The config:
+`defineAgent` builds a validated agent definition. Four fields carry the agent's identity: `name` is the key `agent-ref` resolves against, `description` labels the definition (nothing reads it at runtime, and it is not the system prompt), `persona` is the system-prompt source, and `model` picks the generator model. The rest — `allowedTools`, `usesCapabilities`, `outputSchema`, `itemVisibility` — shape what the materialized block can do.
 
-| Field | Meaning |
-|-------|---------|
-| `name` | Stable identifier. This is the key `agent-ref` resolves against. |
-| `description` | Required one-line summary of what the agent is for. A label on the definition: nothing reads it at runtime, and it is not the system prompt. |
-| `persona` | The system-prompt source. A string, an inline template, or a resource path. |
-| `model` | Model id. Falls back to the default model set where the agent is materialized (`workerModelId` on the skills library, `defaultModelId` on `agentBlock`), then `intent/chat`. |
-| `allowedTools` | Tool-catalog keys the agent may reference. |
-| `usesCapabilities` | Capabilities the agent composes, as string keys or capability refs. |
-| `outputSchema` | Structured output contract. Honored only for the standalone shape. |
-| `itemVisibility` | Which items reach the client and history. Defaults to `{ client: true, history: false }`. |
+Every field, with its type and default, is in [Configuration](./configuration#defineagent-options).
 
 A minimal agent needs a name, a description, a persona, and whatever tools it calls:
 

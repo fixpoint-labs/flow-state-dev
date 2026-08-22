@@ -186,14 +186,7 @@ See [Scheduled actions](/docs/server/scheduled).
 
 ### `voice`
 
-| Field | Type | Default | What it does |
-|-------|------|---------|--------------|
-| `provider` | `VoiceProvider` | — | TTS/STT implementation used by this flow. |
-| `tts.model` | `string` | provider default | Speak model id. |
-| `tts.voice` | `string` | — | Voice id. |
-| `tts.speed` | `number` | — | Playback speed. |
-
-See [Voice](/docs/advanced/voice).
+`voice.provider` sets the TTS/STT implementation for this flow, and `voice.tts` carries the speak defaults (`model`, `voice`, `speed`). Those three are catalogued with the rest of the voice surface on [Voice](/docs/advanced/voice#tts-options).
 
 ## Resources
 
@@ -209,7 +202,7 @@ Declare resources on the flow (or on a block / capability). `scope` on `defineRe
 | `sharedToWorkstream` | `boolean` | `false` | Session resources resolve against the lineage root so child workstreams share them. Session-scope only. |
 | `prefetchMode` | `"eager"` \| `"lazy"` | `"eager"` | When the runtime loads the resource. |
 | `llmReadable` / `llmWritable` | `boolean` | — | Whether generators may read or write the resource. |
-| `client` | `ResourceClientConfig` | full state to the client | `expose` / `exclude` / `data` are mutually exclusive. Omit all three to send the full state. |
+| `client` | `ResourceClientConfig` | omitted — state stays private | Opens the resource to clients. For a single resource, declaring `expose`, `exclude`, or `data` (mutually exclusive) is the opt-in; a `client` carrying only `content` keeps state private. Collections gate state on `state.read` and ship the full item state when no projection is set. See [Client access](/docs/resources/client-access). |
 | `content` / `contentFile` / `contentTemplate` | content source | — | Mutually exclusive ways to supply a body. |
 
 Collections add `pattern`, `maxInstances`, `eviction` (`"none"` \| `"lru"` \| `"oldest"`), and create/delete hooks. See [Resources](/docs/resources/overview) and [Collections](/docs/resources/collections).

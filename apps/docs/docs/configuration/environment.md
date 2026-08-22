@@ -38,7 +38,7 @@ These override `createModelResolver` / `models` at construction. They do not cha
 
 | Variable | What it does |
 |----------|----------------|
-| `FSDEV_INTENT_<NAME>` | Replaces the candidate list for intent `<name>`. `<NAME>` is the intent uppercased with hyphens turned into underscores (`chat` → `FSDEV_INTENT_CHAT`, `my-custom` → `FSDEV_INTENT_MY_CUSTOM`). Comma-separated model ids. |
+| `FSDEV_INTENT_<NAME>` | Replaces the candidate list for intent `<name>`. `<NAME>` is the intent uppercased with hyphens turned into underscores (`chat` → `FSDEV_INTENT_CHAT`, `my-custom` → `FSDEV_INTENT_MY_CUSTOM`). The value is one `provider/model` or `gateway/provider/model` string; comma-separated lists are not supported. |
 | `FSDEV_DEFAULT_MODEL` | Replaces `models.default` / `defaultModel`. |
 
 Construction throws when two declared intents normalize to the same env name (`my-custom` and `my_custom`). An `FSDEV_INTENT_*` for an intent this resolver does not declare is warned and ignored. A typo in a declared intent's override is warned and the resolver falls back to `default`.

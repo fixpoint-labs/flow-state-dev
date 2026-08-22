@@ -376,7 +376,7 @@ const { pending } = useSuspensions(session, {
 By default `ItemRenderer` renders a built-in approval card (`ApprovalRenderer`) for `type === "suspension"` items. Set `flowKind` on `<FlowProvider>` so the card can call the resume endpoint:
 
 ```tsx
-<FlowProvider flowKind="my-flow" baseUrl="/api/flows">
+<FlowProvider flowKind="my-flow">
   <ItemsRenderer items={session.items} />
 </FlowProvider>
 ```
@@ -388,7 +388,7 @@ With just `flowKind` set, the inline card resolves with a non-streaming resume â
 ```tsx
 import { SuspensionResolverProvider } from "@flow-state-dev/react";
 
-<FlowProvider flowKind="my-flow" baseUrl="/api/flows">
+<FlowProvider flowKind="my-flow">
   <SuspensionResolverProvider resolve={session.resumeSuspension}>
     <ItemsRenderer items={session.items} />
   </SuspensionResolverProvider>

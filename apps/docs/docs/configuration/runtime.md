@@ -93,10 +93,12 @@ Profile resolution, first match wins:
 
 | Slot | What it holds |
 |------|----------------|
-| `primary` | Required. Sessions, state, items, requests. |
-| `blobs` | Large content bodies. |
-| `queue` | Durable job queue when you use a worker adapter. |
-| `scheduler` | Host schedule persistence, when used. |
+| `primary` | Required. Sessions, state, items, requests, content, checkpoints, traces, suspensions, leases. |
+| `blobs` | Reserved. Backs no store today. |
+| `queue` | Reserved. Backs no store today. |
+| `scheduler` | Reserved. Backs no store today. |
+
+Only `primary` resolves into the store registry. `blobs`, `queue`, and `scheduler` are forward-compatible slots: the adapter you name must declare the capability (construction throws if it does not), but declaring one configures nothing. Durable job queues come from a [worker adapter](#workers); schedules are fired by the host scheduler, not by a store — see [Scheduled actions](/docs/server/scheduled).
 
 Built-in adapters:
 
