@@ -697,7 +697,7 @@ export function createModelResolver(
         providerName,
         PROVIDER_PACKAGES[providerName]!,
         info.apiKey!
-      ) as Promise<(modelId: string) => unknown>;
+      ) as Promise<ProviderResolver>;
       providerLoadCache.set(providerName, pending);
     }
     return pending;
