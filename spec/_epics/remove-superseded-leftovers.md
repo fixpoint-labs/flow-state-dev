@@ -126,10 +126,16 @@ above was not doing its job.
    shared and can go whenever. This is guidance, not a gate — merging out of order costs a
    rebase, not correctness.
 
-7. **FIX-1155 is a satellite, not a member.** It is in this set only because it was trapped in
-   #1369, and the objective — no lying surface — does not imply a request-scope race fix. It
-   keeps its own PR and its own regression test; it does not count toward the set's completion,
-   and §1 should not be read as having promised it.
+7. **A change that doesn't serve the objective is a satellite, not a member.** Two qualify, both
+   trapped in #1369: FIX-1155 (a request-scope race fix) and FIX-1214 (BP-012 items-log residue).
+   Neither follows from "no lying surface" — a race is a defect, and an echoed payload is noise.
+   Each keeps its own PR and its own evidence, and neither counts toward completion, so approving
+   §1 does not authorise them and the epic does not wait on them.
+
+   The line between a satellite and a member is §1's five categories, not whether the change is
+   behavioural: FIX-1215 changes behaviour and is a **member**, because removing a superseded
+   shim is squarely category one. "Over-engineering" is deliberately not among the five, which is
+   what puts FIX-1214 outside.
 
 ## 3. Shape of the whole
 
@@ -140,27 +146,49 @@ and a POC cannot tell you anything about that.
 
 ## 4. Running index
 
-**The set is seven PRs: five cleanups, two behaviour changes.** FIX-1155 rides alongside as a
-satellite (theme 7) and does not count toward completion.
+**Eight PRs serve the objective. Two more ride alongside as satellites** — they were trapped
+in #1369 and are worth landing, but approving §1 does not authorise them and the epic does not
+wait on them.
 
-| Issue | What it delivers | Kind | PR | State |
-|---|---|---|---|---|
-| [FIX-1213](https://linear.app/fixpoint-labs/issue/FIX-1213) | Docs and agent skills stop teaching contracts that aren't on the tree | docs | — | Pending |
-| [FIX-1209](https://linear.app/fixpoint-labs/issue/FIX-1209) | Superseded aliases, compat shims, unused internal barrels removed | breaking minor | — | Pending |
-| [FIX-1210](https://linear.app/fixpoint-labs/issue/FIX-1210) | Options accepted but never read | breaking minor | — | Pending |
-| [FIX-1211](https://linear.app/fixpoint-labs/issue/FIX-1211) | Duplicate helpers collapsed to one implementation each | patch | — | Pending |
-| [FIX-1212](https://linear.app/fixpoint-labs/issue/FIX-1212) | Engine org-store factories renamed off `Project` | breaking minor | — | Pending |
-| [FIX-1214](https://linear.app/fixpoint-labs/issue/FIX-1214) | State-only blocks stop echoing input into the items log | **behaviour** | — | Pending |
-| [FIX-1215](https://linear.app/fixpoint-labs/issue/FIX-1215) | Scope-config `clientData` shim removed | **behaviour** | — | Pending |
-| [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state writes serialize before persist | *satellite bugfix* | — | Pending |
+**Every child takes the `direct` route**: none of these needs a spec. The decisions were made
+in #1369 and re-verified against the tree, so each PR is its own review surface. That is why
+there is no Spec-PR column to maintain — a column of dashes would imply a spec-review audit
+trail that does not exist. If a child ever does need a spec, it gets a `spec` route and this
+table grows the column then.
 
-**The follow-on bloat hunt is not in this index, and that is the point.** It found 22 Tier-1,
-6 Tier-2 and 7 Tier-3 candidates, and folding an open inventory into a bounded set would let
-the epic grow without ever re-gating §1. Its findings become their own filed issues under the
-same product rule; if they amount to a set, they get their own epic with its own objective
-gate. This epic completes when the seven above are merged or dropped.
+### Members — completion is these
 
-Issues were filed for a mechanical reason worth recording: CI's `validate-changeset-refs` guard fails any changeset fragment that doesn't name a Linear issue, and the original PR's fragments named none. Each slice's fragments now name its issue, which is also what gives a released CHANGELOG entry a route back to the reasoning.
+| Issue | What it delivers | Route | Kind | PR | State |
+|---|---|---|---|---|---|
+| [FIX-1213](https://linear.app/fixpoint-labs/issue/FIX-1213) | Docs and agent skills stop teaching contracts that aren't on the tree | direct | docs | — | Pending |
+| [FIX-1209](https://linear.app/fixpoint-labs/issue/FIX-1209) | Superseded aliases, compat shims, unused internal barrels removed | direct | breaking minor | — | Pending |
+| [FIX-1210](https://linear.app/fixpoint-labs/issue/FIX-1210) | Options accepted but never read | direct | breaking minor | [#1387](https://github.com/fixpoint-labs/flow-state-dev/pull/1387) | In Review |
+| [FIX-1211](https://linear.app/fixpoint-labs/issue/FIX-1211) | Duplicate helpers collapsed to one implementation each | direct | patch | — | Pending |
+| [FIX-1212](https://linear.app/fixpoint-labs/issue/FIX-1212) | Engine org-store factories renamed off `Project` | direct | breaking minor | — | Pending |
+| [FIX-1215](https://linear.app/fixpoint-labs/issue/FIX-1215) | Scope-config `clientData` shim removed | direct | **behaviour** | — | Pending |
+| [FIX-1216](https://linear.app/fixpoint-labs/issue/FIX-1216) | Unused internal surface and truly-dead symbols removed | direct | patch | — | Pending |
+| [FIX-1217](https://linear.app/fixpoint-labs/issue/FIX-1217) | Remaining duplicate internal helpers collapsed | direct | patch | — | Pending |
+
+### Satellites — do not count toward completion
+
+| Issue | What it delivers | Route | Kind | PR | State |
+|---|---|---|---|---|---|
+| [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state writes serialize before persist | direct | bugfix | — | Pending |
+| [FIX-1214](https://linear.app/fixpoint-labs/issue/FIX-1214) | State-only blocks stop echoing input into the items log | direct | behaviour | — | Pending |
+
+**Why FIX-1214 is a satellite and FIX-1215 is not**, since both change behaviour. FIX-1215
+removes a superseded shim — a §1 category, and a caller on `clientData` is holding a name that
+has a canonical replacement. FIX-1214 removes BP-012 residue: blocks that echo their input into
+the items log. That is noise, not a *lying* surface, and "over-engineering" is deliberately not
+one of §1's five admitted categories. It rides here because it was trapped in #1369, on the same
+terms as FIX-1155.
+
+**FIX-1216 and FIX-1217 are members, and the distinction matters.** The follow-on hunt as an
+*open inventory* stays out of this index — that was the whole point of removing it. But these two
+are no longer open: they are a bounded, enumerated set of findings, re-verified, scoped to two
+PRs. A finding that has been named and sized is work; only the search for more is unbounded. The
+hunt turned up 22 Tier-1, 6 Tier-2 and 7 Tier-3 candidates; the Tier-2 public-name removals and
+everything in Tier 3 are **not** filed here and get their own decisions.
 
 Epic issue: [FIX-1208](https://linear.app/fixpoint-labs/issue/FIX-1208). Supersedes [#1369](https://github.com/fixpoint-labs/flow-state-dev/pull/1369), which carried
 all of the above as one 266-file change.
@@ -229,3 +257,12 @@ all of the above as one 266-file change.
   named successor. Also added the soft merge order (theme 6) after a reviewer pointed out that
   rebase cost across 29 shared barrel files compounds with the number of slices outstanding
   rather than being paid once.
+- **After the third epic-PR review round** — made FIX-1214 a satellite alongside FIX-1155.
+  Removing BP-012 items-log residue is not one of §1's five categories, so counting it toward
+  completion would have let objective approval authorise work the objective never implied.
+  Generalised theme 7 to say what makes something a satellite, since "it changes behaviour" was
+  the wrong test — FIX-1215 changes behaviour and is a member. Added a `Route` column and stated
+  why there is no Spec-PR column: every child is `direct`, so the column would be dashes implying
+  a spec-review trail that does not exist. Folded the bounded wave-2 findings (FIX-1216, FIX-1217)
+  into the index as members, which is consistent with keeping the *open* hunt out: a finding that
+  has been named and sized is work, only the search for more is unbounded.
