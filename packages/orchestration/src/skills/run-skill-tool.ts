@@ -25,7 +25,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { InitialSkill, SkillState } from "@flow-state-dev/core";
 import { skillManifestKey } from "./collection";
-import { getCollection as resolveCollection } from "./internal/get-collection";
+import { resolveResourceCollection as resolveCollection } from "../tasks/collection/resolve-resource-collection";
 import { listEnabledSkills } from "./internal/list-enabled-skills";
 import { ensureSeeded } from "./seeding";
 import { inlineActivate } from "./inline-activate";
