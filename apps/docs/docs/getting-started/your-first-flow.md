@@ -23,7 +23,7 @@ We'll build it in five steps. Each step is runnable on its own.
 
 ## Step 0. Prerequisites
 
-If you haven't yet, follow [Setting Up Models](/docs/getting-started/setting-up-models) to install the framework and configure an API key. The rest of this page assumes you have `@flow-state-dev/core`, `@flow-state-dev/engine`, `@flow-state-dev/react`, and `zod` installed, along with the SDK package for your provider (`@ai-sdk/openai`, `@ai-sdk/anthropic`, or `@ai-sdk/google`), and that the matching API key is set in your environment.
+If you haven't yet, follow [Setting Up Models](/docs/getting-started/setting-up-models) to install the framework and configure an API key. The rest of this page assumes you have `@flow-state-dev/core`, `@flow-state-dev/engine`, `@flow-state-dev/next`, `@flow-state-dev/react`, and `zod` installed, along with the SDK package for your provider (`@ai-sdk/openai`, `@ai-sdk/anthropic`, or `@ai-sdk/google`), and that the matching API key is set in your environment.
 
 ## Step 1. A generator on its own
 
@@ -198,11 +198,10 @@ The `intents` map is what `model: "intent/chat"` in step 1 resolves against. Kee
 
 ```ts title="app/api/flows/[...path]/route.ts"
 import { flowstate } from "@/lib/flowstate";
-import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
+import { createNextHandler } from "@flow-state-dev/next";
 
-export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
+export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
 export const runtime = "nodejs";
-export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 ```
 

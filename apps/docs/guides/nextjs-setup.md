@@ -27,14 +27,13 @@ pnpm add @flow-state-dev/core @flow-state-dev/engine @flow-state-dev/client @flo
 
 `zod` is a peer dependency. Used for schema validation everywhere. The React package brings in the client automatically, but listing both keeps dependencies explicit.
 
-Add a platform adapter for the route handler. On Vercel:
-```bash
-pnpm add @flow-state-dev/vercel
-```
-On non-Vercel Next.js deployments:
+Add the Next.js App Router adapter for the route handler:
+
 ```bash
 pnpm add @flow-state-dev/next
 ```
+
+If you later deploy that app to Vercel, add `@flow-state-dev/vercel` and switch the handler as shown below.
 
 For development:
 ```bash
@@ -93,7 +92,18 @@ Note the config's import chain uses relative paths (`./src/flows/...`), not the 
 
 The framework expects a single catch-all route. It handles routing internally. You don't create separate routes for actions, streams, or state.
 
-For Vercel-hosted Next.js, use `createVercelNextHandler` from `@flow-state-dev/vercel/next`. It adds Vercel's SSE header shaping:
+For a Next.js app you run locally, use `createNextHandler` from `@flow-state-dev/next`:
+
+```ts title="app/api/flows/[...path]/route.ts"
+import { flowstate } from "@/lib/flowstate";
+import { createNextHandler } from "@flow-state-dev/next";
+
+export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+```
+
+When you deploy that app to Vercel, switch to `createVercelNextHandler` from `@flow-state-dev/vercel/next`. It adds SSE header shaping for Vercel's edge:
 
 ```ts title="app/api/flows/[...path]/route.ts"
 import { flowstate } from "@/lib/flowstate";
@@ -103,15 +113,6 @@ export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
 export const runtime = "nodejs";
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
-```
-
-For non-Vercel Next.js deployments (for example Next-on-Cloudflare), use `createNextHandler` from `@flow-state-dev/next` instead:
-
-```ts title="app/api/flows/[...path]/route.ts"
-import { flowstate } from "@/lib/flowstate";
-import { createNextHandler } from "@flow-state-dev/next";
-
-export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
 ```
 
 **Why a catch-all?** The framework uses path-based routing: `/api/flows/:kind/actions/:action`, `/api/flows/:kind/requests/:requestId/stream`, etc. A single `[...path]` segment captures the rest of the path. The router parses it and dispatches to the right handler. One file, full API.
@@ -242,7 +243,7 @@ Hooks require client components. If you see "useSession can only be used in a Cl
 
 ### Pass the flowstate object, not its router
 
-`createVercelNextHandler(flowstate)` takes the `FlowState` handle, not the resolved router. Don't call `createVercelNextHandler(flowstate.getRouter())`. The handler resolves the router lazily on the first request, which is what lets stores initialize without top-level await.
+`createNextHandler(flowstate)` takes the `FlowState` handle, not the resolved router. Don't call `createNextHandler(flowstate.getRouter())`. Same rule for `createVercelNextHandler`. The handler resolves the router lazily on the first request, which is what lets stores initialize without top-level await.
 
 ### API route exports
 

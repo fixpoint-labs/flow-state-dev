@@ -15,7 +15,7 @@ Build a streaming chat in five minutes. By the end you have a typed flow, a Next
 ## 1. Install
 
 ```bash
-pnpm add @flow-state-dev/core @flow-state-dev/engine @flow-state-dev/react zod
+pnpm add @flow-state-dev/core @flow-state-dev/engine @flow-state-dev/next @flow-state-dev/react zod
 pnpm add -D @flow-state-dev/fsdev
 ```
 
@@ -123,11 +123,10 @@ This is where `intent/chat` gets its meaning. The framework takes the first cand
 
 ```ts title="app/api/flows/[...path]/route.ts"
 import { flowstate } from "@/lib/flowstate";
-import { createVercelNextHandler } from "@flow-state-dev/vercel/next";
+import { createNextHandler } from "@flow-state-dev/next";
 
-export const { GET, POST, PATCH, DELETE } = createVercelNextHandler(flowstate);
+export const { GET, POST, PATCH, DELETE } = createNextHandler(flowstate);
 export const runtime = "nodejs";
-export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 ```
 
