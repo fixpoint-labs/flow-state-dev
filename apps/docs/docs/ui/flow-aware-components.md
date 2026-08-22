@@ -8,7 +8,7 @@ Components that consume Flow State item types directly. They subscribe to sessio
 
 ## ChatAssistant
 
-A pre-wired `RendererRegistry` that maps every standard item type to its default component. Drop it onto `FlowProvider` and you get defaults for messages, reasoning, tool calls, sources, errors, and approval gates (`suspension: Approval`). The default registry mounts `<TaskPlan />` from each `task-board-meta` item.
+A pre-wired `RendererRegistry` that maps every standard item type to its default component. Drop it onto `FlowProvider` and you get defaults for messages, reasoning, tool calls, sources, errors, and approval gates (`suspension: Approval`). The default registry renders `<TaskPlan />` from each `task-board-meta` item.
 
 ```bash
 fsdev ui add chat-assistant

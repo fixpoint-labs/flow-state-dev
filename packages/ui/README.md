@@ -77,7 +77,7 @@ Sources are excluded from the renderer map (`source: false`) — render them gro
 
 `chatAssistantRenderers` maps the `suspension` slot to a `SuspensionCard` that picks the right card by the suspension's reason and `resumeSchema` shape: the `Approval` card for `human_approval`, and the `Question` / `Selection` / `Form` cards for `human_input` (free text, a choice from an enum, or a flat-object form). All four are thin views over `useSuspensionForm` / `useApproval`. Nested or union schemas fall outside the flat-form boundary — name your own component via the suspension's `render.component` hint for those.
 
-`chatAssistantRenderers` maps `task-board-meta` to a wrapper that mounts `<TaskPlan collectionId={...} requestId={item.requestId} />` when `item.data.collectionId` is set. `task-change` is `false` in that map; TaskPlan reads those items itself via `useSessionItems`. `planAndExecute` and `supervisor` emit `task-change` and `task-board-meta`.
+When a `task-board-meta` item includes a `collectionId`, the default registry renders `TaskPlan` for that collection. `task-change` items are not rendered on their own. `planAndExecute` and `supervisor` emit `task-change` and `task-board-meta`.
 
 To suppress the default board, spread the existing `component` map first so the other keyed renderers stay:
 
