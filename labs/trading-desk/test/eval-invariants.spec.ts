@@ -198,7 +198,7 @@ function healthyBundle(): RunArtifactsBundle {
 
   return {
     summary: summary(),
-    valuationSpine: SPINE,
+    valuationSpine: { ...SPINE },
     rewardToRisk: { ...RR, lossAversion: MANDATE.lossAversion, mandateId: MANDATE.id },
     lensConvergence: null,
     decisionSnapshot: {
@@ -500,6 +500,38 @@ describe("checkRun — rating-envelope", () => {
     };
     const report = checkRun(b);
     expect(byId(report.checks, "rating-envelope/band-recompute")?.status).toBe("skipped");
+  });
+
+  it("THE BUG (Codex review, FIX-1113): a malformed spine with envelope null but siblings populated hard-fails even when the PM has no band to fall back to", () => {
+    // The exact reachability gap: `envelope: null` drives BOTH `spineBand`
+    // to null (below) AND, in a real run, `writer.ts` to leave the PM's own
+    // `ratingBand` null too (it only mirrors a band that exists) — so `band`
+    // ends up null and the OLD code's early skip/return fired before
+    // `band-recompute`'s malformed-spine check ever ran. Reproduced directly:
+    // no snapshot/pm dependency in the malformed check itself, but the
+    // no-band skip must not be what stands between it and running.
+    const b = healthyBundle();
+    b.valuationSpine!.envelope = null; // malformed: siblings still populated, no periodDisclosure
+    const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
+    (b.memos.find((m) => m.key === pmKey)!.state as MemoState).ratingBand = null;
+    const report = checkRun(b);
+    // Confirms this bundle really does trip the no-band shape the old skip
+    // fired on — otherwise this test would pass for the wrong reason.
+    expect(byId(report.checks, "rating-envelope/final-within-band")?.status).toBe("skipped");
+    expect(byId(report.checks, "rating-envelope/band-recompute")?.status).toBe("fail");
+  });
+
+  it("control: a legacy spine-less run still skips band-recompute (nothing to recompute against)", () => {
+    const b = healthyBundle();
+    b.valuationSpine = null;
+    const report = checkRun(b);
+    expect(byId(report.checks, "rating-envelope/band-recompute")?.status).toBe("skipped");
+  });
+
+  it("control: a fully populated spine still runs band-recompute normally (passes)", () => {
+    const b = healthyBundle();
+    const report = checkRun(b);
+    expect(byId(report.checks, "rating-envelope/band-recompute")?.status).toBe("pass");
   });
 });
 
@@ -1203,6 +1235,61 @@ describe("checkRun — valuation/abstention-honesty (FIX-1113 P2)", () => {
     expect(byId(report.checks, "valuation/abstention-honesty")?.status).toBe(
       "skipped",
     );
+  });
+
+  it("THE BUG (Codex re-audit, FIX-1113): dcf-abstention still runs and catches its own contradiction even when fairValue is malformed-null", () => {
+    // The early `return` after abstention-honesty's verdict made every OTHER
+    // check in this function unreachable whenever fairValue was null —
+    // including dcf-abstention's own, INDEPENDENT contradiction check on a
+    // dcf leg that has nothing to do with why fairValue is null. A spine can
+    // be malformed in two places at once; the report must not go silent on
+    // the second one because the first one already fired.
+    const b = healthyBundle();
+    b.valuationSpine!.fairValue = null; // malformed: no periodDisclosure, siblings intact
+    b.valuationSpine!.dcf = {
+      intrinsicValue: 100,
+      marginOfSafety: 0.2,
+      discountRate: 0.09,
+      stage1Growth: 0.1,
+      terminalValueShare: 0.7,
+      impliedGrowth: 0.12,
+      expectationsGap: 0.02,
+      reliability: "ok",
+      reverseDcfStatus: "solved",
+      unavailableReason: "non-positive-fcf", // contradiction: set alongside available: false's opposite shape below
+      method: "dcf",
+      available: false, // available:false must retain NO valuation numbers — it retains all of them
+    };
+    const report = checkRun(b);
+    expect(byId(report.checks, "valuation/abstention-honesty")?.status).toBe("fail");
+    expect(byId(report.checks, "valuation/dcf-abstention")?.status).toBe("fail");
+  });
+
+  it("control: a genuinely withheld spine (dcf null too) still skips dcf-abstention, not fails it", () => {
+    const b = healthyBundle();
+    b.valuationSpine!.expectedReturn = null;
+    b.valuationSpine!.fairValue = null;
+    b.valuationSpine!.dcf = null;
+    b.valuationSpine!.triangulation = null;
+    b.valuationSpine!.setupScore = null;
+    b.valuationSpine!.envelope = null;
+    b.valuationSpine!.periodDisclosure = {
+      reason: "periods-disagree",
+      income: "2026-03-31",
+      balance: "2025-12-31",
+      cashflow: "2025-12-31",
+      observedNewest: null,
+      anyUndatedWithFigures: false,
+    };
+    const report = checkRun(b);
+    expect(byId(report.checks, "valuation/abstention-honesty")?.status).toBe("skipped");
+    expect(byId(report.checks, "valuation/dcf-abstention")?.status).toBe("skipped");
+  });
+
+  it("control: a fully healthy bundle still passes fair-value-abstention", () => {
+    const b = healthyBundle();
+    const report = checkRun(b);
+    expect(byId(report.checks, "valuation/fair-value-abstention")?.status).toBe("pass");
   });
 });
 

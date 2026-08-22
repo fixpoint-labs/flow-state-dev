@@ -173,6 +173,109 @@ function checkRatingEnvelope(bundle: RunArtifactsBundle, c: Checks, memos: MemoM
   const snapshot = bundle.decisionSnapshot;
   const pm = published(memos.get(PM_KEY));
   const spine = bundle.valuationSpine;
+
+  // `rating-envelope/band-recompute` runs FIRST, before anything below can
+  // return early on a missing band (Codex review, FIX-1113 — the review
+  // round after the one that added the `genuinelyWithheld` guard below).
+  // It depends on nothing but `spine` — not `snapshot`, not `pm`, not
+  // `band` — so nothing justifies running it conditionally on them. Placed
+  // after the no-band skip (as it originally was), a spine with
+  // `envelope: null` and no PM band mirror hits that skip and `return`s
+  // before this ever runs — making the malformed-spine hard-fail below
+  // STRUCTURALLY UNREACHABLE for exactly the shape it exists to catch. The
+  // reachability audit that followed the round which added this guard
+  // ruled the no-band skip benign because "the withheld-envelope shape is
+  // the SAME one band-recompute guards below" — true that the shape is the
+  // same, false that control flow reaches there from here. A guard that is
+  // correct and never runs is the same defect as no guard.
+  if (spine == null) {
+    c.skip(
+      "rating-envelope/band-recompute",
+      "hard",
+      "valuation spine absent — cannot recompute the band",
+    );
+  } else if (
+    spine.envelope == null ||
+    spine.expectedReturn == null ||
+    spine.fairValue == null ||
+    spine.setupScore == null
+  ) {
+    // Same defect class as `valuation/abstention-honesty` (FIX-1113 P2): these
+    // four legs are withheld ALL TOGETHER, by construction, whenever the
+    // statements do not share a fiscal period — `buildValuationSpine`'s
+    // withheld branch nulls envelope/expectedReturn/fairValue/setupScore as
+    // one unit. Checking "any one of the four is null" alone cannot tell that
+    // coherent withholding apart from a corrupted spine that dropped only
+    // SOME of them (e.g. envelope present/drifted while fairValue is missing) —
+    // a state a recompute genuinely cannot evaluate, but not one that is safe
+    // to report as an unremarkable skip.
+    const genuinelyWithheld =
+      spine.periodDisclosure != null &&
+      spine.envelope == null &&
+      spine.expectedReturn == null &&
+      spine.fairValue == null &&
+      spine.setupScore == null;
+    if (genuinelyWithheld) {
+      c.skip(
+        "rating-envelope/band-recompute",
+        "hard",
+        `valuation spine withheld its cross-statement outputs (${spine.periodDisclosure!.reason}) — nothing to recompute`,
+      );
+    } else if (
+      spine.envelope == null &&
+      spine.expectedReturn == null &&
+      spine.fairValue == null &&
+      spine.setupScore == null
+    ) {
+      // All four null but no periodDisclosure to explain it: a legacy
+      // pre-FIX-1113 spine (or a spine that never carried an envelope at
+      // all) genuinely has nothing to recompute against — skip, not fail.
+      c.skip(
+        "rating-envelope/band-recompute",
+        "hard",
+        "valuation spine carries no envelope — cannot recompute the band",
+      );
+    } else {
+      c.hardFail(
+        "rating-envelope/band-recompute",
+        spine.periodDisclosure != null
+          ? "periodDisclosure is set but only SOME of envelope/expectedReturn/fairValue/setupScore are null — not the coherent all-or-nothing withheld shape"
+          : "some of envelope/expectedReturn/fairValue/setupScore are null with no periodDisclosure to explain it — the spine is malformed, not withheld",
+      );
+    }
+  } else {
+    const recomputed = modelImpliedRating({
+      expectedReturn: spine.expectedReturn,
+      fairValue: spine.fairValue,
+      setupScore: spine.setupScore,
+      triangulation: spine.triangulation ?? undefined,
+    });
+    const envelopeFields = [
+      "absoluteRating",
+      "relativeRating",
+      "implied",
+      "floor",
+      "ceiling",
+    ] as const;
+    const storedEnvelope = spine.envelope;
+    const drift = envelopeFields.filter(
+      (field) => recomputed[field] !== storedEnvelope[field],
+    );
+    if (drift.length === 0) {
+      c.hardPass(
+        "rating-envelope/band-recompute",
+        "stored rating envelope matches recomputation from the valuation inputs",
+      );
+    } else {
+      c.hardFail(
+        "rating-envelope/band-recompute",
+        `stored rating envelope drifted in: ${drift.join(", ")}`,
+        Object.fromEntries(envelopeFields.map((field) => [field, recomputed[field]])),
+        Object.fromEntries(envelopeFields.map((field) => [field, storedEnvelope[field]])),
+      );
+    }
+  }
+
   // The valuation spine is authoritative; the PM band is only a fallback for a
   // legacy run without a spine. A drifted PM mirror must never widen the band.
   // A spine that WITHHELD its envelope (FIX-1113 — the statements did not share
@@ -244,99 +347,6 @@ function checkRatingEnvelope(bundle: RunArtifactsBundle, c: Checks, memos: MemoM
         finalRating,
       );
     }
-  }
-
-  // Recompute the complete envelope from the valuation inputs. Trusting the
-  // stored implied rating here would let the implied rating and its band drift
-  // together without the invariant noticing.
-  if (spine == null) {
-    c.skip(
-      "rating-envelope/band-recompute",
-      "hard",
-      "valuation spine absent — cannot recompute the band",
-    );
-    return;
-  }
-  if (
-    spine.envelope == null ||
-    spine.expectedReturn == null ||
-    spine.fairValue == null ||
-    spine.setupScore == null
-  ) {
-    // Same defect class as `valuation/abstention-honesty` (FIX-1113 P2): these
-    // four legs are withheld ALL TOGETHER, by construction, whenever the
-    // statements do not share a fiscal period — `buildValuationSpine`'s
-    // withheld branch nulls envelope/expectedReturn/fairValue/setupScore as
-    // one unit. Checking "any one of the four is null" alone cannot tell that
-    // coherent withholding apart from a corrupted spine that dropped only
-    // SOME of them (e.g. envelope present/drifted while fairValue is missing) —
-    // a state a recompute genuinely cannot evaluate, but not one that is safe
-    // to report as an unremarkable skip.
-    const genuinelyWithheld =
-      spine.periodDisclosure != null &&
-      spine.envelope == null &&
-      spine.expectedReturn == null &&
-      spine.fairValue == null &&
-      spine.setupScore == null;
-    if (genuinelyWithheld) {
-      c.skip(
-        "rating-envelope/band-recompute",
-        "hard",
-        `valuation spine withheld its cross-statement outputs (${spine.periodDisclosure!.reason}) — nothing to recompute`,
-      );
-    } else if (
-      spine.envelope == null &&
-      spine.expectedReturn == null &&
-      spine.fairValue == null &&
-      spine.setupScore == null
-    ) {
-      // All four null but no periodDisclosure to explain it: a legacy
-      // pre-FIX-1113 spine (or a spine that never carried an envelope at
-      // all) genuinely has nothing to recompute against — skip, not fail.
-      c.skip(
-        "rating-envelope/band-recompute",
-        "hard",
-        "valuation spine carries no envelope — cannot recompute the band",
-      );
-    } else {
-      c.hardFail(
-        "rating-envelope/band-recompute",
-        spine.periodDisclosure != null
-          ? "periodDisclosure is set but only SOME of envelope/expectedReturn/fairValue/setupScore are null — not the coherent all-or-nothing withheld shape"
-          : "some of envelope/expectedReturn/fairValue/setupScore are null with no periodDisclosure to explain it — the spine is malformed, not withheld",
-      );
-    }
-    return;
-  }
-  const recomputed = modelImpliedRating({
-    expectedReturn: spine.expectedReturn,
-    fairValue: spine.fairValue,
-    setupScore: spine.setupScore,
-    triangulation: spine.triangulation ?? undefined,
-  });
-  const envelopeFields = [
-    "absoluteRating",
-    "relativeRating",
-    "implied",
-    "floor",
-    "ceiling",
-  ] as const;
-  const storedEnvelope = spine.envelope;
-  const drift = envelopeFields.filter(
-    (field) => recomputed[field] !== storedEnvelope[field],
-  );
-  if (drift.length === 0) {
-    c.hardPass(
-      "rating-envelope/band-recompute",
-      "stored rating envelope matches recomputation from the valuation inputs",
-    );
-  } else {
-    c.hardFail(
-      "rating-envelope/band-recompute",
-      `stored rating envelope drifted in: ${drift.join(", ")}`,
-      Object.fromEntries(envelopeFields.map((field) => [field, recomputed[field]])),
-      Object.fromEntries(envelopeFields.map((field) => [field, storedEnvelope[field]])),
-    );
   }
 }
 
@@ -1182,8 +1192,23 @@ function checkValuation(bundle: RunArtifactsBundle, c: Checks): void {
   const spine = bundle.valuationSpine;
   if (spine == null) {
     c.skip("valuation/abstention-honesty", "hard", "no valuation spine on this run");
+    c.skip("valuation/fair-value-abstention", "hard", "no valuation spine on this run");
+    c.skip("valuation/dcf-abstention", "hard", "no valuation spine on this run");
+    c.skip("valuation/triangulation", "hard", "no valuation spine on this run");
     return;
   }
+
+  // abstention-honesty runs FIRST and does NOT return afterward (Codex
+  // re-audit, FIX-1113 — the same reachability defect the coordinator named
+  // in `rating-envelope/band-recompute`, found here by re-walking this
+  // function's own control flow rather than restating the prior verdict).
+  // The old unconditional `return` here made fair-value-abstention,
+  // dcf-abstention, and triangulation entirely unreachable whenever
+  // `fairValue` was null — including the malformed case, where a SEPARATE
+  // contradiction in `dcf` or `triangulation` (unrelated to why fairValue is
+  // null) went unreported because the function exited before ever looking
+  // at them. Each of those three checks now guards on its OWN leg's
+  // null-ness below, independent of this one.
   if (spine.fairValue == null) {
     // WITHHELD, not absent (FIX-1113): the statements did not share a fiscal
     // period, so the cross-statement legs were never computed together. A
@@ -1222,40 +1247,48 @@ function checkValuation(bundle: RunArtifactsBundle, c: Checks): void {
           : "fair value is null with no periodDisclosure to explain it, while a sibling cross-statement leg is still populated — the spine is malformed, not withheld",
       );
     }
-    return;
+    // Nothing here has fairValue's own shape to check — genuinely withheld
+    // or malformed, `fair-value-abstention` has no leg to validate.
+    c.skip(
+      "valuation/fair-value-abstention",
+      "hard",
+      "fair value is null — nothing to validate (see abstention-honesty for whether that is coherent)",
+    );
+  } else {
+    // Fair-value availability and abstention honesty.
+    const fair = spine.fairValue;
+    const fairContradictions: string[] = [];
+    if (fair.available === false) {
+      // Every unavailable path keeps the actual fair value and margin null. A
+      // selected justified-PE method may retain the computed multiple when the
+      // trailing-earnings leg is missing; the other methods may not.
+      if (fair.fairValue != null) fairContradictions.push("fairValue is non-null");
+      if (fair.marginOfSafety != null) fairContradictions.push("marginOfSafety is non-null");
+      if (fair.method !== "justified-pe" && fair.justifiedPE != null) {
+        fairContradictions.push("justifiedPE is non-null");
+      }
+    } else {
+      if (fair.method !== "justified-pe") fairContradictions.push(`method is ${fair.method}`);
+      for (const field of ["justifiedPE", "fairValue", "marginOfSafety"] as const) {
+        if (fair[field] == null) fairContradictions.push(`${field} is null`);
+      }
+    }
+    if (fairContradictions.length === 0) {
+      c.hardPass(
+        "valuation/fair-value-abstention",
+        fair.available ? "available fair value has its canonical populated shape" : "fair-value abstention shape is coherent",
+      );
+    } else {
+      c.hardFail(
+        "valuation/fair-value-abstention",
+        `fair-value shape is contradictory: ${fairContradictions.join("; ")}`,
+      );
+    }
   }
 
-  // Fair-value availability and abstention honesty.
+  // DCF abstention + terminal-value honesty (only when the DCF leg exists) —
+  // independent of `fairValue`'s own null-ness; see the note above.
   const fair = spine.fairValue;
-  const fairContradictions: string[] = [];
-  if (fair.available === false) {
-    // Every unavailable path keeps the actual fair value and margin null. A
-    // selected justified-PE method may retain the computed multiple when the
-    // trailing-earnings leg is missing; the other methods may not.
-    if (fair.fairValue != null) fairContradictions.push("fairValue is non-null");
-    if (fair.marginOfSafety != null) fairContradictions.push("marginOfSafety is non-null");
-    if (fair.method !== "justified-pe" && fair.justifiedPE != null) {
-      fairContradictions.push("justifiedPE is non-null");
-    }
-  } else {
-    if (fair.method !== "justified-pe") fairContradictions.push(`method is ${fair.method}`);
-    for (const field of ["justifiedPE", "fairValue", "marginOfSafety"] as const) {
-      if (fair[field] == null) fairContradictions.push(`${field} is null`);
-    }
-  }
-  if (fairContradictions.length === 0) {
-    c.hardPass(
-      "valuation/fair-value-abstention",
-      fair.available ? "available fair value has its canonical populated shape" : "fair-value abstention shape is coherent",
-    );
-  } else {
-    c.hardFail(
-      "valuation/fair-value-abstention",
-      `fair-value shape is contradictory: ${fairContradictions.join("; ")}`,
-    );
-  }
-
-  // DCF abstention + terminal-value honesty (only when the DCF leg exists).
   const dcf = spine.dcf;
   if (dcf == null) {
     c.skip("valuation/dcf-abstention", "hard", "no DCF leg (pre-FIX-807 session or non-applicable)");
@@ -1347,13 +1380,16 @@ function checkValuation(bundle: RunArtifactsBundle, c: Checks): void {
     }
   }
 
-  // Triangulation consistency.
+  // Triangulation consistency — also independent of `fairValue`'s own
+  // null-ness. `fair` may now be `null` here (it no longer implies an early
+  // return above), so every read of it below is optional-chained; `dcf` was
+  // already read through `dcf?.available` for the same reason.
   const tri = spine.triangulation;
   if (tri == null) {
     c.skip("valuation/triangulation", "hard", "no triangulation leg");
   } else {
     const readings: Array<{ method: "justified-pe" | "dcf"; marginOfSafety: number }> = [];
-    if (fair.available && fair.marginOfSafety != null) {
+    if (fair?.available && fair.marginOfSafety != null) {
       readings.push({ method: "justified-pe", marginOfSafety: fair.marginOfSafety });
     }
     if (dcf?.available && dcf.marginOfSafety != null) {
