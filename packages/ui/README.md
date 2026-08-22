@@ -40,7 +40,7 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `streaming-indicator` | In-flight status indicator with a "Working..." fallback (muted "Tidying up..." during background drain) |
 | `request-group` | Groups items by request ID with streaming and sources |
 | `session-items-context` | React context for passing session items to nested components |
-| `plan` | Task list display for plan snapshots from planning patterns |
+| `task-plan` | Section-grouped renderer for a TaskCollection. Subscribes to `task-change` and `task-board-meta` |
 | `artifact` | Composable artifact viewer shell with header, actions, and content areas |
 | `file-tree` | Tree-structured file and folder display with expand/collapse and selection |
 | `jsx-preview` | Live JSX/TSX renderer with streaming support and error fallback |
@@ -77,30 +77,21 @@ Sources are excluded from the renderer map (`source: false`) — render them gro
 
 `chatAssistantRenderers` maps the `suspension` slot to a `SuspensionCard` that picks the right card by the suspension's reason and `resumeSchema` shape: the `Approval` card for `human_approval`, and the `Question` / `Selection` / `Form` cards for `human_input` (free text, a choice from an enum, or a flat-object form). All four are thin views over `useSuspensionForm` / `useApproval`. Nested or union schemas fall outside the flat-form boundary — name your own component via the suspension's `render.component` hint for those.
 
-The `chatAssistantRenderers` includes `component: { plan: Plan }` by default, so plan snapshots emitted by `planAndExecute` and `supervisor` patterns render automatically. To disable or override:
+`chatAssistantRenderers` maps `task-board-meta` to a wrapper that mounts `<TaskPlan collectionId={...} requestId={item.requestId} />` when `item.data.collectionId` is set. `task-change` is `false` in that map; TaskPlan reads those items itself via `useSessionItems`. `planAndExecute` and `supervisor` emit `task-change` and `task-board-meta`.
+
+To suppress the default board, spread the existing `component` map first so the other keyed renderers stay:
 
 ```tsx
 const renderers = {
   ...chatAssistantRenderers,
-  component: { plan: false },   // suppress plan rendering
+  component: {
+    ...chatAssistantRenderers.component,
+    "task-board-meta": false,
+  },
 };
 ```
 
 `chatAssistantRenderers` also maps `component: { "audit-annotation": AuditAnnotation }`, so a `responseAuditor` that surfaces findings renders its audit card automatically. The pattern emits the `audit-annotation` component item when results surface, and the renderer picks it up, so there's no manual emit per response.
-
-### Plan Component
-
-The `plan` component renders `ComponentItem` snapshots emitted via `emitPlanSnapshot()`. It displays the plan goal, task list, and per-task status with icons:
-
-```tsx
-import { Plan } from "@/components/flow-state/plan";
-
-<FlowProvider renderers={{ component: { plan: Plan } }}>
-  {/* plan snapshots appear automatically in the item stream */}
-</FlowProvider>
-```
-
-Status icons: gray circle (pending), blue spinner (in\_progress), green check (completed), red X (failed), gray dash (skipped), orange triangle (needs-revision), purple arrow (escalated).
 
 ### TaskPlan Component
 
@@ -125,8 +116,6 @@ import { TaskPlan } from "@/components/flow-state/task-plan";
 Sections render in canonical order (`pending → in_progress → blocked → awaiting_review → completed → errored`), empty sections hide, `cancelled` is hidden by default. Statuses outside the canonical seven trail at the end with a humanized label, so pattern wrappers that emit extended states (`planning`, `replanning`, `reviewing`) still render. Pass `statusConfig` to customize their presentation.
 
 `TaskPlan` reads its items from `useSessionItems()` by default; pass an explicit `items` prop when rendering outside that context (tests, replayed snapshots).
-
-`TaskPlan` does NOT replace `Plan`. The legacy `Plan` container renderer continues to handle `plan-meta` / `plan-task` items emitted by `planAndExecute` and `supervisor` until those patterns migrate onto the unified primitive.
 
 ### Generative UI
 
