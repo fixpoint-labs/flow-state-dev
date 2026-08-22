@@ -171,14 +171,14 @@ this epic. It was never built for a set whose implementation predates its epic.
 
 | Issue | What it delivers | Route | Kind | PR | State |
 |---|---|---|---|---|---|
-| [FIX-1213](https://linear.app/fixpoint-labs/issue/FIX-1213) | Docs and agent skills stop teaching contracts that aren't on the tree | direct | docs | — | Pending |
-| [FIX-1209](https://linear.app/fixpoint-labs/issue/FIX-1209) | Superseded aliases, compat shims, unused internal barrels removed | direct | breaking minor | — | Pending |
+| [FIX-1213](https://linear.app/fixpoint-labs/issue/FIX-1213) | Docs and agent skills stop teaching contracts that aren't on the tree | direct | docs | [#1394](https://github.com/fixpoint-labs/flow-state-dev/pull/1394) | In Review |
+| [FIX-1209](https://linear.app/fixpoint-labs/issue/FIX-1209) | Superseded aliases, compat shims, unused internal barrels removed | direct | breaking minor | [#1390](https://github.com/fixpoint-labs/flow-state-dev/pull/1390) | In Review |
 | [FIX-1210](https://linear.app/fixpoint-labs/issue/FIX-1210) | Options accepted but never read | direct | breaking minor | [#1387](https://github.com/fixpoint-labs/flow-state-dev/pull/1387) | In Review |
-| [FIX-1211](https://linear.app/fixpoint-labs/issue/FIX-1211) | Duplicate helpers collapsed to one implementation each | direct | patch | — | Pending |
-| [FIX-1212](https://linear.app/fixpoint-labs/issue/FIX-1212) | Engine org-store factories renamed off `Project` | direct | breaking minor | — | Pending |
-| [FIX-1215](https://linear.app/fixpoint-labs/issue/FIX-1215) | Scope-config `clientData` shim removed | direct | **behaviour** | — | Pending |
-| [FIX-1216](https://linear.app/fixpoint-labs/issue/FIX-1216) | Unused internal surface and truly-dead symbols removed | direct | patch | — | Pending |
-| [FIX-1217](https://linear.app/fixpoint-labs/issue/FIX-1217) | Remaining duplicate internal helpers collapsed | direct | patch | — | Pending |
+| [FIX-1211](https://linear.app/fixpoint-labs/issue/FIX-1211) | Duplicate helpers collapsed to one implementation each | direct | patch | [#1392](https://github.com/fixpoint-labs/flow-state-dev/pull/1392) | In Review |
+| [FIX-1212](https://linear.app/fixpoint-labs/issue/FIX-1212) | Engine org-store factories renamed off `Project` | direct | breaking minor | [#1389](https://github.com/fixpoint-labs/flow-state-dev/pull/1389) | In Review |
+| [FIX-1215](https://linear.app/fixpoint-labs/issue/FIX-1215) | Scope-config `clientData` shim removed | direct | **behaviour** | [#1391](https://github.com/fixpoint-labs/flow-state-dev/pull/1391) | In Review |
+| [FIX-1216](https://linear.app/fixpoint-labs/issue/FIX-1216) | Unused internal surface and truly-dead symbols removed | direct | patch | [#1395](https://github.com/fixpoint-labs/flow-state-dev/pull/1395) | In Review |
+| [FIX-1217](https://linear.app/fixpoint-labs/issue/FIX-1217) | Remaining duplicate internal helpers collapsed | direct | patch | [#1396](https://github.com/fixpoint-labs/flow-state-dev/pull/1396) | In Review |
 
 ### Satellites — related to the epic, deliberately NOT children of it
 
@@ -189,8 +189,8 @@ with `relates-to` rather than parented, which is what makes the separation real.
 
 | Issue | What it delivers | Route | Kind | PR | State |
 |---|---|---|---|---|---|
-| [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state writes serialize before persist | direct | bugfix | — | Pending |
-| [FIX-1214](https://linear.app/fixpoint-labs/issue/FIX-1214) | State-only blocks stop echoing input into the items log | direct | behaviour | — | Pending |
+| [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state writes serialize before persist | direct | bugfix | [#1388](https://github.com/fixpoint-labs/flow-state-dev/pull/1388) | In Review |
+| [FIX-1214](https://linear.app/fixpoint-labs/issue/FIX-1214) | State-only blocks stop echoing input into the items log | direct | behaviour | [#1393](https://github.com/fixpoint-labs/flow-state-dev/pull/1393) | In Review |
 
 **Why FIX-1214 is a satellite and FIX-1215 is not**, since both change behaviour. FIX-1215
 removes a superseded shim — a §1 category, and a caller on `clientData` is holding a name that
@@ -289,3 +289,6 @@ all of the above as one 266-file change.
   coordinated by hand — a coordinator would re-derive the `spec` route from the `Improvement`
   category and stall a set whose implementation already exists behind gates for documents nobody
   needs.
+- **All ten PRs opened** — eight members and two satellites, every one ready for review rather than
+  draft so the automated reviewers engage. The set that replaces #1369's single 266-file change is
+  now on the board; #1369 itself can be closed as superseded.
