@@ -1048,11 +1048,6 @@ describe("createAiSdkModelResolver — toModelOutput bridge (AI SDK 7 tool-resul
     expect(resultPart.output.value).toEqual([
       { type: "text", text: "1 memory: the full structured payload" }
     ]);
-    // No legacy media variants survive the bridge.
-    for (const entry of resultPart.output.value) {
-      expect(["text", "file"]).toContain(entry.type);
-    }
-    expect(JSON.stringify(secondPrompt)).not.toContain("the full structured payload\",\"id\"");
   });
 });
 

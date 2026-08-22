@@ -555,7 +555,7 @@ function normalizeSteps(
       finishReason: normalizeFinishReason(record.finishReason),
       usage: normalizeUsage(
         record.usage,
-        record.providerMetadata ?? record.experimental_providerMetadata
+        record.providerMetadata
       )
     });
   }
