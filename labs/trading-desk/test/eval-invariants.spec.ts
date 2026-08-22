@@ -476,6 +476,31 @@ describe("checkRun — rating-envelope", () => {
     const report = checkRun(b);
     expect(byId(report.checks, "rating-envelope/final-within-band")?.status).toBe("fail");
   });
+
+  it("fails (not skips) band-recompute when fairValue is null but the envelope and its other siblings are still populated — a malformed spine, not a coherent withholding", () => {
+    const b = healthyBundle();
+    b.valuationSpine!.fairValue = null; // corrupted: no periodDisclosure, siblings intact
+    const report = checkRun(b);
+    expect(byId(report.checks, "rating-envelope/band-recompute")?.status).toBe("fail");
+  });
+
+  it("skips band-recompute on a genuine FIX-1113 withholding — periodDisclosure set and every cross-statement leg withheld alongside fair value", () => {
+    const b = healthyBundle();
+    b.valuationSpine!.fairValue = null;
+    b.valuationSpine!.expectedReturn = null;
+    b.valuationSpine!.setupScore = null;
+    b.valuationSpine!.envelope = null;
+    b.valuationSpine!.periodDisclosure = {
+      reason: "periods-disagree",
+      income: "2025-12-31",
+      balance: "2025-09-30",
+      cashflow: "2025-12-31",
+      observedNewest: null,
+      anyUndatedWithFigures: false,
+    };
+    const report = checkRun(b);
+    expect(byId(report.checks, "rating-envelope/band-recompute")?.status).toBe("skipped");
+  });
 });
 
 describe("checkRun — scenario", () => {

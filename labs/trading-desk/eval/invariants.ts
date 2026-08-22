@@ -263,16 +263,49 @@ function checkRatingEnvelope(bundle: RunArtifactsBundle, c: Checks, memos: MemoM
     spine.fairValue == null ||
     spine.setupScore == null
   ) {
-    // Withheld rather than missing: the inputs a recompute would need were
-    // never computed because the statements did not share a fiscal period. Say
-    // WHICH, so this does not read as an unexplained gap in the eval.
-    c.skip(
-      "rating-envelope/band-recompute",
-      "hard",
-      spine.periodDisclosure != null
-        ? `valuation spine withheld its cross-statement outputs (${spine.periodDisclosure.reason}) — nothing to recompute`
-        : "valuation spine carries no envelope — cannot recompute the band",
-    );
+    // Same defect class as `valuation/abstention-honesty` (FIX-1113 P2): these
+    // four legs are withheld ALL TOGETHER, by construction, whenever the
+    // statements do not share a fiscal period — `buildValuationSpine`'s
+    // withheld branch nulls envelope/expectedReturn/fairValue/setupScore as
+    // one unit. Checking "any one of the four is null" alone cannot tell that
+    // coherent withholding apart from a corrupted spine that dropped only
+    // SOME of them (e.g. envelope present/drifted while fairValue is missing) —
+    // a state a recompute genuinely cannot evaluate, but not one that is safe
+    // to report as an unremarkable skip.
+    const genuinelyWithheld =
+      spine.periodDisclosure != null &&
+      spine.envelope == null &&
+      spine.expectedReturn == null &&
+      spine.fairValue == null &&
+      spine.setupScore == null;
+    if (genuinelyWithheld) {
+      c.skip(
+        "rating-envelope/band-recompute",
+        "hard",
+        `valuation spine withheld its cross-statement outputs (${spine.periodDisclosure!.reason}) — nothing to recompute`,
+      );
+    } else if (
+      spine.envelope == null &&
+      spine.expectedReturn == null &&
+      spine.fairValue == null &&
+      spine.setupScore == null
+    ) {
+      // All four null but no periodDisclosure to explain it: a legacy
+      // pre-FIX-1113 spine (or a spine that never carried an envelope at
+      // all) genuinely has nothing to recompute against — skip, not fail.
+      c.skip(
+        "rating-envelope/band-recompute",
+        "hard",
+        "valuation spine carries no envelope — cannot recompute the band",
+      );
+    } else {
+      c.hardFail(
+        "rating-envelope/band-recompute",
+        spine.periodDisclosure != null
+          ? "periodDisclosure is set but only SOME of envelope/expectedReturn/fairValue/setupScore are null — not the coherent all-or-nothing withheld shape"
+          : "some of envelope/expectedReturn/fairValue/setupScore are null with no periodDisclosure to explain it — the spine is malformed, not withheld",
+      );
+    }
     return;
   }
   const recomputed = modelImpliedRating({

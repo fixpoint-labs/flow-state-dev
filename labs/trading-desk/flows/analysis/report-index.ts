@@ -15,6 +15,7 @@
  */
 import { z } from "zod";
 import { ratingSchema } from "./lib/rating-engine";
+import { periodDisclosureSchema } from "./lib/valuation-spine";
 
 /**
  * The decision summary merged into session metadata at PM-commit so the Past
@@ -39,6 +40,15 @@ export const reportDecisionMetaSchema = z.object({
   // written before this field existed parses as anchored — the ordinary case,
   // never a false alarm on a legacy row.
   ratingUnanchored: z.boolean().default(false),
+  // FIX-1113 — the disclosure `ratingUnanchored` is a flag FOR. Without this,
+  // the list can say THAT a rating is unanchored but not WHY — and a surface
+  // that cannot access the disclosure must not describe its cause (a row that
+  // guessed "could not be placed at one fiscal period" reads as fact on every
+  // reason, including the `uniform-stale` case where the three statements DO
+  // share a period and are merely stale). `.nullable().default(null)` per
+  // BP-030 so a record written before this field existed parses as `null` —
+  // it still shows the boolean badge, just without a reason-specific tooltip.
+  periodDisclosure: periodDisclosureSchema.nullable().default(null),
 });
 export type ReportDecisionMeta = z.infer<typeof reportDecisionMetaSchema>;
 

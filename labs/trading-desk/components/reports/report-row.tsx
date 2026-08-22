@@ -23,6 +23,7 @@ import {
   relativeTime,
   type ReportRow as ReportRowData,
 } from "@/flows/analysis/report-index";
+import { ratingUnanchoredReason } from "@/components/summary/rating-unanchored-notice";
 
 /** Map a 5-tier rating to a token-backed color. Buy/Overweight lean to the
  *  live (green) token, Sell/Underweight to warn, Hold stays neutral — the same
@@ -70,14 +71,24 @@ function DecisionChip({ row }: { row: ReportRowData }): ReactElement {
       style={{ color: ratingColor(row.decision.finalRating) }}
     >
       {row.decision.finalRating}
-      {/* FIX-1113 — the envelope was withheld (three financial statements
-          could not be placed at one fiscal period), so this rating publishes
+      {/* FIX-1113 — the envelope was withheld, so this rating publishes
           unbounded rather than clamped. A reader scanning the list must see
-          that before opening the report, not only inside it. */}
+          that before opening the report, not only inside it. The tooltip
+          names the SPECIFIC reason via the shared `disclosurePrintShape`
+          classifier (`ratingUnanchoredReason`) rather than re-stating one
+          cause as if it covered every shape — false, for instance, on
+          `uniform-stale`, where the three statements DO share a period and
+          are merely stale. A pre-fix record carries the boolean with no
+          `periodDisclosure` to reason from; it still gets the badge, just
+          with a reason that says only what the boolean itself can support. */}
       {row.decision.ratingUnanchored ? (
         <span
           className="text-[color:var(--c-warn)]"
-          title="Rating unanchored — the model-implied envelope was withheld because the financial statements could not be placed at one fiscal period"
+          title={
+            row.decision.periodDisclosure != null
+              ? `Rating unanchored — the model-implied envelope was withheld because ${ratingUnanchoredReason(row.decision.periodDisclosure)}`
+              : "Rating unanchored — the model-implied envelope was withheld (open the report for why)"
+          }
           aria-label="rating unanchored"
         >
           {" "}

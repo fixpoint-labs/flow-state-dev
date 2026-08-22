@@ -605,6 +605,11 @@ export const commitPortfolioManagerMemo = handler({
       // FIX-1113 — mirrors the memo's own field so the Past Reports LIST can
       // badge an unanchored rating without loading per-session state.
       ratingUnanchored,
+      // FIX-1113 — the reason `ratingUnanchored` fires. Carried alongside the
+      // boolean so the list can render a reason-specific tooltip via the
+      // shared `disclosurePrintShape` classifier rather than a row re-stating
+      // one specific cause as if it were the only one.
+      periodDisclosure,
     };
     await ctx.session.setMetadata({
       metadata: { decision: decisionMeta, reportStatus: "complete" },

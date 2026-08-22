@@ -623,10 +623,18 @@ describe("PM commit writes snapshot + reports-index metadata", () => {
     const session = await stores.session.get(sessionId);
     const md = (session?.metadata ?? {}) as Record<string, unknown>;
     const decision = md.decision as
-      | { finalRating?: string; ratingUnanchored?: boolean }
+      | {
+          finalRating?: string;
+          ratingUnanchored?: boolean;
+          periodDisclosure?: { reason?: string } | null;
+        }
       | undefined;
     expect(decision?.finalRating).toBe("Buy");
     expect(decision?.ratingUnanchored).toBe(true);
+    // The reports-index row must carry WHY, not just THAT — a list row that
+    // only has the boolean cannot render a reason-specific tooltip and must
+    // not guess at one.
+    expect(decision?.periodDisclosure?.reason).toBe("periods-disagree");
   });
 
   it("records ratingUnanchored: false on an ordinary anchored run (no legacy-metadata surprise)", async () => {

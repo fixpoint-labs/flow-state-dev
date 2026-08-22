@@ -1927,13 +1927,23 @@ permission here, not suppression. The desk therefore marks that rating
 `ratingUnanchored` and records the three periods on the memo and the decision
 snapshot, and the same flag reaches the `RunSummary`, where it is the marker
 that makes "how often does this fire" an answerable machine-readable number.
-It also reaches every surface a person reads the rating on: the Summary
-decision header, the PM's detailed memo, and the Past Reports list row all
-render a `RatingUnanchoredNotice` (`components/summary/rating-unanchored-
-notice.tsx`) naming which periods and why, reusing `disclosurePrintShape`
-rather than re-deriving it a fourth time. **Any future guard that reaches the
-envelope should start here: check what the ABSENCE of the thing you are
-withholding actually causes.**
+It also reaches every surface a person reads the rating on, but not all three
+the same way — a surface that cannot access the disclosure must not describe
+its cause, and the two surfaces below split exactly on that line. The Summary
+decision header and the PM's detailed memo both render the full
+`RatingUnanchoredNotice` (`components/summary/rating-unanchored-notice.tsx`),
+naming which periods and why. The Past Reports list row does NOT render that
+component — a list row is a compact chip, not a card — but it carries the same
+`periodDisclosure` (mirrored onto the reports-index metadata alongside the
+`ratingUnanchored` boolean) and reads a reason-specific sentence off its
+tooltip via the SAME `ratingUnanchoredReason`/`disclosurePrintShape`
+classifier (`components/reports/report-row.tsx`), rather than a hand-written
+tooltip that describes one specific cause as if it explained every reachable
+shape. **Any future guard that reaches the envelope should start here: check
+what the ABSENCE of the thing you are withholding actually causes** — and
+verify each surface's rendering against the code, not against what an earlier
+commit's message says it does, before repeating a claim about the SET of
+surfaces.
 
 The fundamentals analyst is a SECOND valuation site and needs the same treatment
 separately — it computes and publishes its own valuation from its own tool
