@@ -125,8 +125,6 @@ Next.js reads `runtime`, `maxDuration`, and `dynamic` via static analysis. They 
 | `maxDuration` | `300` | Max function execution time in seconds |
 | `dynamic` | `"force-dynamic"` | Prevents Next.js from caching SSE routes |
 
-The `@flow-state-dev/vercel/config` module exports these same values for programmatic access (tests, non-Next.js adapters), but they cannot be re-exported into a Next.js route file.
-
 ## API
 
 ### `createVercelHandler(app, options?)`
