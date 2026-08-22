@@ -14,6 +14,7 @@ import {
   chooseAnchorPeriodEnd,
   consecutivePeriodPair,
   isCoherentStatementSet,
+  periodsMutuallyAgree,
   samePeriod,
 } from "@/lib/providers/financial-period";
 
@@ -273,5 +274,62 @@ describe("isCoherentStatementSet — detection, and it needs BOTH parts", () => 
       cashflow: OBS("2024-09-28", "2024-09-28"),
     });
     expect(v.reason).toBe("settled-for-less-than-seen");
+  });
+});
+
+
+describe("periodsMutuallyAgree — pairwise across all three, not chained through one", () => {
+  it("rejects an intransitive triple where ONLY the a–c pair fails (49 days apart)", () => {
+    // a-b: 26 days (agree). b-c: 23 days (agree). a-c: 49 days — beyond the
+    // 31-day tolerance, NOT agreeing. A check that only compared a-b and b-c
+    // (chaining through b) would wrongly call this agreement.
+    expect(periodsMutuallyAgree("2025-09-01", "2025-09-27", "2025-10-20")).toBe(false);
+  });
+
+  it("rejects an intransitive triple where ONLY the b–c pair fails", () => {
+    // a-b: 14 days (agree). a-c: 25 days (agree). b-c: 39 days — NOT
+    // agreeing. A check that only compared a-b and a-c (chaining through a)
+    // would wrongly call this agreement.
+    expect(periodsMutuallyAgree("2025-09-15", "2025-09-01", "2025-10-10")).toBe(false);
+  });
+
+  it("rejects null against null — two unknowns are not evidence of agreement", () => {
+    expect(periodsMutuallyAgree(null, null, null)).toBe(false);
+    expect(periodsMutuallyAgree(null, "2025-09-27", "2025-09-27")).toBe(false);
+    expect(periodsMutuallyAgree("2025-09-27", null, "2025-09-27")).toBe(false);
+  });
+
+  it("accepts three genuinely agreeing periods, exact and cross-provider-skewed", () => {
+    expect(periodsMutuallyAgree("2025-09-27", "2025-09-27", "2025-09-27")).toBe(true);
+    expect(periodsMutuallyAgree("2025-09-27", "2025-09-30", "2025-09-27")).toBe(true);
+  });
+});
+
+describe("isCoherentStatementSet — observedNewest is the FRONTIER, not the first match", () => {
+  it("reports the max observedNewest across every offending statement, not the first one found in iteration order", () => {
+    const v = isCoherentStatementSet({
+      income: OBS("2020-01-01", "2024-09-28"), // triggers first; a smaller frontier
+      balance: OBS("2020-01-01", null),
+      cashflow: OBS("2020-01-01", "2025-09-27"), // triggers too; the TRUE max
+    });
+    expect(v.reason).toBe("settled-for-less-than-seen");
+    expect(v.observedNewest).toBe("2025-09-27");
+  });
+});
+
+describe("isCoherentStatementSet — the direction invariant (observedNewest must be NEWER)", () => {
+  it("does NOT fire settled-for-less-than-seen when the observation is actually OLDER than what was returned", () => {
+    // `samePeriod` is a direction-blind distance check — it cannot by itself
+    // tell "saw something newer" from "saw something older", only that the
+    // two are not the same period. If a future bug ever fed a genuinely
+    // OLDER `observedNewest`, this must not render "the desk saw a more
+    // recent one" over it — it must not fire this reason at all.
+    const v = isCoherentStatementSet({
+      income: OBS("2025-09-27", "2024-09-28"), // "observed" is OLDER than returned
+      balance: OBS("2025-09-27", null),
+      cashflow: OBS("2025-09-27", null),
+    });
+    expect(v.coherent).toBe(true);
+    expect(v.reason).toBeNull();
   });
 });

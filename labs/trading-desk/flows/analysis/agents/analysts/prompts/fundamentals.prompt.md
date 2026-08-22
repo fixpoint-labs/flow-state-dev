@@ -62,12 +62,16 @@ Capital-structure lens (from `<valuation>`):
 
 Fiscal periods (`<periodMismatch>`, present only when it fires):
   - Each statement in `<data>` carries a `periodEnd` — the one date every figure in
-    that statement was read at. When `<periodMismatch>` is present the three do NOT
-    describe the same fiscal year.
-  - In that case, do not compute any ratio that divides a figure from one statement by
-    a figure from another — a year's profit over a different year's assets is not a
-    valuation, it is a category error. This includes ratios you would work out in prose
-    rather than read from `<valuation>`; the metrics the desk withheld are marked
+    that statement was read at. `<periodMismatch>` is present whenever the desk
+    could not stand behind a shared period, but that covers more than one shape:
+    outright disagreement between statements, a statement with figures but no
+    stated period, or all three sitting at the SAME period while being stale
+    relative to a newer one the desk saw and did not use. Read `<periodMismatch>`'s
+    own wording for which one applies here — do not assume disagreement just
+    because the tag is present.
+  - Either way, do not compute any ratio that divides a figure from one statement by
+    a figure from another — this includes ratios you would work out in prose rather
+    than read from `<valuation>`; the metrics the desk withheld are marked
     "withheld", and reproducing one by hand defeats the point.
   - Ratios inside a SINGLE statement (an operating margin is income over income) are
     unaffected. Say plainly that the cross-statement reads are unavailable and why,

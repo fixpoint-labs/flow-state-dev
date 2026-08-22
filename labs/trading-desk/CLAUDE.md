@@ -1923,11 +1923,14 @@ it. The envelope only CLAMPS a rating the portfolio manager emits on its own as
 a required field, and the clamp sits inside a conditional on the envelope's
 presence — so withholding the envelope removes the BOUND, not the rating, and
 what publishes is the model's own value with nothing constraining it. Absence is
-permission here, not suppression. The report therefore marks that rating
-`ratingUnanchored` and names the three periods, and the same flag reaches the
-`RunSummary`, where it is the marker that makes "how often does this fire" an
-answerable number. **Any future guard that reaches the envelope should start
-here: check what the ABSENCE of the thing you are withholding actually causes.**
+permission here, not suppression. The desk therefore marks that rating
+`ratingUnanchored` and records the three periods on the memo and the decision
+snapshot, and the same flag reaches the `RunSummary`, where it is the marker
+that makes "how often does this fire" an answerable machine-readable number.
+It does not yet reach a RENDERED report surface — a person reading the report
+today cannot see it; only code reading the underlying data can. **Any future
+guard that reaches the envelope should start here: check what the ABSENCE of
+the thing you are withholding actually causes.**
 
 The fundamentals analyst is a SECOND valuation site and needs the same treatment
 separately — it computes and publishes its own valuation from its own tool

@@ -103,8 +103,9 @@ function indexByType(resp: YahooTimeseriesResponse): Map<string, TimeseriesPoint
   return out;
 }
 
-/** The series behind each ANCHOR-DISCOVERY field (`financial-period.ts`).
- *  Every annual period end any of them reports is an anchor candidate. */
+/** The series this provider anchors on — this mapper's own instance of the
+ *  ANCHOR-discovery rule (`financial-period.ts`'s module header). Every annual
+ *  period end any of them reports is an anchor candidate. */
 const ANCHOR_SERIES = [
   "annualTotalRevenue",
   "annualOperatingIncome",

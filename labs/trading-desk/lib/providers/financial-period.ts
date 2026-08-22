@@ -8,10 +8,12 @@
  * RULES, by name. The derivation is on the pull request; these are the ones a
  * reader has to hold:
  *
- *  - ANCHOR = the most recent annual period end reported by ANY core figure
- *    (`ANCHOR_DISCOVERY_FIELDS`). NEVER the most recent end where the core set
- *    is COMPLETE — that walks a messy filer's whole report back a year rather
- *    than reporting the current year with a gap in it.
+ *  - ANCHOR = the most recent annual period end reported by ANY core figure —
+ *    each mapper's own anchor-discovery list (`US_GAAP_ANCHOR_TAGS` in
+ *    `edgar-companyfacts.ts`, `ANCHOR_SERIES` in `yahoo-timeseries.ts`). NEVER
+ *    the most recent end where the core set is COMPLETE — that walks a messy
+ *    filer's whole report back a year rather than reporting the current year
+ *    with a gap in it.
  *  - A figure the anchor does not carry is ABSENT. It is never filled from a
  *    neighbouring period, and one absent figure never blanks its statement.
  *  - SAME PERIOD is a bounded distance, NOT a shared calendar year. Calendar
@@ -25,8 +27,8 @@
  *    tolerances stay far below the interval so two adjacent years can never
  *    merge and a two-year gap can never read as adjacent.
  *
- * TRAP. `ANCHOR_DISCOVERY_FIELDS` is NOT the recovery ladder's completeness
- * test (`statement-recovery.ts` `lacksAnyCritical`), and the two must not be
+ * TRAP. Anchor discovery is NOT the recovery ladder's completeness test
+ * (`statement-recovery.ts` `lacksAnyCritical`), and the two must not be
  * unified. They answer different questions — *which period ends exist* (wide)
  * versus *is this payload complete enough to stop laddering* (narrow).
  * Reconciling them changes which provider answers, which is a coverage change.
@@ -49,19 +51,6 @@ export const SAME_PERIOD_TOLERANCE_DAYS = 31;
  *  intervals span, so a gap year can never pass as adjacent. */
 export const REPORTING_INTERVAL_DAYS = 365;
 export const CONSECUTIVE_TOLERANCE_DAYS = 45;
-
-/**
- * The canonical ANCHOR-DISCOVERY set — one representative per category across
- * the three statements. A period end reported by ANY of these is a candidate.
- *
- * Named as a field vocabulary rather than provider tags so both mappers
- * discover the same candidates from their own tag/series names.
- */
-export const ANCHOR_DISCOVERY_FIELDS = {
-  income: ["revenue", "operatingIncome", "netIncome"],
-  cashflow: ["operatingCashFlow", "freeCashFlow"],
-  balance: ["totalAssets", "totalEquity", "cashAndEquivalents", "totalDebt"],
-} as const;
 
 /** Whole days between two `YYYY-MM-DD` ends; `null` if either is unparseable. */
 export function daysApart(a: string, b: string): number | null {
@@ -201,11 +190,23 @@ export type StatementSetVerdict = {
   periods: { income: string | null; balance: string | null; cashflow: string | null };
   /** Which half failed, so a reader is not left inferring it. */
   reason: "settled-for-less-than-seen" | "periods-disagree" | "period-unstated" | null;
-  /** The newer period a resolution SAW before settling for an older one —
-   *  populated only on `reason: "settled-for-less-than-seen"`, since that is
-   *  the one verdict where "the periods agree" and "the periods are stale"
-   *  are different claims a reader cannot tell apart from `periods` alone. */
+  /** The FRONTIER — the most recent period ANY resolution saw among the ones
+   *  that settled for less than they saw — populated only on
+   *  `reason: "settled-for-less-than-seen"`. Taking the max across every
+   *  offending statement (not the first one the loop finds) matters: nothing
+   *  else in this verdict identifies WHICH statement(s) triggered this reason,
+   *  so reporting anything less than the frontier understates how stale the
+   *  set actually is whenever a LATER statement in iteration order saw
+   *  something newer than an EARLIER one that also triggered. */
   observedNewest?: string | null;
+  /** True when part (b) found a genuinely undated-but-figured statement EVEN
+   *  THOUGH `periods-disagree` won the reason (a real clash decided first —
+   *  see the ordering comment below part (b)). Populated only on
+   *  `reason: "periods-disagree"`. Without this, a renderer that asserts
+   *  "it would mix fiscal periods" as fact is right about the two that
+   *  clashed and silently wrong about a THIRD statement whose period is
+   *  merely unknown, not confirmed to clash. */
+  anyUndatedWithFigures?: boolean;
 };
 
 /**
@@ -235,6 +236,39 @@ export type StatementSetVerdict = {
  * nothing to compare and (b) is satisfied. That is this contract's documented
  * limit — closing it costs a provider request per statement per run.
  */
+/**
+ * True when a resolution genuinely settled for LESS than it saw — the core
+ * test behind part (a) below, pulled out so the DIRECTION invariant is
+ * enforced in exactly one place rather than assumed by every caller.
+ *
+ * Every render site that reports `observedNewest` says the desk saw a MORE
+ * RECENT period than what is shown. `samePeriod` alone cannot promise that —
+ * it is a direction-blind DISTANCE check, so `!samePeriod(returned,
+ * observedNewest)` is equally true whether `observedNewest` is newer OR
+ * older than `returned`. Today `loadStatementWithRecovery` only ever grows
+ * `observedNewest` via `newer()` (the max of every payload actually fetched,
+ * including the one ultimately returned), so a resolution can never observe
+ * something OLDER than what it settled on — but that is an invariant of a
+ * DIFFERENT module, not of this one, and nothing here enforced it. If it
+ * ever broke upstream, this function is what stops "saw a more recent
+ * period (2024-09-28)" from printing above three 2025-09-27 lines: an
+ * `observedNewest` that is CONFIRMED older than `returned` no longer counts
+ * as settling for less.
+ *
+ * A `null` `returned` has no direction to violate: a resolution that saw a
+ * real period and returned nothing settled for less than it saw regardless
+ * of chronology, so that case is unconditional.
+ */
+function settledForLessThanSeen(returned: string | null, observedNewest: string | null): boolean {
+  if (observedNewest == null) return false;
+  if (samePeriod(returned, observedNewest)) return false;
+  if (returned == null) return true;
+  const seen = Date.parse(observedNewest);
+  const had = Date.parse(returned);
+  if (Number.isNaN(seen) || Number.isNaN(had)) return true;
+  return seen > had;
+}
+
 export function isCoherentStatementSet(observations: {
   income: StatementPeriodInput;
   balance: StatementPeriodInput;
@@ -246,20 +280,31 @@ export function isCoherentStatementSet(observations: {
     cashflow: observations.cashflow.returned,
   };
 
-  // (a) — a resolution that observed a newer period and settled for an older
-  // one. Compared with `samePeriod`, not string equality: one resolution can
-  // observe `2025-09-27` from the filings source and return `2025-09-30` from
-  // market data for the SAME fiscal year, which is agreement, not staleness.
+  // (a) — every resolution that observed a newer period and settled for an
+  // older one. Compared with `samePeriod`, not string equality: one
+  // resolution can observe `2025-09-27` from the filings source and return
+  // `2025-09-30` from market data for the SAME fiscal year, which is
+  // agreement, not staleness. `settledForLessThanSeen` also enforces the
+  // DIRECTION invariant — see its own comment.
+  //
+  // THE FRONTIER, NOT THE FIRST MATCH. Every offending statement's
+  // `observedNewest` is collected and the MAX is reported — nothing else in
+  // the verdict says WHICH statement(s) triggered this, so stopping at the
+  // first one (by iteration order income/balance/cashflow) understates
+  // staleness whenever a LATER statement saw something even newer.
+  const sightings: string[] = [];
   for (const o of [observations.income, observations.balance, observations.cashflow]) {
-    if (o.observedNewest == null) continue;
-    if (!samePeriod(o.returned, o.observedNewest)) {
-      return {
-        coherent: false,
-        periods,
-        reason: "settled-for-less-than-seen",
-        observedNewest: o.observedNewest,
-      };
+    if (settledForLessThanSeen(o.returned, o.observedNewest)) {
+      sightings.push(o.observedNewest as string);
     }
+  }
+  if (sightings.length > 0) {
+    return {
+      coherent: false,
+      periods,
+      reason: "settled-for-less-than-seen",
+      observedNewest: chooseAnchorPeriodEnd(sightings),
+    };
   }
 
   // (b) — mutual compatibility across the three returned periods.
@@ -290,10 +335,19 @@ export function isCoherentStatementSet(observations: {
 
   // Outright disagreement is decided FIRST: it is the more specific finding,
   // and it lets the disclosure name the two years that actually clashed.
+  // `undatedWithFigures` is carried along even though THIS branch wins on the
+  // clash, not on it — a third, undated-but-figured statement is a real,
+  // independent risk a renderer must not silently drop just because a louder
+  // finding took the `reason` slot.
   for (let i = 0; i < present.length; i++) {
     for (let j = i + 1; j < present.length; j++) {
       if (!samePeriod(present[i], present[j])) {
-        return { coherent: false, periods, reason: "periods-disagree" };
+        return {
+          coherent: false,
+          periods,
+          reason: "periods-disagree",
+          anyUndatedWithFigures: undatedWithFigures,
+        };
       }
     }
   }

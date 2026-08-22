@@ -156,8 +156,9 @@ const REVENUE_TAGS = ["RevenueFromContractWithCustomerExcludingAssessedTax", "Re
 /** Cost-of-revenue tags, same newest-filing-wins rule as revenue. */
 const COGS_TAGS = ["CostOfGoodsAndServicesSold", "CostOfRevenue"];
 
-/** The us-gaap tags behind each ANCHOR-DISCOVERY field (`financial-period.ts`).
- *  Deliberately NOT the recovery ladder's completeness test — see that module. */
+/** The us-gaap tags this provider anchors on — this mapper's own instance of the
+ *  ANCHOR-discovery rule (`financial-period.ts`'s module header). Deliberately NOT
+ *  the recovery ladder's completeness test — see that module. */
 const US_GAAP_ANCHOR_TAGS: Array<{ tags: string[]; kind: "instant" | "duration" }> = [
   { tags: REVENUE_TAGS, kind: "duration" },
   { tags: ["OperatingIncomeLoss"], kind: "duration" },

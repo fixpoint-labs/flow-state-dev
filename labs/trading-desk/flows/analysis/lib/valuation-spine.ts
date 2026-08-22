@@ -68,7 +68,60 @@ export type PeriodDisclosure = {
    *  Populated only on `reason: "settled-for-less-than-seen"` — see
    *  `StatementSetVerdict.observedNewest`. */
   observedNewest?: string | null;
+  /** True when a THIRD statement carries figures but states no period, even
+   *  though a real clash between the other two won the `reason` slot.
+   *  Populated only on `reason: "periods-disagree"` — see
+   *  `StatementSetVerdict.anyUndatedWithFigures`. */
+  anyUndatedWithFigures?: boolean;
 };
+
+/**
+ * The four ways a disclosure can look ON THE PAGE — computed once, here, and
+ * read by every surface that renders one (`formatPeriodMismatch`,
+ * `withheldReasonLine`, and the fundamentals analyst's prompt, which defers
+ * to whichever of these fired rather than asserting anything itself).
+ *
+ * WHY THIS EXISTS. `reason` tells you WHETHER `isCoherentStatementSet` found
+ * a problem — it is what the predicate actually failed on — but it does NOT
+ * tell you what the three PRINTED periods look like. `settled-for-less-than-
+ * seen` fires on the FIRST statement whose own resolution settled for less
+ * than it saw (part a), before anyone checks whether the three RETURNED
+ * periods agree with each other (part b) — so that one reason alone covers
+ * BOTH a printed shape where the periods genuinely agree (uniform staleness)
+ * and one where they do not (a stale statement diverging from its peers, an
+ * outright three-way clash, or a peer that returned no period at all). Three
+ * defects on this file were three different surfaces re-deriving "do these
+ * agree" themselves and getting it wrong in three different ways — this
+ * function is the one place that computation happens now.
+ */
+export type DisclosurePrintShape = "uniform-stale" | "divergent-stale" | "disagree" | "unstated";
+
+export function disclosurePrintShape(disclosure: PeriodDisclosure): DisclosurePrintShape {
+  if (disclosure.reason === "period-unstated") return "unstated";
+  if (disclosure.reason === "periods-disagree") return "disagree";
+  // `reason === "settled-for-less-than-seen"` — the one case `reason` alone
+  // cannot resolve. `periodsMutuallyAgree` is the SAME check `isCoherent-
+  // StatementSet` itself would run in part (b), applied to the periods as
+  // actually printed.
+  return periodsMutuallyAgree(disclosure.income, disclosure.balance, disclosure.cashflow)
+    ? "uniform-stale"
+    : "divergent-stale";
+}
+
+/**
+ * True when at least one of the three PRINTED periods is unknown (`null`) —
+ * either a genuinely ABSENT statement (no figures at all — e.g.
+ * `statement-recovery.ts`'s `bestPartial() ?? empty()` path, which can still
+ * have observed a real period before settling on nothing) or a populated
+ * legacy record whose period was never stated. Both mean the same thing for
+ * a renderer: there is no confirmed period to point to, so the statement
+ * must not be called "stale" (a stale statement HAS a period, just an old
+ * one). Read by every `"divergent-stale"` sentence so the ABSENT-vs-STALE
+ * distinction cannot drift between surfaces either.
+ */
+export function disclosureHasUnknownPeriod(disclosure: PeriodDisclosure): boolean {
+  return disclosure.income == null || disclosure.balance == null || disclosure.cashflow == null;
+}
 
 export interface ValuationSpine {
   ticker: string;
@@ -268,39 +321,31 @@ function formatTriangulationLine(spine: FormattableSpine): string {
  * The single WITHHELD sentence the portfolio manager (and every other
  * `valuationSpine`-capability reader) sees in place of the spine's numbers.
  *
- * SAME INVARIANT AS `formatPeriodMismatch` (`statement-set-period.ts`), same
- * reason it needs a real check rather than a reason-keyed string: on
- * `settled-for-less-than-seen`, `isCoherentStatementSet` returns as soon as
- * ONE statement's own resolution settled for less than it saw — before it
- * ever checks whether the three RETURNED periods (`pd.income/balance/
- * cashflow`) agree with each other. So this reason covers both uniform
- * staleness (all three genuinely agree) and a stale statement sitting
- * alongside peers that disagree with it or are themselves unstated.
- * `periodsMutuallyAgree` is what tells the two apart — imported from the same
- * module `formatPeriodMismatch` uses it from, so the two blocks cannot
- * disagree about what "these agree" means. Different AUDIENCE from that
- * block (this one has no raw statement data to reason about "within a single
- * statement", so it says nothing about that), but the same truth standard:
- * every clause here must hold for the periods printed beside it.
+ * SAME `disclosurePrintShape` `formatPeriodMismatch` (`statement-set-
+ * period.ts`) reads — computed once, in ONE place, and consulted here rather
+ * than re-derived. Different AUDIENCE from that block (this one has no raw
+ * statement data to reason about "within a single statement", so it says
+ * nothing about that), but the same shape and the same truth standard: every
+ * clause here must hold for the periods printed beside it.
  */
 function withheldReasonLine(pd: PeriodDisclosure): string {
   const named = `(income ${pd.income ?? "none"}, balance sheet ${pd.balance ?? "none"}, cash flow ${pd.cashflow ?? "none"})`;
   const withheldOutputs =
     "Every figure spanning two statements — expected return, fair value, the cash-flow model, " +
     "triangulation, the setup score and the rating envelope —";
+  const shape = disclosurePrintShape(pd);
+  const seen = pd.observedNewest ?? "a newer period";
 
-  if (pd.reason === "period-unstated") {
-    return (
-      `WITHHELD: the desk CANNOT ESTABLISH that the three statements below describe the same ` +
-      `fiscal period ${named} — at least one carries figures but states no period. ${withheldOutputs} ` +
-      `is withheld, because a figure built across them could silently combine two different fiscal ` +
-      `periods. Do NOT combine figures across these statements yourself.`
-    );
-  }
+  switch (shape) {
+    case "unstated":
+      return (
+        `WITHHELD: the desk CANNOT ESTABLISH that the three statements below describe the same ` +
+        `fiscal period ${named} — at least one carries figures but states no period. ${withheldOutputs} ` +
+        `is withheld, because a figure built across them could silently combine two different fiscal ` +
+        `periods. Do NOT combine figures across these statements yourself.`
+      );
 
-  if (pd.reason === "settled-for-less-than-seen") {
-    const seen = pd.observedNewest ?? "a newer period";
-    if (periodsMutuallyAgree(pd.income, pd.balance, pd.cashflow)) {
+    case "uniform-stale":
       return (
         `WITHHELD: the three statements below agree on a fiscal period ${named}, but the desk saw a ` +
         `more recent one (${seen}) and settled for this older one instead — the set is STALE, not in ` +
@@ -308,23 +353,46 @@ function withheldReasonLine(pd: PeriodDisclosure): string {
         `current, not because the periods conflict. Do NOT combine figures across these statements ` +
         `yourself.`
       );
-    }
-    return (
-      `WITHHELD: at least one of the three statements below is STALE — the desk saw a more recent ` +
-      `period (${seen}) while resolving it than it actually returned, and the three are NOT confirmed ` +
-      `to all describe one shared fiscal period ${named}. ${withheldOutputs} is withheld. Do NOT ` +
-      `combine figures across these statements yourself.`
-    );
-  }
 
-  // `periods-disagree` only: a real, confirmed clash between at least two of
-  // the three returned periods — "could not establish a single fiscal
-  // period" and "rather than computed across periods" are both true here.
-  return (
-    `WITHHELD: the desk could not establish a single fiscal period across the three statements ` +
-    `${named}. ${withheldOutputs} is withheld rather than computed across periods. Do NOT combine ` +
-    `figures across these statements yourself.`
-  );
+    case "divergent-stale":
+      // ABSENT-vs-STALE: a PM told "stale" re-pulls a number; told "missing"
+      // waits for a filing — see `disclosureHasUnknownPeriod`'s own comment.
+      if (disclosureHasUnknownPeriod(pd)) {
+        return (
+          `WITHHELD: at least one of the three statements below did not return a period at all, even ` +
+          `though the desk's own resolution observed one (${seen}) while resolving it — that statement ` +
+          `may be MISSING data rather than merely stale, and the three are NOT confirmed to all ` +
+          `describe one shared fiscal period ${named}. ${withheldOutputs} is withheld. Do NOT combine ` +
+          `figures across these statements yourself.`
+        );
+      }
+      return (
+        `WITHHELD: at least one of the three statements below is STALE — the desk saw a more recent ` +
+        `period (${seen}) while resolving it than it actually returned, and the three are NOT confirmed ` +
+        `to all describe one shared fiscal period ${named}. ${withheldOutputs} is withheld. Do NOT ` +
+        `combine figures across these statements yourself.`
+      );
+
+    case "disagree":
+      // A real, confirmed clash between at least two of the three returned
+      // periods — "could not establish a single fiscal period" and "rather
+      // than computed across periods" are both true here — UNLESS a third,
+      // undated-but-figured statement rides along with that clash, in which
+      // case its own period is merely unknown, not confirmed to conflict.
+      if (pd.anyUndatedWithFigures) {
+        return (
+          `WITHHELD: at least two of the three statements below are CONFIRMED to describe different ` +
+          `fiscal periods ${named}, and at least one other carries figures but states no period, so a ` +
+          `figure built across it COULD ALSO combine two different fiscal periods with nobody able to ` +
+          `tell. ${withheldOutputs} is withheld. Do NOT combine figures across these statements yourself.`
+        );
+      }
+      return (
+        `WITHHELD: the desk could not establish a single fiscal period across the three statements ` +
+        `${named}. ${withheldOutputs} is withheld rather than computed across periods. Do NOT combine ` +
+        `figures across these statements yourself.`
+      );
+  }
 }
 
 export function formatValuationSpine(spine: FormattableSpine): string {
