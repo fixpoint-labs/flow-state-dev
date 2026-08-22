@@ -98,19 +98,19 @@ defineFlow({
   session: {
     stateSchema: z.object({ mode: z.enum(["plan", "edit"]).default("plan") }),
     resources: { /* concrete persisted resources */ },
-    clientData: { /* derived views for the client */ },
+    client: { /* expose / derived views for the client */ },
   },
 
   user: {
     stateSchema: z.object({ /* per-user state */ }),
     resources: { /* ... */ },
-    clientData: { /* ... */ },
+    client: { /* ... */ },
   },
 
   project: {
     stateSchema: z.object({ /* project-wide state */ }),
     resources: { /* ... */ },
-    clientData: { /* ... */ },
+    client: { /* ... */ },
   },
 });
 ```
@@ -160,18 +160,22 @@ session: {
       writable: true,
     },
   },
-  clientData: {
-    activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
-    messageCount: (ctx) => ctx.state.messageCount ?? 0,
+  client: {
+    expose: ["messageCount"],
+    derived: {
+      activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
+    },
   },
 },
 ```
 
 **Key rules:**
-- Client-facing values are exposed through `clientData` entries — every entry is client-visible
+- Client-facing values are declared on `client.expose` (verbatim state fields) or `client.derived` (computed views). A scope without `client` exposes nothing.
+- `defineFlow` rejects a leftover `clientData` key on a scope — move those entries to `client.derived` (or `expose` for passthrough).
+- The on-the-wire snapshot is still `snapshot.clientData.<scope>.<name>`.
 - Generator context should use `contextFn()` for typed scope access
 - Use `defineResource()` for portable resource reuse
-- Each `clientData` compute function receives only its own scope's state and resources
+- Each `derived` compute function receives only its own scope's state and resources
 
 ### Automatic Resource Collection
 
@@ -229,7 +233,6 @@ defineFlow({
   tools: {
     defaults: {
       timeoutMs: 30000,
-      concurrency: "parallel",
       retry: { maxAttempts: 2 },
     },
     onToolStarted: (event, ctx) => { /* ... */ },

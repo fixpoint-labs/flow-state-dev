@@ -282,18 +282,20 @@ Identity-equal re-registration is always safe (diamond dependencies through capa
 
 ## Client Data
 
-Client data entries are derived views — computed from state and resources within a single scope. They're the mechanism for exposing server-side data to clients.
+A scope exposes client-facing values through `client.expose` (verbatim state fields) and `client.derived` (computed views). A scope without `client` exposes nothing. `defineFlow` rejects a leftover `clientData` key on a scope.
 
 ```ts
 session: {
-  clientData: {
-    activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
-    messageCount: (ctx) => ctx.state.messageCount ?? 0,
+  client: {
+    expose: ["messageCount"],
+    derived: {
+      activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
+    },
   },
 }
 ```
 
-Every `clientData` entry is a function, and every entry is client-visible. There's no `client: true/false` toggle — if it's in `clientData`, clients can see it.
+Every `expose` name and every `derived` entry is client-visible. The snapshot key is still `clientData.<scope>.<name>`.
 
 ### ClientDataComputeFn
 
@@ -308,7 +310,7 @@ type ClientDataContext<TState, TResources> = {
 ```
 
 **Key differences from the former projection system:**
-- **Single-scope context**: Each compute function receives only the state and resources from its own scope — no cross-scope access. A session-level `clientData` entry sees session state and session resources, nothing else.
+- **Single-scope context**: Each compute function receives only the state and resources from its own scope — no cross-scope access. A session-level `derived` entry sees session state and session resources, nothing else.
 - **No output schema validation**: Compute functions return `JsonValue` directly. Type safety comes from usage patterns, not runtime schema validation.
 - **No `defineProjection()`**: There's no portable projection builder. For shared computation logic, extract a regular function.
 
@@ -318,31 +320,37 @@ type ClientDataContext<TState, TResources> = {
 defineFlow({
   kind: "my-app",
   session: {
-    clientData: {
-      artifactsList: (ctx) => {
-        const artifacts = ctx.resources.artifacts?.state;
-        return artifacts?.order.map(id => ({
-          id,
-          title: artifacts.byId[id]?.title ?? "Untitled",
-        })) ?? [];
+    client: {
+      derived: {
+        artifactsList: (ctx) => {
+          const artifacts = ctx.resources.artifacts?.state;
+          return artifacts?.order.map(id => ({
+            id,
+            title: artifacts.byId[id]?.title ?? "Untitled",
+          })) ?? [];
+        },
+        modeStatus: (ctx) => ({
+          currentMode: ctx.state.mode ?? "chat",
+          requestCount: ctx.state.requestCount ?? 0,
+        }),
       },
-      modeStatus: (ctx) => ({
-        currentMode: ctx.state.mode ?? "chat",
-        requestCount: ctx.state.requestCount ?? 0,
-      }),
     },
   },
   user: {
-    clientData: {
-      preferences: (ctx) => ({
-        displayName: ctx.state.displayName ?? "User",
-        preferredModel: ctx.state.preferredModel ?? "openai/gpt-5.4-mini",
-      }),
+    client: {
+      derived: {
+        preferences: (ctx) => ({
+          displayName: ctx.state.displayName ?? "User",
+          preferredModel: ctx.state.preferredModel ?? "openai/gpt-5.4-mini",
+        }),
+      },
     },
   },
   project: {
-    clientData: {
-      sharedConfig: (ctx) => ctx.state.config ?? {},
+    client: {
+      derived: {
+        sharedConfig: (ctx) => ctx.state.config ?? {},
+      },
     },
   },
 });
@@ -409,12 +417,12 @@ type PlanCtx = ContextOf<typeof planResource, "resource">;
 
 Client-facing data is exposed through two complementary mechanisms:
 
-1. **Scope-level `clientData`** — derived views computed from scope state and resources. Best for cross-resource projections and non-resource data.
+1. **Scope-level `client`** — `expose` and `derived` views computed from scope state and resources. Best for cross-resource projections and non-resource data.
 2. **Resource-level `client`** — per-resource visibility, data projection, and content access. `client.content` controls content endpoints. `client.data` derives metadata for the snapshot. Best for exposing resource data directly to clients without manual projection.
 
 ### Scope-Level Client Data
 
-Scope-level `clientData` remains unchanged — it computes derived values from state and resources within a single scope:
+Scope-level `client.expose` / `client.derived` compute values from state and resources within a single scope. The snapshot still groups them under `clientData`:
 
 ```
 GET /api/flows/sessions/:sessionId/state
