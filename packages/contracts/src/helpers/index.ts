@@ -7,3 +7,4 @@
 export { deepEqual, looseDeepEqual } from "./deep-equal";
 export { camelToKebab, normalizeTagName } from "./string-case";
 export { mapLimit } from "./concurrency";
+export { toError } from "./to-error";

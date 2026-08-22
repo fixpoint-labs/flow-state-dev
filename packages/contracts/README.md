@@ -30,9 +30,9 @@ a no-non-relative-import scan over `src/`), so it cannot silently regress.
   — deterministic `buildBlockInstanceId` / `parseBlockInstanceId` and the
   `blockPath*` segment builders.
 - **Pure helpers** (`@flow-state-dev/contracts/helpers`) — `deepEqual` /
-  `looseDeepEqual`, `mapLimit` (bounded-concurrency map), and the string-case
-  utilities `camelToKebab` / `normalizeTagName`. Re-exported from
-  `@flow-state-dev/core/helpers`.
+  `looseDeepEqual`, `mapLimit` (bounded-concurrency map), `toError`
+  (unknown-throw coercion), and the string-case utilities `camelToKebab` /
+  `normalizeTagName`. Re-exported from `@flow-state-dev/core/helpers`.
 - **Pure leaf types** — `ModelIdentity`, `SuspensionReason`,
   `SuspensionStatus`, `RequestStatus`.
 
