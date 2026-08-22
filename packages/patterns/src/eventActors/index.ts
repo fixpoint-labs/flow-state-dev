@@ -311,12 +311,10 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
   const spawnInitialTasks = handler({
     name: `${name}-spawn-initial`,
     inputSchema: z.any(),
-    outputSchema: z.any(),
     resources: { [RESOURCE_KEY]: workspaceResource },
     execute: async (entry, ctx) => {
       const e = entry as { type: string; topic: string; body: unknown };
       await spawnTasksFor(e, 1, ctx as unknown as BlockContext);
-      return entry;
     },
   });
 
@@ -334,17 +332,16 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
     const reEmitTap = handler({
       name: `${name}-${a.name}-reemit`,
       inputSchema: z.any(),
-      outputSchema: z.any(),
       resources: { [RESOURCE_KEY]: workspaceResource },
       sequencerStateSchema: actorWrapperStateSchema,
       execute: async (output, ctx) => {
-        if (!reEmit) return output;
+        if (!reEmit) return;
 
         const seqState = ctx.sequencer?.state as
           | { _taskId?: string }
           | undefined;
         const taskId = seqState?._taskId;
-        if (!taskId) return output;
+        if (!taskId) return;
 
         const widerCtx = ctx as unknown as BlockContext;
         const collection = await getCollection(widerCtx);
@@ -353,7 +350,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
           (task?.metadata as { depth?: number } | undefined)?.depth ?? 1;
 
         const entries = normalizeToEntries(output);
-        if (entries.length === 0) return output;
+        if (entries.length === 0) return;
 
         const workspaceRef = (ctx.resources as Record<string, any>)[RESOURCE_KEY];
 
@@ -416,7 +413,6 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
           const collectionForSpawn = await getCollection(widerCtx);
           await collectionForSpawn.addTasks(inits);
         }
-        return output;
       },
     });
 

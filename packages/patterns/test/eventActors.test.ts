@@ -166,17 +166,20 @@ describe("eventActors", () => {
     expect(seen).toEqual([{ type: "request", topic: "query", body: "hi" }]);
 
     // Same BP-014 contract as the response-auditor capture-context test, and
-    // asserted the same way: `stashTaskId` only writes sequencer state, so it
-    // returns nothing and its trace carries an empty inline output. A partial
-    // echo would leave a defined value here and fail.
-    const stashTraces = testItems(result.items)
-      .blockOutputs()
-      .filter((trace) => trace.blockName.endsWith("-stash"));
-    expect(stashTraces.length).toBeGreaterThan(0);
-    for (const trace of stashTraces) {
-      expect(trace.output).toBeDefined();
-      expect(trace.output!.kind).toBe("inline");
-      expect((trace.output as { kind: "inline"; value: unknown }).value).toBeUndefined();
+    // asserted the same way. All three of the pattern's state-only steps return
+    // nothing, so each trace carries an empty inline output; a partial echo
+    // would leave a defined value here and fail. The length check is what keeps
+    // a suffix that stops matching from turning its case vacuously green.
+    for (const suffix of ["-stash", "-spawn-initial", "-reemit"]) {
+      const traces = testItems(result.items)
+        .blockOutputs()
+        .filter((trace) => trace.blockName.endsWith(suffix));
+      expect(traces.length).toBeGreaterThan(0);
+      for (const trace of traces) {
+        expect(trace.output).toBeDefined();
+        expect(trace.output!.kind).toBe("inline");
+        expect((trace.output as { kind: "inline"; value: unknown }).value).toBeUndefined();
+      }
     }
   });
 
