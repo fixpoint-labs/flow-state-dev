@@ -78,17 +78,19 @@ above was not doing its job.
 
 ## 4. Running index
 
-| Slice | What it delivers | Kind | PR | State |
+| Issue | What it delivers | Kind | PR | State |
 |---|---|---|---|---|
-| docs | Docs and agent skills stop teaching contracts that aren't on the tree | docs | — | Pending |
-| aliases | Superseded aliases, compat shims, unused internal barrels removed | breaking minor | — | Pending |
-| unread-options | Options accepted but never read, plus the retired `claude --remote` experiment | breaking minor | — | Pending |
-| internal-duplicates | Duplicate helpers collapsed to one; BP-012 tap fixes | patch | — | Pending |
-| org-store-rename | Engine org-store factories renamed off `Project` | breaking minor | — | Pending |
-| FIX-1155 | Request-scope state writes serialize before persist | **bugfix** | — | Pending |
-| bloat-hunt | Further cuts found beyond the original pass | TBD | — | In progress |
+| [FIX-1213](https://linear.app/fixpoint-labs/issue/FIX-1213) | Docs and agent skills stop teaching contracts that aren't on the tree | docs | — | Pending |
+| [FIX-1209](https://linear.app/fixpoint-labs/issue/FIX-1209) | Superseded aliases, compat shims, unused internal barrels removed | breaking minor | — | Pending |
+| [FIX-1210](https://linear.app/fixpoint-labs/issue/FIX-1210) | Options accepted but never read, plus the retired `claude --remote` experiment | breaking minor | — | Pending |
+| [FIX-1211](https://linear.app/fixpoint-labs/issue/FIX-1211) | Duplicate helpers collapsed to one; BP-012 tap fixes | patch | — | Pending |
+| [FIX-1212](https://linear.app/fixpoint-labs/issue/FIX-1212) | Engine org-store factories renamed off `Project` | breaking minor | — | Pending |
+| [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state writes serialize before persist | **bugfix** | — | Pending |
+| — | Further cuts found beyond the original pass | TBD | — | Hunt in progress |
 
-Supersedes [#1369](https://github.com/fixpoint-labs/flow-state-dev/pull/1369), which carried
+Issues were filed for a mechanical reason worth recording: CI's `validate-changeset-refs` guard fails any changeset fragment that doesn't name a Linear issue, and the original PR's fragments named none. Each slice's fragments now name its issue, which is also what gives a released CHANGELOG entry a route back to the reasoning.
+
+Epic issue: [FIX-1208](https://linear.app/fixpoint-labs/issue/FIX-1208). Supersedes [#1369](https://github.com/fixpoint-labs/flow-state-dev/pull/1369), which carried
 all of the above as one 266-file change.
 
 ## 5. Open cross-cutting questions
@@ -115,3 +117,8 @@ all of the above as one 266-file change.
 - **Scope extended** — added a continued hunt for stale and over-engineered code beyond the
   original pass, bounded by the same product rule, because the original stopped at what it
   could prove in one sitting rather than at what exists.
+- **Set re-read against the live branch** — picked up four commits pushed to #1369 after the
+  head GitHub reported, because a split derived from a stale head silently drops work. Two
+  were dead knobs (`defaultBlockRenderer`, resource dynamic knobs, `fsdev run --format`), one
+  collapsed the testing-harness helper clones — an item the original pass had listed as a
+  known near-miss and not started — and one was a docs correction in `hello-chat`.
