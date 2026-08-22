@@ -39,7 +39,6 @@ import { validateSchedulesConfig, type ScheduleConfig, type SchedulesConfig } fr
 import { validateConcurrencyConfig } from "../types/concurrency";
 import { validateChatConfig, type ChatConfig, type ChatEventBinding } from "../types/chat";
 import { validateWebhookConfig, type WebhookConfig, type WebhookEventBinding } from "../types/webhooks";
-import { warnDeprecated } from "../helpers/deprecation";
 import { introspectStateKeys } from "../helpers/zod-introspect";
 
 type ScopeKind = "session" | "user" | "org";
@@ -47,15 +46,14 @@ type ScopeKind = "session" | "user" | "org";
 type ScopeWithClient = {
   stateSchema?: unknown;
   client?: ScopeClientConfig;
-  clientData?: Record<string, unknown>;
+  /** Rejected at definition time — use `client.derived`. */
+  clientData?: unknown;
 };
 
 /**
- * Collapse a scope's `{ client, clientData }` inputs into the canonical
- * `client` shape the runtime consumes. Throws on conflicting input
- * (both fields set, name collision, unknown `expose` key) so authors
- * see one clear error at definition time. Emits a one-shot deprecation
- * warning when only the legacy `clientData` is set.
+ * Validate a scope's `client` config. Throws on a leftover `clientData`
+ * key, an `expose`/`derived` name collision, or an `expose` key that
+ * isn't on the scope state schema.
  */
 function normalizeScopeClientConfig(
   flowKind: string,
@@ -64,30 +62,14 @@ function normalizeScopeClientConfig(
 ): ScopeClientConfig | undefined {
   if (config === undefined) return undefined;
 
-  const hasClient = config.client !== undefined;
-  const hasClientData = config.clientData !== undefined && Object.keys(config.clientData).length > 0;
-
-  if (hasClient && hasClientData) {
+  if (config.clientData !== undefined) {
     throw new Error(
-      `Flow "${flowKind}" sets both ${scope}.client and ${scope}.clientData. ` +
-      `Pick one — clientData is the legacy shape; move its entries under client.derived.`
+      `Flow "${flowKind}" ${scope}.clientData was removed. ` +
+      `Use ${scope}.client: { derived: { ... } } (or expose: [...] for verbatim passthrough).`
     );
   }
 
-  let normalized: ScopeClientConfig | undefined;
-  if (hasClient) {
-    normalized = config.client;
-  } else if (hasClientData) {
-    warnDeprecated(
-      `clientData:${flowKind}:${scope}`,
-      `${flowKind}.${scope}.clientData is deprecated. ` +
-      `Replace with ${scope}.client: { derived: { ... } } (or expose: [...] for verbatim passthrough).`
-    );
-    normalized = { derived: config.clientData as ScopeClientConfig["derived"] };
-  } else {
-    return undefined;
-  }
-
+  const normalized = config.client;
   if (normalized === undefined) return undefined;
 
   const exposeNames = normalized.expose ?? [];
@@ -126,10 +108,7 @@ function applyNormalizedClient<TConfig extends ScopeWithClient | undefined>(
   normalized: ScopeClientConfig | undefined
 ): TConfig {
   if (config === undefined) return config;
-  // Drop the legacy `clientData` field from the runtime object so consumers
-  // can't accidentally read it; carry the normalized result on `client`.
-  const { clientData: _drop, ...rest } = config as ScopeWithClient;
-  return { ...(rest as object), client: normalized } as TConfig;
+  return { ...config, client: normalized } as TConfig;
 }
 
 type AnyActions = Record<string, ActionConfig>;
