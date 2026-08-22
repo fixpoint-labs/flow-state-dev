@@ -44,8 +44,6 @@ export const skillClassifierOutputSchema = z.object({
   ),
 });
 
-export type SkillClassifierOutput = z.infer<typeof skillClassifierOutputSchema>;
-
 export interface SkillClassifierOptions {
   collectionKey: string;
   /** Model to drive the classifier with. Default `"intent/utility"`. */

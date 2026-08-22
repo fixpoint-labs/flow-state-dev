@@ -1,20 +1,5 @@
 import type { ZodTypeAny, z } from "zod";
 import type { BlockContext } from "./types/block";
-import type { JsonObject } from "./schema/common";
-
-/**
- * Scope access object passed to a contextFn callback.
- * Each property is present only if declared in the schemas parameter.
- */
-export type ContextFnScopes<
-  TSession extends JsonObject = JsonObject,
-  TUser extends JsonObject = JsonObject,
-  TOrg extends JsonObject = JsonObject
-> = {
-  session: TSession;
-  user?: TUser;
-  org?: TOrg;
-};
 
 /**
  * The function signature returned by contextFn. Compatible with generator
