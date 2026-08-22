@@ -106,20 +106,20 @@ export function assertDeltaExpectedVersion(
 }
 
 /**
- * Refuse a field path a CAS delta verb (`patchField`, `incField`,
- * `deleteField`) cannot address.
+ * Refuse a field path `patchField` or `deleteField` cannot address.
  *
- * The scope stores address state one or two keys deep — `state[a]` and
+ * Those two verbs reach state one or two keys deep — `state[a]` and
  * `state[a][b]` — because that is what their read-modify-write branches
  * actually build. A longer path has no branch to run, and a zero-length one
  * names no field at all; both throw here rather than silently writing the
- * wrong key or no key.
+ * wrong key or no key. `incField` is not a caller: it takes depth-1 paths only
+ * and carries its own guard, worded for that narrower rule.
  *
  * Lives beside {@link assertDeltaExpectedVersion} for the same reason: the two
- * in-repo adapters (memory, filesystem) guard the same delta verbs, and one
- * statement of the rule — the message string included — is what keeps their
- * errors identical. The SQL adapters restate it, exactly as this module's
- * header describes for the predicate itself.
+ * in-repo adapters (memory, filesystem) guard the same verbs, and one statement
+ * of the rule — the message string included — is what keeps their errors
+ * identical. The SQL adapters restate it, exactly as this module's header
+ * describes for the predicate itself.
  */
 export function assertMaxDepthTwo(path: string[], verb: string): void {
   if (path.length < 1 || path.length > 2) {
