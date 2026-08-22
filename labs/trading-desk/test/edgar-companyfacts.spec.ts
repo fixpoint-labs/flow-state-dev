@@ -294,6 +294,134 @@ describe("mapEdgarCompanyFacts — a quarterly filing cannot become the annual a
   });
 });
 
+describe("mapEdgarCompanyFacts — an instant fact needs AFFIRMATIVE annual evidence, not absence of a denylisted form (Codex review, FIX-1113)", () => {
+  it("THE BUG: an 8-K instant with no fp, dated after the last 10-K, is not selected as the anchor", () => {
+    // `QUARTERLY_FORMS` rejected `10-Q`/`10-Q/A` by name and admitted every
+    // other form by default — including an 8-K, an S-1, a 424B4, or any form
+    // this codebase has never seen. Our own fixtures carry 8-K, S-1/A, and
+    // 424B4 (`git grep '"form"'`), so this is not a hypothetical.
+    const tenK = "2024-12-31";
+    const eightKAfter = "2025-03-31"; // newer than the 10-K, not an annual filing
+    const facts: EdgarCompanyFacts = {
+      cik: 1,
+      entityName: "Test",
+      facts: {
+        "us-gaap": {
+          Assets: {
+            units: {
+              USD: [
+                { end: tenK, val: 400e9, form: "10-K", fp: "FY", fy: 2024 },
+                // No `fp` at all, and a form no denylist named.
+                { end: eightKAfter, val: 420e9, form: "8-K" },
+              ],
+            },
+          },
+        },
+      },
+    };
+    const { balanceSheet } = mapEdgarCompanyFacts(facts, "TEST", "2026-05-06");
+    expect(balanceSheet.periodEnd).toBe(tenK);
+    expect(balanceSheet.totalAssets).toBeCloseTo(400, 0);
+  });
+
+  it("control: a 10-K with no fp at all is still selected (the form allowlist alone is enough)", () => {
+    const olderEightK = "2023-12-31";
+    const newerTenK = "2024-12-31";
+    const facts: EdgarCompanyFacts = {
+      cik: 1,
+      entityName: "Test",
+      facts: {
+        "us-gaap": {
+          Assets: {
+            units: {
+              USD: [
+                { end: olderEightK, val: 300e9, form: "8-K" },
+                { end: newerTenK, val: 400e9, form: "10-K" }, // no `fp`
+              ],
+            },
+          },
+        },
+      },
+    };
+    const { balanceSheet } = mapEdgarCompanyFacts(facts, "TEST", "2026-05-06");
+    expect(balanceSheet.periodEnd).toBe(newerTenK);
+    expect(balanceSheet.totalAssets).toBeCloseTo(400, 0);
+  });
+
+  it("control: fp: \"FY\" wins regardless of form (a filer whose form we don't recognize)", () => {
+    const olderTenK = "2023-12-31";
+    const newerUnknownForm = "2024-12-31";
+    const facts: EdgarCompanyFacts = {
+      cik: 1,
+      entityName: "Test",
+      facts: {
+        "us-gaap": {
+          Assets: {
+            units: {
+              USD: [
+                { end: olderTenK, val: 300e9, form: "10-K", fp: "FY" },
+                // A form this codebase has never seen, but fp says FY.
+                { end: newerUnknownForm, val: 400e9, form: "NT 10-K", fp: "FY" },
+              ],
+            },
+          },
+        },
+      },
+    };
+    const { balanceSheet } = mapEdgarCompanyFacts(facts, "TEST", "2026-05-06");
+    expect(balanceSheet.periodEnd).toBe(newerUnknownForm);
+    expect(balanceSheet.totalAssets).toBeCloseTo(400, 0);
+  });
+
+  it("control: a 10-Q with no fp still fails to win the anchor (unchanged from the prior fix)", () => {
+    const tenK = "2024-12-31";
+    const tenQAfter = "2025-03-31";
+    const facts: EdgarCompanyFacts = {
+      cik: 1,
+      entityName: "Test",
+      facts: {
+        "us-gaap": {
+          Assets: {
+            units: {
+              USD: [
+                { end: tenK, val: 400e9, form: "10-K", fp: "FY", fy: 2024 },
+                { end: tenQAfter, val: 420e9, form: "10-Q" },
+              ],
+            },
+          },
+        },
+      },
+    };
+    const { balanceSheet } = mapEdgarCompanyFacts(facts, "TEST", "2026-05-06");
+    expect(balanceSheet.periodEnd).toBe(tenK);
+    expect(balanceSheet.totalAssets).toBeCloseTo(400, 0);
+  });
+
+  it("an entry with NEITHER form NOR fp carries no affirmative annual evidence and is rejected", () => {
+    const tenK = "2024-12-31";
+    const undocumented = "2025-03-31";
+    const facts: EdgarCompanyFacts = {
+      cik: 1,
+      entityName: "Test",
+      facts: {
+        "us-gaap": {
+          Assets: {
+            units: {
+              USD: [
+                { end: tenK, val: 400e9, form: "10-K", fp: "FY", fy: 2024 },
+                { end: undocumented, val: 420e9 }, // neither field present
+              ],
+            },
+          },
+        },
+      },
+    };
+    const { balanceSheet } = mapEdgarCompanyFacts(facts, "TEST", "2026-05-06");
+    expect(balanceSheet.periodEnd).toBe(tenK);
+    expect(balanceSheet.totalAssets).toBeCloseTo(400, 0);
+  });
+});
+
 describe("mapEdgarFinancialsHistory — multi-period for composites", () => {
   it("returns one period per fiscal year, newest first, with the composite line items", () => {
     const periods = mapEdgarFinancialsHistory(twoYear);
@@ -455,5 +583,30 @@ describe("mapEdgarFinancialsHistory — ifrs-full (foreign private issuers, e.g.
     const periods = mapEdgarFinancialsHistory(both);
     // us-gaap FY2024 totalAssets is 364; ifrs is 204.
     expect(periods[0].totalAssets).toBeCloseTo(364, 0);
+  });
+
+  it("a 20-F with no fp at all is still selected over a non-annual form (this codebase's own confirmed annual form, Codex review FIX-1113)", () => {
+    // 20-F is a real, already-supported form in this mapper (this fixture, this
+    // describe block) — it belongs in the annual-form allowlist alongside 10-K.
+    const olderEightK = "2023-06-30";
+    const newerTwentyF = "2023-12-31";
+    const facts: EdgarCompanyFacts = {
+      facts: {
+        "ifrs-full": {
+          Assets: {
+            units: {
+              USD: [
+                { end: olderEightK, val: 300e9, form: "8-K" },
+                { end: newerTwentyF, val: 400e9, form: "20-F" }, // no `fp`
+              ],
+            },
+          },
+        },
+      },
+    };
+    const periods = mapEdgarFinancialsHistory(facts);
+    expect(periods).toHaveLength(1);
+    expect(periods[0].endDate).toBe(newerTwentyF);
+    expect(periods[0].totalAssets).toBeCloseTo(400, 0);
   });
 });

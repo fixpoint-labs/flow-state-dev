@@ -81,12 +81,30 @@ function entries(facts: Record<string, Fact>, tag: string): FactEntry[] {
 }
 
 /** SEC form types known to carry QUARTERLY instant facts. Checked even when
- *  `fp` is absent (review round 6, P2) — a 10-Q reports `fp` most of the
- *  time, but a filer that leaves it off is not thereby annual; `form` is the
- *  independent signal that catches it. Duration facts need no such gate —
- *  the day-span test below already excludes a quarter regardless of `form`
- *  or `fp`. Amendments (`/A`) carry the same period shape as the original. */
-const QUARTERLY_FORMS = new Set(["10-Q", "10-Q/A"]);
+ *  `fp` is absent (Codex review, FIX-1113) — a filer that omits `fp` is not
+ *  thereby annual OR thereby non-annual; `form` is independent, affirmative
+ *  evidence, checked whether or not `fp` is present. Duration facts need no
+ *  such gate — the day-span test below already excludes a quarter regardless
+ *  of `form` or `fp`. Amendments (`/A`) carry the same period shape as the
+ *  original.
+ *
+ *  A DENYLIST WAS TRIED HERE FIRST AND WAS WRONG. Rejecting only `10-Q` /
+ *  `10-Q/A` and admitting every other form by default let an 8-K, an S-1, a
+ *  424B4 — or any form this codebase has never seen — win the annual anchor
+ *  whenever it also omitted `fp`. Our own fixtures already carry 8-K, S-1/A,
+ *  and 424B4 (`git grep '"form"'`), so this was not a hypothetical. A guard
+ *  whose entire job is to stop a non-year being labelled a year has to
+ *  require AFFIRMATIVE evidence of "year", not the absence of a name someone
+ *  thought to list.
+ *
+ *  20-F is included: foreign private issuers report annual results on 20-F
+ *  under `ifrs-full`, and this mapper already has a dedicated 20-F fixture
+ *  and test (`ifrsTwoYear`, "ifrs-full (foreign private issuers, e.g. TSM)").
+ *  40-F (the Canadian MJDS annual form) is NOT included — nothing in this
+ *  codebase's fixtures, tests, or provider code exercises it, and adding it
+ *  on spec would be exactly the kind of unverified list entry this fix
+ *  exists to stop making. */
+const ANNUAL_FORMS = new Set(["10-K", "10-K/A", "20-F", "20-F/A"]);
 
 /**
  * Whether a fact entry is an ANNUAL observation of the shape this field takes.
@@ -97,24 +115,27 @@ const QUARTERLY_FORMS = new Set(["10-Q", "10-Q/A"]);
  * Instant (balance) facts carry no `start`, and a snapshot shape alone is NOT
  * enough: a quarterly balance sheet is also an instant. The old selector tested
  * only for the snapshot shape and never for annual, which is why the desk paired
- * a full year of profit with whatever quarter was filed most recently. An
- * explicitly sub-annual period (`fp: "Q1".."Q4"`) is rejected here; an entry
- * with no `fp` at all is kept, so this narrows the defect without narrowing
- * coverage on filers that leave the field off — BUT `fp == null` is not by
- * itself annual: a 10-Q that also omits `fp` would pass a check that only
- * ever looked at `fp`, hand the mapper a quarter-end as if it were the fiscal
- * year-end, and publish quarterly balance figures under an annual `periodEnd`
- * with the duration figures blanked out beside them (no duration fact matches
- * a quarter-end). `QUARTERLY_FORMS` is the second, independent gate that
- * catches that shape; it rejects on `form` alone, before `fp` is even read.
+ * a full year of profit with whatever quarter was filed most recently.
+ *
+ * AFFIRMATIVE EVIDENCE, NOT ABSENCE OF A DENYLISTED FORM (Codex review,
+ * FIX-1113 — the fix after this comment's first version). An instant fact is
+ * annual when `fp === "FY"`, OR its `form` is a KNOWN annual form
+ * (`ANNUAL_FORMS`) — never merely because `fp` is absent and `form` is not on
+ * some denylist. This still covers the worry the denylist was protecting (a
+ * 10-K that omits `fp` — the form allowlist alone accepts it), while an entry
+ * with NEITHER `form` NOR `fp` now carries no affirmative annual evidence and
+ * is rejected: real EDGAR `companyfacts` responses populate both fields on
+ * every unit entry (SEC's documented schema, and this repo's own captured
+ * Apple fixture — zero entries missing either), so this closes a gap the
+ * type permits but production data does not actually produce.
  */
 function isAnnual(e: FactEntry, kind: "instant" | "duration"): boolean {
   if (e.end == null || typeof e.val !== "number") return false;
   if (kind === "duration") {
     return e.start != null && daysBetween(e.start, e.end) > ANNUAL_MIN_DAYS;
   }
-  if (e.form != null && QUARTERLY_FORMS.has(e.form)) return false;
-  return e.start == null && (e.fp == null || e.fp === "FY");
+  if (e.start != null) return false;
+  return e.fp === "FY" || (e.form != null && ANNUAL_FORMS.has(e.form));
 }
 
 /** Every annual period end this tag set reports. The candidate pool the anchor
