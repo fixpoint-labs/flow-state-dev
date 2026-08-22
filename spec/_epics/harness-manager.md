@@ -118,6 +118,13 @@ the one job that step exists to do.
 
 ## 2. Themes & long-horizon direction
 
+*Altitude rule for this document, learned the hard way: **the epic-spec names constraints and
+the reference implementation to mirror; the issue specs name the calls.** Three separate reviews
+have now caught this document naming a specific API as "the mechanism" — `settleParentTask`,
+then a bare `continueRequest` — and each time the named API was incomplete, because an epic-spec
+specifies mechanism without the source open. A theme that reads like a call sequence has drifted
+down an altitude; push it into the issue spec that will write it.*
+
 1. **The coordinator stays small on purpose.** The bet under test is that the session a person
    talks to holds only the *currently-open questions*, because the run's memory lives in
    resources rather than in a conversation. Every design call in this set is judged against
@@ -169,8 +176,17 @@ the one job that step exists to do.
    - **Hold** the claim with a long lease configured on the board — framework work inside LAB-139
      (§1, §5). Suspending stops lease renewal, so a default-lease run loses its row two minutes in.
    - **Wake** with a purpose-built **server-side** action reading `{requestId, suspensionId}` off
-     the `runs/*` row and calling `continueRequest()` in-process. Never the public resume route —
-     theme 6 says why, and it stands.
+     the `runs/*` row. Never the public resume route — theme 6 says why, and it stands. **The
+     constraint on that action: it must perform the whole resolution transaction the public route
+     performs — resolve the `SuspensionRecord`, take the continuation lease, and enforce the
+     suspension's own guards (still pending · not expired · action allowed · payload valid) —
+     and only then continue the request. Calling `continueRequest()` alone is not resuming; it is
+     replay without the guards.** Two answers to one question then start concurrent replays of the
+     same request, and the record stays `pending` forever, so a run that suspends again finds the
+     original gate still open — both silent. Every guard is a `provider.*` call available
+     server-side, so none of this is new framework surface. **Mirror
+     `packages/engine/src/routes/resume-routes.ts:136-227`**, which is the reference
+     implementation; LAB-139's spec names the calls with that file open.
    - **Settle** only after checking the run handle's status: a terminal SDK error subtype returns
      normally as `status: "errored"`, so settling on a normal return alone reports a failed run
      as completed.
@@ -247,7 +263,9 @@ waits on it (theme 4).*
   - **The shipped public resume route refuses it, and that guard stays** (theme 6). The same
     requestId that 404s is proven live and resumable via `continueRequest()`, so the 404 is the
     guard, not a missing record. `continueRequest` carries no source gating — the check lives only
-    in the HTTP handler — so an in-process action wakes the run.
+    in the HTTP handler, so an in-process action can wake the run. **So does the rest of the
+    resolution transaction**, which the in-process action must therefore perform itself rather
+    than inherit (theme 5).
   - **The lease, not the task status, is the real limit on how long a question can stay open.**
     Routed to LAB-139 by the round-3 fold; now decided in the entry below.
   - **What changed:** themes 5 and 6, the hot-path entry below, LAB-138's and LAB-139's index
@@ -373,3 +391,19 @@ waits on it (theme 4).*
   (a dead worker's row waits out the configured window). **Every correction in this fold was to a
   mechanism. §1's five lines — Outcome, Proof, Lead measure, Not doing, Kill line — are unchanged,
   as they have been through all three rounds. The epic still means exactly what it said.**
+- **Correction fold — the wake mechanism was under-specified, and the altitude rule that caused
+  it.** Not a review round; the budget is spent and the spec has converged. Theme 5 said the
+  operator's answer is delivered by a server-side action calling `continueRequest()`. Checked in
+  source (`packages/engine/src/routes/resume-routes.ts:136-227`), that is not sufficient: the
+  public route resolves the `SuspensionRecord` and takes a continuation lease *before* it
+  continues, and an action skipping those lets two answers start concurrent replays of one
+  request while the record stays `pending` forever — both silent, and both exactly the class of
+  bug this epic exists to catch. Theme 5 now states the **constraint** (perform the whole
+  resolution transaction; mirror that file) instead of naming a call, and LAB-139 carries an
+  implementer note to name the calls with the source open. **The reason it is stated as a
+  constraint is the pattern**: this is the third review to find this document naming a specific
+  API as the mechanism and the third time the named API was incomplete — so §2 now opens with an
+  explicit altitude rule, which is the durable fix. **The objective is untouched. §1's five
+  lines — Outcome, Proof, Lead measure, Not doing, Kill line — are unchanged; this was a
+  completeness correction to a mechanism the epic-spec should not have specified at this
+  altitude in the first place.**
