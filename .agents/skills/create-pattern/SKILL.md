@@ -107,14 +107,8 @@ export interface <PatternName>Config<
   // Resource declarations — registered on the outer sequencer.
   // ---------------------------------------------------------------------------
 
-  /** Session resources declared on the outer sequencer. */
-  sessionResources?: Record<string, any>;
-
-  /** User resources declared on the outer sequencer. */
-  userResources?: Record<string, any>;
-
-  /** Project resources declared on the outer sequencer. */
-  projectResources?: Record<string, any>;
+  /** Resources declared on the outer sequencer. Each entry's `scope` routes storage. */
+  resources?: Record<string, any>;
 }
 ```
 
@@ -185,7 +179,7 @@ The most common pattern: accept `uses`, `tools`, and resource declarations in yo
 
 ```typescript
 export function <patternName>(config: <PatternName>Config) {
-  const { name, uses, tools, instructions, sessionResources, userResources, projectResources } = config;
+  const { name, uses, tools, instructions, resources } = config;
 
   // Forward uses/tools to default internal generators (skip when overridden)
   const executor = config.executor ?? generator({
@@ -201,9 +195,7 @@ export function <patternName>(config: <PatternName>Config) {
   return sequencer({
     name,
     stateSchema,
-    ...(sessionResources ? { sessionResources } : {}),
-    ...(userResources ? { userResources } : {}),
-    ...(projectResources ? { projectResources } : {}),
+    ...(resources ? { resources } : {}),
   })
     .step(executor)
     // ...
@@ -221,8 +213,8 @@ import { defineCapability, defineResource } from "@flow-state-dev/core";
 
 export const <patternName>Capability = defineCapability({
   name: "<pattern-name>",
-  sessionResources: {
-    <resourceName>: defineResource({ stateSchema: <schema>, writable: true }),
+  resources: {
+    <resourceName>: defineResource({ scope: "session", stateSchema: <schema>, writable: true }),
   },
   presets: {
     context: { context: [<contextFormatter>] },
@@ -230,7 +222,7 @@ export const <patternName>Capability = defineCapability({
     default: ["context", "tools"],
   },
   fns: (ctx) => ({
-    list: () => ctx.session.resources.<resourceName>.state.items,
+    list: () => ctx.resources.<resourceName>.state.items,
     add: async (item) => { /* ... */ },
   }),
 });
