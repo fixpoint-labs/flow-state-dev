@@ -190,9 +190,7 @@ By default (`onSubTaskError: "skip"`), failed sub-tasks are excluded from the sy
 
 With `onSubTaskError: "fail"`, any sub-task failure throws and aborts the entire coordination.
 
-`"retry"` is not a supported strategy. It is still accepted for backward compatibility, but it behaves exactly like `"skip"` and logs a one-time warning when the block is constructed. Use `"skip"` or `"fail"`.
-
-Bound retries with `maxTotalRetries`, or set `maxAttempts` on each planned task.
+`"skip"` and `"fail"` are the only strategies. Retries are configured separately: bound them with `maxTotalRetries`, or set `maxAttempts` on each planned task.
 
 ## Composability
 

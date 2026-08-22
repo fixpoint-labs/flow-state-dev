@@ -218,8 +218,6 @@ Internal state — intermediate processing, raw resource contents, block-private
 
 `expose` and `derived` share a namespace. A name in both throws at `defineFlow`. `expose` names must be top-level keys on that scope's `stateSchema`.
 
-The older flat `clientData: { name: fn }` map is deprecated. It still works, with a one-time deprecation warning per scope per process; setting both `client` and `clientData` on the same scope throws at `defineFlow`. Compute functions move under `client.derived`; pure passthroughs become `expose` entries.
-
 During streaming, `state_change` and `resource_change` events signal that the client view may be stale. The client refetches the authoritative snapshot on `request.completed`.
 
 Mutations to session, user, org, and request state all emit `state_change` items on the wire — the same shape that block-instance / sequencer target state has always emitted — so React's `useClientData` can reflect mid-stream patches without waiting for terminal status. See [`useClientData`](/docs/client/react#useclientdata--client-data). Resources have the same option: one declaring `client: { live: true }` streams its projected delta the same way (see [Resources: client access — Live updates](/docs/resources/client-access#live-updates)), so apps don't need to mirror resource status onto session state.

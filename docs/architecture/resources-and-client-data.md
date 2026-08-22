@@ -300,8 +300,6 @@ session: {
 
 Everything named in `expose` or `derived` is client-visible; there is no per-entry `client: true/false` toggle. The two share one namespace per scope (the scope's `clientData` object on the wire), so a name used in both throws at `defineFlow`.
 
-> **Deprecated: scope-config `clientData`.** A scope may still carry a flat `clientData: { name: fn }` map instead of `client`. It keeps working — `defineFlow` emits a one-shot deprecation warning per scope per process and normalizes it to `client.derived`. Setting both `client` and `clientData` on the same scope throws. New code should use `client`.
-
 ### ClientDataComputeFn
 
 ```ts

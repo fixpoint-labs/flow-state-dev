@@ -185,8 +185,6 @@ defineFlow({
 - Generator context should use `contextFn()` for typed scope access
 - Use `defineResource()` for portable resource reuse
 
-The legacy `clientData` field on a scope config still works: it emits a one-shot deprecation warning and normalizes to `client.derived`. Setting both `client` and `clientData` on the same scope throws.
-
 ### Automatic Resource Collection
 
 Blocks declare resource dependencies via `resources` (using `defineResource()` values). When `defineFlow` is called, it collects `declaredResources` from all action blocks and merges them into the flow's `resources` map. Flow-level declarations take priority — blocks bring defaults, and the flow can override them:
