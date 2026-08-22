@@ -44,7 +44,7 @@ This repo uses Changesets for release coordination. Do not edit a root `changelo
 
 - Do not reference wave labels in runtime code or tests.
 - Keep exported API surfaces documented with concise, high-signal comments.
-- Preserve canonical package boundaries (`core`, `server`, `client`, `react`, `testing`, `fsdev`).
+- Preserve canonical package boundaries (`core`, `engine`, `client`, `react`, `testing`, `fsdev`).
 - **Working memory is session-only — never commit it.** Orchestration state (the epic board, per-issue handle caches, any coordination scratch) lives in the **gitignored `.orchestration/`** directory. Never `git add`, commit, or open a PR for these files — commit only the actual issue work, in the issue's own worktree/branch. A PR whose diff is a board / status / scratch file is a bug; don't open it, and if one exists, close it.
 
 > **Orchestration reference.** How the epic and issue lifecycles compose — roles, gates (`spec approved`, `epic approved`), the epic-spec, and the spec-review bar and convergence rule — is defined once, with diagrams, in `docs/contributing/orchestration.md`. The orchestration skills and worker agents reference it. Three rules worth knowing without opening it: **parallel issue work always runs under an epic** (`epic-lifecycle`); **a spec is approved when it's directionally correct, not when nothing is left to nitpick** — below-the-bar review feedback goes to the implementer, and spec review converges in two rounds; and **a coordinator dispatches, it never does the work** — including work the user asks it for directly mid-run, which is the case that gets through (a request says *what* should happen, not *who* does it).

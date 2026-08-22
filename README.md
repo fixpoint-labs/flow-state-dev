@@ -171,7 +171,7 @@ core ← server ← testing
 core ← client ← react ← apps/devtool
 ```
 
-- `server` never depends on `client` or `react`
+- `engine` never depends on `client` or `react`
 - `react` wraps `client` — no transport logic in the UI layer
 - `apps/devtool` uses only public APIs
 
