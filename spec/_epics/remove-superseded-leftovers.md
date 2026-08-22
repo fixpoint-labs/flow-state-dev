@@ -152,16 +152,46 @@ above was not doing its job.
    past the 100-file wall that made automated review refuse #1369 outright, and they carry two
    different review questions. That is the omnibus PR, rebuilt.
 
-   **Soft — barrel-heavy breaking slices first, docs last.**
-   Twenty-nine files are touched by more than one slice — all barrel and index files. Calling
-   the resulting rebases "trivial" was optimistic: each merge re-conflicts the slices that
-   haven't landed, so the cost compounds with the number outstanding rather than being paid
-   once. Independence is still the right trade against a ten-deep stack that serializes every
-   review, but there is a **soft merge order that costs nothing and avoids most of the
-   thrash**: the barrel-heavy breaking slices (FIX-1209, FIX-1210) first, FIX-1211 next, and
-   **FIX-1213 (docs) last**, so the docs land against the code they describe rather than
-   drifting between merges. FIX-1155, FIX-1212, FIX-1214 and FIX-1215 touch almost nothing
-   shared and can go whenever. This is guidance, not a gate — merging out of this order costs a
+   **Soft — the rebase tax is a documentation tax, and docs go last.**
+
+   An earlier revision said twenty-nine files are touched by more than one slice and that they
+   are all barrels and index files. Both halves were wrong, and the correction changes the
+   argument rather than just the number. Recomputed against all ten PR heads (`refs/pull/N/head`
+   diffed against `origin/main`, files appearing in more than one set):
+
+   | What the 45 shared files actually are | Count |
+   |---|---|
+   | Documentation and prose — `apps/docs`, `docs/`, `.agents/skills`, package READMEs | 28 |
+   | Source | 10 |
+   | Barrel / index | 6 |
+   | Test | 1 |
+
+   The compounding cost is mostly prose, not exports. Where it concentrates:
+
+   - **#1394 (docs, FIX-1213) touches 26 of the 45, and every one of them is prose.** Zero
+     barrels.
+   - #1387 (FIX-1210) touches 27 — 16 prose, 3 barrels, 8 source. The largest collider by count.
+   - #1392 (FIX-1211) is the barrel-heaviest: five of the six shared barrels.
+   - #1391 (FIX-1215) touches 15, mostly prose — *not* "almost nothing shared", as an earlier
+     draft had it.
+   - #1393 (FIX-1214) touches none at all.
+
+   **Docs last is the one ordering preference the data supports, and it supports it more
+   strongly than the old framing did.** #1394 changes no source file, so it is never the PR
+   another slice has to rebase around; it is the PR that gets re-conflicted every time a code
+   slice lands and edits a doc alongside its change. Landing it last means it rebases once,
+   against a settled tree, instead of once per merge.
+
+   Beneath that, if you want to minimise the rest: **#1392 before the other barrel touchers**,
+   since it holds five of the six. #1389, #1393, #1395 and #1396 touch two or fewer shared files
+   each and can go whenever. Note that this reorders an earlier draft, which put the *breaking*
+   slices first on the belief that they were the barrel-heavy ones; the barrel-heaviest PR is
+   actually a patch.
+
+   Calling the rebases "trivial" was optimistic and stays retracted: each merge re-conflicts the
+   slices that haven't landed, so the cost compounds with the number outstanding rather than
+   being paid once. Independence is still the right trade against a ten-deep stack that
+   serializes every review. This is guidance, not a gate — merging out of this order costs a
    rebase, not correctness. Nothing in this set costs correctness.
 
 7. **A change that doesn't serve the objective is a satellite, not a member.** Two qualify, both
@@ -267,7 +297,8 @@ terms as FIX-1155.
 are no longer open: they are a bounded, enumerated set of findings, re-verified, scoped to two
 PRs. A finding that has been named and sized is work; only the search for more is unbounded. The
 hunt turned up 22 Tier-1, 6 Tier-2 and 7 Tier-3 candidates; the Tier-2 public-name removals and
-everything in Tier 3 are **not** filed here — where they go is §5's third open question.
+everything in Tier 3 are **not** filed here, and **cannot join this epic** — §5's third question
+enumerates all twelve that remain and asks only whether they get their own epic or are dropped.
 
 **Two code findings this epic surfaced and deliberately did not absorb.** Both came out of the
 docs slice (#1394) checking prose against source, and both are real defects in code that slice
@@ -351,29 +382,66 @@ still open on individual PRs is review feedback, and it lives on those PRs, not 
   just decided to let keep working. So this finding should not be actioned until this question is
   answered.
 
-- **Do the bloat hunt's Tier 2 and Tier 3 findings join this epic, or start their own?**
-  The hunt produced 22 Tier-1, 6 Tier-2 and 7 Tier-3 candidates. Tier 1 is in the set as FIX-1216
-  and FIX-1217. The other 13 have nowhere to be yet.
+- **The bloat hunt's remaining findings: their own epic later, or drop them?**
 
-  **This does not reopen the resolved question below it.** That one settled that an *open-ended*
-  hunt must not grow the set — a search with no stopping rule can expand an epic past the
-  objective its gate approved. Tier 2 and Tier 3 are the opposite: named, counted, and re-verified.
-  The question is only where a bounded remainder goes, which is the same test §4 applies to admit
-  FIX-1216 and FIX-1217 as members.
+  **Joining this epic is not one of the options, and that is a change.** An earlier draft offered
+  absorption as a fork, which was wrong on the same grounds that took the `bloat-hunt` row out of
+  §4: it would expand an objective that has already been gated. Offering it in a smaller, counted
+  box does not make it a different failure. Six of the twelve are public-name removals — the
+  category §1 says needs the most careful evidence — and they deserve their own objective, not
+  one approved for something else. The product owner has been told directly that Tier 2 does not
+  ride along on this epic's approval.
 
-  **The trade being accepted:** folding them in finishes the sweep in one pass, with one review
-  context, while everyone still has it loaded — and stretches an epic that already has ten open
-  PRs, pushing its completion further out. Splitting them off keeps this set closable this week
-  and pays a re-familiarisation cost later, plus a second objective gate.
+  **The count was also doing work only a list can do.** "Thirteen candidates" is not a reviewable
+  scope; nobody can check a number against §1. Twelve remain — the thirteenth, a set of stale
+  `CLAUDE.md` facts, is already fixed:
 
-  *Recommendation: a separate epic, and not immediately.* Ten open PRs plus an unstarted ninth
-  member is already more than this set can carry; Tier 2 is public-name removals, which is
-  precisely the category §1 says needs the most careful evidence, and that deserves its own
-  objective rather than riding one approved for something else.
+  **Tier 2 — public-name removals. Evidenced, but ungated.** Each was checked against `main`:
+  every one has only its declaration plus at most a re-export or a doc example telling callers to
+  pass it. No read sites anywhere.
 
-  **What would change the recommendation:** if Tier 2 turns out to overlap the same barrel and
-  index files these ten already touch, doing it separately means paying the 29-file rebase tax a
-  second time — that would argue for folding at least the overlapping part in now.
+  1. `ResponseAuditorConfig.displayMode` and the `DisplayMode` type — declared at
+     `packages/patterns/src/response-auditor/schemas.ts:57,65`, re-exported twice, and appearing
+     once more in a JSDoc example
+  2. `SessionDetail.stateSummary` — `packages/client/src/types/index.ts:147`, one reference total
+  3. `ResponseAuditorConfig.alwaysRun`
+  4. `ChatInboundEvent.matchedPattern` / `.matchedGroups`
+  5. `ContextOf`'s vestigial third type parameter
+  6. `ScopeResourceConfig` — declared at `packages/core/src/types/flow.ts:27`, re-exported at
+     `types/index.ts:74`, and read nowhere
+
+  **Tier 3 — internal surface and scaffolding.**
+
+  7. The `resource.content.*` user-stream event family
+  8. Six engine store factories re-exported but absent from the public entry
+  9. Residual BP-012 `outputSchema` on `.tap()`-wired handlers
+  10. `labs/trading-desk/lib/providers/fmp.ts` scaffolding
+  11. Three unreferenced kitchen-sink `components/flow-state/` components
+  12. ~30 symbols exported but consumed only within their own file
+
+  **One of these is a product question and must not be decided as cleanup.** Item 7 is a feature
+  built to the edge of being real and then never switched on: `ResourceContentUpdatedEvent`,
+  `ResourceContentCreatedEvent` and `ResourceContentDeletedEvent` are declared in
+  `packages/contracts/src/items/events.ts:131-157`, folded into the public event union at
+  `:217-219`, re-exported from both `contracts` and `client`, and given three client callbacks —
+  `onResourceContentUpdated` / `Created` / `Deleted` at `packages/client/src/types/index.ts:603-605`.
+  Nothing constructs or dispatches any of them. Deleting it and finishing it are both defensible,
+  and which one is right is a decision about the product, not about leftovers. It should not ride
+  into a cleanup epic in either direction.
+
+  **The trade being accepted:** a separate epic pays a re-familiarisation cost later and needs a
+  second objective gate. Dropping them entirely costs nothing now and leaves twelve known
+  untruths on the tree indefinitely, which is the state §1 exists to object to. Keeping this set
+  closable is worth more than finishing the sweep in one pass.
+
+  *Recommendation: their own epic, and not immediately.* Ten open PRs plus an unstarted ninth
+  member is already more than this set can carry, and Tier 2's evidence bar deserves an objective
+  written for it.
+
+  **What would change the recommendation:** if these concentrated in the files this set already
+  touches, doing them separately would mean paying the rebase tax twice. On the recomputed
+  numbers that argument is weak — the overlap in this set is 28 prose files against 6 barrels,
+  and Tier 2 is type and config declarations, which is not where the collisions are.
 
 - **~~Does the continued bloat hunt grow this epic?~~** *Resolved: no.* An open-ended hunt
   inside a set with a kill line means the set can grow without re-gating the objective, which
@@ -505,3 +573,25 @@ still open on individual PRs is review feedback, and it lives on those PRs, not 
   experiment" after this document had dropped that cut. Verified first that no cleanup branch
   touches `packages/claude-code` at all, so the tracker was the only place the retired promise
   survived — a lying surface inside the epic against lying surfaces.
+- **The overlap inventory was wrong on both the count and the characterisation** — it said 29
+  files, all barrels and index files. Recomputed against all ten PR heads: **45** files are
+  touched by more than one PR, and they are **28 documentation and prose, 10 source, 6 barrel or
+  index, 1 test**. The rebase tax is a docs tax. That strengthens docs-last rather than weakening
+  it — #1394 collides with 26 of the 45 and every one is prose, so it is the PR that gets
+  re-conflicted by everything else rather than the one others rebase around. It also reorders the
+  rest: the barrel-heaviest PR is #1392, a *patch*, holding five of the six shared barrels, where
+  the old order put the breaking slices first on the belief that they were the barrel-heavy ones.
+  Two collateral corrections: #1391 touches 15 shared files, not "almost nothing", and #1393
+  touches none.
+- **"Join this epic" removed as an option for the bloat hunt's remainder.** Offering absorption
+  as a fork reintroduced, in a smaller box, exactly what §5 had already resolved: expanding an
+  objective that has been gated. The fork is now their own epic later, or drop them. The twelve
+  remaining candidates are enumerated in §5 rather than counted, because a count cannot be
+  checked against §1 by anyone — and the thirteenth was already fixed. Tier 2 is evidenced (each
+  item has a declaration, at most a re-export, and no read site) but ungated, which is precisely
+  why it needs an objective of its own.
+- **One Tier-3 item flagged as a product question, not a cleanup one** — the `resource.content.*`
+  event family is declared, folded into the public event union, re-exported from `contracts` and
+  `client`, and given three client callbacks, and nothing anywhere emits or dispatches it. It is
+  a feature built to the edge of being real and never switched on. Delete or finish is the
+  owner's call; a cleanup epic must not decide it by default in either direction.
