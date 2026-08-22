@@ -293,7 +293,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       `[supervisor] "${name}" requires either \`worker\` or \`workers\``,
     );
   }
-  if (onSubTaskError === "retry") {
+  if ((onSubTaskError as string) === "retry") {
     console.warn(
       `[flow-state-dev] supervisor "${name}": onSubTaskError="retry" is not supported; ` +
         `treated as "skip". Use \`maxAttemptsPerTask\` for review-driven retries.`,
