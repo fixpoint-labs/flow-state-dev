@@ -15,10 +15,12 @@ these particular traps today stops hitting it.
 
 **What this deliberately does not promise.** Not that the framework as a whole has no lying
 surface. An earlier draft said exactly that, and it was a promise nine merged PRs cannot
-keep: §5 enumerates **twelve** known untruths — six public names, six internal or scaffolding
-items — that this epic does not fix and that will still be on the tree the day it closes.
-Whether they get their own epic or are dropped is §5's third question, and approving this
-objective deliberately does not answer it.
+keep: §5 enumerates **twelve** things this epic leaves alone, and they are not all the same
+kind of thing. Eleven are cleanup *candidates* — six public names whose evidence is incomplete,
+five internal or scaffolding items — and the twelfth is not a removal candidate at all but a
+delete-versus-finish product fork. All twelve are still on the tree the day this closes. Where
+the eleven go is §5's third question; the fork goes to you on its own. Approving this objective
+deliberately answers neither.
 
 **Nor is it a mandate to keep going.** Real exports that nothing in this repo happens to call
 are not lies — they stay. What is being approved is that each thing we removed was genuinely
@@ -34,9 +36,10 @@ under it is subordinate to it:
 > in-repo caller is the normal case, not a smell.
 
 A cut earns its place only as a **superseded alias** (a second name for something that still
-has a canonical name), a **dead knob** (an option no code reads), a **retired experiment**
-(the successor already shipped), an **internal duplicate**, or an **unused internal**
-surface. Everything else stays. Applying that rule is what turned the original 266-file pass
+has a canonical name), a **dead knob** (an option no code reads), a **lying knob** (an option
+that *is* read, but only into something that reports it back, while doing nothing it
+promises), a **retired experiment** (the successor already shipped), an **internal
+duplicate**, or an **unused internal** surface. Everything else stays. Applying that rule is what turned the original 266-file pass
 from a public-API purge into a leftover cut, and it is the single thing most likely to be got
 wrong on a follow-up sweep.
 
@@ -53,6 +56,7 @@ So the bar depends on what is being cut:
 |---|---|
 | **Public surface** (reachable from a package's `src/index.ts` or its `exports` map) | A **named successor with an equivalent contract**. A grep is not sufficient and never was. If you cannot name what replaces it, it is not a leftover. A **rename** satisfies this by shipping its successor in the same change — the test there is that the contract is identical and the new name is exported before the old one goes, not that the new name predates the PR |
 | **A dead knob** | The **read that does not exist** — the option is declared and destructured, and no code consumes it |
+| **A lying knob** | **Two things, both required.** First, the **promise it breaks**: the surface text that advertises it — help string, JSDoc, docs page — set against the code path showing it never does that. Second, **every observable surface the removal changes**, enumerated and disclosed in the changeset. Deliberately a higher bar than the dead knob's, because a read *does* exist: something downstream may be consuming the echo even though nothing consumes the intent, and the enumeration is what makes that visible instead of assumed |
 | **Internal surface** (not reachable from any package entry) | A repo-wide grep with **zero** referents, plus the check that it is absent from the entry and the `exports` map |
 | **An internal duplicate** | The clone bodies are **contract-identical**, shown side by side |
 
@@ -67,7 +71,14 @@ actual defect: they never reach a **store**, so they do nothing their help text 
 removing them also drops two keys from the observable `--capture` output contract. #1387's
 changeset already discloses precisely that — *"accepted and written into `--capture` metadata but
 never applied to stores"* — so the PR was honest about the behaviour while this document was
-wrong about the category. The removal still stands; it is a lying knob, not a dead one.
+wrong about the category. The removal still stands — it is a **lying knob**, the category above,
+which this correction is what forced the gate to name. Writing the category down was not a
+formality: a cut that satisfies none of the listed categories cannot pass a gate built out of
+them, so calling these flags "not dead knobs" without defining what they *are* left FIX-1210
+outside its own epic's eligibility rules. It meets the new bar on both halves — the help text says
+*"Seed user-level state (JSON or file path)"* and no store is ever written, and #1387's changeset
+enumerates the `--capture` keys going away. The category is written to fit an evidenced case, not
+the reverse.
 
 **Lead measure.** Sub-PRs whose cuts are individually evidenced and green, named each report.
 
@@ -80,10 +91,13 @@ above was not doing its job.
 
 - **An unused-export sweep.** The single most tempting follow-on and the one that would undo
   the product rule. Deliberately out.
-- **The twelve leftovers §5 enumerates.** Six Tier-2 public names and six Tier-3 internal or
-  scaffolding items, each already evidenced, none of them fixed here. They are listed by name
-  rather than counted precisely so that approving this objective cannot be mistaken for
-  covering them.
+- **The twelve items §5 enumerates**, and *"leftovers"* would be the wrong word for them.
+  Eleven are cleanup candidates — six Tier-2 public names, five Tier-3 internal or scaffolding
+  items — and none of the six public names is evidenced: each has a read-site check done and
+  successor evidence outstanding, which the table above says is not sufficient for public
+  surface. The twelfth is a product fork, not a removal candidate. They are listed by name in
+  §5 rather than counted, precisely so approving this objective cannot be mistaken for covering
+  them.
 - **`createModelResolver()` zero-config env auto-load and the `GeneratorModel` adapter**
   (FIX-852) — ~1,900 LOC with live callers (`createExecutionContext`, `createFlowState`, CLI
   `run`/`chat`/`dev`, `runBenchmark`, the trading-desk judge). Cutting it here breaks those
@@ -228,7 +242,7 @@ above was not doing its job.
    Each keeps its own PR and its own evidence, and neither counts toward completion, so approving
    §1 does not authorise them and the epic does not wait on them.
 
-   The line between a satellite and a member is §1's five categories, not whether the change is
+   The line between a satellite and a member is §1's six categories, not whether the change is
    behavioural: FIX-1215 changes behaviour and is a **member**, because removing a superseded
    shim is squarely category one. "Over-engineering" is deliberately not among the five, which is
    what puts FIX-1214 outside.
@@ -283,8 +297,9 @@ this epic. It was never built for a set whose implementation predates its epic.
 
 **What "complete" asserts, and what it does not.** These nine merged means every leftover this
 epic named is gone. It does not mean the framework has no lying surface left; §1 bounds the
-promise to this set and §5 lists the twelve that remain. A completion signal that claimed more
-than nine PRs establish would be its own lying surface.
+promise to this set, and §5 lists the twelve that remain — eleven cleanup candidates, none of the
+public ones yet evidenced, plus one product fork. A completion signal that claimed more than nine
+PRs establish would be its own lying surface.
 
 | Issue | What it delivers | Route | Kind | PR |
 |---|---|---|---|---|
@@ -322,7 +337,7 @@ and FIX-1208's children are the nine members above and nothing else.
 removes a superseded shim — a §1 category, and a caller on `clientData` is holding a name that
 has a canonical replacement. FIX-1214 removes BP-012 residue: blocks that echo their input into
 the items log. That is noise, not a *lying* surface, and "over-engineering" is deliberately not
-one of §1's five admitted categories. It rides here because it was trapped in #1369, on the same
+one of §1's admitted categories. It rides here because it was trapped in #1369, on the same
 terms as FIX-1155.
 
 **FIX-1216 and FIX-1217 are members, and the distinction matters.** The follow-on hunt as an
@@ -331,7 +346,8 @@ are no longer open: they are a bounded, enumerated set of findings, re-verified,
 PRs. A finding that has been named and sized is work; only the search for more is unbounded. The
 hunt turned up 22 Tier-1, 6 Tier-2 and 7 Tier-3 candidates; the Tier-2 public-name removals and
 everything in Tier 3 are **not** filed here, and **cannot join this epic** — §5's third question
-enumerates all twelve that remain and asks only whether they get their own epic or are dropped.
+enumerates all twelve that remain: eleven cleanup candidates, which get their own epic or are
+dropped, and one product fork that goes to the owner on its own.
 
 **Two code findings this epic surfaced and deliberately did not absorb.** Both came out of the
 docs slice (#1394) checking prose against source, and both are real defects in code that slice
@@ -478,7 +494,7 @@ still open on individual PRs is review feedback, and it lives on those PRs, not 
 
   **The trade being accepted:** a separate epic pays a re-familiarisation cost later and needs a
   second objective gate. Dropping them entirely costs nothing now and leaves twelve known
-  untruths on the tree indefinitely — the state §1's problem statement describes, and which its
+  open findings on the tree indefinitely — the state §1's problem statement describes, and which its
   objective now explicitly declines to promise to fix. Keeping this set closable is worth more
   than finishing the sweep in one pass.
 
@@ -540,7 +556,7 @@ still open on individual PRs is review feedback, and it lives on those PRs, not 
   rebase cost across 29 shared barrel files compounds with the number of slices outstanding
   rather than being paid once.
 - **After the third epic-PR review round** — made FIX-1214 a satellite alongside FIX-1155.
-  Removing BP-012 items-log residue is not one of §1's five categories, so counting it toward
+  Removing BP-012 items-log residue is not one of §1's admitted categories, so counting it toward
   completion would have let objective approval authorise work the objective never implied.
   Generalised theme 7 to say what makes something a satellite, since "it changes behaviour" was
   the wrong test — FIX-1215 changes behaviour and is a member. Added a `Route` column and stated
@@ -683,3 +699,27 @@ still open on individual PRs is review feedback, and it lives on those PRs, not 
   rounds have been corrections to claims, and further wording passes have negative return against
   ten sub-PRs that are the things actually shipping. Recorded so the omission is visible as a
   choice rather than an oversight.
+- **The gate gained a sixth category: the lying knob.** Last round's correction established that
+  FIX-1210's seed flags are not dead knobs, and stopped there — which left the cut satisfying
+  none of five named categories, and so ineligible under a gate built out of them. Fixing a
+  classification had opened a hole in the thing the classification feeds. A knob that is
+  accepted, typed, and read only into something that reports it back, while doing nothing it
+  promises, is a *more* central case for this epic than an unused internal barrel, so it is
+  defined rather than excluded. Its evidence bar is deliberately stronger than the dead knob's,
+  because a read exists: name the promise it breaks, and enumerate every observable surface the
+  removal changes, disclosed in the changeset. FIX-1210 already met both halves, so the category
+  is written to fit an evidenced case rather than the reverse.
+- **The "twelve leftovers, each already evidenced" framing removed from every surface carrying
+  it.** §5's Tier-2 label was corrected last round and four other places kept the old framing,
+  including §1's *Not doing* list on the sign-off surface — where it told the owner the deferred
+  work was proven, which is exactly what the correction had just withdrawn. Also fixed the
+  characterisation, not only the label: it is **eleven cleanup candidates plus one product
+  fork**, not twelve leftovers, and item 7 is not a candidate for removal in either direction.
+  Swept: §1's objective, §1's *Not doing*, §4's completion statement, §4's cross-reference to
+  §5's third question, and §5's trade.
+- **Note on how this document converges.** Two rounds running, the previous round's fixes
+  *created* the next round's findings — a corrected classification left an undefined category, a
+  corrected label left stale summaries quoting it. So "I cannot see another disagreeing surface"
+  is not the closure test. The test is that the last round's edits introduced no new claim and
+  no new term. Recorded because it is the transferable lesson from this document, not a note
+  about it.
