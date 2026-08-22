@@ -105,7 +105,7 @@ export const skillsCap = createSkillsCapability({
     crawl: crawlTool,
   },
   initialSkills,
-  scope: "project",
+  scope: "org",
   itemVisibility: { client: true, history: true },
 });
 ```
@@ -115,7 +115,7 @@ A few notes:
 - `readSkillsDirectory` is async. Top-level `await` works in ESM (which Next.js, modern Node, and bundlers all support). If your toolchain doesn't support it, wrap the module in an async initializer.
 - `initialSkills` is lazy-seeded. The skills aren't written to the collection until the first `runSkill` call, so module load is cheap.
 - `errors` is an array, not a throw. A single malformed skill doesn't block the rest from seeding.
-- `scope: "project"` puts the skills in the project resource scope, shared across users. Use `"user"` for per-user skills, `"session"` mostly for tests.
+- `scope` defaults to `"org"` so seeded skills are shared across users. Use `"user"` for personal libraries. `"session"` is mainly for tests.
 - `itemVisibility: { client: true, history: true }` is explained in Step 5.
 
 ## Step 4: Attach the capability to your generator
@@ -316,7 +316,7 @@ If you don't use the bash capability, skip this step — reference files remain 
 
 ## Step 9: Let users edit skills at runtime
 
-This is where the Markdown-as-resource design earns its keep. Skills live in the project-scoped `skills` collection. Any surface that can write to a resource can edit them:
+This is where the Markdown-as-resource design earns its keep. Skills live in the org-scoped `skills` collection. Any surface that can write to a resource can edit them:
 
 - **DevTool** (built-in). Navigate to the skills collection, open a SKILL.md, edit, save. The next turn reflects the change.
 - **CLI.** Use the client package to read and write resource content programmatically.

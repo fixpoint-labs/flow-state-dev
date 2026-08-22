@@ -152,7 +152,7 @@ The axes where this flows:
 | Capability field | Where it appears in `ctx` |
 |---|---|
 | `sessionStateSchema` | `ctx.session.state` |
-| `sessionResourceSchemas` / `sessionResources` | `ctx.session.resources.*` |
+| `resources` | `ctx.resources.*` |
 | `targetStateSchemas` | `ctx.targets.*` |
 | `sequencerStateSchema` (preset) | `ctx.sequencer.state` |
 | `stateSchema` | `ctx.self.state` |

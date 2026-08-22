@@ -130,7 +130,7 @@ const readDoc = handler({
   inputSchema: z.object({ docId: z.string() }),
   outputSchema: z.string(),
   execute: async (input, ctx) => {
-    const doc = ctx.session.resources.get("docs")?.state.byId[input.docId];
+    const doc = ctx.resources.get("docs")?.state.byId[input.docId];
     return doc?.content ?? "Document not found.";
   },
 });
@@ -155,9 +155,9 @@ A tool can also pause for a human before it runs: call `ctx.suspend()` inside it
 
 #### Showing a deterministic call as a tool: `.asTool()`
 
-Sometimes you already know what the tool inputs are. An analyst-style flow may fetch its data up front (deterministic, parallel, no LLM in the loop) and only call the LLM for synthesis. The fetches no longer go through a generator's tool loop, so they no longer produce the tool pills the LLM-driven path produces. The transcript shows nothing for the work that just happened.
+Sometimes you already know what the tool inputs are. An analyst-style flow may fetch its data up front (deterministic, parallel, no LLM in the loop) and only call the LLM for synthesis.
 
-`block.asTool(opts?)` closes that gap. It wraps a block so that, when executed inside a sequencer step, it emits the same `tool_output` item the AI SDK tool-loop wrapper produces inside a generator. The wrapped block runs normally and returns its typed output unchanged. ("Tool pill" here means the UI element clients render for `tool_output` items.)
+`block.asTool(opts?)` wraps a block so a sequencer step emits the same `tool_output` item the generator tool-loop produces. The wrapped block runs normally and returns its typed output unchanged. ("Tool pill" here means the UI element clients render for `tool_output` items.)
 
 ```ts
 const dataBundle = sequencer({ name: "prefetch" })
@@ -508,8 +508,8 @@ execute: async (input, ctx) => {
   await ctx.session.patchState({ mode: "agent" });
 
   // Access resources
-  const plan = ctx.session.resources.get("plan");
-  await ctx.session.resources.plan.patchState({ status: "active" });
+  const plan = ctx.resources.get("plan");
+  await ctx.resources.plan.patchState({ status: "active" });
 
   // Emit items to the client
   await ctx.emit.message("Processing your request...");
@@ -557,7 +557,7 @@ const saveResult = handler({
   parentInputSchema: z.object({ id: z.string(), title: z.string() }),
   execute: async (input, ctx) => {
     const { id } = ctx.parent!.input; // typed as { id: string, title: string }
-    const result = await ctx.session.resources.results.get(id);
+    const result = await ctx.resources.results.get(id);
     await result.patchState({ summary: input.summary });
   },
 });
@@ -641,12 +641,13 @@ pipeline.step(
 
 ## Blocks declare their resources
 
-Just like blocks declare their state dependencies with partial schemas, blocks can declare their **resource dependencies** using `sessionResources`, `userResources`, and `orgResources`. These accept `defineResource()` values:
+Just like blocks declare their state dependencies with partial schemas, blocks can declare their **resource dependencies** with a flat `resources` map. These accept `defineResource()` values. The resource's own `scope` decides where it is stored:
 
 ```ts
 import { defineResource, handler } from "@flow-state-dev/core";
 
 const planResource = defineResource({
+  scope: "session",
   stateSchema: z.object({
     steps: z.array(z.string()).default([]),
     status: z.enum(["draft", "active", "complete"]).default("draft"),
@@ -656,16 +657,16 @@ const planResource = defineResource({
 
 const planManager = handler({
   name: "plan-manager",
-  sessionResources: { plan: planResource },
+  resources: { plan: planResource },
   execute: async (_input, ctx) => {
-    await ctx.session.resources.plan.patchState({ status: "active" });
+    await ctx.resources.plan.patchState({ status: "active" });
   },
 });
 ```
 
 The framework collects these declarations automatically:
 - **Sequencers** merge declared resources from all child blocks in the chain
-- **`defineFlow`** collects resources from all action blocks and merges them into the flow's scope configs
+- **`defineFlow`** collects resources from all action blocks and merges them into the flow's `resources` map
 - **Flow-level** resource declarations take priority over block-declared ones
 
 This means blocks bring their own resource requirements — you don't have to repeat them in the flow definition. It follows the same philosophy as partial state schemas: blocks are self-documenting about their dependencies.

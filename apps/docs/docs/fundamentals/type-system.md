@@ -100,21 +100,25 @@ const analytics = handler({
 });
 ```
 
-The same applies to resources. Declare a resource schema and `ctx.session.resources` is typed with the correct handles:
+The same applies to resources. Declare a resource with `defineResource` and `ctx.resources` is typed with the correct handles:
 
 ```ts
+import { defineResource, handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const documents = defineResource({
+  scope: "session",
+  stateSchema: z.object({
+    byId: z.record(z.object({ title: z.string(), content: z.string() })),
+  }),
+});
+
 const docReader = handler({
   name: "doc-reader",
-  sessionResourceSchemas: z.object({
-    documents: z.object({
-      stateSchema: z.object({
-        byId: z.record(z.object({ title: z.string(), content: z.string() })),
-      }),
-    }),
-  }),
+  resources: { documents },
   execute: async (input, ctx) => {
-    // ctx.session.resources.documents.state.byId — fully typed
-    const doc = ctx.session.resources.documents.state.byId["doc-1"];
+    // ctx.resources.documents.state.byId — fully typed
+    const doc = ctx.resources.documents.state.byId["doc-1"];
     return doc.content; // string
   },
 });
@@ -124,7 +128,7 @@ const docReader = handler({
 
 Capabilities can declare schemas alongside their resources and helpers. When a block lists a capability in `uses`, those schemas are reflected into the block's `ctx` types at factory time — no re-declaration on the block is needed.
 
-The four axes: `sessionStateSchema`, `sessionResources` (resource handles), `targetStateSchemas`, and `sequencerStateSchema` (for sequencer presets). Each merges with anything the block itself declares; the block's own keys win on collision.
+The four axes: `sessionStateSchema`, `resources` (resource handles), `targetStateSchemas`, and `sequencerStateSchema` (for sequencer presets). Each merges with anything the block itself declares; the block's own keys win on collision.
 
 ```ts
 import { defineCapability, handler } from "@flow-state-dev/core";
@@ -180,13 +184,19 @@ No manual tool definition objects. No duplicating parameter schemas. The block I
 At the flow level, `defineFlow` infers state types from scope configurations and makes them available to the `client` block:
 
 ```ts
+import { defineFlow, defineResource } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const docs = defineResource({
+  scope: "session",
+  stateSchema: z.object({ byId: z.record(docSchema) }),
+});
+
 const myFlow = defineFlow({
   kind: "my-app",
+  resources: { docs },
   session: {
     stateSchema: z.object({ mode: z.string(), count: z.number() }),
-    resources: {
-      docs: { stateSchema: z.object({ byId: z.record(docSchema) }) },
-    },
     client: {
       derived: {
         summary: (ctx) => {
@@ -211,13 +221,12 @@ Here's what the framework infers so you don't have to:
 | `outputSchema` | `execute()` return type |
 | `sessionStateSchema` | `ctx.session.state` type |
 | `userStateSchema` | `ctx.user.state` type |
-| `sessionResourceSchemas` | `ctx.session.resources.*` handle types |
-| `sessionResources` (with `defineResource`) | `BlockDefinition.declaredResources` + automatic flow merge |
+| `resources` (with `defineResource`) | `ctx.resources.*` handle types, `BlockDefinition.declaredResources`, and automatic flow merge |
 | Block in `.step()` | Next step's input type |
 | Block in `tools` | Model tool parameters and result type |
 | Scope `stateSchema` in flow | `client.derived` compute function types |
 | Capability `sessionStateSchema` (via `uses`) | `ctx.session.state` (merged with block's own) |
-| Capability `sessionResources` (via `uses`) | `ctx.session.resources.*` (merged with block's own) |
+| Capability `resources` (via `uses`) | `ctx.resources.*` (merged with block's own) |
 | Capability `targetStateSchemas` (via `uses`) | `ctx.targets.*` (merged with block's own) |
 | Capability `sequencerStateSchema` preset (via `uses`) | `ctx.sequencer.state` (merged with block's own) |
 
@@ -248,9 +257,10 @@ type SearchOutput = BlockOutput<typeof search>;  // { title: string; url: string
 For state and resource schemas:
 
 ```ts
-import { type StateOf, type ContextOf } from "@flow-state-dev/core";
+import { defineResource, type StateOf, type ContextOf } from "@flow-state-dev/core";
 
 const docResource = defineResource({
+  scope: "session",
   stateSchema: z.object({
     byId: z.record(z.object({ title: z.string(), content: z.string() })),
   }),

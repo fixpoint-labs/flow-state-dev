@@ -15,8 +15,6 @@ Production clients (your React app, your CLI, anything calling the public API) r
 
 The DevTool talks to a different surface. It calls a privileged debug endpoint that returns the raw server-side state, ignoring `client.data` projections and `prefetchWindow` entirely. It's the same session, but the DevTool sees it the way the runtime sees it.
 
-This is deliberate. The point of an inspector is to show you what's actually there, including the parts your clients can't reach. The point of a production client is to receive a shaped, minimal payload. The two views are useful for different reasons.
-
 ## What the debug endpoint returns
 
 For each storage key the session touches, the debug response includes:
@@ -43,6 +41,7 @@ A small example. Suppose your state has five fields: `title`, `body`, `internalN
 
 ```ts
 defineResource({
+  scope: "session",
   stateSchema: z.object({
     title: z.string(),
     body: z.string(),

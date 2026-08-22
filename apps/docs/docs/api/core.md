@@ -147,8 +147,9 @@ const myFlow = defineFlow({
   kind: "my-app",
   requireUser: true,
   actions: { /* ... */ },
-  session: { stateSchema, resources, client },
-  user: { stateSchema, resources, client },
+  session: { stateSchema, client },
+  user: { stateSchema, client },
+  resources: { /* accessor → defineResource / defineResourceCollection */ },
   request: { onStarted, onCompleted, onErrored, onFinished, onStepErrored },
 });
 
@@ -159,30 +160,36 @@ export default myFlow({ id: "default" });
 
 ### `defineResource(config)`
 
-Create a portable resource definition. Can be used in flow scope configs and in block-level resource declarations (`sessionResources`, `userResources`, `orgResources`):
+Create a portable resource definition. `scope` is required and must be `"session"`, `"user"`, or `"org"`. Register the result on a flow's `resources` map or a block's `resources` map:
 
 ```ts
-import { defineResource } from "@flow-state-dev/core";
+import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
 
 const planResource = defineResource({
+  scope: "session",
   stateSchema: z.object({ steps: z.array(z.string()).default([]) }),
   writable: true,
 });
 
-// Use in flow scope config
-session: { resources: { plan: planResource } }
+// Use in the flow's resources map
+defineFlow({
+  kind: "planner",
+  resources: { plan: planResource },
+  actions: { /* ... */ },
+});
 
 // Or declare on blocks — collected and merged into the flow automatically
 const myHandler = handler({
   name: "plan-manager",
-  sessionResources: { plan: planResource },
+  resources: { plan: planResource },
   execute: async (input, ctx) => { /* ... */ },
 });
 ```
 
 
-Resource content options:
+Resource options:
 
+- `scope: "session" | "user" | "org"` — required. Any other value throws `defineResource() requires an explicit scope of "session", "user", or "org" (got …)`
 - `content?: string` — inline definition-time body
 - `contentFile?: string | AnchoredPath` — load initial body from a file path (mutually exclusive with `content`). A bare string resolves from the working directory; `{ path, importerUrl: import.meta.url }` resolves relative to the declaring module first
 - `render?: (content, state) => string | Promise<string>` — optional renderer for `readContent()`
@@ -191,9 +198,9 @@ Resource content options:
 
 Runtime resource content methods:
 
-- `await ctx.session.resources.plan.readContent()` → rendered content or `null`
-- `await ctx.session.resources.plan.readContentRaw()` → raw stored content or `null`
-- `await ctx.session.resources.plan.writeContent("...")` → overwrite stored content
+- `await ctx.resources.plan.readContent()` → rendered content or `null`
+- `await ctx.resources.plan.readContentRaw()` → raw stored content or `null`
+- `await ctx.resources.plan.writeContent("...")` → overwrite stored content
 
 For explicit LLM access, add tools manually to generators:
 
@@ -221,6 +228,7 @@ import { defineResourceCollection } from "@flow-state-dev/core";
 
 const filesCollection = defineResourceCollection({
   pattern: "files/**",
+  scope: "session",
   stateSchema: z.object({ language: z.string().default("text") }),
   maxInstances: 200,
   eviction: "lru",
@@ -230,6 +238,7 @@ const filesCollection = defineResourceCollection({
 Config options:
 
 - `pattern: string` — glob pattern: `files/*` (single-level), `files/**` (deep), `[topic]/observations` (parameterized)
+- `scope: "session" | "user" | "org"` — required. Any other value throws `defineResourceCollection() requires an explicit scope of "session", "user", or "org" (got …)`
 - `stateSchema: ZodTypeAny` — schema for each instance's state
 - `maxInstances?: number` — cap on simultaneous instances (must be >= 1)
 - `eviction?: "none" | "lru" | "oldest"` — what to do when cap is reached (default: `"none"` = throw)
@@ -254,9 +263,9 @@ Use in blocks the same way as `defineResource`:
 ```ts
 const fileManager = handler({
   name: "file-manager",
-  sessionResources: { files: filesNamespace },
+  resources: { files: filesCollection },
   execute: async (input, ctx) => {
-    const ref = await ctx.session.resources.files.create("readme.md");
+    const ref = await ctx.resources.files.create("readme.md");
     return ref.state;
   },
 });
