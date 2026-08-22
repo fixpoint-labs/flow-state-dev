@@ -43,7 +43,7 @@ const flowstate = createFlowState({
 });
 ```
 
-The directory structure mirrors the scope hierarchy: under the `content/` and `state/` subtrees, each scope gets a subdirectory named for it — `session/`, `user/`, `org/`.
+The directory layout has two halves. **Scope records** sit at the root, one directory per store: `sessions/`, `users/`, `requests/`, and `projects/`. That last one holds org records — the directory name predates the `project` → `org` scope rename and is kept as-is so existing data keeps resolving. **Resource content and state** sit under `content/` and `state/`, and there each scope gets a subdirectory named for it: `session/`, `user/`, `org/`. So a resource key like `notes/meeting` on session `s1` lands at `content/session/s1/notes/meeting.md`.
 
 ### Postgres
 
