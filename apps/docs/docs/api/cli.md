@@ -1,5 +1,7 @@
 ---
 sidebar_position: 6
+title: CLI API
+sidebar_label: CLI
 ---
 
 # CLI API
@@ -196,6 +198,27 @@ fsdev block ./src/flows/my-app/blocks/counter.ts -i '{"increment": 1}'
   "execution": { "durationMs": 12 }
 }
 ```
+
+### `fsdev benchmark <file>`
+
+Load a `defineBenchmark` file and print the scorecard.
+
+```bash
+fsdev benchmark ./benchmark.ts
+```
+
+Narrative and flags: [Benchmarks](/docs/testing/benchmarks) and [Choosing a pattern with benchmarks](/guides/choosing-patterns-with-benchmarks).
+
+### `fsdev ui add <name>` / `fsdev ui list`
+
+Install or list components from the Flow State UI registry. `add` shells out to the shadcn CLI.
+
+```bash
+fsdev ui add model-badge
+fsdev ui list
+```
+
+Narrative: [UI](/docs/ui/overview).
 
 ## Flow Discovery
 

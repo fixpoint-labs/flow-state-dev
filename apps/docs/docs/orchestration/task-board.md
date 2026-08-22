@@ -457,6 +457,7 @@ const board = taskBoard({ name: "todos", collection: todos, workers });
 
 ## See also
 
+- [Configuration](./configuration) — every `taskBoard` field, including defaults.
 - [Task substrate](./task-substrate.md) — the `Task` record, the status state machine, and the collection API underneath.
 - [GoalSeekLoop](./goal-seek-loop) — a config-driven, judge-gated loop over the board's drain.
 - [Block State](../advanced/block-state) — the primitive behind the board's sequencer-scoped task collection; see [The durability boundary](../advanced/block-state#the-durability-boundary) for what survives a resume.

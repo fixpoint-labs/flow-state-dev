@@ -48,7 +48,7 @@ export const flowstate = createFlowState({
 });
 ```
 
-`createFlowState` is the canonical entrypoint (see [Server setup](./setup.md)); the chat transport is just another entry in `adapters`. Turn the handle into route handlers with a platform adapter — the chat webhooks mount under the same router:
+`createFlowState` is the canonical entrypoint (see [Engine setup](./setup.md)); the chat transport is just another entry in `adapters`. Turn the handle into route handlers with a platform adapter — the chat webhooks mount under the same router:
 
 ```ts title="app/api/flows/[...path]/route.ts"
 import { flowstate } from "@/lib/flowstate";

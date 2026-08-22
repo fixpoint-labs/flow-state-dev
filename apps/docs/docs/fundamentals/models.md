@@ -668,5 +668,5 @@ The framework's built-in model resolver talks to providers through the Vercel AI
 
 ## What to Read Next
 
-- [Server Setup](/docs/server/setup) — wiring the resolver into your app
+- [Engine setup](/docs/server/setup) — wiring the resolver into your app
 - [Custom Model Resolver](/docs/advanced/custom-model-resolver) — resolver options, intent defaults, gateway configuration, and provider introspection

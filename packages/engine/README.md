@@ -899,6 +899,6 @@ pnpm --filter @flow-state-dev/engine test
 
 ## Architecture reference
 
-- [Server Setup](https://flow-state.dev/docs/server/setup) — Routes, transport, React hooks contract
+- [Engine setup](https://flow-state.dev/docs/server/setup) — Routes, transport, React hooks contract
 - [Error Handling](https://flow-state.dev/docs/advanced/error-handling) — Retry, rescue, side chains
 - [Streaming](https://flow-state.dev/docs/streaming/overview) — Item/content model, SSE protocol, resume semantics
