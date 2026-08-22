@@ -293,7 +293,6 @@ Flow-level tool defaults and observability:
 tools: {
   defaults: {
     timeoutMs: 30000,
-    concurrency: "parallel",
   },
   onToolStarted: logToolStart,
   onToolCompleted: logToolComplete,

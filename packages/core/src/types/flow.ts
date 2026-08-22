@@ -115,7 +115,6 @@ export type ToolLifecycleEvent = {
 export type ToolsConfig = {
   defaults?: {
     timeoutMs?: number;
-    concurrency?: "parallel" | "serial";
     retry?: RetryPolicy;
   };
   onToolStarted?: HookHandler<ToolLifecycleEvent> | BlockDefinition<any, any>;
