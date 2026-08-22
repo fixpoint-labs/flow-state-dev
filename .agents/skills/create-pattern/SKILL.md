@@ -100,8 +100,7 @@ export interface <PatternName>Config<
   /** Tools forwarded to default internal generators. */
   tools?: ToolsSlot;
 
-  /** Capabilities installed on default internal blocks. Resources reach the
-   *  pattern this way — a sequencer has no `resources` config field. */
+  /** Capabilities installed on default internal blocks. */
   uses?: UsesSlot;
 }
 ```
@@ -167,9 +166,11 @@ export function create<BlockName>(
 }
 ```
 
-#### Forwarding `uses` and `tools`
+#### Forwarding `uses`, `tools`, and resources
 
-The most common pattern: accept `uses` and `tools` in your config and forward them to the internal blocks that need them. This is how `planAndExecute` and `supervisor` work — neither takes a `resources` option.
+The most common pattern: accept `uses` and `tools` in your config and forward them to the internal blocks that need them. This is how `planAndExecute` and `supervisor` work.
+
+A pattern factory may also take a resource in its own config and forward it to the child block that reads it. `planAndExecute` does exactly that: `PlanAndExecuteConfig.resources?: Record<string, any>` is spread onto its default executor generator. `routedSpecialists` and `debate` do the same thing with a single named handle (`workspace`, `transcript`) instead of a map. This is a legitimate pattern-level API — it is forwarding to a *block*, which is a different thing from declaring on the sequencer. `supervisor` and `parallelTasks` expose no such option; add one only when your pattern owns a default child block to forward it to.
 
 ```typescript
 export function <patternName>(config: <PatternName>Config) {
@@ -193,12 +194,15 @@ export function <patternName>(config: <PatternName>Config) {
 }
 ```
 
-**Do not put a `resources` key on `sequencer()`.** `SequencerConfig` has no such field — a sequencer's own declarations are exactly its capability-injected ones. A conditional spread (`...(resources ? { resources } : {})`) slips past excess-property checking, so the compiler stays silent while the pattern leans on an internal seam.
+**Do not put a `resources` key on `sequencer()`.** `SequencerConfig` has no such field — a sequencer's own declarations are exactly its capability-injected ones. A conditional spread (`...(resources ? { resources } : {})`) slips past excess-property checking, so the compiler stays silent while the pattern leans on an internal seam. The same spread onto a `generator()` or `handler()` is fine — those block kinds do declare `resources`; it is the sequencer that does not.
 
-Two supported places for a resource:
+Three supported places for a resource:
 
 - **On the child block that uses it** — `generator()` and `handler()` both take `resources`. The sequencer collects `declaredResources` from every child and bubbles them up to the flow, so declaring it on the consumer registers it just as well. This is the default; `rlm` does it this way.
+- **Forwarded from your factory's config onto that child block** — the same route, with the caller choosing the resource instead of the pattern hard-coding it. `planAndExecute` (`resources`), `routedSpecialists` (`workspace`), and `debate` (`transcript`) all do this.
 - **In a capability, installed through `uses`** — when the resource is shared infrastructure that blocks outside the pattern also need. See [Exporting a Capability](#exporting-a-capability) below.
+
+Whichever route, an accessor name must map to one `defineResource()` reference. A capability and its consuming block that declare the same accessor with two different references fail at construction with `Resource conflict` — pass the shared reference around (this is why `debate` accepts a `transcript` instance).
 
 `uses` and `tools` go on the generators that actually call LLMs. Only spread them when the consumer hasn't provided a custom override block.
 

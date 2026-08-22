@@ -128,7 +128,9 @@ const docReader = handler({
 
 Capabilities can declare schemas alongside their resources and helpers. When a block lists a capability in `uses`, those schemas are reflected into the block's `ctx` types at factory time — no re-declaration on the block is needed.
 
-The four axes: `sessionStateSchema`, `resources` (resource handles), `targetStateSchemas`, and `sequencerStateSchema` (for sequencer presets). Each merges with anything the block itself declares; the block's own keys win on collision.
+The four axes: `sessionStateSchema`, `resources` (resource handles), `targetStateSchemas`, and `sequencerStateSchema` (for sequencer presets). Each merges with anything the block itself declares; the block's own keys win on collision — except for `resources`.
+
+That exception fails loudly rather than resolving. An accessor name maps to exactly one resource: if a capability and the block both declare `documents`, the two must be the *same* `defineResource()` reference. Two different references under one accessor throw `Resource conflict` when the block is constructed — there is no block-wins fallback. Export the resource and import that one constant everywhere it is declared, or give the two resources distinct accessor names.
 
 ```ts
 import { defineCapability, handler } from "@flow-state-dev/core";

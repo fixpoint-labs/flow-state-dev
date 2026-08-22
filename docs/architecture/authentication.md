@@ -51,8 +51,27 @@ defineFlow({
 fallback, a missing `userId` is rejected. Set `false` to opt the flow out
 of user-scope identity.
 
-The resolved `userId` is the sole authority for session ownership and
-resource scoping.
+The resolved principal — not `userId` alone — is what the runtime scopes
+by. `userId` is the sole authority for session *ownership*. Resource
+scoping is keyed per scope:
+
+| Scope | Key |
+|---|---|
+| `session` | the session id, namespaced to `${tenantId}:${sessionId}` when the request carries a tenant (`resolveSessionStorageKey`) |
+| `user` | `userId` |
+| `org` | the session's bound `orgId`, taken from `principal.orgId` at session creation |
+
+User- and org-scoped resources route to a further `${id}:${flowKind}`
+bucket when the resource is flow-isolated, but the identity above is what
+that bucket is derived from.
+
+A custom resolver therefore owns the org boundary as well as the user one.
+Return no `orgId` and the runtime builds no org resource registry for the
+request at all — org-scoped resources are absent, not empty. Org binding is
+fixed at session creation and immutable after: a later request claiming a
+different `orgId` is rejected with `OrgBindingMismatchError` rather than
+rebinding the session. Derive `orgId` from the same trusted source as
+`userId` — BP-031 covers it identically.
 
 ---
 
