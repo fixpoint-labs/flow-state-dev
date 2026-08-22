@@ -270,7 +270,10 @@ waits on it (theme 4).*
   on `taskBoard`, threaded through to the claim — so a board hosting human-in-the-loop work
   configures a window measured in hours. Symmetric with the per-run `cwd` seam already named
   inside LAB-138 (theme 4). **Kept inside LAB-139 rather than filed as a fourth member of the
-  set**: a fourth member buys a fourth dependency chain for one option.
+  set**: a fourth member buys a fourth dependency chain for one option. **Sequencing, so it isn't
+  read as a new edge:** LAB-138 stands the board up and LAB-139 amends its configuration — that is
+  the existing land-order (theme 4), not an additional dependency, and LAB-138 does not wait on
+  the option to be correct at its own default.
   **The cost, named beside the limit it replaces (§1):** a genuinely *dead* worker's task sits
   unreclaimed for the configured window instead of for two minutes. That is the trade a board
   hosting human pauses should make, and it is **per-board**, so nothing else inherits it.
