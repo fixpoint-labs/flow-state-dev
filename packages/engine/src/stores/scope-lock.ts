@@ -1,8 +1,10 @@
 /**
- * Per-`StateContainer` async FIFO mutation queue. The three-way dispatch
- * that decides who uses it — in-memory scopes, request-scope persist
- * (`serialize`), session/user/org CAS — lives in `applyMutation`; CAS
- * retries still apply at the durable boundary in `runWithCAS`.
+ * Per-`StateContainer` async FIFO mutation queue. The dispatch that decides
+ * who uses it — in-memory scopes, request-scope persist (`serialize`),
+ * session/user/org CAS — lives in `applyMutation`. The queue is keyed by
+ * container identity, so it orders writers WITHIN one execution context and
+ * nothing beyond it; CAS retries at the durable boundary (`runWithCAS`) are
+ * what still cover a second context writing the same record.
  */
 
 const tails = new WeakMap<object, Promise<unknown>>();

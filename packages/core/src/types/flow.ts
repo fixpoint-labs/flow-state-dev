@@ -376,8 +376,8 @@ export type RequestConfig = {
    * Does not apply to any scope that persists. `session` / `user` / `org`
    * go through the optimistic CAS retry path, which owns its own retry
    * semantics and surfaces contention as `ConcurrentModificationError`.
-   * `request` serializes its writes instead of retrying them, and is
-   * deliberately left off this budget too: the timeout rejects the caller
+   * `request` serializes its writes and runs that same retry path beneath
+   * the lock, and is left off this budget too: the timeout rejects the caller
    * without cancelling the mutation, so a durable write that outran it
    * would still reach the store afterwards — on top of a record the
    * runtime may already have written as terminal.

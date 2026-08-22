@@ -183,7 +183,7 @@ In practice, this is rare for typical conversational flows. It surfaces under su
 
 Not every scope uses the CAS retry loop. `session`, `user`, and `org` do, because a remote authority — another connection, another process — can advance the stored version under a stale read.
 
-`request` state is written to a store too, but a request record has one writer in one process, so there is no remote version to lose a race against. Request writes serialize through a per-container FIFO queue and persist once under it. A fan-out of concurrent writers commits every write, in submission order.
+`request` state is written to a store too. Its writes serialize through a per-container FIFO queue and persist under it, so a fan-out of concurrent writers inside one run commits every write, in submission order. The version check stays underneath the queue, because the queue orders one run's writers and nothing else.
 
 Scopes that don't bridge through `persist` at all (`sequencer` state, target containers) take the same queue with no store write behind it. Both queue paths serialize mutators in submission order with no retries, and the in-memory one never throws `ConcurrentModificationError`.
 

@@ -17,11 +17,11 @@ Read-only instance config is also available on the context as `ctx.settings` —
   ▼                        ▼                        ▼
   no persist               request scope            session / user / org
   │                        │                        │
-  withScopeLock — a FIFO   withScopeLock, then one  runWithCAS — a retry loop
-  queue per container.     version-checked persist  with exponential backoff
-  No version check, no     under the same lock.     and a version-checked
-  retries.                 One write, no retries.   persist. Retries on
-                                                    conflict.
+  withScopeLock — a FIFO   withScopeLock, then the  runWithCAS — a retry loop
+  queue per container.     same version-checked     with exponential backoff
+  No version check, no     persist under the lock.  and a version-checked
+  retries.                 Serialized writers       persist. Retries on
+                           never conflict.          conflict.
 ```
 
 The dispatch is internal to `applyMutation`. Callers see the same `ScopeStateOps` API regardless of which path runs. What each path can raise:
@@ -29,7 +29,7 @@ The dispatch is internal to `applyMutation`. Callers see the same `ScopeStateOps
 | Path | Raises |
 |---|---|
 | No persist | `ScopeMutationTimeoutError` when queue wait + execution outruns `mutationTimeoutMs` |
-| Request scope | `ConcurrentModificationError` on a persist conflict, which is not expected here |
+| Request scope | `ConcurrentModificationError` when the retry budget exhausts |
 | Session / user / org | `ConcurrentModificationError` when the retry budget exhausts |
 
 ### In-memory scopes use a FIFO queue
@@ -42,11 +42,11 @@ The lock branch never throws `ConcurrentModificationError`. There is no version 
 
 ### Request scope serializes, then persists
 
-Request state is written to the store on every mutation, so a paused request can restore it on `/continue`. But a request record has exactly one writer — the request itself, in one process. Nothing remote is moving that version, so there is no race for optimistic concurrency to detect, and a retry budget only gets in the way.
+Request state is written to the store on every mutation, so a paused request can restore it on `/continue`. Most of the contention on that record comes from inside a single run — a block that fans out, a few side chains patching request state at once. Those writers all share one container, so a queue can order them exactly.
 
-So request scope takes the queue and the store write both: mutators serialize through the same per-container lock the in-memory scopes use, and the winner persists once while it still holds the lock. Writers land in submission order, one version bump each. A fan-out of concurrent writers wider than any retry budget still commits every write.
+So request scope takes the queue and the store write both: mutators serialize through the same per-container lock the in-memory scopes use, and each one persists while it still holds the lock. Writers land in submission order, one version bump each. Because each reads a current version, they never conflict with one another, and a fan-out wider than any retry budget still commits every write.
 
-A persist conflict here means something the runtime does not expect — a second writer on a record that should have only one — so it is reported rather than retried, as `ConcurrentModificationError`.
+The version check and its retries sit underneath the queue rather than being replaced by it. A queue can only order writers that share a container, and a request record can briefly have one that doesn't: recovery re-enters an interrupted request under its own id, and the run it starts writes through a container of its own. A conflict there resolves the way it does on session scope — re-read, re-apply, persist — and `ConcurrentModificationError` surfaces only if the budget exhausts.
 
 ### Session, user, and org scopes use CAS
 

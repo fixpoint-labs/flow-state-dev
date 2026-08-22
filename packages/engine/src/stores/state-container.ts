@@ -7,12 +7,13 @@
  *     commit `version + 1` directly, and never throw
  *     `ConcurrentModificationError`.
  *   - Request-scope persist (`persist` + `serialize`) holds the same lock
- *     across mutate and persist. One write, no retry budget, and no
- *     mutation timeout. A persist conflict is unexpected and throws
- *     `ConcurrentModificationError`.
- *   - Session/user/org persist (`persist` without `serialize`) drives
- *     `runWithCAS`. A successful or conflicting persist refreshes the
- *     container via `container.commit(state, version)`; CAS still owns
+ *     across mutate and persist, and runs the SAME durable dispatch as
+ *     session/user/org underneath it. No mutation timeout. Serializing
+ *     removes the same-context conflicts; the CAS budget underneath stays
+ *     for cross-context ones.
+ *   - Session/user/org persist (`persist` without `serialize`) drives that
+ *     dispatch unlocked. A successful or conflicting persist refreshes the
+ *     container via `container.commit(state, version)`; CAS owns
  *     `ConcurrentModificationError` at the durable boundary.
  *
  * Each scope op also computes a `CASMutationHint` that describes its intent
@@ -29,7 +30,6 @@ import type {
 } from "@flow-state-dev/core/types";
 import { deepEqual } from "@flow-state-dev/core/helpers";
 import {
-  ConcurrentModificationError,
   runWithCAS,
   isCommutativeHint,
   type CASMutationHint,
@@ -103,10 +103,13 @@ export type ScopeStateOpsOptions<TState extends object> = {
   persist?: CASPersist<TState>;
   /**
    * When true with `persist` set, mutators serialize through
-   * `withScopeLock` and persist once under that lock. Request scope uses
-   * this: the store write stays (crash recovery), but a wide same-process
-   * fan-out does not exhaust CAS retries. Session/user/org omit it and
-   * keep `runWithCAS`.
+   * `withScopeLock`, and the durable write runs under that lock. Request
+   * scope uses this: the store write stays (crash recovery), and a wide
+   * same-process fan-out no longer exhausts CAS retries, because serialized
+   * mutators each read a current version and never conflict with one
+   * another. The CAS budget underneath is untouched and still covers a
+   * writer in a different execution context. Session/user/org omit this and
+   * run the same dispatch unlocked.
    */
   serialize?: boolean;
   /**
@@ -140,16 +143,22 @@ export type ScopeStateOpsOptions<TState extends object> = {
  *   `ConcurrentModificationError`. The `hint` is ignored — there is no
  *   external store to route to.
  * - When `persist` is defined and `serialize` is true (request scope):
- *   the same lock covers mutate and persist. No CAS retry, and no
- *   `mutationTimeoutMs` — the timeout does not cancel, so a durable write
- *   must not be abandoned by its caller while it is still able to persist.
- *   A persist conflict throws `ConcurrentModificationError`.
- * - When `persist` is defined without `serialize`: `runWithCAS` drives
- *   the optimistic load → mutate → persist cycle with exponential
- *   backoff. The `hint` is forwarded to the persist callback unchanged
- *   across retries (it describes user intent, not derived state).
- *   `ConcurrentModificationError` still surfaces on retry exhaustion
- *   because a remote authority can advance the version underneath us.
+ *   the same lock covers mutate and persist, wrapped around the shared
+ *   durable dispatch below. No `mutationTimeoutMs` — the timeout does not
+ *   cancel, so a durable write must not be abandoned by its caller while
+ *   it is still able to persist.
+ * - When `persist` is defined without `serialize`: the same durable
+ *   dispatch runs unlocked.
+ *
+ * The durable dispatch (`runDurableMutation`) sends commutative hints to
+ * `runCommutative` (one persist against `"any"`) and everything else to
+ * `runWithCAS`, which drives the optimistic load → mutate → persist cycle
+ * with exponential backoff. The `hint` is forwarded to the persist callback
+ * unchanged across retries (it describes user intent, not derived state).
+ * `ConcurrentModificationError` surfaces on retry exhaustion, because a
+ * writer this container cannot see — a remote authority, or a second
+ * execution context on the same request — can advance the version
+ * underneath us.
  */
 async function applyMutation<TState extends object>(
   container: StateContainer<TState>,
@@ -181,31 +190,38 @@ async function applyMutation<TState extends object>(
   }
 
   if (options?.serialize === true) {
-    let committed = false;
-    await withScopeLock(
-      container,
-      async () => {
-        const current = container.read();
-        const next = await mutator(current);
-        if (deepEqual(current, next)) return;
-
-        const result = await persist(next, container.getVersion(), hint);
-        if (!result.ok) {
-          if (result.currentState !== undefined) {
-            container.commit(result.currentState, result.currentVersion);
-          }
-          throw new ConcurrentModificationError(
-            "State update failed due to concurrent modifications",
-            1
-          );
-        }
-        container.commit(next, result.version);
-        committed = true;
-      }
+    // The lock is the fix for same-context fan-out; the retries underneath it
+    // are what keeps a genuine cross-context race from losing a write. Under
+    // the lock every mutator reads a current version, so same-context writers
+    // never conflict and never spend an attempt — the budget is left for the
+    // only writer that can still collide, one in ANOTHER execution context.
+    //
+    // NOT a fencing mechanism. Two live workers on one request id (a recovery
+    // continuation started while the original is still running) is split-brain,
+    // and CAS retry does not make it correct — it makes it quiet, by letting
+    // the loser re-read and re-apply instead of failing. Fencing the original
+    // worker (an epoch stamp, or real cancellation) is the actual cure and is
+    // tracked separately. Do not read the retries here as one.
+    return withScopeLock(container, () =>
+      runDurableMutation(container, options, mutator, persist, hint)
     );
-    return committed;
   }
 
+  return runDurableMutation(container, options, mutator, persist, hint);
+}
+
+/**
+ * Durable write dispatch shared by request scope (under `withScopeLock`) and
+ * session/user/org (unlocked). Commutative hints persist once against
+ * `"any"`; everything else drives the CAS retry loop.
+ */
+async function runDurableMutation<TState extends object>(
+  container: StateContainer<TState>,
+  options: ScopeStateOpsOptions<TState> | undefined,
+  mutator: (state: Readonly<TState>) => TState | Promise<TState>,
+  persist: CASPersist<TState>,
+  hint: CASMutationHint
+): Promise<boolean> {
   if (isCommutativeHint(hint)) {
     return runCommutative(container, mutator, persist, hint);
   }

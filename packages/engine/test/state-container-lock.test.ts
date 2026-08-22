@@ -4,10 +4,14 @@ import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
   ConcurrentModificationError,
+  continueRequest,
   createExecutionContext,
+  createFlowRegistry,
   createInMemoryStores,
   createScopeStateOps,
   createStateContainer,
+  detectInterruptedRequests,
+  runAction,
   ScopeMutationTimeoutError
 } from "../src";
 import type { CASPersist } from "../src/stores/cas";
@@ -402,6 +406,19 @@ describe("scope write-path wiring — createExecutionContext", () => {
     })();
     const stores = createInMemoryStores();
 
+    // Serializing is only the right fix if the fan-out stops CONFLICTING, not
+    // if it merely survives on the retry budget. Count refused writes at the
+    // store boundary: under the lock each mutator reads a current version, so
+    // the correct number is zero and the CAS attempts stay unspent — available
+    // for the cross-context race they exist for.
+    let conflicts = 0;
+    const realSet = stores.request.set.bind(stores.request);
+    stores.request.set = async (id, value, expectedVersion) => {
+      const result = await realSet(id, value, expectedVersion);
+      if (!result.ok) conflicts += 1;
+      return result;
+    };
+
     const ctx = await createExecutionContext({
       flow,
       actionName: "run",
@@ -432,6 +449,8 @@ describe("scope write-path wiring — createExecutionContext", () => {
     // request reads its state back from there.
     const saved = await stores.request.get("req_fanout");
     expect(saved?.state).toEqual({ count: N });
+
+    expect(conflicts).toBe(0);
   });
 
   it("does not put request-scope durable writes on the non-cancelling mutation timeout", async () => {
@@ -562,5 +581,124 @@ describe("scope write-path wiring — createExecutionContext", () => {
           ConcurrentModificationError
       )
     ).toBe(true);
+  });
+});
+
+describe("request-scope writes under a recovery continuation", () => {
+  // The lock is per-`StateContainer`, and `createExecutionContext` builds a
+  // fresh container per run. So the FIFO queue only ever orders writers that
+  // share ONE execution context — it cannot order two contexts against each
+  // other, even in a single process. Recovery produces exactly that pair: the
+  // stale-heartbeat sweep flips a still-running request to `interrupted`, and
+  // `/continue` (which gates on precisely that status) starts a second worker
+  // on the same request id while the first is still alive and still able to
+  // write.
+  //
+  // With the serialize branch persisting once and refusing to retry, the
+  // second writer to reach the store lost its write outright. That is the
+  // regression this case pins: a conflict that CAS would have resolved by
+  // re-reading and re-applying became a hard `ConcurrentModificationError`.
+  it("retries a conflicting write instead of failing it outright", async () => {
+    const stores = createInMemoryStores();
+
+    // One barrier both workers park on, so the original is provably still
+    // in-flight (not merely un-terminalized) when the continuation starts.
+    let releaseBarrier!: () => void;
+    const barrier = new Promise<void>((resolve) => {
+      releaseBarrier = resolve;
+    });
+    const entered: Array<() => void> = [];
+    const parked = [0, 1].map(
+      (i) =>
+        new Promise<void>((resolve) => {
+          entered[i] = resolve;
+        })
+    );
+
+    let workersStarted = 0;
+    const outcomes: Array<{ worker: number; error?: string }> = [];
+
+    const parkedBlock = handler({
+      name: "parked-writer",
+      inputSchema: z.any(),
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: async (_input, ctx) => {
+        const me = workersStarted;
+        workersStarted += 1;
+        entered[me]?.();
+        await barrier;
+
+        // `atomicState` carries a `set` hint, so `createScopePersist` keeps the
+        // numeric `expectedVersion` rather than downgrading to `"any"`. That is
+        // the whole exposed surface: commutative hints ride `"any"` and cannot
+        // conflict here.
+        try {
+          await ctx.request.atomicState((state) => ({
+            writes: [...((state as { writes?: number[] }).writes ?? []), me]
+          }));
+          outcomes.push({ worker: me });
+        } catch (error) {
+          outcomes.push({ worker: me, error: (error as Error).name });
+        }
+        return { ok: true };
+      }
+    });
+
+    const flow = defineFlow({
+      kind: "recovery-overlap-flow",
+      actions: {
+        run: { inputSchema: z.any(), block: parkedBlock }
+      }
+    })({ id: "recovery-overlap-flow" });
+
+    const flowRegistry = createFlowRegistry();
+    flowRegistry.register(flow as never);
+
+    const requestId = "req_recovery_overlap";
+    // Worker 1: the original run. Deliberately not awaited — it must still be
+    // parked (and still holding a live container) when recovery fires.
+    const original = runAction({
+      flow,
+      actionName: "run",
+      requestId,
+      sessionId: "sess_recovery_overlap",
+      userId: "user_recovery_overlap",
+      input: {},
+      stores,
+      runtimeConfig: {}
+    });
+    await parked[0];
+
+    // The sweep writes `status: "interrupted"` with `"any"`, so it carries the
+    // record's version through untouched. Both containers therefore hold the
+    // SAME expected version — the conflict below comes from the two workers,
+    // not from the sweep bumping the record underneath them.
+    const swept = await detectInterruptedRequests({ stores, staleThresholdMs: 0 });
+    expect(swept.map((s) => s.entry.requestId)).toContain(requestId);
+    expect((await stores.request.get(requestId))?.status).toBe("interrupted");
+
+    // Worker 2: the continuation, under the same request id.
+    const { finished } = await continueRequest({
+      requestId,
+      stores,
+      flowRegistry,
+      runtimeConfig: {}
+    });
+    await parked[1];
+
+    releaseBarrier();
+    await Promise.allSettled([original, finished]);
+
+    // Pre-fix: the second writer to reach the store rejects with
+    // ConcurrentModificationError, because the serialize branch persisted once
+    // and threw on conflict instead of refreshing and re-applying.
+    expect(outcomes).toHaveLength(2);
+    expect(outcomes.filter((o) => o.error !== undefined)).toEqual([]);
+
+    // Both writes have to be observable in the store, not just non-throwing.
+    // A retry that re-read and re-applied keeps the loser's append; one that
+    // silently gave up would leave a single entry here.
+    const saved = await stores.request.get(requestId);
+    expect(((saved?.state as { writes?: number[] })?.writes ?? []).slice().sort()).toEqual([0, 1]);
   });
 });
