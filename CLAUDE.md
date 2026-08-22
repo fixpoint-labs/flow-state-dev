@@ -156,7 +156,7 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 
 ```
 docs/
-  architecture/     Framework architecture reference (24 docs)
+  architecture/     Framework architecture reference
   contributing/     Development setup, best practices, wave process
   internal/         Wave plans, journals, changelogs (process artifacts)
 ```
@@ -320,7 +320,7 @@ Phase 1 (Foundation): Waves 1.a–1.l complete. 1.m (devtool: `fsdev dev` + `@fl
 
 - **Common helpers** (`deepEqual`, formatting utilities, etc.) belong in a shared utils file — not inlined per-file. No duplicate copies across packages.
 
-### Best practices (BP-001…041)
+### Best practices
 
 Best practices have two altitudes. Full text lives in `docs/contributing/best-practices.md` (universal) and `docs/contributing/best-practices/<category>.md` (situational).
 
