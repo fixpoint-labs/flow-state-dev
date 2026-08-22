@@ -155,7 +155,7 @@ const pipeline = sequencer({ name: "review" })
   .step(analyze);
 ```
 
-The full catalog — which utilities exist, their kinds, and their default models — is in [Utility Blocks](./utility-blocks.md).
+The catalog of utilities and their kinds is in [Utility Blocks](./utility-blocks.md). Per-utility config and default models live in [Core Utilities](../../apps/docs/docs/patterns/utility-blocks/core.md).
 
 ## Data flow
 

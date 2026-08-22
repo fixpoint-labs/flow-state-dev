@@ -335,30 +335,15 @@ The contract: workers emit naturally; parents pick what they want. No need to re
 
 ## Task Progress Rendering
 
-`planAndExecute` and `supervisor` emit `task-change` (per-task lifecycle) and `task-board-meta` (board-level aggregate) `ComponentItem`s via the `taskBoard` substrate. Pair with `<TaskPlan />` from `@flow-state-dev/ui` for rendering.
+`planAndExecute` and `supervisor` emit `task-change` (per-task lifecycle) and `task-board-meta` (board-level aggregate) items. Install `TaskPlan` with `fsdev ui add task-plan` and import it from `@/components/flow-state/task-plan`.
 
 ```typescript
-// In your UI registry or renderer setup:
-import { TaskPlan } from "@flow-state-dev/ui/task-plan";
+// After `fsdev ui add task-plan`:
+import { TaskPlan } from "@/components/flow-state/task-plan";
 
 // Bind to the pattern's collectionId (same as config.name by default):
 <TaskPlan collectionId="my-plan" />
 ```
-
-### Deprecated type exports
-
-`BasePlanSchema`, `BasePlanTaskSchema`, and the `BasePlan` / `BasePlanTask` / `PlanMeta` / `PlanTaskUpdate` types remain exported for backward compatibility. They are not used by the patterns internally.
-
-```typescript
-import {
-  BasePlanSchema,
-  BasePlanTaskSchema,
-  type BasePlan,
-  type BasePlanTask,
-} from "@flow-state-dev/patterns";
-```
-
-The `emitPlanMeta`, `emitTaskUpdate`, and `emitPlanSnapshot` runtime helpers have been retired. Patterns that tracked tasks via those helpers should migrate to `taskBoard`.
 
 ## Benchmark adapters
 
