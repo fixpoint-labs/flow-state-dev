@@ -1,6 +1,7 @@
 /**
  * Normalizes unknown thrown values into a consistent FlowError shape.
  */
+import { toError } from "@flow-state-dev/core/helpers";
 import type { FlowErrorScope } from "./flow-error";
 import { FlowError } from "./flow-error";
 import { classifyProviderError } from "./classify-provider-error";
@@ -39,18 +40,6 @@ function inferRetryable(error: Error, code: string): boolean {
   return false;
 }
 
-function toError(value: unknown): Error {
-  if (value instanceof Error) {
-    return value;
-  }
-
-  if (typeof value === "string" && value.length > 0) {
-    return new Error(value);
-  }
-
-  return new Error("Unknown execution error");
-}
-
 /**
  * Converts any thrown value into FlowError while preserving useful metadata when present.
  */
@@ -58,7 +47,7 @@ export function normalizeError(
   error: unknown,
   options: NormalizeErrorOptions = {}
 ): FlowError {
-  const normalized = toError(error);
+  const normalized = toError(error, "Unknown execution error");
 
   // Classify raw AI SDK provider errors into the typed taxonomy
   // (RateLimitError, TimeoutError, ...) before the generic path. Skipped when
