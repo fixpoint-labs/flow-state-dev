@@ -81,7 +81,7 @@ export default defineFlow({
 })();
 ```
 
-The generator handles prompt assembly, streaming, and conversation history (`history: true` reads prior turns out of the session automatically). Both `user: (input) => input.message` on the generator and `userMessage: (input) => input.message` on the action wire to the same source; they are complementary contracts and the framework deduplicates equivalent content. The [user slot](/docs/advanced/generator-context#user-slot) page covers how those two fields interact. [Blocks configuration](/docs/configuration/blocks) lists every generator field.
+The generator handles prompt assembly, streaming, and conversation history (`history: true` reads prior turns out of the session automatically). `user` is this turn's model input. `userMessage` is the stored user-visible text. Point both at `input.message`. The [user slot](/docs/advanced/generator-context#user-slot) page covers how those two fields interact. [Blocks configuration](/docs/configuration/blocks) lists every generator field.
 
 To chain multiple blocks together, you'd compose them with a **sequencer**:
 

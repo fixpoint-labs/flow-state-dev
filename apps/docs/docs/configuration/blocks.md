@@ -74,7 +74,7 @@ const chat = generator({
 | `itemVisibility` | `{ client, history }` | **unset = no auto-emission** | Who sees auto-emitted messages. See [Visibility](#itemvisibility). |
 | `agentName` | `string` | block `name` when visibility is set | Provenance stamp. Shared names collaborate; distinct names stay isolated. |
 | `search` | `true` or search config | off | Provider-native web search, resolved from the model at run time. |
-| `providerTools` | `ProviderTool[]` | — | AI SDK provider-defined tools, passed through without block compilation. |
+| `providerTools` | `ProviderTool[]` | — | AI SDK provider-defined tools, passed through as-is. |
 | `loop` | `{ maxIterations?, runTools?, stopWhen? }` | — | Tool-loop policy. |
 | `maxIterations` | `number` | — | Legacy loop cap. Prefer `loop.maxIterations`. |
 | `maxTokens` | `number` | — | Output token cap. |

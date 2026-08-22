@@ -14,7 +14,7 @@ If you're new to the framework, read this first. It explains what the pieces are
 Everything executable in flow-state-dev is a block. There are exactly four kinds:
 
 - **Handler** — Pure logic. Validates input, transforms data, mutates state. No LLM. Think of it as a function that can read and write scope state. Handlers are silent by default: they don't emit messages or components unless you call `ctx.emit.message()` or similar.
-- **Generator** — LLM calls. The framework handles prompt assembly, tool loops, streaming, and output parsing. This is where AI happens. Generators automatically emit messages, reasoning traces, and tool call items as the model produces them.
+- **Generator** — LLM calls. The framework handles prompt assembly, tool loops, streaming, and output parsing. Set `itemVisibility` when those streamed messages should reach the client or the next-turn history.
 - **Sequencer** — Composes blocks into pipelines. Chains steps, runs them in parallel, adds error recovery. The composition primitive. A sequencer is itself a block, so you can nest sequencers inside other sequencers or pass them to routers.
 - **Router** — Selects one block at runtime based on input or state. Mode switching, intent routing, conditional flows. The router's `execute` function returns the block to run. The framework then executes that block with the router's input.
 
@@ -22,7 +22,7 @@ All blocks share the same contract: input in, output out. Any block composes wit
 
 ## 2. Sequencers compose blocks
 
-A sequencer replaces the agent-vs-workflow split you see in other frameworks. You don't choose between "agentic" and "deterministic." You chain blocks. Each step's output becomes the next step's input.
+A sequencer chains blocks. Each step's output becomes the next step's input.
 
 ```ts
 const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
@@ -32,7 +32,7 @@ const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
 
 The order matters. In this example, the generator produces the response. The counter runs after, incrementing session state. Because it has no transformation, we attach it with `.tap()` so the assistant message flows through as the pipeline's result. Data flows in one direction.
 
-Sequencers also support conditional steps (`stepIf`), parallelism (`parallel`), loops (`doUntil`, `doWhile`), and error recovery (`rescue`). You can branch to different blocks based on conditions. The key idea: composition is the primary abstraction, not "agent" vs "workflow."
+Sequencers also support conditional steps (`stepIf`), parallelism (`parallel`), loops (`doUntil`, `doWhile`), and error recovery (`rescue`). You can branch to different blocks based on conditions.
 
 ## 3. Flows tie it together
 
@@ -86,7 +86,7 @@ Request scope exists only for the duration of one action. Session scope is where
 
 Blocks declare partial schemas: they only specify the fields they read or write. A counter block doesn't need to know about preferences. The framework merges these declarations at the flow level. This keeps blocks portable and self-documenting.
 
-Operations like `incState` and `pushState` are CAS-guarded. Concurrent requests won't lose updates. Each write is atomic. The framework handles version conflicts and retries internally.
+Concurrent `incState` and `pushState` calls do not lose updates. Each write is atomic.
 
 ## 6. Items are the data model
 
@@ -94,7 +94,7 @@ Every output in the framework is a typed item: messages, reasoning, tool calls, 
 
 Items are the durable record of what happened. They have a lifecycle: `in_progress` → `completed` (or `failed`, `incomplete`). Content streams within items via delta events. A message item might receive many `content.delta` events before it's finalized.
 
-Item types determine audience routing. Some types go to the client UI (messages, components, status). Some go only to the LLM (context, tool results). Some are internal (block_output for devtools). You don't configure this per block; the framework routes by type.
+Item types determine audience routing. Some types go to the client UI (messages, components, status). Some go only to the LLM (context, tool results). Some are internal (block_output for DevTool). A generator's `itemVisibility` then decides whether its auto-emitted messages reach the client, the next-turn history, both, or neither.
 
 ## 7. Streaming happens automatically
 
@@ -113,7 +113,7 @@ You describe the runtime with `createFlowState`, passing your flows and where st
 - **FlowProvider** — Sets `flowKind` and `userId` context. Wraps your app or a section of it. Registers custom renderers for item types (messages, reasoning, components). Nested providers merge renderers; child keys override parent.
 - **useFlow** — Session lifecycle. Create sessions, switch between them, track the active one. With `autoCreateSession: true`, creates a session on mount if none exists. Returns `sessions`, `activeSessionId`, `createSession()`, `selectSession()`.
 - **useSession** — Connects to the SSE stream for a session. Delivers items in real time. Provides `sendAction` and `isStreaming`. Configure `items.visibility` to filter which items appear (e.g. "ui" for client-visible only). Re-renders when items change, streaming status changes, or the session detail updates.
-- **useClientData** — Reads the latest state snapshot. Only sees what the flow's `clientData` entries expose. Specify which keys to subscribe to: `{ session: ["messageCount", "mode"] }`. Refetches after `request.completed` and when state invalidation events arrive.
+- **useClientData** — Reads the latest state snapshot. Only sees what each scope's `client.expose` / `client.derived` entries expose. Specify which keys to subscribe to: `{ session: ["messageCount", "mode"] }`. Refetches after `request.completed` and when state invalidation events arrive.
 
 The hooks subscribe to the right streams and re-render when data changes. You don't manage connections manually. The client package handles HTTP, SSE, reconnection, and cursor-based resume.
 

@@ -4,7 +4,7 @@ sidebar_position: 3
 
 # Your First Flow
 
-The [Quick Start](/docs/getting-started/quick-start) gives you a working app fast. This page is for the other reader — the one who wants to understand what each piece does before they trust it.
+The [Quick Start](/docs/getting-started/quick-start) gets an app running. Stay here if you want the why for each piece.
 
 We'll build the same chat, but slowly. By the end you'll know what a block is, what a flow adds on top, why generators read history automatically, and where state lives. Roughly twenty minutes of reading and typing.
 
@@ -78,7 +78,7 @@ There are four scopes you'll see in practice:
 
 We're using `session`. Define the schema, then use a second block to mutate it.
 
-For state-mutation-only work, the right pattern is a handler attached with `.tap()`. `.tap()` runs the handler for its side effects but passes the upstream value through unchanged. That keeps the items log clean (no echoed input) and gives the handler a reason to exist that isn't "transform this value."
+For state-mutation-only work, attach a handler with `.tap()`. `.tap()` runs the handler for its side effects and passes the upstream value through, so the chat result stays the pipeline output.
 
 ```ts title="src/flows/hello-chat/blocks.ts"
 import { generator, handler } from "@flow-state-dev/core";
@@ -110,12 +110,11 @@ export const bumpCounter = handler({
 });
 ```
 
-Two things worth pointing out:
+The handler's `inputSchema` is `z.string()` because it sits after the generator, which produces the assistant's response as a string. We don't use the value — we just need the type to match.
 
-- The handler's `inputSchema` is `z.string()` because it sits after the generator, which produces the assistant's response as a string. We don't use the value — we just need the type to match.
-- `execute` is `async` and takes `(input, ctx)`. The context exposes the scopes (`ctx.session`, `ctx.user`, etc.). We call `incState` to atomically bump the counter.
+`execute` is `async` and takes `(input, ctx)`. The context exposes the scopes (`ctx.session`, `ctx.user`, etc.). We call `incState` to atomically bump the counter.
 
-The handler doesn't `return` anything. That matters: handlers used with `.tap()` shouldn't return their input verbatim, and shouldn't manufacture output they don't have. State mutation is the whole job.
+The handler doesn't `return` anything. `.tap()` already forwards the chat result. State mutation is the whole job.
 
 ## Step 3. Compose with a sequencer
 
@@ -249,19 +248,17 @@ function Chat() {
 }
 ```
 
-Three new ideas:
-
 - **`FlowProvider`** sets the flow kind and user identity for everything beneath it. You only need one near the root of your app.
 - **`useFlow` and `useSession`** are the two hooks you'll use most. `useFlow` discovers or creates a session. `useSession` subscribes to its items, state snapshot, and streaming status.
 - **`ItemsRenderer`** is the default plural item renderer. It dispatches each item to a built-in renderer based on its type — text messages, reasoning blocks, tool output, errors. You can register custom renderers later, but the defaults give you a working chat for free.
 
-The counter you bumped in step 2 lives in session state. To surface it in the UI, the typed path is `clientData` — see [State and Scopes](/docs/fundamentals/state-and-scopes). For now it's enough to know it's there.
+The counter you bumped in step 2 lives in session state. To surface it in the UI, declare it on the flow's `session.client.expose` (see [State and Scopes](/docs/fundamentals/state-and-scopes)). For now it's enough to know it's there.
 
 ## What just happened
 
 You wrote four things: a generator, a handler, a sequencer that chains them, and a flow that exposes the sequencer over HTTP. The framework gave you streaming, history, validation, persistence, and a React rendering layer.
 
-The shape of every flow you write will be the same. You'll add more blocks, sometimes new kinds (a router for branching, a sequencer-of-sequencers for sub-pipelines), sometimes more scopes (user state, resources, work-pool jobs). But the primitive set doesn't grow. That's the design.
+The shape of every flow you write will be the same. You'll add more blocks, sometimes new kinds (a router for branching, a sequencer-of-sequencers for sub-pipelines), sometimes more scopes (user state, resources, work-pool jobs).
 
 ## Where to go from here
 

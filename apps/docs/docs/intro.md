@@ -80,7 +80,7 @@ Disconnect mid-response, reconnect with a cursor, and continue from the last seq
 
 ## Where settings live
 
-Three layers. The [Configuration](/docs/configuration/overview) section lists every field.
+Settings live in three places. The [Configuration](/docs/configuration/overview) section lists every field.
 
 | Layer | Object | Typical file |
 |-------|--------|--------------|
