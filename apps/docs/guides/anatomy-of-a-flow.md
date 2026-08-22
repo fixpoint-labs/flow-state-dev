@@ -113,7 +113,7 @@ You describe the runtime with `createFlowState`, passing your flows and where st
 - **FlowProvider** — Sets `flowKind` and `userId` context. Wraps your app or a section of it. Registers custom renderers for item types (messages, reasoning, components). Nested providers merge renderers; child keys override parent.
 - **useFlow** — Session lifecycle. Create sessions, switch between them, track the active one. With `autoCreateSession: true`, creates a session on mount if none exists. Returns `sessions`, `activeSessionId`, `createSession()`, `selectSession()`.
 - **useSession** — Connects to the SSE stream for a session. Delivers items in real time. Provides `sendAction` and `isStreaming`. Configure `items.visibility` to filter which items appear (e.g. "ui" for client-visible only). Re-renders when items change, streaming status changes, or the session detail updates.
-- **useClientData** — Reads the latest state snapshot. Only sees what the flow's `clientData` entries expose. Specify which keys to subscribe to: `{ session: ["messageCount", "mode"] }`. Refetches after `request.completed` and when state invalidation events arrive.
+- **useClientData** — Reads the latest state snapshot. Only sees what the flow's `client` block exposes. Specify which keys to subscribe to: `{ session: ["messageCount", "mode"] }`. Refetches after `request.completed` and when state invalidation events arrive.
 
 The hooks subscribe to the right streams and re-render when data changes. You don't manage connections manually. The client package handles HTTP, SSE, reconnection, and cursor-based resume.
 

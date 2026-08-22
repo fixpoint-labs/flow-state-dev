@@ -343,6 +343,10 @@ defineFlow({
 
 `derived` compute functions receive `{ state, resources }` from their scope. Values must be JSON-serializable. State without a `client` block is private to the server.
 
+`expose` and `derived` share a namespace. A name in both throws at `defineFlow`. `expose` names that aren't on the scope's `stateSchema` throw too. The scope key is `client`; a `clientData` key throws at `defineFlow`.
+
+Clients read the result at `snapshot.clientData.<scope>.<name>`.
+
 ## Voice Types
 
 Voice config on a flow is `defineFlow({ voice })`. The speak model id is a string.
