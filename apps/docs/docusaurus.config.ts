@@ -86,6 +86,10 @@ const config: Config = {
             from: "/docs/advanced/utility-blocks-deprecated",
             to: "/docs/patterns/utility-blocks/core",
           },
+          {
+            from: "/docs/tools/claude-code-cli",
+            to: "/docs/tools/claude-code-sdk",
+          },
         ],
       },
     ],

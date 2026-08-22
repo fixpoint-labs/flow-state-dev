@@ -23,11 +23,11 @@ export type SdkResultSubtype =
 /**
  * Handle for a single in-process Agent SDK run.
  *
- * Unlike the fire-and-forget CLI handle, the SDK path observes the run to
- * completion, so `status` reaches `"completed"`/`"errored"` and the handle
- * carries the final assistant text, the tools the SDK exercised, and usage/cost
- * when the SDK reported them. Usage and cost are `null` when the SDK result
- * omitted them — values are never invented.
+ * The SDK path observes the run to completion, so `status` reaches
+ * `"completed"`/`"errored"` and the handle carries the final assistant
+ * text, the tools the SDK exercised, and usage/cost when the SDK
+ * reported them. Usage and cost are `null` when the SDK result omitted
+ * them — values are never invented.
  */
 export interface SdkAgentHandle extends RemoteAgentTaskHandle {
   source: "sdk";

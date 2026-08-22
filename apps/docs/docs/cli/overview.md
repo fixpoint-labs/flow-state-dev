@@ -11,7 +11,7 @@ The `@flow-state-dev/fsdev` package provides the `fsdev` command. Run flows and 
 
 The CLI executes flows and blocks in-process. No HTTP server, no SSE, no network. It uses the same runtime and stores as the server package, but invoked directly from your shell. Output streams as NDJSON to stdout. That in-process model covers `fsdev run` and `fsdev block`; `fsdev dev` and `fsdev serve` start HTTP servers. See the [CLI API Reference](/docs/api/cli) and the [Deployment overview](/guides/deployment).
 
-This page is about running *your own* flows locally with `fsdev`. To dispatch a coding task to a Claude Code *cloud* session from inside a flow, see [Claude Code remote dispatch](/docs/tools/claude-code-cli).
+This page is about running *your own* flows locally with `fsdev`. To run a Claude Code agent in-process from inside a flow, see [Claude Code SDK agent](/docs/tools/claude-code-sdk).
 
 ## When to use it
 

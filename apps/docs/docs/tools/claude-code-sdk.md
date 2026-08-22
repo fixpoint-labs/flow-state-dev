@@ -10,9 +10,7 @@ it work through your flow's item stream. The agent's messages, reasoning, tool
 calls, and sub-agents become flow-state-dev items as they happen, and its session
 carries across requests.
 
-This is the companion to [Claude Code remote dispatch](./claude-code-cli.md). That
-page hands a task to a cloud session and returns a handle. This page runs the
-agent locally, in your process, and streams everything it does.
+This page runs the agent locally, in your process, and streams everything it does.
 
 ## When to use it
 
@@ -289,5 +287,4 @@ can call, or map sub-agents to nested flow-state-dev generators. Tool approval
 degrades to the SDK's own mechanism until native human-in-the-loop lands. Prompts
 are strings, not streamed input.
 
-See also: [Tools overview](./overview.md) and [Claude Code remote
-dispatch](./claude-code-cli.md) for the fire-and-forget cloud alternative.
+See also: [Tools overview](./overview.md).

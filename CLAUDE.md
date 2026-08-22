@@ -138,7 +138,7 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 | `@flow-state-dev/chat-sdk`          | Chat SDK inbound transport                                              |
 | `@flow-state-dev/scheduled`         | Scheduled-actions transport                                             |
 | `@flow-state-dev/voice-openai`      | OpenAI voice transport                                                  |
-| `@flow-state-dev/claude-code`       | Claude Code integration — dispatch cloud coding tasks via the local `claude` CLI |
+| `@flow-state-dev/claude-code`       | Claude Code integration — in-process Agent SDK agent |
 | `@flow-state-dev/tools`             | Reusable tool blocks                                                    |
 | `@flow-state-dev/orchestration`     | Task substrate, dispatchers, the task-board primitive, and the skills runtime |
 | `@flow-state-dev/workforce`         | Agent registry, personas, and materialization (Layer 2 on orchestration) |

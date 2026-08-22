@@ -1,7 +1,7 @@
 {
   "name": "@flow-state-dev/claude-code",
   "version": "0.0.0",
-  "description": "Claude Code integration for flow-state-dev: dispatch cloud coding tasks via the local claude CLI.",
+  "description": "Claude Code integration for flow-state-dev: run an in-process Claude Code agent through the Agent SDK.",
   "keywords": [
     "ai",
     "agents",
@@ -30,10 +30,6 @@
       "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
     },
-    "./cli": {
-      "types": "./dist/cli/index.d.ts",
-      "default": "./src/cli/index.ts"
-    },
     "./sdk": {
       "types": "./dist/sdk/index.d.ts",
       "default": "./src/sdk/index.ts"
@@ -52,10 +48,6 @@
       ".": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
-      },
-      "./cli": {
-        "types": "./dist/cli/index.d.ts",
-        "default": "./dist/cli/index.js"
       },
       "./sdk": {
         "types": "./dist/sdk/index.d.ts",
