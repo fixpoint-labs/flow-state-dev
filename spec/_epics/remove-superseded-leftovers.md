@@ -150,11 +150,22 @@ and a POC cannot tell you anything about that.
 in #1369 and are worth landing, but approving §1 does not authorise them and the epic does not
 wait on them.
 
-**Every child takes the `direct` route**: none of these needs a spec. The decisions were made
-in #1369 and re-verified against the tree, so each PR is its own review surface. That is why
-there is no Spec-PR column to maintain — a column of dashes would imply a spec-review audit
-trail that does not exist. If a child ever does need a spec, it gets a `spec` route and this
-table grows the column then.
+**This epic is coordinated by hand, not by `epic-lifecycle`, and that is the whole reason the
+route column reads `direct`.** Review raised a sharp mechanical objection to an earlier draft:
+the coordinator re-derives each child's route from its Linear category on every refresh, and
+`Improvement` — which is what all of these carry — derives the **spec** route, not `direct`. So
+an asserted `direct` would simply be overwritten, and every child would acquire a spec-approval
+gate. That objection is correct against the automated path.
+
+It does not apply here, because no coordinator is running this epic. The work was already done
+and evidenced in #1369; each child is a PR that exists, not an approach awaiting a decision. A
+spec gate in front of a finished, reviewable diff buys nothing. `direct` in the table below is a
+**description of how these are actually being run**, not an instruction to a coordinator.
+
+**If anyone later runs `epic-lifecycle` against FIX-1208, this is the thing to know first:** it
+will re-derive `spec` for every child and stall the set behind gates for documents nobody needs.
+Either relabel the children to a category that derives `direct`, or don't run the coordinator on
+this epic. It was never built for a set whose implementation predates its epic.
 
 ### Members — completion is these
 
@@ -169,7 +180,12 @@ table grows the column then.
 | [FIX-1216](https://linear.app/fixpoint-labs/issue/FIX-1216) | Unused internal surface and truly-dead symbols removed | direct | patch | — | Pending |
 | [FIX-1217](https://linear.app/fixpoint-labs/issue/FIX-1217) | Remaining duplicate internal helpers collapsed | direct | patch | — | Pending |
 
-### Satellites — do not count toward completion
+### Satellites — related to the epic, deliberately NOT children of it
+
+Review caught that "satellite" was decorative while these were Linear sub-issues: the epic
+objective gate ramps **every** sub-issue and has no member/satellite concept, so approving §1
+would have authorised them regardless of what this table said. They are now linked to FIX-1208
+with `relates-to` rather than parented, which is what makes the separation real.
 
 | Issue | What it delivers | Route | Kind | PR | State |
 |---|---|---|---|---|---|
@@ -266,3 +282,10 @@ all of the above as one 266-file change.
   a spec-review trail that does not exist. Folded the bounded wave-2 findings (FIX-1216, FIX-1217)
   into the index as members, which is consistent with keeping the *open* hunt out: a finding that
   has been named and sized is work, only the search for more is unbounded.
+- **After the fourth epic-PR review round** — detached FIX-1155 and FIX-1214 from FIX-1208 into
+  `relates-to` links. Review established that the objective gate ramps every sub-issue and has no
+  member/satellite concept, so the designation was decorative while they were children: approving
+  §1 would have authorised them whatever this document said. Also stated plainly that this epic is
+  coordinated by hand — a coordinator would re-derive the `spec` route from the `Improvement`
+  category and stall a set whose implementation already exists behind gates for documents nobody
+  needs.
