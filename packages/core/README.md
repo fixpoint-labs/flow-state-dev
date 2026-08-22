@@ -230,7 +230,7 @@ Forwarding is direct-only: inner capabilities used by `myCap` do not propagate t
 
 **Context & client data:**
 - `contextFn(schemas, fn)` — Typed context function for generators (scope-aware, portable)
-- `client` on scope configs — Per-scope client view: `expose: string[]` (verbatim passthrough by field name) and `derived: { name: fn }` (compute functions receive `{ state, resources }`). State without a `client` block is private. `clientData` is the previous name for `client.derived` and is deprecated.
+- `client` on scope configs — Per-scope client view: `expose: string[]` (verbatim passthrough by field name) and `derived: { name: fn }` (compute functions receive `{ state, resources }`). State without a `client` block is private. The former `clientData` key on scope configs has been removed — `defineFlow` throws if it is still set.
 
 **Prompt formatters** (`@flow-state-dev/core/prompt`):
 - `section`, `list`, `keyValues`, `table`, `entries`, `codeBlock`, `join`, `when` — Composable text formatters for building clean LLM context. `section` takes a string title (default `##`) or `{ title, level }` to nest under another section; `table` renders an array of records as a Markdown table. The same `keyValues` / `list` / `table` shapes are auto-registered as `fsd_*` filters inside `.md` prompt templates.

@@ -343,7 +343,7 @@ defineFlow({
 
 `derived` compute functions receive `{ state, resources }` from their scope. Values must be JSON-serializable. State without a `client` block is private to the server.
 
-`clientData` is the previous name for `client.derived` and is deprecated. Setting both `client` and `clientData` on the same scope throws at definition time; setting only `clientData` emits a one-time deprecation warning.
+`clientData` was the previous name for `client.derived`. It has been removed: `defineFlow` throws if a scope config still sets it. Move compute functions under `client.derived`, and plain passthroughs into `client.expose`. (The wire shape is unchanged — clients still read `snapshot.clientData.<scope>.<name>`.)
 
 ## Voice Types
 

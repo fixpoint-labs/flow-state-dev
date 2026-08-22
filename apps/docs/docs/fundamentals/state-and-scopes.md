@@ -222,7 +222,7 @@ This mirrors how resources work: a resource without a `client` config is invisib
 
 ### Migrating from `clientData`
 
-The previous shape was a flat `clientData: { name: fn }` map. It still works, with a one-time deprecation warning per scope per process; removal lands in a future minor.
+The previous shape was a flat `clientData: { name: fn }` map. It has been removed — `defineFlow` throws if a scope still sets it.
 
 ```ts
 // Before
@@ -244,7 +244,7 @@ Compute functions move under `client.derived`. Pure passthroughs become `expose`
 
 Two errors `defineFlow` will reject up front:
 
-- Setting both `client` and `clientData` on the same scope. Pick one.
+- Setting `clientData` on a scope at all. Move its entries under `client.derived`.
 - A name appearing in both `expose` and `derived`. They share a namespace.
 
 The on-the-wire shape is unchanged: clients still read `snapshot.clientData.<scope>.<name>`. Only the input syntax changed.
