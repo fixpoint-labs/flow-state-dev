@@ -777,14 +777,12 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
         // "did the selector pick vercel or fall back to just-bash?").
         name: `bash-${provider.type}-ensure-sandbox`,
         inputSchema: z.any(),
-        outputSchema: z.any(),
         activeStatusMessage:
           provider.type === "moat"
             ? "Preparing bash sandbox (moat — first run can take 30–60s while the image builds)…"
             : `Preparing bash sandbox (${provider.type})…`,
-        execute: async (input: unknown, ctx) => {
+        execute: async (_input: unknown, ctx) => {
           await getOrCreate(ctx);
-          return input;
         },
       })
     : null;
@@ -797,8 +795,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
     ? handler({
         name: "bash-purge-stale-containers",
         inputSchema: z.any(),
-        outputSchema: z.any(),
-        execute: async (input: unknown, ctx) => {
+        execute: async (_input: unknown, ctx) => {
           const runName =
             provider.runName ?? `fsdev-${getIdentity(ctx).sessionId}`;
           const { destroyed } = await purgeOldRuns({
@@ -812,7 +809,6 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
               `[moat] purged ${destroyed.length} stale container(s): ${destroyed.join(", ")}`,
             );
           }
-          return input;
         },
       })
     : null;

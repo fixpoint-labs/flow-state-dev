@@ -4,7 +4,6 @@ import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   responseAuditor,
-  captureContext,
   aggregateResults,
   AnalyzerResultSchema,
   auditorInputSchema,
@@ -320,6 +319,27 @@ describe("response auditor pattern", () => {
       (item) => item.type === "block_trace",
     );
     expect(blockOutputs.length).toBeGreaterThan(0);
+  });
+
+  it("does not echo capture-context input as block_trace output (BP-014)", async () => {
+    const input = { userInput: "Hello world", response: "Hi there!" };
+    const auditor = responseAuditor({
+      analyzers: [echoAnalyzer],
+    });
+
+    const result = await testBlock(auditor, { input });
+    expect(result.error).toBeNull();
+
+    const captureTraces = result.items.filter(
+      (item) =>
+        item.type === "block_trace" &&
+        (item as { blockName?: string }).blockName === "capture-context",
+    );
+    expect(captureTraces.length).toBeGreaterThan(0);
+    for (const item of captureTraces) {
+      const output = (item as { output?: { value?: unknown } }).output;
+      expect(output?.value ?? output).not.toEqual(input);
+    }
   });
 
   it("emits an audit-annotation component item when results surface", async () => {

@@ -22,7 +22,7 @@
  *
  * Each worker (the actor body wrapped):
  *
- *   .tap(stashDepth)               // remember `task.metadata.depth`
+ *   .tap(stashTaskId)              // remember the worker task id
  *   .map(unwrapToEntry)            // pass entry to user actor body
  *   .step(actor.block)             // user code
  *   .tap(reEmitIfEnabled)          // append entries from output, spawn next-depth tasks
@@ -423,11 +423,9 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
     const stashTaskId = handler({
       name: `${name}-${a.name}-stash`,
       inputSchema: taskWorkerInputSchema,
-      outputSchema: taskWorkerInputSchema,
       sequencerStateSchema: actorWrapperStateSchema,
       execute: async (input, ctx) => {
         await ctx.sequencer!.patchState({ _taskId: input.taskId });
-        return input;
       },
     });
 
@@ -436,7 +434,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
       inputSchema: taskWorkerInputSchema,
       stateSchema: actorWrapperStateSchema,
     })
-      .step(stashTaskId)
+      .tap(stashTaskId)
       .map((input: TaskWorkerInput) => input.input)
       .step(a.block)
       .tap(reEmitTap);

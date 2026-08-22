@@ -164,6 +164,20 @@ describe("eventActors", () => {
 
     expect(result.error).toBeNull();
     expect(seen).toEqual([{ type: "request", topic: "query", body: "hi" }]);
+
+    const stashTraces = result.items.filter(
+      (item) =>
+        item.type === "block_trace" &&
+        (item as { blockName?: string }).blockName?.endsWith("-stash"),
+    );
+    expect(stashTraces.length).toBeGreaterThan(0);
+    for (const item of stashTraces) {
+      const output = (item as { output?: { value?: unknown } }).output;
+      expect(output?.value ?? output).not.toMatchObject({
+        taskId: expect.any(String),
+        input: { type: "request", topic: "query", body: "hi" },
+      });
+    }
   });
 
   it("only dispatches actors whose watch matches", async () => {
