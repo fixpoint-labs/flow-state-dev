@@ -37,18 +37,28 @@ designed against that case, not against the happy one.
 >   setting we build.** Parking's *record* is durable: the `SuspensionRecord` survives a restart.
 >   The task's *ownership* is not. Suspending **stops lease renewal by design**
 >   (`task-board/index.ts:958-965` states the consequence outright), so on the 120 s default
->   (`DEFAULT_LEASE_DURATION_MS`, `tasks/collection/internal.ts:640`) the row lapses, another
->   worker recovers it, and the resumed worker's own write-back is refused by the fence. Two
->   minutes is shorter than any real human answer, so as previously written this epic promised
->   something it could not do. **LAB-139 therefore builds a board-level lease setting** (§5,
->   decided): `leaseDurationMs` is already accepted per claim, but `taskBoard` exposes no claim
->   options at all. **The cost of that fix, stated where the limit it replaces stood:** a
->   genuinely *dead* worker's task sits unreclaimed for the configured window instead of for two
->   minutes — a per-board trade, taken deliberately by a board that hosts human pauses, and
->   inherited by nothing else. What still goes untested is a *long*-open question end to end: a
->   green Proof is not evidence that an overnight question survives. *(It costs no board worker
->   slot — an earlier claim, checked in source and withdrawn; §5. The cost is the task row and its
->   lease, and nothing else.)*
+>   (`DEFAULT_LEASE_DURATION_MS`, `tasks/collection/internal.ts:640`) the row lapses and becomes
+>   claimable — any drain still working the board then recovers it, and the resumed worker's own
+>   write-back is refused by the fence. Two minutes is shorter than any real human answer, so as
+>   previously written this epic promised something it could not do. **LAB-139 therefore builds a
+>   board-level lease setting** (§5, decided): `leaseDurationMs` is already accepted per claim, but
+>   `taskBoard` exposes no claim options at all.
+> - **A parked run is recovered by nothing in this epic.** The honest cost of the fix above, and
+>   larger than "a longer wait": **lease expiry makes a row *claimable*; it does not *invoke* a
+>   claim.** `boardQuiescence` returns `"drained"` the moment nothing is in flight, and its own
+>   comment says a row handed to a Workstream counts as drained
+>   (`task-board/quiescence.ts:95-110`), so in this set's one-task flow the launching drain has
+>   already declared itself drained and exited before the lease ever lapses. So a parked run whose
+>   harness dies — or one resumed after its attempt is stale — leaves its row `in_progress`
+>   indefinitely, until a human intervenes or some later drain claims it. **The configured lease
+>   bounds when the row becomes claimable, not when it is reclaimed.** Closing this needs a later
+>   drain trigger, the settle-time watch, or the cold re-entry path — all three deliberately out of
+>   scope here, and none of them attributed to an issue in this set. **It does not touch the
+>   Proof:** that run is one issue with an operator present, so a death is visible and recoverable
+>   by hand. But the design is **not unattended-safe**, and a reader should not have to infer that.
+>   What still goes untested is a *long*-open question end to end: a green Proof is not evidence
+>   that an overnight question survives. *(Parking also costs no board worker slot — an earlier
+>   claim, checked in source and withdrawn; §5. The cost is the task row and its lease.)*
 >
 > **Lead measure** — the set's goal-proven issues, named: FIX-150 · LAB-138 · LAB-139.
 >
@@ -180,7 +190,10 @@ down an altitude; push it into the issue spec that will write it.*
      propagates past the `.tap()`, `recordSuccess` never runs, the row stays `in_progress`, and
      the `SuspensionRecord` is durable.
    - **Hold** the claim with a long lease configured on the board — framework work inside LAB-139
-     (§1, §5). Suspending stops lease renewal, so a default-lease run loses its row two minutes in.
+     (§1, §5). Suspending stops lease renewal, so at the default a parked row is claimable by any
+     running drain two minutes in. The lease governs *claimability only*: nothing in this set
+     invokes a claim after it lapses, so a parked run whose harness dies is recovered by nothing
+     here (§1's limits).
    - **Wake** with a purpose-built **server-side** action reading `{requestId, suspensionId}` off
      the `runs/*` row. Never the public resume route — theme 6 says why, and it stands. **The
      constraint on that action: it must perform the whole resolution transaction the public route
@@ -203,7 +216,7 @@ down an altitude; push it into the issue spec that will write it.*
    | Park via | Result |
    |---|---|
    | `awaitReview` + normal return | row stomped to `completed` in the same request — the question is lost |
-   | `ctx.suspend` **alone** | parks correctly, but lease renewal stops (120 s default), then reclaim → duplicate run |
+   | `ctx.suspend` **alone** | parks correctly, but lease renewal stops (120 s default), so a running drain can reclaim → duplicate run |
    | `awaitReview` **+** `ctx.suspend` | attempt **permanently stranded**, and the outer request still resolves `error: undefined` |
 
    The third is the trap, because it is exactly what the lease's own docblock suggests
@@ -318,10 +331,11 @@ waits on it (theme 4).*
 - **~~How long can a question stay open before the board takes the row back?~~** *Decided: as
   long as the board is configured to allow — and configuring it is new scope inside LAB-139.*
   Suspending stops lease renewal by design (`task-board/index.ts:958-965`), so on the 120 s
-  default (`DEFAULT_LEASE_DURATION_MS`, `tasks/collection/internal.ts:640`) a parked run loses its
-  row about two minutes in: the lease lapses, another worker recovers the task, and the resumed
-  worker's write-back is refused by the fence. Two minutes is shorter than any real human answer,
-  so without this the Proof's round trip is a race it can lose.
+  default (`DEFAULT_LEASE_DURATION_MS`, `tasks/collection/internal.ts:640`) a parked run's row
+  becomes claimable about two minutes in: the lease lapses, any drain still working the board
+  recovers the task, and the resumed worker's write-back is then refused by the fence. Two minutes
+  is shorter than any real human answer, so without this the Proof's round trip is a race it can
+  lose whenever a drain is there to take the row.
   **The claim path already takes the number** — `leaseDurationMs` is accepted per claim and
   validated between `MIN_LEASE_DURATION_MS = 1_000` and `MAX_LEASE_DURATION_MS` (~74.5 days)
   (`tasks/collection/internal.ts:649,660`) — but **`taskBoard` exposes no claim options at all**
@@ -335,10 +349,14 @@ waits on it (theme 4).*
   read as a new edge:** LAB-138 stands the board up and LAB-139 amends its configuration — that is
   the existing land-order (theme 4), not an additional dependency, and LAB-138 does not wait on
   the option to be correct at its own default.
-  **The cost, named beside the limit it replaces (§1):** a genuinely *dead* worker's task sits
-  unreclaimed for the configured window instead of for two minutes. That is the trade a board
-  hosting human pauses should make, and it is **per-board**, so nothing else inherits it.
-  *(The product owner's call.)*
+  **The cost, named beside the limit it replaces (§1):** a genuinely *dead* worker's task is not
+  claimable for the configured window instead of for two minutes — and **claimable is as far as
+  the lease reaches.** Nothing in this epic invokes a claim once the window passes (the launching
+  drain has already exited — §1's limits, and the hot-path entry below), so the row stays
+  `in_progress` until a human or some later drain picks it up. The window is the trade a board
+  hosting human pauses should make, and it is **per-board**, so nothing else inherits it; the
+  non-recovery beyond it is a limitation of the set, not of this option. *(The product owner's
+  call.)*
 
 - **Where conductor's own code lives.** Both LAB-138 and LAB-139 write into the same place and
   neither can settle it alone, so it is the epic's to answer. Raised at epic drafting. **Blocks
@@ -365,17 +383,27 @@ waits on it (theme 4).*
   deregisters the abort controller and the registry entry, clears its intervals and returns. And
   the launching board never counted the row anyway — `countWaitable` skips every row where
   `isHandedOff` is true (`packages/orchestration/src/task-board/shared.ts:184-198`, predicate at
-  `111-119`). So the only cost is the one the lease entry above already prices: a genuinely dead
-  worker's row waits out the configured window.
-  **The two decisions interlock, and that is worth keeping:** `isHandedOff` requires
-  `!leaseLapsed`, so the row **re-enters** the board's wait count at exactly the moment the lease
-  expires. A longer lease keeps the row out of the board's way for precisely as long as the human
-  has to answer — which is what the owner's board-lease decision buys.
+  `111-119`). So the only cost is the one the lease entry above already prices: the task row and
+  its lease.
+  **The interlock this document previously claimed here is inert, and correcting it is what §1's
+  new limit states.** `isHandedOff` does require `!leaseLapsed`, so the predicate flips at lease
+  expiry — but `countWaitable` decides anything only **while a drain is running**, and
+  `boardQuiescence` returns `"drained"` as soon as `inFlightCount === 0`, counting a row handed to
+  a Workstream as drained (`task-board/quiescence.ts:95-110`). In this set's one-task flow the
+  launching drain has therefore exited long before the lease lapses. The row does not re-enter the
+  board's wait count when the human's window closes; there is no wait count left to re-enter.
+  Expiry makes the row claimable and invokes nothing — so **a parked run whose harness dies is
+  recovered by nothing in this epic**, and §1's limits carry that statement in full along with what
+  would close it (a later drain trigger, the settle-time watch, or the cold re-entry path, all
+  deliberately out of scope).
   **FIX-1197's relay is therefore justified differently than this document said before.** There is
   no held slot for it to free. What it would buy is a durable ask channel that does not depend on
-  suspension at all — and therefore no long lease on a task row and no reclaim-latency trade. That
-  is the whole claim; it should not be stated as more. It is adopted when it lands and is **not
-  required for this round trip**; no issue here builds a cold path.
+  suspension at all — and therefore no long lease on a task row. That is the whole claim; it should
+  not be stated as more. **In particular it is not credited with the recovery limit above**:
+  whether a relay also gets a dead parked run's row settled is not something this document has
+  checked, and an unchecked benefit is how the two claims corrected in this fold got in. It is
+  adopted when it lands and is **not required for this round trip**; no issue here builds a cold
+  path.
 
 - **~~Does a steer resume the coding agent, or restart it?~~** *Decided: it restarts it.* Nothing
   can hand a prior SDK session id into a detached run today (FIX-1179), so an answer re-states
@@ -500,3 +528,26 @@ waits on it (theme 4).*
   that names a mechanism (`subprocess`) smuggles in an implementation, and a cost asserted without
   the source open outlived three rounds of review. **§1's five lines are still unchanged; this fold
   makes the epic cheaper than advertised, not different.**
+- **Correction fold — the interlock the last fold was pleased with is inert, and it is the third
+  instance of one class.** Not a review round. The entry above closed by claiming the lease and the
+  wait count interlock: `isHandedOff` goes false exactly at lease expiry, so the row re-enters the
+  board's wait count precisely when the human's window closes. True of the predicate, **inert in
+  practice.** `boardQuiescence` returns `"drained"` the moment `inFlightCount === 0` and counts a
+  row handed to a Workstream as drained (`task-board/quiescence.ts:95-110`), so in this set's
+  one-task flow the launching drain has already exited before the lease lapses; `countWaitable`
+  only decides anything while a drain is running. **The consequence is a real limitation, now
+  stated in §1 rather than budgeted away:** lease expiry makes a row *claimable* and invokes no
+  claim, so a parked run whose harness dies leaves its row `in_progress` indefinitely — until a
+  human intervenes or some later drain claims it. What would close it (a later drain trigger, the
+  settle-time watch, or the cold re-entry path) is named and all of it is out of scope; **no
+  recovery machinery is scoped in, and none of it is attributed to FIX-1197**, whose relay is not
+  credited with a benefit nobody has checked. The Proof is untouched — one issue, operator present,
+  a death is visible — but the design is **not unattended-safe**, and that is now said rather than
+  left to be inferred. §5's lease cost, theme 5's *Hold* move and its park table were reconciled to
+  the same reading (claimable ≠ reclaimed). **No new theme; §2 stays at seven, and the index is
+  unchanged.** **The class, and this is its third instance:** a claim about the board reasoned from
+  a *predicate* instead of from the *flow that invokes it* — after the held-slot cost
+  (`countWaitable` skips the row) and the re-entry claim (`isHandedOff` flips), both true of the
+  predicate and neither reaching the running system. The fix that generalises: for a board claim,
+  name the caller that runs the predicate before stating what the predicate buys.
+  **§1's five lines — Outcome, Proof, Lead measure, Not doing, Kill line — are unchanged.**
