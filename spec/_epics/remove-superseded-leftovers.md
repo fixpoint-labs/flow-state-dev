@@ -138,7 +138,7 @@ above was not doing its job.
    Twenty-nine files are touched by more than one slice — all barrel and index files. Calling
    the resulting rebases "trivial" was optimistic: each merge re-conflicts the slices that
    haven't landed, so the cost compounds with the number outstanding rather than being paid
-   once. Independence is still the right trade against a six-deep stack that serializes every
+   once. Independence is still the right trade against a ten-deep stack that serializes every
    review, but there is a **soft merge order that costs nothing and avoids most of the
    thrash**: the barrel-heavy breaking slices (FIX-1209, FIX-1210) first, FIX-1211 next, and
    **FIX-1213 (docs) last**, so the docs land against the code they describe rather than
