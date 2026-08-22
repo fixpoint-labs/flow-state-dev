@@ -6,7 +6,7 @@ sidebar_position: 4
 
 Resources live on the server. By default, clients can't see them. The `client` config on a resource definition controls what's visible and what operations are allowed.
 
-This is separate from scope-level `clientData`. Scope clientData computes derived values from state and passes them to the frontend as a flat projection. Resource client access gives the frontend direct, lazy-loaded access to resource content and metadata through dedicated endpoints and React hooks.
+This is separate from a scope's `client` block. That declares what scope state crosses to the frontend (`expose` for verbatim fields, `derived` for computed values), arriving as a flat projection under `clientData.<scope>`. Resource client access gives the frontend direct, lazy-loaded access to resource content and metadata through dedicated endpoints and React hooks.
 
 ## Declaring visibility
 

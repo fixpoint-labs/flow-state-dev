@@ -405,7 +405,7 @@ The default is `0` (no prefetched window).
 
 ### Server-side projections
 
-Scope-level `clientData` functions that call `collection.list()` load the full persisted map. The snapshot is what the client sees; the projection function is not limited to it.
+Scope-level `client.derived` functions that call `collection.list()` load the full persisted map. The snapshot is what the client sees; the projection function is not limited to it.
 
 ## See also
 

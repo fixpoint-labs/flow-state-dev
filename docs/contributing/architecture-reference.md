@@ -150,8 +150,10 @@ Purposes and default models live in the catalog — don't restate them here.
 ## Resources and Client Data
 
 - Concrete resources are persisted, attached to scopes
-- `clientData` entries are derived views — every entry is client-visible (no `client: true/false` toggle)
-- Each `clientData` compute function receives only its own scope's state and resources (single-scope context)
+- Scope state is server-private by default; each scope's `client` block declares what crosses — `expose` (verbatim state fields) and `derived` (computed projections). Both land at `snapshot.clientData.<scope>.<name>`
+- `expose` and `derived` share one namespace per scope; colliding names throw at `defineFlow`
+- Each `derived` compute function receives only its own scope's state and resources (single-scope context)
+- Scope-config `clientData` is the legacy shape: it warns once per scope per process and normalizes to `client.derived`; setting both on one scope throws
 - Generator context uses `contextFn()` for typed scope access, not raw state dumps
 - `defineResource()` for portable resource declarations
 - Blocks and flows declare resources via a flat `resources` map (using `defineResource()` values); each resource's `scope` (`"session"` | `"user"` | `"org"`) routes storage. Access at runtime is `ctx.resources.<key>`

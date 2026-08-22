@@ -46,8 +46,9 @@ Find the flow definition and its blocks:
 2. Read the flow's `defineFlow()` call to understand:
    - Which actions are defined
    - The root block for the target action (sequencer, generator, handler, or router)
-   - What state schemas are declared (session, request, user, project)
-   - What resources and clientData are configured
+   - What state schemas are declared (session, request, user, org)
+   - What flow-level `resources` are declared, and what each scope's `client` block
+     exposes (`expose` / `derived`)
 3. Read each block referenced by the action's root block
 4. For sequencers, trace the full `.step()` chain to understand the execution order
 
@@ -230,7 +231,7 @@ Summarize for the user:
 | **request** | Single action execution | Attempt counters, temporary flags |
 | **session** | Across requests in a session | Conversation history, mode settings |
 | **user** | Across all sessions for a user | Preferences, profile data |
-| **project** | Across sessions and users | Shared config, knowledge base |
+| **org** | Across sessions and users | Shared config, knowledge base |
 
 **State ops** (all atomic, CAS-guarded):
 `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`

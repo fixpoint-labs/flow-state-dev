@@ -25,7 +25,7 @@ Implements the Recursive Language Model architecture ([Gao et al. 2025](https://
 **Zero framework changes required.**
 
 ```typescript
-import { rlmPipeline, rlmQueryInputSchema, contextResourceStateSchema } from "@flow-state-dev/patterns";
+import { rlmPipeline, rlmQueryInputSchema } from "@flow-state-dev/patterns";
 
 // Wire into your flow as an action
 const myFlow = defineFlow({
@@ -34,12 +34,11 @@ const myFlow = defineFlow({
       inputSchema: rlmQueryInputSchema,
       block: rlmPipeline
     }
-  },
-  session: {
-    resources: {
-      context: { stateSchema: contextResourceStateSchema, writable: true }
-    }
   }
+  // No `resources` entry needed: the pipeline's blocks declare
+  // `resources: { context: contextResource }`, and `defineFlow` collects
+  // them into the flow's flat `resources` map. Declare `context` yourself
+  // only to override the definition — flow-level wins over block-level.
 });
 ```
 

@@ -135,6 +135,31 @@ without a principal.
 It is not restricted by `FlowKind`. Webhooks and scheduled jobs that
 legitimately have no end user are the usual callers.
 
+**Opting out of user identity does not opt out of needing a `userId`.**
+The runtime still stamps one onto `RequestRecord.userId`,
+`ActiveRequestEntry.userId`, and the rest of its request bookkeeping, so
+a `requireUser: false` flow must still name a technical principal: either
+return a `userId` from `resolvePrincipal`, or set
+`authentication.defaultUserId`. Configuring neither is a configuration
+mistake, and `host.resolvePrincipal` rejects every request to that flow
+with a **500** naming it — not a 401, because the caller did nothing
+wrong.
+
+```ts
+defineFlow({
+  kind: "stripe-webhook",
+  authentication: {
+    requireUser: false,
+    defaultUserId: "system",       // required — nothing else supplies one
+    resolvePrincipal: ({ rawBody, request }) => {
+      verifySignature(rawBody, request);
+      return null;                 // defaultUserId ("system") fills in
+    },
+  },
+  actions: { /* ... */ },
+});
+```
+
 ---
 
 ## Top-level `requireUser` shorthand
@@ -151,6 +176,13 @@ When both are set, `authentication.requireUser` wins.
   resolver. On `create_session`, `body.userId` is used only when no
   principal exists (default-resolver apps). A resolver that reads
   `body.userId` is a BP-031 violation.
+- **No `userId` resolved.** With `requireUser: true` (the default) the
+  host rejects with **401**. With `requireUser: false` and no
+  `defaultUserId`, it rejects with **500** — the flow is misconfigured,
+  not the caller.
+- **`resolvePrincipal` returns `{ orgId }` with no `userId`.** Treated as
+  no `userId`; falls through to `defaultUserId` and then to the rule
+  above.
 - **Session-user mismatch.** If a request names an existing session
   whose stored `userId` does not match the resolved principal, the
   engine rejects the request (`UserBindingMismatchError`). The check

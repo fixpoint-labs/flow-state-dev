@@ -87,11 +87,13 @@ failures return 400 `invalid_schedule`.
 2. Resolve the flow. Unknown → 404.
 3. Parse the body (both fields optional). Preserve `rawBody` for
    signature-checking resolvers.
-4. Idempotency dedupe. Key is
+4. Gateway auth via `host.resolvePrincipal({ source: "scheduled" })`.
+   For dynamic schedules this runs *before* the resolver. A
+   `PrincipalResolutionError` returns its own status with
+   `{ error: "unauthorized" }`.
+5. Idempotency dedupe. Key is
    `body.idempotencyKey ?? "${scheduleId}:${nominalFireTime ?? ""}"`.
    A hit in the window (default 60s) returns 200 `{ status: "duplicate" }`.
-5. Gateway auth via `host.resolvePrincipal({ source: "scheduled" })`.
-   For dynamic schedules this runs *before* the resolver.
 6. Resolve the schedule: `static[id]`, else `resolve(...)`.
    `null` → 404 `schedule_not_found`. Throw → 500 `resolver_failed`.
 7. `validateScheduleConfig({ origin: "dynamic", … })`.
@@ -107,6 +109,13 @@ failures return 400 `invalid_schedule`.
 11. `host.dispatch(envelope)`. Host throw → 503 `flow_unregistered`.
 12. Record the idempotency key. Return 202 with `requestId`,
     `scheduleId`, `origin`.
+
+**Steps 4 and 5 are in that order deliberately.** Authenticating before
+the dedupe check keeps an unauthenticated caller from probing dispatch
+history: if dedupe ran first, a duplicate key would answer 200
+`{ status: "duplicate" }` while an unseen one answered 401, and that
+difference is a response oracle over which schedules have already fired.
+Adapter authors reimplementing this path must preserve the ordering.
 
 The envelope sets `responseEmitter: null`. `signal` is omitted —
 the scheduler closes the connection on 202.

@@ -77,7 +77,7 @@ If multiple ancestors match and precedence cannot resolve, runtime throws `Ambig
 
 ### Sequencer state schema bubbling
 
-Handler, generator, and router blocks can declare `sequencerStateSchema`. This follows the same bubbling contract as request/session/user/project schemas:
+Handler, generator, and router blocks can declare `sequencerStateSchema`. This follows the same bubbling contract as request/session/user/org schemas:
 
 - block-level `sequencerStateSchema` declares what state shape a block requires
 - when composed inside a sequencer, that schema bubbles up to the enclosing sequencer's instance-state contract

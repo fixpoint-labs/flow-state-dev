@@ -148,29 +148,44 @@ When an action is invoked, the framework executes this sequence:
 
 ## Resources and Client Data
 
-Resources are **concrete persisted data** attached to a scope. Client data entries are **derived views** computed from state and resources — the mechanism for exposing data to clients.
+Resources are **concrete persisted data**. They are declared once in the flow-level `resources` map — each resource's own `scope` decides where it persists. Scope configs carry state and a `client` block; they do not carry resources.
+
+A scope's state is private to the server by default. The `client` block declares the slice that crosses the boundary: `expose` passes top-level state fields through verbatim, and `derived` computes named projections from `{ state, resources }`. Both land under `clientData.<scope>.<name>` on the client.
 
 ```ts
-session: {
-  stateSchema: sessionStateSchema,
+defineFlow({
+  kind: "my-flow",
+  actions: { /* ... */ },
+
   resources: {
-    plan: {
+    plan: defineResource({
+      scope: "session",
       stateSchema: z.object({ steps: z.array(z.string()).default([]) }),
       writable: true,
+    }),
+  },
+
+  session: {
+    stateSchema: sessionStateSchema,
+    client: {
+      expose: ["messageCount"],
+      derived: {
+        activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
+      },
     },
   },
-  clientData: {
-    activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
-    messageCount: (ctx) => ctx.state.messageCount ?? 0,
-  },
-},
+});
 ```
 
 **Key rules:**
-- Client-facing values are exposed through `clientData` entries — every entry is client-visible
+- Resources are flow-level and flat — `session.resources` / `user.resources` / `org.resources` are gone
+- State does not reach the client unless named in `expose` or `derived`
+- `expose` and `derived` share one namespace per scope; colliding names throw at `defineFlow`
+- Each `derived` compute function receives only its own scope's state and resources
 - Generator context should use `contextFn()` for typed scope access
 - Use `defineResource()` for portable resource reuse
-- Each `clientData` compute function receives only its own scope's state and resources
+
+The legacy `clientData` field on a scope config still works: it emits a one-shot deprecation warning and normalizes to `client.derived`. Setting both `client` and `clientData` on the same scope throws.
 
 ### Automatic Resource Collection
 

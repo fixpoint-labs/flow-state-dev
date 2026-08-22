@@ -63,10 +63,11 @@ The table tracks `packages/core/src/utility/index.ts` — eleven factories. Per-
 
 ## Key properties
 
-- Access via `utility.<name>(config)` from `@flow-state-dev/core`. Individual factories and their default output schemas are also named exports.
+- Access via `utility.<name>(config)` from `@flow-state-dev/core`. Every factory is also a named export.
 - Generator-based utilities accept a `model` override; defaults live in [Core Utilities](../../apps/docs/docs/patterns/utility-blocks/core.md#default-models).
 - Handler- and router-based utilities take no `model`.
-- Every utility that produces structured output exports its default schema as a named Zod object (e.g. `summarizerOutputSchema`) and accepts a generic `outputSchema` override.
+- Every generator utility accepts an `outputSchema` override. Most also publish their default schema as a named Zod export: `contextReducerCompressOutputSchema` / `contextReducerDenoiseOutputSchema` / `contextReducerDistillOutputSchema` (one per mode), `memoryExtractorOutputSchema`, `summarizerOutputSchema`, `decomposerOutputSchema`, `analyzerOutputSchema`, plus the handler-side `combinerOutputSchema`.
+- `intentClassifier` is the exception — its default schema is built from the `categories` you pass, so there is no static schema to import. Derive the shape from the factory's return type, or pass your own `outputSchema`.
 - Generator utilities serialize a non-string `user` input as 2-space JSON before it reaches the model.
 
 ## Imports

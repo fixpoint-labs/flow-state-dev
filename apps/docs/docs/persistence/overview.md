@@ -43,7 +43,7 @@ const flowstate = createFlowState({
 });
 ```
 
-The directory structure mirrors the scope hierarchy: each scope (session, user, org) gets its own subdirectory. Org-scoped data lives under `projects/`.
+The directory structure mirrors the scope hierarchy: under the `content/` and `state/` subtrees, each scope gets a subdirectory named for it — `session/`, `user/`, `org/`.
 
 ### Postgres
 

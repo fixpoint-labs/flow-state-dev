@@ -134,7 +134,7 @@ import {
 
 import type {
   ParallelTasksConfig,
-  SubTaskErrorStrategy,  // "skip" | "fail"
+  SubTaskErrorStrategy,  // use "skip" or "fail"
 } from "@flow-state-dev/patterns";
 ```
 
@@ -189,6 +189,8 @@ const reportBlock = parallelTasks({
 By default (`onSubTaskError: "skip"`), failed sub-tasks are excluded from the synthesis step. The block completes with whatever results succeeded. If all sub-tasks fail, the synthesizer receives an empty array.
 
 With `onSubTaskError: "fail"`, any sub-task failure throws and aborts the entire coordination.
+
+`"retry"` is not a supported strategy. It is still accepted for backward compatibility, but it behaves exactly like `"skip"` and logs a one-time warning when the block is constructed. Use `"skip"` or `"fail"`.
 
 Bound retries with `maxTotalRetries`, or set `maxAttempts` on each planned task.
 
