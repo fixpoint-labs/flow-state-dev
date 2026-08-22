@@ -20,7 +20,7 @@ These appear on handlers, generators, routers, and (where noted) sequencers.
 | `description` | `string` | — | Human description. |
 | `inputSchema` / `outputSchema` | Zod schema | — | Typed input and output. |
 | `stateSchema` | Zod schema | — | This block's own request-scoped state (`ctx.self`). |
-| `transient` | `boolean` | — | Omit this block's items from the persisted session log. |
+| `transient` | `boolean` | — | Drops this block's framework bookkeeping (its auto-emitted `block_trace`) from the persisted log; the traces still stream live to the DevTool and in-flight clients. Items the block emits itself with `ctx.emit.message()` / `ctx.emit.component()` are unaffected and still persist — pass a per-call `{ transient: true }` for those. See [Default transience and the block flag](/docs/streaming/emitting-items#default-transience-and-the-block-flag). |
 | `connectInput` | `(input, ctx) => nextInput` | identity | Map the previous step's output into this block's input. |
 | `activeStatusMessage` | `string` or `(input, ctx) => string` | — | Emits `ctx.emit.status()` when the block starts. |
 | `container` | `{ component?, label?, metadata? }` | — | UI container metadata. |
@@ -33,7 +33,9 @@ These appear on handlers, generators, routers, and (where noted) sequencers.
 
 ### `cacheable`
 
-Only applies when the block is a tool on a generator. Errors are never cached. Identical in-flight calls in one request share one execution.
+Only applies when the block is a tool on a generator. Errors are never cached.
+
+Caching also needs a tool-cache store in scope. A task board installs one for its workers; on an ordinary generator you add it yourself with `createToolCacheCapability()` in `uses`. Without a store the field is inert — the tool runs on every call, and identical in-flight calls do **not** share one execution. With a store in scope, they do.
 
 | Field | Type | Default | What it does |
 |-------|------|---------|--------------|

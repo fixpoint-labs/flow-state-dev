@@ -40,7 +40,7 @@ Passed per call, not at client construction.
 |-------|------|---------|--------------|
 | `sessionId` | `string` | new ephemeral session | Existing session to continue. |
 | `requestId` | `string` | minted | Correlate a client-generated id with the server request. |
-| `orgId` | `string` | — | Bind the request to an org. Required when any block set `requireOrg`. |
+| `orgId` | `string` | — | Binds the request to an org **only under the default principal resolver**. A flow with its own `authentication.resolvePrincipal` takes the org from the verified principal and ignores this value, so a caller cannot claim an org it was not granted. Under such a flow the resolver has to return the org, or a `requireOrg` block still rejects the request. |
 | `metadata` | object | — | Request metadata. Stored on the request record and visible in traces. Session `title` and `tags` are set through the session API, not here. |
 
 ## `FlowProvider`

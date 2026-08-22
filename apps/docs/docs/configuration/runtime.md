@@ -48,7 +48,7 @@ Narrative: [Engine setup](/docs/server/setup), [App configuration](/docs/cli/con
 | `errorCapture` | handler | off | Block-aware sink: failing block identity plus flow / request / session / user ids. You write the adapter; the framework ships no vendor SDK. |
 | `onBackgroundWork` | `(promise) => void` | — | Keep-alive for work that outlives the response. On Vercel, pass `(p) => after(() => p)`. |
 | `detectInterruptedOnStartup` | `boolean` | `true` | Scan for interrupted requests at boot. Turn off on serverless if the scan contends with the first request. |
-| `detachedDrainTimeoutMs` | `number` | `30000` | How long `dispose()` waits for **in-process** detached work. `0` skips the wait and still reports what was left. Queue-backed work is never waited on. |
+| `detachedDrainTimeoutMs` | `number` | `30000` | How long `dispose()` waits for **in-process** detached work. `0` skips the wait and still reports what was left. It does not cover the worker shutdown that follows: `dispose()` then closes the worker, and an adapter like BullMQ waits — outside this ceiling — for jobs this process already claimed. Queued work no worker has claimed is not waited on. Size a host's shutdown grace period for both phases, not this value alone. |
 | `debugEndpointsEnabled` | `boolean` | `false` | Privileged debug routes. `fsdev dev` sets `FSDEV_DEBUG_ENDPOINTS=1`. |
 | `defaultSseHeartbeatMs` | `number` | `15000` | Router-level SSE ping when a flow does not set `request.sseHeartbeatMs`. |
 | `staleSweepIntervalMs` | `number` | `30000` | Stale-request sweeper cadence. `0` disables. |

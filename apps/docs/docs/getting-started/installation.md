@@ -24,6 +24,9 @@ pnpm add @flow-state-dev/react
 # Next.js App Router adapter — local `pnpm dev` and any non-Vercel Next host
 pnpm add @flow-state-dev/next
 
+# Vercel adapter — only when you deploy to Vercel
+pnpm add @flow-state-dev/vercel
+
 # Testing — test harnesses for blocks and flows
 pnpm add -D @flow-state-dev/testing
 
