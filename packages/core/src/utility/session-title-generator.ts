@@ -27,8 +27,9 @@ export interface SessionTitleGeneratorConfig {
  * changed. The metadata update emits a `session.metadata.changed` SSE event
  * so connected clients see the title in real-time.
  *
- * Side-chain output is discarded. If you compose this as a `.step()`, the
- * sequencer output is `{ title }`, not the original action input.
+ * The persist handler is a `.tap()`, so the sequencer output is `{ title }`
+ * from the generator step — discarded when composed as a `.sideChain()`, and
+ * passed downstream in place of the action input when composed as a `.step()`.
  *
  * ```ts
  * const titleBlock = sessionTitleGenerator({
