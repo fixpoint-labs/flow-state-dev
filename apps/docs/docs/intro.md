@@ -32,7 +32,8 @@ const pipeline = sequencer({ name: "pipeline" })
 export default defineFlow({
   kind: "my-app",
   actions: { chat: { block: pipeline, userMessage: (i) => i.message } },
-  session: { stateSchema, resources, client },
+  session: { stateSchema, client },
+  resources,
 })({ id: "default" });
 ```
 
