@@ -81,7 +81,7 @@ fsdev run support-triage triageTicket -i '{"ticketId": "T1"}' \
   --seed-session '{"openTicketCount": 3}'
 ```
 
-Options: `--seed-session`, `--seed-user`, `--seed-project`. Accept inline JSON or a file path. Simulates scenarios like "user has already sent 5 messages" or "project has existing config."
+`--seed-session` accepts inline JSON or a file path. Simulates scenarios like "user has already sent 5 messages."
 
 ### Intent overrides in CI and testing
 
