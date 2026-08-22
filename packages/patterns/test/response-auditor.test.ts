@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { testBlock } from "@flow-state-dev/testing";
+import { testBlock, testItems } from "@flow-state-dev/testing";
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
@@ -321,7 +321,12 @@ describe("response auditor pattern", () => {
     expect(blockOutputs.length).toBeGreaterThan(0);
   });
 
-  it("does not echo capture-context input as block_trace output (BP-014)", async () => {
+  it("records capture-context's trace output as an empty inline value (BP-014)", async () => {
+    // `captureContext` only writes sequencer state, so it returns nothing and is
+    // composed with `.tap()`. A handler that returns `undefined` sets no output
+    // hint, so the kernel records `{ kind: "inline", value: undefined }`. Pinning
+    // that exact shape is what makes this test fail if anyone restores the old
+    // `return input` echo — the payload would reappear in the trace as the input.
     const input = { userInput: "Hello world", response: "Hi there!" };
     const auditor = responseAuditor({
       analyzers: [echoAnalyzer],
@@ -330,15 +335,12 @@ describe("response auditor pattern", () => {
     const result = await testBlock(auditor, { input });
     expect(result.error).toBeNull();
 
-    const captureTraces = result.items.filter(
-      (item) =>
-        item.type === "block_trace" &&
-        (item as { blockName?: string }).blockName === "capture-context",
-    );
+    const captureTraces = testItems(result.items).blockOutputs("capture-context");
     expect(captureTraces.length).toBeGreaterThan(0);
-    for (const item of captureTraces) {
-      const output = (item as { output?: { value?: unknown } }).output;
-      expect(output?.value ?? output).not.toEqual(input);
+    for (const trace of captureTraces) {
+      expect(trace.output).toBeDefined();
+      expect(trace.output!.kind).toBe("inline");
+      expect((trace.output as { kind: "inline"; value: unknown }).value).toBeUndefined();
     }
   });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { handler } from "@flow-state-dev/core";
-import { testBlock } from "@flow-state-dev/testing";
+import { testBlock, testItems } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
   createEventActorsWorkspace,
@@ -165,18 +165,18 @@ describe("eventActors", () => {
     expect(result.error).toBeNull();
     expect(seen).toEqual([{ type: "request", topic: "query", body: "hi" }]);
 
-    const stashTraces = result.items.filter(
-      (item) =>
-        item.type === "block_trace" &&
-        (item as { blockName?: string }).blockName?.endsWith("-stash"),
-    );
+    // Same BP-014 contract as the response-auditor capture-context test, and
+    // asserted the same way: `stashTaskId` only writes sequencer state, so it
+    // returns nothing and its trace carries an empty inline output. A partial
+    // echo would leave a defined value here and fail.
+    const stashTraces = testItems(result.items)
+      .blockOutputs()
+      .filter((trace) => trace.blockName.endsWith("-stash"));
     expect(stashTraces.length).toBeGreaterThan(0);
-    for (const item of stashTraces) {
-      const output = (item as { output?: { value?: unknown } }).output;
-      expect(output?.value ?? output).not.toMatchObject({
-        taskId: expect.any(String),
-        input: { type: "request", topic: "query", body: "hi" },
-      });
+    for (const trace of stashTraces) {
+      expect(trace.output).toBeDefined();
+      expect(trace.output!.kind).toBe("inline");
+      expect((trace.output as { kind: "inline"; value: unknown }).value).toBeUndefined();
     }
   });
 
