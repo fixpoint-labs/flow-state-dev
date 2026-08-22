@@ -1932,10 +1932,15 @@ here: check what the ABSENCE of the thing you are withholding actually causes.**
 The fundamentals analyst is a SECOND valuation site and needs the same treatment
 separately — it computes and publishes its own valuation from its own tool
 payloads before the spine exists, so a guard on the spine is structurally
-invisible to it. Both call the same predicate. Its deterministic half is gated
-identically; the other half is **advisory only**: the analyst is handed the three
-raw statements and asked to divide one by another, so on a mismatch its context
-states the periods and instructs it not to combine them. A model can ignore an
+invisible to it. Both call the same predicate, and both read the same
+observations: the analyst's own tool fan-out writes each `*PeriodObservation`
+field onto the same session-scoped `financialsData` resource the spine reads,
+and is awaited (`.parallel`, before the generator step) ahead of the analyst's
+own computation — so its deterministic half is gated IDENTICALLY, catching
+uniform staleness as well as outright disagreement, not only the latter. The
+other half is **advisory only**: the analyst is handed the three raw statements
+and asked to divide one by another, so on a mismatch its context states the
+periods and instructs it not to combine them. A model can ignore an
 instruction, so a memo can still carry a figure the spine withheld. Assert what
 the analyst was told, never what it concluded.
 

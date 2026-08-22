@@ -28,6 +28,7 @@ import {
   analystStatementDisclosure,
   formatPeriodMismatch,
 } from "../../lib/statement-set-period";
+import { financialsDataResource } from "../../financials-data-resource";
 import { loadPrompt } from "../../lib/prompt";
 import { defineAnalyst } from "../_recipe/define-analyst";
 import { thesisOutputSchema } from "./thesis-schema";
@@ -91,11 +92,26 @@ const disclosurePrompt = loadPrompt("agents/analysts/prompts/disclosure.prompt.m
 // Fundamentals
 // ---------------------------------------------------------------------------
 
+/** The three `*PeriodObservation` fields off the session's `financialsData`
+ *  spine, in the shape `analystStatementDisclosure`'s second argument takes.
+ *  Absent whenever the resource hasn't been written (fixture mode never runs
+ *  the live ladder; a peer/benchmark probe never writes the subject's
+ *  resource) — `analystStatementDisclosure` degrades correctly on `undefined`. */
+function financialsObservations(ctx: { resources: any }) {
+  const state = ctx.resources.financialsData?.state;
+  return {
+    incomeStatement: state?.incomeStatementPeriodObservation,
+    balanceSheet: state?.balanceSheetPeriodObservation,
+    cashflow: state?.cashflowPeriodObservation,
+  };
+}
+
 const fundamentalsGenerator = generator({
   name: "fundamentals-analyst-generator",
   itemVisibility: { client: true, history: false },
   agentName: PHASE_1_MEMO_KEYS.fundamentals.agentName,
   uses: [tradingDesk.presets({ investigate: true })],
+  resources: { financialsData: financialsDataResource },
   inputSchema: z.object({
     balanceSheet: toolOutputSchemas.get_balance_sheet,
     incomeStatement: toolOutputSchemas.get_income_statement,
@@ -106,7 +122,11 @@ const fundamentalsGenerator = generator({
   // THE SECOND VALUATION SITE (FIX-1113). This analyst computes and publishes
   // its OWN valuation from its OWN tool payloads, BEFORE the valuation spine
   // exists — so a guard placed on the spine is structurally invisible here.
-  // Both sites call the same predicate.
+  // Both sites call the same predicate, and both now read the same
+  // observations: the analyst's own tool fan-out (`.parallel`, in
+  // `define-analyst.ts`) is awaited before this generator runs, and it writes
+  // to the SAME `financialsData` resource the spine reads — so part (a)
+  // (uniform staleness) fires here too, not only at the spine.
   //
   // Only the `valuation` half is DETERMINISTIC. The `periodMismatch` half is
   // ADVISORY: the analyst is also handed the three raw statements in `data` and
@@ -116,15 +136,16 @@ const fundamentalsGenerator = generator({
   // figure the spine withheld.
   context: {
     data: (input) => asDataBlock(input),
-    valuation: (input: any) =>
+    valuation: (input: any, ctx) =>
       formatValuation(
         computeValuation({
           ...input,
-          periodsCoherent: analystStatementDisclosure(input) == null,
+          periodsCoherent:
+            analystStatementDisclosure(input, financialsObservations(ctx)) == null,
         }),
       ),
-    periodMismatch: (input: any) =>
-      formatPeriodMismatch(analystStatementDisclosure(input)),
+    periodMismatch: (input: any, ctx) =>
+      formatPeriodMismatch(analystStatementDisclosure(input, financialsObservations(ctx))),
   },
   ...definePromptFile(fundamentalsPrompt),
   outputSchema: thesisOutputSchema,

@@ -553,6 +553,134 @@ describe("the analyst layer — the SECOND valuation site", () => {
   });
 });
 
+describe("UNIFORM STALENESS reaches the analyst site too (FIX-1113 P1)", () => {
+  // The bug. Same shape as the spine's own UNIFORM STALENESS arm above: the
+  // three RETURNED periods all agree at OLDER — so "do the periods match"
+  // says yes — but the balance sheet's own resolution SAW the newer ANCHOR
+  // period before settling for OLDER, the shape the ladder produces when an
+  // older COMPLETE payload beats a newer PARTIAL one. The spine's guard
+  // withholds this (part (a)); the analyst site is the SECOND valuation site
+  // and must withhold it too, from the SAME observations, threaded through
+  // `analystStatementDisclosure`'s second argument the way the fundamentals
+  // generator's context slot now does via `ctx.resources.financialsData`.
+  const payloads = {
+    incomeStatement: income(OLDER),
+    balanceSheet: balance(OLDER),
+    cashflow: cashflow(OLDER),
+  };
+  const observations = {
+    incomeStatement: OBS(OLDER),
+    balanceSheet: OBS(OLDER, ANCHOR),
+    cashflow: OBS(OLDER),
+  };
+
+  it("is REJECTED for settled-for-less-than-seen, not silently read as a matched set", () => {
+    const disclosure = analystStatementDisclosure(payloads, observations);
+    expect(disclosure).not.toBeNull();
+    expect(disclosure?.reason).toBe("settled-for-less-than-seen");
+  });
+
+  it("marks the analyst's own valuation as not period-coherent, withholding the spanning multiples it would otherwise publish", () => {
+    const disclosure = analystStatementDisclosure(payloads, observations);
+    const v = computeValuation({
+      fundamentals,
+      ...payloads,
+      periodsCoherent: disclosure == null,
+    });
+    expect(v.evToSales.value).toBeNull();
+    expect(v.roic.value).toBeNull();
+    // Single-statement figures are untouched — this is withholding, not
+    // blanking the analyst's whole valuation.
+    expect(v.priceToBook.value).not.toBeNull();
+  });
+
+  it("carries a non-empty periodMismatch block, naming the period the desk saw and settled past", () => {
+    const block = formatPeriodMismatch(analystStatementDisclosure(payloads, observations));
+    expect(block).not.toBe("");
+    expect(block).toContain(ANCHOR);
+  });
+});
+
+describe("the settled-for-less-than-seen lead — states staleness, not disagreement", () => {
+  it("does not claim the periods differ, and names the newer observed period", () => {
+    const text = formatPeriodMismatch({
+      reason: "settled-for-less-than-seen",
+      income: OLDER,
+      balance: OLDER,
+      cashflow: OLDER,
+      observedNewest: ANCHOR,
+    });
+    // The false statement this guards against: three IDENTICAL periods
+    // printed under a claim that they differ.
+    expect(text).not.toContain("do NOT describe the same fiscal period");
+    expect(text).toContain(ANCHOR);
+  });
+});
+
+describe("control arms — the analyst site does not simply withhold more", () => {
+  // These pin the INVERSE of the bug: a fix that made the analyst withhold
+  // unconditionally would pass the arm above and fail every test here.
+  const matched = {
+    incomeStatement: income(ANCHOR),
+    balanceSheet: balance(ANCHOR),
+    cashflow: cashflow(ANCHOR),
+  };
+  const matchedObservations = {
+    incomeStatement: OBS(ANCHOR),
+    balanceSheet: OBS(ANCHOR),
+    cashflow: OBS(ANCHOR),
+  };
+  const mismatched = {
+    incomeStatement: income(ANCHOR),
+    balanceSheet: balance(OLDER),
+    cashflow: cashflow(ANCHOR),
+  };
+  const mismatchedObservations = {
+    incomeStatement: OBS(ANCHOR),
+    balanceSheet: OBS(OLDER),
+    cashflow: OBS(ANCHOR),
+  };
+
+  it("a genuinely coherent set still publishes with no warning, observations included", () => {
+    const disclosure = analystStatementDisclosure(matched, matchedObservations);
+    expect(disclosure).toBeNull();
+    expect(formatPeriodMismatch(disclosure)).toBe("");
+  });
+
+  it("outright disagreement is still periods-disagree, with its own lead — not the new stale-set one", () => {
+    const disclosure = analystStatementDisclosure(mismatched, mismatchedObservations);
+    expect(disclosure?.reason).toBe("periods-disagree");
+    expect(formatPeriodMismatch(disclosure)).toContain(
+      "do NOT describe the same fiscal period",
+    );
+  });
+
+  it("a missing/undefined observation degrades to exactly today's behaviour", () => {
+    // Fixture mode never runs the live ladder, so the second argument is
+    // simply omitted — the same call shape as before this fix.
+    expect(analystStatementDisclosure(matched)).toBeNull();
+    expect(analystStatementDisclosure(mismatched)?.reason).toBe("periods-disagree");
+  });
+
+  it("a figureless statement is still skipped, observations or not", () => {
+    const empty = {
+      source: "unavailable" as const,
+      ticker: "TEST",
+      asOf: "2026-05-06",
+      periodEnd: null,
+      totalAssets: null,
+      totalLiabilities: null,
+      totalEquity: null,
+      cashAndEquivalents: null,
+      totalDebt: null,
+      unit: "USD billions",
+    };
+    const payloads = { ...matched, balanceSheet: empty };
+    const observations = { ...matchedObservations, balanceSheet: OBS(null) };
+    expect(analystStatementDisclosure(payloads, observations)).toBeNull();
+  });
+});
+
 describe("BP-030 — a stored record written before the period field", () => {
   it("parses with the key ABSENT, not merely with an explicit null", () => {
     // The value fields are nullable but NOT optional, so a stored record that

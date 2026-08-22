@@ -63,6 +63,10 @@ export type PeriodDisclosure = {
   income: string | null;
   balance: string | null;
   cashflow: string | null;
+  /** The newer period a resolution saw before settling for an older one.
+   *  Populated only on `reason: "settled-for-less-than-seen"` — see
+   *  `StatementSetVerdict.observedNewest`. */
+  observedNewest?: string | null;
 };
 
 export interface ValuationSpine {

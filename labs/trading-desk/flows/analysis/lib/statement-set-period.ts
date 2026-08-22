@@ -114,28 +114,55 @@ export function statementSetDisclosure(
     income: verdict.periods.income,
     balance: verdict.periods.balance,
     cashflow: verdict.periods.cashflow,
+    // Only meaningful on `settled-for-less-than-seen` — omitted (rather than
+    // `null`) on the other two reasons so a disclosure literal built without it
+    // (every pre-existing caller) still matches exactly.
+    ...(verdict.reason === "settled-for-less-than-seen"
+      ? { observedNewest: verdict.observedNewest ?? null }
+      : {}),
   };
 }
 
 /**
  * The same verdict from the fundamentals analyst's own tool payloads, which
- * arrive as generator input and never touch the spine resource.
+ * arrive as generator input and never touch the spine resource directly.
  *
- * No observations are available at this site — the analyst holds the payloads,
- * not the ladder's trail — so only part (b) of the predicate can fire here.
- * That is a real asymmetry and it is why the spine check is not redundant: the
- * analyst catches outright disagreement, the spine additionally catches uniform
- * staleness.
+ * OBSERVATIONS ARE REACHABLE HERE, and passing them is what makes part (a) of
+ * the predicate fire at this site too. The statement-recovery runtime writes
+ * each `*PeriodObservation` field onto the SAME session-scoped `financialsData`
+ * resource the spine reads, and the analyst's tool fan-out (`.parallel`, in
+ * `define-analyst.ts`) is awaited before its generator step runs — so by the
+ * time this fires, `ctx.resources.financialsData.state` already carries
+ * whatever the ladder saw. The optional second argument is how a caller
+ * threads that through; the fundamentals generator's context slot passes it
+ * from `ctx.resources.financialsData?.state`.
+ *
+ * Omit it — fixture mode never runs the live ladder, and a peer/benchmark
+ * probe never writes to the subject's resource — and this degrades to exactly
+ * today's behaviour: only part (b) can fire, an absent observation reads as
+ * "observed nothing" rather than as staleness. That degrade is deliberate,
+ * not a gap: it is `observationFor`'s `recorded?.observedNewest ?? null`, the
+ * same fallback the spine site relies on.
  */
-export function analystStatementDisclosure(payloads: {
-  incomeStatement: PeriodBearing;
-  balanceSheet: PeriodBearing;
-  cashflow: PeriodBearing;
-}): PeriodDisclosure | null {
+export function analystStatementDisclosure(
+  payloads: {
+    incomeStatement: PeriodBearing;
+    balanceSheet: PeriodBearing;
+    cashflow: PeriodBearing;
+  },
+  observations?: {
+    incomeStatement?: PeriodObservation;
+    balanceSheet?: PeriodObservation;
+    cashflow?: PeriodObservation;
+  },
+): PeriodDisclosure | null {
   return statementSetDisclosure({
     incomeStatement: payloads.incomeStatement as FinancialsDataState["incomeStatement"],
     balanceSheet: payloads.balanceSheet as FinancialsDataState["balanceSheet"],
     cashflow: payloads.cashflow as FinancialsDataState["cashflow"],
+    incomeStatementPeriodObservation: observations?.incomeStatement,
+    balanceSheetPeriodObservation: observations?.balanceSheet,
+    cashflowPeriodObservation: observations?.cashflow,
   });
 }
 
@@ -152,16 +179,23 @@ export function analystStatementDisclosure(payloads: {
  */
 export function formatPeriodMismatch(disclosure: PeriodDisclosure | null): string {
   if (disclosure == null) return "";
-  // THE LEAD SENTENCE TRACKS THE REASON, because the two are different claims.
+  // THE LEAD SENTENCE TRACKS THE REASON, because each one is a different claim.
   // "these disagree" asserts the desk compared two known periods and found them
-  // different. On the `period-unstated` path it did not: a statement carries
-  // figures and states no period, so what the desk knows is that it CANNOT tell.
-  // Printing the disagreement sentence there would be its own false claim —
-  // the exact defect this guard exists to stop.
+  // different — true only on `periods-disagree`. On `period-unstated` it did
+  // not: a statement carries figures and states no period, so what the desk
+  // knows is that it CANNOT tell. On `settled-for-less-than-seen` the three
+  // returned periods actually AGREE — that is the definition of uniform
+  // staleness — so the disagreement sentence would print three identical
+  // periods under a claim that they differ: a new false statement, in the
+  // exact shape the `period-unstated` split above already exists to prevent.
+  // What is true instead: the three settled on one period after at least one
+  // resolution saw a newer one and settled for this older one anyway.
   const lead =
     disclosure.reason === "period-unstated"
       ? "The desk CANNOT ESTABLISH that the three financial statements below describe the same fiscal period — at least one carries figures but states no period:"
-      : "The three financial statements below do NOT describe the same fiscal period:";
+      : disclosure.reason === "settled-for-less-than-seen"
+        ? `The three financial statements below agree on a fiscal period, but the desk saw a more recent one (${disclosure.observedNewest ?? "a newer period"}) and settled for this older one instead — the set is STALE, not in disagreement:`
+        : "The three financial statements below do NOT describe the same fiscal period:";
   return [
     "<periodMismatch>",
     lead,

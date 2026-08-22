@@ -175,6 +175,11 @@ export type StatementSetVerdict = {
   periods: { income: string | null; balance: string | null; cashflow: string | null };
   /** Which half failed, so a reader is not left inferring it. */
   reason: "settled-for-less-than-seen" | "periods-disagree" | "period-unstated" | null;
+  /** The newer period a resolution SAW before settling for an older one —
+   *  populated only on `reason: "settled-for-less-than-seen"`, since that is
+   *  the one verdict where "the periods agree" and "the periods are stale"
+   *  are different claims a reader cannot tell apart from `periods` alone. */
+  observedNewest?: string | null;
 };
 
 /**
@@ -222,7 +227,12 @@ export function isCoherentStatementSet(observations: {
   for (const o of [observations.income, observations.balance, observations.cashflow]) {
     if (o.observedNewest == null) continue;
     if (!samePeriod(o.returned, o.observedNewest)) {
-      return { coherent: false, periods, reason: "settled-for-less-than-seen" };
+      return {
+        coherent: false,
+        periods,
+        reason: "settled-for-less-than-seen",
+        observedNewest: o.observedNewest,
+      };
     }
   }
 
