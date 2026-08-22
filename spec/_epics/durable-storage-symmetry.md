@@ -49,7 +49,7 @@ issue with two lodgers.**
 
 What holds the three together is not a build order — none of them depends on another. It is
 that all three write to **one document**, `docs/architecture/state-and-scopes.md`, each
-correcting or relocating a different paragraph of it. That collision is invisible from any
+correcting a different paragraph of it. That collision is invisible from any
 single issue and is why these three share a parent. See §3.
 
 **Not doing:** merging the two primitives; deleting or deprecating either one at any scope;
@@ -78,20 +78,47 @@ Those are out of scope by construction, not deferred.
    **Constrains:** FIX-1154's "shared driver seam" question resolves to *state the divergence
    once*, not *reconcile the drivers*. No issue in this set may propose unifying them.
 
-3. **The policy table gets one home, and the move is a move — never a copy.** The concrete
-   action behind theme 2 is lifting the eight-row table out of `resource-cas.ts`'s module
-   header into `docs/architecture/state-and-scopes.md`, where it is found before someone
-   reaches for the wrong import. **The constraint that makes this non-trivial:** that document
-   currently states the opposite placement on purpose — *"The policy table lives in one place
-   — the `stores/resource-cas.ts` module header — beside the code it governs and with the
-   source citations that go stale the moment `cas.ts` is edited. Read it there rather than a
-   copy."* Moving the table inherits exactly the staleness problem that sentence was written
-   to avoid.
+3. **The policy table stays in `resource-cas.ts`'s module header. The gap is a missing guard
+   at the point of temptation, not a misplaced table.** This theme previously settled the
+   opposite — lift the eight-row table into `docs/architecture/state-and-scopes.md`. It was
+   reversed on evidence, and the evidence is recorded here because a child would otherwise
+   re-derive it.
 
-   **Constrains:** whoever moves it must also retire that sentence and leave a pointer back
-   from the module header, so there is one home and no second copy. Two copies is a worse
-   end-state than either placement. How the table's source citations survive the move is
-   open — §5.
+   **The discoverability gain the move was meant to buy is already banked.**
+   `state-and-scopes.md` does not merely mention the table; it carries the altitude-appropriate
+   version of its content — the *"Six of `runWithCAS`'s decisions do not transfer"* summary, a
+   five-row error-taxonomy table, and a by-name warning that `createScopeStateOps` and
+   `createScopePersist` are the natural reach and the wrong one. The eight-row table is the
+   *derivation* of that summary. Moving it up would put implementation-altitude detail above
+   the fold in an orientation document, which is BP-039 backwards. Folded summary in the doc,
+   derivation beside the code, is the correct split and it already exists.
+
+   **The staleness rationale is void in both directions.** Four of the header's seven source
+   citations are *already* wrong on `origin/main` @ `6aa1bea`: `cas.ts:96-104` cites `wait()`
+   but lands on `RunWithCASOptions`' fields (`wait()` is at `:107`); `cas.ts:143-145` cites the
+   no-op `committed: false` return, which is at `:155`; `cas.ts:147` cites *"the only version
+   check"* and is a blank line; `cas.ts:158-159` cites the stale-cache fallback, which is near
+   `:170`. The mechanism is the point — the header sits beside the driver it *governs*
+   (`resource-cas.ts`) while every stale citation points at code it *contrasts with*
+   (`cas.ts`), and editing `cas.ts` brings nobody near this header. The doc sentence names
+   `cas.ts` as the file whose edits cause the rot and is not beside `cas.ts`. So staleness is
+   placement-neutral and already paid: it argues neither for the move nor against it.
+
+   **What the failure actually needs.** The warning is wired into three places — the
+   architecture doc, `cas.ts`'s header, and `resource-cas.ts`'s own header. The fourth, where
+   a developer about to make the mistake actually stands, is bare: `createScopeStateOps`
+   (`state-container.ts:219`) and `createScopePersist` (`scope-persist.ts:40`) each carry **no
+   doc comment at all**, while both are exported and re-exported from `stores/index.ts` and the
+   package root. Someone autocompleting `patchState` off `createScopeStateOps` reads none of
+   the three places the warning lives.
+
+   **Constrains:** FIX-1154 does not move the table and does not copy it —
+   `state-and-scopes.md`'s pointer sentence stays as written. It closes the gap where the gap
+   is: doc comments on `createScopeStateOps` and `createScopePersist` naming the resource path
+   as out of bounds and pointing at `resource-cas.ts`, which also settles their standing BP-007
+   violation. While in the header it corrects the four stale citations and re-cites **symbols
+   rather than line numbers**, so the next `cas.ts` edit cannot rot them. A pointer is not a
+   copy; theme 1's "one place" is unaffected — one table, several pointers.
 
 4. **Adapter delta verbs generalize to resources through `expectedVersion`, not through the
    commutative downgrade.** `DeltaStoreOps` (`stores/types.ts`) already takes
@@ -112,7 +139,9 @@ Those are out of scope by construction, not deferred.
 
 6. **`docs/architecture/state-and-scopes.md` is a shared surface, and all three issues edit
    it.** FIX-1158 makes true what its cross-flow conflict table already promises; FIX-1154
-   moves the policy table into it and retires the sentence in theme 3; FIX-1155 (if it ramps)
+   rewrites what it says about the two primitives' mutation surface — the mutator sets, the
+   return contract, and which writers carry a version — while leaving the policy-table
+   pointer sentence alone (theme 3); FIX-1155 (if it ramps)
    changes its statement that request scope keeps `runWithCAS`, and corrects the two
    orchestration docstrings that claim task mutations are "CAS-guarded" where block containers
    in fact take the mutex.
@@ -168,7 +197,7 @@ asymmetries remain deliberate and where each one is written down.**
 
 | Asymmetry between the two primitives | After the set lands | Where its reason lives |
 |---|---|---|
-| Two CAS drivers — `cas.ts` vs `resource-cas.ts` | **Survives — deliberate** (theme 2) | The eight-row policy table, moved into `state-and-scopes.md` by **FIX-1154** |
+| Two CAS drivers — `cas.ts` vs `resource-cas.ts` | **Survives — deliberate** (theme 2) | The eight-row policy table, staying in `resource-cas.ts`'s header; **FIX-1154** adds the missing guard on `createScopeStateOps` / `createScopePersist` (theme 3) |
 | `0` means *live record* for scope state and *no live row* for resources; scope stores accept `"absent"`, `ResourceStateStore` rejects it | **Survives — deliberate**, same lifecycle root | Already in `state-and-scopes.md` → "CAS and Concurrency" |
 | Resource-only surface — content, `client`, `reactTo`, `edges`, collections | **Survives — not an asymmetry.** No state analogue exists to be symmetric with | FIX-1154's scope boundaries |
 | Mutator sets — 7 on scope state, 4 on resources | **Closed** by **FIX-1154** | The shared mutation contract |
@@ -180,10 +209,11 @@ asymmetries remain deliberate and where each one is written down.**
 Two things this assembled view shows that no single issue does.
 
 **The set has no build order but converges on one file.** All three children edit
-`docs/architecture/state-and-scopes.md`, each a different paragraph — and one of those edits
-(FIX-1154's) has to relocate a paragraph the document currently instructs readers *not* to
-copy. Read alone, each issue's doc edit looks local. Read together they are a shared surface,
-which is theme 6 and the strongest reason these three sit under one parent.
+`docs/architecture/state-and-scopes.md`, each a different paragraph: FIX-1154 rewrites what it
+says about the two primitives' mutation surface, FIX-1158 makes its cross-flow conflict table
+true, and FIX-1155 (if it ramps) changes its request-scope CAS statement. Read alone, each
+issue's doc edit looks local. Read together they are a shared surface, which is theme 6 and the
+strongest reason these three sit under one parent.
 
 **The epic can wrap with the last row still open**, and that is stated rather than discovered.
 If FIX-1155 stays at Backlog, the set delivers the state-vs-resources half of the objective
@@ -216,14 +246,6 @@ here has no way to know the framing was tried.*
   it decides what "wrapped" means. Put to the owner as a decision on the epic PR (§3, last
   table row).
 
-- **How do the policy table's source citations survive the move into the architecture doc?**
-  Raised by theme 3. The eight-row table cites `cas.ts` line numbers that decay the moment
-  that file is edited, which is the documented reason it currently lives beside the code. The
-  options are: keep the citations and accept the decay, drop to prose and lose the "here is
-  exactly the line" property, or move the table and leave the citations behind in the header.
-  FIX-1154 owns the edit but not the call — it changes what a *shared* document promises, so
-  it is recorded here. Blocks nothing; FIX-1154 can spec around it and fold the answer.
-
 ---
 
 ## Epic evolution
@@ -232,6 +254,16 @@ here has no way to know the framing was tried.*
   abandoned; FIX-1153 cancelled and PR #1291 closed unmerged. Objective became *symmetry
   where safe, asymmetry stated once where not*, because the two CAS drivers turned out to be
   load-bearing rather than accidental: resources have a lifecycle and scope records do not.
+- **Theme 3 reversed (2026-08-22)** — the epic-spec had settled on relocating the eight-row
+  CAS policy table into `state-and-scopes.md`. Checking the evidence reversed it. The doc's
+  pointer sentence already banks the discoverability gain, and the staleness rationale is void
+  on *both* sides: four of the header's seven citations into `cas.ts` are already stale on
+  `main`, because the header sits beside the driver it governs and not beside the file it
+  contrasts with. What the epic actually wants to prevent — someone reaching for
+  `createScopeStateOps` on the resource path — is unguarded at the one place that reader
+  stands, since both trap functions are exported with no doc comment. FIX-1154 now adds that
+  guard instead of moving anything. §5's open question about the citations surviving the move
+  is retired with it; the citation fix became a constraint in theme 3.
 - **Epic-spec drafted** — recorded the three settled cross-cutting decisions (themes 2–4) and
   the rejected framings, so no child re-derives them. Added theme 6 (`state-and-scopes.md` as
   a shared surface all three issues edit) and theme 7 (no sequencing), both of which are only
