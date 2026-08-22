@@ -5,11 +5,12 @@
  * sequencer without any handler reaching into `asRuntime` to invoke a
  * generator (BP-011):
  *
- *   1. `prepareBlock` (handler) — query-blind intrinsic pre-rank that pools
- *      semantic facts and episodes by their source-specific scoring formulas
- *      and takes the top `PRE_RANK_EPISODIC_CAP`. High-value memories enter the
- *      candidate set regardless of query vocabulary, avoiding the
- *      paraphrase-blindness failure mode. Optional Stage 1.5 exact-phrase
+ *   1. `prepareBlock` (handler) — query-blind intrinsic pre-rank. Episodes are
+ *      scored by their source-specific formula and capped at
+ *      `PRE_RANK_EPISODIC_CAP`; semantic facts pass through unconditionally
+ *      (the semantic store is already bounded by `pruneThreshold`). High-value
+ *      memories enter the candidate set regardless of query vocabulary,
+ *      avoiding the paraphrase-blindness failure mode. Optional Stage 1.5 exact-phrase
  *      pass-through catches distinctive strings (proper nouns, error codes)
  *      buried in low-score memories.
  *   2. `filterBlock` (generator) — single LLM call that filters the bounded
