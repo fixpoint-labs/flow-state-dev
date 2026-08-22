@@ -44,6 +44,29 @@ export interface TaskChangeEvent<TInput = unknown, TOutput = unknown> {
 }
 
 /**
+ * Build the `emit` a collection backing calls after every successful mutation.
+ *
+ * Both backings publish the identical envelope; only how they resolve the task
+ * differs. A no-op when the caller supplied no `onChange`, so call sites stay
+ * unconditional.
+ */
+export function createTaskChangeEmitter<TInput, TOutput>(
+  collectionId: string,
+  onChange: ((event: TaskChangeEvent) => void) | undefined
+): (kind: TaskChangeKind, task: Task<TInput, TOutput>, prevStatus?: TaskStatus) => void {
+  return (kind, task, prevStatus) => {
+    if (onChange === undefined) return;
+    onChange({
+      collectionId,
+      taskId: task.id,
+      kind,
+      task: task as Task,
+      prevStatus,
+    });
+  };
+}
+
+/**
  * Task fields the substrate keeps server-side and never publishes to a client
  * (FIX-1005).
  *
