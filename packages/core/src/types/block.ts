@@ -632,15 +632,6 @@ export interface BlockContext<
   _blockInputHint?: BlockValueInternal<unknown>;
 
   /**
-   * @internal Shared mutable slot that tracks the id of the most recently
-   * emitted `block_trace` item. Sequencer operations read this immediately
-   * after calling a child block so they can record a `ref` descriptor pointing
-   * at the child's item. Lives on a ref passed through every scope so child
-   * emissions are visible to the parent that spawned them.
-   */
-  _outputTracker?: { lastBlockOutputItemId?: string };
-
-  /**
    * @internal Set by the sequencer runtime when a `.rescue()` handler recovers
    * a thrown error. Read by `_withExecutionScope` post-execution to stamp the
    * block's sibling-registry result (`result.rescued`), which `wasRescued`
