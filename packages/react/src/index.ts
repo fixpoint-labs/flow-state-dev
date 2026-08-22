@@ -137,9 +137,6 @@ export type {
 export {
   FlowProvider,
   useFlowContext,
-  getFlowContext,
-  setFlowContext,
-  withFlowContext,
   type FlowContextValue,
   type FlowProviderProps
 } from "./context/FlowContext";

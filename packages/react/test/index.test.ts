@@ -5,7 +5,6 @@ import {
   ItemRenderer,
   coreItemImportProof,
   deriveSuspensions,
-  getFlowContext,
   reactPackageMarker,
   resolveSuspension,
   useAction,
@@ -37,7 +36,6 @@ describe("@flow-state-dev/react", () => {
   it("exports FlowProvider and context helpers", () => {
     expect(typeof FlowProvider).toBe("function");
     expect(typeof useFlowContext).toBe("function");
-    expect(typeof getFlowContext).toBe("function");
   });
 
   it("exports render helpers", () => {

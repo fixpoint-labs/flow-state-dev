@@ -20,11 +20,11 @@ import {
   supervisor,
   reviewerVerdictSchema,
   executableTaskSchema,
-  legacyWorkerAdapter,
   type ExecutableTask,
   type ReviewerInput,
   type ReviewerVerdict,
 } from "../src/supervisor";
+import { legacyWorkerAdapter } from "../src/supervisor/blocks/legacy-worker-adapter";
 
 // ---------------------------------------------------------------------------
 // Helpers

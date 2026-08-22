@@ -43,7 +43,6 @@ export {
   reviewerInputSchema,
   plannerOutputSchema,
   executableTaskSchema,
-  legacyWorkerAdapter,
   buildReviewedWorker,
   createCaptureAndPlan as createSupervisorCaptureAndPlan,
   createSynthesize as createSupervisorSynthesize,
