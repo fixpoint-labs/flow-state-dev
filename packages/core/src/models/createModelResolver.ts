@@ -110,13 +110,16 @@ const DEFAULT_RETRY_POLICY: Required<RetryPolicy> = {
 // Provider / gateway packages
 // ---------------------------------------------------------------------------
 
-const PROVIDER_PACKAGES: Record<string, { pkg: string; factory: string }> = {
+/** The npm package and named factory export backing one provider or gateway. */
+type PackageInfo = { pkg: string; factory: string };
+
+const PROVIDER_PACKAGES: Record<string, PackageInfo> = {
   anthropic: { pkg: "@ai-sdk/anthropic", factory: "createAnthropic" },
   openai: { pkg: "@ai-sdk/openai", factory: "createOpenAI" },
   google: { pkg: "@ai-sdk/google", factory: "createGoogle" },
 };
 
-const GATEWAY_PACKAGES: Record<string, { pkg: string; factory: string }> = {
+const GATEWAY_PACKAGES: Record<string, PackageInfo> = {
   vercel: { pkg: "@ai-sdk/gateway", factory: "createGateway" },
   openrouter: { pkg: "@openrouter/ai-sdk-provider", factory: "createOpenRouter" },
 };
@@ -229,7 +232,6 @@ function resolveFactoryExport(
 // ---------------------------------------------------------------------------
 
 type PackageKind = "provider" | "gateway";
-type PackageInfo = { pkg: string; factory: string };
 
 /**
  * Execute a provider or gateway package and instantiate its factory.
