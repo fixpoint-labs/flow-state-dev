@@ -865,3 +865,70 @@ describe("FIX-807 — resource backward compatibility", () => {
     expect(text).toContain("Setup score:");
   });
 });
+
+describe("formatValuationSpine — withheld, divergent-stale with an unknown printed period (Codex review, FIX-1113)", () => {
+  // `observedNewest` is the SET-WIDE FRONTIER (review round 4 — the max
+  // across every offending statement, not the first match), so a sentence
+  // that reads it must not imply it belongs to one specific statement. On a
+  // MIXED shape — one statement returns no period having observed nothing,
+  // a DIFFERENT statement settled for less than what it saw — the frontier
+  // is the second statement's own sighting. The old wording ("did not
+  // return a period at all, even though the desk's own resolution observed
+  // one (seen) while resolving it") attributed that sighting to the FIRST
+  // statement, which is false: that statement observed nothing at all.
+  const withheldSpine = (periodDisclosure: {
+    reason: "settled-for-less-than-seen";
+    income: string | null;
+    balance: string | null;
+    cashflow: string | null;
+    observedNewest: string | null;
+  }) => ({
+    ticker: "TEST",
+    asOf: "2026-05-06",
+    expectedReturn: null,
+    fairValue: null,
+    dcf: null,
+    triangulation: null,
+    setupScore: null,
+    envelope: null,
+    valuationMethod: "ev-multiples" as const,
+    evidenceBasis: "thin" as const,
+    periodDisclosure,
+  });
+
+  it("THE BUG: does not attribute the frontier sighting to the statement that returned no period", () => {
+    // income returned nothing and observed nothing (a genuinely absent
+    // statement); balance is the one that actually settled for less than it
+    // saw. The frontier (observedNewest) is balance's own sighting.
+    const text = formatValuationSpine(
+      withheldSpine({
+        reason: "settled-for-less-than-seen",
+        income: null,
+        balance: "2025-06-30",
+        cashflow: "2025-06-30",
+        observedNewest: "2025-09-27", // belongs to balance, not income
+      }),
+    );
+    expect(text).toContain("did not return a period at all");
+    // The old coupling phrase claimed the null-returning statement itself
+    // observed the frontier "while resolving it" — removed, not reworded.
+    expect(text).not.toContain("while resolving it");
+    // The two facts still both appear, stated independently.
+    expect(text).toContain("2025-09-27");
+    expect(text).toContain("Separately");
+  });
+
+  it("control: uniform-stale wording is untouched (already impersonal — 'the desk saw', not 'it saw')", () => {
+    const text = formatValuationSpine(
+      withheldSpine({
+        reason: "settled-for-less-than-seen",
+        income: "2024-09-28",
+        balance: "2024-09-28",
+        cashflow: "2024-09-28",
+        observedNewest: "2025-09-27",
+      }),
+    );
+    expect(text).toContain("agree on a fiscal period");
+    expect(text).toContain("2025-09-27");
+  });
+});

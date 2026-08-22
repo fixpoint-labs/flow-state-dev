@@ -85,6 +85,31 @@ describe("ratingUnanchoredReason", () => {
     expect(text).toContain("income none");
   });
 
+  it("THE BUG (Codex review, FIX-1113): does not attribute the frontier sighting to the statement that returned no period", () => {
+    // `observedNewest` is the SET-WIDE FRONTIER (round 4 — the max across
+    // every offending statement), not one statement's own sighting. income
+    // returned no period; nothing here says income itself observed
+    // anything — the frontier could belong to a DIFFERENT statement
+    // entirely. The old wording ("did not return a period at all, even
+    // though the desk's own resolution observed one (seen) while resolving
+    // it") claimed income itself made that observation, which the type
+    // cannot support and which need not be true.
+    const disclosure: PeriodDisclosure = {
+      reason: "settled-for-less-than-seen",
+      income: null,
+      balance: OLDER,
+      cashflow: OLDER,
+      observedNewest: ANCHOR,
+    };
+    const text = ratingUnanchoredReason(disclosure);
+    expect(text).toContain("did not return a period at all");
+    // The old coupling phrase implied identity between the null-returning
+    // statement and the one that made the observation — removed.
+    expect(text).not.toContain("while resolving it");
+    expect(text).toContain(ANCHOR);
+    expect(text).toContain("separately");
+  });
+
   it("every sentence names the three printed periods, so a reader can see which years", () => {
     const disclosure: PeriodDisclosure = {
       reason: "periods-disagree",

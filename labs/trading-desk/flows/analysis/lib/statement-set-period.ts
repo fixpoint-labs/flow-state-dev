@@ -231,8 +231,13 @@ export function formatPeriodMismatch(disclosure: PeriodDisclosure | null): strin
     case "divergent-stale":
       // ABSENT-vs-STALE: a PM told "stale" re-pulls a number; told "missing"
       // waits for a filing — see `disclosureHasUnknownPeriod`'s own comment.
+      //
+      // TWO INDEPENDENT CLAUSES, NOT ONE (Codex review, FIX-1113). `seen`
+      // is the set-wide frontier (round 4), not the missing statement's own
+      // observation — see the identical fix and its rationale in
+      // `rating-unanchored-notice.tsx`'s sibling branch.
       if (disclosureHasUnknownPeriod(disclosure)) {
-        lead = `At least one of the three financial statements below did not return a period at all, even though the desk's own resolution observed one (${seen}) while resolving it — that statement may be MISSING data rather than merely stale. These periods are NOT confirmed to all describe one shared fiscal period:`;
+        lead = `At least one of the three financial statements below did not return a period at all — that statement may be MISSING data rather than merely stale. Separately, the desk's own resolution observed a newer period somewhere in the set (${seen}) before settling. These periods are NOT confirmed to all describe one shared fiscal period:`;
         justification = [
           "Do NOT compute any ratio that divides a figure from one of these statements",
           "by a figure from another — at least one of them did not return a period at",

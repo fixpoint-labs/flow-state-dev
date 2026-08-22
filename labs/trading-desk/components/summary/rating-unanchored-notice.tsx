@@ -65,10 +65,25 @@ export function ratingUnanchoredReason(disclosure: PeriodDisclosure): string {
 
     case "divergent-stale":
       // ABSENT-vs-STALE: see `disclosureHasUnknownPeriod`'s own comment.
+      //
+      // TWO INDEPENDENT CLAIMS, STATED SEPARATELY (Codex review, FIX-1113).
+      // `seen` (`observedNewest`) is the SET-WIDE FRONTIER — the max sighting
+      // across every offending statement (round 4), not one statement's own
+      // observation. The prior wording ("did not return a period at all,
+      // even though the desk's own resolution observed one (seen) while
+      // resolving it") coupled the two into one sentence about a single
+      // statement — false on a mixed shape where the null-returning
+      // statement observed NOTHING and a DIFFERENT statement is the one that
+      // settled for less than `seen`. Retaining per-statement attribution
+      // was considered and rejected: it would require carrying each
+      // statement's own `observedNewest` on the disclosure (not just the
+      // frontier), which is a schema change reaching every consumer that
+      // persists `PeriodDisclosure` — three of them already drifted once on
+      // a smaller field. Decoupling costs nothing structural.
       return disclosureHasUnknownPeriod(disclosure)
-        ? `at least one financial statement did not return a period at all, even ` +
-            `though the desk's own resolution observed one (${seen}) while ` +
-            `resolving it (${named})`
+        ? `at least one financial statement did not return a period at all (${named}); ` +
+            `separately, the desk's own resolution observed a newer period somewhere ` +
+            `in the set (${seen}) before settling`
         : `at least one financial statement is stale — the desk saw a more recent ` +
             `period (${seen}) than it actually returned (${named})`;
 

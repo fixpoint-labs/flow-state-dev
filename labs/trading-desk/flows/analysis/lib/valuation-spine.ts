@@ -405,13 +405,18 @@ function withheldReasonLine(pd: PeriodDisclosure): string {
     case "divergent-stale":
       // ABSENT-vs-STALE: a PM told "stale" re-pulls a number; told "missing"
       // waits for a filing — see `disclosureHasUnknownPeriod`'s own comment.
+      //
+      // TWO INDEPENDENT CLAUSES, NOT ONE (Codex review, FIX-1113). `seen`
+      // is the set-wide frontier (round 4), not the missing statement's own
+      // observation — see the identical fix and its rationale in
+      // `rating-unanchored-notice.tsx`'s sibling branch.
       if (disclosureHasUnknownPeriod(pd)) {
         return (
-          `WITHHELD: at least one of the three statements below did not return a period at all, even ` +
-          `though the desk's own resolution observed one (${seen}) while resolving it — that statement ` +
-          `may be MISSING data rather than merely stale, and the three are NOT confirmed to all ` +
-          `describe one shared fiscal period ${named}. ${withheldOutputs} is withheld. Do NOT combine ` +
-          `figures across these statements yourself.`
+          `WITHHELD: at least one of the three statements below did not return a period at all — ` +
+          `that statement may be MISSING data rather than merely stale. Separately, the desk's own ` +
+          `resolution observed a newer period somewhere in the set (${seen}) before settling, and the ` +
+          `three are NOT confirmed to all describe one shared fiscal period ${named}. ${withheldOutputs} ` +
+          `is withheld. Do NOT combine figures across these statements yourself.`
         );
       }
       return (

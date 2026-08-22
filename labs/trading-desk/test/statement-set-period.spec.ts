@@ -920,6 +920,31 @@ describe("settled-for-less-than-seen — state enumeration (review round 2, P1)"
     expect(text).not.toContain("is STALE");
   });
 
+  it("THE BUG (Codex review, FIX-1113): does not attribute a DIFFERENT statement's sighting to the one that returned no period", () => {
+    // Unlike the test above, income observed NOTHING (no `observed.income`) —
+    // it is balance that actually settled for less than what IT saw. The
+    // reported `observedNewest` (the set-wide frontier, review round 4) is
+    // balance's own sighting, not income's. The old wording ("did not return
+    // a period at all, even though the desk's own resolution observed one
+    // (seen) while resolving it") claimed income made that observation,
+    // which is false here — income observed nothing at all.
+    const fin = spineSet({
+      income: null, // returned nothing, observed nothing
+      balance: OLDER, // the one that is actually stale
+      cashflow: ANCHOR,
+      observed: { balance: ANCHOR }, // balance's own sighting, not income's
+    });
+    const disclosure = statementSetDisclosure(fin);
+    expect(disclosure?.reason).toBe("settled-for-less-than-seen");
+    const text = formatPeriodMismatch(disclosure);
+    expect(text).toContain("income statement: no period stated");
+    // The old coupling phrase implied identity between the null-returning
+    // statement and the one that made the observation — removed.
+    expect(text).not.toContain("while resolving it");
+    expect(text).toContain(ANCHOR);
+    expect(text).toContain("Separately");
+  });
+
   it("observedNewest is present on this reason and absent on the other two — derived from the real function", () => {
     const stale = spineSet({
       income: OLDER,
