@@ -7,11 +7,24 @@ typecheck. Or they pass an option that is accepted, typed, and then silently ign
 cost the same thing: they trust the surface, the surface lies, and they lose an afternoon
 finding out.
 
-**Objective.** Make the framework's surface tell the truth about itself. When this epic
-lands, the framework has **no lying surface**: docs match the tree, an accepted option is
-read, and a superseded name is gone. Real exports that nothing in this repo happens to call
-are not lies — they stay, and saying so here is what stops a later sweeper reading this
-objective as a mandate to remove them.
+**Objective.** Remove the lying surfaces this epic names, and leave the rest of the
+framework alone. When it lands, every leftover in §4's member set is gone: the pages it
+touches describe the code as it is, the options it removes are ones nothing read, and every
+name it drops has a canonical replacement that ships with it. A developer who hits one of
+these particular traps today stops hitting it.
+
+**What this deliberately does not promise.** Not that the framework as a whole has no lying
+surface. An earlier draft said exactly that, and it was a promise nine merged PRs cannot
+keep: §5 enumerates **twelve** known untruths — six public names, six internal or scaffolding
+items — that this epic does not fix and that will still be on the tree the day it closes.
+Whether they get their own epic or are dropped is §5's third question, and approving this
+objective deliberately does not answer it.
+
+**Nor is it a mandate to keep going.** Real exports that nothing in this repo happens to call
+are not lies — they stay. What is being approved is that each thing we removed was genuinely
+a leftover, never that nothing unused remains. That distinction is the whole reason this
+section is worded tightly: a later sweeper will quote it, and it must not read as authority
+for an unused-export purge.
 
 **Holistic necessity.** This is a cleanup epic, which is exactly the kind that overbuilds by
 mistaking *unused* for *dead*. So the set is bounded by one product rule, and every issue
@@ -56,6 +69,10 @@ above was not doing its job.
 
 - **An unused-export sweep.** The single most tempting follow-on and the one that would undo
   the product rule. Deliberately out.
+- **The twelve leftovers §5 enumerates.** Six Tier-2 public names and six Tier-3 internal or
+  scaffolding items, each already evidenced, none of them fixed here. They are listed by name
+  rather than counted precisely so that approving this objective cannot be mistaken for
+  covering them.
 - **`createModelResolver()` zero-config env auto-load and the `GeneratorModel` adapter**
   (FIX-852) — ~1,900 LOC with live callers (`createExecutionContext`, `createFlowState`, CLI
   `run`/`chat`/`dev`, `runBenchmark`, the trading-desk judge). Cutting it here breaks those
@@ -196,7 +213,7 @@ above was not doing its job.
 
 7. **A change that doesn't serve the objective is a satellite, not a member.** Two qualify, both
    trapped in #1369: FIX-1155 (a request-scope race fix) and FIX-1214 (BP-012 items-log residue).
-   Neither follows from "no lying surface" — a race is a defect, and an echoed payload is noise.
+   Neither is a leftover this epic names — a race is a defect, and an echoed payload is noise.
    Each keeps its own PR and its own evidence, and neither counts toward completion, so approving
    §1 does not authorise them and the epic does not wait on them.
 
@@ -252,6 +269,11 @@ Either relabel the children to a category that derives `direct`, or don't run th
 this epic. It was never built for a set whose implementation predates its epic.
 
 ### Members — completion is these
+
+**What "complete" asserts, and what it does not.** These nine merged means every leftover this
+epic named is gone. It does not mean the framework has no lying surface left; §1 bounds the
+promise to this set and §5 lists the twelve that remain. A completion signal that claimed more
+than nine PRs establish would be its own lying surface.
 
 | Issue | What it delivers | Route | Kind | PR |
 |---|---|---|---|---|
@@ -431,8 +453,9 @@ still open on individual PRs is review feedback, and it lives on those PRs, not 
 
   **The trade being accepted:** a separate epic pays a re-familiarisation cost later and needs a
   second objective gate. Dropping them entirely costs nothing now and leaves twelve known
-  untruths on the tree indefinitely, which is the state §1 exists to object to. Keeping this set
-  closable is worth more than finishing the sweep in one pass.
+  untruths on the tree indefinitely — the state §1's problem statement describes, and which its
+  objective now explicitly declines to promise to fix. Keeping this set closable is worth more
+  than finishing the sweep in one pass.
 
   *Recommendation: their own epic, and not immediately.* Ten open PRs plus an unstarted ninth
   member is already more than this set can carry, and Tier 2's evidence bar deserves an objective
@@ -595,3 +618,15 @@ still open on individual PRs is review feedback, and it lives on those PRs, not 
   `client`, and given three client callbacks, and nothing anywhere emits or dispatches it. It is
   a feature built to the edge of being real and never switched on. Delete or finish is the
   owner's call; a cleanup epic must not decide it by default in either direction.
+- **The objective narrowed to what nine merged PRs can actually establish.** It previously said
+  that when this epic lands "the framework has **no lying surface**" — a claim the set cannot
+  support, and one that became visibly false the moment §5 enumerated the twelve leftovers this
+  epic does not fix. Enumerating them is what exposed it: while the remainder was a count, the
+  objective could be read as aspirational; once it was a list, §1 was promising an outcome §5
+  contradicted on the same page. The objective now promises only that the leftovers this epic
+  *names* are gone, and says plainly that a known remainder exists and is enumerated in §5.
+  The other remedy — making the remainder a completion dependency — was rejected because it
+  would re-absorb the work §5 had just twice declined to absorb.
+  Reconciled with it: theme 7's satellite test no longer quotes the old wording, §4 states what
+  a completion signal does and does not assert, §1's *Not doing* list gains the twelve by name,
+  and §5's trade no longer claims §1 objects to leaving them.
