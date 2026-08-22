@@ -36,6 +36,7 @@ import {
 } from "./schemas";
 import { createCaptureAndPlan } from "./blocks/capture-and-plan";
 import { resolveGoalSynthesisStep } from "../shared/planning-entry";
+import { pickTaskCapOverrides } from "../shared/task-caps";
 import { buildReviewedWorker } from "./blocks/reviewer-check";
 import { createSynthesize } from "./blocks/synthesize";
 import { createLabelFailedReviews } from "./blocks/label-failed-reviews";
@@ -365,13 +366,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     // who legitimately needs a bigger board must be able to say so. Unset falls
     // through to the 500/100 defaults, and `board.caps` is what the seed writer
     // is handed, so the two can never disagree.
-    ...(config.maxTotalRetries !== undefined
-      ? { maxTotalRetries: config.maxTotalRetries }
-      : {}),
-    ...(config.maxTotalTasks !== undefined ? { maxTotalTasks: config.maxTotalTasks } : {}),
-    ...(config.maxEnqueuedTasks !== undefined
-      ? { maxEnqueuedTasks: config.maxEnqueuedTasks }
-      : {}),
+    ...pickTaskCapOverrides(config),
     workers: reviewedWorkers,
     concurrency: maxConcurrency,
     dispatcher: "topological",

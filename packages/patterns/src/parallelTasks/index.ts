@@ -17,6 +17,7 @@ import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
 import { taskBoard, goalSeekLoop, type Verdict } from "@flow-state-dev/orchestration/task-board";
 import { createSeedTasksFromPlan } from "../shared/planning-entry";
+import { pickTaskCapOverrides } from "../shared/task-caps";
 import { parallelTasksInputSchema, type SubTaskErrorStrategy } from "./schemas";
 
 export type { SubTaskErrorStrategy } from "./schemas";
@@ -121,13 +122,7 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     // who legitimately needs a bigger board must be able to say so. Unset falls
     // through to the 500/100 defaults, and `board.caps` is what the seed writer
     // is handed, so the two can never disagree.
-    ...(config.maxTotalRetries !== undefined
-      ? { maxTotalRetries: config.maxTotalRetries }
-      : {}),
-    ...(config.maxTotalTasks !== undefined ? { maxTotalTasks: config.maxTotalTasks } : {}),
-    ...(config.maxEnqueuedTasks !== undefined
-      ? { maxEnqueuedTasks: config.maxEnqueuedTasks }
-      : {}),
+    ...pickTaskCapOverrides(config),
     workers: worker,
     concurrency: maxConcurrency,
     dispatcher: "fifo",
