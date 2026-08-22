@@ -56,7 +56,7 @@ Loops that work well in this repo, fastest-to-slowest signal:
      -i '<json>' --flow-dir <path> > /tmp/run.ndjson 2> /tmp/run.log
    ```
    For deep flow analysis, hand off to **`debug-flow`** — it has the NDJSON event-type reader and failure-pattern table.
-5. **Persistent session replay.** `fsdev run -s <session-id>` reuses session state across invocations; `--seed-session / --seed-user / --seed-project` pre-populate state. Use this to reproduce bugs that only appear after specific state.
+5. **Persistent session replay.** `fsdev run -s <session-id>` reuses session state across invocations; `--seed-session` pre-populates session state. Use this to reproduce bugs that only appear after specific state.
 6. **DevTool / kitchen-sink browser run** for UI-layer bugs (React hooks, renderers, devtool itself). `fsdev dev` for the live devtool; the kitchen-sink app under `apps/` for SSR/streaming assertions. Watch the browser console *and* the server stderr.
 7. **Replay a captured trace.** Save a real NDJSON stream or HTTP request to disk; replay it through the code path in isolation (e.g. by feeding it to a unit test fixture).
 8. **Property / fuzz loop.** For "sometimes wrong output" bugs — drive the block/builder with 100–1000 random inputs and assert invariants. Especially useful for sequencer composition and schema strictness (BP-016).
