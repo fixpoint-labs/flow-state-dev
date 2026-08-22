@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # Ecosystem overview
 
-The Core section covers the irreducible runtime: blocks, flows, sequencers, resources, items, server, client, testing. Everything in this section is built on top of that runtime, but isn't part of it. You can ship a flow without any of these. You'll usually want some of them.
+The Core section covers the irreducible runtime: blocks, flows, sequencers, resources, items, engine, fsdev, client, testing. Everything in this section is built on top of that runtime, but isn't part of it. You can ship a flow without any of these. You'll usually want some of them.
 
 The split matters because it shapes what you should learn first. Core is a small, fixed surface. Ecosystem packages can be swapped, replaced, or skipped depending on what you're building.
 
@@ -20,7 +20,7 @@ The split matters because it shapes what you should learn first. Core is a small
 
 **Memory** is the cross-turn memory system — working, episodic, semantic, and digest tiers behind a single `system()` factory. Lives at `@flow-state-dev/memory`.
 
-**Dev Experience** covers the CLI (`fsdev`) and the DevTool — a pre-built inspector you can mount into your own app or run standalone with `fsdev dev`.
+`fsdev` and the DevTool live in Core, next to the engine. They are how you run and inspect a flow from the terminal.
 
 A full map of the ecosystem is still being assembled. Until then, browse the package READMEs in the repo for what's currently published.
 

@@ -8,7 +8,7 @@ sidebar_label: Setup
 
 The engine is the runtime that registers your flows, runs actions, persists state, and streams results. The package is `@flow-state-dev/engine`. You describe it once with `createFlowState`.
 
-HTTP is one way to reach it. A [host adapter](/docs/server/host-adapters) mounts the same handle as route handlers. `fsdev run` and `runAction` call the engine in-process, with no web server. See the [CLI](/docs/cli/overview) and [Calling a flow without a transport](/docs/advanced/manual-flow-execution).
+HTTP is one way to reach it. A [host adapter](/docs/server/host-adapters) mounts the same handle as route handlers. `fsdev run` and `runAction` call the engine in-process, with no web server. See [fsdev](/docs/cli/overview) and [Calling a flow without a transport](/docs/advanced/manual-flow-execution).
 
 ## A single config object
 

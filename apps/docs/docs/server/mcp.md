@@ -53,7 +53,7 @@ The MCP adapter mounts at `POST /api/flows/:kind/mcp`. `GET` and
 
 To serve these endpoints in production without the DevTool, `fsdev serve` stands
 up the flow API and MCP routes from a committed `fsdev.config.*`. See the
-[CLI API Reference](/docs/api/cli).
+[fsdev API](/docs/api/cli).
 
 ### Dedicated MCP prefix
 

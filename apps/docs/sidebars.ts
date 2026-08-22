@@ -153,6 +153,27 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: "category",
+          label: "fsdev",
+          items: [
+            "cli/overview",
+            "cli/configuration",
+            "cli/agent-dev-loop",
+            "cli/interactive-chat",
+            {
+              type: "category",
+              label: "DevTool",
+              items: [
+                "devtool/overview",
+                "devtool/setup",
+                "devtool/embedding",
+                "devtool/observing-resource-loads",
+                "devtool/debug-vs-client-state",
+              ],
+            },
+          ],
+        },
+        {
+          type: "category",
           label: "Client",
           items: [
             "client/overview",
@@ -277,21 +298,6 @@ const sidebars: SidebarsConfig = {
             "memory/relations",
             "memory/recall-tool",
             "memory/hygiene",
-          ],
-        },
-        {
-          type: "category",
-          label: "Dev Experience",
-          items: [
-            "cli/overview",
-            "cli/configuration",
-            "cli/agent-dev-loop",
-            "cli/interactive-chat",
-            "devtool/overview",
-            "devtool/setup",
-            "devtool/embedding",
-            "devtool/observing-resource-loads",
-            "devtool/debug-vs-client-state",
           ],
         },
       ],

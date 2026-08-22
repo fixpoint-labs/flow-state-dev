@@ -94,7 +94,7 @@ Settings live in three places. Each catalog sits next to the concept it configur
 All optional. Skip anything you are not using.
 
 - **React hooks** — `FlowProvider`, `useSession`, `ItemsRenderer` for the stream and session state
-- **CLI** — `fsdev run` and `fsdev dev` use the same `createFlowState` handle as the server
+- **fsdev** — `fsdev run` and `fsdev dev` use the same `createFlowState` handle as the engine. See [fsdev](/docs/cli/overview).
 - **DevTool** — inspect blocks, items, and state while a flow runs
 - **Testing** — `testBlock` / `testFlow` with mocked generators
 - **Models** — provider-agnostic ids, named intents, retry and fallback on the resolver

@@ -95,3 +95,4 @@ When you deploy that app to Vercel, switch the import to `createVercelNextHandle
 - [Quick Start](/docs/getting-started/quick-start) — a working chat from this install
 - [Flow options](/docs/configuration/flow) and [Runtime options](/docs/configuration/runtime) — every `defineFlow` and `createFlowState` field
 - [Engine setup](/docs/server/setup) — stores, profiles, and error handling
+- [fsdev](/docs/cli/overview) — run the same engine from the terminal

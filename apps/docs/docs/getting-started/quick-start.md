@@ -195,6 +195,7 @@ Or open the visual inspector with `fsdev dev` — see the [DevTool guide](/docs/
 ## Next steps
 
 - **[Your First Flow](/docs/getting-started/your-first-flow)** — The same app, with the why for each piece.
+- **[fsdev](/docs/cli/overview)** — run the same flow from the terminal, no browser.
 - **[Anatomy of a Flow](/guides/anatomy-of-a-flow)** — Mental model without a project to build.
 - **[Block options](/docs/configuration/blocks)** and **[Flow options](/docs/configuration/flow)** — field catalogs next to those concepts.
 - **[Project Structure](/docs/getting-started/project-structure)** — How to organize flows, blocks, and tools.

@@ -81,4 +81,4 @@ For Bun and Deno that is the whole adapter. For platforms with an event-shaped e
 - [Deployment overview](/guides/deployment) — SSE and persistence per platform
 - [Deploying to AWS Lambda](/guides/deploying-to-aws-lambda) — a worked Lambda example
 - [Engine setup](/docs/server/setup) — configuring the router
-- [CLI API Reference](/docs/api/cli) — `fsdev serve` wraps `serve()` to run a config from the terminal
+- [fsdev API](/docs/api/cli) — `fsdev serve` wraps `serve()` to run a config from the terminal
