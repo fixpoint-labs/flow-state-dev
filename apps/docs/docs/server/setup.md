@@ -1,12 +1,14 @@
 ---
 sidebar_position: 1
+title: Engine setup
+sidebar_label: Setup
 ---
 
-# Server Setup
+# Engine setup
 
-How to configure the flow-state.dev server runtime in your application.
+The engine is the runtime that registers your flows, runs actions, persists state, and streams results. The package is `@flow-state-dev/engine`. You describe it once with `createFlowState`.
 
-The runtime is the part that registers your flows, runs actions, persists state, and streams results. You describe it once with a config object and hand that object to a platform adapter. The adapter mounts it as HTTP route handlers. See [Host adapters](/docs/server/host-adapters) for which adapter fits your platform.
+HTTP is one way to reach it. A [host adapter](/docs/server/host-adapters) mounts the same handle as route handlers. `fsdev run` and `runAction` call the engine in-process, with no web server. See the [CLI](/docs/cli/overview) and [Calling a flow without a transport](/docs/advanced/manual-flow-execution).
 
 ## A single config object
 

@@ -164,7 +164,7 @@ export const dynamic = "force-dynamic";
 - `GET /api/flows/hello-chat/requests/:requestId/stream` — SSE stream for that request
 - `GET /api/flows/sessions/:sessionId/state` — State snapshot (clientData)
 
-The catch-all route `[...path]` lets the framework handle routing internally. One file, full API. You configure models, stores, and settings on `createFlowState`. See [Server Setup](/docs/server/setup) for details.
+The catch-all route `[...path]` lets the framework handle routing internally. One file, full API. You configure models, stores, and settings on `createFlowState`. See [Engine setup](/docs/server/setup) for details.
 
 ---
 

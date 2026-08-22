@@ -205,7 +205,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 ```
 
-The handler returns standard `GET`/`POST`/`PATCH`/`DELETE` handlers. They handle action dispatch, SSE streaming with sequence-based resume, session creation, and state snapshots. `stores` names where state lives; `primary` is the catch-all slot. See [Server Setup](/docs/server/setup) for swapping in SQLite or Postgres.
+The handler returns standard `GET`/`POST`/`PATCH`/`DELETE` handlers. They handle action dispatch, SSE streaming with sequence-based resume, session creation, and state snapshots. `stores` names where state lives; `primary` is the catch-all slot. See [Engine setup](/docs/server/setup) for swapping in SQLite or Postgres.
 
 The React side uses three pieces from `@flow-state-dev/react`:
 

@@ -57,7 +57,7 @@ export const flowstate = createFlowState({
 });
 ```
 
-`stores` is a map of named profiles. A profile maps capability slots (typed containers for a category of storage) to adapters. The required slot is `primary`, the catch-all state store. Swap `inMemoryStores()` for a persistent adapter when you're ready. See [Server Setup](/docs/server/setup).
+`stores` is a map of named profiles. A profile maps capability slots (typed containers for a category of storage) to adapters. The required slot is `primary`, the catch-all state store. Swap `inMemoryStores()` for a persistent adapter when you're ready. See [Engine setup](/docs/server/setup).
 
 ## Sharing config with the CLI
 

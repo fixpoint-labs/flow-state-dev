@@ -133,7 +133,7 @@ You run flows and blocks in an isolated runtime with in-memory stores. Seed stat
 - [Flows and Actions](/docs/fundamentals/flows) — Flow definition, actions, lifecycle
 - [State and Scopes](/docs/fundamentals/state-and-scopes) — Scope hierarchy, partial schemas, CAS
 - [Streaming](/docs/streaming/overview) — Items, content model, resume semantics
-- [Server Setup](/docs/server/setup) — Registry, router, model resolution
+- [Engine setup](/docs/server/setup) — Registry, router, model resolution
 - [Flow options](/docs/configuration/flow), [Runtime options](/docs/configuration/runtime) — field catalogs next to those concepts. [Configuration map](/docs/configuration/overview) is the index.
 - [React Integration](/docs/client/react) — Hooks, renderers, clientData
 - [Testing](/docs/testing/overview) — Test harness, mocks, seeding

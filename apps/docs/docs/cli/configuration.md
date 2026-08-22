@@ -131,7 +131,7 @@ One sharp edge: the CLI's `engines` field allows any Node 22, but type stripping
 - [Configuration map](/docs/configuration/overview) — every layer: flow, runtime, environment, client.
 - [Runtime options](/docs/configuration/runtime) — the `createFlowState` factory field catalog.
 - [Environment variables](/docs/configuration/environment) — keys, `FSD_ENV`, intent overrides.
-- [Server Setup](/docs/server/setup) — the `createFlowState` factory and store profiles in narrative form.
+- [Engine setup](/docs/server/setup) — the `createFlowState` factory and store profiles in narrative form.
 - [Models](/docs/fundamentals/models) — model strings, intents, and how the resolver picks a provider.
 - [Persistence](/docs/persistence/overview) — the store adapters and what each one durably keeps.
 - [CLI API Reference](/docs/api/cli) — the full flag reference for `fsdev run`, `fsdev dev`, and `fsdev serve`. `fsdev serve` also reads this config; it supports `--config` but not `--no-config`.

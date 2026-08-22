@@ -69,4 +69,4 @@ Flipping `isolateUserState` from `false` to `true` on an existing flow doesn't m
 ## See also
 
 - [State & Scopes](/docs/fundamentals/state-and-scopes) for the broader state model.
-- [Server setup](/docs/server/setup) for how flows get registered.
+- [Engine setup](/docs/server/setup) for how flows get registered.

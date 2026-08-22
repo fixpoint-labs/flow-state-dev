@@ -148,7 +148,7 @@ A generator can override these with `flowTools`.
 
 ## Inbound transports
 
-These maps live on the flow definition. The matching adapter has to be mounted on the runtime for anything to listen. See [Server](/docs/server/setup) and the transport pages linked below.
+These maps live on the flow definition. The matching adapter has to be mounted on the runtime for anything to listen. See [Engine setup](/docs/server/setup) and the transport pages linked below.
 
 ### `mcp`
 

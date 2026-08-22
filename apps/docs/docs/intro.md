@@ -81,7 +81,7 @@ Disconnect mid-response, reconnect with a cursor, and continue from the last seq
 
 ## Where settings live
 
-Settings live in three places. Each catalog sits next to the concept it configures: [Flow options](/docs/configuration/flow) after Flows, [Block options](/docs/configuration/blocks) after Blocks, [Runtime options](/docs/configuration/runtime) after Server setup. The [Configuration map](/docs/configuration/overview) at the end of Core is the lookup when you already know which object you are editing.
+Settings live in three places. Each catalog sits next to the concept it configures: [Flow options](/docs/configuration/flow) after Flows, [Block options](/docs/configuration/blocks) after Blocks, [Runtime options](/docs/configuration/runtime) after Engine setup. The [Configuration map](/docs/configuration/overview) at the end of Core is the lookup when you already know which object you are editing.
 
 | Layer | Object | Typical file |
 |-------|--------|--------------|

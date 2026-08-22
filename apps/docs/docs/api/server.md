@@ -1,8 +1,10 @@
 ---
 sidebar_position: 2
+title: Engine API
+sidebar_label: Engine
 ---
 
-# Server API
+# Engine API
 
 `@flow-state-dev/engine` — Action runtime, stores, SSE streaming, orchestration.
 

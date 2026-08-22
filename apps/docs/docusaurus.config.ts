@@ -142,7 +142,7 @@ const config: Config = {
               label: "Building a Chat App",
               to: "/guides/building-a-chat-app",
             },
-            { label: "Server Setup", to: "/docs/server/setup" },
+            { label: "Engine setup", to: "/docs/server/setup" },
           ],
         },
         {

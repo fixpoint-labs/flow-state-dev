@@ -12,7 +12,7 @@ flow-state.dev is distributed as separate packages. Install what you need:
 # Core (required) — block builders, flow definitions, types
 pnpm add @flow-state-dev/core zod
 
-# Server — action runtime, stores, SSE streaming
+# Engine — action runtime, stores, SSE streaming
 pnpm add @flow-state-dev/engine
 
 # Client — HTTP/SSE transport (no React dependency)
@@ -36,7 +36,7 @@ pnpm add -D @flow-state-dev/fsdev
 | Use case | Packages |
 |----------|----------|
 | Define flows only (shared library) | `core` |
-| Server-side execution | `core` + `engine` |
+| Engine / runtime | `core` + `engine` |
 | Client-side consumption | `core` + `client` |
 | Full-stack React app | `core` + `engine` + `react` |
 | Next.js App Router (local or self-hosted) | `core` + `engine` + `next` + `react` |
@@ -72,7 +72,7 @@ export const flowstate = createFlowState({
 });
 ```
 
-`createFlowState` builds synchronously and initializes stores lazily on the first request, so it works in a Next.js Route Handler with no top-level await. See [Server Setup](/docs/server/setup) for stores, profiles, settings, and error handling.
+`createFlowState` builds synchronously and initializes stores lazily on the first request, so it works in a Next.js Route Handler with no top-level await. See [Engine setup](/docs/server/setup) for stores, profiles, settings, and error handling.
 
 ## Mount the route
 
@@ -94,4 +94,4 @@ When you deploy that app to Vercel, switch the import to `createVercelNextHandle
 - [Setting up models](/docs/getting-started/setting-up-models) — provider keys and intents
 - [Quick Start](/docs/getting-started/quick-start) — a working chat from this install
 - [Flow options](/docs/configuration/flow) and [Runtime options](/docs/configuration/runtime) — every `defineFlow` and `createFlowState` field
-- [Server setup](/docs/server/setup) — stores, profiles, and error handling
+- [Engine setup](/docs/server/setup) — stores, profiles, and error handling
