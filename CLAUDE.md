@@ -240,7 +240,7 @@ Development task skills live in `agents/skills/` — the harness-neutral home, s
 
 ## Capabilities
 
-- **Prefer capabilities over manual plumbing.** Use `defineCapability` + `uses: [cap]` instead of manually spreading `tools`, `context`, `sessionResources` into blocks. Capabilities are self-contained, portable, and composable.
+- **Prefer capabilities over manual plumbing.** Use `defineCapability` + `uses: [cap]` instead of manually spreading `tools`, `context`, `resources` into blocks. Capabilities are self-contained, portable, and composable.
 - **Factory pattern for configurable capabilities.** When a capability needs config (provider type, resource refs), export a factory: `createXCapability(options)` → `DefinedCapability`.
 - **Prefer static capability entries over manual context functions.** If a capability already provides context presets, use the capability in `uses` rather than reimplementing its formatting in a `context` slot. Gate conditional behavior at the pipeline level (e.g., `sideChainIf` on capture) instead of at the context injection level.
 - **Dynamic `uses` for conditional capabilities.** `uses` arrays accept `(ctx) => CapabilityRef[]` functions. Static entries install resources at build time; dynamic entries add context/tools at runtime. Resources must be declared statically somewhere.
