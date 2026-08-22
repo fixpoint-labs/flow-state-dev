@@ -6,342 +6,147 @@ hands the host. The framework owns the contract; the host owns credential
 verification. The framework stores no secrets.
 
 This is the foundation that lets one runtime accept browser sessions, MCP
-calls, webhook POSTs, scheduled dispatches, and custom transports under a
-single auth model.
+clients, webhooks, and scheduled jobs without the flow changing. Wiring
+patterns live in
+[Authentication](/apps/docs/docs/server/authentication.md).
 
-## The contract
+---
 
-`defineFlow` accepts an `authentication` config:
+## Contract
 
-```ts
-defineFlow({
-  kind: "billing",
-  authentication: {
-    resolvePrincipal: async (ctx) => {
-      // ctx.source: 'http' | 'mcp' | 'webhook' | 'scheduled' | ...
-      // ctx.request — present for HTTP-shaped transports
-      // ctx.envelope — flowKind, action, sessionId, metadata, input
-      // ctx.rawBody — preserved by HTTP for signature verification
-      return { userId: "...", orgId: "..." }; // or { userId } | { orgId } | null
-    },
-    defaultUserId: undefined,
-    requireUser: true,
-    requireOrg: false
-  },
-  actions: { /* ... */ }
-});
-```
+A `PrincipalResolver` is `(request: Request) => Promise<string | undefined>`.
+It returns a `userId` string, or `undefined` when the request is unauthenticated.
+It **never** reads `body.userId`.
 
-Four fields, all optional:
+`requireUser` is a per-flow boolean. Default `true`: unauthenticated requests
+are rejected. Set `false` for public flows.
 
-- **`resolvePrincipal`** — the verification hook. Returns a `ResolvedPrincipal`,
-  a partial `{ userId?, orgId? }`, or `null` (unauthenticated). Throwing a
-  `PrincipalResolutionError` lets the host pick the response status.
+The resolved `userId` is the sole authority for session ownership and resource
+scoping. The framework never writes the request body into the resolved
+principal.
 
-- **`defaultUserId`** — substituted when `resolvePrincipal` returns no `userId`.
-  Use it for machine-driven transports (webhooks, schedules) that have no
-  end user — name a system principal once and the framework fills it in.
-
-- **`requireUser`** — when true (default), the framework rejects requests
-  that don't yield a `userId` after the `defaultUserId` fallback. When false,
-  the flow opts out of user-scope identity entirely.
-
-- **`requireOrg`** — reserved. The org-scope state model is a separate
-  future concern; the flag exists so hosts can declare intent without churn
-  when it lands.
+---
 
 ## Resolution order
 
-For each inbound request the host runs:
+1. **Transport-level** — the inbound transport already resolved a principal
+   (scheduled, MCP, webhook, chat, voice). The HTTP route skips
+   `resolvePrincipal` entirely. This is the only trusted path for those
+   transports.
+2. **Flow-level** — `defineFlow({ resolvePrincipal })`. Takes precedence over
+   the host-level fallback when present.
+3. **Host-level** — `createFlowApiRouter({ resolvePrincipal })`. Fallback for
+   flows that omit a flow-level resolver.
+4. **Anonymous** — no resolver anywhere. Request is treated as unauthenticated.
 
-1. Adapter constructs a `PrincipalResolutionContext`.
-2. Pick the resolver: per-flow `authentication.resolvePrincipal` if set,
-   otherwise the host-level fallback (`createFlowApiRouter({ resolvePrincipal })`,
-   default = the body-userId stub).
-3. Call the resolver. Capture the result or rethrow `PrincipalResolutionError`.
-4. If the result has no `userId` and `defaultUserId` is set, use it.
-5. If still no `userId` and `requireUser !== false`, reject with 401.
-6. Stamp the resolved principal onto the `InboundRequestEnvelope`.
-7. Proceed with `host.dispatch`.
+[BP-031](/docs/contributing/best-practices.md#bp-031-never-make-authrouting-decisions-from-caller-controllable-input)
+applies to every path: a resolver that returns `body.userId` is a security
+hole. The scheduled-actions adapter is the reference implementation — it
+resolves from a server-side resource, never from the request body.
 
-Steps 2–5 run inside `host.resolvePrincipal`. Adapters never implement auth
-themselves — they always call `host.resolvePrincipal` and the host applies
-the per-flow routing transparently.
-
-Step 6 is the whole trust boundary: the envelope's `userId` and `orgId` are
-the resolved principal's, and nothing downstream re-reads the request body
-for either. A caller-supplied `body.orgId` therefore cannot displace a
-verified one (BP-031). Unauthenticated apps are unaffected — the default
-`defaultBodyUserIdPrincipalResolver` reads `body.orgId` itself, so it still
-reaches the envelope, by way of the resolver that is allowed to trust it. A
-custom resolver that wants the same behavior reads the parsed body from
-`context.envelope.metadata.body`.
+---
 
 ## Scope: the whole `/api/flows` surface
 
-Principal resolution is not action-only. The catch-all dispatcher runs a
-route-level guard (`routes/route-auth.ts`) before it dispatches, so session
-CRUD, session state, resource content, request control, and the debug
-endpoints are governed by the same `authentication` config the action route
-is. A flow that configures `resolvePrincipal` is protected across its whole
-surface, not on one route with an open management API beside it.
+`resolvePrincipal` runs on **every** HTTP request that hits `/api/flows`, not
+just action invocations. The same principal is the authority for session
+listings, session fetch, and `create_session`. This is the contract that
+closes the session-enumeration hole: a listing endpoint that skipped the
+resolver would leak every session on the host.
 
-The guard answers two questions per request:
+### The route-auth guard
 
-1. **Who is calling?** Through the same `host.resolvePrincipal` described
-   above, so a flow has exactly one authentication contract.
-2. **Do they own what they addressed?** The caller's `userId` must equal the
-   `userId` on the session or request record named in the path. A mismatch is
-   `403`. Authentication alone would only change *which* caller can read every
-   user's data.
+`routeSubject` is a per-method contract on every `/api/flows` route. Three
+values:
 
-Route subjects, and the owner each is checked against:
+| `routeSubject` | Meaning | Auth requirement |
+|---|---|---|
+| `"flow"` | The request names a specific flow (`flowName` is present) | That flow's `resolvePrincipal` + `requireUser` |
+| `"session"` | The request names a specific session (`sessionId` is present, no flow) | The session's owning flow's resolver (looked up via `flowName` stored on the session record) |
+| `"none"` | No flow or session in the request (the listing endpoint) | Host-level `resolvePrincipal` only |
 
-| Subject | Routes | Owner |
-| --- | --- | --- |
-| exempt | `list_flows`, `capabilities`, `execute_action` | — (the action route resolves its own principal) |
-| session | session CRUD/state/requests/workstreams, all resource routes, debug | `session.userId` |
-| request | stream, abort, resume, status, retry, continue | `record.userId` |
-| flow | `create_session` | none yet — the caller becomes the owner |
-| user | `user_stream`, `check_interrupted_requests` | the `:userId` path segment |
-| host | `list_sessions`, `active_requests`, `transcribe` | none — the handler scopes results to the caller |
+A request that names neither a flow nor a session **cannot** pick a flow-level
+resolver. It resolves through the host-level fallback. With one configured,
+listings are filtered to sessions owned by the resolved principal. Without
+one, listings return empty: there is no trusted identity to filter on, so
+the route refuses to enumerate.
 
-`routeSubject` switches exhaustively over `ParsedFlowRoute["kind"]`, so adding
-a route without deciding how it is authorized is a compile error.
+`GET /api/flows` (`list_sessions`) is `"none"`. `GET /api/flows/:sessionId`
+(`get_session`) is `"session"`. `POST /api/flows` (`create_session`) is
+`"flow"` — it names a flow and is guarded by that flow's resolver, same as
+`invoke`.
 
-`retry_request` and `continue_request` carry both a `sessionId` and a
-`requestId`. The subject is the **request**: it is what they act on, and it
-names the owner. Authorizing on the path's session would let a caller pair a
-session they own with a `requestId` they do not — `handleRetryRequest` never
-checks that the two are related, and it accepts an `inputOverride`.
-`handleContinueRequest` does check, but an authorization model cannot rest on
-a linkage check that only one route of a pair performs.
+### Mixed-app listing
 
-### When the guard enforces
+In a **mixed app** — per-flow resolvers configured, host-level fallback left
+at default — `list_sessions` returns empty even for a caller who could invoke
+those flows. The listing endpoint has no flow name, so it cannot pick a
+per-flow resolver. This is the documented tradeoff: a mixed app that wants
+listings to work must also set a host-level `resolvePrincipal`.
 
-Only when the effective resolver for the governing flow is not
-`defaultBodyUserIdPrincipalResolver`. An app on the framework default already
-trusts a caller-supplied `body.userId` on the action path; demanding a
-principal from its GETs would reject every one of them (no body to read a
-userId from) without protecting anything that was not already open. Those apps
-are covered by the loopback-bind rail in `@flow-state-dev/node`, which refuses
-to expose them on a network interface at all.
+`anonymousFlowKinds` on `createFlowApiRouter` is the allow-list of
+`FlowKind` values (`"ephemeral"` / `"persisted"`) whose sessions may appear
+in an unauthenticated listing. Default is empty: unauthenticated listings
+return empty even when anonymous sessions exist. A host that wants
+anonymous sessions listed opts in explicitly.
 
-The two halves are a pair: the rail says "configure a resolver before you
-expose this", and the guard is what makes configuring one protect the whole
-surface.
+### `create_session` is not a bypass
 
-### Two rules the guard depends on
+`POST /api/flows` (`create_session`) names a flow and is guarded by that
+flow's resolver, same as `invoke`. A `requireUser: true` flow rejects an
+unauthenticated `create_session` the same way it rejects an unauthenticated
+invoke. There is no "create first, authenticate later" path.
 
-- **The governing flow comes from the stored record** (`session.flowKind`,
-  `record.flowKind`), never the `:flowKind` path segment. Otherwise naming a
-  flow with a permissive resolver would authenticate a request against a
-  record belonging to a strict one (BP-031).
-- **No body is parsed at this layer.** A body is a single-use stream the route
-  handler still needs, and deriving auth from caller-supplied body fields is
-  what BP-031 exists to prevent. Resolvers read the `Request` — headers,
-  cookies, URL.
+---
 
-### Routes that span flows
+## `requireUser: false` is compile-time
 
-`list_sessions`, `active_requests`, and `transcribe` have no `:flowKind`, so
-they resolve through the host-level fallback. With one configured, listings
-scope to the caller: `list_sessions` forces its `userId` filter to the
-principal (the query param stays a convenience filter and can never widen the
-set), and `active_requests` filters to the principal's entries.
+`requireUser: false` is only accepted by `defineFlow` when `FlowKind` is
+`"ephemeral"`. A persisted flow with `requireUser: false` is a type error.
+The runtime also throws if a persisted flow is constructed with
+`requireUser: false` (defense in depth against a JS caller that bypasses
+the type check).
 
-In a **mixed app** — per-flow resolvers configured, host-level fallback left at
-the default — there is no resolver to identify the caller with. The guard
-withholds the rows of any flow that authenticates and serves the rest
-(`anonymousFlowKinds` on the result, filtered in the handler).
+This is the same rule as `skipAccountProvision: true` — both are
+ephemeral-only because a persisted flow without an owning principal has
+no one to attribute stored state to.
 
-It deliberately does *not* refuse the route. Refusing would take the listing
-away from every app with a single authenticated flow, including the flows that
-are open by design, and one background flow authenticating its scheduled
-transport is enough to trip it. The caller still sees exactly what it could
-see before, and nothing more. `list_sessions` filters after the store query, so
-a page can come back shorter than `limit`; the alternative is one query per
-allowed kind, which is not worth it for a path that exists only when a
-host-level `resolvePrincipal` is absent.
-
-User-addressed routes (`/users/:userId/...`) take the same treatment, and it
-matters more there because one of them writes. `check-interrupted` sweeps stale
-in-flight requests to `interrupted` and deregisters them, and its `userId` comes
-from the path, so in a mixed app an anonymous caller could otherwise disrupt an
-authenticated flow's runs by naming its user. The sweep is therefore restricted
-to the same unauthenticated flow kinds; entries belonging to any other flow are
-skipped rather than reported-but-mutated. An app where nothing authenticates
-gets every kind back and is unaffected.
-
-### Session creation
-
-`create_session` takes `userId` and `orgId` from the resolved principal, not
-from the body, for the same reason the action route does (BP-031). The `orgId`
-half matters twice over: `validateDispatch` reads a stored session's `orgId`
-to satisfy a flow's `requiresOrg`, so a caller-supplied value would become an
-org binding the runtime later trusts.
-
-## `requireUser: false` semantics
-
-A flow that opts out of user identity must not declare any user-scope
-state, `clientData`, or resources. The framework enforces this at flow
-registration:
-
-```ts
-// Throws at defineFlow:
-defineFlow({
-  kind: "public-flow",
-  authentication: { requireUser: false },
-  user: { stateSchema: z.object({ pref: z.string() }) }, // ERROR
-  actions: { /* ... */ }
-});
-```
-
-The same enforcement applies to `user.clientData` and to any resource (block-
-declared or flow-level) with `scope: "user"`. Catching the conflict at
-startup — rather than at request time — surfaces a class of integration
-mistakes immediately.
-
-The runtime still expects a `userId` for `RequestRecord.userId`,
-`ActiveRequestEntry.userId`, and similar bookkeeping fields. That's why
-`requireUser: false` flows must either return a `userId` from the resolver
-or set `authentication.defaultUserId`. Configuring neither raises a 500 at
-request time naming the flow.
+---
 
 ## Top-level `requireUser` shorthand
 
-`defineFlow` keeps a top-level `requireUser` flag for convenience. When
-both `authentication.requireUser` and the top-level `requireUser` are set,
-`authentication.requireUser` wins. Otherwise the framework falls back to
-the top-level flag, then defaults to `true`.
+`requireUser` can be set at the top level of `defineFlow` as well as inside
+`config`. The top-level form is a shorthand: `defineFlow({ requireUser: false, ... })`
+is equivalent to `defineFlow({ config: { requireUser: false }, ... })`.
+When both are set, the top-level value wins.
 
-## Convenience helpers
-
-`@flow-state-dev/engine` ships two verifier helpers hosts can compose
-inside their resolvers.
-
-### HMAC signature verifier
-
-```ts
-import { createHmacVerifier, PrincipalResolutionError } from "@flow-state-dev/engine";
-
-const verifyStripe = createHmacVerifier({
-  secret: process.env.STRIPE_WEBHOOK_SECRET!,
-  format: "stripe",
-  toleranceSeconds: 300
-});
-
-defineFlow({
-  kind: "stripe-webhook",
-  authentication: {
-    requireUser: false,
-    defaultUserId: "system",
-    resolvePrincipal: ({ rawBody, request }) => {
-      const sig = request?.headers.get("stripe-signature") ?? null;
-      if (rawBody === undefined || !verifyStripe(rawBody, sig)) {
-        throw new PrincipalResolutionError("Invalid signature", { status: 401 });
-      }
-      return null; // defaultUserId ("system") fills in
-    }
-  },
-  /* ... */
-});
-```
-
-`format: "raw"` matches GitHub-style `sha256=<hex>` headers; `format: "stripe"`
-matches `t=<ts>,v1=<sig>[,vN=<sig>...]` with timestamp tolerance; `format: "custom"`
-takes a `parseSignature` callback for anything else. All comparisons are
-constant-time.
-
-### Bearer token / HS256 JWT verifier
-
-```ts
-import {
-  createHs256JwtVerifier,
-  extractBearerToken,
-  PrincipalResolutionError
-} from "@flow-state-dev/engine";
-
-const verifyJwt = createHs256JwtVerifier({
-  secret: process.env.JWT_SECRET!,
-  issuer: "https://my-app.example.com",
-  audience: "api.my-app.example.com"
-});
-
-defineFlow({
-  kind: "private-flow",
-  authentication: {
-    resolvePrincipal: ({ request }) => {
-      const token = extractBearerToken(request?.headers.get("authorization"));
-      const payload = verifyJwt(token);
-      if (payload === null) {
-        throw new PrincipalResolutionError("Invalid token", { status: 401 });
-      }
-      return { userId: payload.sub as string, orgId: payload.org as string };
-    }
-  },
-  /* ... */
-});
-```
-
-Asymmetric algorithms (RS256, ES256) are out of scope here — they require
-JWKS resolution that's a separate concern. Hosts using those plug in their
-own verifier.
-
-## Sharing resolvers
-
-If multiple flows share auth logic, hosts compose their own:
-
-```ts
-const sharedResolver: ResolvePrincipalFn = async (ctx) => readSession(ctx.request);
-
-defineFlow({ kind: "flow-a", authentication: { resolvePrincipal: sharedResolver }, /* ... */ });
-defineFlow({ kind: "flow-b", authentication: { resolvePrincipal: sharedResolver }, /* ... */ });
-```
-
-Per-flow hooks rather than registry-level hooks because flows may have
-legitimately different auth requirements — one flow public, another
-private; one MCP-exposed, another not.
-
-## Host-level fallback
-
-`createFlowApiRouter` accepts a `resolvePrincipal` option used when an
-inbound flow has no `authentication.resolvePrincipal` of its own:
-
-```ts
-import { createFlowApiRouter } from "@flow-state-dev/engine";
-
-const router = createFlowApiRouter({
-  registry,
-  stores,
-  resolvePrincipal: async (ctx) => readSession(ctx.request)
-});
-```
-
-Per-flow `defineFlow({ authentication })` always wins over this fallback.
-The default fallback is `defaultBodyUserIdPrincipalResolver`, which reads
-`body.userId` from the parsed HTTP body — useful for early development and
-for the framework's existing tests.
-
-## What the framework does not own
-
-- **Credential storage** — the host owns user tables, OAuth tokens, webhook
-  secrets, per-user MCP credential grants. The framework gives you a hook
-  and stays out of the way.
-- **OAuth provider plumbing** — host concern.
-- **Asymmetric JWT verification (RS256/ES256)** — needs JWKS and rotation
-  semantics outside the scope of a per-flow hook.
-- **Org-scope state** — a separate future concern. The `requireOrg` flag
-  exists today only as a type-level reservation.
+---
 
 ## Edge cases
 
-- **Resolver throws `PrincipalResolutionError`** — the host re-throws as-is,
-  honoring the `status` field. Use this for explicit auth failures.
-- **Resolver returns `null` and no `defaultUserId` is set** — the host
-  rejects with 401 (`requireUser: true`) or 500 (`requireUser: false`,
-  configuration error).
-- **Flow has `requireUser: false` and a user-scope declaration** — thrown at
-  `defineFlow` time, naming the offending field.
-- **`authentication.resolvePrincipal` returns `{ orgId }` with no `userId`** —
-  treated as no `userId`; falls through to `defaultUserId`.
+- **`body.userId` is ignored.** The request body `userId` field is a leftover
+  from an earlier contract and is never consulted. A resolver that reads it
+  is a BP-031 violation.
+- **Session-user mismatch.** If a request names an existing session whose
+  stored `userId` does not match the resolved principal, the engine rejects
+  the request. The check runs after resolution, on every path that loads a
+  session.
+
+---
+
+## Cross-references
+
+- [Authentication (user guide)](/apps/docs/docs/server/authentication.md) —
+  wiring patterns, convenience helpers, and host-level fallback examples.
+- [MCP Transport](./mcp.md) — MCP session identity and the
+  `FlowMcpServerOptions.auth` slot.
+- [Webhook Transport](./webhook-transport.md) — signature verification as
+  the resolver.
+- [Chat Transport](./chat-transport.md) — platform identity mapping.
+- [Scheduled Actions](./scheduled-actions.md) — server-side resource as
+  the principal source; the reference BP-031 implementation.
+- [Voice Transport](./voice-transport.md) — WebRTC / websocket identity.
+- [Server Routes](./server-routes.md) — the HTTP surface `resolvePrincipal`
+  guards.
+- [BP-031](/docs/contributing/best-practices.md#bp-031-never-make-authrouting-decisions-from-caller-controllable-input)
+  — never make auth decisions from caller-controllable input.
