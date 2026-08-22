@@ -120,10 +120,10 @@ Conflict rule: more specific reference wins (e.g. `docs/architecture/streaming.m
 | `contracts` | Zero-dep shared layer (item taxonomy + leaf types) | Imports no workspace package; declares no dependencies (guarded). `core` re-exports it |
 | `core` | Isomorphic builders/types/items | No platform-specific code; value-imports `contracts` |
 | `engine` | Execution/runtime/stores/streaming/routes | No dependency on react or client |
-| `client` | Transport + session/request APIs | No dependency on server or react |
+| `client` | Transport + session/request APIs | No dependency on engine or react |
 | `react` | Hooks/renderers only | Wraps client; no transport logic |
-| `testing` | Deterministic harnesses + mocks | Uses core + server |
-| `cli` | Run/inspect/scaffold flows | Uses core + server + testing |
+| `testing` | Deterministic harnesses + mocks | Uses core + engine |
+| `cli` | Run/inspect/scaffold flows | Uses core + engine + testing |
 | `apps/devtool` | Inspector app | Public APIs only (client + react) |
 
 → [Architecture Overview](../architecture/overview.md)

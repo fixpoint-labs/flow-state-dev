@@ -32,7 +32,7 @@ This codebase has its own primary domain vocabulary. The architectural overlay (
 
 **FSD-native domain language** (use these as the names of things):
 
-- **block** (handler / generator / sequencer / router), **pattern**, **capability**, **flow**, **action**, **scope** (request/session/user/project), **item** (message, reasoning, block_output, component, container, status, context, state_change, error, step_error), **store adapter**.
+- **block** (handler / generator / sequencer / router), **pattern**, **capability**, **flow**, **action**, **scope** (request/session/user/org), **item** (message, reasoning, block_output, component, container, status, context, state_change, error, step_error), **store adapter**.
 - See [LANGUAGE.md § "FSD vocabulary mapping"](LANGUAGE.md) for how each maps to module/interface/seam/adapter.
 
 **Authority hierarchy** (suggestions must respect this):
