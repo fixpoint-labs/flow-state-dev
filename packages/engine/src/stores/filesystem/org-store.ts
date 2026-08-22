@@ -10,17 +10,17 @@ import {
   type FilesystemRecordStore
 } from "./shared";
 
-export type FilesystemProjectStoreOptions = {
+export type FilesystemOrgStoreOptions = {
   rootDir: string;
 };
 
-export class FilesystemProjectStore implements OrgStore {
+export class FilesystemOrgStore implements OrgStore {
   private readonly store: FilesystemRecordStore<
     OrgRecord,
     OrgListOptions
   >;
 
-  constructor(options: FilesystemProjectStoreOptions) {
+  constructor(options: FilesystemOrgStoreOptions) {
     this.store = createFilesystemRecordStore<OrgRecord, OrgListOptions>({
       rootDir: options.rootDir,
       filter: (record, listOptions): boolean => {
@@ -93,8 +93,8 @@ export class FilesystemProjectStore implements OrgStore {
   }
 }
 
-export function createFilesystemProjectStore(
-  options: FilesystemProjectStoreOptions
+export function createFilesystemOrgStore(
+  options: FilesystemOrgStoreOptions
 ): OrgStore {
-  return new FilesystemProjectStore(options);
+  return new FilesystemOrgStore(options);
 }

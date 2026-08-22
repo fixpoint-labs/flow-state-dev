@@ -15,7 +15,7 @@ import {
   pushToArrayInMap
 } from "./shared";
 
-export class InMemoryProjectStore implements OrgStore {
+export class InMemoryOrgStore implements OrgStore {
   private readonly records = new Map<string, OrgRecord>();
 
   async get(id: string): Promise<OrgRecord | undefined> {
@@ -90,6 +90,6 @@ export class InMemoryProjectStore implements OrgStore {
   }
 }
 
-export function createInMemoryProjectStore(): OrgStore {
-  return new InMemoryProjectStore();
+export function createInMemoryOrgStore(): OrgStore {
+  return new InMemoryOrgStore();
 }
