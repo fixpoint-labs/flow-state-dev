@@ -15,8 +15,8 @@
  * `lineageId` and falls back to a value derived from its session key, prefixed
  * so it can never equal that key (BP-030).
  */
-import type { ResourceCollectionConfig } from "@flow-state-dev/core/types";
 import { getPatternPrefix } from "@flow-state-dev/core/types";
+import { isCollectionConfig } from "./is-collection-config";
 import { resourceStorageKeys } from "./storage-keys";
 import type { StorageScopeType } from "../stores/types";
 
@@ -35,14 +35,6 @@ export type LineageSession = {
 
 /** The declaration fields that decide where a session-scoped resource stores. */
 type SharedFlag = { sharedToWorkstream?: boolean };
-
-function isCollection(value: unknown): value is ResourceCollectionConfig {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as ResourceCollectionConfig).pattern === "string"
-  );
-}
 
 /**
  * Storage `scopeId` for one session-scoped resource or collection.
@@ -185,7 +177,7 @@ function sessionOwnership(flowResources: unknown): {
   for (const [accessor, def] of entries) {
     const flag = (def as SharedFlag).sharedToWorkstream === true;
     if (flag) anyShared = true;
-    if (isCollection(def)) {
+    if (isCollectionConfig(def)) {
       const prefix = getPatternPrefix(def.pattern);
       prefixes.push({ prefix: prefix === "" ? "" : `${prefix}/`, flag });
     } else {

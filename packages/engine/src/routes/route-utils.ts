@@ -25,6 +25,7 @@ import { ValidationError, FlowError } from "../errors/flow-error";
 import type { RequestRecord, SessionRecord, SessionStore } from "../stores/types";
 import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { isJsonObject } from "../utils/json-helpers";
+import { isCollectionConfig } from "../resources/is-collection-config";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { sortItemsChronologically } from "../utils/sort";
 
@@ -251,15 +252,6 @@ export function normalizeResourceState(config: ResourceConfig, value: unknown): 
   }
 
   return normalizeResourceDefault(config);
-}
-
-function isCollectionConfig(value: unknown): value is ResourceCollectionConfig {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "pattern" in value &&
-    typeof (value as ResourceCollectionConfig).pattern === "string"
-  );
 }
 
 export function createScopeResources(options: {

@@ -59,19 +59,7 @@ export type ResourcePersistenceContext = {
   stores: StoreRegistry;
 };
 
-/**
- * True when a resource entry shape is a collection (has a `pattern`
- * field). Single resources expose `stateSchema`; collections add
- * `pattern` + collection-specific schemas.
- */
-export function isCollectionConfig(value: unknown): value is ResourceCollectionConfig {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "pattern" in value &&
-    typeof (value as ResourceCollectionConfig).pattern === "string"
-  );
-}
+export { isCollectionConfig } from "./is-collection-config";
 
 // Re-export so older callers keep working.
 export { resourceStorageKeys } from "./storage-keys";
