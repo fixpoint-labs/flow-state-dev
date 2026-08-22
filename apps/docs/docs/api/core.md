@@ -345,57 +345,84 @@ defineFlow({
 
 ## Voice Types
 
-### `SpeechModel`
+Voice config on a flow is `defineFlow({ voice })`. The speak model id is a string.
 
-Provider-agnostic interface for text-to-speech synthesis.
+### `TTSConfig`
+
+Settings for text-to-speech on `VoiceConfig.tts`.
 
 ```ts
-import type { SpeechModel } from "@flow-state-dev/core";
+import type { TTSConfig } from "@flow-state-dev/core";
 
-const model: SpeechModel = {
-  modelId: "gpt-4o-mini-tts",
-  generate: async (options) => ({ audio: uint8Array, mediaType: "audio/mp3" }),
+const tts: TTSConfig = {
+  model: "gpt-4o-mini-tts",
+  voice: "alloy",
+  speed: 1,
 };
 ```
 
-### `TranscriptionModel`
-
-Provider-agnostic interface for speech-to-text transcription.
-
-```ts
-import type { TranscriptionModel } from "@flow-state-dev/core";
-
-const model: TranscriptionModel = {
-  modelId: "gpt-4o-mini-transcribe",
-  transcribe: async (options) => ({ text: "Hello" }),
-};
-```
+`model` is optional. Omit it and the provider default is used.
 
 ### `VoiceConfig`
 
-Flow-level voice configuration. Set on `defineFlow({ voice })`.
+Flow-level voice configuration.
 
 ```ts
-type VoiceConfig = {
-  tts?: {
-    model: string | SpeechModel;
-    voice?: string;
-    speed?: number;
-  };
+import { defineFlow } from "@flow-state-dev/core";
+import type { VoiceConfig } from "@flow-state-dev/core";
+
+const voice: VoiceConfig = {
+  tts: { voice: "alloy" },
+};
+
+defineFlow({
+  kind: "narration",
+  voice,
+  actions: {
+    // ...
+  },
+});
+```
+
+Pass `provider` when this flow should use a different `VoiceProvider` than the server default.
+
+### `VoiceProvider`
+
+Object that owns `speak`, `speakStream`, `transcribe`, and `listVoices`. `abilities` says which of those exist.
+
+```ts
+import type { VoiceProvider } from "@flow-state-dev/core";
+
+const provider: VoiceProvider = {
+  id: "demo:1",
+  providerName: "demo",
+  abilities: {
+    speak: true,
+    speakStream: false,
+    transcribe: false,
+    listVoices: false,
+  },
+  speak: async ({ text }) => ({
+    audio: new Uint8Array(),
+    mediaType: "audio/mpeg",
+  }),
 };
 ```
 
+Concrete providers ship in their own packages. See [Voice](/docs/advanced/voice).
+
 ### `OutputAudioContent`
 
-Content part for synthesized audio.
+Content part for synthesized audio. Import it from `@flow-state-dev/core/items`.
 
 ```ts
-type OutputAudioContent = {
-  type: "output_audio";
-  audio: string;        // base64
-  mediaType: string;    // "audio/mp3", "audio/wav", etc.
-  transcript?: string;
-  duration?: number;
+import type { OutputAudioContent } from "@flow-state-dev/core/items";
+
+const part: OutputAudioContent = {
+  type: "output_audio",
+  audio: "", // base64
+  mediaType: "audio/mpeg",
+  transcript: "Hello",
 };
 ```
 
