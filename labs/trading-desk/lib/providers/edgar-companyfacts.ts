@@ -80,6 +80,14 @@ function entries(facts: Record<string, Fact>, tag: string): FactEntry[] {
   return facts[tag]?.units?.USD ?? [];
 }
 
+/** SEC form types known to carry QUARTERLY instant facts. Checked even when
+ *  `fp` is absent (review round 6, P2) — a 10-Q reports `fp` most of the
+ *  time, but a filer that leaves it off is not thereby annual; `form` is the
+ *  independent signal that catches it. Duration facts need no such gate —
+ *  the day-span test below already excludes a quarter regardless of `form`
+ *  or `fp`. Amendments (`/A`) carry the same period shape as the original. */
+const QUARTERLY_FORMS = new Set(["10-Q", "10-Q/A"]);
+
 /**
  * Whether a fact entry is an ANNUAL observation of the shape this field takes.
  *
@@ -92,13 +100,20 @@ function entries(facts: Record<string, Fact>, tag: string): FactEntry[] {
  * a full year of profit with whatever quarter was filed most recently. An
  * explicitly sub-annual period (`fp: "Q1".."Q4"`) is rejected here; an entry
  * with no `fp` at all is kept, so this narrows the defect without narrowing
- * coverage on filers that leave the field off.
+ * coverage on filers that leave the field off — BUT `fp == null` is not by
+ * itself annual: a 10-Q that also omits `fp` would pass a check that only
+ * ever looked at `fp`, hand the mapper a quarter-end as if it were the fiscal
+ * year-end, and publish quarterly balance figures under an annual `periodEnd`
+ * with the duration figures blanked out beside them (no duration fact matches
+ * a quarter-end). `QUARTERLY_FORMS` is the second, independent gate that
+ * catches that shape; it rejects on `form` alone, before `fp` is even read.
  */
 function isAnnual(e: FactEntry, kind: "instant" | "duration"): boolean {
   if (e.end == null || typeof e.val !== "number") return false;
   if (kind === "duration") {
     return e.start != null && daysBetween(e.start, e.end) > ANNUAL_MIN_DAYS;
   }
+  if (e.form != null && QUARTERLY_FORMS.has(e.form)) return false;
   return e.start == null && (e.fp == null || e.fp === "FY");
 }
 
@@ -206,16 +221,26 @@ export function mapEdgarCompanyFacts(
     valueAtB(g, tags, kind, anchor);
 
   // Total debt: prefer summing current + noncurrent long-term debt AT the
-  // anchor; fall back to the combined LongTermDebt tag when a filer reports
-  // only that. Both legs read at the same period, so the sum cannot mix years.
+  // anchor, but ONLY when BOTH legs are present there — falling back to the
+  // combined LongTermDebt tag when a filer reports only that (both legs read
+  // at the same period, so the sum cannot mix years).
+  //
+  // A SINGLE LEG PRESENT WITHOUT ITS PAIR IS NOT ZERO-FILLED (review round 6,
+  // P1). `valueAtB` returning `null` for a tag means the filer never reported
+  // it AT THIS PERIOD — indistinguishable, from this data alone, between "they
+  // have none" and "they have some but it isn't tagged here." Summing the one
+  // present leg with an assumed 0 for the other silently understates total
+  // debt, which propagates into enterprise value, leverage and expected
+  // return. This is the SAME "a tag the filer never reported is absent, never
+  // 0" rule the module header states; the fallback below is what actually
+  // honours it — if neither the split nor the combined tag resolves, total
+  // debt stays `null`, not the lone leg.
   const ltNoncurrent = at(["LongTermDebtNoncurrent"], "instant");
   const ltCurrent = at(["LongTermDebtCurrent"], "instant");
-  let totalDebt: number | null;
-  if (ltNoncurrent != null || ltCurrent != null) {
-    totalDebt = (ltNoncurrent ?? 0) + (ltCurrent ?? 0);
-  } else {
-    totalDebt = at(["LongTermDebt"], "instant");
-  }
+  const totalDebt =
+    ltNoncurrent != null && ltCurrent != null
+      ? ltNoncurrent + ltCurrent
+      : at(["LongTermDebt"], "instant");
 
   // FCF = operating − capex (EDGAR reports capex as a positive outflow).
   const operating = at(["NetCashProvidedByUsedInOperatingActivities"], "duration");
