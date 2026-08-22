@@ -11,7 +11,7 @@
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
 import type { InitialSkill } from "@flow-state-dev/core";
-import { resolveResourceCollection } from "../tasks/collection/resolve-resource-collection";
+import { resolveResourceCollection } from "../tasks";
 import { ensureSeeded } from "./seeding";
 
 const inputSchema = z.object({ message: z.string() }).passthrough();

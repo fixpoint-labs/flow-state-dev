@@ -22,7 +22,7 @@
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { InitialSkill } from "@flow-state-dev/core";
 import { readActivations, type ActivationLocation } from "./activation-store";
-import { resolveResourceCollection } from "../tasks/collection/resolve-resource-collection";
+import { resolveResourceCollection } from "../tasks";
 import { renderActiveSkillBody } from "./render-skill-body";
 import { ensureSeeded } from "./seeding";
 

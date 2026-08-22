@@ -25,7 +25,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { InitialSkill, SkillState } from "@flow-state-dev/core";
 import { skillManifestKey } from "./collection";
-import { resolveResourceCollection as resolveCollection } from "../tasks/collection/resolve-resource-collection";
+import { resolveResourceCollection } from "../tasks";
 import { listEnabledSkills } from "./internal/list-enabled-skills";
 import { ensureSeeded } from "./seeding";
 import { inlineActivate } from "./inline-activate";
@@ -76,7 +76,7 @@ function getRequiredCollection(
   ctx: import("@flow-state-dev/core/types").BlockContext,
   key: string,
 ): ResourceCollectionRef {
-  const collection = resolveCollection(ctx, key);
+  const collection = resolveResourceCollection(ctx, key);
   if (!collection) {
     throw new Error(
       `Skills collection "${key}" is not registered on ctx.resources`,

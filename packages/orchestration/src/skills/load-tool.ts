@@ -26,7 +26,7 @@ import {
   type ActivationLocation,
 } from "./activation-store";
 import { skillManifestKey } from "./collection";
-import { resolveResourceCollection } from "../tasks/collection/resolve-resource-collection";
+import { resolveResourceCollection } from "../tasks";
 import { listEnabledSkills } from "./internal/list-enabled-skills";
 import { ensureSeeded } from "./seeding";
 import { validateSkillName } from "./skill-md";

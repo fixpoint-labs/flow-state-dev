@@ -54,6 +54,7 @@ import type {
 import { z } from "zod";
 import {
   getOrCreateTaskCollection,
+  resolveResourceCollection,
   resolveTaskCapDefaults,
   RETRY_BUDGET_NOT_APPLICABLE,
   taskStatusSchema,
@@ -63,7 +64,6 @@ import { taskBoard } from "../task-board";
 import { readActivations, type ActivationLocation } from "./activation-store";
 import { skillManifestKey } from "./collection";
 import { findBundledFile } from "./internal/bundled-files";
-import { resolveResourceCollection } from "../tasks/collection/resolve-resource-collection";
 import { stripFrontmatter } from "./internal/strip-frontmatter";
 import { isValidAgentKey } from "./skill-md";
 import { materializeToolSeat, materializeWorker } from "./worker-materializer";

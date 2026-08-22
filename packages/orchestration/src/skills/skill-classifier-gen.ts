@@ -17,7 +17,7 @@ import type {
   ResourceCollectionRef,
 } from "@flow-state-dev/core/types";
 import type { SkillState } from "@flow-state-dev/core";
-import { resolveResourceCollection } from "../tasks/collection/resolve-resource-collection";
+import { resolveResourceCollection } from "../tasks";
 import {
   skillActivatorStateSchema,
   matchedSkillSchema,
