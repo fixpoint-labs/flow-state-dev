@@ -33,16 +33,17 @@ designed against that case, not against the happy one.
 >   judgment about when to reach for it. Whether a run asks unprompted is the *next* epic's
 >   evidence, not this one's. FIX-1166 makes this weigh **more**, not less: the fix is one line,
 >   so almost none of this run's value is the fix — the ask *is* the experiment, and it is staged.
-> - **The question stays open only as long as the board's lease allows — and that is now a
->   setting we build.** Parking's *record* is durable: the `SuspensionRecord` survives a restart.
+> - **The question stays open only as long as the board's lease allows — and that is now a window
+>   we configure.** Parking's *record* is durable: the `SuspensionRecord` survives a restart.
 >   The task's *ownership* is not. Suspending **stops lease renewal by design**
 >   (`task-board/index.ts:958-965` states the consequence outright), so on the 120 s default
 >   (`DEFAULT_LEASE_DURATION_MS`, `tasks/collection/internal.ts:640`) the row lapses and becomes
 >   claimable — the next drain on that board then recovers it, and the resumed worker's own
 >   write-back is refused by the fence. Two minutes is shorter than any real human answer, so as
->   previously written this epic promised something it could not do. **LAB-139 therefore builds a
->   board-level lease setting** (§5, decided): `leaseDurationMs` is already accepted per claim, but
->   `taskBoard` exposes no claim options at all.
+>   previously written this epic promised something it could not do. **LAB-139 therefore configures
+>   an answer window** (§5, decided) — five lines of Conductor's own code, not a framework change:
+>   `TaskBoardConfig.dispatcher` already accepts a `TaskDispatcher` instance, and a dispatcher's
+>   whole job is to call `collection.claim(workerId, opts)`, which already takes `leaseDurationMs`.
 > - **A lapsed lease costs a duplicate attempt — and can silently discard the operator's answer.**
 >   The honest cost of the fix above, and it is *not* that the row strands. Lease expiry **invokes**
 >   no claim by itself — `boardQuiescence` returns `"drained"` the moment nothing is in flight and
@@ -204,8 +205,8 @@ down an altitude; push it into the issue spec that will write it.*
      `awaitReview`, which strands the attempt permanently (FIX-1200). `SuspensionError` propagates
      past the `.tap()`, `recordSuccess` never runs, the row stays `in_progress`, and the
      `SuspensionRecord` is durable.
-   - **Hold** the claim with a lease configured on the board for a human-scale window — framework
-     work inside LAB-139 (§1, §5). At the 120 s default the next drain reclaims the row and re-runs
+   - **Hold** the claim for a human-scale window by configuring the board's **dispatcher** — five
+     lines in Conductor's own code, no framework change (§1, §5). At the 120 s default the next drain reclaims the row and re-runs
      the work, and the answered original's write-back is then refused, so **the operator's answer is
      discarded silently and the second attempt's output is what lands.** The lease value is the only
      control over that (§1).
@@ -279,7 +280,7 @@ down an altitude; push it into the issue spec that will write it.*
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
 | [LAB-138](https://linear.app/fixpoint-labs/issue/LAB-138/the-harness-manager-a-task-row-becomes-a-watched-settled-coding-run) | The manager loop — a task row becomes a watched, settled coding run. Provisions the run's working directory and owns the **per-run `cwd` seam** that makes handing it down possible (theme 4). Settles on a **handle-status check**, not on a normal return (theme 5). **Defines the runner contract**, which must not encode any one harness's shape (theme 7) — the clause-level detail (the bound, the result shape, token usage, permission posture) is in this issue's implementer notes, deliberately not in the epic-spec. Adds the per-run `cwd` to the **SDK path** — the only surface that can host a watched run (theme 4) | spec | — | — | Needs spec |
-| [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof** (FIX-1166). Blocked by LAB-138. Builds theme 5's park-and-wake — `ctx.suspend()` plus an in-process resume action, including the **`suspensionId` projection seam** that makes the gate addressable at all (`ctx.suspend()` mints the id internally and returns nothing) and a **replay-safe inbox write** — and the **board-level claim/lease option on `taskBoard`** that lets a parked run keep its claim for a human-scale window (framework work; §5) — load-bearing, not a comfort: at the default the next wake's drain reclaims the row, and the answered original's write-back is then refused `lost-claim`, so the operator's answer is silently discarded | spec | — | — | Needs spec |
+| [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof** (FIX-1166). Blocked by LAB-138. Builds theme 5's park-and-wake — `ctx.suspend()` plus an in-process resume action, including the **`suspensionId` projection seam** that makes the gate addressable at all (`ctx.suspend()` mints the id internally and returns nothing) and a **replay-safe inbox write** — and the **answer window** that lets a parked run keep its claim (a configured dispatcher in Conductor's own code — no framework change; §5) — load-bearing, not a comfort: at the default the next wake's drain reclaims the row, and the answered original's write-back is then refused `lost-claim`, so the operator's answer is silently discarded | spec | — | — | Needs spec |
 | [FIX-150](https://linear.app/fixpoint-labs/issue/FIX-150/workspaces-if-validated-workspacerunner-block-and-virtual-filesystem) | Workspaces — the file-projection component. Large, three PRs (a component · b shell-tool migration · c coding-agent path). Subsumes FIX-998. **Own track — carries no dependency edge into the Proof** (theme 4) | spec | [#1345](https://github.com/fixpoint-labs/flow-state-dev/pull/1345) — **approved** | — | Needs implementation |
 
 *FIX-150 is on team **flow-state**, not Labs; it is a sub-issue of LAB-140 across teams. Its
@@ -328,19 +329,26 @@ waits on it (theme 4).*
   the task and re-runs it, and the resumed worker's write-back is then refused by the fence. Two
   minutes is shorter than any real human answer, so without this the Proof's round trip is a race
   it loses to the very next wake.
-  **The claim path already takes the number** — `leaseDurationMs` is accepted per claim and
-  validated between `MIN_LEASE_DURATION_MS = 1_000` and `MAX_LEASE_DURATION_MS` (~74.5 days)
-  (`tasks/collection/internal.ts:649,660`) — but **`taskBoard` exposes no claim options at all**
-  (a grep over `packages/orchestration/src/task-board/` returns nothing). That gap is the whole
-  difference between a two-minute window and a usable one.
-  **Scope:** LAB-139 gains an explicit piece of **framework work** — expose a claim/lease option
-  on `taskBoard`, threaded through to the claim — so a board hosting human-in-the-loop work
-  configures a window measured in hours. Symmetric with the per-run `cwd` seam already named
-  inside LAB-138 (theme 4). **Kept inside LAB-139 rather than filed as a fourth member of the
-  set**: a fourth member buys a fourth dependency chain for one option. **Sequencing, so it isn't
-  read as a new edge:** LAB-138 stands the board up and LAB-139 amends its configuration — that is
-  the existing land-order (theme 4), not an additional dependency, and LAB-138 does not wait on
-  the option to be correct at its own default.
+  **And the window needs no framework change — the seam is already public.**
+  `TaskBoardConfig.dispatcher` accepts a `TaskDispatcher` instance
+  (`TaskBoardDispatcherInput = TaskDispatcher | "fifo" | "topological" | "priority"`,
+  `task-board/shared.ts:27-31`), `TaskDispatcher` is exported from
+  `@flow-state-dev/orchestration/tasks` (`tasks/index.ts:137`), and a dispatcher's whole job is to
+  call `collection.claim(workerId, opts)` — which already takes and validates `leaseDurationMs`
+  between `MIN_LEASE_DURATION_MS = 1_000` and `MAX_LEASE_DURATION_MS` (~74 days)
+  (`tasks/collection/internal.ts:649,660`). **It also holds across renewals**, which is the half
+  worth checking: `startLeaseRenewal` derives its span from the claimed row rather than a constant
+  (`span = claimedTask.leaseUntil - claimedTask.updatedAt`; `tasks/lease-renewal.ts:203-205,
+  234-238`), so a dispatcher-set duration is the duration for the row's whole life.
+  **Scope:** LAB-139 configures the board's dispatcher with an answer window — **five lines in
+  Conductor's own code, not a public-surface expansion.** *(Revised: this was carried as framework
+  work on `taskBoard` and it is not. **The outcome the owner signed off on is unchanged** — the
+  answer window is closed and the parked row is held; only the mechanism got cheaper, so this is
+  not scope being quietly dropped.)* It is **not** symmetric with LAB-138's per-run `cwd` seam,
+  which is genuinely a missing capability (theme 4). **Sequencing, so it isn't read as a new
+  edge:** LAB-138 stands the board up and LAB-139 sets its window — the existing land-order (theme
+  4), not an additional dependency, and LAB-138 is correct at the default until it does. The
+  recipe and its one caveat are in the implementer notes.
   **The cost, named beside the limit it replaces (§1) — settled on evidence, not argued.** A
   genuinely *dead* worker's task is not claimable for the configured window instead of for two
   minutes. Beyond the window it **is** reclaimed and the work re-runs from scratch; conductor
@@ -481,7 +489,9 @@ waits on it (theme 4).*
   because suspending stops lease renewal and the default lease is two minutes — shorter than any
   human answer. The product owner's fix is scoped in as framework work inside LAB-139: a
   board-level claim/lease option on `taskBoard`, which today exposes none, priced honestly in §1
-  (a dead worker's row waits out the configured window). **Every correction in this fold was to a
+  (a dead worker's row waits out the configured window). *(Superseded by the final entry: the
+  window needs no framework change — `TaskBoardConfig.dispatcher` already accepts a `TaskDispatcher`
+  instance. The outcome is unchanged; the mechanism is five lines in Conductor.)* **Every correction in this fold was to a
   mechanism. §1's five lines — Outcome, Proof, Lead measure, Not doing, Kill line — are unchanged,
   as they have been through all three rounds. The epic still means exactly what it said.**
 - **Correction fold — the wake mechanism was under-specified, and the altitude rule that caused
@@ -678,3 +688,43 @@ waits on it (theme 4).*
   said this after the first instance; it took three to act on it. **§1's five gated lines —
   Outcome, Proof, Lead measure, Not doing, Kill line — are unchanged, as they have been through
   every round and every fold. The epic still means exactly what it said.**
+- **Subtraction fold — the answer window needs no framework change, and the epic gives back a
+  public-surface expansion.** Not a review round. A P2 from a Codex review, verified in tree.
+  This document carried "expose a claim/lease option on `taskBoard`" as framework work inside
+  LAB-139 for two folds. **It was never needed.** `TaskBoardConfig.dispatcher` already accepts a
+  `TaskDispatcher` instance (`TaskBoardDispatcherInput = TaskDispatcher | "fifo" | "topological" |
+  "priority"`, `task-board/shared.ts:27-31`), `TaskDispatcher` is publicly exported from
+  `@flow-state-dev/orchestration/tasks` (`tasks/index.ts:137`), and a dispatcher's whole job is to
+  call `collection.claim(workerId, opts)` — `fifoDispatcher` is literally that one call
+  (`tasks/dispatchers/fifo.ts:10-14`). So Conductor's board configures its own dispatcher with the
+  answer window: **five lines in Conductor's own code.** The repo already ships the same shape as
+  `leasingDispatcher` in `test/task-board/lease-recovery.test.ts:54-60` — the very test that
+  settled the lease question two folds ago.
+  **It holds across renewals, which is the half that had to be checked.** `startLeaseRenewal`
+  derives its span from the claimed row rather than from a constant —
+  `span = claimedTask.leaseUntil - claimedTask.updatedAt`, and every tick writes `now() + span`
+  (`tasks/lease-renewal.ts:203-205, 234-238`) — so a dispatcher-set duration is the duration for
+  the row's whole life, not a value the first renewal shortens back to the 120 s default. The
+  docblock says so outright: *"a dispatcher that claimed with a five-second lease and a driver that
+  assumed two minutes cannot disagree, because there is nothing to agree about."* And
+  `MAX_LEASE_DURATION_MS` is `2_147_483_647 * 3` (~74 days), sized so `span / 3` fits the renewal
+  timer's int32 delay — the constant was built for exactly this.
+  **The outcome the product owner signed off on is unchanged.** The answer window is still closed
+  and the parked row is still held; the limit §1 prices — a dead worker's row waits out the
+  configured window — is the same limit. Only the mechanism got cheaper, so **this is not scope
+  being quietly dropped**, and it is said in §5 in those words. What the epic gives back is a
+  **public-surface expansion it no longer needs**, which also breaks a symmetry this document
+  asserted: the lease is *not* a sibling of LAB-138's per-run `cwd` seam, which is a genuinely
+  missing capability (theme 4). One was real framework work and one was a seam we had not looked
+  for.
+  **Routed, not dropped:** the dispatcher recipe and its four citations are in LAB-138's and
+  LAB-139's implementer notes, along with the one caveat that does not belong in this document — a
+  bare `collection.claim(workerId, { leaseDurationMs })` takes the substrate's **default**
+  eligibility and ordering (pending + deps satisfied), not fifo/topological/priority, which is
+  correct for the Proof's one board but means a board that later wants topological ordering
+  composes `{ eligibility, order, leaseDurationMs }` rather than dropping the standard dispatcher.
+  **The lesson is the mirror of the last fold's.** That one found this document specifying
+  mechanism it could not verify; this one found it **scoping framework work that already existed**,
+  for the same reason — a claim about a public surface asserted without the surface open. The
+  generalisation that covers both: *before scoping framework work, grep the exported type.*
+  **§1's five gated lines — Outcome, Proof, Lead measure, Not doing, Kill line — are unchanged.**
