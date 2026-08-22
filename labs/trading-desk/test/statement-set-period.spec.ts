@@ -18,7 +18,9 @@ import {
   disclosureHasUnknownPeriod,
   disclosurePrintShape,
   formatValuationSpine,
+  periodDisclosureSchema,
 } from "@/flows/analysis/lib/valuation-spine";
+import { valuationSpineStateSchema } from "@/flows/analysis/valuation-spine-resource";
 import { computeValuation } from "@/flows/analysis/lib/valuation";
 import { clampRatingToBand } from "@/flows/analysis/lib/rating-engine";
 import { incomeStatementSchema } from "@/flows/analysis/tools/schemas";
@@ -234,6 +236,40 @@ describe("disclosureHasUnknownPeriod", () => {
     expect(
       disclosureHasUnknownPeriod({ reason: "periods-disagree", income: ANCHOR, balance: OLDER, cashflow: ANCHOR }),
     ).toBe(false);
+  });
+});
+
+describe("periodDisclosure persistence — anyUndatedWithFigures survives the round trip (review round 5)", () => {
+  // `anyUndatedWithFigures` shipped one commit after `observedNewest`, and
+  // repeated the exact defect `observedNewest` was added to fix: a field on
+  // `PeriodDisclosure` (`valuation-spine.ts`) with no matching key in any of
+  // the three PERSISTED schemas. Non-strict zod silently strips an unknown
+  // key on `.parse()` — nothing throws, the field is just gone after the
+  // first save/reload, and the `periods-disagree` hedge it drives is gone
+  // with it.
+  it("the shared schema itself preserves the field on a real disclosure", () => {
+    const disclosure = statementSetDisclosure(spineSet({ income: ANCHOR, balance: OLDER, cashflow: null }));
+    expect(disclosure?.reason).toBe("periods-disagree");
+    expect(disclosure?.anyUndatedWithFigures).toBe(true);
+
+    const parsed = periodDisclosureSchema.parse(disclosure);
+    expect(parsed.anyUndatedWithFigures).toBe(true);
+  });
+
+  it("defaults to false on a record persisted before the field existed", () => {
+    // No `anyUndatedWithFigures` key at all — the shape every session
+    // persisted before this field existed actually has.
+    const legacy = { reason: "periods-disagree", income: ANCHOR, balance: OLDER, cashflow: ANCHOR };
+    expect(periodDisclosureSchema.parse(legacy).anyUndatedWithFigures).toBe(false);
+  });
+
+  it("round-trips through the valuation-spine RESOURCE schema, not just the shared inner one", () => {
+    const fin = spineSet({ income: ANCHOR, balance: OLDER, cashflow: null });
+    const { spine } = assembleSpine(fin);
+    expect(spine.periodDisclosure?.anyUndatedWithFigures).toBe(true);
+
+    const parsed = valuationSpineStateSchema.parse(spine);
+    expect(parsed.periodDisclosure?.anyUndatedWithFigures).toBe(true);
   });
 });
 

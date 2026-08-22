@@ -35,7 +35,7 @@
  * preset against a withheld spine. Add a consumer of `envelope`, add an arm
  * there; do not rely on a reader having read this.
  */
-import type { z } from "zod";
+import { z } from "zod";
 import type {
   balanceSheetSchema,
   cashflowSchema,
@@ -56,9 +56,24 @@ type BalanceSheet = z.infer<typeof balanceSheetSchema>;
 type IncomeStatement = z.infer<typeof incomeStatementSchema>;
 type Cashflow = z.infer<typeof cashflowSchema>;
 
-/** Why the desk could not place the three statements at one period, and where
- *  each of them landed — the disclosure the report carries and the marker the
- *  run records. Null when the set IS coherent (the ordinary case). */
+/**
+ * Why the desk could not place the three statements at one period, and where
+ * each of them landed — the disclosure the report carries and the marker the
+ * run records. Null when the set IS coherent (the ordinary case).
+ *
+ * HAND-WRITTEN, NOT `z.infer<typeof periodDisclosureSchema>` (below), and
+ * that was evaluated deliberately, not assumed (review round 5). The two
+ * shapes are NOT the same: `observedNewest` and `anyUndatedWithFigures` are
+ * OPTIONAL here — `statementSetDisclosure` omits the key entirely on a
+ * reason that doesn't populate it, which is what lets a test assert
+ * `not.toHaveProperty` / an exact `toEqual` without the field. The schema's
+ * `.default(...)` fields are NEVER absent on `z.infer`'s output — parsing
+ * fills them in, so deriving the type would force every disclosure to
+ * always carry both keys (as `null`/`false`) and would change every
+ * consumer and test that currently relies on the key being absent. If a
+ * later change makes that trade-off worth it, make it deliberately; don't
+ * let it happen as a side effect of chasing the schema.
+ */
 export type PeriodDisclosure = {
   reason: "settled-for-less-than-seen" | "periods-disagree" | "period-unstated";
   income: string | null;
@@ -74,6 +89,39 @@ export type PeriodDisclosure = {
    *  `StatementSetVerdict.anyUndatedWithFigures`. */
   anyUndatedWithFigures?: boolean;
 };
+
+/**
+ * The ONE persisted shape of `PeriodDisclosure` — imported by all three
+ * places that store one (`valuation-spine-resource.ts`, `resources.ts`'s PM
+ * memo, `decision-snapshot-resource.ts`) instead of each hand-copying the
+ * same five fields. They were byte-identical before this (FIX-1113 review);
+ * a field added to `PeriodDisclosure` above and forgotten in a copy is
+ * exactly the defect that shipped twice — `observedNewest`, then
+ * `anyUndatedWithFigures` one commit later. A single export cannot fix
+ * "forgotten here too" the next time a field is added, only "forgotten in
+ * two of the three instead of one" — see this file's `PeriodDisclosure`
+ * doc comment for why the type itself is not derived from this schema.
+ *
+ * Each consumer keeps its OWN wrapper (`.nullable().default(null)` at the
+ * use site) — this schema is the inner shape only, not how a caller embeds
+ * it as nullable state.
+ */
+export const periodDisclosureSchema = z.object({
+  reason: z.enum(["settled-for-less-than-seen", "periods-disagree", "period-unstated"]),
+  income: z.string().nullable(),
+  balance: z.string().nullable(),
+  cashflow: z.string().nullable(),
+  // Only meaningful on `settled-for-less-than-seen` — see
+  // `PeriodDisclosure.observedNewest` above. Nullable + defaulted so a record
+  // persisted before this field existed still parses.
+  observedNewest: z.string().nullable().default(null),
+  // Only meaningful on `periods-disagree` — see
+  // `PeriodDisclosure.anyUndatedWithFigures` above. A record persisted before
+  // this field existed never recorded an undated third statement, and every
+  // consumer branches on this being truthy to decide whether to hedge — so
+  // absent must read as `false`, not as "unknown."
+  anyUndatedWithFigures: z.boolean().default(false),
+});
 
 /**
  * The four ways a disclosure can look ON THE PAGE — computed once, here, and

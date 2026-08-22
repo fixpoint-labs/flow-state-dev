@@ -22,6 +22,7 @@
 import { defineResource } from "@flow-state-dev/core";
 import { z } from "zod";
 import { ratingSchema } from "./lib/rating-engine";
+import { periodDisclosureSchema } from "./lib/valuation-spine";
 
 /** Durable state shape of one report's decision-of-record. The `outcome*`
  *  fields are reserved (null on write) so a future outcome-tracking feature can
@@ -40,19 +41,7 @@ export const decisionSnapshotStateSchema = z.object({
   // the envelope was absent for an unrelated reason).
   ratingUnanchored: z.boolean().default(false),
   /** The three periods, for a reader who asks WHICH years disagreed. */
-  periodDisclosure: z
-    .object({
-      reason: z.enum(["settled-for-less-than-seen", "periods-disagree", "period-unstated"]),
-      income: z.string().nullable(),
-      balance: z.string().nullable(),
-      cashflow: z.string().nullable(),
-      // Only meaningful on `settled-for-less-than-seen` — see
-      // `PeriodDisclosure.observedNewest` (`valuation-spine.ts`). Nullable +
-      // defaulted so a record persisted before this field existed still parses.
-      observedNewest: z.string().nullable().default(null),
-    })
-    .nullable()
-    .default(null),
+  periodDisclosure: periodDisclosureSchema.nullable().default(null),
   decisionConfidence: z.number().min(0).max(1),
   decisionSummary: z.string(),
   // Entry context (from the trader memo's typed numeric mirrors). Nullable

@@ -8,6 +8,7 @@
  */
 import { defineResource } from "@flow-state-dev/core";
 import { z } from "zod";
+import { periodDisclosureSchema } from "./lib/valuation-spine";
 import { ratingSchema } from "./lib/rating-engine";
 
 const expectedReturnSchema = z.object({
@@ -75,22 +76,6 @@ const ratingEnvelopeSchema = z.object({
   floor: ratingSchema,
   ceiling: ratingSchema,
   rationale: z.string(),
-});
-
-/** Why the desk could not place the three statements at one period (FIX-1113),
- *  and where each landed. Present exactly when the cross-statement outputs were
- *  withheld — the report reads it to mark the rating unanchored, and its
- *  presence is the run marker that makes "how often does this fire" answerable
- *  from ordinary runs. */
-const periodDisclosureSchema = z.object({
-  reason: z.enum(["settled-for-less-than-seen", "periods-disagree", "period-unstated"]),
-  income: z.string().nullable(),
-  balance: z.string().nullable(),
-  cashflow: z.string().nullable(),
-  // Only meaningful on `settled-for-less-than-seen` — see
-  // `PeriodDisclosure.observedNewest` (`valuation-spine.ts`). Nullable +
-  // defaulted so a record persisted before this field existed still parses.
-  observedNewest: z.string().nullable().default(null),
 });
 
 export const valuationSpineStateSchema = z.object({
