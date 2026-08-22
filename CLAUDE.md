@@ -156,7 +156,7 @@ If you think a convention is harmful, surface it. Don't fork it silently.
 
 ```
 docs/
-  architecture/     Framework architecture reference (13 docs)
+  architecture/     Framework architecture reference (24 docs)
   contributing/     Development setup, best practices, wave process
   internal/         Wave plans, journals, changelogs (process artifacts)
 ```
@@ -257,7 +257,7 @@ Development task skills live in `agents/skills/` — the harness-neutral home, s
 - Generator provider: Vercel AI SDK in Phase 1
 - Lifecycle hooks: past tense (`onStarted`, `onCompleted`, `onErrored`, `onFinished`)
 - Package boundary: `react` wraps `client` — no transport logic in react
-- Package boundary: `server` never depends on `client` or `react`
+- Package boundary: `engine` never depends on `client` or `react`
 - Collection key resolution: `collection.create("key")` auto-prepends the pattern prefix. `ref.name` returns the full storage key (e.g., `"artifacts/my-doc"`). Strip the prefix for bare keys.
 - Resource mutations emit `resource_change` SSE events via `onResourceChanged` in `createScopeResourceRegistry`. These are transient items — `useSession` checks for them before the transient filter.
 
@@ -320,7 +320,7 @@ Phase 1 (Foundation): Waves 1.a–1.l complete. 1.m (devtool: `fsdev dev` + `@fl
 
 - **Common helpers** (`deepEqual`, formatting utilities, etc.) belong in a shared utils file — not inlined per-file. No duplicate copies across packages.
 
-### Best practices (BP-001…040)
+### Best practices (BP-001…041)
 
 Best practices have two altitudes. Full text lives in `docs/contributing/best-practices.md` (universal) and `docs/contributing/best-practices/<category>.md` (situational).
 
