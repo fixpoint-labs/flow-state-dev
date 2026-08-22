@@ -1,7 +1,11 @@
+import { defineFlow, handler } from "@flow-state-dev/core";
 import type { StateContainer } from "@flow-state-dev/core/types";
+import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
   ConcurrentModificationError,
+  createExecutionContext,
+  createInMemoryStores,
   createScopeStateOps,
   createStateContainer,
   ScopeMutationTimeoutError
@@ -331,5 +335,122 @@ describe("applyMutation — persist + serialize (request-scope) branch", () => {
     );
     expect(persistCount).toBe(N);
     expect(container.getVersion()).toBe(N);
+  });
+});
+
+describe("scope write-path wiring — createExecutionContext", () => {
+  // The blocks above prove the `serialize` branch behaves correctly once it is
+  // asked for. They do not prove the runtime asks for it: they hand
+  // `serialize: true` to `createScopeStateOps` by hand. Without the two cases
+  // below, deleting `serialize: true` from `createExecutionContext`'s
+  // `requestOps` leaves every other test in this file green and puts FIX-1155
+  // straight back.
+  //
+  // N is wider than any CAS retry budget in play. A lockstep fan-out lands at
+  // most `maxRetries + 1` writes on the CAS path, because a single attempt
+  // round only advances the store version once — so the count below is the
+  // whole assertion, not a timing coincidence.
+  const N = 12;
+
+  function fanOutBlock() {
+    return handler<{ value: string }, { ok: boolean }>({
+      name: "fanout-handler",
+      execute: () => ({ ok: true })
+    });
+  }
+
+  it("request scope commits a fan-out wider than the CAS retry budget", async () => {
+    const flow = defineFlow({
+      kind: "fanout-request-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.string() }),
+          block: fanOutBlock()
+        }
+      }
+    })();
+    const stores = createInMemoryStores();
+
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_fanout",
+      sessionId: "sess_fanout",
+      userId: "user_fanout",
+      stores,
+      requestState: { count: 0 }
+    });
+
+    // Pre-fix this rejects: request scope drove `runWithCAS` on the default
+    // budget of 3 retries, so 8 of these 12 writers exhausted it and threw
+    // ConcurrentModificationError.
+    await expect(
+      Promise.all(
+        Array.from({ length: N }, () =>
+          ctx.request.atomicState((state) => ({
+            count: ((state as { count?: number }).count ?? 0) + 1
+          }))
+        )
+      )
+    ).resolves.toEqual(Array.from({ length: N }, () => true));
+
+    expect(ctx.request.state).toEqual({ count: N });
+
+    // Serializing must not cost per-write durability. The store — not just the
+    // in-request container — has to carry the result, because a resumed
+    // request reads its state back from there.
+    const saved = await stores.request.get("req_fanout");
+    expect(saved?.state).toEqual({ count: N });
+  });
+
+  it("session scope stays on CAS and still surfaces ConcurrentModificationError", async () => {
+    const flow = defineFlow({
+      kind: "fanout-session-flow",
+      // Pinned rather than defaulted so this case cannot be quietly rewritten
+      // by a change to DEFAULT_MAX_RETRIES. That `session.cas` reaches the
+      // scope at all is itself part of the point — request scope has no `cas`
+      // option to configure.
+      session: { cas: { maxRetries: 2, baseDelayMs: 0 } },
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.string() }),
+          block: fanOutBlock()
+        }
+      }
+    })();
+    const stores = createInMemoryStores();
+
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_session_fanout",
+      sessionId: "sess_session_fanout",
+      userId: "user_session_fanout",
+      stores,
+      sessionState: { count: 0 }
+    });
+
+    const results = await Promise.allSettled(
+      Array.from({ length: N }, () =>
+        ctx.session.atomicState((state) => ({
+          count: ((state as { count?: number }).count ?? 0) + 1
+        }))
+      )
+    );
+
+    // Deliberate, not a leftover: a remote authority can advance the session
+    // version underneath the local cache, so session/user/org keep the
+    // optimistic loop and keep surfacing conflicts at the durable boundary.
+    // If this ever comes back clean, someone handed session scope
+    // `serialize: true` as well and collapsed two postures that must differ.
+    const rejections = results.filter((r) => r.status === "rejected");
+    expect(rejections.length).toBeGreaterThan(0);
+    expect(
+      rejections.every(
+        (r) =>
+          (r as PromiseRejectedResult).reason instanceof
+          ConcurrentModificationError
+      )
+    ).toBe(true);
   });
 });
