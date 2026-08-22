@@ -18,7 +18,6 @@ export {
   matchesPattern,
   normalizeResourcePath,
   resolveCollectionKey,
-  resolveNamespaceKey,
   validatePattern,
 } from "./collection-patterns";
 

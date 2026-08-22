@@ -4,7 +4,7 @@ Vercel deployment adapter for flow-state-dev. Wraps a flow-state-dev router into
 
 > **Specific to Vercel + Next.js.** For a long-lived Node server (Railway, Render, Fly, Docker, a VPS), use `@flow-state-dev/node`'s `serve()`. For other serverless platforms (AWS Lambda, Bun, Deno), use the portable app from `@flow-state-dev/node`. See [Host adapters](https://flow-state.dev/docs/server/host-adapters).
 
-> SSE heartbeats are now provided by `@flow-state-dev/engine` for every live and GET-attach stream. Configure them via `createFlowApiRouter({ defaultSseHeartbeatMs })` or per-flow `defineFlow({ request: { sseHeartbeatMs } })`. The `heartbeatMs` option on the Vercel handler is deprecated and ignored.
+> SSE heartbeats are provided by `@flow-state-dev/engine` for every live and GET-attach stream. Configure them via `createFlowApiRouter({ defaultSseHeartbeatMs })` or per-flow `defineFlow({ request: { sseHeartbeatMs } })`.
 
 ## Quick Start
 
@@ -110,7 +110,6 @@ export const { GET, POST } = createVercelBareHandler(getRouter);
 
 ```ts
 createVercelHandler(router, {
-  heartbeatMs: 15_000,           // Heartbeat interval (default: 15s)
   onAbort: (req) => { ... },     // Client disconnect callback
   waitUntil: (p) => { ... },     // Keep function alive for background work
 });

@@ -30,14 +30,6 @@ export type VercelHandlerInput =
  */
 export type VercelHandlerOptions = {
   /**
-   * @deprecated SSE heartbeats are now emitted by `@flow-state-dev/engine`
-   * for every live and GET-attach stream. Configure the cadence via
-   * `createFlowApiRouter({ defaultSseHeartbeatMs })` or per-flow
-   * `defineFlow({ request: { sseHeartbeatMs } })`. This option is ignored.
-   */
-  heartbeatMs?: number;
-
-  /**
    * Callback invoked when a client disconnects and the request signal aborts.
    * Useful for logging or cleanup.
    */

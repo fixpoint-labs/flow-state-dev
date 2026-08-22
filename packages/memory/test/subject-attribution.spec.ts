@@ -19,7 +19,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { runForTest } from '@flow-state-dev/testing'
-import type { ResourceHandle } from '@flow-state-dev/core'
+import type { ResourceRef } from '@flow-state-dev/core/types'
 
 import { workingMemoryStateSchema } from '../src/working-memory.js'
 import type { WorkingMemoryState } from '../src/working-memory.js'
@@ -43,7 +43,7 @@ import { buildDigestContext } from '../src/digest-blocks.js'
 // Mock resource refs
 // ---------------------------------------------------------------------------
 
-function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceHandle<WorkingMemoryState> {
+function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceRef<WorkingMemoryState> {
   let state: WorkingMemoryState = { entries: [], currentTurn: 0, ...initial }
   return {
     name: 'workingMemory',
@@ -55,10 +55,10 @@ function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceHandle<
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: workingMemoryStateSchema, writable: true },
-  } as ResourceHandle<WorkingMemoryState>
+  } as ResourceRef<WorkingMemoryState>
 }
 
-function createMockSysRef(initial?: Partial<MemorySystemState>): ResourceHandle<MemorySystemState> {
+function createMockSysRef(initial?: Partial<MemorySystemState>): ResourceRef<MemorySystemState> {
   let state: MemorySystemState = {
     lastProcessedIndex: -1,
     episodicWritesSinceLastConsolidation: 0,
@@ -76,10 +76,10 @@ function createMockSysRef(initial?: Partial<MemorySystemState>): ResourceHandle<
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: memorySystemStateSchema, writable: true },
-  } as ResourceHandle<MemorySystemState>
+  } as ResourceRef<MemorySystemState>
 }
 
-function createMockSemRef(initial?: Partial<SemanticMemoryState>): ResourceHandle<SemanticMemoryState> {
+function createMockSemRef(initial?: Partial<SemanticMemoryState>): ResourceRef<SemanticMemoryState> {
   let state: SemanticMemoryState = { facts: [], totalExtracted: 0, totalConsolidations: 0, ...initial }
   return {
     name: 'semanticMemory',
@@ -91,10 +91,10 @@ function createMockSemRef(initial?: Partial<SemanticMemoryState>): ResourceHandl
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: semanticMemoryStateSchema, writable: true },
-  } as ResourceHandle<SemanticMemoryState>
+  } as ResourceRef<SemanticMemoryState>
 }
 
-function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceHandle<EpisodicMemoryState> {
+function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceRef<EpisodicMemoryState> {
   let state: EpisodicMemoryState = { episodes: [], totalEncoded: 0, ...initial }
   return {
     name: 'episodicMemory',
@@ -106,7 +106,7 @@ function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceHandle
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: episodicMemoryStateSchema, writable: true },
-  } as ResourceHandle<EpisodicMemoryState>
+  } as ResourceRef<EpisodicMemoryState>
 }
 
 function createMockResources(refs: Record<string, any>) {
@@ -168,7 +168,7 @@ const jakeMoniItems = [
 
 async function runReflect(
   items: typeof jakeMoniItems,
-  refs: { wmRef: ResourceHandle<WorkingMemoryState>; sysRef: ResourceHandle<MemorySystemState>; semRef: ResourceHandle<SemanticMemoryState>; epRef: ResourceHandle<EpisodicMemoryState> },
+  refs: { wmRef: ResourceRef<WorkingMemoryState>; sysRef: ResourceRef<MemorySystemState>; semRef: ResourceRef<SemanticMemoryState>; epRef: ResourceRef<EpisodicMemoryState> },
 ) {
   const block = memorySystemReflect(config)
   const ctx = {
@@ -278,9 +278,9 @@ describe('memory/subject-attribution (FIX-703)', () => {
   // stored subject differs from the proposed subject.
   describe('consolidation subject guard', () => {
     async function runPersist(
-      semRef: ResourceHandle<SemanticMemoryState>,
+      semRef: ResourceRef<SemanticMemoryState>,
       input: ConsolidationOutput,
-      epRef: ResourceHandle<EpisodicMemoryState> = createMockEpRef(),
+      epRef: ResourceRef<EpisodicMemoryState> = createMockEpRef(),
     ) {
       const block = consolidationPersist(config)
       const ctx = {
@@ -421,7 +421,7 @@ describe('memory/subject-attribution (FIX-703)', () => {
 
   // Acceptance #4: prune never merges facts across subjects.
   describe('prune subject guard', () => {
-    async function runPrune(semRef: ResourceHandle<SemanticMemoryState>, input: PruneOutput) {
+    async function runPrune(semRef: ResourceRef<SemanticMemoryState>, input: PruneOutput) {
       const block = prunePersist(config)
       const ctx = {
         resources: createMockResources({ semanticMemory: semRef }),

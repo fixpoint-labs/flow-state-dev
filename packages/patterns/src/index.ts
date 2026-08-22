@@ -12,7 +12,6 @@ export {
   planAndExecute,
   planAndExecuteStateSchema,
   PlanSchema,
-  PlanStepSchema,
   PlanTaskSchema,
   planAndExecuteInputSchema,
   iterationOutputSchema,
@@ -32,7 +31,6 @@ export type {
   PlanAndExecuteInput,
   PlanAndExecuteState,
   Plan,
-  PlanStep,
   PlanTask,
   IterationOutput,
   EvaluatorVerdict,
@@ -41,7 +39,6 @@ export {
   supervisor,
   supervisorInputSchema,
   supervisorStateSchema,
-  reviewOutputSchema,
   reviewerVerdictSchema,
   reviewerInputSchema,
   plannerOutputSchema,
@@ -55,15 +52,11 @@ export {
 export type {
   SupervisorConfig,
   SupervisorState,
-  ReviewOutput,
   ReviewerVerdict,
   ReviewerInput,
   PlannerOutput,
   ExecutableTask,
 } from "./supervisor";
-export { BasePlanSchema, BasePlanTaskSchema } from "./shared/legacy-plan-types";
-export type { BasePlan, BasePlanTask, PlanMeta, PlanTaskUpdate } from "./shared/legacy-plan-types";
-// emitPlanMeta, emitTaskUpdate, emitPlanSnapshot removed — runtime helpers retired.
 export {
   routedSpecialists,
   createWorkspace,

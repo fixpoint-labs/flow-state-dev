@@ -68,7 +68,6 @@ import { createSynthesize, normalizeOutputStatus } from "./blocks/synthesize";
 
 export {
   PlanSchema,
-  PlanStepSchema,
   PlanTaskSchema,
   planAndExecuteStateSchema,
   planAndExecuteInputSchema,
@@ -78,7 +77,6 @@ export {
 
 export type {
   Plan,
-  PlanStep,
   PlanTask,
   PlanAndExecuteState,
   PlanAndExecuteInput,

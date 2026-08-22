@@ -345,19 +345,6 @@ import { TaskPlan } from "@flow-state-dev/ui/task-plan";
 <TaskPlan collectionId="my-plan" />
 ```
 
-### Deprecated type exports
-
-`BasePlanSchema`, `BasePlanTaskSchema`, and the `BasePlan` / `BasePlanTask` / `PlanMeta` / `PlanTaskUpdate` types remain exported for backward compatibility. They are not used by the patterns internally.
-
-```typescript
-import {
-  BasePlanSchema,
-  BasePlanTaskSchema,
-  type BasePlan,
-  type BasePlanTask,
-} from "@flow-state-dev/patterns";
-```
-
 The `emitPlanMeta`, `emitTaskUpdate`, and `emitPlanSnapshot` runtime helpers have been retired. Patterns that tracked tasks via those helpers should migrate to `taskBoard`.
 
 ## Benchmark adapters
