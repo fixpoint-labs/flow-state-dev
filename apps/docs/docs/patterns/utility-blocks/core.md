@@ -6,7 +6,7 @@ sidebar_position: 2
 
 Core utility blocks are pre-built factories that wrap the core block primitives into specialized, high-level capabilities. Instead of configuring a generator from scratch every time you need summarization or task decomposition, you call a utility that returns a fully configured block — composable in sequencers, routers, and flows like any other block.
 
-This guide covers the core utilities with realistic examples showing how they solve real problems in AI workflows. The table below lists all of them; a couple are thin enough to be documented with the block primitives, and link out. For adapter-driven extension utilities (searcher, retriever, networker, claimChecker), see [Extension Utilities](./extensions).
+This guide covers the core utilities with realistic examples showing how they solve real problems in AI workflows. The table below lists all of them; a couple are thin enough to be documented with the block primitives, and link out.
 
 ## Quick overview
 
@@ -1209,7 +1209,6 @@ const customAnalyzer = utility.analyzer({
 
 ## Next steps
 
-- See [Extension Utilities](./extensions) for adapter-driven utilities (searcher, retriever, networker, claimChecker)
 - See [Composable Patterns](/docs/patterns/overview) to understand how utility blocks compose into full agentic architectures
 - See [Composing Blocks](/docs/sequencers/composing-blocks) for the day-one sequencer methods, or the [Control Flow Reference](/docs/sequencers/control-flow) for the full DSL
 - Read about [Blocks](/docs/fundamentals/blocks) to understand how utilities fit into the four-primitive model

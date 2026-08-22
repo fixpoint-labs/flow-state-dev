@@ -318,7 +318,7 @@ const board = taskBoard({
 // are emitted automatically as tasks move through pending → in_progress → completed/errored.
 ```
 
-Pair with `<TaskPlan collectionId={config.name} />` in the UI registry. The legacy `emitPlanMeta` / `emitTaskUpdate` helpers have been retired — new patterns should use the substrate directly.
+Pair with `<TaskPlan collectionId={config.name} />` after `fsdev ui add task-plan`. Import from `@/components/flow-state/task-plan`.
 
 #### Critical Rules
 

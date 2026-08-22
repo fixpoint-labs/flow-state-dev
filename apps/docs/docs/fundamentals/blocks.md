@@ -688,7 +688,7 @@ const decompose = utility.decomposer({ name: "plan" });
 
 Each utility returns a standard block — composable in sequencers, routers, and flows like any block you build yourself. Most are generators that call a model; `combiner`, `upsertResource`, and `keyedRouter` are deterministic and make no LLM call.
 
-See the [Core Utilities guide](/docs/patterns/utility-blocks/core) for the full catalog with examples and output schemas, or [Extension Utilities](/docs/patterns/utility-blocks/extensions) for adapter-driven utilities.
+See the [Core Utilities guide](/docs/patterns/utility-blocks/core) for the full catalog with examples and output schemas.
 
 ## Key rules
 

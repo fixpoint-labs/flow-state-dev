@@ -343,7 +343,7 @@
       "name": "info-card",
       "title": "Info Card",
       "type": "registry:component",
-      "description": "Generative-UI info card: title, optional image, fact rows. Pairs with the emitInfoCard tool from @flow-state-dev/ui/generative.",
+      "description": "Generative-UI info card: title, optional image, fact rows. Pairs with the emitInfoCard tool from @flow-state-dev/ui/generative/tools.",
       "dependencies": ["@flow-state-dev/core"],
       "registryDependencies": [],
       "files": [{
@@ -357,7 +357,7 @@
       "name": "link-card",
       "title": "Link Card",
       "type": "registry:component",
-      "description": "Generative-UI link card: rich preview for an external URL. Pairs with the emitLinkCard tool from @flow-state-dev/ui/generative.",
+      "description": "Generative-UI link card: rich preview for an external URL. Pairs with the emitLinkCard tool from @flow-state-dev/ui/generative/tools.",
       "dependencies": ["@flow-state-dev/core"],
       "registryDependencies": [],
       "files": [{
