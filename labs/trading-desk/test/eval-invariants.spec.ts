@@ -523,13 +523,25 @@ describe("checkRun — rating-envelope", () => {
     // comment for why. `pm-band-present` and `clamp-implies-edge` correctly
     // cannot run here (both need `band`, which is null in this exact shape);
     // `band-recompute` is the one that does not, and its presence here is
-    // the regression guard.
+    // the regression guard. `disclosure-mirrored` / `stale-band-suppressed`
+    // (added the round after this test was written) correctly SKIP here —
+    // `periodDisclosure` is null in this fixture (the spine is malformed,
+    // not withheld), so there is nothing for them to mirror or suppress —
+    // and a skip still emits an id, which is why the pinned set grew rather
+    // than staying the same size. This is the pinned-list mechanism doing
+    // its job: it forced this line to be looked at and explained, not
+    // silently drift.
     expect(
       report.checks
         .filter((r) => r.id.startsWith("rating-envelope/"))
         .map((r) => r.id)
         .sort(),
-    ).toEqual(["rating-envelope/band-recompute", "rating-envelope/final-within-band"]);
+    ).toEqual([
+      "rating-envelope/band-recompute",
+      "rating-envelope/disclosure-mirrored",
+      "rating-envelope/final-within-band",
+      "rating-envelope/stale-band-suppressed",
+    ]);
   });
 
   it("control: a legacy spine-less run still skips band-recompute (nothing to recompute against)", () => {
@@ -543,6 +555,104 @@ describe("checkRun — rating-envelope", () => {
     const b = healthyBundle();
     const report = checkRun(b);
     expect(byId(report.checks, "rating-envelope/band-recompute")?.status).toBe("pass");
+  });
+});
+
+describe("checkRun — rating-envelope disclosure mirrors (Codex review, FIX-1113)", () => {
+  // Nothing in this file compared the spine's own `periodDisclosure` to the
+  // PM memo's or the decision snapshot's mirrors — the exact plumbing this
+  // PR built to make an unanchored rating visible. `writer.ts` derives ONE
+  // local disclosure and assigns it to all three destinations (spine, PM
+  // memo, snapshot), so on a correct run they are always identical.
+  const WITHHELD_DISCLOSURE = {
+    reason: "periods-disagree" as const,
+    income: "2025-12-31",
+    balance: "2025-09-30",
+    cashflow: "2025-12-31",
+    observedNewest: null,
+    anyUndatedWithFigures: false,
+  };
+
+  /** A withheld spine (all four cross-statement legs null, disclosure set) —
+   *  the shape `buildValuationSpine` actually produces. Does NOT touch the
+   *  PM memo / snapshot mirrors — callers set those explicitly per case. */
+  function withheldBundle(): RunArtifactsBundle {
+    const b = healthyBundle();
+    b.valuationSpine!.expectedReturn = null;
+    b.valuationSpine!.fairValue = null;
+    b.valuationSpine!.setupScore = null;
+    b.valuationSpine!.envelope = null;
+    b.valuationSpine!.periodDisclosure = { ...WITHHELD_DISCLOSURE };
+    return b;
+  }
+
+  /** Mirror the withheld disclosure onto the PM memo and snapshot exactly as
+   *  `writer.ts` does, and null the PM's own rating band (nothing to mirror
+   *  when the envelope was withheld). The correct, fully-mirrored case. */
+  function mirrorDisclosure(b: RunArtifactsBundle): void {
+    const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
+    const pm = b.memos.find((m) => m.key === pmKey)!.state as MemoState;
+    pm.ratingUnanchored = true;
+    pm.periodDisclosure = { ...WITHHELD_DISCLOSURE };
+    pm.ratingBand = null;
+    b.decisionSnapshot!.ratingUnanchored = true;
+    b.decisionSnapshot!.periodDisclosure = { ...WITHHELD_DISCLOSURE };
+  }
+
+  it("THE BUG: a withheld spine whose PM memo AND snapshot dropped the mirror hard-fails, not skips or passes", () => {
+    const b = withheldBundle();
+    // PM/snapshot left at healthyBundle's ordinary defaults — ratingUnanchored:
+    // false, periodDisclosure: null — exactly what a dropped mirror looks like.
+    const report = checkRun(b);
+    expect(byId(report.checks, "rating-envelope/disclosure-mirrored")?.status).toBe("fail");
+  });
+
+  it("THE BUG: a withheld spine with a correctly-mirrored disclosure but a STALE populated PM band still hard-fails", () => {
+    const b = withheldBundle();
+    mirrorDisclosure(b);
+    // Mirror is correct, but the PM band was left populated (stale — a
+    // leftover from before the spine started withholding, or a write bug).
+    const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
+    const pm = b.memos.find((m) => m.key === pmKey)!.state as MemoState;
+    pm.ratingBand = { floor: "Hold", ceiling: "Buy" };
+    const report = checkRun(b);
+    expect(byId(report.checks, "rating-envelope/disclosure-mirrored")?.status).toBe("pass");
+    expect(byId(report.checks, "rating-envelope/stale-band-suppressed")?.status).toBe("fail");
+  });
+
+  it("a mismatched mirror (different reason/periods than the spine) hard-fails — a disagreeing mirror is worse than an absent one", () => {
+    const b = withheldBundle();
+    mirrorDisclosure(b);
+    const pmKey = ALL_MEMO_KEYS.portfolioManager.collectionKey;
+    const pm = b.memos.find((m) => m.key === pmKey)!.state as MemoState;
+    // The PM mirrors a DIFFERENT disclosure than the spine actually carries.
+    pm.periodDisclosure = { ...WITHHELD_DISCLOSURE, reason: "period-unstated" };
+    const report = checkRun(b);
+    expect(byId(report.checks, "rating-envelope/disclosure-mirrored")?.status).toBe("fail");
+  });
+
+  it("control: a withheld spine correctly mirrored on both PM memo and snapshot, with no stale band, passes both", () => {
+    const b = withheldBundle();
+    mirrorDisclosure(b);
+    const report = checkRun(b);
+    expect(byId(report.checks, "rating-envelope/disclosure-mirrored")?.status).toBe("pass");
+    expect(byId(report.checks, "rating-envelope/stale-band-suppressed")?.status).toBe("pass");
+  });
+
+  it("control: an ordinary un-withheld run with a real PM band still passes normally — the new checks skip, not fail", () => {
+    const b = healthyBundle();
+    const report = checkRun(b);
+    expect(byId(report.checks, "rating-envelope/disclosure-mirrored")?.status).toBe("skipped");
+    expect(byId(report.checks, "rating-envelope/stale-band-suppressed")?.status).toBe("skipped");
+    expect(byId(report.checks, "rating-envelope/final-within-band")?.status).toBe("pass");
+  });
+
+  it("control: a legacy spine-less run still skips both new checks", () => {
+    const b = healthyBundle();
+    b.valuationSpine = null;
+    const report = checkRun(b);
+    expect(byId(report.checks, "rating-envelope/disclosure-mirrored")?.status).toBe("skipped");
+    expect(byId(report.checks, "rating-envelope/stale-band-suppressed")?.status).toBe("skipped");
   });
 });
 

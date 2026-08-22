@@ -36,6 +36,7 @@ import {
   ratingIndex,
   type FinalRating,
 } from "../flows/analysis/lib/rating-engine";
+import type { PeriodDisclosure } from "../flows/analysis/lib/valuation-spine";
 import type { CheckResult, InvariantReport } from "./types";
 
 // ── Collection keys the checks reach for ─────────────────────────────────
@@ -48,6 +49,33 @@ const THESIS_KEY = ALL_MEMO_KEYS.thesisAlignment.collectionKey;
  *  recompute should match near-exactly; the epsilon guards double drift). */
 function approx(a: number, b: number, eps = 1e-6): boolean {
   return Math.abs(a - b) <= eps;
+}
+
+/**
+ * True when two `PeriodDisclosure`s name the same withholding — same
+ * `reason` and the same three printed periods. `writer.ts` derives ONE
+ * local disclosure and assigns the SAME value to the spine, the PM memo,
+ * and the decision snapshot (`agents/portfolio-manager/writer.ts` lines
+ * ~188-189, 461-462, 531-532), so on a correct run these are always
+ * identical — a mismatch here is drift, not a shape a passing run can
+ * legitimately produce.
+ *
+ * `observedNewest`/`anyUndatedWithFigures` are compared too, normalized
+ * with `??` — both persisted copies go through the SAME
+ * `periodDisclosureSchema` (`valuation-spine.ts`'s own comment on why),
+ * so they are always present after parsing; the fallback only guards a
+ * hand-built `PeriodDisclosure` where the field is legitimately absent
+ * rather than defaulted.
+ */
+function sameDisclosure(a: PeriodDisclosure, b: PeriodDisclosure): boolean {
+  return (
+    a.reason === b.reason &&
+    a.income === b.income &&
+    a.balance === b.balance &&
+    a.cashflow === b.cashflow &&
+    (a.observedNewest ?? null) === (b.observedNewest ?? null) &&
+    (a.anyUndatedWithFigures ?? false) === (b.anyUndatedWithFigures ?? false)
+  );
 }
 
 /** A push-based accumulator so each group appends without threading the array. */
@@ -272,6 +300,107 @@ function checkRatingEnvelope(bundle: RunArtifactsBundle, c: Checks, memos: MemoM
         `stored rating envelope drifted in: ${drift.join(", ")}`,
         Object.fromEntries(envelopeFields.map((field) => [field, recomputed[field]])),
         Object.fromEntries(envelopeFields.map((field) => [field, storedEnvelope[field]])),
+      );
+    }
+  }
+
+  // DISCLOSURE MIRRORS + STALE-BAND SUPPRESSION (Codex review, FIX-1113) —
+  // runs BEFORE the band fallback below, for the same reason `band-recompute`
+  // was moved above the no-band skip two rounds ago: it depends on nothing
+  // that fallback computes.
+  //
+  // THE GAP THIS CLOSES. Every other `periodDisclosure` reference in this
+  // file checks the SPINE's own internal coherence (are the four legs
+  // consistently null, is a disclosure present to explain it). Nothing
+  // compared the spine's disclosure to the PM memo's or the decision
+  // snapshot's mirrors — `ratingUnanchored` did not appear in this file at
+  // all before this. Two concrete failures that gap let through silently:
+  //
+  //  (1) A DROPPED MIRROR. The spine withholds and sets `periodDisclosure`,
+  //      but the PM memo and/or snapshot lose `ratingUnanchored` /
+  //      `periodDisclosure`. The rating publishes unbounded and looks
+  //      ORDINARY on every surface — the exact failure this PR exists to
+  //      prevent — and nothing here caught it.
+  //  (2) A STALE PM BAND treated as authoritative. `band` below falls back
+  //      to `pm?.ratingBand` when the spine withheld (`spineBand` is null);
+  //      a leftover/stale PM band would then let `final-within-band` pass
+  //      against a bound the desk explicitly declined to publish. Fail-open,
+  //      the same shape as the envelope itself.
+  //
+  // A MISMATCHED mirror (present, but a DIFFERENT reason or periods than the
+  // spine) hard-fails rather than passing on "presence alone" — checked
+  // against what `writer.ts` actually guarantees, not assumed: it derives
+  // ONE local `periodDisclosure` and assigns that SAME value to the spine,
+  // the PM memo, and the snapshot, so on every correct run the three are
+  // identical and a mismatch is drift, not a shape a passing run can
+  // legitimately produce. A mirror that disagrees with its source is worse
+  // than an absent one, because it looks authoritative.
+  if (spine == null || spine.periodDisclosure == null) {
+    // No spine at all, or an ordinary (non-withheld) spine — nothing to
+    // mirror or suppress. The checks below (final-within-band etc.) proceed
+    // exactly as they always have.
+    c.skip(
+      "rating-envelope/disclosure-mirrored",
+      "hard",
+      spine == null
+        ? "no valuation spine on this run — nothing to mirror"
+        : "spine did not withhold — nothing to mirror",
+    );
+    c.skip(
+      "rating-envelope/stale-band-suppressed",
+      "hard",
+      spine == null
+        ? "no valuation spine on this run — no band to suppress"
+        : "spine did not withhold — the PM band is the real one, not stale",
+    );
+  } else if (snapshot == null || pm == null) {
+    // Withheld, but the PM has not committed yet (a stopped / in-flight
+    // run) — nothing to compare against.
+    c.skip(
+      "rating-envelope/disclosure-mirrored",
+      "hard",
+      "valuation spine withheld, but the PM memo / decision snapshot has not committed yet",
+    );
+    c.skip(
+      "rating-envelope/stale-band-suppressed",
+      "hard",
+      "valuation spine withheld, but the PM memo has not committed yet",
+    );
+  } else {
+    const pmMirrored = pm.ratingUnanchored === true && pm.periodDisclosure != null;
+    const snapshotMirrored = snapshot.ratingUnanchored === true && snapshot.periodDisclosure != null;
+    if (!pmMirrored || !snapshotMirrored) {
+      const dropped: string[] = [];
+      if (!pmMirrored) dropped.push("PM memo");
+      if (!snapshotMirrored) dropped.push("decision snapshot");
+      c.hardFail(
+        "rating-envelope/disclosure-mirrored",
+        `valuation spine withheld (${spine.periodDisclosure.reason}), but ${dropped.join(" and ")} dropped ratingUnanchored/periodDisclosure — the rating would read as ordinarily bounded`,
+      );
+    } else if (
+      !sameDisclosure(spine.periodDisclosure, pm.periodDisclosure as PeriodDisclosure) ||
+      !sameDisclosure(spine.periodDisclosure, snapshot.periodDisclosure as PeriodDisclosure)
+    ) {
+      c.hardFail(
+        "rating-envelope/disclosure-mirrored",
+        "PM memo / decision snapshot mirror a periodDisclosure, but it disagrees with the spine's own — a mirror that disagrees with its source is worse than an absent one",
+      );
+    } else {
+      c.hardPass(
+        "rating-envelope/disclosure-mirrored",
+        "PM memo and decision snapshot both mirror the spine's withheld disclosure exactly",
+      );
+    }
+
+    if (pm.ratingBand != null) {
+      c.hardFail(
+        "rating-envelope/stale-band-suppressed",
+        "valuation spine withheld its envelope, but the PM memo still carries a rating band — treating it as authoritative would let a rating pass against a bound the desk declined to publish",
+      );
+    } else {
+      c.hardPass(
+        "rating-envelope/stale-band-suppressed",
+        "PM memo correctly carries no rating band while the spine's envelope is withheld",
       );
     }
   }
