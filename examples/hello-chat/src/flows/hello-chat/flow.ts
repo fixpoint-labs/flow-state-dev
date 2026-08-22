@@ -66,8 +66,8 @@ const incrementMessageCount = handler({
 });
 
 // Pipeline: generator → counter. `.tap()` runs the counter for its state
-// change only — the generator's text stays the pipeline's output, and the
-// counter contributes no item of its own.
+// change only — the generator's text stays the pipeline's output. The counter
+// still emits its own block_trace; that trace just carries no output value.
 const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema: chatInputSchema })
   .step(chatGenerator)
   .tap(incrementMessageCount);

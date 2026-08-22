@@ -18,7 +18,6 @@ import {
   isTransitionAllowed,
 } from "../schema/task-status";
 import { extractTaskItems } from "../items/extract-window";
-import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 import type {
   ClaimOptions,
   TaskHandle,
@@ -28,36 +27,6 @@ import type {
 
 function generateTaskId(): string {
   return generateId("task");
-}
-
-/**
- * Build the `emit` closure both backings call after every committed mutation.
- *
- * The two backings publish the identical `TaskChangeEvent` shape — same field
- * set, same "no callback, no work" short-circuit — so the shape lives here
- * once rather than in two copies that can drift apart. Closed over the
- * collection id and the callback for the same reason
- * {@link createTaskHandleWrapper} is: both are fixed at construction, and
- * every call site then passes only what varies.
- */
-export function createTaskChangeEmitter<TInput, TOutput>(
-  collectionId: string,
-  onChange: ((event: TaskChangeEvent) => void) | undefined,
-): (
-  kind: TaskChangeKind,
-  task: Task<TInput, TOutput>,
-  prevStatus?: TaskStatus,
-) => void {
-  return (kind, task, prevStatus) => {
-    if (onChange === undefined) return;
-    onChange({
-      collectionId,
-      taskId: task.id,
-      kind,
-      task: task as Task,
-      prevStatus,
-    });
-  };
 }
 
 /**

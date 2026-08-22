@@ -104,17 +104,3 @@ export function assertDeltaExpectedVersion(
     `${verb} cannot take expectedVersion ${JSON.stringify(expectedVersion)}: delta verbs update an existing record. Use set(id, record, "absent") to create one.`
   );
 }
-
-/**
- * Refuse a field path `patchField` or `deleteField` cannot address: they reach
- * `state[a]` and `state[a][b]`, and have no branch for anything deeper or for
- * a zero-length path. Shared by the memory and filesystem adapters so both
- * throw the same message. `incField` takes depth-1 only and guards itself.
- */
-export function assertMaxDepthTwo(path: string[], verb: string): void {
-  if (path.length < 1 || path.length > 2) {
-    throw new Error(
-      `${verb} supports depth-1 or depth-2 paths; received path of length ${path.length}`
-    );
-  }
-}

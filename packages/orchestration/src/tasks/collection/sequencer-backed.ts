@@ -31,7 +31,6 @@ import {
   assertValidLeaseDuration,
   buildInitialTask,
   claimDisposition,
-  createTaskChangeEmitter,
   createTaskHandleWrapper,
   DEFAULT_LEASE_DURATION_MS,
   DEFAULT_MAX_ABANDONMENTS,
@@ -101,6 +100,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
 ): TaskCollectionRef<TInput, TOutput> {
   const stateKey = options.stateKey ?? "tasks";
   const now = options.now ?? Date.now;
+  const onChange = options.onChange;
   // Captured because `fail`'s own `options` parameter shadows the factory's.
   const collectionId = options.collectionId;
   validateTaskCaps(`[tasks] collection "${options.collectionId}"`, options);
@@ -123,10 +123,20 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
       : {};
   }
 
-  const emit = createTaskChangeEmitter<TInput, TOutput>(
-    options.collectionId,
-    options.onChange,
-  );
+  function emit(
+    kind: TaskChangeKind,
+    task: Task<TInput, TOutput>,
+    prevStatus?: TaskStatus
+  ): void {
+    if (onChange === undefined) return;
+    onChange({
+      collectionId: options.collectionId,
+      taskId: task.id,
+      kind,
+      task: task as Task,
+      prevStatus,
+    });
+  }
 
   /** The tasks map `casWrite` hands to its mutator and expects back. */
   type TasksMap<I, O> = Record<string, Task<I, O>>;
