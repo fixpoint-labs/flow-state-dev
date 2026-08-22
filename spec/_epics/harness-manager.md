@@ -26,7 +26,7 @@ designed against that case, not against the happy one.
 > `packages/claude-code/src/sdk/headless.ts` does not exist and `maxTurns` is forwarded straight
 > into the query options at `agent.ts:443`.)*
 >
-> **What the Proof does not show** — two limits, both deliberate, stated so it is not oversold:
+> **What the Proof does not show** — four limits, all deliberate, stated so it is not oversold:
 > - **The ask is forced, not spontaneous.** LAB-139's implement prompt *requires* the run to
 >   confirm one named decision through the inbox before it opens the PR. That is a chosen
 >   experimental design: it isolates the variable under test — the channel, not the model's
@@ -38,24 +38,33 @@ designed against that case, not against the happy one.
 >   The task's *ownership* is not. Suspending **stops lease renewal by design**
 >   (`task-board/index.ts:958-965` states the consequence outright), so on the 120 s default
 >   (`DEFAULT_LEASE_DURATION_MS`, `tasks/collection/internal.ts:640`) the row lapses and becomes
->   claimable — any drain still working the board then recovers it, and the resumed worker's own
+>   claimable — the next drain on that board then recovers it, and the resumed worker's own
 >   write-back is refused by the fence. Two minutes is shorter than any real human answer, so as
 >   previously written this epic promised something it could not do. **LAB-139 therefore builds a
 >   board-level lease setting** (§5, decided): `leaseDurationMs` is already accepted per claim, but
 >   `taskBoard` exposes no claim options at all.
-> - **A parked run is recovered by nothing in this epic.** The honest cost of the fix above, and
->   larger than "a longer wait": **lease expiry makes a row *claimable*; it does not *invoke* a
->   claim.** `boardQuiescence` returns `"drained"` the moment nothing is in flight, and its own
->   comment says a row handed to a Workstream counts as drained
->   (`task-board/quiescence.ts:95-110`), so in this set's one-task flow the launching drain has
->   already declared itself drained and exited before the lease ever lapses. So a parked run whose
->   harness dies — or one resumed after its attempt is stale — leaves its row `in_progress`
->   indefinitely, until a human intervenes or some later drain claims it. **The configured lease
->   bounds when the row becomes claimable, not when it is reclaimed.** Closing this needs a later
->   drain trigger, the settle-time watch, or the cold re-entry path — all three deliberately out of
->   scope here, and none of them attributed to an issue in this set. **It does not touch the
->   Proof:** that run is one issue with an operator present, so a death is visible and recoverable
->   by hand. But the design is **not unattended-safe**, and a reader should not have to infer that.
+> - **A lapsed lease costs a duplicate attempt — and can silently discard the operator's answer.**
+>   The honest cost of the fix above, and it is *not* that the row strands. Lease expiry **invokes**
+>   no claim by itself — `boardQuiescence` returns `"drained"` the moment nothing is in flight and
+>   counts a row handed to a Workstream as drained (`task-board/quiescence.ts:95-110`), so this
+>   set's launching drain has already exited before the lease lapses — but **the next drain on that
+>   board reclaims the row and runs the work again from scratch**, and conductor drains on every
+>   wake, so that is the ordinary course rather than an edge. Settled on already-passing committed
+>   tests, not by argument: `packages/orchestration/test/task-board/lease-recovery.test.ts` parks a
+>   worker on a `SuspensionError`, lets the lease lapse, drains a *separately constructed* board
+>   over the same live collection, and the row completes with `attempts 2 · abandonments 1` after a
+>   genuinely **new** worker ran it. A row is stranded only if no further drain ever runs on that
+>   board.
+> - **The sharper cost lands when the answer finally arrives.** The resumed original still carries
+>   its **original claim ticket** across the suspend; the reclaim bumped the row's attempt, so its
+>   settle is refused — `{outcome: "declined", reason: "lost-claim", status: "in_progress"}`
+>   (`packages/orchestration/test/collection/lease-fence.test.ts`). **So the human's answer is
+>   delivered into a run whose write-back is discarded, and whatever the reclaimed second attempt
+>   produced is what lands on the row.** Nothing throws and nothing reports the divergence. That is
+>   why the lease *value* is load-bearing rather than a nicety, and it is the precise sense in which
+>   this design is **not unattended-safe**: the only control is a window chosen before the question
+>   is asked, and choosing it too short fails **silently**, not loudly. **It does not touch the
+>   Proof** — one issue with an operator present, who would see the duplicate run or the wrong PR.
 >   What still goes untested is a *long*-open question end to end: a green Proof is not evidence
 >   that an overnight question survives. *(Parking also costs no board worker slot — an earlier
 >   claim, checked in source and withdrawn; §5. The cost is the task row and its lease.)*
@@ -191,10 +200,14 @@ down an altitude; push it into the issue spec that will write it.*
      propagates past the `.tap()`, `recordSuccess` never runs, the row stays `in_progress`, and
      the `SuspensionRecord` is durable.
    - **Hold** the claim with a long lease configured on the board — framework work inside LAB-139
-     (§1, §5). Suspending stops lease renewal, so at the default a parked row is claimable by any
-     running drain two minutes in. The lease governs *claimability only*: nothing in this set
-     invokes a claim after it lapses, so a parked run whose harness dies is recovered by nothing
-     here (§1's limits).
+     (§1, §5). Suspending stops lease renewal, so at the 120 s default a parked row lapses two
+     minutes in and **the next drain reclaims it and re-runs the work from scratch**
+     (`test/task-board/lease-recovery.test.ts`). Expiry invokes no claim by itself, but conductor
+     drains on every wake, so the reclaim is the ordinary course, not an edge. **The exposure is
+     therefore not a stranded row but a duplicate attempt that supersedes the answered one:** the
+     resumed original settles with its stale claim ticket and is refused `lost-claim`
+     (`test/collection/lease-fence.test.ts`), so the human's answer is discarded silently and the
+     second attempt's output is what lands. The lease value is the only control over that (§1).
    - **Wake** with a purpose-built **server-side** action reading `{requestId, suspensionId}` off
      the `runs/*` row. Never the public resume route — theme 6 says why, and it stands. **The
      constraint on that action: it must perform the whole resolution transaction the public route
@@ -222,7 +235,7 @@ down an altitude; push it into the issue spec that will write it.*
    | Park via | Result |
    |---|---|
    | `awaitReview` + normal return | row stomped to `completed` in the same request — the question is lost |
-   | `ctx.suspend` **alone** | parks correctly, but lease renewal stops (120 s default), so a running drain can reclaim → duplicate run |
+   | `ctx.suspend` **alone** | parks correctly, but lease renewal stops (120 s default), so the next drain reclaims → duplicate run, and the answered original's write-back is then refused `lost-claim` |
    | `awaitReview` **+** `ctx.suspend` | attempt **permanently stranded**, and the outer request still resolves `error: undefined` |
 
    The third is the trap, because it is exactly what the lease's own docblock suggests
@@ -273,7 +286,7 @@ down an altitude; push it into the issue spec that will write it.*
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
 | [LAB-138](https://linear.app/fixpoint-labs/issue/LAB-138/the-harness-manager-a-task-row-becomes-a-watched-settled-coding-run) | The manager loop — a task row becomes a watched, settled coding run. Provisions the run's working directory and owns the **per-run `cwd` seam** that makes handing it down possible (theme 4). Settles on a **handle-status check**, not on a normal return (theme 5). **Defines the runner contract**, which must not encode any one harness's shape (theme 7) — the clause-level detail (the bound, the result shape, token usage, permission posture) is in this issue's implementer notes, deliberately not in the epic-spec. Adds the per-run `cwd` to the **SDK path** — the only surface that can host a watched run (theme 4) | spec | — | — | Needs spec |
-| [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof** (FIX-1166). Blocked by LAB-138. Builds theme 5's park-and-wake — `ctx.suspend()` plus an in-process resume action — and the **board-level claim/lease option on `taskBoard`** that lets a parked run keep its claim for a human-scale window (framework work; §5) | spec | — | — | Needs spec |
+| [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof** (FIX-1166). Blocked by LAB-138. Builds theme 5's park-and-wake — `ctx.suspend()` plus an in-process resume action — and the **board-level claim/lease option on `taskBoard`** that lets a parked run keep its claim for a human-scale window (framework work; §5) — load-bearing, not a comfort: at the default the next wake's drain reclaims the row, and the answered original's write-back is then refused `lost-claim`, so the operator's answer is silently discarded | spec | — | — | Needs spec |
 | [FIX-150](https://linear.app/fixpoint-labs/issue/FIX-150/workspaces-if-validated-workspacerunner-block-and-virtual-filesystem) | Workspaces — the file-projection component. Large, three PRs (a component · b shell-tool migration · c coding-agent path). Subsumes FIX-998. **Own track — carries no dependency edge into the Proof** (theme 4) | spec | [#1345](https://github.com/fixpoint-labs/flow-state-dev/pull/1345) — **approved** | — | Needs implementation |
 
 *FIX-150 is on team **flow-state**, not Labs; it is a sub-issue of LAB-140 across teams. Its
@@ -318,10 +331,10 @@ waits on it (theme 4).*
   long as the board is configured to allow — and configuring it is new scope inside LAB-139.*
   Suspending stops lease renewal by design (`task-board/index.ts:958-965`), so on the 120 s
   default (`DEFAULT_LEASE_DURATION_MS`, `tasks/collection/internal.ts:640`) a parked run's row
-  becomes claimable about two minutes in: the lease lapses, any drain still working the board
-  recovers the task, and the resumed worker's write-back is then refused by the fence. Two minutes
-  is shorter than any real human answer, so without this the Proof's round trip is a race it can
-  lose whenever a drain is there to take the row.
+  becomes claimable about two minutes in: the lease lapses, the next drain on that board recovers
+  the task and re-runs it, and the resumed worker's write-back is then refused by the fence. Two
+  minutes is shorter than any real human answer, so without this the Proof's round trip is a race
+  it loses to the very next wake.
   **The claim path already takes the number** — `leaseDurationMs` is accepted per claim and
   validated between `MIN_LEASE_DURATION_MS = 1_000` and `MAX_LEASE_DURATION_MS` (~74.5 days)
   (`tasks/collection/internal.ts:649,660`) — but **`taskBoard` exposes no claim options at all**
@@ -335,14 +348,29 @@ waits on it (theme 4).*
   read as a new edge:** LAB-138 stands the board up and LAB-139 amends its configuration — that is
   the existing land-order (theme 4), not an additional dependency, and LAB-138 does not wait on
   the option to be correct at its own default.
-  **The cost, named beside the limit it replaces (§1):** a genuinely *dead* worker's task is not
-  claimable for the configured window instead of for two minutes — and **claimable is as far as
-  the lease reaches.** Nothing in this epic invokes a claim once the window passes (the launching
-  drain has already exited — §1's limits, and the hot-path entry below), so the row stays
-  `in_progress` until a human or some later drain picks it up. The window is the trade a board
-  hosting human pauses should make, and it is **per-board**, so nothing else inherits it; the
-  non-recovery beyond it is a limitation of the set, not of this option. *(The product owner's
-  call.)*
+  **The cost, named beside the limit it replaces (§1) — and now settled rather than argued.** A
+  genuinely *dead* worker's task is not claimable for the configured window instead of for two
+  minutes. Beyond the window it **is** reclaimed: the next drain takes the row and re-runs the work
+  from scratch, proven by `packages/orchestration/test/task-board/lease-recovery.test.ts`
+  (park on a `SuspensionError` · let the lease lapse · drain a separately constructed board over the
+  same live collection → `attempts 2 · abandonments 1`, a genuinely new worker having run it),
+  corroborated by `packages/integration-tests/src/scenarios/task-board-detached-child-death.test.ts`
+  (FIX-982: dispatch count 1 → 2) and by the shipped comments in `shared.ts` / `quiescence.ts`
+  (FIX-1005/982) and `claim-task.ts` (*"a lease reclaim deliberately hands an abandoned task to a
+  second worker"*). Conductor drains on every wake, so the reclaim is the ordinary course.
+  **This is what makes the option load-bearing rather than a comfort.** Left at the default, a
+  human-length pause lapses the lease before the answer arrives and the very next wake's drain
+  starts a **real duplicate run**. And the duplicate is not the worst of it: when the operator's
+  answer finally resumes the original, that run still carries its **original claim ticket** across
+  the suspend, the reclaim has bumped the row's attempt, and its settle is refused —
+  `{outcome: "declined", reason: "lost-claim", status: "in_progress"}`
+  (`packages/orchestration/test/collection/lease-fence.test.ts`, on the real ticket-fenced path).
+  **The answer is delivered into a run whose write-back is discarded, and the second attempt's
+  output is what lands on the row.** Nothing throws; nothing names it a divergence. **That is the
+  reason the lease value matters** — it is the only thing standing between an operator's answer and
+  a silently different outcome. The window is the trade a board hosting human pauses should make,
+  and it is **per-board**, so nothing else inherits it. *(The product owner's call, and the
+  evidence above confirms it.)*
 
 - **Where conductor's own code lives.** Both LAB-138 and LAB-139 write into the same place and
   neither can settle it alone, so it is the epic's to answer. Raised at epic drafting. **Blocks
@@ -371,25 +399,29 @@ waits on it (theme 4).*
   `isHandedOff` is true (`packages/orchestration/src/task-board/shared.ts:184-198`, predicate at
   `111-119`). So the only cost is the one the lease entry above already prices: the task row and
   its lease.
-  **The interlock this document previously claimed here is inert, and correcting it is what §1's
-  new limit states.** `isHandedOff` does require `!leaseLapsed`, so the predicate flips at lease
-  expiry — but `countWaitable` decides anything only **while a drain is running**, and
-  `boardQuiescence` returns `"drained"` as soon as `inFlightCount === 0`, counting a row handed to
-  a Workstream as drained (`task-board/quiescence.ts:95-110`). In this set's one-task flow the
-  launching drain has therefore exited long before the lease lapses. The row does not re-enter the
-  board's wait count when the human's window closes; there is no wait count left to re-enter.
-  Expiry makes the row claimable and invokes nothing — so **a parked run whose harness dies is
-  recovered by nothing in this epic**, and §1's limits carry that statement in full along with what
-  would close it (a later drain trigger, the settle-time watch, or the cold re-entry path, all
-  deliberately out of scope).
+  **The interlock this document previously claimed here is inert — but the conclusion drawn from
+  that, that nothing recovers a parked row, went too far and is withdrawn.** `isHandedOff` does
+  require `!leaseLapsed`, so the predicate flips at lease expiry — but `countWaitable` decides
+  anything only **while a drain is running**, and `boardQuiescence` returns `"drained"` as soon as
+  `inFlightCount === 0`, counting a row handed to a Workstream as drained
+  (`task-board/quiescence.ts:95-110`). In this set's one-task flow the launching drain has
+  therefore exited long before the lease lapses, and the row does not re-enter *that* drain's wait
+  count. **What does not follow is that the row is stranded.** Expiry invokes no claim, but the
+  **next** drain reclaims the row and re-runs the work — settled on committed, already-passing
+  tests (`test/task-board/lease-recovery.test.ts`; FIX-982's detached-child-death scenario;
+  `claim-task.ts`'s own *"a lease reclaim deliberately hands an abandoned task to a second
+  worker"*) — and conductor drains on every wake. So the real exposure is a **duplicate attempt**,
+  and beyond it the fenced write-back that discards the operator's answer. §1's limits and the
+  lease entry above carry both in full. A row is stranded only in the narrow case where no further
+  drain ever runs on that board.
   **FIX-1197's relay is therefore justified differently than this document said before.** There is
   no held slot for it to free. What it would buy is a durable ask channel that does not depend on
-  suspension at all — and therefore no long lease on a task row. That is the whole claim; it should
-  not be stated as more. **In particular it is not credited with the recovery limit above**:
-  whether a relay also gets a dead parked run's row settled is not something this document has
-  checked, and an unchecked benefit is how the two claims corrected in this fold got in. It is
-  adopted when it lands and is **not required for this round trip**; no issue here builds a cold
-  path.
+  suspension at all — and therefore no long lease on a task row, and no window whose expiry can
+  fork the answer from the outcome. That is the whole claim; it should not be stated as more, and
+  **it is not credited with anything nobody has checked** — whether a relay changes what happens to
+  an already-parked row is not something this document has verified, and unchecked benefits are how
+  the claims corrected in these folds got in. It is adopted when it lands and is **not required for
+  this round trip**; no issue here builds a cold path.
 
 - **~~Does a steer resume the coding agent, or restart it?~~** *Decided: it restarts it.* Nothing
   can hand a prior SDK session id into a detached run today (FIX-1179), so an answer re-states
@@ -524,7 +556,9 @@ waits on it (theme 4).*
   only decides anything while a drain is running. **The consequence is a real limitation, now
   stated in §1 rather than budgeted away:** lease expiry makes a row *claimable* and invokes no
   claim, so a parked run whose harness dies leaves its row `in_progress` indefinitely — until a
-  human intervenes or some later drain claims it. What would close it (a later drain trigger, the
+  human intervenes or some later drain claims it. *(Superseded by the entry below: a lapsed row
+  **is** reclaimed by the next drain, which conductor runs on every wake. The real exposure is a
+  duplicate attempt and a fenced write-back, not a permanent strand.)* What would close it (a later drain trigger, the
   settle-time watch, or the cold re-entry path) is named and all of it is out of scope; **no
   recovery machinery is scoped in, and none of it is attributed to FIX-1197**, whose relay is not
   credited with a benefit nobody has checked. The Proof is untouched — one issue, operator present,
@@ -537,8 +571,8 @@ waits on it (theme 4).*
   predicate and neither reaching the running system. The fix that generalises: for a board claim,
   name the caller that runs the predicate before stating what the predicate buys.
   **§1's five lines — Outcome, Proof, Lead measure, Not doing, Kill line — are unchanged.**
-- **Correction fold — theme 7 did to itself what theme 7 exists to prevent, so it is now a
-  constraint and nothing else.** Not a review round. Two corrections, both verified in source,
+- **Correction fold — theme 7 did to itself what theme 7 exists to prevent, and settlement 4
+  corrected our own last correction.** Not a review round. Two corrections, both verified in source,
   both to clauses this document supplied. **First, the resume reference was incomplete.** Theme 5
   cited `resume-routes.ts:136-227` as the transaction to mirror, and that range stops before the
   rollback. The `catch` at `255-273` reverts the `SuspensionRecord` to `pending` and releases the
@@ -575,4 +609,38 @@ waits on it (theme 4).*
   rather than followed by a second note that corrects the first. **§2 stays at seven themes and
   gets shorter; §4's LAB-138 row was reconciled to say where the clauses now live, since a row
   still promising a bound the theme no longer states is the same defect one surface over.**
-  **§1's five lines — Outcome, Proof, Lead measure, Not doing, Kill line — are unchanged.**
+  **Same fold, second half — settlement 4 came back CONFIRMED, and it corrects the correction
+  directly above.** The long lease is load-bearing and the owner's decision stands, settled not by
+  a new POC but by **tests already committed and already passing on `main`**:
+  `packages/orchestration/test/task-board/lease-recovery.test.ts` (*"a worker that parks on a
+  suspension stops holding its task"*) parks a worker on a `SuspensionError`, lets the lease lapse,
+  drains a **separately constructed** board over the same live collection, and the row completes
+  `attempts 2 · abandonments 1` with a genuinely **new** worker having run the work — corroborated
+  by FIX-982's `task-board-detached-child-death` scenario (dispatch 1 → 2) and by the shipped
+  comments in `shared.ts`/`quiescence.ts` and `claim-task.ts`. **So the previous entry's conclusion
+  is withdrawn**: a parked run whose harness dies is *not* stranded `in_progress` indefinitely.
+  Codex's underlying point survives — lease expiry *invokes* no claim — but conductor drains on
+  every wake, so reclaim follows in the ordinary course, and a row strands only if no further drain
+  ever runs on that board.
+  **The replacement limit is sharper than the one it replaces, which is why it is stated rather
+  than dropped.** `packages/orchestration/test/collection/lease-fence.test.ts` (*"refuses a settle
+  from a worker that ran past its lease"*) shows what happens when the answer finally arrives: the
+  resumed original carries its **original claim ticket** across the suspend, the reclaim bumped the
+  row's attempt, and the settle is declined `lost-claim`. **The human's answer is delivered into a
+  run whose write-back is discarded, and the reclaimed attempt's output is what lands.** A
+  too-short lease does not merely cost a duplicate run — it silently forks what the operator
+  answered from what shipped. That is now stated beside the lease decision, because it *is* the
+  reason the lease value matters. **"Not unattended-safe" is kept, and re-grounded**: not because a
+  row strands, but because the only control is a window chosen before the question is asked and
+  choosing it too short fails silently. §1's limits, theme 5's *Hold* move and park table, §5's
+  lease entry and the hot-path entry were all reconciled to this one reading, and the superseded
+  sentence in the entry above is marked in place rather than rewritten, so the log still records
+  what we believed when.
+  **Process note, and it is the cheap lesson of this fold:** settlement 4 cost nothing to run
+  because the answer was already committed. Several of this epic's wrong board claims — the held
+  slot, the wait-count interlock, the indefinite strand — would have been answered the same way.
+  **For a claim about the task board, read `packages/orchestration/test/` before reasoning from
+  source and before commissioning a POC.**
+  **§1's five gated lines — Outcome, Proof, Lead measure, Not doing, Kill line — are unchanged;
+  what changed in §1 is the limits block beneath the Proof, which now names four limits instead of
+  three and no longer overstates one of them.**
