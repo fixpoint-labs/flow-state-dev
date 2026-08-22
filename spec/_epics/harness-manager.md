@@ -174,7 +174,8 @@ down an altitude; push it into the issue spec that will write it.*
    (`sdk/work-recorder.ts:109-112` says so outright), and the CLI dispatch path is **not** the
    alternative it looks like: it dispatches a `claude --remote` **cloud task**, fire-and-forget,
    with no headless way to poll or stream progress (`cli/dispatch.ts:1-11`), so it cannot host a
-   watched local run at all. **So LAB-138 adds `cwd` to the SDK path**; theme 7 carries the check.
+   watched local run at all. **So LAB-138 adds `cwd` to the SDK path**; theme 7 carries the
+   portability constraint that path's runner contract still owes.
    *(An earlier revision read this as an open fork between two surfaces, on the strength of a `cwd`
    the CLI path takes for an unrelated purpose. Corrected — left open, it sends LAB-138's spec to
    evaluate an option that cannot work.)* Left unstated, the Proof run edits the conductor's own
@@ -197,15 +198,20 @@ down an altitude; push it into the issue spec that will write it.*
    - **Wake** with a purpose-built **server-side** action reading `{requestId, suspensionId}` off
      the `runs/*` row. Never the public resume route — theme 6 says why, and it stands. **The
      constraint on that action: it must perform the whole resolution transaction the public route
-     performs — resolve the `SuspensionRecord`, take the continuation lease, and enforce the
-     suspension's own guards (still pending · not expired · action allowed · payload valid) —
-     and only then continue the request. Calling `continueRequest()` alone is not resuming; it is
-     replay without the guards.** Two answers to one question then start concurrent replays of the
-     same request, and the record stays `pending` forever, so a run that suspends again finds the
-     original gate still open — both silent. Every guard is a `provider.*` call available
-     server-side, so none of this is new framework surface. **Mirror
-     `packages/engine/src/routes/resume-routes.ts:136-227`**, which is the reference
-     implementation; LAB-139's spec names the calls with that file open.
+     performs — enforce the suspension's own guards (still pending · not expired · action allowed ·
+     payload valid), resolve the `SuspensionRecord`, take the continuation lease, continue the
+     request, and revert the record to `pending` and release the lease if setup fails before the
+     run starts. Calling `continueRequest()` alone is not resuming; it is replay without the
+     guards.** Skip the guards and two answers to one question start concurrent replays of the same
+     request while the record stays `pending` forever, so a run that suspends again finds the
+     original gate still open. Skip the rollback and a setup failure leaves the record resolved and
+     the lease held — **the operator's answer becomes permanently non-retryable on a run that never
+     began.** All of it silent. Every step is a `provider.*` call available server-side, so none of
+     this is new framework surface. **Mirror
+     `packages/engine/src/routes/resume-routes.ts:136-273`** — the whole handler, rollback
+     included: the `catch` at `255-273` reverts and releases, and its own comment states why
+     reverting is safe there and nowhere later (FIX-1095), so the boundary is part of what is being
+     mirrored. LAB-139's spec names the calls with that file open.
    - **Settle** only after checking the run handle's status: a terminal SDK error subtype returns
      normally as `status: "errored"`, so settling on a normal return alone reports a failed run
      as completed.
@@ -245,48 +251,28 @@ down an altitude; push it into the issue spec that will write it.*
    resumable in-process. That 404 is the guard doing its job. **An issue that reaches for the
    allow-list has hit this theme, not a bug** — theme 5's in-process resume action is the route.
 
-7. **The runner is a named seam, and its contract must be satisfiable by a harness that is not
-   Claude Code.** This epic drives Claude Code only, and **proving a second harness is explicitly
-   not in scope** — nothing here builds one, tests one, or waits on one. But the Atlas frames
-   Conductor as a *meta-harness* whose harness is swappable, and the runner is where that lives,
-   so a contract only Claude Code can satisfy forecloses it silently. A **documented-not-executed**
-   check of OpenAI's Codex CLI and Cursor's agent CLI (docs only — neither is installed here) found
-   the seam drawn almost right, with one clause that is not:
+7. **The runner contract must not encode any one harness's shape.** The Atlas frames Conductor as
+   a *meta-harness* whose harness is swappable, and the runner is the seam where that lives, so a
+   contract only Claude Code can satisfy forecloses it silently. **Proving a second harness is
+   explicitly not in scope** — nothing here builds one, tests one, or waits on one; this epic
+   drives Claude Code only, and this constraint is not a commitment to a second adapter. **The
+   tell: a clause of the contract that names a Claude Code notion** — a turn cap, an exit code —
+   has broken it, and the fix is to restate that clause as the capability underneath it.
+   **Portability is served by the adapter boundary, not by the seam's transport**, so nothing here
+   is in tension with theme 4's finding that the in-process SDK path is the only watched local
+   coding-agent path that exists.
 
-   - **The bound is the caller's, not the harness's.** `maxTurns` is a Claude Code notion; neither
-     other CLI exposes a turn or time cap (one closed the request as *not planned*). So the runner
-     must be **cancellable, under a caller-enforced wall-clock deadline** — and *how* it cancels is
-     the adapter's business: a process kill for a CLI adapter, an abort signal for an in-process
-     one. The SDK path already satisfies this (`sdk/agent.ts:434` forwards `ctx.signal` into the
-     query's `abortController`). `maxTurns` is demoted to an optional, adapter-specific knob — not
-     part of the shared contract. **Stated as a capability rather than a mechanism, deliberately:**
-     an earlier draft said "a killable subprocess," which would have mandated discarding the only
-     watched coding-agent path we have. That is §2's altitude rule one level down — a constraint
-     that names a mechanism smuggles in an implementation.
-   - **A machine-readable result is an exit code plus a final JSON object, not a JSON *stream*.**
-     One CLI returns a single terminal object; the other returns an event stream the caller must
-     scan for the terminal event. The adapter normalises; the manager sees one shape.
-   - **Token usage is adapter-optional.** One reports it, the other's is undocumented. The manager
-     must work without it.
-   - **The unattended/permission posture lives in each adapter's config**, not in the shared
-     contract — a graded sandbox and a binary force flag are not one knob, and modelling them as
-     one misrepresents both.
-
-   **What this does *not* say is that the seam must be process-spawn.** An earlier draft concluded
-   exactly that, and it was wrong on its own premise: the alternative surface it implied — the CLI
-   dispatch path — is not a runner candidate at all. `cli/dispatch.ts:1-11` says so in its own
-   header: it shells out to `claude --remote`, a **cloud task**, and *"v0 is fire-and-forget … the
-   CLI exposes no headless way to poll or stream cloud-task progress."* Its `cwd` is the host repo
-   for the dispatch, not a workspace for a run we supervise. So **the in-process SDK path is the
-   only watched local coding-agent path that exists**, and theme 4's per-run `cwd` gap is closed
-   *there* rather than sidestepped by picking another surface. Portability is served by the
-   adapter boundary, not by the seam's transport.
+   **LAB-138 defines the contract clause by clause, with the code open, and its implementer notes
+   carry the clause-level detail** — the bound, the result shape, token usage, permission posture,
+   and the documented-not-executed Codex/Cursor evidence behind them. That detail lived here and
+   was wrong three times in three days, every time in a way only the source could catch. This
+   document names the constraint; the issue spec that will write the interface names the clauses.
 
 ## 4. Running index
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| [LAB-138](https://linear.app/fixpoint-labs/issue/LAB-138/the-harness-manager-a-task-row-becomes-a-watched-settled-coding-run) | The manager loop — a task row becomes a watched, settled coding run. Provisions the run's working directory and owns the **per-run `cwd` seam** that makes handing it down possible (theme 4). Settles on a **handle-status check**, not on a normal return (theme 5). The runner contract it defines must hold for a harness that is not Claude Code, and its bound is a caller-enforced deadline over a cancellable run (theme 7). Adds the per-run `cwd` to the **SDK path** — the only surface that can host a watched run (theme 4) | spec | — | — | Needs spec |
+| [LAB-138](https://linear.app/fixpoint-labs/issue/LAB-138/the-harness-manager-a-task-row-becomes-a-watched-settled-coding-run) | The manager loop — a task row becomes a watched, settled coding run. Provisions the run's working directory and owns the **per-run `cwd` seam** that makes handing it down possible (theme 4). Settles on a **handle-status check**, not on a normal return (theme 5). **Defines the runner contract**, which must not encode any one harness's shape (theme 7) — the clause-level detail (the bound, the result shape, token usage, permission posture) is in this issue's implementer notes, deliberately not in the epic-spec. Adds the per-run `cwd` to the **SDK path** — the only surface that can host a watched run (theme 4) | spec | — | — | Needs spec |
 | [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof** (FIX-1166). Blocked by LAB-138. Builds theme 5's park-and-wake — `ctx.suspend()` plus an in-process resume action — and the **board-level claim/lease option on `taskBoard`** that lets a parked run keep its claim for a human-scale window (framework work; §5) | spec | — | — | Needs spec |
 | [FIX-150](https://linear.app/fixpoint-labs/issue/FIX-150/workspaces-if-validated-workspacerunner-block-and-virtual-filesystem) | Workspaces — the file-projection component. Large, three PRs (a component · b shell-tool migration · c coding-agent path). Subsumes FIX-998. **Own track — carries no dependency edge into the Proof** (theme 4) | spec | [#1345](https://github.com/fixpoint-labs/flow-state-dev/pull/1345) — **approved** | — | Needs implementation |
 
@@ -550,4 +536,43 @@ waits on it (theme 4).*
   (`countWaitable` skips the row) and the re-entry claim (`isHandedOff` flips), both true of the
   predicate and neither reaching the running system. The fix that generalises: for a board claim,
   name the caller that runs the predicate before stating what the predicate buys.
+  **§1's five lines — Outcome, Proof, Lead measure, Not doing, Kill line — are unchanged.**
+- **Correction fold — theme 7 did to itself what theme 7 exists to prevent, so it is now a
+  constraint and nothing else.** Not a review round. Two corrections, both verified in source,
+  both to clauses this document supplied. **First, the resume reference was incomplete.** Theme 5
+  cited `resume-routes.ts:136-227` as the transaction to mirror, and that range stops before the
+  rollback. The `catch` at `255-273` reverts the `SuspensionRecord` to `pending` and releases the
+  continuation lease when setup fails *before the point of no return* — and its own comment
+  explains why reverting is safe there and nowhere later, citing FIX-1095 if that boundary moves.
+  Mirroring only `136-227` resolves the record, takes the lease, fails during setup, and leaves
+  the record resolved with the lease held: **the operator's answer becomes permanently
+  non-retryable on a run that never began.** Theme 5's constraint now names revert-and-release as
+  part of the transaction and cites the whole handler. **Second, "exit code" excluded the only
+  adapter this epic builds.** Theme 7 defined a machine-readable result as an exit code plus a
+  final JSON object; `SdkAgentHandle` (`claude-code/src/sdk/types.ts:32-44`) carries
+  `status`/`resultSubtype`/`finalMessage`/`usage`/`costUsd` and **no process and no exit code**, so
+  the clause forced the in-process SDK adapter — the only watched path in scope (theme 4) — to
+  fabricate a CLI-ism. It is now semantic success/failure plus the terminal payload, with a CLI
+  adapter translating its exit code into that.
+  **The irony is the lesson.** Theme 7 exists to stop one harness's shape becoming the contract,
+  and it was written by taking the *CLI research's* shape and making it the contract — excluding
+  the adapter we are actually building. That is the third instance of mechanism-over-capability in
+  this one theme (`killable subprocess` → cancellable; the process-spawn seam, withdrawn; exit code
+  → semantic result), in three days.
+  **So the theme is consolidated rather than corrected a third time.** §2's own altitude rule says
+  the epic-spec names constraints and the issue specs name the calls; theme 7's clauses named
+  calls, bound exactly one issue (LAB-138 defines the contract; LAB-139 consumes it as a contract),
+  and were unverifiable at this altitude — which is what three corrections in three days
+  demonstrated. Theme 7 now carries only what is genuinely cross-cutting: the obligation, the
+  not-in-scope disclaimer that keeps it from reading as a commitment to a second adapter, the tell
+  that makes it falsifiable, and *portability is served by the adapter boundary, not the seam's
+  transport*. Its closing paragraph also duplicated theme 4's `cli/dispatch.ts` argument, which is
+  how the withdrawn process-spawn conclusion went stale in the first place; theme 4 keeps it.
+  **Everything cut is routed, not dropped** — the bound and `sdk/agent.ts:434`, the result shape as
+  corrected, adapter-optional usage, per-adapter permission posture, and the
+  **documented-not-executed** Codex/Cursor evidence with that caveat attached, all in LAB-138's
+  implementer notes. LAB-139's existing resume note was amended in place with the rollback step
+  rather than followed by a second note that corrects the first. **§2 stays at seven themes and
+  gets shorter; §4's LAB-138 row was reconciled to say where the clauses now live, since a row
+  still promising a bound the theme no longer states is the same defect one surface over.**
   **§1's five lines — Outcome, Proof, Lead measure, Not doing, Kill line — are unchanged.**
