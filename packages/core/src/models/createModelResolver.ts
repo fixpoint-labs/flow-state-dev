@@ -233,29 +233,32 @@ function resolveFactoryExport(
 // Internal provider loading
 // ---------------------------------------------------------------------------
 
-/**
- * Execute a provider package and instantiate its factory. Async because AI
- * SDK 7 provider packages are ESM-only. Callers gate on the synchronous
- * availability check first, so failures here mean a resolvable-but-broken
- * install — surfaced with the actionable package name, never an opaque ESM
- * resolution error.
- */
-async function instantiateProvider(
-  providerName: string,
-  apiKey: string
-): Promise<(modelId: string) => unknown> {
-  const info = PROVIDER_PACKAGES[providerName];
-  if (!info) {
-    throw new Error(`Unknown provider: "${providerName}"`);
-  }
+type PackageKind = "provider" | "gateway";
+type PackageInfo = { pkg: string; factory: string };
 
+/**
+ * Execute a provider or gateway package and instantiate its factory.
+ * Async because AI SDK 7 packages are ESM-only. Callers already gate on
+ * the package map and the synchronous availability check, so failures
+ * here mean a resolvable-but-broken install — surfaced with the
+ * actionable package name, never an opaque ESM resolution error.
+ */
+async function instantiateFactory(
+  kind: PackageKind,
+  name: string,
+  info: PackageInfo,
+  apiKey: string
+): Promise<unknown> {
   let mod: Record<string, unknown>;
   try {
     mod = await importModule(info.pkg);
   } catch (err) {
     throw providerLoadError(
-      `Provider package "${info.pkg}" failed to load. ` +
-        `Install it to use ${providerName} models directly.`,
+      kind === "provider"
+        ? `Provider package "${info.pkg}" failed to load. ` +
+          `Install it to use ${name} models directly.`
+        : `Gateway package "${info.pkg}" failed to load. ` +
+          `Install it to use the ${name} gateway.`,
       err
     );
   }
@@ -266,45 +269,12 @@ async function instantiateProvider(
     // factory) are load failures too — same marker so fallback loops skip
     // the candidate instead of aborting streaming intents.
     throw providerLoadError(
-      `Provider package "${info.pkg}" does not export "${info.factory}". ` +
+      `${kind === "provider" ? "Provider" : "Gateway"} package "${info.pkg}" ` +
+        `does not export "${info.factory}". ` +
         `The installed version may be incompatible with this framework.`
     );
   }
-  return factory({ apiKey }) as (modelId: string) => unknown;
-}
-
-/** Async counterpart of {@link instantiateProvider} for gateway packages. */
-async function instantiateGateway(
-  gatewayType: string,
-  apiKey: string
-): Promise<{ gateway: Record<string, unknown>; type: string }> {
-  const info = GATEWAY_PACKAGES[gatewayType];
-  if (!info) {
-    throw new Error(`Unknown gateway type: "${gatewayType}"`);
-  }
-
-  let mod: Record<string, unknown>;
-  try {
-    mod = await importModule(info.pkg);
-  } catch (err) {
-    throw providerLoadError(
-      `Gateway package "${info.pkg}" failed to load. ` +
-        `Install it to use the ${gatewayType} gateway.`,
-      err
-    );
-  }
-
-  const factory = resolveFactoryExport(mod, info.factory);
-  if (factory === undefined) {
-    throw providerLoadError(
-      `Gateway package "${info.pkg}" does not export "${info.factory}". ` +
-        `The installed version may be incompatible with this framework.`
-    );
-  }
-  return {
-    gateway: factory({ apiKey }) as Record<string, unknown>,
-    type: gatewayType,
-  };
+  return factory({ apiKey });
 }
 
 /**
@@ -722,7 +692,12 @@ export function createModelResolver(
     let pending = providerLoadCache.get(providerName);
     if (pending === undefined) {
       const info = availability.get(providerName)!;
-      pending = instantiateProvider(providerName, info.apiKey!);
+      pending = instantiateFactory(
+        "provider",
+        providerName,
+        PROVIDER_PACKAGES[providerName]!,
+        info.apiKey!
+      ) as Promise<(modelId: string) => unknown>;
       providerLoadCache.set(providerName, pending);
     }
     return pending;
@@ -753,7 +728,16 @@ export function createModelResolver(
   ): Promise<{ gateway: Record<string, unknown>; type: string }> {
     let pending = gatewayLoadCache.get(gatewayType);
     if (pending === undefined) {
-      pending = instantiateGateway(gatewayType, apiKey).then((entry) => {
+      pending = instantiateFactory(
+        "gateway",
+        gatewayType,
+        GATEWAY_PACKAGES[gatewayType]!,
+        apiKey
+      ).then((gateway) => {
+        const entry = {
+          gateway: gateway as Record<string, unknown>,
+          type: gatewayType,
+        };
         // Populate the sync cache so later fall-through decisions
         // (findGatewayForProvider) see the loaded gateway, matching the
         // pre-migration behavior where loading happened at resolve time.
