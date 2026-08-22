@@ -47,7 +47,7 @@ import {
 } from "./internal";
 import { stampWrite } from "../write-provenance";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
-import { makeTaskChangeEmitter } from "./change-event";
+import { createTaskChangeEmitter } from "./change-event";
 import {
   TaskCapExceededError,
   validateTaskCaps,
@@ -124,7 +124,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
       : {};
   }
 
-  const emit = makeTaskChangeEmitter<TInput, TOutput>(
+  const emit = createTaskChangeEmitter<TInput, TOutput>(
     options.collectionId,
     onChange
   );

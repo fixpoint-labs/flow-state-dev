@@ -26,10 +26,7 @@ import type { RequestRecord, SessionRecord, SessionStore } from "../stores/types
 import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { isJsonObject } from "../utils/json-helpers";
 import { resourceStorageKeys } from "../resources/storage-keys";
-import {
-  normalizeResourceDefault,
-  normalizeResourceState
-} from "../resources/normalize-resource-state";
+import { normalizeResourceState } from "../resources/normalize-resource-state";
 import { sortItemsChronologically } from "../utils/sort";
 
 export const JSON_HEADERS = {
@@ -229,8 +226,6 @@ export function isResourceConfig(value: unknown): value is ResourceConfig {
     typeof candidate.stateSchema.safeParse === "function"
   );
 }
-
-export { normalizeResourceDefault, normalizeResourceState };
 
 function isCollectionConfig(value: unknown): value is ResourceCollectionConfig {
   return (

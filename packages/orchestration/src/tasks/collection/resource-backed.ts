@@ -116,7 +116,7 @@ import {
 } from "./internal";
 import { stampWrite } from "../write-provenance";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
-import { makeTaskChangeEmitter } from "./change-event";
+import { createTaskChangeEmitter } from "./change-event";
 
 /**
  * Module-private signal that a write declined (FIX-951; extended to the patch
@@ -374,7 +374,7 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
   const mirror = sharedTaskSet(options.collection);
   await reconcileTaskSet(mirror, options.collection);
 
-  const emit = makeTaskChangeEmitter<TInput, TOutput>(
+  const emit = createTaskChangeEmitter<TInput, TOutput>(
     options.collectionId,
     onChange
   );

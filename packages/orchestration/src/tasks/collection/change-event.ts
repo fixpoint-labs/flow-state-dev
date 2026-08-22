@@ -50,7 +50,7 @@ export interface TaskChangeEvent<TInput = unknown, TOutput = unknown> {
  * differs. A no-op when the caller supplied no `onChange`, so call sites stay
  * unconditional.
  */
-export function makeTaskChangeEmitter<TInput, TOutput>(
+export function createTaskChangeEmitter<TInput, TOutput>(
   collectionId: string,
   onChange: ((event: TaskChangeEvent) => void) | undefined
 ): (kind: TaskChangeKind, task: Task<TInput, TOutput>, prevStatus?: TaskStatus) => void {
