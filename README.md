@@ -167,7 +167,7 @@ Two directories, different purposes:
 The framework ships as six packages with strict dependency boundaries:
 
 ```
-core ← server ← testing
+core ← engine ← testing
 core ← client ← react ← apps/devtool
 ```
 
