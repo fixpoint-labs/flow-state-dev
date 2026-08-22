@@ -250,15 +250,20 @@ function normalizeFinishReason(value: unknown): string | undefined {
 }
 
 function normalizeStructuredOutput(value: Record<string, unknown>): unknown {
-  // AI SDK 7 exposes structured output as a lazy `output` getter that
-  // throws when the call had none. The v5/v6 `experimental_*` names are gone.
-  try {
-    const candidate = value.output;
-    if (candidate !== undefined) {
-      return candidate;
+  // TODO(ai-sdk-7-cleanup): the `experimental_*` names are legacy dual-reads
+  // (BP-030). `ai` removed the `experimental_output` alias in 7.0.0 and this
+  // package depends on `ai@^7.0.15`, so they can no longer fire — drop them in
+  // a dedicated change, not inside a refactor.
+  const keys = ["experimental_output", "experimentalOutput", "output"] as const;
+  for (const key of keys) {
+    try {
+      const candidate = value[key];
+      if (candidate !== undefined) {
+        return candidate;
+      }
+    } catch {
+      // Some AI SDK result getters throw when no structured output exists.
     }
-  } catch {
-    // Getter throws when no structured output exists.
   }
 
   return undefined;
@@ -547,7 +552,9 @@ function normalizeSteps(
       finishReason: normalizeFinishReason(record.finishReason),
       usage: normalizeUsage(
         record.usage,
-        record.providerMetadata
+        // TODO(ai-sdk-7-cleanup): `experimental_providerMetadata` was removed
+        // in `ai@5.0.0`; this legacy dual-read (BP-030) can no longer fire.
+        record.providerMetadata ?? record.experimental_providerMetadata
       )
     });
   }

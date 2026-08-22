@@ -3,7 +3,7 @@
  * call this helper; the miss path must stay warn-and-skip.
  */
 import { describe, expect, it, vi } from "vitest";
-import { resolveCatalogTools } from "../../src/skills/resolve-catalog-tools";
+import { resolveCatalogTools } from "../../src/shared/resolve-catalog-tools";
 
 const search = { config: { name: "search" } } as never;
 const catalog = { search };

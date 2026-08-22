@@ -41,7 +41,7 @@ import { skillFileKey } from "./collection";
 import { stripFrontmatter } from "./internal/strip-frontmatter";
 import { substitute } from "./skill-md";
 import { taskTools as taskToolsCapability } from "./task-tools-capability";
-import { resolveCatalogTools } from "./resolve-catalog-tools";
+import { resolveCatalogTools } from "../shared/resolve-catalog-tools";
 
 /**
  * Dependencies for materializing a skill's agents into board workers.

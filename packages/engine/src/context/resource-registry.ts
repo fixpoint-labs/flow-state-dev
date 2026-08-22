@@ -209,8 +209,6 @@ function normalizeResourceState(
   return normalizeResourceDefault(config);
 }
 
-export { isCollectionConfig };
-
 export function normalizeScopeResources(
   configs: Record<string, ResourceConfig | ResourceCollectionConfig> | undefined,
   seed: Record<string, unknown> | undefined

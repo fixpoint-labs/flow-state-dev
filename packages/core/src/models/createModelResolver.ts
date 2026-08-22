@@ -238,12 +238,12 @@ type PackageInfo = { pkg: string; factory: string };
  * here mean a resolvable-but-broken install — surfaced with the
  * actionable package name, never an opaque ESM resolution error.
  */
-async function instantiateFactory(
+async function instantiateFactory<T>(
   kind: PackageKind,
   name: string,
   info: PackageInfo,
   apiKey: string
-): Promise<unknown> {
+): Promise<T> {
   let mod: Record<string, unknown>;
   try {
     mod = await importModule(info.pkg);
@@ -269,7 +269,10 @@ async function instantiateFactory(
         `The installed version may be incompatible with this framework.`
     );
   }
-  return factory({ apiKey });
+  // The factory comes from a dynamic import, so its shape cannot be checked
+  // statically. The one assertion lives here; call sites name the type they
+  // expect instead of re-casting the returned promise.
+  return factory({ apiKey }) as T;
 }
 
 /**
@@ -687,12 +690,12 @@ export function createModelResolver(
     let pending = providerLoadCache.get(providerName);
     if (pending === undefined) {
       const info = availability.get(providerName)!;
-      pending = instantiateFactory(
+      pending = instantiateFactory<ProviderResolver>(
         "provider",
         providerName,
         PROVIDER_PACKAGES[providerName]!,
         info.apiKey!
-      ) as Promise<ProviderResolver>;
+      );
       providerLoadCache.set(providerName, pending);
     }
     return pending;
@@ -723,16 +726,13 @@ export function createModelResolver(
   ): Promise<{ gateway: Record<string, unknown>; type: string }> {
     let pending = gatewayLoadCache.get(gatewayType);
     if (pending === undefined) {
-      pending = instantiateFactory(
+      pending = instantiateFactory<Record<string, unknown>>(
         "gateway",
         gatewayType,
         GATEWAY_PACKAGES[gatewayType]!,
         apiKey
       ).then((gateway) => {
-        const entry = {
-          gateway: gateway as Record<string, unknown>,
-          type: gatewayType,
-        };
+        const entry = { gateway, type: gatewayType };
         // Populate the sync cache so later fall-through decisions
         // (findGatewayForProvider) see the loaded gateway, matching the
         // pre-migration behavior where loading happened at resolve time.
