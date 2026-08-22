@@ -18,7 +18,7 @@
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { InitialSkill } from "@flow-state-dev/core";
 import { readActiveSkills } from "./active-skill-state";
-import { getCollection } from "./internal/get-collection";
+import { resolveResourceCollection } from "../tasks/collection/resolve-resource-collection";
 import { renderActiveSkillBody } from "./render-skill-body";
 import {
   buildRunSkillDescription,
@@ -52,7 +52,7 @@ export function buildSkillsCatalogContext(
   opts: SkillsContextOptions,
 ): (input: unknown, ctx: any) => Promise<string | null> {
   return async (_input: unknown, ctx: BlockContext) => {
-    const collection = getCollection(ctx, opts.collectionKey);
+    const collection = resolveResourceCollection(ctx, opts.collectionKey);
     if (!collection) return null;
     // Seed on first render so the model sees the catalog on turn 1.
     // `ensureSeeded` is memoized per collection ref, so subsequent turns
@@ -81,7 +81,7 @@ export function buildActiveSkillsContext(
   return async (_input: unknown, ctx: BlockContext) => {
     const active = readActiveSkills(ctx.session.state);
     if (active.length === 0) return null;
-    const collection = getCollection(ctx, opts.collectionKey);
+    const collection = resolveResourceCollection(ctx, opts.collectionKey);
     if (!collection) return null;
 
     const blocks: string[] = [];

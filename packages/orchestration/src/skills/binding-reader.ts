@@ -22,7 +22,7 @@
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { InitialSkill } from "@flow-state-dev/core";
 import { readActivations, type ActivationLocation } from "./activation-store";
-import { getCollection } from "./internal/get-collection";
+import { resolveResourceCollection } from "../tasks/collection/resolve-resource-collection";
 import { renderActiveSkillBody } from "./render-skill-body";
 import { ensureSeeded } from "./seeding";
 
@@ -53,7 +53,7 @@ export function buildSkillBindingReader(
 ): (input: unknown, ctx: BlockContext) => Promise<string | null> {
   const staticActive = opts.active ?? [];
   return async (_input: unknown, ctx: BlockContext) => {
-    const collection = getCollection(ctx, opts.collectionKey);
+    const collection = resolveResourceCollection(ctx, opts.collectionKey);
     if (!collection) return null;
     // Seed on first render so static bodies resolve on turn 1. Idempotent and
     // memoized per collection ref; failures fall through with an empty catalog.

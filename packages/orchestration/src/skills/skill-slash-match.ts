@@ -16,7 +16,7 @@ import { z } from "zod";
 import { handler, SLASH_COMMAND_PATTERN } from "@flow-state-dev/core";
 import type { SkillState } from "@flow-state-dev/core";
 import { skillManifestKey } from "./collection";
-import { getCollection } from "./internal/get-collection";
+import { resolveResourceCollection } from "../tasks/collection/resolve-resource-collection";
 import { skillActivatorStateSchema } from "./skill-activation-types";
 
 const inputSchema = z.object({ message: z.string() }).passthrough();
@@ -58,7 +58,7 @@ export function createSkillSlashMatch(opts: SlashMatchOptions) {
       // the turn — fall through so a later tier can still match an allowed one.
       if (allowedSet && !allowedSet.has(skillName)) return { matched: false };
 
-      const collection = getCollection(ctx, opts.collectionKey);
+      const collection = resolveResourceCollection(ctx, opts.collectionKey);
       if (!collection) return { matched: false };
 
       const manifest = await collection.getOptional(skillManifestKey(skillName));
