@@ -6,7 +6,10 @@
 who copies an example from our docs can hit code that fails typecheck, or pass an option
 that is accepted, typed, and then silently ignored. Both cost the same thing: the developer
 trusts the surface, the surface lies, and they lose an afternoon finding out. When this epic
-lands, every name the framework exposes either does what its docs say or is gone.
+lands, the framework has **no lying surface**: docs match the tree, an accepted option is
+read, and a superseded name is gone. Real exports that nothing in this repo happens to call
+are not lies — they stay, and saying so here is what stops a later sweeper reading this
+objective as a mandate to remove them.
 
 **Holistic necessity.** This is a cleanup epic, which is exactly the kind that overbuilds by
 mistaking *unused* for *dead*. So the set is bounded by one product rule, and every issue
@@ -52,41 +55,72 @@ above was not doing its job.
    No PR under this epic removes a public export purely because nothing in this repo calls
    it. A PR that finds itself wanting to must comment up here rather than decide locally.
 
-2. **One cut kind per PR.** The original pass was a single 266-file PR; automated review
-   refused it outright at a 100-file limit, and a human could not have told a rename from a
-   behaviour change inside it. Each sub-PR carries one *kind* of cut so its review question
-   is a single question. This is why the set exists at all — it is not six PRs for
-   bookkeeping, it is six because there are six distinct questions.
+2. **A PR is split when its cuts have different falsification modes, or when it won't fit
+   under review.** Two tests, and a slice needs to pass only one.
 
-3. **Evidence travels with the cut, in the PR that makes it.** A removal's justification is
+   *Different falsification mode* means: what a reviewer does to prove the cut wrong is a
+   different procedure. Removing an alias is falsified by finding a consumer who still holds
+   the name — a judgement about framework surface. Removing an unread option is falsified by
+   finding a `read` of it — a mechanical grep with a definite answer. A rename is falsified by
+   finding a persisted format that moved. A behaviour change is falsified by finding a caller
+   whose working code now breaks. Those are four different questions and they don't review
+   well stacked.
+
+   *Won't fit* means the 100-file wall that made automated review refuse #1369 outright.
+   `aliases` (71 files) and `unread-options` (56) are separate on the first test **and** would
+   breach the wall combined; either reason alone would be enough.
+
+   Splitting past both tests is ceremony. If a further split is ever forced by size alone, it
+   splits by size — not by inventing another "kind".
+
+3. **A cut that changes runtime behaviour is never in a cleanup PR.** The failure #1369 is
+   being re-landed to avoid was not only its size — it was that a reviewer skimming a cleanup
+   had no reason to expect a semantic change inside it. So behaviour changes get their own
+   lane regardless of how small or how cleanup-adjacent they look: the `.tap()` conversions
+   (which change a block's output and the items log) and the scope-config `clientData` removal
+   (which turns a working flow definition into a hard throw) are behaviour, not leftovers, and
+   neither rides in a cleanup slice. Both were caught in epic-PR review after an earlier draft
+   of this document had them filed as cleanups.
+
+4. **Evidence travels with the cut, in the PR that makes it.** A removal's justification is
    the grep or the successor, and it belongs in the body of the PR a reviewer is reading —
    not in this document, and not in a comment on the original PR.
 
-4. **Public-name removals are pre-1.0 minors and carry a changeset.** Being wrong costs a
+5. **Public-name removals are pre-1.0 minors and carry a changeset.** Being wrong costs a
    minor bump and a one-line rename for an out-of-repo caller. That price is what makes these
    decidable at engineering altitude; a cut whose blast radius exceeds it escalates.
 
-5. **Sequencing: the six are independent and may merge in any order.** They are all based on
-   `main`, not stacked. Twenty-nine files are touched by more than one slice — all barrel and
-   index files — so whichever merges second may need a trivial rebase. No slice blocks
+6. **Sequencing: the slices are independent and may merge in any order.** They are all based
+   on `main`, not stacked. Twenty-nine files are touched by more than one slice — all barrel
+   and index files — so whichever merges second may need a trivial rebase. No slice blocks
    another, and none should be held for another.
 
-6. **The bugfix is not a cleanup and is not reviewed as one.** FIX-1155 rides in this set only
-   because it was trapped in the original PR. It changes runtime behaviour, it carries its own
-   regression test, and it gets its own PR so that a reviewer reading a cleanup never has to
-   notice a semantic change hiding in it.
+7. **FIX-1155 is a satellite, not a member.** It is in this set only because it was trapped in
+   #1369, and the objective — no lying surface — does not imply a request-scope race fix. It
+   keeps its own PR and its own regression test; it does not count toward the set's completion,
+   and §1 should not be read as having promised it.
 
 ## 4. Running index
+
+**The set is seven PRs: five cleanups, two behaviour changes.** FIX-1155 rides alongside as a
+satellite (theme 7) and does not count toward completion.
 
 | Issue | What it delivers | Kind | PR | State |
 |---|---|---|---|---|
 | [FIX-1213](https://linear.app/fixpoint-labs/issue/FIX-1213) | Docs and agent skills stop teaching contracts that aren't on the tree | docs | — | Pending |
 | [FIX-1209](https://linear.app/fixpoint-labs/issue/FIX-1209) | Superseded aliases, compat shims, unused internal barrels removed | breaking minor | — | Pending |
-| [FIX-1210](https://linear.app/fixpoint-labs/issue/FIX-1210) | Options accepted but never read, plus the retired `claude --remote` experiment | breaking minor | — | Pending |
-| [FIX-1211](https://linear.app/fixpoint-labs/issue/FIX-1211) | Duplicate helpers collapsed to one; BP-012 tap fixes | patch | — | Pending |
+| [FIX-1210](https://linear.app/fixpoint-labs/issue/FIX-1210) | Options accepted but never read | breaking minor | — | Pending |
+| [FIX-1211](https://linear.app/fixpoint-labs/issue/FIX-1211) | Duplicate helpers collapsed to one implementation each | patch | — | Pending |
 | [FIX-1212](https://linear.app/fixpoint-labs/issue/FIX-1212) | Engine org-store factories renamed off `Project` | breaking minor | — | Pending |
-| [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state writes serialize before persist | **bugfix** | — | Pending |
-| — | Further cuts found beyond the original pass | TBD | — | Hunt in progress |
+| [FIX-1214](https://linear.app/fixpoint-labs/issue/FIX-1214) | State-only blocks stop echoing input into the items log | **behaviour** | — | Pending |
+| [FIX-1215](https://linear.app/fixpoint-labs/issue/FIX-1215) | Scope-config `clientData` shim removed | **behaviour** | — | Pending |
+| [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state writes serialize before persist | *satellite bugfix* | — | Pending |
+
+**The follow-on bloat hunt is not in this index, and that is the point.** It found 22 Tier-1,
+6 Tier-2 and 7 Tier-3 candidates, and folding an open inventory into a bounded set would let
+the epic grow without ever re-gating §1. Its findings become their own filed issues under the
+same product rule; if they amount to a set, they get their own epic with its own objective
+gate. This epic completes when the seven above are merged or dropped.
 
 Issues were filed for a mechanical reason worth recording: CI's `validate-changeset-refs` guard fails any changeset fragment that doesn't name a Linear issue, and the original PR's fragments named none. Each slice's fragments now name its issue, which is also what gives a released CHANGELOG entry a route back to the reasoning.
 
@@ -102,10 +136,14 @@ all of the above as one 266-file change.
   is the price theme 4 sets as decidable at engineering altitude. Surfaced here as the durable
   record; the merge gate on each breaking sub-PR is where it is actually answered.
 
-- **Does the continued bloat hunt get its own epic?** The original pass was scoped to what
-  could be proved from the tree in one sitting. The follow-on hunt is open-ended by nature. If
-  its findings exceed what one PR can carry, the set grows rather than one PR growing — the
-  same reason theme 2 exists. Blocks nothing.
+- **~~Does the continued bloat hunt grow this epic?~~** *Resolved: no.* An open-ended hunt
+  inside a set with a kill line means the set can grow without re-gating the objective, which
+  is exactly the "does this overbuild" failure §1 exists to catch. The hunt runs, but its
+  findings are filed as their own issues and, if they amount to a set, get their own epic and
+  their own objective gate. Raised by epic-PR review; decided here.
+
+- **~~Should the running index be Linear-keyed?~~** *Resolved: yes*, and it is. Raised by
+  review against an earlier revision that used bare slice labels.
 
 ---
 
@@ -122,3 +160,16 @@ all of the above as one 266-file change.
   were dead knobs (`defaultBlockRenderer`, resource dynamic knobs, `fsdev run --format`), one
   collapsed the testing-harness helper clones — an item the original pass had listed as a
   known near-miss and not started — and one was a docs correction in `hello-chat`.
+- **After epic-PR review** — pulled two behaviour changes out of cleanup slices into their own
+  PRs (FIX-1214 tap conversions, FIX-1215 `clientData` shim), because a reviewer skimming a
+  dedupe or an alias PR has no reason to expect a semantic change in it — the same failure
+  theme 3 now states and the same reason FIX-1155 was already separate. Replaced "one cut kind
+  per PR" with the two tests in theme 2, because "six distinct questions" was asserted rather
+  than earned. Took the bloat hunt out of the running index so the set keeps a completion
+  boundary.
+- **After verifying a P1 against the tree** — dropped the `@flow-state-dev/claude-code/cli`
+  retirement entirely. `package.json` exports `./cli` and `./sdk` as separate public subpaths
+  and the README documents them as distinct contracts (cloud fire-and-forget on a claude.ai
+  subscription vs in-process with Anthropic credentials), so `/sdk` is not a successor. The
+  only evidence for that cut was "no in-repo caller", which is exactly what the product rule
+  says is insufficient.
