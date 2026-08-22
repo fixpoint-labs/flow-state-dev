@@ -100,15 +100,9 @@ export interface <PatternName>Config<
   /** Tools forwarded to default internal generators. */
   tools?: ToolsSlot;
 
-  /** Capabilities installed on default internal blocks. */
+  /** Capabilities installed on default internal blocks. Resources reach the
+   *  pattern this way — a sequencer has no `resources` config field. */
   uses?: UsesSlot;
-
-  // ---------------------------------------------------------------------------
-  // Resource declarations — registered on the outer sequencer.
-  // ---------------------------------------------------------------------------
-
-  /** Resources declared on the outer sequencer. Each entry's `scope` routes storage. */
-  resources?: Record<string, any>;
 }
 ```
 
@@ -173,36 +167,40 @@ export function create<BlockName>(
 }
 ```
 
-#### Forwarding `uses`, `tools`, and Resources
+#### Forwarding `uses` and `tools`
 
-The most common pattern: accept `uses`, `tools`, and resource declarations in your config and forward them to the internal blocks that need them. This is how `planAndExecute` and `supervisor` work.
+The most common pattern: accept `uses` and `tools` in your config and forward them to the internal blocks that need them. This is how `planAndExecute` and `supervisor` work — neither takes a `resources` option.
 
 ```typescript
 export function <patternName>(config: <PatternName>Config) {
-  const { name, uses, tools, instructions, resources } = config;
+  const { name, uses, tools, instructions } = config;
 
-  // Forward uses/tools to default internal generators (skip when overridden)
+  // Forward uses/tools to default internal generators (skip when overridden).
+  // Declare each resource on the block that actually reads or writes it.
   const executor = config.executor ?? generator({
     name: `${name}-executor`,
     model: config.model ?? "openai/gpt-5.4-mini",
+    resources: { <resourceName>: <resourceName>Resource },
     ...(tools !== undefined ? { tools } : {}),
     ...(uses ? { uses: uses as any } : {}),
     prompt: [instructions, "Execute the task."],
     // ...
   });
 
-  // Declare resources on the outer sequencer
-  return sequencer({
-    name,
-    stateSchema,
-    ...(resources ? { resources } : {}),
-  })
+  return sequencer({ name, stateSchema })
     .step(executor)
     // ...
 }
 ```
 
-Resources are declared on the outer sequencer so the runtime registers them. `uses` and `tools` go on the generators that actually call LLMs. Only spread them when the consumer hasn't provided a custom override block.
+**Do not put a `resources` key on `sequencer()`.** `SequencerConfig` has no such field — a sequencer's own declarations are exactly its capability-injected ones. A conditional spread (`...(resources ? { resources } : {})`) slips past excess-property checking, so the compiler stays silent while the pattern leans on an internal seam.
+
+Two supported places for a resource:
+
+- **On the child block that uses it** — `generator()` and `handler()` both take `resources`. The sequencer collects `declaredResources` from every child and bubbles them up to the flow, so declaring it on the consumer registers it just as well. This is the default; `rlm` does it this way.
+- **In a capability, installed through `uses`** — when the resource is shared infrastructure that blocks outside the pattern also need. See [Exporting a Capability](#exporting-a-capability) below.
+
+`uses` and `tools` go on the generators that actually call LLMs. Only spread them when the consumer hasn't provided a custom override block.
 
 #### Exporting a Capability
 

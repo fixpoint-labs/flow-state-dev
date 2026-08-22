@@ -20,8 +20,20 @@ Promise of the same). `PrincipalResolver` is an alias of that function
 on the engine side.
 
 `context.request` is set for HTTP-shaped transports. Non-HTTP transports
-use `context.envelope` and `context.rawBody`. The resolver **never**
-treats `body.userId` as the principal.
+use `context.envelope` and `context.rawBody`. A resolver you write must
+**never** treat `body.userId` as the principal — that is BP-031, and it
+is the reason the hook exists: identity has to come from something the
+caller cannot set.
+
+The framework's own default is the deliberate exception.
+`defaultBodyUserIdPrincipalResolver` reads `body.userId` (and
+`body.orgId`) and returns them as the principal. It is there for early
+development and the framework's tests, not as a security boundary — an
+app still on it is unauthenticated, and the guarantee above does not
+apply to it. `@flow-state-dev/node` refuses to bind such an app to a
+network interface for exactly that reason. Everything below that speaks
+of a "configured" or "custom" resolver means one that is not this
+default.
 
 `defineFlow` accepts the hook on `authentication`:
 
