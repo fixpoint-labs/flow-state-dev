@@ -133,11 +133,24 @@ above was not doing its job.
    `--capture` payload — so neither has ever reached a store. It stays true after #1387 deletes
    them. Both merge orders publish a true page, so there is nothing here to gate on.
 
-   What survives is a preference, not a rule: until #1387 lands, `fsdev run --help` still
-   advertises two flags the docs no longer list. That is a CLI surface and #1387 is the change
-   that fixes it, which argues mildly for #1387 first — the same direction the soft order below
-   already points. One practical note: both branches drop `--seed-user` from the same four
-   `.agents/skills/*` files, so whichever lands second rebases there.
+   **Neither is #1387 docs-blind**, which closes the other half of the worry. #1387 deletes the
+   same flag rows from `apps/docs/docs/api/cli.md`, `apps/docs/docs/cli/agent-dev-loop.md` and
+   `packages/cli/README.md`, and rewrites the same *State seeding* paragraph. So merging #1387
+   first leaves docs, `--help` and the code all agreeing; there is no window in which published
+   docs advertise a flag the CLI has removed. The two branches overlap on 14 files, and those
+   four doc files are among them — whichever lands second takes a rebase there, not a
+   contradiction.
+
+   What survives is a preference, not a rule: in the #1394-first order, `fsdev run --help` keeps
+   advertising two flags the docs no longer list until #1387 lands. That is a CLI surface, #1387
+   is the change that fixes it, and the flags are inert either way — so the mismatch is `--help`
+   describing something that already does nothing. It argues mildly for #1387 first, which is the
+   direction the soft order below already points.
+
+   **The remedy this keeps attracting — "put the CLI and doc removals in one change set" — is the
+   thing this epic exists to undo.** #1387 is 60 files and #1394 is 78. Combined they are 138,
+   past the 100-file wall that made automated review refuse #1369 outright, and they carry two
+   different review questions. That is the omnibus PR, rebuilt.
 
    **Soft — barrel-heavy breaking slices first, docs last.**
    Twenty-nine files are touched by more than one slice — all barrel and index files. Calling
@@ -464,7 +477,9 @@ still open on individual PRs is review feedback, and it lives on those PRs, not 
   on `main`, where both flags are only echoed into the `--capture` payload and never reach a
   store. Both merge orders publish a true page. The gate was derived from this document's own
   prose rather than from the branch, which is the same failure that produced the `/cli` false
-  positive. The set is order-independent again; theme 6 keeps only its soft order.
+  positive. The set is order-independent again; theme 6 keeps only its soft order. A follow-up
+  round then established the other half: #1387 removes the flag rows from the docs as well as the
+  options from the CLI, so the #1387-first order leaves docs, `--help` and code all agreeing.
 - **Two code findings routed out rather than absorbed** — FIX-1218 (`requireUser: false` throws a
   500 on every dispatch without a `defaultUserId`) and FIX-1219 (the scheduled-dispatch header
   comment states the wrong auth/idempotency order). The docs slice found both while checking prose
