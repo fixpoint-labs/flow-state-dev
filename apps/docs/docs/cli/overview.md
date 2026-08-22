@@ -31,7 +31,7 @@ Session reuse: pass `--session <id>` to continue an existing session. State from
 
 ## Running blocks
 
-`fsdev block <file>` runs a single block with the test harness. Provide input via `-i` or `-f`. The block executes in isolation; no flow context, no session unless you seed it. Output includes success/failure, schema validation results, and execution duration. Ideal for unit-testing block logic.
+`fsdev block <file>` runs a single block with the test harness. Provide input via `-i` or `-f`. The block executes in isolation: no flow context and no session. Output includes success/failure, schema validation results, and execution duration. Ideal for unit-testing block logic.
 
 ## Flow discovery
 
@@ -59,7 +59,7 @@ You get a line on stderr at each dispatch that loses the override:
 
 ## State seeding
 
-`--seed-session` lets you start with specific session state for debugging. Pass inline JSON or a file path. The seeded fields are merged into session state before execution. Handy for reproducing issues that depend on prior session state.
+On `fsdev run`, `--seed-session` lets you start with specific session state for debugging. Pass inline JSON or a file path. The seeded fields are merged into session state before execution. Handy for reproducing issues that depend on prior session state.
 
 ## Background work
 

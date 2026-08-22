@@ -167,4 +167,4 @@ Check the `outputSchema`. Generators with a custom `outputSchema` use structured
 
 ### Tool block throws but error is unclear?
 
-Run the tool block in isolation with `fsdev block`. Pass the exact arguments the generator would send. The block runs in the same harness; you'll see the real error. Tool blocks receive `BlockContext` with the same scope chain as the enclosing generator, so you can seed session or user state to match the failing scenario.
+Run the tool block in isolation with `fsdev block`. Pass the exact arguments the generator would send. You'll see the real error. `fsdev block` does not take seed flags. If the failure depends on session, user, or org state, reproduce it with `testBlock` (`session`, `user`, `org`) or `testFlow` (`seed.session`, `seed.user`, `seed.org`).
