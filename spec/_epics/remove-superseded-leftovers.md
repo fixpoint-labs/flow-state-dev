@@ -25,9 +25,23 @@ surface. Everything else stays. Applying that rule is what turned the original 2
 from a public-API purge into a leftover cut, and it is the single thing most likely to be got
 wrong on a follow-up sweep.
 
-**Proof.** For each cut: the grep that shows no live referent, or the successor that
-supersedes the removed name. For each dead knob: the read that does not exist. Cuts land with
-their evidence in the PR body, not as an assertion.
+**Proof, and it is not the same proof for every cut.** An earlier draft of this line said the
+evidence was *a grep showing no live referent, **or** a successor* — and that `or` is the bug.
+It lets a public removal pass on repo search alone, which is precisely what the product rule
+rejects, because external consumers are invisible to a grep. It already produced one false
+positive: the `@flow-state-dev/claude-code/cli` retirement, justified solely by "no in-repo
+caller", when `/cli` and `/sdk` are two separately exported, separately documented contracts.
+
+So the bar depends on what is being cut:
+
+| Cutting | The evidence that counts |
+|---|---|
+| **Public surface** (reachable from a package's `src/index.ts` or its `exports` map) | A **named shipped successor with an equivalent contract**. A grep is not sufficient and never was. If you cannot name what replaces it, it is not a leftover |
+| **A dead knob** | The **read that does not exist** — the option is declared and destructured, and no code consumes it |
+| **Internal surface** (not reachable from any package entry) | A repo-wide grep with **zero** referents, plus the check that it is absent from the entry and the `exports` map |
+| **An internal duplicate** | The clone bodies are **contract-identical**, shown side by side |
+
+Cuts land with their evidence in the PR body, not as an assertion.
 
 **Lead measure.** Sub-PRs whose cuts are individually evidenced and green, named each report.
 
@@ -70,6 +84,14 @@ above was not doing its job.
    `aliases` (71 files) and `unread-options` (56) are separate on the first test **and** would
    breach the wall combined; either reason alone would be enough.
 
+   **Both tests are thresholds, not a taxonomy.** A slice does not split every time a second
+   falsification mode appears in it — only when that mode carries enough volume to change how
+   the PR is reviewed. FIX-1209 is the live example and the judgement is deliberate: it is
+   mostly superseded aliases (successor-equivalence review) but also deletes a handful of
+   unused internal barrels (no-referent review). Four files is not a second review; it is four
+   lines a reviewer checks on the way past. Had it been forty, they would have moved to
+   FIX-1216, which is exactly that mode at volume.
+
    Splitting past both tests is ceremony. If a further split is ever forced by size alone, it
    splits by size — not by inventing another "kind".
 
@@ -91,14 +113,30 @@ above was not doing its job.
    decidable at engineering altitude; a cut whose blast radius exceeds it escalates.
 
 6. **Sequencing: the slices are independent and may merge in any order.** They are all based
-   on `main`, not stacked. Twenty-nine files are touched by more than one slice — all barrel
-   and index files — so whichever merges second may need a trivial rebase. No slice blocks
-   another, and none should be held for another.
+   on `main`, not stacked. No slice blocks another, and none should be held for another.
+
+   Twenty-nine files are touched by more than one slice — all barrel and index files. Calling
+   the resulting rebases "trivial" was optimistic: each merge re-conflicts the slices that
+   haven't landed, so the cost compounds with the number outstanding rather than being paid
+   once. Independence is still the right trade against a six-deep stack that serializes every
+   review, but there is a **soft merge order that costs nothing and avoids most of the
+   thrash**: the barrel-heavy breaking slices (FIX-1209, FIX-1210) first, FIX-1211 next, and
+   **FIX-1213 (docs) last**, so the docs land against the code they describe rather than
+   drifting between merges. FIX-1155, FIX-1212, FIX-1214 and FIX-1215 touch almost nothing
+   shared and can go whenever. This is guidance, not a gate — merging out of order costs a
+   rebase, not correctness.
 
 7. **FIX-1155 is a satellite, not a member.** It is in this set only because it was trapped in
    #1369, and the objective — no lying surface — does not imply a request-scope race fix. It
    keeps its own PR and its own regression test; it does not count toward the set's completion,
    and §1 should not be read as having promised it.
+
+## 3. Shape of the whole
+
+No end-state POC. The division was not a guess that needed checking — #1369 had already
+written every cut and proved it against the tree, so the assembled shape is that PR's diff,
+which exists and is reviewable. What this epic changed is how it is *presented* for review,
+and a POC cannot tell you anything about that.
 
 ## 4. Running index
 
@@ -129,12 +167,23 @@ all of the above as one 266-file change.
 
 ## 5. Open cross-cutting questions
 
-- **Do we land the pre-1.0 minors that drop leftover public names?** Raised by the original
-  PR, and the one question its author flagged for sign-off. There are zero in-repo production
-  callers for any replaced name. *Recommendation: yes.* Being wrong costs a minor version bump
-  and a one-line rename or import change for an out-of-repo caller still on an old name — which
-  is the price theme 4 sets as decidable at engineering altitude. Surfaced here as the durable
-  record; the merge gate on each breaking sub-PR is where it is actually answered.
+- **Do we land the pre-1.0 minors that drop leftover public names?** Raised by the original PR,
+  and the one question its author flagged for sign-off. This is the durable record; theme 5 sets
+  the policy and each breaking PR's merge gate is where it is actually answered.
+
+  **The trade being accepted:** we spend a small, certain cost on any out-of-repo consumer still
+  holding an old name — a minor version bump and a one-line rename or import change, at a
+  version where that is what minors are for — to stop paying an unbounded, uncertain cost on
+  every new developer who finds two names for one thing and has to work out which is real.
+
+  *Recommendation: yes*, on the strength of the successor rule in §1: every name going has a
+  named replacement with an equivalent contract, so nobody loses a capability.
+
+  **What would change the recommendation:** evidence that a specific removed name has real
+  external users — a support thread, an issue, a known integrator on it. We have no telemetry
+  and no download-path data, so absence of that evidence is genuinely weak; if you know of a
+  consumer, that outweighs everything above for that name. The `/cli` catch is the proof this
+  is not hypothetical: one cut in this set was justified on repo search alone and was wrong.
 
 - **~~Does the continued bloat hunt grow this epic?~~** *Resolved: no.* An open-ended hunt
   inside a set with a kill line means the set can grow without re-gating the objective, which
@@ -173,3 +222,10 @@ all of the above as one 266-file change.
   subscription vs in-process with Anthropic credentials), so `/sdk` is not a successor. The
   only evidence for that cut was "no in-repo caller", which is exactly what the product rule
   says is insufficient.
+- **After the second epic-PR review round** — replaced §1's proof line, which said the evidence
+  for a cut was a no-referent grep **or** a successor. That `or` let a public removal pass on
+  repo search alone, which is the product rule's own failure mode and had already produced the
+  `/cli` false positive. Evidence is now keyed to what is being cut, and public surface needs a
+  named successor. Also added the soft merge order (theme 6) after a reviewer pointed out that
+  rebase cost across 29 shared barrel files compounds with the number of slices outstanding
+  rather than being paid once.
