@@ -106,20 +106,10 @@ export function assertDeltaExpectedVersion(
 }
 
 /**
- * Refuse a field path `patchField` or `deleteField` cannot address.
- *
- * Those two verbs reach state one or two keys deep — `state[a]` and
- * `state[a][b]` — because that is what their read-modify-write branches
- * actually build. A longer path has no branch to run, and a zero-length one
- * names no field at all; both throw here rather than silently writing the
- * wrong key or no key. `incField` is not a caller: it takes depth-1 paths only
- * and carries its own guard, worded for that narrower rule.
- *
- * Lives beside {@link assertDeltaExpectedVersion} for the same reason: the two
- * in-repo adapters (memory, filesystem) guard the same verbs, and one statement
- * of the rule — the message string included — is what keeps their errors
- * identical. The SQL adapters restate it, exactly as this module's header
- * describes for the predicate itself.
+ * Refuse a field path `patchField` or `deleteField` cannot address: they reach
+ * `state[a]` and `state[a][b]`, and have no branch for anything deeper or for
+ * a zero-length path. Shared by the memory and filesystem adapters so both
+ * throw the same message. `incField` takes depth-1 only and guards itself.
  */
 export function assertMaxDepthTwo(path: string[], verb: string): void {
   if (path.length < 1 || path.length > 2) {
