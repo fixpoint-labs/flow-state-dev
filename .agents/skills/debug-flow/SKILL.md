@@ -68,8 +68,6 @@ source ~/.zshrc && cd <repo-root> && pnpm --filter @flow-state-dev/fsdev fsdev r
 | `-m <model>` | Override model for all generator blocks |
 | `-s <session-id>` | Reuse session state across invocations |
 | `--seed-session '<json>'` | Pre-populate session state before execution |
-| `--seed-user '<json>'` | Pre-populate user state |
-| `--seed-project '<json>'` | Pre-populate project state |
 | `--flow-dir <path>` | Explicit flow directory (repeatable) |
 
 **Environment:** The CLI auto-loads `.env.local` files walking up from cwd. Ensure API keys (e.g., `OPENAI_API_KEY`) are set.
@@ -110,7 +108,7 @@ Each line is a JSON object. The five event types:
 |-------|-------------------|
 | `{"type":"item_added","item":{...}}` | A new output item was created. Check `item.type` (message, reasoning, block_output, error), `item.provenance.blockName`, `item.status` |
 | `{"type":"content_delta","itemId":"...","delta":"..."}` | Streaming text chunk from a generator. Accumulate deltas to see the full response. |
-| `{"type":"state_change","scope":"...","resourcePath":"...","changeType":"..."}` | State was mutated. Check scope (session/request/user/project) and what changed. |
+| `{"type":"state_change","scope":"...","resourcePath":"...","changeType":"..."}` | State was mutated. Check scope (session/request/user/org) and what changed. |
 | `{"type":"flow_complete","output":"...","durationMs":...,"items":...}` | Success. Shows final output and total item count. |
 | `{"type":"error","message":"...","code":"..."}` | Failure. This replaces `flow_complete`. The `code` maps to the error taxonomy (see reference). |
 

@@ -25,8 +25,6 @@ fsdev run my-agent chat -i '{"message": "Hello!"}'
 | `-m, --model <model>` | Override model for generator blocks that run in this process. See [Model overrides](/docs/cli/overview#model-overrides) |
 | `-s, --session <id>` | Session ID for reuse across invocations |
 | `--seed-session <json\|path>` | Seed session-level state (JSON or file path) |
-| `--seed-user <json\|path>` | Seed user-level state |
-| `--seed-org <json\|path>` | Seed org-level state |
 | `--flow-dir <path>` | Override flow discovery root (repeatable). Errors if a config is loaded. |
 | `--config <path>` | Load an explicit `fsdev.config` file instead of searching the cwd |
 | `--no-config` | Ignore any config and force directory discovery |

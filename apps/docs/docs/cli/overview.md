@@ -59,7 +59,7 @@ You get a line on stderr at each dispatch that loses the override:
 
 ## State seeding
 
-`--seed-session`, `--seed-user`, and `--seed-org` let you start with specific state for debugging. Pass inline JSON or a file path. The seeded state is merged into the scopes before execution. Handy for reproducing issues that depend on prior state.
+`--seed-session` lets you start with specific session state for debugging. Pass inline JSON or a file path. The seeded fields are merged into session state before execution. Handy for reproducing issues that depend on prior session state.
 
 ## Background work
 

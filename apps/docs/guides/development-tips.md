@@ -81,7 +81,7 @@ fsdev run support-triage triageTicket -i '{"ticketId": "T1"}' \
   --seed-session '{"openTicketCount": 3}'
 ```
 
-Options: `--seed-session`, `--seed-user`, `--seed-project`. Accept inline JSON or a file path. Simulates scenarios like "user has already sent 5 messages" or "project has existing config."
+`--seed-session` accepts inline JSON or a file path. Use it when you want a known session state before the action runs.
 
 ### Intent overrides in CI and testing
 
@@ -135,7 +135,7 @@ A first-party inspector app for real-time flow visualization. See blocks executi
 
 **Use the testing harness for CI.** Deterministic. No LLM calls. Same contracts as production. Seed state for edge cases. Run `pnpm test` before pushing.
 
-**Seed state for specific scenarios.** Testing "what happens when the user has already used 5 messages" or "what happens when project config is missing" is easier with `--seed-session` or `seed` in `testFlow`. No need to replay a long conversation.
+**Seed state for specific scenarios.** Testing "what happens when the session already has 5 messages" is easier with `--seed-session` or `seed` in `testFlow`. No need to replay a long conversation.
 
 ---
 
