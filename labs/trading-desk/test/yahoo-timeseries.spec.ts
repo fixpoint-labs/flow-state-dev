@@ -17,6 +17,8 @@ import {
   type YahooTimeseriesResponse,
 } from "../lib/providers/yahoo-timeseries";
 
+import { statementSetDisclosure } from "../flows/analysis/lib/statement-set-period";
+
 import rawAapl from "./__fixtures__/yahoo-timeseries-aapl.json";
 
 /** Build a single-series row in the raw timeseries shape. */
@@ -99,6 +101,83 @@ describe("mapYahooTimeseries — missing series map to null, not 0", () => {
     expect(cashflow.freeCashFlow).toBeNull();
     // YoY needs two periods; with one it is null, not 0.
     expect(incomeStatement.yoyRevenueGrowth).toBeNull();
+  });
+});
+
+describe("mapYahooTimeseries — periodEnd only stamps a statement that actually carries figures (Codex review, FIX-1113)", () => {
+  it("THE BUG: a response with balance-sheet figures but no income series at all leaves incomeStatement.periodEnd null", () => {
+    const anchor = "2024-09-28";
+    const resp: YahooTimeseriesResponse = {
+      timeseries: {
+        result: [
+          row("annualTotalAssets", [{ asOfDate: anchor, raw: 400_000_000_000 }]),
+        ],
+        error: null,
+      },
+    };
+    const { incomeStatement, balanceSheet, cashflow } = mapYahooTimeseries(
+      resp,
+      "TEST",
+      "2026-05-06",
+    );
+    expect(balanceSheet.periodEnd).toBe(anchor);
+    expect(balanceSheet.totalAssets).toBeCloseTo(400, 0);
+    // The anchor is still chosen response-wide (from the balance-sheet
+    // figure) and still governs what date any figure would be READ at — it
+    // is only the LABEL that must not attach to a statement with nothing to
+    // attach it to.
+    expect(incomeStatement.periodEnd).toBeNull();
+    // No cashflow series at all either in this response.
+    expect(cashflow.periodEnd).toBeNull();
+  });
+
+  it("control: a fully-populated response still stamps all three statements", () => {
+    const { incomeStatement, balanceSheet, cashflow } = aapl();
+    expect(incomeStatement.periodEnd).not.toBeNull();
+    expect(balanceSheet.periodEnd).not.toBeNull();
+    expect(cashflow.periodEnd).not.toBeNull();
+  });
+
+  it("control: a statement whose figures are all explicitly zero still gets stamped — zero is not absent", () => {
+    const anchor = "2024-09-28";
+    const resp: YahooTimeseriesResponse = {
+      timeseries: {
+        result: [row("annualTotalRevenue", [{ asOfDate: anchor, raw: 0 }])],
+        error: null,
+      },
+    };
+    const { incomeStatement } = mapYahooTimeseries(resp, "TEST", "2026-05-06");
+    expect(incomeStatement.periodEnd).toBe(anchor);
+    expect(incomeStatement.revenue).toBe(0);
+  });
+
+  it("control: fixture-mode reading of this mapper's output (no ladder observations) still reports coherent, not stale", () => {
+    // Same nuance as the EDGAR sibling test (see its comment): fixture mode
+    // never populates `observedNewest`, so this cannot reproduce the ladder
+    // trap Codex traced — `financial-period.spec.ts`'s "the ladder trap
+    // this fix removes" does that. This confirms only that the ordinary
+    // fixture-mode path is undisturbed by the fix.
+    const anchor = "2024-09-28";
+    const resp: YahooTimeseriesResponse = {
+      timeseries: {
+        result: [
+          row("annualTotalRevenue", [{ asOfDate: anchor, raw: 391_000_000_000 }]),
+          row("annualTotalAssets", [{ asOfDate: anchor, raw: 364_000_000_000 }]),
+          // No cashflow series at all — genuinely absent, not stale.
+        ],
+        error: null,
+      },
+    };
+    const mapped = mapYahooTimeseries(resp, "TEST", "2026-05-06");
+    const disclosure = statementSetDisclosure({
+      incomeStatement: mapped.incomeStatement,
+      balanceSheet: mapped.balanceSheet,
+      cashflow: mapped.cashflow,
+      incomeStatementPeriodObservation: undefined,
+      balanceSheetPeriodObservation: undefined,
+      cashflowPeriodObservation: undefined,
+    });
+    expect(disclosure).toBeNull();
   });
 });
 

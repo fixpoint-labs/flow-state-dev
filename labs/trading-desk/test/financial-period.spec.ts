@@ -225,6 +225,35 @@ describe("isCoherentStatementSet — detection, and it needs BOTH parts", () => 
     expect(v.coherent).toBe(true);
   });
 
+  it("the ladder trap this fix removes: a FIGURELESS statement with a stale sighting still misreports settled-for-less-than-seen", () => {
+    // This is the mechanism Codex traced in `edgar-companyfacts.ts` /
+    // `yahoo-timeseries.ts` (Codex review, FIX-1113): before the fix, a
+    // provider mapper stamped EVERY statement with the response-wide anchor,
+    // including one that carried no figures at all. The recovery ladder's
+    // `observedNewest` bookkeeping (`statement-recovery.ts`'s
+    // `declaredPeriod`) reads that stamped `periodEnd` directly — so a
+    // FIRST provider attempt with the bug recorded `observedNewest` = the
+    // anchor for a statement that had nothing there, and if a LATER attempt
+    // (or the final `empty()` fallback) then correctly settled on nothing
+    // (`returned: null`), `settledForLessThanSeen` reports `true`
+    // UNCONDITIONALLY whenever `returned` is null and `observedNewest` is
+    // not (its own doc: "a resolution that saw a real period and returned
+    // nothing settled for less than it saw regardless of chronology").
+    // `figureless` is not consulted by part (a) at all — this function is
+    // unchanged and correctly so; the fix is that `declaredPeriod` can no
+    // longer observe a phantom sighting from a statement that was never
+    // populated, because the mapper no longer stamps one. This test pins
+    // the trap itself as a permanent regression guard on the mechanism, not
+    // only on the symptom the mapper fix already covers.
+    const v = isCoherentStatementSet({
+      income: OBS("2025-09-27", "2025-09-27"),
+      balance: OBS("2025-09-27", "2025-09-27"),
+      cashflow: { returned: null, observedNewest: "2025-09-27", figureless: true },
+    });
+    expect(v.coherent).toBe(false);
+    expect(v.reason).toBe("settled-for-less-than-seen");
+  });
+
   it("REJECTS a POPULATED statement that declares no period — the legacy shape", () => {
     // Same missing period as the case above, opposite verdict, and the pair is
     // what pins the contract. This statement has real figures, so it enters the

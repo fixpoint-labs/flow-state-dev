@@ -15,6 +15,7 @@ import {
   type EdgarCompanyFacts,
 } from "../lib/providers/edgar-companyfacts";
 import { altmanZDoublePrime } from "../flows/analysis/tools/data/composite-math";
+import { statementSetDisclosure } from "../flows/analysis/lib/statement-set-period";
 
 import rawAapl from "./__fixtures__/edgar-companyfacts-aapl.json";
 
@@ -419,6 +420,114 @@ describe("mapEdgarCompanyFacts — an instant fact needs AFFIRMATIVE annual evid
     const { balanceSheet } = mapEdgarCompanyFacts(facts, "TEST", "2026-05-06");
     expect(balanceSheet.periodEnd).toBe(tenK);
     expect(balanceSheet.totalAssets).toBeCloseTo(400, 0);
+  });
+});
+
+describe("mapEdgarCompanyFacts — periodEnd only stamps a statement that actually carries figures (Codex review, FIX-1113)", () => {
+  it("THE BUG: a response with income figures but no balance-sheet tags at all leaves balanceSheet.periodEnd null", () => {
+    const anchor = "2024-09-28";
+    const facts: EdgarCompanyFacts = {
+      cik: 1,
+      entityName: "Test",
+      facts: {
+        "us-gaap": {
+          // Income statement has a real figure at the anchor.
+          Revenues: { units: { USD: [
+            { start: "2023-10-01", end: anchor, val: 391e9, form: "10-K", fp: "FY" },
+          ] } },
+          // No Assets / StockholdersEquity / CashAndCashEquivalentsAtCarryingValue /
+          // LongTermDebt* tags at all — the balance sheet has nothing.
+        },
+      },
+    };
+    const { incomeStatement, balanceSheet, cashflow } = mapEdgarCompanyFacts(
+      facts,
+      "TEST",
+      "2026-05-06",
+    );
+    expect(incomeStatement.periodEnd).toBe(anchor);
+    expect(incomeStatement.revenue).toBeCloseTo(391, 0);
+    // The anchor is still chosen response-wide (from the income figure) and
+    // still governs what date any figure would be READ at — it is only the
+    // LABEL that must not attach to a statement with nothing to attach it to.
+    expect(balanceSheet.periodEnd).toBeNull();
+    expect(balanceSheet.totalAssets).toBeNull();
+    // Cashflow has no tags either in this fixture — same expectation.
+    expect(cashflow.periodEnd).toBeNull();
+  });
+
+  it("control: a fully-populated response still stamps all three statements", () => {
+    const { incomeStatement, balanceSheet, cashflow } = aapl();
+    expect(incomeStatement.periodEnd).not.toBeNull();
+    expect(balanceSheet.periodEnd).not.toBeNull();
+    expect(cashflow.periodEnd).not.toBeNull();
+  });
+
+  it("control: a statement whose figures are all explicitly zero still gets stamped — zero is not absent", () => {
+    const anchor = "2024-09-28";
+    const facts: EdgarCompanyFacts = {
+      cik: 1,
+      entityName: "Test",
+      facts: {
+        "us-gaap": {
+          Revenues: { units: { USD: [
+            { start: "2023-10-01", end: anchor, val: 0, form: "10-K", fp: "FY" },
+          ] } },
+        },
+      },
+    };
+    const { incomeStatement } = mapEdgarCompanyFacts(facts, "TEST", "2026-05-06");
+    expect(incomeStatement.periodEnd).toBe(anchor);
+    expect(incomeStatement.revenue).toBe(0);
+  });
+
+  it("control: fixture-mode reading of this mapper's output (no ladder observations) still reports coherent, not stale", () => {
+    // NOT a reproduction of the ladder trap Codex traced — that requires an
+    // actual `PeriodObservation` (`observedNewest` populated), which fixture
+    // mode never carries (`statementSetDisclosure`'s own doc: "a statement
+    // that never ran the live ladder... has no observation"). Without one,
+    // `settledForLessThanSeen` returns false unconditionally
+    // (`observedNewest == null` short-circuits it), so this scenario could
+    // not have exercised part (a) even before this fix — feeding the OLD
+    // buggy mapper's output through here would have passed too, since a
+    // wrongly-stamped cashflow.periodEnd equal to the SAME response-wide
+    // anchor as income/balance also satisfies part (b)'s mutual-agreement
+    // check trivially. See `financial-period.spec.ts`'s
+    // "the ladder trap this fix removes" for the test that actually
+    // reproduces the misclassification (with `observedNewest` populated,
+    // the shape the live ladder — not fixture mode — produces) and traces
+    // it back to `periodEnd`.
+    //
+    // What this test DOES confirm: the fix does not disturb the ordinary
+    // fixture-mode path — a genuinely absent cashflow statement, now
+    // correctly labeled `periodEnd: null`, is still read as coherent
+    // (figureless and skipped in part (b)), not as a new kind of failure.
+    const anchor = "2024-09-28";
+    const facts: EdgarCompanyFacts = {
+      cik: 1,
+      entityName: "Test",
+      facts: {
+        "us-gaap": {
+          Revenues: { units: { USD: [
+            { start: "2023-10-01", end: anchor, val: 391e9, form: "10-K", fp: "FY" },
+          ] } },
+          Assets: { units: { USD: [
+            { end: anchor, val: 364e9, form: "10-K", fp: "FY" },
+          ] } },
+          // Cashflow has no tags at all — genuinely absent, not stale.
+        },
+      },
+    };
+    const mapped = mapEdgarCompanyFacts(facts, "TEST", "2026-05-06");
+    const disclosure = statementSetDisclosure({
+      incomeStatement: mapped.incomeStatement,
+      balanceSheet: mapped.balanceSheet,
+      cashflow: mapped.cashflow,
+      incomeStatementPeriodObservation: undefined,
+      balanceSheetPeriodObservation: undefined,
+      cashflowPeriodObservation: undefined,
+    });
+    expect(disclosure).toBeNull();
   });
 });
 

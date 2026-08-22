@@ -135,6 +135,32 @@ export function chooseAnchorPeriodEnd(candidates: Iterable<string>): string | nu
 }
 
 /**
+ * True when NONE of the given values is a genuine, finite number — the
+ * provider-layer test for "this statement has nothing to attach a period
+ * label to" (Codex review, FIX-1113).
+ *
+ * Lives here rather than importing `figureless()` from
+ * `flows/analysis/lib/statement-set-period.ts`: `lib/providers/` is a lower
+ * layer that `flows/analysis/` depends on (confirmed — every existing
+ * import between the two runs that direction, never the reverse), so
+ * reaching upward from a provider mapper into `flows/analysis/lib` would be
+ * a new boundary violation, not a reuse. Both mappers already import from
+ * this module (`chooseAnchorPeriodEnd`, `samePeriod`), so this is the
+ * shared home both can reach without crossing that line — one
+ * implementation, not two independently-drifting copies (the failure mode
+ * three separate `periodDisclosureSchema` copies already produced once on
+ * this PR).
+ *
+ * An explicit `0` is NOT absent — same distinction as the debt-leg fix
+ * (round 6, P1): a filer that genuinely reported zero must not be treated
+ * as though it reported nothing. Only `null`/`undefined`/`NaN`/non-numeric
+ * counts as "no figure here."
+ */
+export function hasNoFigures(...values: Array<number | null | undefined>): boolean {
+  return !values.some((v) => typeof v === "number" && Number.isFinite(v));
+}
+
+/**
  * The anchor and the period immediately before it, or `null` when the two most
  * recent ends are not consecutive (a gap year) or only one exists.
  *

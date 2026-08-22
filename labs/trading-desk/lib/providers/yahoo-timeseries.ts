@@ -26,6 +26,7 @@ import type { FinancialPeriod } from "./financials-history";
 import {
   chooseAnchorPeriodEnd,
   consecutivePeriodPair,
+  hasNoFigures,
   samePeriod,
 } from "./financial-period";
 
@@ -181,16 +182,34 @@ export function mapYahooTimeseries(
 
   const asOf = anchor ?? date;
 
+  // Each statement's own figures, extracted BEFORE the return object so its
+  // `periodEnd` can be conditioned on them (Codex review, FIX-1113). The
+  // anchor stays ONE response-wide value for READING every figure — see
+  // `edgar-companyfacts.ts`'s sibling comment for why (the same fix, the
+  // same reasoning, applied to both mappers together).
+  const revenue = at("annualTotalRevenue");
+  const grossProfit = at("annualGrossProfit");
+  const operatingIncome = at("annualOperatingIncome");
+  const netIncome = at("annualNetIncome");
+
+  const totalAssets = at("annualTotalAssets");
+  const totalLiabilities = at("annualTotalLiabilitiesNetMinorityInterest");
+  const totalEquity = at("annualStockholdersEquity");
+  const cashAndEquivalents = at("annualCashAndCashEquivalents");
+  const totalDebt = at("annualTotalDebt");
+
+  const operating = at("annualOperatingCashFlow");
+
   return {
     incomeStatement: {
       source: "yahoo" as const,
       ticker,
       asOf,
-      periodEnd: anchor,
-      revenue: at("annualTotalRevenue"),
-      grossProfit: at("annualGrossProfit"),
-      operatingIncome: at("annualOperatingIncome"),
-      netIncome: at("annualNetIncome"),
+      periodEnd: hasNoFigures(revenue, grossProfit, operatingIncome, netIncome) ? null : anchor,
+      revenue,
+      grossProfit,
+      operatingIncome,
+      netIncome,
       yoyRevenueGrowth: yoy,
       unit: "USD billions",
     },
@@ -198,20 +217,22 @@ export function mapYahooTimeseries(
       source: "yahoo" as const,
       ticker,
       asOf,
-      periodEnd: anchor,
-      totalAssets: at("annualTotalAssets"),
-      totalLiabilities: at("annualTotalLiabilitiesNetMinorityInterest"),
-      totalEquity: at("annualStockholdersEquity"),
-      cashAndEquivalents: at("annualCashAndCashEquivalents"),
-      totalDebt: at("annualTotalDebt"),
+      periodEnd: hasNoFigures(totalAssets, totalLiabilities, totalEquity, cashAndEquivalents, totalDebt)
+        ? null
+        : anchor,
+      totalAssets,
+      totalLiabilities,
+      totalEquity,
+      cashAndEquivalents,
+      totalDebt,
       unit: "USD billions",
     },
     cashflow: {
       source: "yahoo" as const,
       ticker,
       asOf,
-      periodEnd: anchor,
-      operating: at("annualOperatingCashFlow"),
+      periodEnd: hasNoFigures(operating, freeCashFlow) ? null : anchor,
+      operating,
       // investing/financing are not in the timeseries set we request; they are
       // not load-bearing for any derived metric, so they read null here.
       investing: null,

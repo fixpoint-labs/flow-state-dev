@@ -39,6 +39,7 @@ import type { FinancialPeriod } from "./financials-history";
 import {
   ANNUAL_MIN_DAYS,
   chooseAnchorPeriodEnd,
+  hasNoFigures,
   samePeriod,
 } from "./financial-period";
 
@@ -270,16 +271,42 @@ export function mapEdgarCompanyFacts(
 
   const asOf = anchor ?? date;
 
+  // Each statement's own figures, extracted BEFORE the return object so its
+  // `periodEnd` can be conditioned on them (Codex review, FIX-1113). The
+  // anchor stays ONE response-wide value for READING every figure — that is
+  // unchanged, and must stay unchanged: three statements each choosing their
+  // own period is the exact defect this PR removes. What changes is only the
+  // LABEL — a statement is stamped with the anchor when it actually carries
+  // a figure there, and `periodEnd: null` when it carries none. A figureless
+  // statement stamped with the response's anchor anyway is how a missing
+  // statement got misread as "returned an old period" downstream: the
+  // recovery ladder's `observedNewest` bookkeeping reads `periodEnd`
+  // directly (`statement-recovery.ts`'s `declaredPeriod`), so a phantom
+  // label there becomes a phantom sighting there, and the set can be
+  // declared stale over a statement that was simply never populated.
+  const revenue = at(REVENUE_TAGS, "duration");
+  const grossProfit = at(["GrossProfit"], "duration");
+  const operatingIncome = at(["OperatingIncomeLoss"], "duration");
+  const netIncome = at(["NetIncomeLoss"], "duration");
+
+  const totalAssets = at(["Assets"], "instant");
+  const totalLiabilities = at(["Liabilities"], "instant");
+  const totalEquity = at(["StockholdersEquity"], "instant");
+  const cashAndEquivalents = at(["CashAndCashEquivalentsAtCarryingValue"], "instant");
+
+  const investing = at(["NetCashProvidedByUsedInInvestingActivities"], "duration");
+  const financing = at(["NetCashProvidedByUsedInFinancingActivities"], "duration");
+
   return {
     incomeStatement: {
       source: "edgar" as const,
       ticker,
       asOf,
-      periodEnd: anchor,
-      revenue: at(REVENUE_TAGS, "duration"),
-      grossProfit: at(["GrossProfit"], "duration"),
-      operatingIncome: at(["OperatingIncomeLoss"], "duration"),
-      netIncome: at(["NetIncomeLoss"], "duration"),
+      periodEnd: hasNoFigures(revenue, grossProfit, operatingIncome, netIncome) ? null : anchor,
+      revenue,
+      grossProfit,
+      operatingIncome,
+      netIncome,
       // EDGAR's YoY comes from the multi-period path, which pairs periods
       // through `consecutivePeriodPair`. Left null here — Yahoo supplies YoY
       // when it answers, and the desk treats a null growth field as unobserved.
@@ -290,11 +317,13 @@ export function mapEdgarCompanyFacts(
       source: "edgar" as const,
       ticker,
       asOf,
-      periodEnd: anchor,
-      totalAssets: at(["Assets"], "instant"),
-      totalLiabilities: at(["Liabilities"], "instant"),
-      totalEquity: at(["StockholdersEquity"], "instant"),
-      cashAndEquivalents: at(["CashAndCashEquivalentsAtCarryingValue"], "instant"),
+      periodEnd: hasNoFigures(totalAssets, totalLiabilities, totalEquity, cashAndEquivalents, totalDebt)
+        ? null
+        : anchor,
+      totalAssets,
+      totalLiabilities,
+      totalEquity,
+      cashAndEquivalents,
       totalDebt,
       unit: "USD billions",
     },
@@ -302,10 +331,10 @@ export function mapEdgarCompanyFacts(
       source: "edgar" as const,
       ticker,
       asOf,
-      periodEnd: anchor,
+      periodEnd: hasNoFigures(operating, investing, financing, freeCashFlow) ? null : anchor,
       operating,
-      investing: at(["NetCashProvidedByUsedInInvestingActivities"], "duration"),
-      financing: at(["NetCashProvidedByUsedInFinancingActivities"], "duration"),
+      investing,
+      financing,
       freeCashFlow,
       unit: "USD billions",
     },
