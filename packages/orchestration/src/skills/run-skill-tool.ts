@@ -23,7 +23,7 @@ import type {
   BlockDefinition,
   ResourceCollectionRef,
 } from "@flow-state-dev/core/types";
-import type { InitialSkill, SkillState, ToolCatalog } from "@flow-state-dev/core";
+import type { InitialSkill, SkillState } from "@flow-state-dev/core";
 import { skillManifestKey } from "./collection";
 import { getCollection as resolveCollection } from "./internal/get-collection";
 import { listEnabledSkills } from "./internal/list-enabled-skills";
@@ -66,12 +66,6 @@ export interface RunSkillToolOptions {
   collectionKey: string;
   /** Default-on initial skills, lazily seeded on first invocation. */
   initialSkills?: InitialSkill[];
-  /**
-   * Tool catalog. Retained for API compatibility with the prior fork-mode
-   * surface; inline activation does not resolve tools here (the generator
-   * registers the catalog directly).
-   */
-  catalog?: ToolCatalog;
 }
 
 // ---------------------------------------------------------------------------
