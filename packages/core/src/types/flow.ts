@@ -484,8 +484,6 @@ export type FlowDefinition<
 
   /** Org-scope equivalent of `isolateUserState`. Default: false. */
   isolateOrgState?: boolean;
-
-  defaultBlockRenderer?: unknown | false;
 };
 
 export type FlowInstanceOptions<

@@ -238,7 +238,6 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   contentTemplateRef?: string;
   llmReadable?: boolean;
   llmWritable?: boolean;
-  dynamic?: boolean;
   writable?: boolean;
   allowedExtensions?: string[];
   metadata?: Record<string, unknown>;
