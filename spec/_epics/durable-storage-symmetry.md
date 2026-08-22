@@ -7,6 +7,7 @@
 | **Branch / doc** | `epic/durable-storage-symmetry` · `spec/_epics/durable-storage-symmetry.md` |
 | **PR** | [#1365](https://github.com/fixpoint-labs/flow-state-dev/pull/1365) — never merged, never deleted; open for the life of the epic |
 | **Gate** | An approving human comment or review on the epic PR, or the owner's `epic approved` label, signs off §1 only |
+| **Status** | **Converged** — objective and themes are settled. Further feedback routes to the children as implementer notes, not into this document |
 
 ---
 
@@ -16,9 +17,11 @@
 bag (`ctx.session.state`) and resources (`ctx.resources.<name>`). Today a developer picks
 between them by **which API happens to carry the verb they need**, not by where the data
 belongs: an atomic increment or an array append means scope state, per-key versioning and
-collision detection means resources. When this epic lands, that choice is about the data
-again. The operating rule is **symmetry where it is safe, and the asymmetry stated once
-where it is not**: one mutation contract wherever the two primitives can share one without
+collision detection means resources. When this epic lands, the verb list stops driving that
+choice wherever it safely can — and where a difference remains, it is recorded with its reason
+rather than left for a developer to discover. The operating rule is **symmetry where it is
+safe, and the asymmetry stated once where it is not**: one mutation contract wherever the two
+primitives can share one without
 importing each other's semantics, and where they cannot, the reason written down in a single
 place a reader hits *before* reaching for the wrong import rather than after.
 
@@ -35,8 +38,8 @@ FIX-1153 was cancelled. The divergence turned out to be load-bearing rather than
 **Holistic necessity — one substantive issue and one lodger. The set is thin, and that is
 the honest description of it.**
 
-- **FIX-1154** (the mutation surface — increment and append on resources, the rest stated once)
-  *is* the epic. Without it nothing here delivers.
+- **FIX-1154** (the mutation surface — increment and append on resources; the remaining
+  differences mapped in its own spec) *is* the epic. Without it nothing here delivers.
 - **FIX-1158** (cross-flow resource validation never runs) is a **same-subsystem
   unintended-asymmetry lodger** — the epic's own thesis pointed at itself, where the
   architecture doc already promises the two primitives behave alike and the code silently
@@ -49,6 +52,10 @@ the honest description of it.**
   completing FIX-492 for the one scope it deferred; it would read identically if resources
   did not exist. Held at Backlog and **not in the active set**. Its membership is a live fork
   in §5.
+- **FIX-1207** (overlapping collection keyspaces slip past the cross-flow check) is
+  FIX-1158's **spun-off remainder** — scope deliberately excluded from that bug and blocked
+  on it. At Backlog and **not in the active set**; carried in §4 so the set is complete. It
+  changes no theme and adds no decision at this altitude.
 
 Whether one substantive issue plus a lodger is an epic at all — rather than one issue and a
 standalone bug — is the second live fork in §5. It is the product owner's call, not this
@@ -57,9 +64,9 @@ document's.
 **Not doing:** merging the two primitives; deleting or deprecating either one at any scope;
 re-attempting the org-state removal; cross-record atomicity (FIX-854); and resource-specific
 surface with no state analogue at all — content, `client`, `reactTo`, `edges`, collections.
-**Nor is any verb reconciled beyond increment and append** — not `setStateRecord` /
-`deleteStateRecord` onto resources, and not `getOrPatchState` onto scope state. §3 says why each
-one does not transfer. Those are out of scope by construction, not deferred. **No child deprecates, removes, or
+**Nor is any verb reconciled beyond increment and append.** Every other difference — a verb one
+primitive lacks, or a verb they nominally share whose shape differs — is **mapped by FIX-1154,
+not closed by it**. Out of scope by construction, not deferred. **No child deprecates, removes, or
 migrates a primitive** — every one of them fixes, generalizes, or documents. A child that
 finds itself proposing a removal has hit the rejected framings in §2 and comments up on this
 PR rather than deciding locally.
@@ -192,31 +199,35 @@ asymmetries remain deliberate and where each one is written down.**
 | Two CAS drivers — `cas.ts` vs `resource-cas.ts` | **Survives — deliberate** (theme 1) | The eight-row policy table, staying in `resource-cas.ts`'s header; **FIX-1154** adds the missing guard on `createScopeStateOps` / `createScopePersist` |
 | `0` means *live record* for scope state and *no live row* for resources; scope stores accept `"absent"`, `ResourceStateStore` rejects it | **Survives — deliberate**, same lifecycle root | Already in `state-and-scopes.md` → "CAS and Concurrency" |
 | Resource-only surface — content, `client`, `reactTo`, `edges`, collections | **Survives — not an asymmetry.** No state analogue exists to be symmetric with | FIX-1154's scope boundaries |
-| Mutator sets — 7 on scope state, 4 on resources | **Increment and append close** (**FIX-1154**, Tier 1). The rest of the count gap **survives — deliberate**: the counts differ because the *storage shapes* differ, a blob of independent keys versus a per-key row | This row, and the per-verb map below the table |
+| Mutation surfaces differ in several ways — verbs one primitive lacks, and differences in shape among the verbs they nominally share | **Increment and append close** (**FIX-1154**, Tier 1). The remainder is **mapped, not closed** — each difference recorded as closed, as deliberate asymmetry with a reason, or as deferred | **FIX-1154's spec.** The epic states the shape of the answer; the inventory is the child's deliverable |
 | Return contract — `Promise<boolean>` vs `Promise<void>` | **Survives — deliberate.** Scope state's `boolean` exists because its `state_change` notification gate needs it; resources gate `resource_change` on an internally verified no-op. FIX-1154 closes the **increment/append** gap only | Settled at epic altitude — §5, resolved |
 | Adapter delta verbs reachable from scope state only | **Tier 1 closed** by **FIX-1154** — `incState` / `pushState` on the existing resource CAS path. **Tier 2 deferred:** store-native `incField` / `pushToArray` on `ResourceStateStore` is **not required for wrap**. `patchField` and `deleteField` scoped out with a reason (resources already have depth-1 `patchState`; removing a record is a lifecycle op, not a state mutation — theme 1) | Theme 2 + the adapter conformance suite |
 | Cross-flow schema validation covers state but not resources | **Closed** by **FIX-1158**, keyed by `(scope, ref, flowIsolation)`. *Unintended* — the doc already promises symmetry here | `state-and-scopes.md` → the cross-flow conflict table, which the fix makes true |
 | Request-scope CAS vs block-scope mutex | **Still open at wrap** unless FIX-1155 ramps — it is at Backlog and out of the active set. If it ramps, store-level CAS is **retained** | `state-and-scopes.md` still describes request scope as keeping `runWithCAS` |
 
-**Why the counts differ, verb by verb.** Against `origin/main`; `patchState` and `setState` are
-already shared. The count was the wrong summary — it read as a parity promise, and Tier 1 closes
-increment and append rather than seven into four.
+**Why the surfaces differ *in kind*.** The epic asserts the kind of divergence, not an inventory
+of it. A precise mutator claim was made and narrowed twice, and each narrowing was found
+incomplete by the next review round; the enumeration is therefore **FIX-1154's deliverable**, not
+this document's. The kinds below are stable, and deliberately **not a complete list**.
 
-- **`incState` / `pushState`** — the genuine gap, and the only one. Resources carry no named verb
-  for either; a caller hand-rolls the read-modify-write through `updateState`, and reaching for a
-  named verb instead is what sends them to the scope-state bag. **FIX-1154** Tier 1 closes it
-  (store-native deltas stay Tier 2 and deferred — theme 2).
-- **`setStateRecord` / `deleteStateRecord`** — do not transfer. They address a depth-2 sub-path
-  inside one record (`state[field][key]`, hints `patchField` / `deleteField`) so a writer can touch
-  one slot of a blob many writers share without rewriting the rest. A resource **is** the per-key
-  row, so the store id already does that addressing; a resource whose own state nests a map reaches
-  it through `updateState`.
-- **`atomicState`** — not missing. `ResourceRef.updateState` is the same capability under a
-  different name — re-run the mutator against refreshed state under CAS retry — differing only in
-  merge convention (a shallow-merged `Partial` versus the whole state returned). A **naming**
-  asymmetry, not a capability one, and renaming a shipped contract is out of scope (§1).
-- **`getOrPatchState`** — resource-only, with no scope analogue, so the asymmetry runs both ways
-  rather than "resources are missing three".
+- **Some differences are naming, not a missing mechanism.** Scope state's `atomicState` and
+  `ResourceRef.updateState` run the same mechanism — re-run a mutator against state refreshed on
+  every retry (`context/resource-registry.ts:797–816`). Their signatures then diverge in shape: a
+  shallow-merged `Partial` versus the whole state returned, and the resource updater may be
+  `async` where the scope mutator may not (`types/state.ts:47`, `types/resource.ts:272`).
+  Renaming a shipped contract is out of scope (§1); classifying which of these shape differences
+  matter is FIX-1154's.
+- **Some differences are addressing shape.** `setStateRecord` / `deleteStateRecord` address a
+  depth-2 sub-path inside one record — `state[field][key]`, hints `patchField` / `deleteField`
+  (`stores/state-container.ts:336–385`) — so a writer can touch one slot of a blob many writers
+  share without rewriting the rest. A resource **is** the per-key row, so the store id already
+  does that addressing. **Not "no referent":** a resource whose own state nests a map still
+  reaches it through `updateState`. The distinction is **addressing, not commutativity** —
+  `patchState(key, literal)` is commutative too (`state-container.ts:242`), so `setStateRecord`
+  is not the sole commutative verb.
+- **Some cut the other way.** `getOrPatchState` is resource-only with no scope analogue, so
+  "resources are behind by N verbs" is the wrong shape of summary in the first place — which is
+  the reason a count was retired rather than corrected.
 
 **The epic can wrap with the last row still open**, and that is stated rather than discovered.
 If FIX-1155 stays at Backlog, the set delivers the state-vs-resources half of the objective
@@ -228,8 +239,9 @@ is a real outcome to sign off or reject, not a gap. It is put as a decision in �
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| [FIX-1154](https://linear.app/fixpoint-labs/issue/FIX-1154) | Increment and append on the resource path — `ResourceRef.incState` / `pushState` (Tier 1); the remaining verb differences stated as deliberate rather than closed | spec | — | — | Todo |
+| [FIX-1154](https://linear.app/fixpoint-labs/issue/FIX-1154) | *Scope state and resources split one mutation surface across two APIs* — increment and append close on the resource path (`ResourceRef.incState` / `pushState`, Tier 1), and the **remaining differences are mapped in its spec**: each one closed, deliberate with a reason, or deferred | spec | — | — | Todo |
 | [FIX-1158](https://linear.app/fixpoint-labs/issue/FIX-1158) | Cross-flow resource schema validation actually runs, keyed by `(scope, ref, flowIsolation)` | **bug** | — | — | Todo |
+| [FIX-1207](https://linear.app/fixpoint-labs/issue/FIX-1207) | Cross-flow validation compares exact refs, so overlapping collection keyspaces slip through — the scope excluded from FIX-1158, filed separately | **bug** | — | — | Backlog *(blocked by FIX-1158; not in the active set)* |
 | [FIX-1155](https://linear.app/fixpoint-labs/issue/FIX-1155) | Request-scope state adds local serialization across the cross-context boundary while **retaining store-level CAS**; wide fan-out stops throwing `ConcurrentModificationError` | spec | — | — | Backlog *(not in the active set)* |
 | [FIX-1153](https://linear.app/fixpoint-labs/issue/FIX-1153) | ~~Deprecate scope state at session/user/org; delete org state~~ | — | — | [#1291](https://github.com/fixpoint-labs/flow-state-dev/pull/1291) *(closed unmerged)* | **Canceled** |
 
@@ -290,10 +302,21 @@ here has no way to know the framing was tried.*
   corrected the running-index row that had promised FIX-1155 would replace CAS with the mutex.
 - **After epic review, round 2 (2026-08-22)** — the **"7 vs 4 mutator gap" framing is retired**,
   because round 1 constrained FIX-1154 to Tier 1: that closes increment and append, not seven into
-  four, so the count promised a parity the scoped work does not deliver. §3 now states the honest
-  reason — the counts differ because the storage shapes differ — and maps each non-shared verb to
-  why it does not transfer (`setStateRecord` / `deleteStateRecord` address a sub-path inside a
-  shared blob; `atomicState` and `ResourceRef.updateState` are one capability under two names;
+  four, so the count promised a parity the scoped work does not deliver. §3 was rewritten to give
+  a reason per non-shared verb (`setStateRecord` / `deleteStateRecord` address a sub-path inside a
+  shared blob; `atomicState` and `ResourceRef.updateState` run one mechanism under two names;
   `getOrPatchState` cuts the other way). **The claim narrowed; the work did not** — expanding
   FIX-1154 to map every verb would undo exactly the thinning round 1 folded. **Epic-spec
   converged** at two rounds; anything further routes to the children as implementer notes.
+  *(The replacement claim was itself falsified — superseded by the entry below.)*
+- **Parity claim withdrawn to the child spec (2026-08-22)** — an uncontested factual correction
+  to an already-converged document, which is why it sits outside the two-round budget rather
+  than opening a third. The mutator-parity claim was narrowed **twice** — "7 vs 4" retired for
+  Tier 1 scoping, then "the only genuinely missing capability is increment and append" — and each
+  narrowing was falsified by the next round, which found further shape differences among the
+  verbs the two primitives nominally share (scope `patchState`'s keyed-updater overload;
+  `updateState`'s async whole-state updater against `atomicState`'s synchronous partial mutator).
+  The claim is now withdrawn entirely: FIX-1154 maps the mutation surface in its own spec, and
+  the epic states only the *kinds* of divergence. **The reason is the lesson — the epic kept
+  asserting an inventory it could not keep accurate.** An epic states the shape of an answer; a
+  derivation that must be re-derived to stay true belongs to the child that owns the work.
