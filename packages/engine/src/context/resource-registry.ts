@@ -163,6 +163,15 @@ export type ScopeLazyLoad = {
   getByPrefix(keyPrefix: string): Promise<LazyLoadOutcome>;
 };
 
+/**
+ * The default state for a bare `stateSchema`, with no resource config around it.
+ *
+ * Deliberately not a wrapper over `normalizeResourceDefault`, despite the
+ * similar `safeParse(undefined)` → `safeParse({})` ladder: there is no
+ * `config.default` rung, the schema itself may be absent, and a rung that
+ * parses to a non-object settles here (`asJsonObject` coerces to `{}`) rather
+ * than falling through to the next rung as it does for a resource.
+ */
 export function normalizeStateDefault(
   stateSchema: { safeParse: (value: unknown) => { success: boolean; data?: unknown } } | undefined
 ): JsonObject {
