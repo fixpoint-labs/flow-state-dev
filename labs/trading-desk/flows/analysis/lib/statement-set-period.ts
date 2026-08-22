@@ -23,6 +23,7 @@
 import type { FinancialsDataState } from "../financials-data-resource";
 import {
   isCoherentStatementSet,
+  periodsMutuallyAgree,
   type PeriodObservation,
   type StatementPeriodInput,
 } from "@/lib/providers/financial-period";
@@ -179,51 +180,76 @@ export function analystStatementDisclosure(
  */
 export function formatPeriodMismatch(disclosure: PeriodDisclosure | null): string {
   if (disclosure == null) return "";
-  // THE LEAD SENTENCE TRACKS THE REASON, because each one is a different claim.
-  // "these disagree" asserts the desk compared two known periods and found them
-  // different — true only on `periods-disagree`. On `period-unstated` it did
-  // not: a statement carries figures and states no period, so what the desk
-  // knows is that it CANNOT tell. On `settled-for-less-than-seen` the three
-  // returned periods actually AGREE — that is the definition of uniform
-  // staleness — so the disagreement sentence would print three identical
-  // periods under a claim that they differ: a new false statement, in the
-  // exact shape the `period-unstated` split above already exists to prevent.
-  // What is true instead: the three settled on one period after at least one
-  // resolution saw a newer one and settled for this older one anyway.
+
+  // EVERY SENTENCE BELOW MUST BE TRUE OF THE PRINTED PERIODS, FOR EVERY
+  // REACHABLE STATE OF THE REASON — not just the state the reason is named
+  // after. `settled-for-less-than-seen` is the one that bites: `isCoherent-
+  // StatementSet` returns it on the FIRST statement whose own resolution
+  // settled for less than it saw (part a), before part (b) ever checks
+  // whether the three RETURNED periods agree with each other. So this reason
+  // covers two different printed shapes — uniform staleness (all three
+  // genuinely agree) AND a stale statement sitting alongside peers that
+  // disagree with it, or that are themselves unstated (`null`) — and "these
+  // agree" is only true on the first. `periodsMutuallyAgree` (imported, not
+  // reimplemented here) is what tells the two apart; do not assume agreement
+  // from the reason name.
+  const settledAllAgree =
+    disclosure.reason === "settled-for-less-than-seen" &&
+    periodsMutuallyAgree(disclosure.income, disclosure.balance, disclosure.cashflow);
+  const seen = disclosure.observedNewest ?? "a newer period";
+
   const lead =
     disclosure.reason === "period-unstated"
       ? "The desk CANNOT ESTABLISH that the three financial statements below describe the same fiscal period — at least one carries figures but states no period:"
       : disclosure.reason === "settled-for-less-than-seen"
-        ? `The three financial statements below agree on a fiscal period, but the desk saw a more recent one (${disclosure.observedNewest ?? "a newer period"}) and settled for this older one instead — the set is STALE, not in disagreement:`
+        ? settledAllAgree
+          ? `The three financial statements below agree on a fiscal period, but the desk saw a more recent one (${seen}) and settled for this older one instead — the set is STALE, not in disagreement:`
+          : `At least one of the three financial statements below is STALE: the desk saw a more recent period (${seen}) while resolving it than it actually returned. These periods are NOT confirmed to all describe one shared fiscal period:`
         : "The three financial statements below do NOT describe the same fiscal period:";
-  // THE JUSTIFICATION TRACKS THE REASON TOO — the lead sentence is not the
-  // only claim in this block. "It would mix fiscal periods" is true on
-  // `periods-disagree` and `period-unstated` (an unknown or clashing period
-  // entering a comparison with a known one), but false on
-  // `settled-for-less-than-seen`: there the three statements sit at ONE
-  // period, so a cross-statement ratio mixes nothing. The real risk on that
-  // path is staleness, not disagreement, so the reason for withholding is
-  // "this would present a superseded figure as current," not "this would mix
-  // periods" — and "Figures WITHIN a single statement are fine" is dropped
-  // rather than kept: it is technically true (the desk does compute them) but
-  // beside the point about risk, since a within-statement figure here is
-  // exactly as stale as a cross-statement one. Keeping it would read as
-  // reassurance the staleness case does not earn.
+
+  // THE JUSTIFICATION TRACKS THE SAME THING THE LEAD DOES. "It would mix
+  // fiscal periods" is a claim of KNOWN disagreement — true on
+  // `periods-disagree`, false on `settled-for-less-than-seen` when the three
+  // agree (nothing is mixed; every figure is simply the SAME stale period),
+  // and overclaimed on `period-unstated`, where mixing is merely POSSIBLE —
+  // the desk does not know, it never established a period to compare.
   const justification =
-    disclosure.reason === "settled-for-less-than-seen"
+    disclosure.reason === "period-unstated"
       ? [
           "Do NOT compute any ratio that divides a figure from one of these statements",
-          "by a figure from another — every one of them is drawn from the STALE period,",
-          "not the newer one the desk saw, so the ratio would present a superseded",
-          "figure as current. The desk has already withheld its own cross-statement",
-          "figures for this reason; say so rather than filling the gap.",
+          "by a figure from another — because at least one statement's period is",
+          "unknown, such a ratio COULD combine two different fiscal periods with",
+          "nobody able to tell. Figures WITHIN a single statement are unaffected.",
+          "The desk has already withheld its own cross-statement figures for this",
+          "reason; say so rather than filling the gap.",
         ]
-      : [
-          "Do NOT compute any ratio that divides a figure from one of these statements",
-          "by a figure from another — it would mix fiscal periods. Figures WITHIN a",
-          "single statement are fine. The desk has already withheld its own",
-          "cross-statement figures for this reason; say so rather than filling the gap.",
-        ];
+      : disclosure.reason === "settled-for-less-than-seen"
+        ? settledAllAgree
+          ? [
+              "Do NOT compute any ratio that divides a figure from one of these statements",
+              "by a figure from another — every one of them is drawn from the STALE period,",
+              "not the newer one the desk saw, so the ratio would present a superseded",
+              "figure as current. The desk has already withheld its own cross-statement",
+              "figures for this reason; say so rather than filling the gap.",
+            ]
+          : [
+              "Do NOT compute any ratio that divides a figure from one of these statements",
+              "by a figure from another — at least one of them is stale relative to what",
+              "the desk actually saw, and the three are not confirmed to all describe one",
+              "shared fiscal period. The desk has already withheld its own cross-statement",
+              "figures for this reason; say so rather than filling the gap.",
+            ]
+        : [
+            // `periods-disagree` only: a real, confirmed clash between at least
+            // two of the three returned periods (see `isCoherentStatementSet`
+            // part b) — "mix fiscal periods" and the within/across split are
+            // both true claims here, unlike the two branches above.
+            "Do NOT compute any ratio that divides a figure from one of these statements",
+            "by a figure from another — it would mix fiscal periods. Figures WITHIN a",
+            "single statement are fine. The desk has already withheld its own",
+            "cross-statement figures for this reason; say so rather than filling the gap.",
+          ];
+
   return [
     "<periodMismatch>",
     lead,

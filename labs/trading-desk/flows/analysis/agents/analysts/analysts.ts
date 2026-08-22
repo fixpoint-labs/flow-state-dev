@@ -106,6 +106,28 @@ function financialsObservations(ctx: { resources: any }) {
   };
 }
 
+/**
+ * One disclosure per render, shared by the `valuation` and `periodMismatch`
+ * context slots below. Without this, each slot independently re-reads
+ * `ctx.resources.financialsData.state` — a deep clone of the whole financials
+ * spine, including all three raw statement payloads — to recompute the exact
+ * same verdict. Keyed by `ctx` object identity: the framework hands the SAME
+ * ctx reference to every context slot within one render (and `input` with
+ * it), so this is exactly one entry per render and nothing survives past it —
+ * a `WeakMap` drops the entry once that ctx is no longer referenced elsewhere.
+ */
+const analystDisclosureCache = new WeakMap<
+  object,
+  ReturnType<typeof analystStatementDisclosure>
+>();
+
+function analystDisclosureFor(input: any, ctx: { resources: any }) {
+  if (analystDisclosureCache.has(ctx)) return analystDisclosureCache.get(ctx) ?? null;
+  const disclosure = analystStatementDisclosure(input, financialsObservations(ctx));
+  analystDisclosureCache.set(ctx, disclosure);
+  return disclosure;
+}
+
 const fundamentalsGenerator = generator({
   name: "fundamentals-analyst-generator",
   itemVisibility: { client: true, history: false },
@@ -140,12 +162,10 @@ const fundamentalsGenerator = generator({
       formatValuation(
         computeValuation({
           ...input,
-          periodsCoherent:
-            analystStatementDisclosure(input, financialsObservations(ctx)) == null,
+          periodsCoherent: analystDisclosureFor(input, ctx) == null,
         }),
       ),
-    periodMismatch: (input: any, ctx) =>
-      formatPeriodMismatch(analystStatementDisclosure(input, financialsObservations(ctx))),
+    periodMismatch: (input: any, ctx) => formatPeriodMismatch(analystDisclosureFor(input, ctx)),
   },
   ...definePromptFile(fundamentalsPrompt),
   outputSchema: thesisOutputSchema,

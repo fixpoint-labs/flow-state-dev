@@ -85,6 +85,32 @@ export function samePeriod(a: string | null, b: string | null): boolean {
 }
 
 /**
+ * True when three period ends are ALL mutually the same period — every pair,
+ * via `samePeriod`, so a `null` never counts as agreement (including two
+ * `null`s against each other).
+ *
+ * WHY A CONSUMER NEEDS THIS SEPARATELY FROM `reason`. `isCoherentStatementSet`
+ * returns `settled-for-less-than-seen` on the FIRST statement whose own
+ * resolution settled for less than it saw (part a) — before it ever reaches
+ * part (b), which is what checks whether the three RETURNED periods agree with
+ * each other. So that one reason covers two different shapes: three statements
+ * uniformly stale at one shared period, AND a stale statement sitting alongside
+ * two others that disagree with it (or are themselves unstated). A renderer
+ * that assumes the first shape and prints "these agree" on the second is
+ * printing a false statement next to periods that visibly contradict it. Both
+ * `formatPeriodMismatch` and `formatValuationSpine` call this before choosing
+ * which sentence to print, so the two blocks cannot drift on what "these agree"
+ * means.
+ */
+export function periodsMutuallyAgree(
+  a: string | null,
+  b: string | null,
+  c: string | null,
+): boolean {
+  return samePeriod(a, b) && samePeriod(b, c) && samePeriod(a, c);
+}
+
+/**
  * True when `earlier` is exactly one reporting interval before `later` — the
  * adjacency test every two-period comparison must pass before it publishes a
  * change. A pair two intervals apart is NOT consecutive however its labels

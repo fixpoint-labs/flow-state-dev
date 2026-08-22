@@ -13,7 +13,7 @@
  * gate in CI at all.
  */
 import { describe, it, expect } from "vitest";
-import { buildValuationSpine } from "@/flows/analysis/lib/valuation-spine";
+import { buildValuationSpine, formatValuationSpine } from "@/flows/analysis/lib/valuation-spine";
 import { computeValuation } from "@/flows/analysis/lib/valuation";
 import { clampRatingToBand } from "@/flows/analysis/lib/rating-engine";
 import { incomeStatementSchema } from "@/flows/analysis/tools/schemas";
@@ -636,10 +636,13 @@ describe("the settled-for-less-than-seen lead — states staleness, not disagree
   });
 });
 
-describe("the mix-fiscal-periods justification is unchanged on the other two reasons", () => {
-  // The control this fix needs: a rewrite that flattened all three reasons'
-  // justification into one message would pass the arm above and fail here.
-  it("periods-disagree still carries the original justification", () => {
+describe("periods-disagree — the mix-fiscal-periods justification is unchanged", () => {
+  // The control this fix needs: a rewrite that flattened every reason's
+  // justification into one message would pass the arms above and fail here.
+  // `periods-disagree` is the one reason where "it would mix fiscal periods"
+  // is a CONFIRMED fact — part (b) only returns it when two non-null, present
+  // periods genuinely fail `samePeriod` — so this stays unconditional.
+  it("still carries the original justification", () => {
     const text = formatPeriodMismatch({
       reason: "periods-disagree",
       income: ANCHOR,
@@ -650,15 +653,208 @@ describe("the mix-fiscal-periods justification is unchanged on the other two rea
     expect(text).toContain("Figures WITHIN a");
   });
 
-  it("period-unstated still carries the original justification", () => {
-    const text = formatPeriodMismatch({
-      reason: "period-unstated",
-      income: ANCHOR,
-      balance: null,
-      cashflow: ANCHOR,
-    });
+  it("derived from the real predicate, not a hand-built literal", () => {
+    const fin = spineSet({ income: ANCHOR, balance: OLDER, cashflow: ANCHOR });
+    const disclosure = statementSetDisclosure(fin);
+    expect(disclosure?.reason).toBe("periods-disagree");
+    const text = formatPeriodMismatch(disclosure);
     expect(text).toContain("it would mix fiscal periods");
     expect(text).toContain("Figures WITHIN a");
+  });
+});
+
+describe("period-unstated — the justification is HEDGED, not asserted as fact (P2)", () => {
+  // The lead already says the desk CANNOT ESTABLISH whether these share a
+  // period. The justification asserting "it would mix fiscal periods" one
+  // line later is the same class of defect as the settled-for-less-than-seen
+  // lead: a claim of KNOWN fact where the desk only has a possibility. The
+  // withholding instruction itself stays — the desk really does withhold
+  // here — only the "because" is hedged.
+  it("does not assert mixing as fact; states it as a possibility instead", () => {
+    const fin = spineSet({ income: ANCHOR, balance: null, cashflow: ANCHOR });
+    const disclosure = statementSetDisclosure(fin);
+    expect(disclosure?.reason).toBe("period-unstated");
+    const text = formatPeriodMismatch(disclosure);
+    expect(text).not.toContain("it would mix fiscal periods");
+    expect(text).toContain("COULD combine two different fiscal periods");
+    // Still withholds — only the "because" changed.
+    expect(text).toMatch(/Do NOT compute any ratio/);
+  });
+});
+
+describe("settled-for-less-than-seen — state enumeration (review round 2, P1)", () => {
+  // `isCoherentStatementSet` returns this reason on the FIRST statement whose
+  // own resolution settled for less than it saw (part a) — BEFORE it ever
+  // checks whether the three RETURNED periods agree with each other (part b).
+  // So the reason covers two different printed shapes, and every test below
+  // is built through the REAL `statementSetDisclosure`, not a hand-assembled
+  // `PeriodDisclosure` — a hand-built literal is exactly what let the P1 ship
+  // green last round.
+  //
+  // BUCKET A — the three returned periods genuinely agree (uniform
+  // staleness). BUCKET B — they do not: the offending statement diverges from
+  // agreeing peers, all three mutually disagree, or the offending statement's
+  // own returned period is `null`. Every enumerated state below lands in
+  // exactly one of these two buckets; the block's text must be true for
+  // whichever bucket produced it.
+
+  it("bucket A — uniform staleness: all three agree, derived from the real predicate", () => {
+    const fin = spineSet({
+      income: OLDER,
+      balance: OLDER,
+      cashflow: OLDER,
+      observed: { balance: ANCHOR },
+    });
+    const disclosure = statementSetDisclosure(fin);
+    expect(disclosure?.reason).toBe("settled-for-less-than-seen");
+    expect(disclosure?.observedNewest).toBe(ANCHOR);
+    const text = formatPeriodMismatch(disclosure);
+    expect(text).toContain("agree on a fiscal period");
+    expect(text).not.toContain("NOT confirmed to all describe");
+    expect(text).toContain(ANCHOR);
+  });
+
+  it("bucket B — the offending statement diverges from two AGREEING peers (the reported P1)", () => {
+    // Income's ladder saw the anchor and settled for the prior year; balance
+    // and cashflow both resolve cleanly at the anchor. The three returned
+    // periods do NOT all agree, and this IS the `periods-disagree` shape by
+    // value — reached through the settled-for-less-than-seen reason instead,
+    // because part (a) returns before part (b) ever runs.
+    const fin = spineSet({
+      income: OLDER,
+      balance: ANCHOR,
+      cashflow: ANCHOR,
+      observed: { income: ANCHOR },
+    });
+    const disclosure = statementSetDisclosure(fin);
+    expect(disclosure).toEqual({
+      reason: "settled-for-less-than-seen",
+      income: OLDER,
+      balance: ANCHOR,
+      cashflow: ANCHOR,
+      observedNewest: ANCHOR,
+    });
+    const text = formatPeriodMismatch(disclosure);
+    // The defect: claiming agreement, or "STALE period" for every figure,
+    // over periods that visibly differ two lines below.
+    expect(text).not.toContain("agree on a fiscal period");
+    expect(text).not.toContain("every one of them is drawn from the STALE period");
+    // And not the periods-disagree phrasing either — this reason renders its
+    // own true sentence, not a borrowed one that happens to also be true.
+    expect(text).not.toContain("do NOT describe the same fiscal period");
+    expect(text).not.toContain("it would mix fiscal periods");
+    // What must be true instead — hedged, and it names the observed period.
+    expect(text).toContain("NOT confirmed to all describe one shared fiscal period");
+    expect(text).toContain(ANCHOR);
+    expect(text).toContain(`  income statement: ${OLDER}`);
+    expect(text).toContain(`  balance sheet:    ${ANCHOR}`);
+    expect(text).toContain(`  cash flow:        ${ANCHOR}`);
+  });
+
+  it("bucket B — all three mutually disagree", () => {
+    const OLDEST = "2023-09-29";
+    const fin = spineSet({
+      income: OLDEST,
+      balance: OLDER,
+      cashflow: ANCHOR,
+      observed: { income: ANCHOR },
+    });
+    const disclosure = statementSetDisclosure(fin);
+    expect(disclosure?.reason).toBe("settled-for-less-than-seen");
+    const text = formatPeriodMismatch(disclosure);
+    expect(text).not.toContain("agree on a fiscal period");
+    expect(text).toContain("NOT confirmed to all describe one shared fiscal period");
+  });
+
+  it("bucket B — the offending statement's own returned period is null", () => {
+    // The final settled payload for income carries no `periodEnd` (a
+    // legacy-shaped outcome) even though its own resolution observed a real
+    // period along the way. Balance and cashflow resolve cleanly and agree
+    // with each other — but not all three are confirmed to share a period.
+    const fin = spineSet({
+      income: null,
+      balance: ANCHOR,
+      cashflow: ANCHOR,
+      observed: { income: ANCHOR },
+    });
+    const disclosure = statementSetDisclosure(fin);
+    expect(disclosure?.reason).toBe("settled-for-less-than-seen");
+    const text = formatPeriodMismatch(disclosure);
+    expect(text).not.toContain("agree on a fiscal period");
+    expect(text).toContain("NOT confirmed to all describe one shared fiscal period");
+    expect(text).toContain("income statement: no period stated");
+  });
+
+  it("observedNewest is present on this reason and absent on the other two — derived from the real function", () => {
+    const stale = spineSet({
+      income: OLDER,
+      balance: OLDER,
+      cashflow: OLDER,
+      observed: { balance: ANCHOR },
+    });
+    expect(statementSetDisclosure(stale)).toHaveProperty("observedNewest", ANCHOR);
+
+    const disagreeing = spineSet({ income: ANCHOR, balance: OLDER, cashflow: ANCHOR });
+    const disagreeDisclosure = statementSetDisclosure(disagreeing);
+    expect(disagreeDisclosure?.reason).toBe("periods-disagree");
+    expect(disagreeDisclosure).not.toHaveProperty("observedNewest");
+
+    const unstated = spineSet({ income: ANCHOR, balance: null, cashflow: ANCHOR });
+    const unstatedDisclosure = statementSetDisclosure(unstated);
+    expect(unstatedDisclosure?.reason).toBe("period-unstated");
+    expect(unstatedDisclosure).not.toHaveProperty("observedNewest");
+  });
+});
+
+describe("formatValuationSpine's WITHHELD sentence — the same invariant, the PM-facing block", () => {
+  // `valuation-spine.ts` has its own reason-blind WITHHELD sentence, fixed
+  // over the same enumeration and the same `periodsMutuallyAgree` check —
+  // see `withheldReasonLine`. Built through the real `assembleSpine` /
+  // `buildValuationSpine` pipeline, not a hand-built `ValuationSpine`.
+  it("bucket A — uniform staleness renders the agreement framing", () => {
+    const fin = spineSet({
+      income: OLDER,
+      balance: OLDER,
+      cashflow: OLDER,
+      observed: { balance: ANCHOR },
+    });
+    const { spine } = assembleSpine(fin);
+    const text = formatValuationSpine(spine);
+    expect(text).toContain("agree on a fiscal period");
+    expect(text).not.toContain("NOT confirmed");
+    expect(text).toContain(ANCHOR);
+  });
+
+  it("bucket B — a stale statement diverging from agreeing peers does NOT render the agreement framing", () => {
+    const fin = spineSet({
+      income: OLDER,
+      balance: ANCHOR,
+      cashflow: ANCHOR,
+      observed: { income: ANCHOR },
+    });
+    const { spine } = assembleSpine(fin);
+    const text = formatValuationSpine(spine);
+    expect(text).not.toContain("agree on a fiscal period");
+    expect(text).not.toContain("rather than computed across periods");
+    expect(text).toContain("NOT confirmed");
+    expect(text).toContain(ANCHOR);
+  });
+
+  it("periods-disagree keeps its original wording", () => {
+    const fin = spineSet({ income: ANCHOR, balance: OLDER, cashflow: ANCHOR });
+    const { spine } = assembleSpine(fin);
+    const text = formatValuationSpine(spine);
+    expect(text).toContain("could not establish a single fiscal period");
+    expect(text).toContain("rather than computed across periods");
+  });
+
+  it("period-unstated is hedged, not asserted as fact", () => {
+    const fin = spineSet({ income: ANCHOR, balance: null, cashflow: ANCHOR });
+    const { spine } = assembleSpine(fin);
+    const text = formatValuationSpine(spine);
+    expect(text).toContain("CANNOT ESTABLISH");
+    expect(text).not.toContain("could not establish a single fiscal period");
+    expect(text).toContain("could silently combine two different fiscal periods");
   });
 });
 

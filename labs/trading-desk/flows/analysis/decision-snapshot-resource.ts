@@ -46,6 +46,10 @@ export const decisionSnapshotStateSchema = z.object({
       income: z.string().nullable(),
       balance: z.string().nullable(),
       cashflow: z.string().nullable(),
+      // Only meaningful on `settled-for-less-than-seen` — see
+      // `PeriodDisclosure.observedNewest` (`valuation-spine.ts`). Nullable +
+      // defaulted so a record persisted before this field existed still parses.
+      observedNewest: z.string().nullable().default(null),
     })
     .nullable()
     .default(null),
