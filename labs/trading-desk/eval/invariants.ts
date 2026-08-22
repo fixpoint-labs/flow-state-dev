@@ -175,7 +175,14 @@ function checkRatingEnvelope(bundle: RunArtifactsBundle, c: Checks, memos: MemoM
   const spine = bundle.valuationSpine;
   // The valuation spine is authoritative; the PM band is only a fallback for a
   // legacy run without a spine. A drifted PM mirror must never widen the band.
-  const spineBand = spine != null ? { floor: spine.envelope.floor, ceiling: spine.envelope.ceiling } : null;
+  // A spine that WITHHELD its envelope (FIX-1113 — the statements did not share
+  // a fiscal period) offers no band. It falls through to the PM mirror exactly
+  // as a legacy spine-less run does, and if that is absent too the check skips.
+  // The PM's rating still published; what is missing is the bound on it.
+  const spineBand =
+    spine?.envelope != null
+      ? { floor: spine.envelope.floor, ceiling: spine.envelope.ceiling }
+      : null;
   const band = spineBand ?? pm?.ratingBand ?? null;
   if (snapshot == null || pm == null || band == null) {
     c.skip(
@@ -250,6 +257,24 @@ function checkRatingEnvelope(bundle: RunArtifactsBundle, c: Checks, memos: MemoM
     );
     return;
   }
+  if (
+    spine.envelope == null ||
+    spine.expectedReturn == null ||
+    spine.fairValue == null ||
+    spine.setupScore == null
+  ) {
+    // Withheld rather than missing: the inputs a recompute would need were
+    // never computed because the statements did not share a fiscal period. Say
+    // WHICH, so this does not read as an unexplained gap in the eval.
+    c.skip(
+      "rating-envelope/band-recompute",
+      "hard",
+      spine.periodDisclosure != null
+        ? `valuation spine withheld its cross-statement outputs (${spine.periodDisclosure.reason}) — nothing to recompute`
+        : "valuation spine carries no envelope — cannot recompute the band",
+    );
+    return;
+  }
   const recomputed = modelImpliedRating({
     expectedReturn: spine.expectedReturn,
     fairValue: spine.fairValue,
@@ -263,8 +288,9 @@ function checkRatingEnvelope(bundle: RunArtifactsBundle, c: Checks, memos: MemoM
     "floor",
     "ceiling",
   ] as const;
+  const storedEnvelope = spine.envelope;
   const drift = envelopeFields.filter(
-    (field) => recomputed[field] !== spine.envelope[field],
+    (field) => recomputed[field] !== storedEnvelope[field],
   );
   if (drift.length === 0) {
     c.hardPass(
@@ -276,7 +302,7 @@ function checkRatingEnvelope(bundle: RunArtifactsBundle, c: Checks, memos: MemoM
       "rating-envelope/band-recompute",
       `stored rating envelope drifted in: ${drift.join(", ")}`,
       Object.fromEntries(envelopeFields.map((field) => [field, recomputed[field]])),
-      Object.fromEntries(envelopeFields.map((field) => [field, spine.envelope[field]])),
+      Object.fromEntries(envelopeFields.map((field) => [field, storedEnvelope[field]])),
     );
   }
 }
@@ -1125,6 +1151,21 @@ function checkValuation(bundle: RunArtifactsBundle, c: Checks): void {
     c.skip("valuation/abstention-honesty", "hard", "no valuation spine on this run");
     return;
   }
+  if (spine.fairValue == null) {
+    // WITHHELD, not absent (FIX-1113): the statements did not share a fiscal
+    // period, so the cross-statement legs were never computed. There is no
+    // shape to check for internal contradiction — a withheld spine is coherent
+    // by construction, and asserting a populated shape here would fail the
+    // CORRECT implementation.
+    c.skip(
+      "valuation/abstention-honesty",
+      "hard",
+      spine.periodDisclosure != null
+        ? `valuation withheld — the three statements do not share one fiscal period (${spine.periodDisclosure.reason})`
+        : "valuation spine carries no fair-value leg",
+    );
+    return;
+  }
 
   // Fair-value availability and abstention honesty.
   const fair = spine.fairValue;
@@ -1254,8 +1295,8 @@ function checkValuation(bundle: RunArtifactsBundle, c: Checks): void {
     c.skip("valuation/triangulation", "hard", "no triangulation leg");
   } else {
     const readings: Array<{ method: "justified-pe" | "dcf"; marginOfSafety: number }> = [];
-    if (spine.fairValue.available && spine.fairValue.marginOfSafety != null) {
-      readings.push({ method: "justified-pe", marginOfSafety: spine.fairValue.marginOfSafety });
+    if (fair.available && fair.marginOfSafety != null) {
+      readings.push({ method: "justified-pe", marginOfSafety: fair.marginOfSafety });
     }
     if (dcf?.available && dcf.marginOfSafety != null) {
       readings.push({ method: "dcf", marginOfSafety: dcf.marginOfSafety });

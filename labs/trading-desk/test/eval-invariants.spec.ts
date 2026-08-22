@@ -58,6 +58,7 @@ const SPINE: ValuationSpineState = {
   envelope: { absoluteRating: "Hold", relativeRating: "Overweight", implied: "Overweight", floor: BAND.floor, ceiling: BAND.ceiling, rationale: "x" },
   valuationMethod: "ev-multiples",
   evidenceBasis: "sufficient",
+  periodDisclosure: null,
 };
 
 function basePublished(entry: (typeof ALL_MEMO_KEYS)[keyof typeof ALL_MEMO_KEYS]): MemoState {
@@ -90,6 +91,7 @@ function summary(overrides: Partial<RunSummary> = {}): RunSummary {
     capturePath: null,
     ranAt: "2026-06-25T00:00:00.000Z",
     finalRating: "Overweight",
+    ratingUnanchored: false,
     decisionConfidence: DECISION_CONFIDENCE,
     targetWeightPct: CLAMP.targetWeightPct,
     direction: "long",
@@ -141,6 +143,8 @@ function healthyBundle(): RunArtifactsBundle {
         state: {
           ...state,
           finalRating: "Overweight",
+          ratingUnanchored: false,
+          periodDisclosure: null,
           decisionConfidence: DECISION_CONFIDENCE,
           modelImpliedRating: "Overweight",
           ratingBand: { floor: BAND.floor, ceiling: BAND.ceiling },
@@ -201,6 +205,8 @@ function healthyBundle(): RunArtifactsBundle {
       ticker: "NVDA",
       asOfDate: "2026-05-06",
       finalRating: "Overweight",
+      ratingUnanchored: false,
+      periodDisclosure: null,
       decisionConfidence: DECISION_CONFIDENCE,
       decisionSummary: "x",
       direction: "long",
@@ -433,7 +439,7 @@ describe("checkRun — rating-envelope", () => {
     const b = healthyBundle();
     const buyBand = ratingBandFor("Buy", false);
     b.valuationSpine!.envelope = {
-      ...b.valuationSpine!.envelope,
+      rationale: b.valuationSpine!.envelope?.rationale ?? "",
       absoluteRating: "Buy",
       relativeRating: "Overweight",
       implied: "Buy",

@@ -6,6 +6,19 @@
  * valuation set. Each metric is `null` when its inputs are unobserved or
  * when a non-positive denominator makes the ratio uninterpretable. Proxy
  * metrics carry an explicit label naming the approximation.
+ *
+ * PERIOD COHERENCE GATES THE SPANNING METRICS ONLY (FIX-1113). When the three
+ * statements cannot be placed at one period, a metric built ACROSS statements
+ * is withheld — a year's profit over another year's assets is a number with no
+ * referent. A metric built inside ONE statement is untouched: an operating
+ * margin is income over income, and a mismatch elsewhere is no reason to drop
+ * it. That distinction is what stops "withhold" being implemented as "blank
+ * everything", which would be its own dishonesty.
+ *
+ * `fundamentals` is NOT one of the three statements — it is a market snapshot,
+ * not a fiscal period — so a metric reading fundamentals plus ONE statement
+ * (price-to-book, earnings yield, PEG) is single-statement for this purpose and
+ * survives. Check what a metric READS before adding it to either group.
  */
 import type { z } from "zod";
 import type {
@@ -77,14 +90,25 @@ function sum(...parts: Array<number | null>): number | null {
   return total;
 }
 
-/** Compute the full Tier 1 derived valuation set from raw payloads. */
+/**
+ * Compute the full Tier 1 derived valuation set from raw payloads.
+ *
+ * `periodsCoherent` defaults to `true` so every existing caller is unchanged;
+ * pass `false` to withhold the cross-statement metrics (see the file header).
+ */
 export function computeValuation(args: {
   fundamentals: Fundamentals;
   balanceSheet: BalanceSheet;
   incomeStatement: IncomeStatement;
   cashflow: Cashflow;
+  periodsCoherent?: boolean;
 }): DerivedValuation {
   const { fundamentals: f, balanceSheet: bs, incomeStatement: is_, cashflow: cf } = args;
+  const coherent = args.periodsCoherent !== false;
+  /** A metric that reads MORE THAN ONE of income / balance / cashflow. */
+  const spanning = <T>(v: T): T | null => (coherent ? v : null);
+  const SPAN_NOTE = "withheld — the statements do not share one fiscal period";
+  const spanNote = coherent ? {} : { note: SPAN_NOTE };
 
   const marketCap = f.marketCap;
   const totalDebt = bs.totalDebt;
@@ -118,40 +142,56 @@ export function computeValuation(args: {
         ? { note: "net cash exceeds debt + equity market value" }
         : {}),
     },
-    evToSales: { value: ratio(evPositive, revenue) },
-    evToEbit: { value: ratio(evPositive, operatingIncome), proxy: PROXY_EBIT },
-    evToFcf: { value: ratio(evPositive, fcf) },
+    // EV comes off the balance sheet; the denominators come off income and
+    // cashflow. Cross-statement, all three.
+    evToSales: { value: spanning(ratio(evPositive, revenue)), ...spanNote },
+    evToEbit: {
+      value: spanning(ratio(evPositive, operatingIncome)),
+      proxy: PROXY_EBIT,
+      ...spanNote,
+    },
+    evToFcf: { value: spanning(ratio(evPositive, fcf)), ...spanNote },
     priceToBook: { value: ratio(marketCap, totalEquity) },
     fcfYield: { value: ratio(pos(fcf), marketCap) },
     priceToFcf: { value: ratio(marketCap, fcf) },
     earningsYield: { value: ratio(pos(netIncome), marketCap) },
     returnOnAssets: {
+      // Net income (income) over total assets (balance) — cross-statement.
       // Keep a real negative ROA (loss-making name) — only null when assets
       // are unobserved/non-positive or net income is unobserved.
-      value:
+      value: spanning(
         totalAssets != null && totalAssets > 0 && netIncome != null
           ? netIncome / totalAssets
           : null,
+      ),
+      ...spanNote,
     },
     netDebt: {
       value: netDebtVal,
       ...(netDebtVal != null && netDebtVal < 0 ? { note: "net cash" } : {}),
     },
     netLeverage: {
-      value:
+      // Net debt (balance) over operating income (income) — cross-statement.
+      value: spanning(
         netDebtVal != null && operatingIncome != null && operatingIncome > 0
           ? netDebtVal / operatingIncome
           : null,
+      ),
+      ...spanNote,
     },
     roic: {
-      value:
+      // Operating income (income) over invested capital (balance) —
+      // cross-statement.
+      value: spanning(
         operatingIncome != null &&
         operatingIncome > 0 &&
         investedCapital != null &&
         investedCapital > 0
           ? (operatingIncome * (1 - TAX_RATE)) / investedCapital
           : null,
+      ),
       proxy: PROXY_TAX,
+      ...spanNote,
     },
     peg: {
       value:

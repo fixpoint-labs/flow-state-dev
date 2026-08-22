@@ -367,8 +367,11 @@ export function buildReportSummary(
   };
 
   // Factor scores (valuation spine). The spine's component scores are ~0..100.
+  // `setupScore` is null when the spine WITHHELD its cross-statement outputs
+  // (FIX-1113) — the strip renders its own gap note rather than four zeroes,
+  // which is the same absent-stays-absent rule as every other read here.
   const factorScores: FactorScores =
-    spine !== null
+    spine?.setupScore != null
       ? {
           value: spine.setupScore.value,
           quality: spine.setupScore.quality,

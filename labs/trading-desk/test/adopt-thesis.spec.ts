@@ -29,6 +29,8 @@ const completedSnapshot: DecisionSnapshotState = {
   ticker: "NVDA",
   asOfDate: "2026-05-06",
   finalRating: "Buy",
+  ratingUnanchored: false,
+  periodDisclosure: null,
   decisionConfidence: 0.8,
   decisionSummary: "Compute super-cycle intact; initiate.",
   direction: "long",

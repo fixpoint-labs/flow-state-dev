@@ -1,6 +1,7 @@
 {
   "ticker": "AAPL",
   "asOf": "2026-03-29",
+  "periodEnd": "2026-03-29",
   "totalAssets": 360.0,
   "totalLiabilities": 270.5,
   "totalEquity": 89.5,

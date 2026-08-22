@@ -1,6 +1,30 @@
 /**
  * Valuation spine orchestrator — assembles the full spine from raw payloads
  * and exposes prompt formatters for capability injection.
+ *
+ * PERIOD COHERENCE IS AN INPUT CONTRACT, NOT A COMPUTATION (FIX-1113). When the
+ * three statements cannot be placed at one period, every output that reads more
+ * than one of them is withheld — the expected return, and therefore fair value,
+ * the DCF, triangulation, the setup score and the RATING ENVELOPE, all of which
+ * descend from it.
+ *
+ * WHY THE CHECK IS ON THE INPUTS AND NOT INSIDE `valuation.ts`. The expected
+ * return takes all three statements, is computed FIRST, and does NOT pass
+ * through `computeValuation` — so a guard placed there would withhold a multiple
+ * and still publish a rating built on mixed periods. `valuation.ts` is not the
+ * chokepoint for valuation; any future guard belonging to a SET OF INPUTS
+ * (currency, staleness, restatement provenance) goes on the inputs for the same
+ * reason.
+ *
+ * WITHHOLDING THE ENVELOPE IS FAIL-OPEN, AND THAT IS THE TRAP HERE. The envelope
+ * only CLAMPS a rating the portfolio manager emits on its own as a required
+ * field (`agents/portfolio-manager/writer.ts` — the clamp sits inside
+ * `if (spine?.envelope)`). Withholding it removes the BOUND, not the rating: the
+ * model's value publishes unconstrained. So "withhold more" is not automatically
+ * "safer" — for this one output, absence is permission. `periodDisclosure` is
+ * what carries the honesty instead, and the published rating is marked
+ * unanchored from it. Check what the ABSENCE of a thing causes before withholding
+ * it.
  */
 import type { z } from "zod";
 import type {
@@ -22,17 +46,31 @@ type BalanceSheet = z.infer<typeof balanceSheetSchema>;
 type IncomeStatement = z.infer<typeof incomeStatementSchema>;
 type Cashflow = z.infer<typeof cashflowSchema>;
 
+/** Why the desk could not place the three statements at one period, and where
+ *  each of them landed — the disclosure the report carries and the marker the
+ *  run records. Null when the set IS coherent (the ordinary case). */
+export type PeriodDisclosure = {
+  reason: "settled-for-less-than-seen" | "periods-disagree";
+  income: string | null;
+  balance: string | null;
+  cashflow: string | null;
+};
+
 export interface ValuationSpine {
   ticker: string;
   asOf: string;
-  expectedReturn: ExpectedReturn;
-  fairValue: FairValue;
-  dcf: DcfValue;
-  triangulation: Triangulation;
-  setupScore: SetupScore;
-  envelope: RatingEnvelope;
+  /** Nullable from FIX-1113: withheld when the statements do not share a
+   *  period. Every field below it descends from this one. */
+  expectedReturn: ExpectedReturn | null;
+  fairValue: FairValue | null;
+  dcf: DcfValue | null;
+  triangulation: Triangulation | null;
+  setupScore: SetupScore | null;
+  envelope: RatingEnvelope | null;
   valuationMethod: "ev-multiples" | "equity-multiples";
   evidenceBasis: "sufficient" | "thin";
+  /** Non-null exactly when the cross-statement outputs above were withheld. */
+  periodDisclosure: PeriodDisclosure | null;
 }
 
 export function buildValuationSpine(args: {
@@ -55,7 +93,33 @@ export function buildValuationSpine(args: {
     sma200?: number | null;
   } | null;
   valuation: DerivedValuation | null;
+  /** Null when the statements share a period (the ordinary case). Non-null
+   *  withholds every cross-statement output — see the file header. */
+  periodDisclosure?: PeriodDisclosure | null;
 }): ValuationSpine {
+  const periodDisclosure = args.periodDisclosure ?? null;
+  if (periodDisclosure != null) {
+    // Withhold, and report the evidence as THIN. Leaving it `sufficient` while
+    // the outputs it summarises were never computed is the same
+    // signal-without-substance defect the honesty contract exists to stop — and
+    // `thin` is what the always-on evidence gate reads to cap new exposure.
+    return {
+      ticker: args.ticker,
+      asOf: args.asOf,
+      expectedReturn: null,
+      fairValue: null,
+      dcf: null,
+      triangulation: null,
+      setupScore: null,
+      envelope: null,
+      valuationMethod: isFinancialSector(args.sector)
+        ? "equity-multiples"
+        : "ev-multiples",
+      evidenceBasis: "thin",
+      periodDisclosure,
+    };
+  }
+
   const er = computeExpectedReturn({
     fundamentals: args.fundamentals,
     incomeStatement: args.incomeStatement,
@@ -105,6 +169,7 @@ export function buildValuationSpine(args: {
     envelope,
     valuationMethod: financial ? "equity-multiples" : "ev-multiples",
     evidenceBasis: ss.evidenceBasis === "thin" || er.lowConfidence ? "thin" : "sufficient",
+    periodDisclosure: null,
   };
 }
 
@@ -134,9 +199,13 @@ function pp(v: number | null): string {
  * state, and a session persisted before FIX-807 re-parses with both = null. The
  * formatters must degrade to n/a on that legacy shape, never throw.
  */
-type FormattableSpine = Omit<ValuationSpine, "dcf" | "triangulation"> & {
+type FormattableSpine = Omit<
+  ValuationSpine,
+  "dcf" | "triangulation" | "periodDisclosure"
+> & {
   dcf: DcfValue | null;
   triangulation: Triangulation | null;
+  periodDisclosure?: PeriodDisclosure | null;
 };
 
 /** The DCF intrinsic-value line — n/a-safe (null legacy block or abstention). */
@@ -185,6 +254,25 @@ export function formatValuationSpine(spine: FormattableSpine): string {
   const er = spine.expectedReturn;
   const fv = spine.fairValue;
   const ss = spine.setupScore;
+
+  // The withheld shape (FIX-1113). Say WHY and name the dates — a spine that
+  // rendered every line as "n/a" would read as a data outage rather than as the
+  // desk declining to combine figures from different years.
+  const pd = spine.periodDisclosure;
+  if (pd != null || er == null || fv == null || ss == null) {
+    return [
+      `<valuationSpine ticker="${spine.ticker}" asOf="${spine.asOf}">`,
+      pd != null
+        ? `WITHHELD: the desk could not establish a single fiscal period across the three statements ` +
+          `(income ${pd.income ?? "none"}, balance sheet ${pd.balance ?? "none"}, cash flow ${pd.cashflow ?? "none"}). ` +
+          `Every figure spanning two statements — expected return, fair value, the cash-flow model, ` +
+          `triangulation, the setup score and the rating envelope — is withheld rather than computed ` +
+          `across periods. Do NOT combine figures across these statements yourself.`
+        : "WITHHELD: the valuation spine was not computed.",
+      `Valuation method: ${spine.valuationMethod} | Evidence: ${spine.evidenceBasis}`,
+      `</valuationSpine>`,
+    ].join("\n");
+  }
 
   const lines = [
     `<valuationSpine ticker="${spine.ticker}" asOf="${spine.asOf}">`,

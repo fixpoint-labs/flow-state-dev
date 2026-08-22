@@ -391,6 +391,7 @@ function clampingSpine(): ValuationSpineState {
     },
     valuationMethod: "equity-multiples",
     evidenceBasis: "thin",
+    periodDisclosure: null,
   };
 }
 

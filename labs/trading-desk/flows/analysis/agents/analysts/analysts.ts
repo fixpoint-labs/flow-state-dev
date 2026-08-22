@@ -24,6 +24,10 @@ import { PHASE_1_MEMO_KEYS } from "../../registry";
 import { tradingDesk } from "../../capability";
 import { asDataBlock } from "../../lib/helpers";
 import { computeValuation, formatValuation } from "../../lib/valuation";
+import {
+  analystStatementDisclosure,
+  formatPeriodMismatch,
+} from "../../lib/statement-set-period";
 import { loadPrompt } from "../../lib/prompt";
 import { defineAnalyst } from "../_recipe/define-analyst";
 import { thesisOutputSchema } from "./thesis-schema";
@@ -99,9 +103,28 @@ const fundamentalsGenerator = generator({
     fundamentals: toolOutputSchemas.get_fundamentals,
     fundamentalsContext: toolOutputSchemas.discover_fundamentals_context,
   }),
+  // THE SECOND VALUATION SITE (FIX-1113). This analyst computes and publishes
+  // its OWN valuation from its OWN tool payloads, BEFORE the valuation spine
+  // exists — so a guard placed on the spine is structurally invisible here.
+  // Both sites call the same predicate.
+  //
+  // Only the `valuation` half is DETERMINISTIC. The `periodMismatch` half is
+  // ADVISORY: the analyst is also handed the three raw statements in `data` and
+  // its prompt asks it to divide one by another, and no computation seam
+  // reaches a division a model performs in prose. Telling it the periods and
+  // telling it not to combine them is the ceiling. A memo can still carry a
+  // figure the spine withheld.
   context: {
     data: (input) => asDataBlock(input),
-    valuation: (input: any) => formatValuation(computeValuation(input)),
+    valuation: (input: any) =>
+      formatValuation(
+        computeValuation({
+          ...input,
+          periodsCoherent: analystStatementDisclosure(input) == null,
+        }),
+      ),
+    periodMismatch: (input: any) =>
+      formatPeriodMismatch(analystStatementDisclosure(input)),
   },
   ...definePromptFile(fundamentalsPrompt),
   outputSchema: thesisOutputSchema,

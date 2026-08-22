@@ -378,6 +378,20 @@ export const memoStateSchema = z.object({
     .nullable()
     .default(null),
   ratingClamped: z.boolean().nullable().default(null),
+  // FIX-1113 — true when the envelope was WITHHELD because the three statements
+  // could not be placed at one fiscal period, so the clamp never ran and the
+  // rating above is the model's own, unbounded. A disclosure, not a suppression:
+  // the rating still publishes. `periodDisclosure` names the three periods.
+  ratingUnanchored: z.boolean().nullable().default(null),
+  periodDisclosure: z
+    .object({
+      reason: z.enum(["settled-for-less-than-seen", "periods-disagree"]),
+      income: z.string().nullable(),
+      balance: z.string().nullable(),
+      cashflow: z.string().nullable(),
+    })
+    .nullable()
+    .default(null),
   ratingOverrideReason: z.string().nullable().default(null),
   absoluteRating: z.enum(["Buy", "Hold", "Sell"]).nullable().default(null),
   relativeRating: z

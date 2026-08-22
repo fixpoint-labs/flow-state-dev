@@ -32,6 +32,23 @@ export const decisionSnapshotStateSchema = z.object({
   asOfDate: z.string(),
   // The decision.
   finalRating: ratingSchema,
+  // FIX-1113 — the published rating carries NO deterministic bound because the
+  // three statements could not be placed at one fiscal period, so the valuation
+  // envelope was withheld and its clamp never ran. This is the DISCLOSURE, not a
+  // suppression: the rating above is the portfolio manager's own, published
+  // unchanged. Absent/false means the ordinary path (either the clamp ran, or
+  // the envelope was absent for an unrelated reason).
+  ratingUnanchored: z.boolean().default(false),
+  /** The three periods, for a reader who asks WHICH years disagreed. */
+  periodDisclosure: z
+    .object({
+      reason: z.enum(["settled-for-less-than-seen", "periods-disagree"]),
+      income: z.string().nullable(),
+      balance: z.string().nullable(),
+      cashflow: z.string().nullable(),
+    })
+    .nullable()
+    .default(null),
   decisionConfidence: z.number().min(0).max(1),
   decisionSummary: z.string(),
   // Entry context (from the trader memo's typed numeric mirrors). Nullable

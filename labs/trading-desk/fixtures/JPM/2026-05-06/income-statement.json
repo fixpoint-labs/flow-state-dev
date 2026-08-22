@@ -1,6 +1,7 @@
 {
   "ticker": "JPM",
   "asOf": "2026-03-31",
+  "periodEnd": "2026-03-31",
   "revenue": 165.0,
   "grossProfit": 165.0,
   "operatingIncome": 82.0,

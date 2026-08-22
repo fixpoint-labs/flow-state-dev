@@ -86,11 +86,18 @@ export function promoteCandidate(c: FinancialCandidate): {
   cashflow: Cashflow;
 } {
   const asOf = c.periodEnd || c.filingDate;
+  // The recovered statements are single-period by construction — one filing,
+  // one transcribed column — so all three declare the same period. `asOf` keeps
+  // its filing-date fallback for legacy readers; `periodEnd` does NOT take it
+  // (FIX-1113): a filing date is when the document was filed, not the period it
+  // covers, which is the same class of lie the mappers stopped telling.
+  const periodEnd = c.periodEnd || null;
   return {
     incomeStatement: {
       source: "edgar-prospectus",
       ticker: c.ticker,
       asOf,
+      periodEnd,
       revenue: toBillions(c.income.revenue),
       grossProfit: null,
       operatingIncome: toBillions(c.income.operatingIncome),
@@ -102,6 +109,7 @@ export function promoteCandidate(c: FinancialCandidate): {
       source: "edgar-prospectus",
       ticker: c.ticker,
       asOf,
+      periodEnd,
       totalAssets: null,
       totalLiabilities: null,
       totalEquity: null,
@@ -113,6 +121,7 @@ export function promoteCandidate(c: FinancialCandidate): {
       source: "edgar-prospectus",
       ticker: c.ticker,
       asOf,
+      periodEnd,
       operating: toBillions(c.cashflow.operating),
       investing: null,
       financing: null,
