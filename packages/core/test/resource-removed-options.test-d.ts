@@ -15,8 +15,10 @@
  * `createRunSkillTool`, `parallelTasks`, `supervisor`), where excess-property
  * checking already rejects it. No sibling guard is needed.
  *
- * Drop the guard and the `@ts-expect-error` below goes unused, failing this
- * file's compile.
+ * `tsconfig.test-d.json` compiles every `.test-d.ts` file in this package's
+ * `test` directory, and the `typecheck` script runs it after the `src` pass.
+ * Drop the guard and the `@ts-expect-error` below has nothing to suppress,
+ * which is itself an error (TS2578) — so `pnpm typecheck` goes red.
  */
 import { z } from "zod";
 import { defineResource } from "@flow-state-dev/core";
