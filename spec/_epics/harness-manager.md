@@ -46,8 +46,9 @@ designed against that case, not against the happy one.
 >   genuinely *dead* worker's task sits unreclaimed for the configured window instead of for two
 >   minutes — a per-board trade, taken deliberately by a board that hosts human pauses, and
 >   inherited by nothing else. What still goes untested is a *long*-open question end to end: a
->   parked run holds a board slot for as long as the person takes, and a green Proof is not
->   evidence that an overnight question survives.
+>   green Proof is not evidence that an overnight question survives. *(It costs no board worker
+>   slot — an earlier claim, checked in source and withdrawn; §5. The cost is the task row and its
+>   lease, and nothing else.)*
 >
 > **Lead measure** — the set's goal-proven issues, named: FIX-150 · LAB-138 · LAB-139.
 >
@@ -157,12 +158,17 @@ down an altitude; push it into the issue spec that will write it.*
    read identically in a dependency column and mean opposite things, so the distinction is
    stated here rather than left to be inferred. **Handing that directory down needs a per-run
    `cwd` seam, and it is framework work inside LAB-138** — a sibling of FIX-1179's resume-id
-   input, not a reason to re-couple FIX-150. It is a choice of surface, not a missing capability:
-   the SDK surface — the one carrying detached dispatch, `recordWork` and the session handle —
-   forwards no `cwd` (`sdk/work-recorder.ts:109-112` says so outright), while the CLI dispatch
-   path *does* take one per dispatch (`cli/dispatch.ts:39-40,84` → `pty-exec.ts:134`). LAB-138
-   picks the surface on that evidence — which **theme 7 adds to**, on the same fork. Left
-   unstated, the Proof run edits the conductor's own checkout instead of the run's workspace.
+   input, not a reason to re-couple FIX-150. **It is a missing capability on the one surface that
+   can host it — not a choice between two surfaces.** The SDK surface — the one carrying detached
+   dispatch, `recordWork` and the session handle — forwards no `cwd`
+   (`sdk/work-recorder.ts:109-112` says so outright), and the CLI dispatch path is **not** the
+   alternative it looks like: it dispatches a `claude --remote` **cloud task**, fire-and-forget,
+   with no headless way to poll or stream progress (`cli/dispatch.ts:1-11`), so it cannot host a
+   watched local run at all. **So LAB-138 adds `cwd` to the SDK path**; theme 7 carries the check.
+   *(An earlier revision read this as an open fork between two surfaces, on the strength of a `cwd`
+   the CLI path takes for an unrelated purpose. Corrected — left open, it sends LAB-138's spec to
+   evaluate an option that cannot work.)* Left unstated, the Proof run edits the conductor's own
+   checkout instead of the run's workspace.
 
 5. **A normal return always settles the task `completed` — so park by suspending, hold the claim
    with a configured lease, and check the handle before settling.** `buildDetachedRunner`'s body
@@ -236,9 +242,14 @@ down an altitude; push it into the issue spec that will write it.*
 
    - **The bound is the caller's, not the harness's.** `maxTurns` is a Claude Code notion; neither
      other CLI exposes a turn or time cap (one closed the request as *not planned*). So the runner
-     must be a **killable subprocess** and the manager enforces the bound by wall-clock kill of the
-     child. `maxTurns` is demoted to an optional, adapter-specific knob — not part of the shared
-     contract.
+     must be **cancellable, under a caller-enforced wall-clock deadline** — and *how* it cancels is
+     the adapter's business: a process kill for a CLI adapter, an abort signal for an in-process
+     one. The SDK path already satisfies this (`sdk/agent.ts:434` forwards `ctx.signal` into the
+     query's `abortController`). `maxTurns` is demoted to an optional, adapter-specific knob — not
+     part of the shared contract. **Stated as a capability rather than a mechanism, deliberately:**
+     an earlier draft said "a killable subprocess," which would have mandated discarding the only
+     watched coding-agent path we have. That is §2's altitude rule one level down — a constraint
+     that names a mechanism smuggles in an implementation.
    - **A machine-readable result is an exit code plus a final JSON object, not a JSON *stream*.**
      One CLI returns a single terminal object; the other returns an event stream the caller must
      scan for the terminal event. The adapter normalises; the manager sees one shape.
@@ -248,19 +259,21 @@ down an altitude; push it into the issue spec that will write it.*
      contract — a graded sandbox and a binary force flag are not one knob, and modelling them as
      one misrepresents both.
 
-   **The second-order consequence is the useful part: a contract shaped this way says the seam is
-   process-spawn, not an in-process SDK call.** That is exactly the shape that bit us on the Claude
-   Code SDK path, whose in-process surface forwards no `cwd` while its CLI dispatch does (theme 4).
-   It is **evidence into LAB-138's surface fork, not a resolution of it** — against it sits what the
-   SDK surface uniquely carries (`detached`, `recordWork`, the session handle from layer zero), and
-   LAB-138's spec weighs both with the source open. What *is* settled here: the bound is implemented
-   as a caller-side kill, never by passing `maxTurns` down.
+   **What this does *not* say is that the seam must be process-spawn.** An earlier draft concluded
+   exactly that, and it was wrong on its own premise: the alternative surface it implied — the CLI
+   dispatch path — is not a runner candidate at all. `cli/dispatch.ts:1-11` says so in its own
+   header: it shells out to `claude --remote`, a **cloud task**, and *"v0 is fire-and-forget … the
+   CLI exposes no headless way to poll or stream cloud-task progress."* Its `cwd` is the host repo
+   for the dispatch, not a workspace for a run we supervise. So **the in-process SDK path is the
+   only watched local coding-agent path that exists**, and theme 4's per-run `cwd` gap is closed
+   *there* rather than sidestepped by picking another surface. Portability is served by the
+   adapter boundary, not by the seam's transport.
 
 ## 4. Running index
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
-| [LAB-138](https://linear.app/fixpoint-labs/issue/LAB-138/the-harness-manager-a-task-row-becomes-a-watched-settled-coding-run) | The manager loop — a task row becomes a watched, settled coding run. Provisions the run's working directory and owns the **per-run `cwd` seam** that makes handing it down possible (theme 4). Settles on a **handle-status check**, not on a normal return (theme 5). The runner contract it defines must hold for a harness that is not Claude Code, and its bound is a caller-side kill (theme 7) | spec | — | — | Needs spec |
+| [LAB-138](https://linear.app/fixpoint-labs/issue/LAB-138/the-harness-manager-a-task-row-becomes-a-watched-settled-coding-run) | The manager loop — a task row becomes a watched, settled coding run. Provisions the run's working directory and owns the **per-run `cwd` seam** that makes handing it down possible (theme 4). Settles on a **handle-status check**, not on a normal return (theme 5). The runner contract it defines must hold for a harness that is not Claude Code, and its bound is a caller-enforced deadline over a cancellable run (theme 7). Adds the per-run `cwd` to the **SDK path** — the only surface that can host a watched run (theme 4) | spec | — | — | Needs spec |
 | [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof** (FIX-1166). Blocked by LAB-138. Builds theme 5's park-and-wake — `ctx.suspend()` plus an in-process resume action — and the **board-level claim/lease option on `taskBoard`** that lets a parked run keep its claim for a human-scale window (framework work; §5) | spec | — | — | Needs spec |
 | [FIX-150](https://linear.app/fixpoint-labs/issue/FIX-150/workspaces-if-validated-workspacerunner-block-and-virtual-filesystem) | Workspaces — the file-projection component. Large, three PRs (a component · b shell-tool migration · c coding-agent path). Subsumes FIX-998. **Own track — carries no dependency edge into the Proof** (theme 4) | spec | [#1345](https://github.com/fixpoint-labs/flow-state-dev/pull/1345) — **approved** | — | Needs implementation |
 
@@ -344,11 +357,25 @@ waits on it (theme 4).*
 
 - **~~Do questions ride the hot path, or wait for the relay layer?~~** *Decided: the hot path* —
   but by **parking the run**, not by holding its task in `awaiting_review`; the premise that
-  phrasing rested on was refuted (entry above) and the replacement is theme 5. **Two costs, both
-  named:** the parked row holds a board slot for as long as the person takes, and a genuinely dead
-  worker's row waits out the configured lease (entry above). **FIX-1197's relay later removes the
-  held slot** — that remains its justification, unchanged. It is adopted when it lands and is
-  **not required for this round trip**; no issue here builds a cold path.
+  phrasing rested on was refuted (entry above) and the replacement is theme 5. **The cost is one
+  thing, not two: the task row and its long lease.** A parked run holds **no board worker slot** —
+  a claim this document carried through three rounds, now checked in source and withdrawn. The
+  suspended request *settles and lets go*: on `SuspensionError`,
+  `packages/engine/src/execution/runAction.ts:1503-1520` patches the record to `suspended`,
+  deregisters the abort controller and the registry entry, clears its intervals and returns. And
+  the launching board never counted the row anyway — `countWaitable` skips every row where
+  `isHandedOff` is true (`packages/orchestration/src/task-board/shared.ts:184-198`, predicate at
+  `111-119`). So the only cost is the one the lease entry above already prices: a genuinely dead
+  worker's row waits out the configured window.
+  **The two decisions interlock, and that is worth keeping:** `isHandedOff` requires
+  `!leaseLapsed`, so the row **re-enters** the board's wait count at exactly the moment the lease
+  expires. A longer lease keeps the row out of the board's way for precisely as long as the human
+  has to answer — which is what the owner's board-lease decision buys.
+  **FIX-1197's relay is therefore justified differently than this document said before.** There is
+  no held slot for it to free. What it would buy is a durable ask channel that does not depend on
+  suspension at all — and therefore no long lease on a task row and no reclaim-latency trade. That
+  is the whole claim; it should not be stated as more. It is adopted when it lands and is **not
+  required for this round trip**; no issue here builds a cold path.
 
 - **~~Does a steer resume the coding agent, or restart it?~~** *Decided: it restarts it.* Nothing
   can hand a prior SDK session id into a detached run today (FIX-1179), so an answer re-states
@@ -451,3 +478,25 @@ waits on it (theme 4).*
   4) and is **routed there rather than resolved here** — the SDK surface still uniquely carries
   `detached`, `recordWork` and the session handle. **§1's five lines are unchanged.** This epic
   still drives Claude Code only.
+- **Correction fold — two clauses of that constraint were wrong, and a cost we priced does not
+  exist.** Not a review round. A Codex review of `92028c5`, verified against the source, overturned
+  three things the entry above and its predecessors asserted. **The bound was over-drawn:** "a
+  killable subprocess" mandates discarding the only watched coding-agent path we have, and is
+  unnecessary — `sdk/agent.ts:434` already forwards `ctx.signal` into the query's
+  `abortController`. Theme 7 now requires the runner to be **cancellable under a caller-enforced
+  wall-clock deadline**, leaving *how* to each adapter. **The "process-spawn seam" conclusion is
+  withdrawn entirely**, because the alternative surface it rested on does not exist: the CLI
+  dispatch path shells out to `claude --remote`, a fire-and-forget **cloud task** with no headless
+  way to poll or stream progress (`cli/dispatch.ts:1-11`). So the in-process SDK path is the only
+  watched local path, theme 4 no longer reads as a surface fork, and **LAB-138 adds `cwd` there** —
+  an open fork would have sent its spec to evaluate an option that cannot work. **And the
+  held-board-slot cost is deleted, not reduced**: a suspended request settles and lets go
+  (`execution/runAction.ts:1503-1520`) and the board never counted the row
+  (`task-board/shared.ts:184-198`). The real cost is the task row and its lease, which §5 already
+  prices — and the two interlock, since `isHandedOff` goes false exactly when the lease lapses, so
+  the row returns to the board's wait count at the moment the human's window closes. FIX-1197's
+  relay is re-justified accordingly: not freeing a slot, but removing the dependency on suspension
+  and so the long lease. **Both corrections are the same lesson at two altitudes** — a constraint
+  that names a mechanism (`subprocess`) smuggles in an implementation, and a cost asserted without
+  the source open outlived three rounds of review. **§1's five lines are still unchanged; this fold
+  makes the epic cheaper than advertised, not different.**
