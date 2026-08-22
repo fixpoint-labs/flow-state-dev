@@ -2,9 +2,9 @@
  * Resolve a `ResourceCollectionRef` from the unified `ctx.resources` registry
  * by its accessor key.
  *
- * Hoisted to the tasks layer (from the former `skills/internal/get-collection`)
- * so both the skills runtime and the durable task-board capability share one
- * lookup without the task board importing from `skills`.
+ * Lives at the tasks layer so both the skills runtime and the durable
+ * task-board capability share one lookup without the task board importing
+ * from `skills`.
  *
  * Resolution strategy:
  *   1. Direct lookup by accessor key — `ctx.resources[key]`.

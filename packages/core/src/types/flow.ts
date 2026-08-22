@@ -115,7 +115,6 @@ export type ToolLifecycleEvent = {
 export type ToolsConfig = {
   defaults?: {
     timeoutMs?: number;
-    concurrency?: "parallel" | "serial";
     retry?: RetryPolicy;
   };
   onToolStarted?: HookHandler<ToolLifecycleEvent> | BlockDefinition<any, any>;
@@ -495,8 +494,6 @@ export type FlowDefinition<
 
   /** Org-scope equivalent of `isolateUserState`. Default: false. */
   isolateOrgState?: boolean;
-
-  defaultBlockRenderer?: unknown | false;
 };
 
 export type FlowInstanceOptions<

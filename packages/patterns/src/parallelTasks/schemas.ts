@@ -10,4 +10,4 @@ export const parallelTasksInputSchema = z.object({
   goal: z.string().describe("The goal to decompose into parallel sub-tasks")
 });
 
-export type SubTaskErrorStrategy = "skip" | "fail" | "retry";
+export type SubTaskErrorStrategy = "skip" | "fail";

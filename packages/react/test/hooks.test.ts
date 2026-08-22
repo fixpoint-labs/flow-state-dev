@@ -6,7 +6,6 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  setFlowContext,
   useAction,
   useFlow,
   useClientData,
@@ -20,7 +19,6 @@ import {
 
 afterEach(() => {
   vi.restoreAllMocks();
-  setFlowContext({});
 });
 
 describe("hook exports and types", () => {

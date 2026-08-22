@@ -92,13 +92,10 @@ export function registerRunCommand(program: Command): void {
     .option("-m, --model <model>", "Override model for generator blocks run in this process")
     .option("-s, --session <id>", "Session ID for reuse across invocations")
     .option("--seed-session <json>", "Seed session-level state (JSON or file path)")
-    .option("--seed-user <json>", "Seed user-level state (JSON or file path)")
-    .option("--seed-org <json>", "Seed org-level state (JSON or file path)")
     .option("--flow-dir <path>", "Override flow discovery root (repeatable)", collectValues, undefined)
     .option("--dotenv <path>", "Load a specific .env file, e.g. an app's (repeatable, resolved from cwd)", collectValues, undefined)
     .option("--config <path>", "Path to an fsdev config file (default: fsdev.config.{ts,mts,js,mjs} in cwd)")
     .option("--no-config", "Ignore fsdev.config.* and use directory discovery")
-    .option("--format <format>", "Output format", "json")
     .option("--quiet", "Suppress runtime logs on stderr (NDJSON on stdout still emitted)")
     .option("--log-level <level>", "Stderr log level: debug | info | warn | error (default: info)")
     .option("--capture <path>", "Write the full structured run output to a JSON file")
@@ -125,8 +122,6 @@ export interface RunCommandOptions {
   model?: string;
   session?: string;
   seedSession?: string;
-  seedUser?: string;
-  seedOrg?: string;
   flowDir?: string[];
   /** Explicit `--dotenv <path>` entries to load before the cwd `.env.local` walk-up. */
   dotenv?: string[];
@@ -135,7 +130,6 @@ export interface RunCommandOptions {
    * is `--no-config`; `true`/absent means search for `fsdev.config.*` in cwd.
    */
   config?: string | boolean;
-  format?: string;
   /** Suppress all runtime logs on stderr. */
   quiet?: boolean;
   /** Minimum runtime log level emitted to stderr (default: "info"). */
@@ -153,8 +147,6 @@ interface CapturePayload {
     model: string | null;
     session: string | null;
     seedSession: unknown;
-    seedUser: unknown;
-    seedOrg: unknown;
   };
   events: FlowEvent[];
   result: FlowRunResult & { exitCode: number };
@@ -426,8 +418,6 @@ export async function executeRunCommand(
             model: options.model ?? null,
             session: options.session ?? null,
             seedSession: options.seedSession ?? null,
-            seedUser: options.seedUser ?? null,
-            seedOrg: options.seedOrg ?? null,
           },
           events: capturedEvents,
           result: { ...runResult, exitCode },
