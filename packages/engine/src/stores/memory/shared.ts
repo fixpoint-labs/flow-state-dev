@@ -4,6 +4,7 @@ import { cloneValue as clone } from "@flow-state-dev/core/helpers";
 import type { ExpectedVersion, SetResult } from "../types";
 import {
   assertDeltaExpectedVersion,
+  assertMaxDepthTwo,
   checkScopeWriteVersion
 } from "../scope-write-predicate";
 
@@ -75,14 +76,6 @@ function checkVersion<TRecord extends { version: number }>(
     return conflict(current, current.version);
   }
   return undefined;
-}
-
-function assertMaxDepthTwo(path: string[], verb: string): void {
-  if (path.length < 1 || path.length > 2) {
-    throw new Error(
-      `${verb} supports depth-1 or depth-2 paths; received path of length ${path.length}`
-    );
-  }
 }
 
 export function patchFieldInMap<TRecord extends DeltaRecord>(

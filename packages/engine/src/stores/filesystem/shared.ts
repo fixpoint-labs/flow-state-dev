@@ -5,6 +5,7 @@ import { sortByUpdatedAtDesc } from "../../utils/sort";
 import type { ExpectedVersion, SetResult } from "../types";
 import {
   assertDeltaExpectedVersion,
+  assertMaxDepthTwo,
   checkScopeWriteVersion
 } from "../scope-write-predicate";
 
@@ -555,12 +556,4 @@ export function createFilesystemRecordStore<
   };
 
   return record;
-}
-
-function assertMaxDepthTwo(path: string[], verb: string): void {
-  if (path.length < 1 || path.length > 2) {
-    throw new Error(
-      `${verb} supports depth-1 or depth-2 paths; received path of length ${path.length}`
-    );
-  }
 }

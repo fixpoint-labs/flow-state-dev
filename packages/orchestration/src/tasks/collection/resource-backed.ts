@@ -103,6 +103,7 @@ import {
   assertValidLeaseDuration,
   buildInitialTask,
   claimDisposition,
+  createTaskChangeEmitter,
   createTaskHandleWrapper,
   DEFAULT_LEASE_DURATION_MS,
   DEFAULT_MAX_ABANDONMENTS,
@@ -355,7 +356,6 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
   options: ResourceBackedOptions
 ): Promise<TaskCollectionRef<TInput, TOutput>> {
   const now = options.now ?? Date.now;
-  const onChange = options.onChange;
   const wrap = createTaskHandleWrapper<TInput, TOutput>(
     options.collectionId,
     options.getItems,
@@ -373,20 +373,10 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
   const mirror = sharedTaskSet(options.collection);
   await reconcileTaskSet(mirror, options.collection);
 
-  function emit(
-    kind: TaskChangeKind,
-    task: Task<TInput, TOutput>,
-    prevStatus?: TaskStatus
-  ): void {
-    if (onChange === undefined) return;
-    onChange({
-      collectionId: options.collectionId,
-      taskId: task.id,
-      kind,
-      task: task as Task,
-      prevStatus,
-    });
-  }
+  const emit = createTaskChangeEmitter<TInput, TOutput>(
+    options.collectionId,
+    options.onChange,
+  );
 
   function listAll(): Task<TInput, TOutput>[] {
     return Array.from(mirror.values()).map((ref) =>
