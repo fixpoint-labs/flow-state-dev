@@ -141,7 +141,7 @@ const CONTAINER_MANAGED_TYPES = new Set([
   "tool_output",
 ]);
 
-// Mirrors `@flow-state-dev/core/items/resolve-visibility.ts` — inlined
+// Mirrors `@flow-state-dev/contracts/items/resolve-visibility` — inlined
 // because this package may only import types from core.
 const TRACE_TYPES = new Set(["block_trace", "router_decision", "state_snapshot"]);
 const CONVERSATIONAL_TYPES = new Set(["message", "reasoning", "tool_output"]);
