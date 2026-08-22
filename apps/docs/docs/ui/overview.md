@@ -69,7 +69,7 @@ import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 </FlowProvider>
 ```
 
-You can override individual entries (`{ ...chatAssistantRenderers, component: { plan: false } }`) or replace the whole map.
+You can override individual entries (`{ ...chatAssistantRenderers, component: { ...chatAssistantRenderers.component, "task-board-meta": false } }`) or replace the whole map. Spread the existing `component` map first so the other keyed renderers stay.
 
 ## Architecture
 
