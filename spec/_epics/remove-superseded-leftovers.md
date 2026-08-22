@@ -39,9 +39,9 @@ A cut earns its place only as a **superseded alias** (a second name for somethin
 has a canonical name), a **dead knob** (an option no code reads), a **lying knob** (an option
 that *is* read, but only into something that reports it back, while doing nothing it
 promises), a **retired experiment** (the successor already shipped), an **internal
-duplicate**, or an **unused internal** surface. Everything else stays. Applying that rule is what turned the original 266-file pass
-from a public-API purge into a leftover cut, and it is the single thing most likely to be got
-wrong on a follow-up sweep.
+duplicate**, or an **unused internal** surface. Everything else stays. Applying that rule is
+what turned the original 266-file pass from a public-API purge into a leftover cut, and it is
+the single thing most likely to be got wrong on a follow-up sweep.
 
 **Proof, and it is not the same proof for every cut.** An earlier draft of this line said the
 evidence was *a grep showing no live referent, **or** a successor* — and that `or` is the bug.
