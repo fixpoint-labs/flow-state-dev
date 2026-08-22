@@ -2,4 +2,4 @@
 "@flow-state-dev/orchestration": patch
 ---
 
-Add `resolveCatalogTools` so skills and workforce share one catalog-key lookup instead of two copies of the same warn-and-skip loop (FIX-1211).
+New export `resolveCatalogTools(agentKey, toolKeys, catalog, logPrefix)` resolves an agent's `tools:` list against a tool catalog, warning and skipping keys the catalog doesn't hold rather than throwing. (FIX-1211)
