@@ -47,7 +47,7 @@ Find the flow definition and its blocks:
    - Which actions are defined
    - The root block for the target action (sequencer, generator, handler, or router)
    - What state schemas are declared (session, request, user, project)
-   - What resources and clientData are configured
+   - What resources and scope `client` projections are configured
 3. Read each block referenced by the action's root block
 4. For sequencers, trace the full `.step()` chain to understand the execution order
 

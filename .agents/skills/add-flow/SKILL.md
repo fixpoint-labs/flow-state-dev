@@ -29,7 +29,7 @@ Before writing, read at least one existing flow:
 | Flow | What to learn from it |
 |------|----------------------|
 | `examples/hello-chat/src/flows/hello-chat/flow.ts` | Minimal single-action flow, session state, userMessage, history |
-| `apps/kitchen-sink/flows/chat-agent/` | Multi-action flow, resources, clientData, capabilities |
+| `apps/kitchen-sink/flows/chat-agent/` | Multi-action flow, resources, scope `client` projections, capabilities |
 
 Also read:
 - `docs/architecture/flows-and-actions.md` — Flow definition contract
@@ -57,7 +57,7 @@ src/flows/<flow-kind>/
 
 3. **Resources vs state**: Resources are named, typed data containers with their own schemas. Use resources for structured entities (plans, artifacts, documents). Use scope state for scalar/simple values (counters, modes, flags).
 
-4. **Client data**: The sole gateway for exposing data to the frontend. Each `clientData` entry computes a view from state + resources.
+4. **Client data**: The sole gateway for exposing data to the frontend. Declare it as `client: { derived, expose }` on the scope — each `derived` entry computes a view from state + resources, and `expose` passes named state keys through verbatim. (The wire shape the frontend reads is still `snapshot.clientData.<scope>.<name>`.)
 
 ### Step 4: Write the Flow
 
@@ -202,13 +202,15 @@ Derived views for the frontend — computed from scope state and resources:
 session: {
   stateSchema: sessionStateSchema,
   resources: { plan: planResource },
-  clientData: {
-    activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
-    mode: (ctx) => ctx.state.mode,
-    stats: (ctx) => ({
-      messageCount: ctx.state.messageCount,
-      planStepCount: ctx.resources.plan?.state.steps.length ?? 0,
-    }),
+  client: {
+    derived: {
+      activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
+      mode: (ctx) => ctx.state.mode,
+      stats: (ctx) => ({
+        messageCount: ctx.state.messageCount,
+        planStepCount: ctx.resources.plan?.state.steps.length ?? 0,
+      }),
+    },
   },
 },
 ```
