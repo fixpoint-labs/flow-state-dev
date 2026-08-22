@@ -615,6 +615,51 @@ describe("the settled-for-less-than-seen lead — states staleness, not disagree
     expect(text).not.toContain("do NOT describe the same fiscal period");
     expect(text).toContain(ANCHOR);
   });
+
+  it("does NOT carry the mix-fiscal-periods justification — the three periods are not mixed here", () => {
+    // The lead is only half the block. On this reason the three statements
+    // agree on ONE period, so "it would mix fiscal periods" is false here even
+    // though it is true on the other two reasons — the same class of defect the
+    // lead sentence fixed, one level down in the same block.
+    const text = formatPeriodMismatch({
+      reason: "settled-for-less-than-seen",
+      income: OLDER,
+      balance: OLDER,
+      cashflow: OLDER,
+      observedNewest: ANCHOR,
+    });
+    expect(text).not.toContain("it would mix fiscal periods");
+    expect(text).not.toContain("Figures WITHIN a");
+    // Still withholds — the instruction not to compute the cross-statement
+    // ratio survives, only the "because" changes.
+    expect(text).toMatch(/Do NOT compute any ratio/);
+  });
+});
+
+describe("the mix-fiscal-periods justification is unchanged on the other two reasons", () => {
+  // The control this fix needs: a rewrite that flattened all three reasons'
+  // justification into one message would pass the arm above and fail here.
+  it("periods-disagree still carries the original justification", () => {
+    const text = formatPeriodMismatch({
+      reason: "periods-disagree",
+      income: ANCHOR,
+      balance: OLDER,
+      cashflow: ANCHOR,
+    });
+    expect(text).toContain("it would mix fiscal periods");
+    expect(text).toContain("Figures WITHIN a");
+  });
+
+  it("period-unstated still carries the original justification", () => {
+    const text = formatPeriodMismatch({
+      reason: "period-unstated",
+      income: ANCHOR,
+      balance: null,
+      cashflow: ANCHOR,
+    });
+    expect(text).toContain("it would mix fiscal periods");
+    expect(text).toContain("Figures WITHIN a");
+  });
 });
 
 describe("control arms — the analyst site does not simply withhold more", () => {

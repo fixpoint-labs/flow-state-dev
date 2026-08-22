@@ -196,16 +196,41 @@ export function formatPeriodMismatch(disclosure: PeriodDisclosure | null): strin
       : disclosure.reason === "settled-for-less-than-seen"
         ? `The three financial statements below agree on a fiscal period, but the desk saw a more recent one (${disclosure.observedNewest ?? "a newer period"}) and settled for this older one instead — the set is STALE, not in disagreement:`
         : "The three financial statements below do NOT describe the same fiscal period:";
+  // THE JUSTIFICATION TRACKS THE REASON TOO — the lead sentence is not the
+  // only claim in this block. "It would mix fiscal periods" is true on
+  // `periods-disagree` and `period-unstated` (an unknown or clashing period
+  // entering a comparison with a known one), but false on
+  // `settled-for-less-than-seen`: there the three statements sit at ONE
+  // period, so a cross-statement ratio mixes nothing. The real risk on that
+  // path is staleness, not disagreement, so the reason for withholding is
+  // "this would present a superseded figure as current," not "this would mix
+  // periods" — and "Figures WITHIN a single statement are fine" is dropped
+  // rather than kept: it is technically true (the desk does compute them) but
+  // beside the point about risk, since a within-statement figure here is
+  // exactly as stale as a cross-statement one. Keeping it would read as
+  // reassurance the staleness case does not earn.
+  const justification =
+    disclosure.reason === "settled-for-less-than-seen"
+      ? [
+          "Do NOT compute any ratio that divides a figure from one of these statements",
+          "by a figure from another — every one of them is drawn from the STALE period,",
+          "not the newer one the desk saw, so the ratio would present a superseded",
+          "figure as current. The desk has already withheld its own cross-statement",
+          "figures for this reason; say so rather than filling the gap.",
+        ]
+      : [
+          "Do NOT compute any ratio that divides a figure from one of these statements",
+          "by a figure from another — it would mix fiscal periods. Figures WITHIN a",
+          "single statement are fine. The desk has already withheld its own",
+          "cross-statement figures for this reason; say so rather than filling the gap.",
+        ];
   return [
     "<periodMismatch>",
     lead,
     `  income statement: ${disclosure.income ?? "no period stated"}`,
     `  balance sheet:    ${disclosure.balance ?? "no period stated"}`,
     `  cash flow:        ${disclosure.cashflow ?? "no period stated"}`,
-    "Do NOT compute any ratio that divides a figure from one of these statements",
-    "by a figure from another — it would mix fiscal periods. Figures WITHIN a",
-    "single statement are fine. The desk has already withheld its own",
-    "cross-statement figures for this reason; say so rather than filling the gap.",
+    ...justification,
     "</periodMismatch>",
   ].join("\n");
 }
