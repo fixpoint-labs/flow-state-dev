@@ -294,11 +294,12 @@ import {
   createLLMEvaluator,           // LLM-based evaluator
   createCaptureAndPlan,         // entry sequencer (set state, plan, seed collection)
   createApplyReplan,            // adds replanner output to the collection
-  createCascadeSkipDependents,  // cancels pendings blocked on errored deps
   createSynthesize,             // builds the legacy plan output + optional synthesizer
   createBuildPlanOutput,        // just the substrate→legacy translation
   normalizeOutputStatus,        // substrate status → legacy status helper
 } from "@flow-state-dev/patterns";
+
+import { createCascadeSkipDependents } from "@flow-state-dev/orchestration/task-board";
 ```
 
 Use these when you want the core task-tracking machinery but with custom orchestration around it.

@@ -54,7 +54,7 @@ import { whenAnyItem } from "@flow-state-dev/core/items";
 
 pipeline.waitForCondition(
   whenAnyItem(
-    (item) => item.type === "component" && item.componentType === "task-change"
+    (item) => item.type === "component" && item.component === "task-change"
   ),
   { timeoutMs: 5_000 }
 );
@@ -144,18 +144,23 @@ A filter that throws is caught at the emitter boundary and the listener still fi
 
 ### Example
 
-Pair the task-board claim predicate with the task-change wake filter:
+Pair a task-change predicate with the collection wake filter:
 
 ```ts
 import { sequencer } from "@flow-state-dev/core";
-import { whenBoardClaimable } from "@flow-state-dev/orchestration/task-board";
+import { whenAnyItem } from "@flow-state-dev/core/items";
 import { onTaskChangeFor } from "@flow-state-dev/orchestration";
 
 sequencer({ name: "idle-wait" })
-  .waitForCondition(whenBoardClaimable(collection), {
-    timeoutMs: 5_000,
-    wakeOn: onTaskChangeFor(collection.collectionId),
-  });
+  .waitForCondition(
+    whenAnyItem(
+      (item) => item.type === "component" && item.component === "task-change"
+    ),
+    {
+      timeoutMs: 5_000,
+      wakeOn: onTaskChangeFor("research"),
+    },
+  );
 ```
 
 `resource_change`, `block_trace`, and `task-change` items targeting other collections are filtered out before the predicate runs.

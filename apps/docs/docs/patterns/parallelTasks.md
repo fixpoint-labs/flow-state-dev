@@ -102,8 +102,7 @@ parallelTasks({
   // How to handle individual sub-task failures:
   //   "skip"  — exclude failed sub-tasks from synthesis (default)
   //   "fail"  — abort the entire coordination on any failure
-  //   "retry" — treated as "skip" with a construction-time warning
-  onSubTaskError?: "skip" | "fail" | "retry";
+  onSubTaskError?: "skip" | "fail";
 
   // Output schema for the synthesized result.
   // Passed to the default combiner when no custom synthesizer is provided.
@@ -135,7 +134,7 @@ import {
 
 import type {
   ParallelTasksConfig,
-  SubTaskErrorStrategy,  // "skip" | "fail" | "retry"
+  SubTaskErrorStrategy,  // "skip" | "fail"
 } from "@flow-state-dev/patterns";
 ```
 
@@ -191,7 +190,7 @@ By default (`onSubTaskError: "skip"`), failed sub-tasks are excluded from the sy
 
 With `onSubTaskError: "fail"`, any sub-task failure throws and aborts the entire coordination.
 
-`onSubTaskError: "retry"` is not supported and behaves as `"skip"` with a one-time construction warning.
+Bound retries with `maxTotalRetries`, or set `maxAttempts` on each planned task.
 
 ## Composability
 
