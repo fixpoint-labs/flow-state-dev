@@ -101,17 +101,27 @@ function spineFor(periodDisclosure: PeriodDisclosure | null) {
   });
 }
 
-/** The shipped preset's context slots — not a reconstruction of them. */
-const slots = (tradingDesk as unknown as {
+/**
+ * The shipped preset's context slots — not a reconstruction of them.
+ *
+ * Array-form, not an object map: both formatters self-wrap their own tag
+ * (`formatValuationSpine` carries `ticker`/`asOf` attributes an object-form
+ * key's auto-wrap can't express), so object-form here would double-wrap and
+ * escape the inner tag — the same defect class `periodMismatch` had. See the
+ * capability's own comment on `valuationSpine`.
+ */
+const contextEntries = (tradingDesk as unknown as {
   __presetDefs: {
     valuationSpine: {
-      context: {
-        valuationSpine: (input: unknown, ctx: unknown) => string | null;
-        ratingEnvelope: (input: unknown, ctx: unknown) => string | null;
-      };
+      context: Array<(input: unknown, ctx: unknown) => string | null>;
     };
   };
 }).__presetDefs.valuationSpine.context;
+
+const slots = {
+  valuationSpine: contextEntries[0],
+  ratingEnvelope: contextEntries[1],
+};
 
 /** Only `ctx.resources.valuationSpine?.state` is read by these two slots. */
 const ctxFor = (state: unknown) => ({

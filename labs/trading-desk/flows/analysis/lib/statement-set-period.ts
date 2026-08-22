@@ -283,13 +283,19 @@ export function formatPeriodMismatch(disclosure: PeriodDisclosure | null): strin
       break;
   }
 
+  // NO hand-rolled tag here. This string is handed to the generator's
+  // object-form context under the `periodMismatch` key, which the runtime
+  // wraps in its own `<period-mismatch>` tag (`aggregateContextEntries` +
+  // `renderTaggedContext`, `packages/core`) AND escapes as a string leaf
+  // (`<`/`>`/`&`) — a `<periodMismatch>` written here would render as inert,
+  // escaped text (`&lt;periodMismatch&gt;`) beside the real, unescaped
+  // `<period-mismatch>` tag the renderer emits. Confirmed by rendering, not
+  // by reasoning: see the fixture round that found this.
   return [
-    "<periodMismatch>",
     lead,
     `  income statement: ${disclosure.income ?? "no period stated"}`,
     `  balance sheet:    ${disclosure.balance ?? "no period stated"}`,
     `  cash flow:        ${disclosure.cashflow ?? "no period stated"}`,
     ...justification,
-    "</periodMismatch>",
   ].join("\n");
 }

@@ -635,13 +635,24 @@ export const tradingDesk = defineCapability({
      *  and research manager. Bull/bear stay blind. */
     valuationSpine: {
       resources: { valuationSpine: valuationSpineResource },
-      context: {
-        valuationSpine: (_input, ctx) => {
+      // Context is an ARRAY of verbatim (bare-string-returning) entries, NOT an
+      // object map (the `corroborate` precedent above). Both formatters
+      // self-wrap their own tag — `formatValuationSpine` carries `ticker`/
+      // `asOf` ATTRIBUTES the auto-wrap has no way to express from an
+      // object-form key — so object-form here would double-wrap the tag AND
+      // escape the inner literal `<`/`>`, leaving every prompt that reads
+      // `<valuationSpine>` / `<ratingEnvelope>` (trader, risk-assessment,
+      // research-manager, PM, lenses) pointed at a tag the model never
+      // receives. Confirmed by rendering, not by reasoning — the same defect
+      // class as the `periodMismatch` context key, found while sweeping for
+      // it.
+      context: [
+        (_input, ctx) => {
           const spine = ctx.resources.valuationSpine?.state;
           if (!spine) return null;
           return formatValuationSpine(spine);
         },
-        ratingEnvelope: (_input, ctx) => {
+        (_input, ctx) => {
           const spine = ctx.resources.valuationSpine?.state;
           // The ENVELOPE, not just the spine (FIX-1113). A spine that withheld
           // its cross-statement outputs carries `envelope: null`, and
@@ -657,7 +668,7 @@ export const tradingDesk = defineCapability({
           if (!spine?.envelope) return null;
           return formatRatingEnvelope(spine.envelope);
         },
-      },
+      ],
     },
 
     /** Live-portfolio context for the trader (P3) and PM (P5). Reads the frozen
