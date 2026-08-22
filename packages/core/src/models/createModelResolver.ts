@@ -24,6 +24,7 @@ import {
   extractProviderName,
   INTENT_NAME_REGEX,
   canonicalizeIntentName,
+  GATEWAY_ENV_VARS,
 } from "./providerDetection";
 import { createFallbackModel, type FallbackModelEntry } from "./fallbackModel";
 import { wrapAiSdkModel } from "./createAiSdkModelResolver";
@@ -118,12 +119,6 @@ const PROVIDER_PACKAGES: Record<string, { pkg: string; factory: string }> = {
 const GATEWAY_PACKAGES: Record<string, { pkg: string; factory: string }> = {
   vercel: { pkg: "@ai-sdk/gateway", factory: "createGateway" },
   openrouter: { pkg: "@openrouter/ai-sdk-provider", factory: "createOpenRouter" },
-};
-
-/** Env-var name that supplies the API key for each known gateway. */
-const GATEWAY_ENV_VARS: Record<string, string> = {
-  vercel: "AI_GATEWAY_API_KEY",
-  openrouter: "OPENROUTER_API_KEY",
 };
 
 const _require = createRequire(import.meta.url);
