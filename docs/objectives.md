@@ -58,7 +58,7 @@ Ship working examples and integrations that exercise the framework end-to-end. S
 Focus on capabilities that other frameworks handle poorly or not at all:
 - Structured multi-block workflows with typed state flow between blocks
 - Resumable streaming with sequence-number-based reconnection
-- Scoped state management (session, user, project) with CAS consistency
+- Scoped state management (session, user, org) with CAS consistency
 - Block-level retry, rescue routing, and error normalization
 - Composable sequencer/router patterns with declarative DSL
 

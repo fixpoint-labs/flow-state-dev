@@ -15,22 +15,23 @@ pnpm add @flow-state-dev/store-sqlite
 ## Usage
 
 ```ts
-import { createSQLiteStores } from "@flow-state-dev/store-sqlite";
+import { createFlowState } from "@flow-state-dev/engine";
+import { createSQLiteStores, sqliteStores } from "@flow-state-dev/store-sqlite";
+import supportDesk from "./flows/support-desk";
 
-// File-based (persistent)
-const stores = createSQLiteStores({ filename: "./data/flowstate.db" });
+const flowstate = createFlowState({
+  flows: { supportDesk },
+  stores: {
+    default: {
+      primary: sqliteStores({ filename: "./data/flowstate.db" }),
+    },
+  },
+});
 
 // In-memory (testing)
 const testStores = createSQLiteStores({ filename: ":memory:" });
 
-// Use as a drop-in replacement for createInMemoryStores()
-const server = createFlowServer({
-  stores,
-  // ...
-});
-
-// Close when done
-stores.close();
+testStores.close();
 ```
 
 ## Configuration
