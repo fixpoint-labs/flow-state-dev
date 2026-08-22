@@ -457,11 +457,13 @@ export async function createExecutionContext<
   // value exists.
   const transientStateChanges = !shouldPersistScopeChange(flow);
   // Per-mutation budget for in-memory state writes (target / sequencer /
-  // any scope without a `persist` callback) and for request-scope persist
-  // (`serialize: true`). Plumbed through so the lock branch can fire
-  // ScopeMutationTimeoutError instead of hanging the request. Session /
-  // user / org persist still ignore it — runWithCAS owns its own retry
-  // semantics.
+  // any scope without a `persist` callback). Plumbed through to those
+  // scopes so the lock branch can fire ScopeMutationTimeoutError instead
+  // of hanging the request. Deliberately NOT handed to any persist-backed
+  // scope: the timeout rejects the caller without cancelling the mutation,
+  // so applying it to a durable write lets an abandoned closure land on the
+  // store after the request has already terminalized. `applyMutation`
+  // enforces that too — this is the call site staying honest about it.
   const resolvedMutationTimeoutMs =
     flow.request?.mutationTimeoutMs ?? 30_000;
   // FIX-435: resources live in a single flat `flow.resources` map. Each
@@ -1957,7 +1959,6 @@ export async function createExecutionContext<
 
   const requestOps = createScopeStateOps(requestContainer, {
     serialize: true,
-    mutationTimeoutMs: resolvedMutationTimeoutMs,
     persist: createScopePersist<TRequestState, RequestRecord>(
       requestRef,
       stores.request,

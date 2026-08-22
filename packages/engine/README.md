@@ -843,7 +843,9 @@ Every state mutator (`patchState`, `pushState`, `incState`, `setStateRecord`, `d
 - **Request scope** — persists each write (so `/continue` can restore it) and still serializes through `withScopeLock`. A wide same-process fan-out does not throw `ConcurrentModificationError`. A persist conflict is unexpected and still throws.
 - **Session, user, and org scopes** — bridged through `persist` (filesystem, sqlite, postgres) and the optimistic `runWithCAS` retry loop, because a remote authority can advance the version underneath the local cache. `ConcurrentModificationError` still surfaces on retry exhaustion at this boundary.
 
-`flow.request.mutationTimeoutMs` (default `30_000`, set to `Infinity` to disable) bounds the worst-case wait for in-memory mutations and for request-scope persist. When a mutator's queue wait + execution exceeds the budget, the call rejects with `ScopeMutationTimeoutError` instead of hanging the request indefinitely.
+`flow.request.mutationTimeoutMs` (default `30_000`, set to `Infinity` to disable) bounds the worst-case wait for any in-memory mutation. When a mutator's queue wait + execution exceeds the budget, the call rejects with `ScopeMutationTimeoutError` instead of hanging the request indefinitely.
+
+The budget covers in-memory scopes only. It is not applied to any scope that persists — request scope included. The timeout rejects the caller without cancelling the mutation, so a write that outran it would still reach the store afterwards, landing on a record the runtime may already have finished with. A bounded error is worth having where the only casualty is the caller; it is not worth having where the casualty is the stored record.
 
 ```ts
 defineFlow({

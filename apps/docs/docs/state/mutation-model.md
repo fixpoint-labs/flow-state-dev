@@ -4,29 +4,33 @@ sidebar_position: 1
 
 # State mutation model
 
-Every scope's state mutators (`patchState`, `pushState`, `incState`, `setStateRecord`, `deleteStateRecord`, `atomicState`) route through one of two paths inside the runtime. The right primitive depends on whether anything outside this Node.js process can advance the version underneath you.
+Every scope's state mutators (`patchState`, `pushState`, `incState`, `setStateRecord`, `deleteStateRecord`, `atomicState`) route through one of three paths inside the runtime. Two questions pick the path: does the scope write to a store at all, and can anything outside this Node.js process advance the version underneath you.
 
 Read-only instance config is also available on the context as `ctx.settings` — see [Engine setup → Settings](/docs/server/setup#settings).
 
-## Two-tier dispatch
+## Three write paths
 
 ```
-                     applyMutation(container, options, mutator)
-                                  │
-                    ┌─────────────┴──────────────┐
-                    │  options.persist defined?  │
-                    └─────────────┬──────────────┘
-                                  │
-              ┌──── no ───────────┴────── yes ────┐
-              ▼                                   ▼
-    withScopeLock — FIFO queue            runWithCAS — retry loop
-    per StateContainer,                   with exponential backoff,
-    no version checks,                    version-checked persist,
-    no retries,                           may throw
-    may throw ScopeMutationTimeoutError   ConcurrentModificationError
+       applyMutation(container, options, mutator)
+                           │
+  ┌────────────────────────┼────────────────────────┐
+  ▼                        ▼                        ▼
+  no persist               request scope            session / user / org
+  │                        │                        │
+  withScopeLock — a FIFO   withScopeLock, then one  runWithCAS — a retry loop
+  queue per container.     version-checked persist  with exponential backoff
+  No version check, no     under the same lock.     and a version-checked
+  retries.                 One write, no retries.   persist. Retries on
+                                                    conflict.
 ```
 
-The dispatch is internal to `applyMutation`. Callers see the same `ScopeStateOps` API regardless of which path runs.
+The dispatch is internal to `applyMutation`. Callers see the same `ScopeStateOps` API regardless of which path runs. What each path can raise:
+
+| Path | Raises |
+|---|---|
+| No persist | `ScopeMutationTimeoutError` when queue wait + execution outruns `mutationTimeoutMs` |
+| Request scope | `ConcurrentModificationError` on a persist conflict, which is not expected here |
+| Session / user / org | `ConcurrentModificationError` when the retry budget exhausts |
 
 ### In-memory scopes use a FIFO queue
 
@@ -36,11 +40,19 @@ In a single-process Node.js runtime, the only race vector for these mutators is 
 
 The lock branch never throws `ConcurrentModificationError`. There is no version conflict to retry, because there is no remote authority that could advance the version.
 
-### External-store scopes still use CAS
+### Request scope serializes, then persists
 
-`request`, `session`, `user`, and `org` scopes that bridge through a `persist` callback (filesystem, sqlite, postgres adapters) keep the optimistic CAS path. The remote authority — another connection pool, another process, the durable file lock — can advance the stored version while we hold a stale read. CAS is exactly the primitive for that: read the version, mutate locally, persist with `expectedVersion`, retry on conflict.
+Request state is written to the store on every mutation, so a paused request can restore it on `/continue`. But a request record has exactly one writer — the request itself, in one process. Nothing remote is moving that version, so there is no race for optimistic concurrency to detect, and a retry budget only gets in the way.
 
-`ConcurrentModificationError` continues to surface from these paths when retries exhaust. That's the contract: if you write through `persist` and the remote authority moves faster than your retry budget, you need to either widen the budget or restructure to avoid the contention.
+So request scope takes the queue and the store write both: mutators serialize through the same per-container lock the in-memory scopes use, and the winner persists once while it still holds the lock. Writers land in submission order, one version bump each. A fan-out of concurrent writers wider than any retry budget still commits every write.
+
+A persist conflict here means something the runtime does not expect — a second writer on a record that should have only one — so it is reported rather than retried, as `ConcurrentModificationError`.
+
+### Session, user, and org scopes use CAS
+
+These scopes bridge through a `persist` callback (filesystem, sqlite, postgres adapters) and keep the optimistic CAS path. The remote authority — another connection pool, another process, the durable file lock — can advance the stored version while we hold a stale read. CAS is exactly the primitive for that: read the version, mutate locally, persist with `expectedVersion`, retry on conflict.
+
+`ConcurrentModificationError` surfaces from these paths when retries exhaust. That's the contract: if the remote authority moves faster than your retry budget, you need to either widen the budget with `cas` on the scope or restructure to avoid the contention.
 
 ### The resource state store is versioned too
 
@@ -74,7 +86,7 @@ Both refusals are final rather than retried. A retry could only re-apply what yo
 
 One thing that is deliberately *not* an error: touching a resource that has never been stored. A resource you declared but never wrote exists so far only as its schema default, and a write to it that changes nothing is a no-op, not a report that something was deleted.
 
-Those two cases are why resource state has its own retry driver rather than sharing the one the four scopes use. The scope driver treats every conflict as retryable, which is correct when the only thing a conflict can mean is "somebody else moved this value." Resource state has two conflicts that mean something else — the key is gone, and the key is already taken — and retrying either produces exactly the write the version check was there to stop. Resource writes also run under the same two-tier dispatch the scopes use: a per-key queue orders one context's writes to a resource so they never contend with each other, and the compare-and-swap underneath handles the contexts the queue cannot see.
+Those two cases are why resource state has its own retry driver rather than sharing the one the four scopes use. The scope driver treats every conflict as retryable, which is correct when the only thing a conflict can mean is "somebody else moved this value." Resource state has two conflicts that mean something else — the key is gone, and the key is already taken — and retrying either produces exactly the write the version check was there to stop. Resource writes also pair a queue with a version check, the way request scope does: a per-key queue orders one context's writes to a resource so they never contend with each other, and the compare-and-swap underneath handles the contexts the queue cannot see.
 
 Writing a value the resource already holds still skips the write and emits no change event — but only once the runtime has re-read the key and confirmed your version is current. If the version moved, that is a conflict, not a no-op: the value you are writing happens to equal a stale cache, and suppressing it there would be the silent lost update this whole model exists to prevent.
 
@@ -148,7 +160,9 @@ When a mutator's queue wait + execution exceeds the budget, the call rejects wit
 
 The timeout is a bounded-error safety net, not a cancellation primitive. The in-flight mutator keeps running after the caller's promise rejects; if it eventually returns, the lock still commits its result and bumps the version. So a caller that retries on `ScopeMutationTimeoutError` may end up applying the mutation twice. If you need at-most-once semantics, write idempotent mutators (e.g. set/replace, not increment) or guard the retry on top.
 
-Set to `Infinity` to disable. The CAS path ignores the option; `runWithCAS` uses its own retry/timeout semantics at the durable boundary.
+That is also why the budget stops at in-memory scopes. It is not applied to request, session, user, or org — anything that writes to a store. A write the caller has given up on is still able to reach the store, and by the time it gets there the runtime may have finished the request and written its final status. Letting the abandoned write land on top of that would replace a finished record with a stale one. An error you can catch is worth having when the cost of the timeout is a rejected call; it isn't when the cost is the stored record.
+
+Set to `Infinity` to disable.
 
 ## Lock semantics
 

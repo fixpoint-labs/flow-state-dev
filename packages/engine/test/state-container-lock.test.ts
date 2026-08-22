@@ -301,6 +301,37 @@ describe("applyMutation — persist + serialize (request-scope) branch", () => {
     expect(persistCount()).toBe(N);
   });
 
+  it("ignores mutationTimeoutMs so an abandoned caller cannot leave a write in flight", async () => {
+    // `withScopeLock`'s timeout rejects the caller but does NOT cancel the
+    // mutation. On a durable path that is a corruption primitive, not a
+    // safety net: the caller gives up, the runtime terminalizes the request,
+    // and the closure it abandoned persists afterwards. The serialize branch
+    // must therefore drop the option rather than honor it.
+    type State = { count: number };
+    const container = createStateContainer<State>({ count: 0 }, 0);
+
+    let persistStarted = 0;
+    const persist: CASPersist<State> = async (state) => {
+      persistStarted += 1;
+      await new Promise<void>((resolve) => setTimeout(resolve, 60));
+      return { ok: true, version: 1, record: state };
+    };
+
+    const ops = createScopeStateOps<State>(container, {
+      persist,
+      serialize: true,
+      mutationTimeoutMs: 10
+    });
+
+    // Pre-fix this rejects at 10ms while `persist` keeps running to 60ms.
+    await expect(
+      ops.atomicState((state) => ({ count: state.count + 1 }))
+    ).resolves.toBe(true);
+
+    expect(persistStarted).toBe(1);
+    expect(container.read().count).toBe(1);
+  });
+
   it("preserves FIFO order and skips persist on no-op writes when serialize is set", async () => {
     type State = { values: number[] };
     const container = createStateContainer<State>({ values: [] }, 0);
@@ -401,6 +432,85 @@ describe("scope write-path wiring — createExecutionContext", () => {
     // request reads its state back from there.
     const saved = await stores.request.get("req_fanout");
     expect(saved?.state).toEqual({ count: N });
+  });
+
+  it("does not put request-scope durable writes on the non-cancelling mutation timeout", async () => {
+    // The timeout rejects the caller and leaves the mutation running. On a
+    // durable path that hands the store a write nobody is waiting for any
+    // more, and `runAction` terminalizes as soon as the caller's rejection
+    // reaches it. This case plays that sequence out against the real wiring:
+    // a slow store `set`, a tiny budget, then the terminal patch runAction
+    // writes on its failure path. Wire the timeout into `requestOps` and the
+    // request comes back from `failed` to `in_progress` with its pre-write
+    // state.
+    const stores = createInMemoryStores();
+    const realSet = stores.request.set.bind(stores.request);
+    let delayNextSetMs = 0;
+    stores.request.set = async (id, value, expectedVersion) => {
+      const delay = delayNextSetMs;
+      delayNextSetMs = 0;
+      if (delay > 0) {
+        await new Promise<void>((resolve) => setTimeout(resolve, delay));
+      }
+      return realSet(id, value, expectedVersion);
+    };
+
+    const flow = defineFlow({
+      kind: "slow-store-request-flow",
+      // Small enough that the store write below cannot finish inside it.
+      request: { mutationTimeoutMs: 20 },
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.string() }),
+          block: fanOutBlock()
+        }
+      }
+    })();
+
+    const requestId = "req_slow_store";
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId,
+      sessionId: "sess_slow_store",
+      userId: "user_slow_store",
+      stores,
+      requestState: { count: 0 }
+    });
+
+    delayNextSetMs = 80;
+    const write = ctx.request.atomicState((state) => ({
+      count: ((state as { count?: number }).count ?? 0) + 1
+    }));
+    const outcome = await write.then(
+      () => "settled" as const,
+      (error: unknown) => error
+    );
+
+    // runAction's terminal patch, verbatim in shape: read the record, stamp
+    // the status, write it back with "any". It carries the record's existing
+    // version, so it leaves the version the abandoned write expects intact.
+    const beforeTerminal = await stores.request.get(requestId);
+    const failedAt = Date.now();
+    await stores.request.set(
+      requestId,
+      {
+        ...beforeTerminal!,
+        status: "failed",
+        failedAtMs: failedAt,
+        updatedAt: failedAt
+      },
+      "any"
+    );
+
+    // Long enough for anything still in flight to land on top of it.
+    await new Promise<void>((resolve) => setTimeout(resolve, 120));
+
+    const after = await stores.request.get(requestId);
+    expect(after?.status).toBe("failed");
+    expect(after?.failedAtMs).toBe(failedAt);
+    expect(after?.state).toEqual({ count: 1 });
+    expect(outcome).toBe("settled");
   });
 
   it("session scope stays on CAS and still surfaces ConcurrentModificationError", async () => {

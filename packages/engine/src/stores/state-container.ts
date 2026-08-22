@@ -7,8 +7,9 @@
  *     commit `version + 1` directly, and never throw
  *     `ConcurrentModificationError`.
  *   - Request-scope persist (`persist` + `serialize`) holds the same lock
- *     across mutate and persist. One write, no retry budget. A persist
- *     conflict is unexpected and throws `ConcurrentModificationError`.
+ *     across mutate and persist. One write, no retry budget, and no
+ *     mutation timeout. A persist conflict is unexpected and throws
+ *     `ConcurrentModificationError`.
  *   - Session/user/org persist (`persist` without `serialize`) drives
  *     `runWithCAS`. A successful or conflicting persist refreshes the
  *     container via `container.commit(state, version)`; CAS still owns
@@ -112,9 +113,18 @@ export type ScopeStateOpsOptions<TState extends object> = {
    * Total budget for an in-memory mutation (queue wait + execution). Throws
    * `ScopeMutationTimeoutError` when exceeded. Defaults to the flow's
    * `request.mutationTimeoutMs` (resolved by `createExecutionContext`).
-   * Ignored on the CAS persist path — `runWithCAS` uses its own retry
-   * semantics. Honored on the in-memory path and on `serialize` + persist.
    * Set to `Infinity` to disable.
+   *
+   * Honored on the in-memory path only. Ignored whenever `persist` is set —
+   * on both the CAS path (`runWithCAS` owns its own retry semantics) and the
+   * `serialize` path. That second exclusion is load-bearing, not an
+   * oversight: `withScopeLock`'s timeout rejects the caller but does not
+   * cancel the mutation, so a durable write that outran the budget would
+   * still reach `persist` afterwards — landing a record built from a stale,
+   * pre-terminal scope ref on top of a row the runtime had already written
+   * as `failed`/`completed`. A bounded error is worth having where the only
+   * casualty is the caller; it is not worth having where the casualty is the
+   * stored record.
    */
   mutationTimeoutMs?: number;
 };
@@ -130,8 +140,10 @@ export type ScopeStateOpsOptions<TState extends object> = {
  *   `ConcurrentModificationError`. The `hint` is ignored — there is no
  *   external store to route to.
  * - When `persist` is defined and `serialize` is true (request scope):
- *   the same lock covers mutate and persist. No CAS retry. A persist
- *   conflict throws `ConcurrentModificationError`.
+ *   the same lock covers mutate and persist. No CAS retry, and no
+ *   `mutationTimeoutMs` — the timeout does not cancel, so a durable write
+ *   must not be abandoned by its caller while it is still able to persist.
+ *   A persist conflict throws `ConcurrentModificationError`.
  * - When `persist` is defined without `serialize`: `runWithCAS` drives
  *   the optimistic load → mutate → persist cycle with exponential
  *   backoff. The `hint` is forwarded to the persist callback unchanged
@@ -189,8 +201,7 @@ async function applyMutation<TState extends object>(
         }
         container.commit(next, result.version);
         committed = true;
-      },
-      { timeoutMs: options.mutationTimeoutMs }
+      }
     );
     return committed;
   }
