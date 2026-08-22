@@ -108,4 +108,4 @@ export const executableTaskSchema = z.object({
 
 export type ExecutableTask = z.infer<typeof executableTaskSchema>;
 
-export type SubTaskErrorStrategy = "skip" | "fail" | "retry";
+export type SubTaskErrorStrategy = "skip" | "fail";

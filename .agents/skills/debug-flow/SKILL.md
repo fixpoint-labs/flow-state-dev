@@ -68,8 +68,6 @@ source ~/.zshrc && cd <repo-root> && pnpm --filter @flow-state-dev/fsdev fsdev r
 | `-m <model>` | Override model for all generator blocks |
 | `-s <session-id>` | Reuse session state across invocations |
 | `--seed-session '<json>'` | Pre-populate session state before execution |
-| `--seed-user '<json>'` | Pre-populate user state |
-| `--seed-project '<json>'` | Pre-populate project state |
 | `--flow-dir <path>` | Explicit flow directory (repeatable) |
 
 **Environment:** The CLI auto-loads `.env.local` files walking up from cwd. Ensure API keys (e.g., `OPENAI_API_KEY`) are set.

@@ -45,7 +45,7 @@ parallelTasks({
   maxConcurrency?: number;       // default 3
   planner?: BlockDefinition;     // must output { tasks: Array<{ goal: string }> }
   synthesizer?: BlockDefinition; // receives unknown[] of completed task outputs
-  onSubTaskError?: "skip" | "fail" | "retry"; // default "skip"; "retry" treated as "skip"
+  onSubTaskError?: "skip" | "fail"; // default "skip"
   outputSchema?: ZodSchema;
 });
 ```

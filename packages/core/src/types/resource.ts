@@ -238,7 +238,17 @@ export type ResourceConfig<TState extends JsonObject = JsonObject> = {
   contentTemplateRef?: string;
   llmReadable?: boolean;
   llmWritable?: boolean;
-  dynamic?: boolean;
+  /**
+   * Removed. `dynamic` never had an effect — collections are declared with
+   * `defineResourceCollection`. Typed `never` rather than deleted because
+   * `defineResource` takes its config as a naked generic parameter, so
+   * excess-property checking does not fire on the call-site literal: simply
+   * deleting the field would leave `dynamic: true` silently accepted and
+   * spread onto the returned definition.
+   *
+   * @deprecated Remove the option; it does nothing.
+   */
+  dynamic?: never;
   writable?: boolean;
   allowedExtensions?: string[];
   metadata?: Record<string, unknown>;
