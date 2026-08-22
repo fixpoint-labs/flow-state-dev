@@ -36,7 +36,7 @@ So the bar depends on what is being cut:
 
 | Cutting | The evidence that counts |
 |---|---|
-| **Public surface** (reachable from a package's `src/index.ts` or its `exports` map) | A **named shipped successor with an equivalent contract**. A grep is not sufficient and never was. If you cannot name what replaces it, it is not a leftover |
+| **Public surface** (reachable from a package's `src/index.ts` or its `exports` map) | A **named successor with an equivalent contract**. A grep is not sufficient and never was. If you cannot name what replaces it, it is not a leftover. A **rename** satisfies this by shipping its successor in the same change — the test there is that the contract is identical and the new name is exported before the old one goes, not that the new name predates the PR |
 | **A dead knob** | The **read that does not exist** — the option is declared and destructured, and no code consumes it |
 | **Internal surface** (not reachable from any package entry) | A repo-wide grep with **zero** referents, plus the check that it is absent from the entry and the `exports` map |
 | **An internal duplicate** | The clone bodies are **contract-identical**, shown side by side |
@@ -292,3 +292,8 @@ all of the above as one 266-file change.
 - **All ten PRs opened** — eight members and two satellites, every one ready for review rather than
   draft so the automated reviewers engage. The set that replaces #1369's single 266-file change is
   now on the board; #1369 itself can be closed as superseded.
+- **After the fifth review round** — clarified that a rename satisfies the public-surface bar by
+  shipping its successor in the same change. As written, the bar demanded a successor that already
+  existed, which would have disqualified FIX-1212 (the org-store rename creates
+  `createInMemoryOrgStore` rather than pointing at one already on the tree). The intent was always
+  "nobody loses a capability", not "the replacement predates the PR".
