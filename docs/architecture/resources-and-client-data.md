@@ -44,7 +44,6 @@ type ResourceConfig = {
   render?: (content: string, state: JsonObject) => string | Promise<string>; // Optional renderer
   llmReadable?: boolean;        // Allows read tool access when readResourceContentTool is installed
   llmWritable?: boolean;        // Allows write tool access when writeResourceContentTool is installed
-  dynamic?: boolean;            // Resolved at runtime
   writable?: boolean;           // Allow mutation from blocks
   allowedExtensions?: string[]; // Content type restrictions
   metadata?: Record<string, unknown>;

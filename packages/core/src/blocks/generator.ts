@@ -313,7 +313,6 @@ export interface GeneratorLoopState<TInput = unknown> {
 export interface GeneratorLoopConfig<TInput = unknown, TCtx = BlockContext> {
   maxIterations?: number;
   runTools?: boolean;
-  stopWhen?: (state: GeneratorLoopState<TInput>, ctx: TCtx) => MaybePromise<boolean>;
 }
 
 export interface GeneratorToolResult {

@@ -125,4 +125,4 @@ export const reviewOutputSchema = z.object({
 
 export type ReviewOutput = z.infer<typeof reviewOutputSchema>;
 
-export type SubTaskErrorStrategy = "skip" | "fail" | "retry";
+export type SubTaskErrorStrategy = "skip" | "fail";

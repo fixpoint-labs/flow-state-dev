@@ -65,8 +65,6 @@ export type CreateFlowApiRouterOptions = {
   /** Instance-level settings threaded onto every block as `ctx.settings`. */
   settings?: FlowStateSettings;
   maxResponseBufferSize?: number;
-  maxConcurrentStreams?: number;
-  staleStreamTtlMs?: number;
   /**
    * Tracing verbosity for observability (non-durable) state snapshots
    * (FIX-406 6H): `"verbose"` (per-step, for DevTool), `"normal"` (block
