@@ -102,19 +102,6 @@ export interface <PatternName>Config<
 
   /** Capabilities installed on default internal blocks. */
   uses?: UsesSlot;
-
-  // ---------------------------------------------------------------------------
-  // Resource declarations — registered on the outer sequencer.
-  // ---------------------------------------------------------------------------
-
-  /** Session resources declared on the outer sequencer. */
-  sessionResources?: Record<string, any>;
-
-  /** User resources declared on the outer sequencer. */
-  userResources?: Record<string, any>;
-
-  /** Project resources declared on the outer sequencer. */
-  projectResources?: Record<string, any>;
 }
 ```
 
@@ -179,38 +166,45 @@ export function create<BlockName>(
 }
 ```
 
-#### Forwarding `uses`, `tools`, and Resources
+#### Forwarding `uses`, `tools`, and resources
 
-The most common pattern: accept `uses`, `tools`, and resource declarations in your config and forward them to the internal blocks that need them. This is how `planAndExecute` and `supervisor` work.
+The most common pattern: accept `uses` and `tools` in your config and forward them to the internal blocks that need them. This is how `planAndExecute` and `supervisor` work.
+
+A pattern factory may also take a resource in its own config and forward it to the child block that reads it. `planAndExecute` does exactly that: `PlanAndExecuteConfig.resources?: Record<string, any>` is spread onto its default executor generator. `routedSpecialists` and `debate` do the same thing with a single named handle (`workspace`, `transcript`) instead of a map. This is a legitimate pattern-level API — it is forwarding to a *block*, which is a different thing from declaring on the sequencer. `supervisor` and `parallelTasks` expose no such option; add one only when your pattern owns a default child block to forward it to.
 
 ```typescript
 export function <patternName>(config: <PatternName>Config) {
-  const { name, uses, tools, instructions, sessionResources, userResources, projectResources } = config;
+  const { name, uses, tools, instructions } = config;
 
-  // Forward uses/tools to default internal generators (skip when overridden)
+  // Forward uses/tools to default internal generators (skip when overridden).
+  // Declare each resource on the block that actually reads or writes it.
   const executor = config.executor ?? generator({
     name: `${name}-executor`,
     model: config.model ?? "openai/gpt-5.4-mini",
+    resources: { <resourceName>: <resourceName>Resource },
     ...(tools !== undefined ? { tools } : {}),
     ...(uses ? { uses: uses as any } : {}),
     prompt: [instructions, "Execute the task."],
     // ...
   });
 
-  // Declare resources on the outer sequencer
-  return sequencer({
-    name,
-    stateSchema,
-    ...(sessionResources ? { sessionResources } : {}),
-    ...(userResources ? { userResources } : {}),
-    ...(projectResources ? { projectResources } : {}),
-  })
+  return sequencer({ name, stateSchema })
     .step(executor)
     // ...
 }
 ```
 
-Resources are declared on the outer sequencer so the runtime registers them. `uses` and `tools` go on the generators that actually call LLMs. Only spread them when the consumer hasn't provided a custom override block.
+**Do not put a `resources` key on `sequencer()`.** `SequencerConfig` has no such field — a sequencer's own declarations are exactly its capability-injected ones. A conditional spread (`...(resources ? { resources } : {})`) slips past excess-property checking, so the compiler stays silent while the pattern leans on an internal seam. The same spread onto a `generator()` or `handler()` is fine — those block kinds do declare `resources`; it is the sequencer that does not.
+
+Three supported places for a resource:
+
+- **On the child block that uses it** — `generator()` and `handler()` both take `resources`. The sequencer collects `declaredResources` from every child and bubbles them up to the flow, so declaring it on the consumer registers it just as well. This is the default; `rlm` does it this way.
+- **Forwarded from your factory's config onto that child block** — the same route, with the caller choosing the resource instead of the pattern hard-coding it. `planAndExecute` (`resources`), `routedSpecialists` (`workspace`), and `debate` (`transcript`) all do this.
+- **In a capability, installed through `uses`** — when the resource is shared infrastructure that blocks outside the pattern also need. See [Exporting a Capability](#exporting-a-capability) below.
+
+Whichever route, an accessor name must map to one `defineResource()` reference. A capability and its consuming block that declare the same accessor with two different references fail at construction with `Resource conflict` — pass the shared reference around (this is why `debate` accepts a `transcript` instance).
+
+`uses` and `tools` go on the generators that actually call LLMs. Only spread them when the consumer hasn't provided a custom override block.
 
 #### Exporting a Capability
 
@@ -221,8 +215,8 @@ import { defineCapability, defineResource } from "@flow-state-dev/core";
 
 export const <patternName>Capability = defineCapability({
   name: "<pattern-name>",
-  sessionResources: {
-    <resourceName>: defineResource({ stateSchema: <schema>, writable: true }),
+  resources: {
+    <resourceName>: defineResource({ scope: "session", stateSchema: <schema>, writable: true }),
   },
   presets: {
     context: { context: [<contextFormatter>] },
@@ -230,7 +224,7 @@ export const <patternName>Capability = defineCapability({
     default: ["context", "tools"],
   },
   fns: (ctx) => ({
-    list: () => ctx.session.resources.<resourceName>.state.items,
+    list: () => ctx.resources.<resourceName>.state.items,
     add: async (item) => { /* ... */ },
   }),
 });
@@ -318,7 +312,7 @@ const board = taskBoard({
 // are emitted automatically as tasks move through pending → in_progress → completed/errored.
 ```
 
-Pair with `<TaskPlan collectionId={config.name} />` in the UI registry. The legacy `emitPlanMeta` / `emitTaskUpdate` helpers have been retired — new patterns should use the substrate directly.
+Pair with `<TaskPlan collectionId={config.name} />` after `fsdev ui add task-plan`. Import from `@/components/flow-state/task-plan`.
 
 #### Critical Rules
 

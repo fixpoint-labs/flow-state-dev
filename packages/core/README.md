@@ -102,9 +102,15 @@ export default defineFlow({
       userMessage: (input) => input.message,
     },
   },
+  resources: {
+    artifacts: defineResource({
+      scope: "session",
+      stateSchema: artifactSchema,
+      writable: true,
+    }),
+  },
   session: {
     stateSchema: z.object({ mode: z.string().default("chat"), count: z.number().default(0) }),
-    resources: { artifacts: { stateSchema: artifactSchema, writable: true } },
     client: {
       derived: {
         artifactsList: (ctx) => /* derive list from resource state */,
@@ -143,7 +149,7 @@ export default defineFlow({
 
 An action can declare a `concurrency` policy that decides what happens when two requests collide on the same key (the session by default). Set it per-action via `ActionConfig.concurrency`, or set a flow-wide default via `RequestConfig.concurrency` (`flow.request.concurrency`); resolution is `action.concurrency ?? flow.request.concurrency ?? "allow"`.
 
-`ConcurrencyConfig` is either a bare policy name (`"allow" | "queue" | "reject"`) or `{ policy, key }`, where `key` is `"session"` (default), `"user"`, `"none"`, or a `(ctx) => string | undefined` function. A key that resolves to `undefined` means no arbitration — the request runs as `allow`. The default is `allow` (run concurrently, today's behavior).
+`ConcurrencyConfig` is either a bare policy name (`"allow" | "queue" | "reject"`) or `{ policy, key }`, where `key` is `"session"` (default), `"user"`, `"none"`, or a `(ctx) => string | undefined` function. A key that resolves to `undefined` means no arbitration — the request runs as `allow`. The default is `allow` (run concurrently).
 
 ```ts
 defineFlow({
@@ -173,20 +179,20 @@ Exported types: `ConcurrencyConfig`, `ConcurrencyKey`, `ConcurrencyKeyContext`, 
 Every generator-based utility above accepts an optional `itemVisibility` (`{ client: boolean; history: boolean }`) to control whether output is surfaced to the client/history. All default to unset (silent — output flows only via graph edges). Set explicitly to opt in when the utility should be user-facing.
 
 **Resources:**
-- `defineResource(config)` — Portable resource definition (also usable for block-level resource declarations via `sessionResources`, `userResources`, `orgResources`)
+- `defineResource(config)` — Portable resource definition. Requires `scope: "session" | "user" | "org"`. Register on a flow's or block's `resources` map.
   - Supports optional `content`/`contentFile` (mutually exclusive), `render`, `llmReadable`, and `llmWritable` for resource content workflows. `contentFile` and file-path `contentTemplate` accept a bare string (resolved from the working directory) or an `AnchoredPath` — `{ path, importerUrl: import.meta.url }` — resolved relative to the declaring module first, with a working-directory fallback
   - `prefetchMode?: 'eager' | 'lazy'` (default `'eager'`) — `'lazy'` defers the load until the declaring block dispatches. Once the resource is resolved its `ref.state` getter is synchronous. Declaring `'lazy'` on a flow-level single resource throws at build time (no per-block load trigger).
   - `sharedToWorkstream?: boolean` (default `false`, `scope: "session"` only) — give the resource ONE identity across a session lineage, so a session and every background child session under it (a Workstream, and a Workstream's own Workstreams) resolve the same resource through the ordinary resource API. Session **state** is never shared, and sharing does not serialize writes — two children writing one shared resource is ordinary same-resource contention fenced by `expectedVersion`. `true` at `user`/`org` scope throws at build time (those scopes already span every session the principal touches). Also accepted by `defineResourceCollection`, applying to every instance.
   - `reactTo?: { created?, stateUpdated?, deleted?, contentUpdated? }` — bind a block (handler/generator/sequencer) to a mutation. Each entry is a bare block or `{ block, when }`. A state binding (`created`/`stateUpdated`/`deleted`) runs with a `ResourceChange` payload (`key`, `ref`, `kind`, `state`, `prevState`, `evicted`), typed with `resourceChangeSchema(stateSchema)`. A `contentUpdated` binding runs after a server-side content write with a minimal `ResourceContentChange` payload (`key`, `ref`, `kind`), typed with `resourceContentChangeSchema()`; the block `readContent()`s for the fresh body. The block runs blocking inside the originating turn. See the [Reactive blocks](https://flow-state.dev/docs/resources/reactive-blocks) reference.
   - Runtime `ResourceRef` provides `state` (sync getter) plus `patchState`, `setState`, `updateState`, and **`getOrPatchState(key, compute)`** — get-or-compute over state: returns `state[key]` if present, else runs `compute`, patches the result under `key`, and returns it (callback runs only on a miss, so a fetch happens at most once per stored key and downstream readers reuse the stored copy). A stored `null` is a hit; a `compute` resolving to `undefined` stores nothing. No TTL — a per-resource data spine, not a cache. Concurrent misses on the same key within a request are single-flighted (they share one `compute`, so a fanned-out read issues one upstream fetch); distinct keys still compute in parallel.
   - **`updateStateWith(ref, updater)` / `withOutcome(run, updater)`** (`@flow-state-dev/core/helpers`) — run a state update whose callback *returns* what it did, as `{ state, result }`, instead of assigning it to a variable outside the callback. On the CAS path an updater can run more than once, so an outward-assigned value can describe an attempt that never committed; these return the result belonging to the invocation that did (or `undefined` if none completed). `withOutcome` takes any mutation runner — `ref.updateState`, a scope's `atomicState`, or your own wrapper — so one helper covers every retry entry point. `scripts/validate-updater-purity.mjs` (in `pnpm typecheck`) rejects the common outward-write forms as a backstop — it catches the naive shapes, not every possible one.
-- `defineResourceNamespace(config)` — Dynamic resource collection with pattern-based keys (`files/*`, `files/**`, `[topic]/observations`), optional `maxInstances`/`eviction`, lifecycle hooks, and `reactTo` (same `{ created?, stateUpdated?, deleted?, contentUpdated? }` shape as `defineResource`; supersedes the `onInstance*` callbacks for the block case)
+- `defineResourceCollection(config)` — Dynamic resource collection with pattern-based keys (`files/*`, `files/**`, `[topic]/observations`), required `scope: "session" | "user" | "org"`, optional `maxInstances`/`eviction`, lifecycle hooks, and `reactTo` (same `{ created?, stateUpdated?, deleted?, contentUpdated? }` shape as `defineResource`; supersedes the `onInstance*` callbacks for the block case)
   - `prefetchMode?: 'eager' | 'lazy'` (default `'eager'`) — a loading-cost knob, not an API-shape knob. Eager preloads the whole prefix into a per-request cache so reads resolve instantly; `'lazy'` reads per access from the store. The call shape is identical in both modes: `get`/`getOptional`/`list`/`count` all return Promises (always `await` them), and the mutations `create`/`getOrCreate`/`upsert`/`delete` were already async. Flipping `prefetchMode` needs no call-site changes. `'lazy'` requires `eviction: 'none'` (a partial cache can't drive eviction) and throws at build time otherwise.
-  - Runtime `ResourceNamespaceRef` provides `create()`, `get()`, `getOrCreate()`, `upsert()`, `list()`, `delete()`, `count()`
+  - Runtime `ResourceCollectionRef` provides `create()`, `get()`, `getOrCreate()`, `upsert()`, `list()`, `delete()`, `count()`
   - **`create(key, initial, { replace: true })`** — overwrites an existing instance instead of throwing. `setState` semantics; Zod `.default(null)` fills nullables on both the create and replace branches. `maxInstances` only checked when adding a new instance. Use for setup/reset paths.
   - **`upsert(key, update, createOnly?)`** — patch-or-create. On exists: applies `update` via `patchState` semantics (other fields preserved). On missing: creates with `{ ...createOnly, ...update }` (update wins on overlap). The `createOnly` extras fill fields you only need to supply at creation time. Use for incremental-update paths that need to handle first-touch in a single call.
   - "If-exists / if-missing" summary: `create` throws / `create({ replace })` replaces / `getOrCreate` returns as-is / `upsert` patches — all four create on missing.
-- `isDefinedResourceNamespace(value)` — Type guard for namespace definitions
+- `isDefinedResourceCollection(value)` — Type guard for collection definitions
 
 **Capabilities:**
 - `defineCapability(config)` — Bundle resources, state schemas, targets, and helper functions under a single name. Blocks declare capabilities via `uses: [cap]` and the framework merges everything transitively.
@@ -199,7 +205,7 @@ Every generator-based utility above accepts an optional `itemVisibility` (`{ cli
 
 **Capability schema forwarding:**
 
-When a block lists a capability in `uses`, the capability's declared schemas flow into the block's `ctx` types at factory time. No re-declaration on the block is needed. The forwarded axes are `sessionStateSchema`, `sessionResources` (resource handles), `targetStateSchemas`, `sequencerStateSchema` (from presets), and `stateSchema` (the block's own state, `ctx.self` — valid on any block kind). Block-own declarations merge in; for most axes the block wins on key collision, but `stateSchema` requires a shared field to be the *same schema reference* instead (matching the `resources`/`targetStateSchemas` merges) — a duplicate field with a different reference throws at build time rather than one side silently winning.
+When a block lists a capability in `uses`, the capability's declared schemas flow into the block's `ctx` types at factory time. No re-declaration on the block is needed. The forwarded axes are `sessionStateSchema`, `resources` (resource handles), `targetStateSchemas`, `sequencerStateSchema` (from presets), and `stateSchema` (the block's own state, `ctx.self` — valid on any block kind). Block-own declarations merge in; for most axes the block wins on key collision, but `stateSchema` requires a shared field to be the *same schema reference* instead (matching the `resources`/`targetStateSchemas` merges) — a duplicate field with a different reference throws at build time rather than one side silently winning.
 
 ```ts
 const myCap = defineCapability({
@@ -387,7 +393,7 @@ Per-provider implementations live in separate packages — `@flow-state-dev/voic
 
 Block, flow, resource, scope, streaming, and model type definitions. Use this subpath for type-only imports.
 
-`defineResourceCollection` accepts `llmReadable?: boolean` / `llmWritable?: boolean` (default `false`), the collection-level analog of the single-resource flags. Declared once, they apply to every instance: `llmReadable` exposes instance content to `readResourceContentTool()` and content search (`grepResourceContent` / `searchResources`); `llmWritable` lets `writeResourceContentTool()` overwrite an instance body. The generic tools address resources by scope-qualified uri (e.g. `session/files/readme.md`), so a content-bearing collection no longer needs hand-rolled per-collection read/write blocks.
+`defineResourceCollection` accepts `llmReadable?: boolean` / `llmWritable?: boolean` (default `false`), the collection-level analog of the single-resource flags. Declared once, they apply to every instance: `llmReadable` exposes instance content to `readResourceContentTool()` and content search (`grepResourceContent` / `searchResources`); `llmWritable` lets `writeResourceContentTool()` overwrite an instance body. The generic tools address resources by scope-qualified uri (e.g. `session/files/readme.md`). A content-bearing collection uses those tools; keep collection-specific tools for domain logic they do not cover.
 
 `defineResourceCollection` accepts a `prefetchWindow?: number` (default `0`) that inlines the first N items in the snapshot's `prefetched` window in lexicographic storage-key order. Per-item `clientData` in the window appears only when `client.state.read: true` is also set. `CollectionStateClientConfig` controls per-item state visibility separately from content; single resources don't accept `client.state` (state visibility is governed by `client.data` on those).
 
@@ -543,7 +549,7 @@ Nothing on this interface names a store, a flow, a session record or a task row,
 
 **Request-scoped status slot.** `emit.status` writes to a single request-scoped slot — the latest message wins. Clients render one in-flight indicator line, falling back to "Working..." when the slot is empty. See `docs/architecture/items.md` for the full semantics.
 
-**Automatic resource collection.** Blocks declare their resource dependencies via `sessionResources`/`userResources`/`orgResources` using `defineResource()` values. Sequencers collect these from child blocks. `defineFlow` merges them into the flow's scope configs automatically — blocks bring their own resource requirements, just like partial state schemas. Flow-level declarations take priority.
+**Automatic resource collection.** Blocks declare their resource dependencies via a flat `resources` map of `defineResource()` values. Sequencers collect these from child blocks. `defineFlow` merges them into the flow's `resources` map automatically — blocks bring their own resource requirements, just like partial state schemas. Flow-level declarations take priority.
 
 **Resource content handles.** `ResourceRef.readContent()` returns rendered text or `null`; `readContentRaw()` returns raw text or `null`; `writeContent()` overwrites content when writable.
 

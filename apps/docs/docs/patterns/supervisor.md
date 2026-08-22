@@ -236,7 +236,6 @@ supervisor({
   // How to handle worker failures (forwarded to taskBoard.onError):
   //   "skip" — capture error on the failing task, siblings continue (default).
   //   "fail" — the failing worker propagates up, aborting the supervisor.
-  // For retries, use maxAttemptsPerTask.
   onSubTaskError?: "skip" | "fail";
 
   outputSchema?: ZodSchema;
@@ -248,6 +247,8 @@ supervisor({
   instructions?: string | (input, ctx) => string;
 });
 ```
+
+`onSubTaskError` is `"skip"` or `"fail"`. Bound retries with `maxAttemptsPerTask`.
 
 ## Exported API
 

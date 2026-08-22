@@ -50,6 +50,8 @@ parallelTasks({
 });
 ```
 
+Bound retries with `maxTotalRetries`, or set `maxAttempts` on each planned task.
+
 ## Exports
 
 ```ts
