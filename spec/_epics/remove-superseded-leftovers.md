@@ -58,6 +58,17 @@ So the bar depends on what is being cut:
 
 Cuts land with their evidence in the PR body, not as an assertion.
 
+**One cut in this set does not meet the bar it was filed under**, and the correction is recorded
+rather than quietly dropped. FIX-1210's `--seed-user` / `--seed-org` were classified as dead
+knobs. They are not. `packages/cli/src/commands/run.ts:156-157` declares `seedUser` and `seedOrg`
+on `CapturePayload.command`, and `:429-430` writes their supplied values into it — so a read
+exists, and "the read that does not exist" is not satisfied. What is true is narrower, and is the
+actual defect: they never reach a **store**, so they do nothing their help text promises, and
+removing them also drops two keys from the observable `--capture` output contract. #1387's
+changeset already discloses precisely that — *"accepted and written into `--capture` metadata but
+never applied to stores"* — so the PR was honest about the behaviour while this document was
+wrong about the category. The removal still stands; it is a lying knob, not a dead one.
+
 **Lead measure.** Sub-PRs whose cuts are individually evidenced and green, named each report.
 
 **Kill line.** If the re-verification pass finds that a meaningful share of the proposed cuts
@@ -278,7 +289,7 @@ than nine PRs establish would be its own lying surface.
 | Issue | What it delivers | Route | Kind | PR |
 |---|---|---|---|---|
 | [FIX-1209](https://linear.app/fixpoint-labs/issue/FIX-1209) | Superseded aliases, compat shims, unused internal barrels removed | direct | breaking minor | [#1390](https://github.com/fixpoint-labs/flow-state-dev/pull/1390) |
-| [FIX-1210](https://linear.app/fixpoint-labs/issue/FIX-1210) | Options accepted but never read | direct | breaking minor | [#1387](https://github.com/fixpoint-labs/flow-state-dev/pull/1387) |
+| [FIX-1210](https://linear.app/fixpoint-labs/issue/FIX-1210) | Options accepted but never acted on (two also drop `--capture` keys) | direct | breaking minor | [#1387](https://github.com/fixpoint-labs/flow-state-dev/pull/1387) |
 | [FIX-1211](https://linear.app/fixpoint-labs/issue/FIX-1211) | Duplicate helpers collapsed to one implementation each | direct | patch | [#1392](https://github.com/fixpoint-labs/flow-state-dev/pull/1392) |
 | [FIX-1212](https://linear.app/fixpoint-labs/issue/FIX-1212) | Engine org-store factories renamed off `Project` | direct | breaking minor | [#1389](https://github.com/fixpoint-labs/flow-state-dev/pull/1389) |
 | [FIX-1213](https://linear.app/fixpoint-labs/issue/FIX-1213) | Docs and agent skills stop teaching contracts that aren't on the tree | direct | docs | [#1394](https://github.com/fixpoint-labs/flow-state-dev/pull/1394) |
@@ -418,9 +429,23 @@ still open on individual PRs is review feedback, and it lives on those PRs, not 
   scope; nobody can check a number against §1. Twelve remain — the thirteenth, a set of stale
   `CLAUDE.md` facts, is already fixed:
 
-  **Tier 2 — public-name removals. Evidenced, but ungated.** Each was checked against `main`:
-  every one has only its declaration plus at most a re-export or a doc example telling callers to
-  pass it. No read sites anywhere.
+  **Tier 2 — public-name removals. Read-site check done; successor evidence outstanding.** An
+  earlier revision of this list called them "evidenced", and that was wrong in a way §1 names
+  explicitly. What was actually established is a repo-wide read-site check: each has only its
+  declaration plus at most a re-export or a doc example telling callers to pass it, and no read
+  site anywhere in this repository. What was **not** established is either half of the public
+  bar — that any of them has a named successor with an equivalent contract, or that no external
+  consumer holds it. All six are public names, so repository silence says nothing; treating a
+  grep as sufficient is the internal-surface standard applied to public surface, which is the
+  same error that produced the `/cli` false positive. They stay candidates until each supplies
+  successor or migration evidence.
+
+  Two of the six have an argument available that the others do not, and it is named here as an
+  argument rather than banked as evidence: for **5**, the successor would be `ContextOf` itself
+  with two parameters, and for **6**, `ScopeResourceConfig` is an alias for
+  `ResourceConfig | ResourceCollectionConfig`, both of which are public, so a consumer could
+  write the union directly. Neither has been checked against the "identical contract" test, and
+  neither is a reason to skip it.
 
   1. `ResponseAuditorConfig.displayMode` and the `DisplayMode` type — declared at
      `packages/patterns/src/response-auditor/schemas.ts:57,65`, re-exported twice, and appearing
@@ -457,9 +482,13 @@ still open on individual PRs is review feedback, and it lives on those PRs, not 
   objective now explicitly declines to promise to fix. Keeping this set closable is worth more
   than finishing the sweep in one pass.
 
-  *Recommendation: their own epic, and not immediately.* Ten open PRs plus an unstarted ninth
-  member is already more than this set can carry, and Tier 2's evidence bar deserves an objective
-  written for it.
+  *Recommendation: their own epic for eleven of the twelve, and not immediately — with item 7
+  routed separately.* Ten open PRs plus an unstarted ninth member is already more than this set
+  can carry, and Tier 2's evidence bar deserves an objective written for it. **Item 7 does not go
+  into that epic either.** Saying it must not ride a cleanup epic and then recommending all twelve
+  into one follow-on cleanup epic would be the same contradiction one paragraph apart. Its
+  delete-versus-finish fork comes to you on its own, whenever you want it; the other eleven are a
+  cleanup set and can wait for an objective.
 
   **What would change the recommendation:** if these concentrated in the files this set already
   touches, doing them separately would mean paying the rebase tax twice. On the recomputed
@@ -630,3 +659,27 @@ still open on individual PRs is review feedback, and it lives on those PRs, not 
   Reconciled with it: theme 7's satellite test no longer quotes the old wording, §4 states what
   a completion signal does and does not assert, §1's *Not doing* list gains the twelve by name,
   and §5's trade no longer claims §1 objects to leaving them.
+- **FIX-1210's seed flags reclassified — they are lying knobs, not dead ones.** They were filed
+  under the dead-knob bar, whose evidence is "the read that does not exist". A read does exist:
+  `run.ts:156-157` declares `seedUser` / `seedOrg` on `CapturePayload.command` and `:429-430`
+  writes them into it, so removing the flags also drops two keys from the observable `--capture`
+  contract. The removal is unaffected — the flags still do nothing their help text promises — but
+  the category was wrong, and #1387's changeset had already described the behaviour correctly
+  while this document did not. Recorded because the failure is the one this epic exists to fix,
+  committed inside the epic's own paperwork.
+- **Tier 2's "evidenced" label withdrawn.** All six are public names, and the only check run
+  against them was a repo-wide grep — which is exactly the standard §1's table confines to
+  *internal* surface, because external consumers are invisible to a repository search. Applying
+  the weaker bar to the category that needs the stronger one is the `/cli` mistake repeated on an
+  inventory rather than a cut. They are now "read-site check done, successor evidence
+  outstanding", which is what was actually established. No successors were manufactured to clear
+  the bar; where an argument exists it is labelled an argument.
+- **Item 7 separated from the cleanup remainder on the decision surface.** §5 said the
+  `resource.content.*` fork must not ride a cleanup epic, then recommended all twelve into one
+  follow-on cleanup epic. The recommendation now covers eleven, with item 7 routed to the owner
+  on its own.
+- **A completeness finding on §5's wrong-answer calibration was deliberately not taken.** It is a
+  check on an ask's shape, not a decision, and this document has converged: the last several
+  rounds have been corrections to claims, and further wording passes have negative return against
+  ten sub-PRs that are the things actually shipping. Recorded so the omission is visible as a
+  choice rather than an oversight.
