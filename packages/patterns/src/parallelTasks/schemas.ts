@@ -12,4 +12,4 @@ export const parallelTasksInputSchema = z.object({
 
 export type ParallelTasksInput = z.infer<typeof parallelTasksInputSchema>;
 
-export type SubTaskErrorStrategy = "skip" | "fail" | "retry";
+export type SubTaskErrorStrategy = "skip" | "fail";

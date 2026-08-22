@@ -22,7 +22,7 @@ import { TASK_CHANGE_COMPONENT_TYPE } from "./get-or-create";
  *
  * @example
  *   .waitForCondition(
- *     whenBoardClaimable(collection),
+ *     (items) => items.some((item) => item.type === "component"),
  *     {
  *       timeoutMs: Math.max(idlePollMs * 100, 50),
  *       wakeOn: onTaskChangeFor(collection.collectionId),

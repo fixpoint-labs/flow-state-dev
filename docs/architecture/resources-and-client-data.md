@@ -73,14 +73,25 @@ Resources can also carry file-like text content. Use `content` for inline templa
 - `readContent()` returns rendered content (`string`) or `null` if no content exists.
 - `readContentRaw()` returns the stored raw body (`string`) or `null`.
 - Empty content (`""`) is valid and distinct from `null`.
-- Template rendering is **opt-in** via `render`, e.g. `render: renderTemplate` from `@flow-state-dev/engine`. Nested `{{#each}}` blocks are not supported. Templates longer than 512 KB are rejected.
+- `content` / `contentFile` hold a static body. Pass `render(content, state)` when you want to interpolate that body yourself.
+- `contentTemplate` / `contentTemplateRef` render against `{ state }` with built-in LiquidJS. They are mutually exclusive with `content`, `contentFile`, and each other. `defineResource` rejects `render` together with either template field.
+- Templates longer than 512 KB are rejected.
 - LLM content access is **tool-driven and opt-in**. Add `readResourceContentTool()` / `writeResourceContentTool()` to a generator's `tools` list when you want these capabilities available.
 
 ```ts
 const soul = defineResource({
+  ref: "soul",
+  scope: "session",
   stateSchema: z.object({ values: z.array(z.string()), tone: z.string() }),
-  content: "## Values\n{{#each values}}- {{this}}\n{{/each}}Tone: {{tone}}",
-  render: renderTemplate,
+  contentTemplate: `---
+name: soul
+---
+<system>
+## Values
+{% for value in state.values %}- {{ value }}
+{% endfor %}
+Tone: {{ state.tone }}
+</system>`,
   llmReadable: true,
   llmWritable: false,
 });
@@ -448,7 +459,7 @@ Resources declare a `client` config to control what's visible to clients. `clien
 defineResource({
   ref: 'soul',
   stateSchema: z.object({ values: z.array(z.string()), tone: z.string() }),
-  content: `## Values\n{{#each values}}- {{this}}\n{{/each}}`,
+  content: "## Values\\n- honesty\\n",
   client: {
     content: { read: true },              // lazy by default
     // content: { read: true, prefetch: true },  // opt-in eager load
