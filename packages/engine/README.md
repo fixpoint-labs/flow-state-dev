@@ -335,13 +335,14 @@ const router = createFlowApiRouter({ registry });
 
 // Testing: in-memory (fast, no cleanup)
 const router = createFlowApiRouter({ registry, stores: createInMemoryStores() });
+```
 
-// Runtime safety guards (optional)
-const guardedRouter = createFlowApiRouter({
+Pass `maxResponseBufferSize` to cap how large a live SSE response the router buffers:
+
+```ts
+const router = createFlowApiRouter({
   registry,
   maxResponseBufferSize: 10_000,
-  maxConcurrentStreams: 1_000,
-  staleStreamTtlMs: 300_000,
 });
 ```
 
