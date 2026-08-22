@@ -11,7 +11,7 @@ Think of a flow as the complete specification of an AI-powered feature: what act
 ## Defining a flow
 
 ```ts
-import { defineFlow } from "@flow-state-dev/core";
+import { defineFlow, defineResource } from "@flow-state-dev/core";
 import { z } from "zod";
 
 const chatFlow = defineFlow({
@@ -30,13 +30,18 @@ const chatFlow = defineFlow({
     },
   },
 
+  resources: {
+    artifacts: defineResource({
+      scope: "session",
+      stateSchema: artifactSchema,
+      writable: true,
+    }),
+  },
+
   session: {
     stateSchema: z.object({
       messageCount: z.number().default(0),
     }),
-    resources: {
-      artifacts: { stateSchema: artifactSchema, writable: true },
-    },
     client: {
       expose: ["messageCount"],
     },
@@ -122,31 +127,37 @@ See [Actions](/docs/fundamentals/actions) for the full picture.
 
 ## Session configuration
 
-Sessions carry state, resources, and a `client` block that persist across requests in a conversation:
+Sessions carry state and a `client` block that persist across requests in a conversation. Resources live on the flow as a flat `resources` map — each resource's own `scope` decides where it is stored:
 
 ```ts
-session: {
-  stateSchema: z.object({
-    mode: z.enum(["chat", "agent"]).default("chat"),
-    messageCount: z.number().default(0),
-  }),
+import { defineFlow, defineResource } from "@flow-state-dev/core";
+import { z } from "zod";
 
+defineFlow({
+  kind: "my-app",
   resources: {
-    plan: {
+    plan: defineResource({
+      scope: "session",
       stateSchema: z.object({
         steps: z.array(z.string()).default([]),
         status: z.enum(["draft", "active", "complete"]).default("draft"),
       }),
       writable: true,
+    }),
+  },
+  session: {
+    stateSchema: z.object({
+      mode: z.enum(["chat", "agent"]).default("chat"),
+      messageCount: z.number().default(0),
+    }),
+    client: {
+      derived: {
+        activePlan: (ctx) => ctx.resources.plan?.state ?? null,
+      },
     },
   },
-
-  client: {
-    derived: {
-      activePlan: (ctx) => ctx.resources.plan?.state ?? null,
-    },
-  },
-},
+  actions: { /* ... */ },
+});
 ```
 
 ### History windowing
@@ -163,19 +174,19 @@ session: {
 
 ### Automatic resource collection
 
-Blocks can declare resource dependencies directly (via `sessionResources`, `userResources`, `orgResources` using `defineResource()` values). When `defineFlow` is called, it collects declared resources from all action blocks and merges them into the session/user/org scope configs automatically:
+Blocks can declare resource dependencies directly with a flat `resources` map of `defineResource()` values. When `defineFlow` is called, it collects declared resources from all action blocks and merges them into the flow's `resources` map:
 
 ```ts
 const planManager = handler({
   name: "plan-manager",
-  sessionResources: { plan: planResource },
-  execute: async (input, ctx) => { /* uses ctx.session.resources.plan */ },
+  resources: { plan: planResource },
+  execute: async (input, ctx) => { /* uses ctx.resources.plan */ },
 });
 
 const myFlow = defineFlow({
   kind: "my-app",
   actions: { manage: { block: planManager } },
-  // session.resources automatically includes { plan: planResource }
+  // resources automatically includes { plan: planResource }
   // from the block — no need to declare it again here
 });
 ```

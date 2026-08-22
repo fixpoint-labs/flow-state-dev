@@ -29,7 +29,8 @@ const pipeline = sequencer({ name: "pipeline" })
 export default defineFlow({
   kind: "my-app",
   actions: { chat: { block: pipeline, userMessage: (i) => i.message } },
-  session: { stateSchema, resources, client },
+  resources,
+  session: { stateSchema, client },
 })({ id: "default" });
 ```
 
@@ -66,18 +67,18 @@ const researchPipeline = sequencer({ name: "research-pipeline" })
   .parallel({
     web:  searchWeb,
     docs: searchDocs,
-    past: recall,
+    past: recall,            // reads ctx.resources.pastFindings and locates relevant items
   })
   .step(synthesize)          // generator — reads ctx.session.state.query and parallel output
-  .sideChain(handler, {
+  .sideChain(handler({
     name: "save-draft",
-    sessionResources: { draft: draftResource },
+    resources: { draft: draftResource },
     sessionStateSchema: z.object({ lastResearched: z.string() }),
     execute: async (input, ctx) => {
-      await ctx.session.resources.draft.setContent(input.response)
-      await ctx.session.state.patch({ lastResearched: input.query })
+      await ctx.resources.draft.writeContent(input.response)
+      await ctx.session.patchState({ lastResearched: input.query })
     },
-  })
+  }))
   .sideChain(updateMemory)        // async — never blocks the stream
 ```
 

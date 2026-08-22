@@ -555,8 +555,8 @@ import { utility } from "@flow-state-dev/core";
 const saveNote = utility.upsertResource({
   name: "save-note",
   inputSchema: z.object({ id: z.string(), title: z.string(), body: z.string() }),
-  sessionResources: { notes: notesCollection },
-  collectionKey: "notes",          // property name as declared in sessionResources
+  resources: { notes: notesCollection },
+  collectionKey: "notes",          // accessor key on ctx.resources
   key: (input) => input.id,
   state: (input) => ({ title: input.title, updatedAt: Date.now() }),
   content: (input) => input.body,  // optional: write text/binary content
@@ -569,11 +569,8 @@ const saveNote = utility.upsertResource({
 |--------|----------|-------------|
 | `name` | Yes | Block name |
 | `inputSchema` | Yes | Zod schema for the input |
-| `collectionKey` | Yes | Property name of the collection as declared in `sessionResources` / `userResources` / `orgResources` |
-| `scope` | No | Which scope to look up the collection in. Defaults to `"session"`. |
-| `sessionResources` | No | Session-scoped resource collections |
-| `userResources` | No | User-scoped resource collections |
-| `orgResources` | No | Org-scoped resource collections |
+| `collectionKey` | Yes | Accessor key of the collection on `ctx.resources` |
+| `resources` | No | Flat resource map the block registers (`Record<string, DeclaredResourceEntry>`) |
 | `sequencerStateSchema` | No | Outer sequencer state schema, if the block needs to read/write sequencer state |
 | `key` | Yes | Derive the resource key string from input |
 | `state` | Yes | Derive the state patch from input |
@@ -598,7 +595,7 @@ const writeStateSchema = z.object({ artifactId: z.string().default("") });
 const upsertArtifact = utility.upsertResource({
   name: "upsert-artifact",
   inputSchema: z.object({ id: z.string(), title: z.string(), content: z.string() }),
-  sessionResources: { artifacts: artifactsCollection },
+  resources: { artifacts: artifactsCollection },
   sequencerStateSchema: writeStateSchema,
   collectionKey: "artifacts",
   key: (input) => input.id,
@@ -612,11 +609,11 @@ const saveSummary = handler({
   name: "save-artifact-summary",
   inputSchema: utility.summarizerOutputSchema,
   outputSchema: z.object({ success: z.boolean(), id: z.string() }),
-  sessionResources: { artifacts: artifactsCollection },
+  resources: { artifacts: artifactsCollection },
   sequencerStateSchema: writeStateSchema,
   execute: async (input, ctx) => {
     const id = ctx.sequencer!.state.artifactId;
-    const ref = ctx.session.resources.artifacts.getOptional(id);
+    const ref = await ctx.resources.artifacts.getOptional(id);
     if (ref) await ref.patchState({ summary: input.summary });
     return { success: true, id };
   },

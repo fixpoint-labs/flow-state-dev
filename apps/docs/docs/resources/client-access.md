@@ -17,6 +17,7 @@ import { defineResource } from "@flow-state-dev/core";
 import { z } from "zod";
 
 const soulResource = defineResource({
+  scope: "session",
   stateSchema: z.object({
     values: z.array(z.string()).default([]),
     tone: z.string().default("balanced"),
@@ -126,7 +127,7 @@ client: {
 
 ### Identity (no projection)
 
-Omit `expose`, `exclude`, and `data`. The full state is sent to the client.
+Omit `expose`, `exclude`, and `data`.
 
 ```ts
 // Collection: identity ships per-item state when state.read is true
@@ -142,7 +143,7 @@ client: {
 }
 ```
 
-For collections, the identity default replaces the prior `{ topic }`-only shape that `state.read: true` used to return without a `data` projection. For single resources there's no `state.read` gate — declaring a projection (`expose`, `exclude`, or `data`) is the opt-in. A `client` config without any of those keeps state private, matching pre-existing behavior.
+On a collection, the identity projection is each item's full state; per-item `clientData` ships when `state.read` is true. On a single resource, `clientData` is included only when you declare `expose`, `exclude`, or `data`.
 
 ### Mutual exclusivity
 
@@ -164,6 +165,7 @@ Collections are where client access gets the most use. A typical artifact or fil
 ```ts
 const artifactsCollection = defineResourceCollection({
   pattern: "artifacts/**",
+  scope: "session",
   stateSchema: z.object({
     title: z.string(),
     summary: z.string().default(""),
@@ -428,7 +430,7 @@ All paths are relative to `/api/flows`. Permissions are enforced server-side bas
 ### `POST` and `DELETE` can return 409
 
 Both write endpoints settle the item's state before they change anything else,
-so either can now come back `409 Conflict`.
+so either can come back `409 Conflict`.
 
 `POST` returns 409 when the topic already exists. On SQLite and Postgres that
 covers the case where two clients create the same topic at once: one gets
@@ -448,8 +450,8 @@ separate datasets rather than a race.
 `DELETE` returns 409 when the item's state changed while the request was being
 served — between the server reading the item and applying the delete. In
 practice that means something removed and recreated it, or a block wrote to it,
-in that window. Previously `DELETE` always returned `200`. A rejected `DELETE`
-leaves the item completely intact, content included.
+in that window. A rejected `DELETE` leaves the item completely intact,
+content included.
 
 Be precise about what this does and doesn't protect. The server reads the
 item's current version as part of handling your request, so **a `DELETE` built

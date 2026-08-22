@@ -19,6 +19,7 @@ import { defineCapability, defineResource } from "@flow-state-dev/core";
 import { z } from "zod";
 
 const notesResource = defineResource({
+  scope: "session",
   stateSchema: z.object({
     entries: z.array(z.object({ text: z.string(), createdAt: z.number() })),
   }),
@@ -26,18 +27,18 @@ const notesResource = defineResource({
 
 const notesCapability = defineCapability({
   name: "notes",
-  sessionResources: { notes: notesResource },
+  resources: { notes: notesResource },
   sessionStateSchema: z.object({ noteCount: z.number().default(0) }),
 
   fns: (ctx) => ({
     add: async (text: string) => {
-      const entries = ctx.session.resources.notes.state.entries;
-      await ctx.session.resources.notes.patchState({
+      const entries = ctx.resources.notes.state.entries;
+      await ctx.resources.notes.patchState({
         entries: [...entries, { text, createdAt: Date.now() }],
       });
       await ctx.session.incState({ noteCount: 1 });
     },
-    list: () => ctx.session.resources.notes.state.entries,
+    list: () => ctx.resources.notes.state.entries,
   }),
 });
 ```
@@ -47,7 +48,7 @@ And here's one that bundles resources with generator-specific configuration — 
 ```ts
 const memoryCapability = defineCapability({
   name: "memory",
-  sessionResources: { memories: memoryResource },
+  resources: { memories: memoryResource },
 
   fns: (ctx) => ({
     remember: async (fact: string) => { /* ... */ },
@@ -74,7 +75,7 @@ When a block lists a capability in `uses`, the framework merges the capability's
 
 | Surface | Where it goes |
 |---------|--------------|
-| `sessionResources`, `userResources`, `orgResources` | Block's declared resources (bubble through sequencers to the flow) |
+| `resources` | Block's declared resources (bubble through sequencers to the flow) |
 | `sessionStateSchema`, `requestStateSchema`, etc. | Merged into block-level state schemas via Zod `.extend()` |
 | `targetStateSchemas` | Merged into block's target declarations |
 | `stateSchema` | Merged into the block's own state (`ctx.self`) — valid on any block kind, since any block can hold state |
@@ -98,7 +99,7 @@ A preset can declare any field a block config supports. The most common use is p
 ```ts
 const memoryCapability = defineCapability({
   name: "memory",
-  sessionResources: { memories: memoryResource },
+  resources: { memories: memoryResource },
   fns: (ctx) => ({ remember, recall }),
 
   presets: {
@@ -270,9 +271,12 @@ When a capability needs configuration, wrap `defineCapability()` in a function:
 const storageCapability = (scope: "session" | "user") =>
   defineCapability({
     name: `storage:${scope}`,
-    ...(scope === "session"
-      ? { sessionResources: { store: storeResource } }
-      : { userResources: { store: storeResource } }),
+    resources: {
+      store: defineResource({
+        scope,
+        stateSchema: z.object({ value: z.string().nullable().default(null) }),
+      }),
+    },
     fns: (ctx) => ({ save, load }),
   });
 

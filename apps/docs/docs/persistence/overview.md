@@ -43,7 +43,7 @@ const flowstate = createFlowState({
 });
 ```
 
-The directory structure mirrors the scope hierarchy: each scope (session, user, org) gets its own subdirectory. The org scope is stored under `projects/` — the directory name predates the scope rename and is preserved for compatibility.
+The directory structure mirrors the scope hierarchy: each scope (session, user, org) gets its own subdirectory. Org-scoped data lives under `projects/`.
 
 ### Postgres
 
@@ -80,7 +80,7 @@ How much compare-and-swap safety each store actually gives you differs, and it i
 
 The filesystem row is the one to read twice. The lock lives on the store instance, in memory rather than on disk, so it covers every write that goes through that instance and nothing past it. A second store pointed at the same directory races with the first, whether the two sit in one Node process or two. Most apps build one store and hand it to `createFlowState`, so in practice the boundary falls at the process; the instance is what actually draws it. That is fine for development, and it is not a multi-process deployment story; reach for SQLite or Postgres there.
 
-The resource-state column reaches your flow code, not just callers holding the store directly. A flow mutating `ctx.sessionResources` or a collection instance writes at the version its execution context read, so a write built on a stale read is refused and re-applied against the value that won rather than overwriting it — see [the mutation model](../state/mutation-model.md) for what that looks like from inside a flow.
+The resource-state column reaches your flow code, not just callers holding the store directly. A flow mutating `ctx.resources` or a collection instance writes at the version its execution context read, so a write built on a stale read is refused and re-applied against the value that won rather than overwriting it — see [the mutation model](../state/mutation-model.md) for what that looks like from inside a flow.
 
 Deleting a resource on any store leaves a small marker row behind instead of removing it. The marker keeps the version, which is what stops a worker holding a pre-delete version from matching the resource that later replaces it. Markers are kept indefinitely — nothing reclaims them today — so a workload that creates and deletes many resource keys will accumulate one row per deleted key.
 

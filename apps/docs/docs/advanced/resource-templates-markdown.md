@@ -115,12 +115,14 @@ import { defineResource } from "@flow-state-dev/core";
 import { z } from "zod";
 
 const templateSource = defineResource({
+  scope: "session",
   stateSchema: z.object({}),
   content: "<system>\n# {{ state.title }}\n{{ state.body }}\n</system>",
   writable: true,
 });
 
 const document = defineResource({
+  scope: "session",
   stateSchema: z.object({
     title: z.string().default("Untitled"),
     body: z.string().default(""),

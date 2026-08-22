@@ -44,27 +44,27 @@ The lock branch never throws `ConcurrentModificationError`. There is no version 
 
 ### The resource state store is versioned too
 
-The four scopes above hold one state record each. **Resource state** — the state behind `ctx.sessionResources.something`, and behind every instance of a collection — lives in a separate store, keyed per resource.
+The four scopes above hold one state record each. **Resource state** — the state behind `ctx.resources.something`, and behind every instance of a collection — lives in a separate store, keyed per resource.
 
-That store used to be plain last-write-wins, which is the right model for a document body nothing merges against a prior read, and the wrong one for structured state concurrent workers read-modify-write. The store is now versioned: every stored resource carries a version that increases by one on each committed write and is never reused, and a write states the version it expected to find. A write lands only if nobody moved the key since; otherwise it is refused, and the refusal reports the version that is actually current.
+Resource state is versioned: every stored resource carries a version that increases by one on each committed write and is never reused. A write lands only if the version this context read is still current; otherwise it is refused and the mutator re-runs. The refusal reports the version that is actually current.
 
-**That guarantee reaches flow code.** When you mutate `ctx.sessionResources.something` or a collection instance, the runtime writes at the version this execution context read. If another context moved the key in between, your write is refused, your mutator re-runs against the value that actually won, and the retry writes the merge. Two contexts patching different fields of one resource both land:
+**That guarantee reaches flow code.** When you mutate `ctx.resources.something` or a collection instance, the runtime writes at the version this execution context read. If another context moved the key in between, your write is refused, your mutator re-runs against the value that actually won, and the retry writes the merge. Two contexts patching different fields of one resource both land:
 
 ```ts
 // two concurrent execution contexts, unchanged flow code
-await ctx.sessionResources.task.patchState({ claimedBy: "worker-a" });
-await ctx.sessionResources.task.patchState({ note: "in progress" });
+await ctx.resources.task.patchState({ claimedBy: "worker-a" });
+await ctx.resources.task.patchState({ note: "in progress" });
 // both fields present — neither context's write is silently dropped
 ```
 
-Nothing changes in flow code — you never write a version yourself.
+You never write a version yourself.
 
-Two behaviours are worth expecting, because both are cases where the old model quietly did the wrong thing:
+Two behaviours are worth expecting:
 
 ```ts
-await ctx.sessionResources.task.patchState({ note: "x" });
+await ctx.resources.task.patchState({ note: "x" });
 // rejects if another context deleted it. It is not resurrected from a stale read.
-await ctx.sessionResources.tasks.create("t1");
+await ctx.resources.tasks.create("t1");
 // rejects if a live "t1" exists, whether it was already there or won a race.
 ```
 
