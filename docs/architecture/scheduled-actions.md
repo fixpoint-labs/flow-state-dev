@@ -106,7 +106,13 @@ failures return 400 `invalid_schedule`.
 9. Effective principal: `schedule.principal ?? gatewayPrincipal`.
 10. Resolve input (static value or `schedule.input(ctx)`).
     Function throw → 500 `dispatch_failed`.
-11. `host.dispatch(envelope)`. Host throw → 503 `flow_unregistered`.
+11. `host.dispatch(envelope)`. A `ConcurrencyRejectedError` — thrown
+    when the flow's `request.concurrency` is `"reject"` on a key the
+    scheduled envelope carries (e.g. `user`) and a competing run holds
+    it — returns 200 `{ status: "skipped", reason: "in_flight" }` with
+    the winner's `requestId`, the same shape as the step-8 overlap skip
+    so the scheduler does not retry. Any other host throw → 503
+    `flow_unregistered`.
 12. Record the idempotency key. Return 202 with `requestId`,
     `scheduleId`, `origin`.
 
@@ -192,7 +198,7 @@ goes through `host.resolvePrincipal` and respects `requireUser`.
 | Code | Reason |
 | --- | --- |
 | 202 | Accepted; action dispatched |
-| 200 | `duplicate` (idempotency hit) or `skipped` (overlap) |
+| 200 | `duplicate` (idempotency hit) or `skipped` (overlap, or a concurrency `reject` at dispatch) |
 | 400 | `invalid_schedule_id` (URL pattern) or `invalid_schedule` (resolved data) |
 | 401 | `unauthorized` (gateway-auth failure) |
 | 404 | `flow_not_found` or `schedule_not_found` |

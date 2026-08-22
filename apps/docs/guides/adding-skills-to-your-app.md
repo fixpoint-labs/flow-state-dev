@@ -115,7 +115,7 @@ A few notes:
 - `readSkillsDirectory` is async. Top-level `await` works in ESM (which Next.js, modern Node, and bundlers all support). If your toolchain doesn't support it, wrap the module in an async initializer.
 - `initialSkills` is lazy-seeded. The skills aren't written to the collection until the first `runSkill` call, so module load is cheap.
 - `errors` is an array, not a throw. A single malformed skill doesn't block the rest from seeding.
-- `scope` decides where the collection lives, and it defaults to `"org"`. This guide passes `"user"` explicitly: a user-scoped library needs nothing beyond the `userId` every request already carries, and each person gets their own copy. `"org"` gives everyone in an organization one shared library, but it only works once sessions are bound to an org, and that binding should come from a principal your server resolves rather than from anything the browser sends. See [Authentication](/docs/server/authentication). `"session"` is mainly for tests. Whichever you pick, `createSkillActivator` in Step 6 has to match it.
+- `scope` decides where the collection lives, and it defaults to `"org"`. This guide passes `"user"` explicitly: a user-scoped library needs nothing beyond the `userId` every request already carries, and each person gets their own copy. `"org"` gives everyone in an organization one shared library, but it only works once sessions are bound to an org, and that binding should come from a principal your server resolves rather than from anything the browser sends. See [Authentication](/docs/server/authentication). `"session"` is mainly for tests. Whichever you pick, the activator in Step 5 picks it up on its own — it looks the collection up by name at runtime, so it reads whatever scope you set here.
 - `itemVisibility: { client: true, history: true }` is explained in Step 5.
 
 ## Step 4: Attach the capability to your generator
@@ -176,7 +176,9 @@ export const skillsCap = createSkillsCapability({
 });
 
 export const skillActivator = createSkillActivator({
-  scope: "user", // must match the skills capability
+  // The activator runs before the generator, so it seeds the catalog itself.
+  // Without this, the tiers scan an empty collection on the very first turn.
+  initialSkills,
 });
 ```
 
