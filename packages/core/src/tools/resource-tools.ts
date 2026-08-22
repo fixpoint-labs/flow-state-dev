@@ -2,7 +2,6 @@ import { z } from "zod";
 import type { BlockContext } from "../types/block";
 import type { ResourceRef } from "../types/resource";
 import type { ResourceCollectionRef } from "../types/resource-collection";
-import { isDefinedResourceCollection } from "../types/resource-collection";
 import { handler } from "../blocks/handler";
 
 type CollectionEntry = {
@@ -74,12 +73,6 @@ function collectStaticResources(ctx: BlockContext): ResourceRef<any>[] {
       (entry: any): entry is ResourceRef<any> =>
         !("pattern" in entry && "create" in entry) && !isExternalRef(entry)
     );
-}
-
-function buildCollectionDescription(collections: CollectionEntry[]): string {
-  if (collections.length === 0) return "";
-  const lines = collections.map((ns) => `  - ${ns.ref.pattern} (${ns.scope})`);
-  return `\nAvailable collections:\n${lines.join("\n")}`;
 }
 
 /**
