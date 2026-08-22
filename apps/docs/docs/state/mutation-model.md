@@ -20,8 +20,10 @@ Read-only instance config is also available on the context as `ctx.settings` —
   withScopeLock — a FIFO   withScopeLock, then the  runWithCAS — a retry loop
   queue per container.     same version-checked     with exponential backoff
   No version check, no     persist under the lock.  and a version-checked
-  retries.                 Serialized writers       persist. Retries on
-                           never conflict.          conflict.
+  retries.                 Serialized writers do    persist. Retries on
+                           not conflict with one    conflict.
+                           another; the retries
+                           stay underneath.
 ```
 
 The dispatch is internal to `applyMutation`. Callers see the same `ScopeStateOps` API regardless of which path runs. What each path can raise:
@@ -98,7 +100,7 @@ One limit stated plainly: on the filesystem store the comparison is held per key
 
 ## Writing an updater that may run twice
 
-The callback you hand to `updateState` (or `atomicState`) is an **updater**: it receives the current state and returns the next one. On the CAS path above, that callback is not guaranteed to run once. When the persist step loses a version check, the loop refreshes from the store and **calls your updater again** with the freshest state. Only the last attempt's output is written.
+The callback you hand to `updateState` (or `atomicState`) is an **updater**: it receives the current state and returns the next one. On any path above with a version check under it — request, session, user, org, and resource state — that callback is not guaranteed to run once. When the persist step loses a version check, the loop refreshes from the store and **calls your updater again** with the freshest state. Only the last attempt's output is written.
 
 That matters the moment your updater has something to tell its caller. The natural way to report an outcome is to reach outside the callback:
 
@@ -201,9 +203,11 @@ You're writing through a `persist` callback to an external store (filesystem, sq
 - Move the contended writes to an in-memory scope (sequencer state on a parent block) so they go through the lock instead.
 - Restructure the contention pattern — fewer concurrent writers, batched updates, or finer-grained scopes.
 
-**Why doesn't the lock path retry on conflict?**
+**Why don't in-memory scopes retry on conflict?**
 
 There's no conflict to retry. The lock serializes mutators inside this process; each one reads the current state at the moment its turn arrives. Two mutators racing to increment `count` both see the post-commit value of the previous one, so both increments land — no retries needed.
+
+Request scope holds the same lock, so that answer looks like it should carry over. It doesn't: the version check stays underneath the lock, a writer the queue cannot order can still conflict, and the retry re-runs your updater. See [Request scope serializes, then persists](#request-scope-serializes-then-persists).
 
 **Can I add my own retry budget to in-memory mutators?**
 
