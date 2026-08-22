@@ -10,42 +10,14 @@
  */
 import { createInMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/engine";
 import type { FlowInstance, RequestStatus } from "@flow-state-dev/core/types";
-import type { JsonObject, JsonValue } from "@flow-state-dev/core/types";
 import { cloneValue } from "@flow-state-dev/core/helpers";
+import {
+  generateId,
+  toJsonObject,
+  toJsonObjectRecord
+} from "../internal/json-helpers";
 import { createMockModelResolver } from "../mocks/mockGenerator";
 import type { TestFlowOptions, TestFlowResult } from "./types";
-
-function generateId(prefix: string): string {
-  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
-function toJsonObject(value: Record<string, unknown>): JsonObject {
-  const out: JsonObject = {};
-  for (const [key, entry] of Object.entries(value)) {
-    out[key] = entry as JsonValue;
-  }
-
-  return out;
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return {};
-  }
-
-  return value as Record<string, unknown>;
-}
-
-function toJsonObjectRecord(
-  value: Record<string, unknown>
-): Record<string, JsonObject> {
-  const out: Record<string, JsonObject> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    out[key] = toJsonObject(asRecord(entry));
-  }
-
-  return out;
-}
 
 function normalizeStatus(
   value: RequestStatus | undefined

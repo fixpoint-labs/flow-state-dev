@@ -3,6 +3,7 @@ import { sequencer } from "@flow-state-dev/core";
 import { executeBlock } from "@flow-state-dev/engine";
 import type { OutputItem, StateChangeItem } from "@flow-state-dev/core/items";
 import { z } from "zod";
+import { asRecord } from "../internal/json-helpers";
 import { createTestContext } from "../runtime/createTestContext";
 import type {
   BlockInput,
@@ -10,14 +11,6 @@ import type {
   TestBlockOptions,
   TestBlockResult
 } from "./types";
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return {};
-  }
-
-  return value as Record<string, unknown>;
-}
 
 
 function inferSequencerStateFromChanges(stateChanges: Array<{ scope: string; resultingState: Record<string, unknown> }>): Record<string, unknown> {
