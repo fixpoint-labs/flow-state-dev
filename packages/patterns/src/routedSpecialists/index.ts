@@ -321,7 +321,7 @@ async function getCollection(
  * controller picks again, repeat until convergence (or `maxIterations`).
  *
  * Per-iteration records are stored in a sequencer-backed `TaskCollection`
- * so renderings (`<Plan />`, devtool) and post-hoc queries see the
+ * so renderings (`<TaskPlan />`, devtool) and post-hoc queries see the
  * decision sequence as first-class data.
  */
 export function routedSpecialists<
