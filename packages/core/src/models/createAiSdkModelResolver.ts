@@ -15,6 +15,7 @@ import type {
 } from "../types";
 import { makeSchemaStrict } from "./makeSchemaStrict";
 import { applyCaching } from "./caching";
+import { asRecord } from "./as-record";
 import { sanitizeToolName, ensureUniqueAlias } from "../helpers/tool-name";
 
 export type ResolveAiSdkLanguageModel = (modelId: string) => unknown;
@@ -22,14 +23,6 @@ export type ResolveAiSdkLanguageModel = (modelId: string) => unknown;
 // ---------------------------------------------------------------------------
 // Internal helpers — normalise AI SDK result shapes into framework types
 // ---------------------------------------------------------------------------
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return undefined;
-  }
-
-  return value as Record<string, unknown>;
-}
 
 function asNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
@@ -257,16 +250,15 @@ function normalizeFinishReason(value: unknown): string | undefined {
 }
 
 function normalizeStructuredOutput(value: Record<string, unknown>): unknown {
-  const keys = ["experimental_output", "experimentalOutput", "output"] as const;
-  for (const key of keys) {
-    try {
-      const candidate = (value as Record<string, unknown>)[key];
-      if (candidate !== undefined) {
-        return candidate;
-      }
-    } catch {
-      // Some AI SDK result getters throw when no structured output exists.
+  // AI SDK 7 exposes structured output as a lazy `output` getter that
+  // throws when the call had none. The v5/v6 `experimental_*` names are gone.
+  try {
+    const candidate = value.output;
+    if (candidate !== undefined) {
+      return candidate;
     }
+  } catch {
+    // Getter throws when no structured output exists.
   }
 
   return undefined;
