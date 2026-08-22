@@ -90,5 +90,5 @@ For non-Vercel Next.js deployments, use `createNextHandler` from `@flow-state-de
 
 - [Setting up models](/docs/getting-started/setting-up-models) — provider keys and intents
 - [Quick Start](/docs/getting-started/quick-start) — a working chat from this install
-- [Configuration](/docs/configuration/overview) — every `defineFlow` and `createFlowState` field
+- [Flow options](/docs/configuration/flow) and [Runtime options](/docs/configuration/runtime) — every `defineFlow` and `createFlowState` field
 - [Server setup](/docs/server/setup) — stores, profiles, and error handling

@@ -1,10 +1,10 @@
 ---
-title: Client and React
-sidebar_position: 6
+title: Client options
+sidebar_label: Client options
 description: createClient, FlowProvider, and the options hooks inherit from context.
 ---
 
-# Client and React
+# Client options
 
 The browser (or any HTTP caller) needs a flow kind, a user id, and a base URL. React reads those from `FlowProvider` so each hook does not repeat them.
 
@@ -65,7 +65,7 @@ Hooks (`useFlow`, `useSession`, `useAction`, `useClientData`, `useVoice`, …) a
 
 ## What the client can see
 
-The server decides the snapshot. Scope `client.expose` / `client.derived` and each resource's `client` block are the gates. The browser cannot opt into private state by passing a flag. See [Client access](/docs/resources/client-access) and [Flow definition](./flow#session-user-and-org).
+The server decides the snapshot. Scope `client.expose` / `client.derived` and each resource's `client` block are the gates. The browser cannot opt into private state by passing a flag. See [Client access](/docs/resources/client-access) and [Flow options](./flow#session-user-and-org).
 
 ## See also
 

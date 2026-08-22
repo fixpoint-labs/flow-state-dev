@@ -8,7 +8,7 @@ A flow is the top-level unit — the thing you register with the server and clie
 
 Think of a flow as the complete specification of an AI-powered feature: what actions users can trigger, what state is tracked, and what data is exposed to the frontend.
 
-Every `defineFlow` field is tabulated in [Flow definition](/docs/configuration/flow). This page teaches the shape; that page is the lookup.
+Every `defineFlow` field is tabulated in [Flow options](/docs/configuration/flow). This page teaches the shape; that page is the lookup.
 
 ## Defining a flow
 

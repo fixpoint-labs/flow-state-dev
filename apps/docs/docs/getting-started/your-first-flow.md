@@ -267,4 +267,4 @@ The shape of every flow you write will be the same. You'll add more blocks, some
 - **[State and Scopes](/docs/fundamentals/state-and-scopes)** — When to put data in `session` versus `user` versus a resource.
 - **[Sequencers](/docs/sequencers/overview)** — `parallel`, `sideChain`, loops, `rescue`, and conditional steps.
 - **[Streaming](/docs/streaming/overview)** — How items, deltas, and the SSE wire format fit together.
-- **[Configuration](/docs/configuration/overview)** — Field catalog once you know which object you are editing.
+- **[Fundamentals](/docs/fundamentals/overview)** — blocks, flows, state. Field catalogs sit on the page after each concept.

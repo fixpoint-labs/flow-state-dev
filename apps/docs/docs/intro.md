@@ -81,7 +81,7 @@ Disconnect mid-response, reconnect with a cursor, and continue from the last seq
 
 ## Where settings live
 
-Settings live in three places. The [Configuration](/docs/configuration/overview) section lists every field.
+Settings live in three places. Each catalog sits next to the concept it configures: [Flow options](/docs/configuration/flow) after Flows, [Block options](/docs/configuration/blocks) after Blocks, [Runtime options](/docs/configuration/runtime) after Server setup. The [Configuration map](/docs/configuration/overview) at the end of Core is the lookup when you already know which object you are editing.
 
 | Layer | Object | Typical file |
 |-------|--------|--------------|
@@ -108,5 +108,4 @@ Read these in order. Guides sit next to Docs in the nav if you prefer a walkthro
 3. **[Setting up models](/docs/getting-started/setting-up-models)** — one API key
 4. **[Quick Start](/docs/getting-started/quick-start)** — a streaming chat in one sitting
 5. **[Your first flow](/docs/getting-started/your-first-flow)** — the same app, with the why
-6. **[Fundamentals](/docs/fundamentals/overview)** — blocks, flows, state, capabilities
-7. **[Configuration](/docs/configuration/overview)** — field catalog once you know which object you are editing
+6. **[Fundamentals](/docs/fundamentals/overview)** — blocks, flows, state, capabilities. Field catalogs sit on the page after each concept.

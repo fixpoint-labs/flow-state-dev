@@ -164,6 +164,7 @@ An agent then sources its persona by path (`persona: { path: "personas/portfolio
 
 ## Related pages
 
+- [Configuration](./configuration) — every `defineAgent` field, including defaults.
 - [Delegation](../skills/delegation.md) — referencing agents from an `agents:` map via `agent-ref`.
 - [Task board](./task-board.md) — the concurrent drain you can call as a tool.
 - [Orchestration overview](./overview.md) — how agents, the substrate, and the board fit together.

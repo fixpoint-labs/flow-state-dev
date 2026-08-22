@@ -128,7 +128,7 @@ const config: Config = {
             { label: "Introduction", to: "/docs/intro" },
             { label: "Installation", to: "/docs/getting-started/installation" },
             { label: "Quick Start", to: "/docs/getting-started/quick-start" },
-            { label: "Configuration", to: "/docs/configuration/overview" },
+            { label: "Fundamentals", to: "/docs/fundamentals/overview" },
           ],
         },
         {

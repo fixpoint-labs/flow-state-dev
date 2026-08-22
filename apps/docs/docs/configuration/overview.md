@@ -1,13 +1,12 @@
 ---
-title: Configuration
-sidebar_position: 1
-sidebar_label: Overview
+title: Configuration map
+sidebar_label: Configuration map
 description: Where every flow-state.dev setting lives, and which page lists its fields.
 ---
 
-# Configuration
+# Configuration map
 
-Settings live in three layers. Pick the layer that owns the thing you want to change, then look up the field.
+Settings live in three layers. Pick the layer that owns the thing you want to change, then look up the field. Each catalog sits next to the concept it configures.
 
 | Layer | What it configures | You write it in |
 |-------|--------------------|-----------------|
@@ -17,17 +16,18 @@ Settings live in three layers. Pick the layer that owns the thing you want to ch
 
 The flow layer describes *what the app does*. The runtime layer describes *how this process runs it*. Environment variables are the knobs you change without editing code: keys, which store profile is live, which model an intent should try first.
 
-Narrative pages (Getting Started, Fundamentals, Server Setup) teach the concepts. The pages in this section are a field catalog: name, type, default, what it does. Use them when you already know which object you're editing.
+Narrative pages teach the concepts. The catalogs are field lists: name, type, default, what it does. Use them when you already know which object you're editing.
 
 ## I want to change…
 
 | Goal | Page |
 |------|------|
-| Add an action, expose session state, or bind a webhook | [Flow definition](./flow) |
-| Tune a generator, handler, sequencer, or router | [Blocks](./blocks) |
-| Register flows, pick stores, enable durability, start a worker | [Runtime](./runtime) |
+| Add an action, expose session state, or bind a webhook | [Flow options](./flow) |
+| Tune a generator, handler, sequencer, or router | [Block options](./blocks) |
+| Register flows, pick stores, enable durability, start a worker | [Runtime options](./runtime) |
 | Set API keys, pick a store profile, override an intent | [Environment](./environment) |
-| Point the browser at a flow | [Client and React](./client) |
+| Point the browser at a flow | [Client options](./client) |
+| Tune a task board, agent, or skills binding | [Orchestration configuration](/docs/orchestration/configuration) |
 | Tune working / episodic / semantic memory | [Memory configuration](/docs/memory/configuration) |
 | Point `fsdev` at the same runtime the server uses | [App configuration](/docs/cli/configuration) |
 | Map `intent/chat` to a fallback chain | [Models](/docs/fundamentals/models) |
@@ -80,6 +80,6 @@ The same `createFlowState` handle mounts as your HTTP API and as the `fsdev` CLI
 
 ## What this section does not list
 
-Pattern factories (`supervisor`, `planAndExecute`, `taskBoard`, …) and tool factories (`fetch`, `search`, `bash`, …) each have their own option object. Those fields live on the pattern or tool page, not here. The [ecosystem overview](/docs/ecosystem/overview) is the index.
+Pattern factories (`supervisor`, `planAndExecute`, …) and tool factories (`fetch`, `search`, `bash`, …) each have their own option object. Those fields live on the pattern or tool page. `taskBoard` is catalogued under [Orchestration](/docs/orchestration/configuration). The [ecosystem overview](/docs/ecosystem/overview) is the index.
 
 Testing harness options (`testBlock`, `testFlow`) live in [Testing](/docs/testing/overview).

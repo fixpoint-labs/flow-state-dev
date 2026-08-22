@@ -1,10 +1,10 @@
 ---
-title: Runtime
-sidebar_position: 4
+title: Runtime options
+sidebar_label: Runtime options
 description: Every field on createFlowState — flows, models, stores, workers, and runtime knobs.
 ---
 
-# Runtime
+# Runtime options
 
 `createFlowState({ ... })` is the process-level config. It registers flows, builds the model resolver, opens store profiles, and returns a handle you mount as HTTP (and export from `fsdev.config.ts` for the CLI).
 
@@ -123,7 +123,7 @@ Built-in adapters:
 
 ## See also
 
-- [Flow definition](./flow)
+- [Flow options](./flow)
 - [Environment](./environment)
 - [Error capture](/docs/advanced/error-capture)
 - [Host adapters](/docs/server/host-adapters)

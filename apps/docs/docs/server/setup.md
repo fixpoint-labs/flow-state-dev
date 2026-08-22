@@ -40,7 +40,7 @@ Move this config object to an `fsdev.config.ts` at your project root that defaul
 
 Construction validates your config up front. An empty `stores` map or a `defaultProfile` that names a profile you didn't declare throws right away, not on the first request.
 
-The full field list, including defaults, is in [Runtime configuration](/docs/configuration/runtime). Common options:
+The full field list, including defaults, is in [Runtime options](/docs/configuration/runtime). Common options:
 
 | Option | Purpose |
 |--------|---------|

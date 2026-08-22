@@ -1,6 +1,6 @@
 ---
 title: Environment variables
-sidebar_position: 5
+sidebar_label: Environment variables
 description: Provider keys, store profile, intent overrides, and debug flags.
 ---
 

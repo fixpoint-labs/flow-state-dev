@@ -16,18 +16,6 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
-      label: "Configuration",
-      items: [
-        "configuration/overview",
-        "configuration/flow",
-        "configuration/blocks",
-        "configuration/runtime",
-        "configuration/environment",
-        "configuration/client",
-      ],
-    },
-    {
-      type: "category",
       label: "Core",
       items: [
         {
@@ -36,13 +24,30 @@ const sidebars: SidebarsConfig = {
           items: [
             "fundamentals/overview",
             "fundamentals/blocks",
+            "configuration/blocks",
             "fundamentals/flows",
+            "configuration/flow",
             "fundamentals/actions",
             "fundamentals/state-and-scopes",
             "fundamentals/state-operations",
             "fundamentals/capabilities",
             "fundamentals/type-system",
             "fundamentals/models",
+            "configuration/environment",
+            {
+              type: "category",
+              label: "Advanced",
+              collapsed: true,
+              items: [
+                "advanced/capabilities-authoring",
+                "advanced/generator-context",
+                "advanced/generator-prompts-markdown",
+                "advanced/custom-model-resolver",
+                "advanced/block-state",
+                "advanced/state-targets-and-parents",
+                "state/mutation-model",
+              ],
+            },
           ],
         },
         {
@@ -52,8 +57,17 @@ const sidebars: SidebarsConfig = {
             "sequencers/overview",
             "sequencers/composing-blocks",
             "sequencers/control-flow",
-            "sequencers/wait-for-condition",
             "sequencers/connectors",
+            {
+              type: "category",
+              label: "Advanced",
+              collapsed: true,
+              items: [
+                "sequencers/wait-for-condition",
+                "advanced/sequencer-side-chains",
+                "advanced/sequencer-state",
+              ],
+            },
           ],
         },
         {
@@ -69,6 +83,12 @@ const sidebars: SidebarsConfig = {
             "resources/client-access",
             "resources/searching",
             "resources/manifest",
+            {
+              type: "category",
+              label: "Advanced",
+              collapsed: true,
+              items: ["advanced/resource-templates-markdown"],
+            },
           ],
         },
         {
@@ -78,7 +98,12 @@ const sidebars: SidebarsConfig = {
             "streaming/overview",
             "streaming/emitting-items",
             "streaming/items",
-            "streaming/trace-channel",
+            {
+              type: "category",
+              label: "Advanced",
+              collapsed: true,
+              items: ["streaming/trace-channel"],
+            },
           ],
         },
         {
@@ -86,6 +111,7 @@ const sidebars: SidebarsConfig = {
           label: "Server",
           items: [
             "server/setup",
+            "configuration/runtime",
             "server/background-work",
             "server/authentication",
             "server/mcp",
@@ -94,14 +120,29 @@ const sidebars: SidebarsConfig = {
             {
               type: "category",
               label: "Scheduled actions",
-              items: [
-                "server/scheduled",
-                "server/schedule-index",
-              ],
+              items: ["server/scheduled", "server/schedule-index"],
             },
-            "server/connection-resilience",
             "server/host-adapters",
             "persistence/overview",
+            {
+              type: "category",
+              label: "Advanced",
+              collapsed: true,
+              items: [
+                "server/connection-resilience",
+                "advanced/error-handling",
+                "advanced/error-capture",
+                "advanced/concurrency-policies",
+                "advanced/idempotency",
+                "advanced/durable-execution",
+                "advanced/block-memoization-and-replay",
+                "advanced/generator-and-router-suspend-resume",
+                "advanced/inbound-transports",
+                "advanced/manual-flow-execution",
+                "advanced/voice",
+                "advanced/flow-isolation",
+              ],
+            },
           ],
         },
         {
@@ -110,6 +151,7 @@ const sidebars: SidebarsConfig = {
           items: [
             "client/overview",
             "client/react",
+            "configuration/client",
           ],
         },
         {
@@ -123,6 +165,7 @@ const sidebars: SidebarsConfig = {
             "testing/benchmarks",
           ],
         },
+        "configuration/overview",
       ],
     },
     {
@@ -132,9 +175,7 @@ const sidebars: SidebarsConfig = {
         "orchestration/overview",
         "orchestration/task-substrate",
         "orchestration/task-board",
-        "orchestration/goal-seek-loop",
-        "orchestration/flow-policy",
-        "orchestration/context-supply",
+        "orchestration/configuration",
         "orchestration/agents",
         {
           type: "category",
@@ -143,6 +184,16 @@ const sidebars: SidebarsConfig = {
             "skills/overview",
             "skills/binding",
             "skills/activation",
+          ],
+        },
+        {
+          type: "category",
+          label: "Advanced",
+          collapsed: true,
+          items: [
+            "orchestration/goal-seek-loop",
+            "orchestration/flow-policy",
+            "orchestration/context-supply",
             "skills/authoring",
             "skills/delegation",
           ],
@@ -175,9 +226,7 @@ const sidebars: SidebarsConfig = {
             {
               type: "category",
               label: "Other Patterns",
-              items: [
-                "patterns/response-auditor",
-              ],
+              items: ["patterns/response-auditor"],
             },
             {
               type: "category",
@@ -237,63 +286,6 @@ const sidebars: SidebarsConfig = {
             "devtool/embedding",
             "devtool/observing-resource-loads",
             "devtool/debug-vs-client-state",
-          ],
-        },
-      ],
-    },
-    {
-      type: "category",
-      label: "Advanced",
-      items: [
-        {
-          type: "category",
-          label: "Authoring",
-          items: [
-            "advanced/capabilities-authoring",
-            "advanced/generator-context",
-            "advanced/generator-prompts-markdown",
-            "advanced/resource-templates-markdown",
-            "advanced/sequencer-side-chains",
-          ],
-        },
-        {
-          type: "category",
-          label: "Reliability",
-          items: [
-            "advanced/error-handling",
-            "advanced/error-capture",
-            "advanced/concurrency-policies",
-            "advanced/idempotency",
-          ],
-        },
-        {
-          type: "category",
-          label: "Durability",
-          items: [
-            "advanced/durable-execution",
-            "advanced/block-memoization-and-replay",
-            "advanced/generator-and-router-suspend-resume",
-          ],
-        },
-        {
-          type: "category",
-          label: "Runtime state",
-          items: [
-            "advanced/block-state",
-            "advanced/sequencer-state",
-            "advanced/state-targets-and-parents",
-            "state/mutation-model",
-          ],
-        },
-        {
-          type: "category",
-          label: "Integration",
-          items: [
-            "advanced/inbound-transports",
-            "advanced/manual-flow-execution",
-            "advanced/voice",
-            "advanced/flow-isolation",
-            "advanced/custom-model-resolver",
           ],
         },
       ],

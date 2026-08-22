@@ -6,7 +6,7 @@ sidebar_position: 2
 
 Two entry points share the same tier configuration: `createMemoryCapability` builds the capability surface, and `system()` builds that capability plus the auto-capture and lifecycle pipeline. Whichever you pick, the tier configs below are identical. You won't need every knob on day one — start with the defaults and tighten things as you learn what your agent forgets.
 
-Flow, runtime, and environment knobs that are not memory-specific are in the [Configuration](/docs/configuration/overview) section.
+Flow, runtime, and environment knobs that are not memory-specific sit next to those concepts in Core. The [Configuration map](/docs/configuration/overview) is the index.
 
 ```ts
 import { system } from "@flow-state-dev/memory";

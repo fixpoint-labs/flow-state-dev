@@ -1,10 +1,10 @@
 ---
-title: Flow definition
-sidebar_position: 2
+title: Flow options
+sidebar_label: Flow options
 description: Every field on defineFlow, actions, scopes, and inbound transports.
 ---
 
-# Flow definition
+# Flow options
 
 `defineFlow({ ... })` returns a factory. Call the factory (`defineFlow({ ... })()` or `defineFlow({ ... })({ id: "default" })`) to get a registerable instance. The definition is the contract; the instance is what you pass to `createFlowState`.
 
@@ -216,8 +216,8 @@ Collections add `pattern`, `maxInstances`, `eviction` (`"none"` \| `"lru"` \| `"
 
 ## See also
 
-- [Blocks configuration](./blocks) — generator, handler, sequencer, router fields
-- [Runtime](./runtime) — `createFlowState`
+- [Block options](./blocks) — generator, handler, sequencer, router fields
+- [Runtime options](./runtime) — `createFlowState`
 - [Concurrency policies](/docs/advanced/concurrency-policies)
 - [Flow isolation](/docs/advanced/flow-isolation)
 - [Durable execution](/docs/advanced/durable-execution)

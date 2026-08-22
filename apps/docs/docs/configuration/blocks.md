@@ -1,10 +1,10 @@
 ---
-title: Blocks
-sidebar_position: 3
+title: Block options
+sidebar_label: Block options
 description: Shared block fields plus generator, handler, sequencer, and router options.
 ---
 
-# Blocks
+# Block options
 
 Every block takes a config object. Shared fields live on every kind. Generators, handlers, sequencers, and routers add their own.
 
@@ -162,7 +162,7 @@ Plus the [shared fields](#shared-fields).
 
 ## See also
 
-- [Flow definition](./flow) — where blocks are mounted as actions
+- [Flow options](./flow) — where blocks are mounted as actions
 - [Capabilities](/docs/fundamentals/capabilities)
 - [Generator prompts as Markdown](/docs/advanced/generator-prompts-markdown)
 - [Block memoization](/docs/advanced/block-memoization-and-replay)

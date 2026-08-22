@@ -81,7 +81,7 @@ export default defineFlow({
 })();
 ```
 
-The generator handles prompt assembly, streaming, and conversation history (`history: true` reads prior turns out of the session automatically). `user` is this turn's model input. `userMessage` is the stored user-visible text. Point both at `input.message`. The [user slot](/docs/advanced/generator-context#user-slot) page covers how those two fields interact. [Blocks configuration](/docs/configuration/blocks) lists every generator field.
+The generator handles prompt assembly, streaming, and conversation history (`history: true` reads prior turns out of the session automatically). `user` is this turn's model input. `userMessage` is the stored user-visible text. Point both at `input.message`. The [user slot](/docs/advanced/generator-context#user-slot) page covers how those two fields interact. [Block options](/docs/configuration/blocks) lists every generator field.
 
 To chain multiple blocks together, you'd compose them with a **sequencer**:
 
@@ -197,6 +197,6 @@ Or open the visual inspector with `fsdev dev` — see the [DevTool guide](/docs/
 
 - **[Your First Flow](/docs/getting-started/your-first-flow)** — The same app, with the why for each piece.
 - **[Anatomy of a Flow](/guides/anatomy-of-a-flow)** — Mental model without a project to build.
-- **[Configuration](/docs/configuration/overview)** — Field catalog for `defineFlow`, `createFlowState`, and environment variables.
+- **[Block options](/docs/configuration/blocks)** and **[Flow options](/docs/configuration/flow)** — field catalogs next to those concepts.
 - **[Project Structure](/docs/getting-started/project-structure)** — How to organize flows, blocks, and tools.
 - **[Blocks](/docs/fundamentals/blocks)** — The four block kinds in depth.
