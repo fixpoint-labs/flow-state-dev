@@ -8,10 +8,27 @@ cost the same thing: they trust the surface, the surface lies, and they lose an 
 finding out.
 
 **Objective.** Remove the lying surfaces this epic names, and leave the rest of the
-framework alone. When it lands, every leftover in §4's member set is gone: the pages it
-touches describe the code as it is, the options it removes are ones nothing read, and every
-name it drops has a canonical replacement that ships with it. A developer who hits one of
-these particular traps today stops hitting it.
+framework alone. A developer who hits one of these particular traps today stops hitting it.
+
+**What "landed" means — one criterion, not one per cut kind.** Every removal in §4's member
+set takes away **nothing a consumer could have been relying on to work**, by one of three
+routes: the capability still exists under its canonical name, or there was never a working
+capability behind that name, or nothing outside this repo could reach it. Phrasing it as
+"was not doing its job" would already be too narrow — an internal duplicate *was* doing its
+job; what makes it removable is that its contract-identical twin survives.
+
+Where a removal nevertheless changes something observable — FIX-1210's seed flags drop two
+keys from `--capture` output — the changeset enumerates it rather than leaving a consumer to
+find out.
+
+**Earlier drafts wrote this per-cut and were false for at least one category every time.**
+"Every option removed was unread" is true of dead knobs and false of lying knobs, which are
+read — into a report of themselves. "Every name dropped has a canonical replacement" is true
+of aliases and renames and false of internal deletions, which deliberately have none:
+requiring a successor for an unreachable internal symbol would be the unused-export sweep
+this epic refuses. The gate below admits six categories that reach the criterion by different
+routes, so **a success criterion that names a specific cut kind has narrowed too far.** That
+is the tell, and it is the failure this section kept repeating.
 
 **What this deliberately does not promise.** Not that the framework as a whole has no lying
 surface. An earlier draft said exactly that, and it was a promise nine merged PRs cannot
@@ -54,7 +71,7 @@ So the bar depends on what is being cut:
 
 | Cutting | The evidence that counts |
 |---|---|
-| **Public surface** (reachable from a package's `src/index.ts` or its `exports` map) | A **named successor with an equivalent contract**. A grep is not sufficient and never was. If you cannot name what replaces it, it is not a leftover. A **rename** satisfies this by shipping its successor in the same change — the test there is that the contract is identical and the new name is exported before the old one goes, not that the new name predates the PR |
+| **Public surface** (reachable from a package's `src/index.ts` or its `exports` map) | A **named successor with an equivalent contract**. A grep is not sufficient and never was. If you cannot name what replaces it, it is not a leftover. A **rename** satisfies this by shipping its successor in the same change — the test there is that the contract is identical and the new name is exported before the old one goes, not that the new name predates the PR. **One exception, and only one:** a public **lying knob** has no successor because it never delivered a capability — the row below governs it instead, and its enumeration requirement is what protects the consumer in place of a successor. That exception is available to lying knobs and to nothing else |
 | **A dead knob** | The **read that does not exist** — the option is declared and destructured, and no code consumes it |
 | **A lying knob** | **Two things, both required.** First, the **promise it breaks**: the surface text that advertises it — help string, JSDoc, docs page — set against the code path showing it never does that. Second, **every observable surface the removal changes**, enumerated and disclosed in the changeset. Deliberately a higher bar than the dead knob's, because a read *does* exist: something downstream may be consuming the echo even though nothing consumes the intent, and the enumeration is what makes that visible instead of assumed |
 | **Internal surface** (not reachable from any package entry) | A repo-wide grep with **zero** referents, plus the check that it is absent from the entry and the `exports` map |
@@ -295,8 +312,8 @@ this epic. It was never built for a set whose implementation predates its epic.
 
 ### Members — completion is these
 
-**What "complete" asserts, and what it does not.** These nine merged means every leftover this
-epic named is gone. It does not mean the framework has no lying surface left; §1 bounds the
+**What "complete" asserts, and what it does not.** These nine merged means every removal this
+epic named has landed, each meeting §1's criterion. It does not mean the framework has no lying surface left; §1 bounds the
 promise to this set, and §5 lists the twelve that remain — eleven cleanup candidates, none of the
 public ones yet evidenced, plus one product fork. A completion signal that claimed more than nine
 PRs establish would be its own lying surface.
@@ -386,8 +403,13 @@ still open on individual PRs is review feedback, and it lives on those PRs, not 
   version where that is what minors are for — to stop paying an unbounded, uncertain cost on
   every new developer who finds two names for one thing and has to work out which is real.
 
-  *Recommendation: yes*, on the strength of the successor rule in §1: every name going has a
-  named replacement with an equivalent contract, so nobody loses a capability.
+  *Recommendation: yes*, though not for the reason an earlier draft gave. It said "every name
+  going has a named replacement", which is true of the aliases and the rename and false of
+  FIX-1210's `--seed-user` / `--seed-org` — public CLI names that go with no successor at all.
+  They do not need one: they never seeded anything, so there is no capability to replace, and
+  what a consumer actually loses is two keys in `--capture` output, which #1387's changeset
+  enumerates. The recommendation holds on the honest version of the claim — **nobody loses
+  something that worked** — which covers both routes where the successor rule alone did not.
 
   **What would change the recommendation:** evidence that a specific removed name has real
   external users — a support thread, an issue, a known integrator on it. We have no telemetry
@@ -453,8 +475,16 @@ still open on individual PRs is review feedback, and it lives on those PRs, not 
   bar — that any of them has a named successor with an equivalent contract, or that no external
   consumer holds it. All six are public names, so repository silence says nothing; treating a
   grep as sufficient is the internal-surface standard applied to public surface, which is the
-  same error that produced the `/cli` false positive. They stay candidates until each supplies
-  successor or migration evidence.
+  same error that produced the `/cli` false positive. They stay candidates until each names a
+  **successor with an equivalent contract** — §1's bar for any public removal, with no softer
+  alternative. An earlier draft of this line said "successor **or** migration evidence", and
+  that `or` was the same shape of bug §1 had already fixed two rounds earlier: "external
+  consumers are unlikely" is the grep argument wearing different clothes. The lying-knob
+  exception is not available here by default either. Two of the six — `displayMode` and
+  `alwaysRun` — are config fields that might qualify as dead or lying knobs rather than plain
+  public names, and which bar governs each is part of what a follow-on epic has to establish.
+  Until it does, the public default applies: being unsure which category a public name falls
+  into is not a reason to use the weaker bar.
 
   Two of the six have an argument available that the others do not, and it is named here as an
   argument rather than banked as evidence: for **5**, the successor would be `ContextOf` itself
@@ -723,3 +753,33 @@ still open on individual PRs is review feedback, and it lives on those PRs, not 
   is not the closure test. The test is that the last round's edits introduced no new claim and
   no new term. Recorded because it is the transferable lesson from this document, not a note
   about it.
+- **§1's success criteria rewritten to be category-aware — the root of the last three rounds.**
+  Each of those rounds fixed a claim and left an adjacent one contradicting it. The cause was
+  structural: the criteria were written when the gate had one bar, and every sentence
+  generalising across "removals" was a candidate to be false for at least one of the six
+  categories the gate now admits. Two were: *"the options it removes are ones nothing read"*
+  (false for lying knobs) and *"every name it drops has a canonical replacement"* (false for
+  internal deletions, deliberately). The criterion is now stated once, above the cut kinds —
+  every removal takes away nothing a consumer could have been relying on to work, by one of
+  three routes — with the rule that **a success criterion naming a specific cut kind has
+  narrowed too far.**
+  The sweep that followed found one the reviewers had not: §5's first recommendation told the
+  product owner *"every name going has a named replacement, so nobody loses a capability"*, on
+  the sign-off surface, which is false of FIX-1210's `--seed-user` / `--seed-org` — public CLI
+  names that go with no successor at all. Corrected to the claim that is true of both routes:
+  nobody loses something that worked.
+- **The public-surface and lying-knob rows collided, and the collision is now resolved in the
+  table.** A public lying knob has no successor to name, because it never delivered a
+  capability — so for that one category the enumeration requirement replaces the successor
+  requirement. Stated as available to lying knobs and to nothing else, because it is exactly
+  the shape an escape hatch would take.
+- **Tier 2's "successor *or* migration evidence" tightened to successor, full stop.** The `or`
+  was the same bug §1 fixed two rounds earlier: "external consumers are unlikely" is the grep
+  argument in different clothes. Also stopped short of claiming none of the six is a knob —
+  `displayMode` and `alwaysRun` are config fields that may qualify as dead or lying knobs, and
+  which bar governs each is for a follow-on epic to establish. Being unsure which category a
+  public name falls into is not a reason to use the weaker bar.
+- **Folding of automated feedback on this PR stops here.** From now on, findings that would
+  change what the product owner decides get folded; wording, shape and consistency findings are
+  noted and skipped. This document is a coordination artifact that never merges, and the ten
+  sub-PRs are what ship.
