@@ -30,6 +30,7 @@ import {
   tenantMatches
 } from "../stores/scope-keys";
 import { isResourceConfig } from "../routes/route-utils";
+import { isCollectionConfig } from "./is-collection-config";
 import { resourceStorageKeys } from "./storage-keys";
 import { readSessionScopeWithLineage } from "./lineage-scope";
 import {
