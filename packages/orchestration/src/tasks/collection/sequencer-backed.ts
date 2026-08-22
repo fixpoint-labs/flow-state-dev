@@ -47,6 +47,7 @@ import {
 } from "./internal";
 import { stampWrite } from "../write-provenance";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
+import { makeTaskChangeEmitter } from "./change-event";
 import {
   TaskCapExceededError,
   validateTaskCaps,
@@ -123,20 +124,10 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
       : {};
   }
 
-  function emit(
-    kind: TaskChangeKind,
-    task: Task<TInput, TOutput>,
-    prevStatus?: TaskStatus
-  ): void {
-    if (onChange === undefined) return;
-    onChange({
-      collectionId: options.collectionId,
-      taskId: task.id,
-      kind,
-      task: task as Task,
-      prevStatus,
-    });
-  }
+  const emit = makeTaskChangeEmitter<TInput, TOutput>(
+    options.collectionId,
+    onChange
+  );
 
   /** The tasks map `casWrite` hands to its mutator and expects back. */
   type TasksMap<I, O> = Record<string, Task<I, O>>;
