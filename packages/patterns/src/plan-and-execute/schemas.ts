@@ -31,10 +31,6 @@ export const PlanTaskSchema = z.object({
 
 export type PlanTask = z.infer<typeof PlanTaskSchema>;
 
-/** Backward-compat alias — pre-migration the task type was named `PlanStep`. */
-export const PlanStepSchema = PlanTaskSchema;
-export type PlanStep = PlanTask;
-
 /** Legacy plan shape — preserved for the synthesizer's input contract. */
 export const PlanSchema = z.object({
   goal: z.string(),

@@ -7,7 +7,7 @@
  *
  *   1. `prepareBlock` (handler) — query-blind intrinsic pre-rank that pools
  *      semantic facts and episodes by their source-specific scoring formulas
- *      and takes the top `PRE_RANK_CAP`. High-value memories enter the
+ *      and takes the top `PRE_RANK_EPISODIC_CAP`. High-value memories enter the
  *      candidate set regardless of query vocabulary, avoiding the
  *      paraphrase-blindness failure mode. Optional Stage 1.5 exact-phrase
  *      pass-through catches distinctive strings (proper nouns, error codes)
@@ -37,16 +37,6 @@ import type {
   PrepareInput,
   RetrievalStrategy,
 } from '../types'
-
-/**
- * @deprecated since the prepare gate split into per-source pools — the
- * strategy no longer references this. Kept exported so prior consumers
- * (custom strategies that imported it for parity) keep compiling.
- * Episodes are now capped at `PRE_RANK_EPISODIC_CAP`; semantic facts
- * pass through unconditionally (the semantic store is bounded by
- * `pruneThreshold`). Will be removed in a future major.
- */
-export const PRE_RANK_CAP = 50
 
 /**
  * Maximum episodes admitted to the pre-rank pool before the LLM filter call.

@@ -11,7 +11,6 @@ import type { RetrievalStrategy } from '../types'
 
 export {
   createLlmFilterStrategy,
-  PRE_RANK_CAP,
   PRE_RANK_EPISODIC_CAP,
   RECENCY_HALF_LIFE,
   EXACT_PHRASE_CAP,

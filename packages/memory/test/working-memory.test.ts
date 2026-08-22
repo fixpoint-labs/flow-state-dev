@@ -1,6 +1,6 @@
 import { runForTest } from "@flow-state-dev/testing";
 import { describe, it, expect } from 'vitest'
-import type { ResourceHandle } from '@flow-state-dev/core'
+import type { ResourceRef } from '@flow-state-dev/core/types'
 import {
   workingMemoryEntrySchema,
   workingMemoryStateSchema,
@@ -37,7 +37,7 @@ import {
 
 function createMockRef(
   initialState?: Partial<WorkingMemoryState>,
-): ResourceHandle<WorkingMemoryState> {
+): ResourceRef<WorkingMemoryState> {
   let state: WorkingMemoryState = {
     entries: [],
     currentTurn: 0,
@@ -56,7 +56,7 @@ function createMockRef(
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: workingMemoryStateSchema, writable: true },
-  } as ResourceHandle<WorkingMemoryState>
+  } as ResourceRef<WorkingMemoryState>
 }
 
 function makeEntry(overrides: Partial<WorkingMemoryEntry> & { id: string }): WorkingMemoryEntry {
@@ -760,7 +760,7 @@ describe('memory/workingMemory', () => {
     // and persists them to the mock resource.
 
     async function runRemember(
-      ref: ResourceHandle<WorkingMemoryState>,
+      ref: ResourceRef<WorkingMemoryState>,
       observations: Array<{ content: string; importance: number; pinned?: boolean; replaces?: string }>,
       config?: { capacity?: number; maxPinnedSlots?: number },
     ) {
