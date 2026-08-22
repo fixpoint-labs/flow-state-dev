@@ -42,3 +42,5 @@ export type { LiveRequestStream, CreateLiveRequestStreamOptions } from "./live-s
 
 export { createSSEStream } from "./sse-stream";
 export type { SSEStreamHandle, CreateSSEStreamOptions } from "./sse-stream";
+
+export { injectHeartbeat } from "./heartbeat";

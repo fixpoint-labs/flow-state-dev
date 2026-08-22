@@ -260,6 +260,7 @@ import {
   reviewerInputSchema,
   plannerOutputSchema,
   executableTaskSchema,        // legacy worker input shape
+  legacyWorkerAdapter,          // back-compat shim
   buildReviewedWorker,          // build a per-task review chain manually
   createSupervisorCaptureAndPlan,
   createSupervisorSynthesize,
