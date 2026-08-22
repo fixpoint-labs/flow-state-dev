@@ -8,6 +8,8 @@ Everything in flow-state.dev is a block. Every LLM call, every data transform, e
 
 This constraint is the point. Four primitives that compose freely means you can build any AI workflow without inventing new abstractions.
 
+Field-by-field options for each kind live in [Blocks configuration](/docs/configuration/blocks).
+
 ## The four kinds
 
 ### Handler — pure logic

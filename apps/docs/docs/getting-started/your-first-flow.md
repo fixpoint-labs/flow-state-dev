@@ -42,6 +42,7 @@ export const chat = generator({
   inputSchema,
   history: true,
   user: (input) => input.message,
+  itemVisibility: { client: true, history: true },
 });
 ```
 
@@ -52,6 +53,7 @@ A few things to notice:
 - **`inputSchema`** is a Zod schema. It's what the framework validates incoming data against, and what TypeScript uses to type the `input` parameter in `user`.
 - **`history: true`** tells the generator to read prior conversation turns out of the session and include them in the LLM call. You don't manage messages yourself.
 - **`user`** is a function that builds the user message from the input. The system prompt comes from `prompt`.
+- **`itemVisibility`** decides who sees the generator's streamed messages. `{ client: true, history: true }` is the user-facing chat. Omit it and the generator does not auto-emit items to the UI.
 
 The block is a value. Once you wrap it in a flow (step 4), you can run it from the CLI without a server or browser:
 
@@ -95,6 +97,7 @@ export const chat = generator({
   inputSchema,
   history: true,
   user: (input) => input.message,
+  itemVisibility: { client: true, history: true },
 });
 
 export const bumpCounter = handler({
@@ -267,3 +270,4 @@ The shape of every flow you write will be the same. You'll add more blocks, some
 - **[State and Scopes](/docs/fundamentals/state-and-scopes)** — When to put data in `session` versus `user` versus a resource.
 - **[Sequencers](/docs/sequencers/overview)** — `parallel`, `sideChain`, loops, `rescue`, and conditional steps.
 - **[Streaming](/docs/streaming/overview)** — How items, deltas, and the SSE wire format fit together.
+- **[Configuration](/docs/configuration/overview)** — Field catalog once you know which object you are editing.

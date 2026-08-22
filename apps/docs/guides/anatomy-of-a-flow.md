@@ -18,7 +18,7 @@ Everything executable in flow-state-dev is a block. There are exactly four kinds
 - **Sequencer** — Composes blocks into pipelines. Chains steps, runs them in parallel, adds error recovery. The composition primitive. A sequencer is itself a block, so you can nest sequencers inside other sequencers or pass them to routers.
 - **Router** — Selects one block at runtime based on input or state. Mode switching, intent routing, conditional flows. The router's `execute` function returns the block to run. The framework then executes that block with the router's input.
 
-All blocks share the same contract: input in, output out. Any block composes with any other. No special cases. This uniformity is deliberate: you don't need different composition rules for "AI blocks" vs "logic blocks."
+All blocks share the same contract: input in, output out. Any block composes with any other. You do not need different composition rules for model calls versus ordinary functions.
 
 ## 2. Sequencers compose blocks
 
@@ -40,7 +40,7 @@ A flow is the deployable unit. It bundles blocks, state, and client visibility i
 
 - **`kind`** — The identifier. Becomes the URL path (`/api/flows/hello-chat/...`). Clients use this to target the right flow.
 - **`actions`** — Entry points. Each action maps to a root block. When a client calls `sendAction("chat", { message: "Hi" })`, the framework looks up the "chat" action, validates the input, and runs its block.
-- **State schemas** — For request, session, user, and project scopes. Blocks declare partial schemas; the flow merges them into full scope contracts.
+- **State schemas** — For request, session, user, and org scopes. Blocks declare partial schemas; the flow merges them into full scope contracts.
 - **Resources** — Named, typed data stores attached to scopes. Blocks can declare resource dependencies; the flow wires them up.
 - **`client` block** — The privacy gateway. Each scope's `client` block declares what state crosses to the browser via `expose` (verbatim field names) and `derived` (computed projections). State without a `client` entry stays on the server.
 
@@ -80,9 +80,9 @@ Four nested levels, each with typed atomic operations:
 | Request | Single action run        |
 | Session | Across requests (a conversation) |
 | User    | Across sessions for a user |
-| Project | Shared across users      |
+| Org     | Shared across users in an org |
 
-Request scope exists only for the duration of one action. Session scope is where most state lives for chat-style apps: conversation mode, message counts, in-progress drafts. User scope spans sessions: preferences, feature flags, usage quotas. Project scope is shared across users: team config, shared resources.
+Request scope exists only for the duration of one action. Session scope is where most state lives for chat-style apps: conversation mode, message counts, in-progress drafts. User scope spans sessions: preferences, feature flags, usage quotas. Org scope is shared across users: team config, shared resources.
 
 Blocks declare partial schemas: they only specify the fields they read or write. A counter block doesn't need to know about preferences. The framework merges these declarations at the flow level. This keeps blocks portable and self-documenting.
 
@@ -121,7 +121,7 @@ The hooks subscribe to the right streams and re-render when data changes. You do
 
 The testing harness uses mocked generators. No real LLM calls. No network. Same contracts as production: validation, session resolution, block execution, state persistence, lifecycle hooks.
 
-You run flows and blocks in an isolated runtime with in-memory stores. Seed state with `seed.session`, `seed.user`, or `seed.project` to simulate specific scenarios. Tests stay fast and reproducible.
+You run flows and blocks in an isolated runtime with in-memory stores. Seed state with `seed.session`, `seed.user`, or `seed.org` to simulate specific scenarios. Tests stay fast and reproducible.
 
 `testFlow` returns the full result: items, session state, request metadata. Assert on what matters: item types and content, final state values, error messages. For blocks in isolation, use `testBlock` from the same package. It runs a single block with optional scope seeding and mocked dependencies. Both use the same execution engine as production; only the stores and model resolution differ.
 
@@ -134,5 +134,6 @@ You run flows and blocks in an isolated runtime with in-memory stores. Seed stat
 - [State and Scopes](/docs/fundamentals/state-and-scopes) — Scope hierarchy, partial schemas, CAS
 - [Streaming](/docs/streaming/overview) — Items, content model, resume semantics
 - [Server Setup](/docs/server/setup) — Registry, router, model resolution
+- [Configuration](/docs/configuration/overview) — Field catalog for `defineFlow`, `createFlowState`, and environment variables
 - [React Integration](/docs/client/react) — Hooks, renderers, clientData
 - [Testing](/docs/testing/overview) — Test harness, mocks, seeding

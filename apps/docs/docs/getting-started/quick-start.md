@@ -16,6 +16,7 @@ Build a streaming chat in five minutes. By the end you have a typed flow, a Next
 
 ```bash
 pnpm add @flow-state-dev/core @flow-state-dev/engine @flow-state-dev/react zod
+pnpm add -D @flow-state-dev/fsdev
 ```
 
 Add the SDK package for whichever provider you have a key for. The framework loads it from your app, so at least one has to be installed:
@@ -62,6 +63,7 @@ const chat = generator({
   inputSchema,
   history: true,
   user: (input) => input.message,
+  itemVisibility: { client: true, history: true },
 });
 
 export default defineFlow({
@@ -79,7 +81,7 @@ export default defineFlow({
 })();
 ```
 
-The generator handles prompt assembly, streaming, and conversation history (`history: true` reads prior turns out of the session automatically). Both `user: (input) => input.message` on the generator and `userMessage: (input) => input.message` on the action wire to the same source; they are complementary contracts and the framework deduplicates equivalent content. See [Generator context > User slot](/docs/advanced/generator-context#user-slot) for the interaction.
+The generator handles prompt assembly, streaming, and conversation history (`history: true` reads prior turns out of the session automatically). Both `user: (input) => input.message` on the generator and `userMessage: (input) => input.message` on the action wire to the same source; they are complementary contracts and the framework deduplicates equivalent content. The [user slot](/docs/advanced/generator-context#user-slot) page covers how those two fields interact. [Blocks configuration](/docs/configuration/blocks) lists every generator field.
 
 To chain multiple blocks together, you'd compose them with a **sequencer**:
 
@@ -193,7 +195,8 @@ Or open the visual inspector with `fsdev dev` — see the [DevTool guide](/docs/
 
 ## Next steps
 
-- **[Your First Flow](/docs/getting-started/your-first-flow)** — A narrative walkthrough that explains each concept as you build.
-- **[Setting Up Models](/docs/getting-started/setting-up-models)** — Provider keys, intents, gateways, custom resolvers.
+- **[Your First Flow](/docs/getting-started/your-first-flow)** — The same app, with the why for each piece.
+- **[Anatomy of a Flow](/guides/anatomy-of-a-flow)** — Mental model without a project to build.
+- **[Configuration](/docs/configuration/overview)** — Field catalog for `defineFlow`, `createFlowState`, and environment variables.
 - **[Project Structure](/docs/getting-started/project-structure)** — How to organize flows, blocks, and tools.
 - **[Blocks](/docs/fundamentals/blocks)** — The four block kinds in depth.

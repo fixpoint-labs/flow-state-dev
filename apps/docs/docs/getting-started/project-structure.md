@@ -72,6 +72,7 @@ export const chatGen = generator({
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
   user: (input) => input.message,
+  itemVisibility: { client: true, history: true },
 });
 ```
 

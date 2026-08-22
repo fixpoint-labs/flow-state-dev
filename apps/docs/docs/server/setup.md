@@ -40,13 +40,13 @@ Move this config object to an `fsdev.config.ts` at your project root that defaul
 
 Construction validates your config up front. An empty `stores` map or a `defaultProfile` that names a profile you didn't declare throws right away, not on the first request.
 
-Common options:
+The full field list, including defaults, is in [Runtime configuration](/docs/configuration/runtime). Common options:
 
 | Option | Purpose |
 |--------|---------|
 | `flows` | Map of stable keys to flow instances. |
 | `models` | Model resolver config. `default` is the fallback model id; `intents` maps named intents to ordered candidate lists. Auto-wires the Vercel AI Gateway when `AI_GATEWAY_API_KEY` is set. |
-| `voice` | Speech and transcription providers. Pass `openai.speech` / `openai.transcription` directly. |
+| `voice` | Runtime voice provider (`{ provider }`). Speak defaults also live on the flow's `voice` block. |
 | `stores` | Named store profiles. See below. |
 | `defaultProfile` | Which profile to use when no `FSD_ENV` is set. |
 | `settings` | Instance-level config read inside blocks via `ctx.settings`. |
@@ -56,7 +56,7 @@ Common options:
 ```ts
 import { createFlowState, inMemoryStores } from "@flow-state-dev/engine";
 import { vercelPostgresStores } from "@flow-state-dev/vercel/store";
-import { openai } from "@ai-sdk/openai";
+import { OpenAIVoiceProvider } from "@flow-state-dev/voice-openai";
 import myFlow from "@/flows/my-flow/flow";
 
 export const flowstate = createFlowState({
@@ -67,7 +67,7 @@ export const flowstate = createFlowState({
       chat: ["vercel/anthropic/claude-sonnet-4.6", "vercel/openai/gpt-5.5"],
     },
   },
-  voice: { speech: openai.speech, transcription: openai.transcription },
+  voice: { provider: new OpenAIVoiceProvider({ apiKey: process.env.OPENAI_API_KEY }) },
   stores: {
     prod: { primary: vercelPostgresStores() },
     dev: { primary: inMemoryStores() },

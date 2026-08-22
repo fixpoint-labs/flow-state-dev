@@ -29,6 +29,7 @@ export const chatGen = generator({
   inputSchema: z.object({ message: z.string() }),
   history: true,
   user: (input) => input.message,
+  itemVisibility: { client: true, history: true },
 });
 ```
 
@@ -38,6 +39,7 @@ export const chatGen = generator({
 - **`prompt`** — The system instruction. Sent first in every model call. Can be a string or a function `(input, ctx) => string` for dynamic prompts.
 - **`history`** — Prior conversation messages. This is how the model remembers what was said before. The framework calls `ctx.session.items.history()` to get completed messages in `{ role, content }` format, filters and formats them, and injects them into the prompt. Without this, each request would be stateless.
 - **`user`** — The current user input. Extracted from the action input. In our case, it's `input.message`. The framework adds this as the final user-role message before calling the model.
+- **`itemVisibility`** — Who sees streamed messages. `{ client: true, history: true }` is a user-facing chat. Omit it and the generator does not auto-emit items to the UI.
 
 The framework assembles the full prompt in order: prompt, context (if any), history, user. It handles tool calls, retries, and streaming. You focus on what goes in, not how it gets there.
 
