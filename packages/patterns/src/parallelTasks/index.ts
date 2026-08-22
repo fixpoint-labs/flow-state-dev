@@ -98,13 +98,6 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     outputSchema,
   } = config;
 
-  if ((onSubTaskError as string) === "retry") {
-    console.warn(
-      `[flow-state-dev] parallelTasks "${name}": onSubTaskError="retry" is not supported ` +
-      `and will be treated as "skip". Remove the option to suppress this warning.`
-    );
-  }
-
   const boardOnError: "skip" | "fail" = onSubTaskError === "fail" ? "fail" : "skip";
 
   const defaultPlanner = utility.decomposer({ name: `${name}-planner` });
