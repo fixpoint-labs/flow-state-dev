@@ -29,13 +29,14 @@ The consumer is **Conductor**, a meta-harness driving coding-agent runs across m
 One known, committed consumer is what keeps this from being speculative surface (tenet 3).
 
 **What sign-off certifies.** The objective and the grouping — that cron rides on this layer
-rather than keeping a transport of its own, and that a spawn verb and a send verb are the same
-missing layer. It certifies **no** issue's contracts: the verb's name and the config surface it
-hangs off are open (§5), and the division in §4 — **now six proposed issues**, the five plus the
-owner-proposed watch seam — is a proposal. **The gate is the last cheap moment to redraw the
-set** — after it, redrawing costs specs already written. It is also the moment the set is under
-*opposite* pressure from two directions at once, which §4's composition note states rather than
-smooths.
+rather than keeping a transport of its own, and that a spawn verb belongs beside a send verb
+because **spawn supplies the address the send verb consumes** (the issue-3 paragraph below). It
+certifies **no** issue's contracts: the verb's name and the config surface it hangs off are open
+(§5), and the division in §4 — **six proposed issues** — is a proposal. **The gate is the last
+cheap moment to redraw the set** — after it, redrawing costs specs already written. One
+composition question is still live and §4's composition note states it rather than smoothing it:
+whether issue 5 belongs in this epic at all (§5 Q5's placement half). *(The coordinator's
+"swap issue 3 for issue 6" proposal is **retracted** — see below.)*
 
 **What the address *is* is settled; what a sender may address is not.** The owner has stated it:
 **a recipient is a `sessionId`**, and a sender is identified by its own `sessionId` — possibly
@@ -58,17 +59,19 @@ address fires as a new request on that session.
 **The set contains no consumer of its own objective — and the watch seam would be one. Raised at
 the gate by the coordinator, not by the owner, because nobody has made this argument.** The five
 original issues build a verb plus four adjacent things; the proof that the send verb is *useful*
-lives outside the epic, in Conductor. The proposed watch seam (issue 6, §4) is a direct consumer
-of the objective sentence above: a task row settles → a message reaches a session that was not
-running → something happens. That is an end-to-end goal check on the real path, landing in
+lives outside the epic, in Conductor. The proposed watch seam (issue 6, §4) — a general one-off
+notification primitive whose *first consumer* is the task board — is a direct consumer of the
+objective sentence above: an event fires → a message reaches a session that was not running →
+something happens. That is an end-to-end goal check on the real path, landing in
 precisely the blank spot the paragraph above measures — where `goals/**` covers neither scheduled
 dispatch nor concurrency arbitration. **Recorded as an argument for inclusion, not a decision.**
 The gate answers it.
 
 **Holistic necessity — and it now runs in both directions.** *(Two reviewers want the set smaller;
-the owner has proposed making it larger. The composition note in §4 states that tension and the
-coordinator's proposed resolution; this paragraph covers only the original cut candidates.)* The
-cut candidate is issue 5, the `pending
+the owner has made it larger — and has kept issue 3 in. §4's composition note states that tension;
+the coordinator's earlier "swap spawn for watch" resolution is **retracted**, because it rested on
+a wrong premise about why spawn is in the set. This paragraph covers only the original cut
+candidates.)* The cut candidate is issue 5, the `pending
 feedback` task status: a task-board addition, not a messaging one. It stays because theme 5 —
 the reply arrives as a new inbound message, nothing suspends — only works if a task can be
 *parked* while its request ends. Without it a workstream that asks either holds a loop open or
@@ -81,14 +84,25 @@ cold path — and **refuted** it: parking works and resuming works, but a parked
 launching request open, so *the request may end* is not available today. What stays open is not
 whether the status is needed but **where it is filed** (§5 Q5).
 
-Issue 3, the sibling-spawn verb, is second-weakest: a second verb in an epic whose point is a
-first one. It stays because it is the same missing layer — same addressing, same per-adapter
-delivery — so building it later means touching both again. **Tripwire:** if it grows a delivery
-path of its own, it should have been its own epic and should be pulled out rather than absorbed.
-**It is now also the coordinator's proposed swap-out** if the watch seam comes in — see §4's
-composition note. That proposal does not change this paragraph's reasoning; it weighs it against
-a candidate that fits the objective more directly, and **only the owner can pull issue 3**, since
-keeping it was an explicit owner call.
+**Issue 3, the sibling-spawn verb, is in the set because messages cross sessions.** *(Corrected by
+the owner. The reasoning previously recorded here was the coordinator's, and it was wrong.)* Spawn
+is the **address-supply side of cross-session messaging**: if a session can message a peer, it
+needs a way to mint the peer it will address. Without spawn, cross-session messaging only ever
+reaches sessions that some outside-world caller happened to create — the layer could send, but
+could not bring a recipient into existence. That is **the messaging model completing itself**, not
+a task-board concern and not implementation economy.
+
+**Retracted: the "same missing layer" argument, and the swap it licensed.** This paragraph
+previously kept issue 3 on *implementation economy* — same addressing, same per-adapter delivery,
+so building it later means touching both again — and on that premise the coordinator proposed
+**swapping issue 3 out for the watch seam**. Two bot reviewers (a cursor Grok pass and
+chatgpt-codex) had each independently recommended cutting issue 3, and the coordinator agreed with
+them. All three were reasoning from the wrong premise about *why* issue 3 is in the set. The
+owner's reason supersedes; **issue 3 stays**, and the swap proposal is withdrawn wherever it
+appeared (§1, §4's index, §4's composition note, §5, and the PR description).
+
+**Tripwire, unchanged:** if issue 3 grows a delivery path of its own, it should have been its own
+epic and should be pulled out rather than absorbed.
 
 **Deliberately not doing** — named, not silent:
 
@@ -96,7 +110,10 @@ keeping it was an explicit owner call.
   without one, so an unaddressed message has nowhere to run. Delivering to every interested
   party would mean inventing a session per subscriber — *spawning work* wearing delivery's name.
   Even "a fresh session" is a named recipient. FIX-441's `NotificationFlow` subscriber shape is
-  exactly this (§4).
+  exactly this (§4). **A watch registry is not this**, and it is stated once — in §4's issue-6
+  section — so it is not re-litigated: every subscription names its recipient's `sessionId` **at
+  registration time**, so N subscriptions are N *addressed* deliveries. The banned shape is an
+  unaddressed message with no session to run in.
 - **Session discovery.** Which sessions exist and what each is working on is consumer-owned
   domain state — a resource collection each coordinator writes, read into a role's context
   through a formatter. No framework session registry (tenet 4).
@@ -355,10 +372,19 @@ can cite one.
     itself run. A message is a collaboration mechanism that works *while a task is in process* —
     it is what makes steering possible. **Tasks go downward; messages go upward and sideways.** An
     issue that finds itself adding a message field to a task row has hit this line. **Proposed
-    issue 6 (watch) is the first thing in the set to touch that line deliberately, and it stays on
-    the right side of it:** the board **triggers** and Relay **delivers** — the row records nothing
-    about the message and the message carries no board semantics. An issue-6 spec that starts
-    storing message state on the row has crossed here. The same
+    issue 6 (watch) touches that line deliberately and stays on the right side of it:** the board
+    **emits** — which it already does, `TASK_CHANGE_COMPONENT_TYPE = "task-change"`
+    (`packages/orchestration/src/tasks/collection/get-or-create.ts:29-30`) — the **watch manager**
+    matches, and Relay **delivers**. The row records nothing about the message and the message
+    carries no board semantics. An issue-6 spec that stores message state on the row, or that adds
+    a *new* emit to the board, has crossed here.
+
+    **Which is why the watch manager lives in `engine`, not `orchestration`.** *(Decided — D4,
+    §4's issue-6 decisions.)* Both of the owner's named event sources have to reach it, and one of
+    them — the resource registry's `onResourceChanged`
+    (`packages/engine/src/context/resource-registry.ts:545`) — is in `engine`. `orchestration`
+    becomes a **consumer** that forwards the `task-change` event it already emits. That placement
+    is what keeps the board single-writer instead of growing a delivery responsibility. The same
     boundary sets the default for board writes: a workstream **requests** a plan change and the
     top session decides. Once addressed messaging exists, a request costs no more than a mutation
     would, and single-writer is what keeps the board reasonable about. Whether some workstreams may
@@ -374,10 +400,11 @@ can cite one.
     Issue 5 depends on nothing in the set and can start immediately.
 
     **Proposed issue 6 (watch) joins the first group** — it consumes the send verb rather than
-    building a second delivery path, so it cannot merge before issue 1 either. It is the one
-    member of that group that also collides with issue 5, which is a *spec-ordering* constraint
-    rather than a merge one: §5 Q6b requires one spec to own the `countWaitable` /
-    `boardQuiescence` surface, or the two to be explicitly sequenced, **before either is specced**.
+    building a second delivery path, so it cannot merge before issue 1 either. **It carries no
+    spec-ordering constraint against issue 5.** *(Corrected: it did, as §5 Q6b.)* Under the
+    notification-primitive model watch touches **no** board internals — the board only emits, which
+    it already does — so Q6b is withdrawn and **issue 5 is free-standing again**, for spec purposes
+    as well as merge order.
 
 14. **Two clocks, two jobs — and the admission budget must become configurable.**
     *(Added by owner amendment; **corrected by §3's Q4 run**, which superseded the reasoning this
@@ -437,6 +464,32 @@ can cite one.
     the two issues would guarantee exactly that window. Issue 2 still owns per-adapter delivery
     and consumes the parameter; issue 4 inherits it, since a schedule that waits for an answer is
     the same shape.
+
+15. **Watch is the asynchronous, cross-session, runtime-registered sibling of `reactTo` — one
+    event vocabulary, not two.** *(Added by owner amendment. The model is the owner's; this framing
+    and the prior-art citations are the coordinator's, verified by read.)*
+
+    **"When this event fires, run this bound thing" already exists — synchronously.** `reactTo`
+    (`packages/engine/src/context/reactive-dispatch.ts:1-17`) resolves the bound block for a change
+    kind, builds the `ResourceChange` payload, gates it through an optional `when` predicate and a
+    per-request cascade controller, validates it against the block's `inputSchema`, and runs the
+    block **in-session, awaited inline as part of the mutating turn**, with a throw propagating
+    atomically. Caps are hard-coded: `MAX_CASCADE_DEPTH` 8, `MAX_CASCADE_FANOUT` 1000 (`:43-46`).
+
+    **Watch is the same sentence with three words changed.** `reactTo` is *statically declared by
+    the flow author*, fires *in the same turn*, in *the same session*. Watch is *registered at
+    runtime*, fires *after the turn*, and delivers to *a different session*. Same event vocabulary;
+    different binding time, different delivery.
+
+    **This is what right-sizes issue 6.** Only three things are genuinely new: **(a)** the durable
+    subscription registry, **(b)** a matcher that runs **outside** the mutating turn, **(c)**
+    delivery as an **addressed relay message** rather than an inline block call. Everything else —
+    the events, the payload shape, the predicate idiom — is already shipped and already consumed.
+
+    **Coherence requirement, binding on issue 6's spec:** reuse `reactTo`'s change-payload shape
+    and predicate idiom rather than inventing a second vocabulary for the same events. Two ways to
+    describe one `resource_change` in one codebase is exactly the incoherence this theme exists to
+    prevent. **Constrains issue 6**, and constrains any later consumer of the primitive.
 
 ---
 
@@ -638,8 +691,10 @@ through the same `runsElsewhere` exclusion that detached dispatch already gets f
 
 **Changed:** §1's necessity check now rests on evidence; §4's issue-5 cell carries the residual
 gap; §5 **Q5's necessity half is settled and its placement half is not**. **No re-division — the
-five issues stand** *(true of this settlement; the owner has since proposed a sixth, and issue 5's
-residual gap collides with it — §5 Q6b)*.
+five issues stand** *(true of this settlement; the owner has since proposed a sixth. The
+issue-5/issue-6 collision once recorded here as **§5 Q6b is withdrawn** — under the
+notification-primitive model watch touches no board internals, so issue 5's residual gap is issue
+5's alone.)*
 
 ---
 
@@ -653,39 +708,138 @@ cell is empty by design, not by omission.
 |---|---|---|---|---|---|---|---|---|
 | 1 | The address, the send verb, and what a sender may legally address | the recipient address as a **`sessionId`** on the envelope, a **server-derived sender identity** (its `sessionId`, and possibly the sending `requestId` — open, §5 Q1b), the send verb, both send modes **and the reply-correlation identifier wait-for-response requires** (theme 6, §5 Q1b), **acceptance as the acknowledgement on both** (theme 6) and the **sender-side answer timeout, default 30 min** (theme 14), **the configurable in-process admission budget** (theme 14, §3 Q4 — *moved here from issue 2*: the receipt and the budget ship together or the send API acks deliveries the arbiter can still silently drop, and theme 13 lands this issue first), the self-addressed refusal, and the agent-facing tool — core + engine + tools | — | not filed | spec | — | — | Proposed |
 | 2 | Per-adapter delivery | in-process for a Node host; through the `FlowDispatcher` seam so a queue-backed deployment gets durability for free. **The configurable admission budget is no longer here** — it moved to issue 1 (theme 14); issue 2 consumes the parameter rather than introducing it | 1 | not filed | spec | — | — | Proposed |
-| 3 | The sibling-spawn verb | an independent, self-managing session with its own flow kind and addressable key, resolving `flow.actions` like any other caller and talking back by message rather than `settleParentTask` | 1 | not filed | spec | — | — | Proposed |
+| 3 | The sibling-spawn verb — **address supply for cross-session messaging** | an independent, self-managing session with its own flow kind and addressable key, resolving `flow.actions` like any other caller and talking back by message rather than `settleParentTask`. **In the set because messages cross sessions** (§1, owner): spawn mints the peer the send verb will address; without it, messaging only ever reaches sessions an outside-world caller happened to create. *(The earlier "same missing layer" / implementation-economy rationale, and the swap-out proposal it licensed, are retracted — §1.)* | 1 | not filed | spec | — | — | Proposed |
 | 4 | Cron: a schedule addresses a session and fires as a message | the schema field, the resolver, and the one dispatch envelope; absent address preserves today's behaviour exactly | 1 | not filed | spec | — | — | Proposed |
-| 5 | A `pending feedback` task status | "parked awaiting external input; the request may end; a later request resumes this task" — a genuine addition, not a rename of `awaiting_review`. **Necessity settled by run, not asserted** (§3's settlement, REFUTED): today's `awaitReview` parks and `resumeFromReview` resumes, but `awaiting_review` is excluded from every board-exit path, so the launching request stays open for the whole park. **The residual gap to build:** a park mode that does not hold the drain's own request open — either an exit path letting `boardQuiescence` stop returning "continue" while a task sits parked, or routing review-parking through the same `runsElsewhere` exclusion detached dispatch already gets for `in_progress`. **Collides with proposed issue 6** over that same machinery — §5 Q6b, to be resolved before either is specced | — | not filed | spec | — | — | Proposed |
-| 6 | **Watch — register interest in a task row without claiming it** *(owner-proposed, 2026-08-21)* | a **watch** relationship beside today's only one, **claim**: register interest in a row, take no lease, hold nothing up, block nobody; when the row reaches a **terminal** state, deliver the row's **outcome** as an **addressed message** through issue 1's send verb. **Scope, as the owner set it:** terminal transitions only (mid-run progress and questions are FIX-1056's steering direction); it delivers the row's outcome, **not** an authored reply from the worker — a worker with something of its own to say uses the send verb; and it says nothing about which strand an arriving turn joins | 1 | not filed | spec | — | — | **Proposed (owner, at the gate)** |
+| 5 | A `pending feedback` task status | "parked awaiting external input; the request may end; a later request resumes this task" — a genuine addition, not a rename of `awaiting_review`. **Necessity settled by run, not asserted** (§3's settlement, REFUTED): today's `awaitReview` parks and `resumeFromReview` resumes, but `awaiting_review` is excluded from every board-exit path, so the launching request stays open for the whole park. **The residual gap to build:** a park mode that does not hold the drain's own request open — either an exit path letting `boardQuiescence` stop returning "continue" while a task sits parked, or routing review-parking through the same `runsElsewhere` exclusion detached dispatch already gets for `in_progress`. **No collision with issue 6** — *corrected;* one was recorded as §5 Q6b and is withdrawn, because watch touches no board internals. Issue 5 owns this surface alone and depends on nothing | — | not filed | spec | — | — | Proposed |
+| 6 | **Watch — a general one-off notification primitive** *(owner-proposed 2026-08-21; **redefined by the owner 2026-08-23** — it is **not** a task primitive)* | a durable **subscription registry**, an **event matcher**, and **delivery as an addressed relay message**. An entry says *when this event fires holding this value, call this flow for this session id*; a **relay action matching that event** must be defined on the recipient to receive the payload; the subscription is **one-off** and unsubscribes on fire. **The task board is its first consumer, not its subject** — a completing task forwards the `task-change` event it already emits; an updated resource value is the second named source. **Three of its four parts already ship** (theme 15: watch is `reactTo`'s async, cross-session, runtime-registered sibling); what is new is the registry, a matcher running outside the mutating turn, and addressed delivery. **Four calls already decided** — D1 satisfied-or-attach registration · D2 exact-match on identity key + event name · D3 TTL whose expiry *delivers* · D4 the manager lives in `engine` | 1 | not filed | spec | — | — | **Proposed (owner)** |
 
 **The agent-facing tool is deliberately inside issue 1, not beside it.** The constraint is that
 the programmatic sender and the tool are the *same verb*, differing only in who calls them.
 Co-location is the strongest guarantee against the two drifting apart.
 
-### Issue 6 — the watch seam, as the owner framed it
+### Issue 6 — watch, a general one-off notification primitive
 
-**This is a set change proposed by the owner, not a review fold.** It is recorded here because
-the objective gate approves the *division*, so a division that no longer matches the document
-would put the gate on the wrong thing. The owner's framing, verbatim: *"this is a seam we think
-is missing. It is not filed anywhere in Linear, and there is no affordance for it in the
-codebase."*
+**Redefined by the owner (2026-08-23). The earlier framing is superseded.** Issue 6 entered the set
+on 2026-08-21 as *"register interest in a task-board row"*. That was too narrow: it made watch a
+**task** primitive. The owner's definition is canonical and is quoted rather than paraphrased:
 
-**What is missing.** A task board has exactly one relationship to a row today — **claim**:
-exclusive, lease-fenced, one holder. There is no way to say *"I am not doing this task. Tell me
-when it is done."*
+> "Fundamentally watch should be conceived not as a task primitive but as a more reusable
+> notification primitive. It's a one off subscription. Something happens, a watcher was attached to
+> that thing, tell the watcher (or watchers) the thing happened, unsubscribe. A task is completed,
+> a resource value was updated, etc. we should build something that is simple as it needs to be and
+> versatile enough to be reused whenever we need to wait on something else."
 
-**Polling cannot cover it, because the interested party is not running — verified, not asserted.**
-`countWaitable` (`packages/orchestration/src/task-board/shared.ts:184-198`) does
+And the mechanism, also theirs, treated as the shape:
+
+> "There is a subscription/watch resource holding onto subscriptions. An entry is created by saying
+> when this event is fired holding this value, call this flow for this session id. A relay action
+> matching that event must be defined to receive the payload of that event. When a task completes,
+> it sends its event to the watch manager which handles the flow relay calling."
+
+**So issue 6 is a durable subscription registry + an event matcher + delivery as an addressed relay
+message.** The task board is its **first consumer, not its subject**. That is also what makes it sit
+cleanly inside this epic: the delivery leg *is* issue 1's send verb.
+
+#### It is much smaller than it reads — three of its four parts already exist
+
+Verified by read in this session and cited with `file:line` so an issue-6 spec does not re-derive
+any of it.
+
+1. **A task change is already an event.** `TASK_CHANGE_COMPONENT_TYPE = "task-change"`
+   (`packages/orchestration/src/tasks/collection/get-or-create.ts:29-30`), documented as the
+   *"component-item type emitted on every task lifecycle transition"*, carrying
+   `TaskChangeEvent { collectionId, taskId, kind, task, prevStatus }`
+   (`packages/orchestration/src/tasks/collection/change-event.ts:37-44`), and already consumed as a
+   wake predicate by `onTaskChangeFor`
+   (`packages/orchestration/src/tasks/collection/predicates.ts:32-41`). **The board needs no new
+   emit.** The owner's *"it sends its event to the watch manager"* is already half-built.
+2. **A resource change is already an event.** `onResourceChanged`
+   (`packages/engine/src/context/resource-registry.ts:545`) threads a change descriptor carrying the
+   `storageKey`, a kind (`created` / `updated`), a live projection and `{ state, prevState }`
+   (`resource-registry.ts:1205-1210`), wired per scope in `createExecutionContext.ts:2137-2170`. The
+   owner's second named source also already emits.
+3. **"When this event fires, run this bound thing" already exists — synchronously.** `reactTo` /
+   `reactive-dispatch.ts` (FIX-751 PR2): it resolves the bound block for the change kind, builds the
+   `ResourceChange` payload, gates it through an optional `when` predicate and a per-request cascade
+   controller, validates against the block's `inputSchema`, and runs the block **in-session, awaited
+   inline as part of the mutating turn**, throws propagating atomically. Caps `MAX_CASCADE_DEPTH` 8
+   and `MAX_CASCADE_FANOUT` 1000 (`reactive-dispatch.ts:1-17`, `:43-46`).
+
+**The clearest statement of what issue 6 is — theme 15:** *watch is the asynchronous, cross-session,
+runtime-registered sibling of `reactTo`.* `reactTo` is statically declared by the flow author, fires
+in the same turn, in the same session. Watch is registered at runtime, fires after the turn, and
+delivers to a different session. **Same event vocabulary; different binding time, different
+delivery.**
+
+**What is genuinely new is only three things:** **(a)** the durable subscription registry, **(b)** a
+matcher that runs **outside** the mutating turn, **(c)** delivery as an **addressed relay message**
+rather than an inline block call. Said explicitly because it is what right-sizes the issue.
+
+**Coherence requirement for issue 6's spec** (theme 15): reuse `reactTo`'s change-payload shape and
+predicate idiom rather than inventing a second vocabulary for the same events.
+
+#### The four calls the coordinator has already decided
+
+Engineering decisions on the owner's model, recorded as **decided** rather than as open questions
+(EM posture). Each is the coordinator's and each is reversible by the owner.
+
+**D1 — the primitive is *"notify me when this becomes true, or immediately if it already is"*, not
+*"notify me on the next matching event."*** The register/settle race verified in §3 does not go away
+under the new model — it **generalizes**. Both task-board backings commit the terminal state inside
+the serialized / CAS write and call `emit(...)` **after it, outside the lock**
+(`packages/orchestration/src/tasks/collection/resource-backed.ts:450-474`;
+`sequencer-backed.ts:264-338`). A subscription registered in that window attaches to something that
+will never transition again. Subscribing to a condition that may already hold is the classic
+subscribe-after-the-fact race, and it recurs for **every** event source, not just tasks.
+
+So: **registration reads the current state and either attaches (not yet satisfied) or immediately
+enqueues the delivery (already satisfied), atomically.** That makes the deadlock-shaped failure
+**unrepresentable** rather than documented — theme 7's standing rule, applied to a second mechanism.
+
+**The price, named honestly:** the primitive is then **not purely event-source-agnostic**. Each
+source must supply a small *"is this already satisfied?"* read adapter. That is the actual cost of
+the versatility the owner asked for. **The rejected alternative** — a dumb "notify on next matching
+event" primitive, with check-then-register pushed onto every caller — is cheaper *in the primitive*
+and buys a footgun *per source*, one that produces a watcher waiting forever on a thing that already
+happened. The adapter wins because its cost is paid once per source by the framework, while the
+footgun would be paid every time by a consumer.
+
+**D2 — the match is exact-match on an identity key + event name. Not a predicate language.** Entries
+stay plain serializable data (a `taskId`, a `storageKey`). A general content-based matcher over an
+event stream is an **event bus with content routing**, which this epic has ruled out (§1, fan-out).
+`reactTo`'s `when` predicate remains the escape hatch for the **synchronous, statically-declared**
+case — it runs in-process against a declared binding and never needs serializing.
+
+**D3 — lifetime: a TTL field on the entry, and expiry *delivers* rather than drops.** *(This closes
+§5 Q6, the owner's own open question.)* One-off plus unsubscribe-on-fire self-cleans the common
+case. What leaks is the **never-fires** case, and the owner correctly called never-settles *the
+ordinary shape of abandoned work*, not an edge. A **TTL checked on read/match needs no sweeper**. On
+expiry, deliver an `expired` outcome to the watcher instead of silently dropping it: it costs
+nothing and turns a leak into a signal a live watcher can act on.
+
+**D4 — the watch manager lives in `engine`, not `orchestration`.** Both named event sources must
+reach it, and the resource registry is in `engine`. `orchestration` becomes a **consumer** that
+forwards its existing `task-change` event. This also preserves the boundary the owner set (theme
+11): the board **triggers**, Relay **delivers**; the board records nothing about the message and
+stays single-writer.
+
+#### Why polling cannot cover it — verified, not asserted
+
+The interested party is not running. `countWaitable`
+(`packages/orchestration/src/task-board/shared.ts:184-198`) does
 `if (isHandedOff(row, now, runsElsewhere)) continue;` at `:195`, and its doc comment states the
 intent plainly: *"Count rows in `statuses`, minus the `in_progress` ones `runsElsewhere` places
 outside this drain."* `isHandedOff` (`shared.ts:111-120`, FIX-1074, *"One predicate, one answer"*)
-returns true for an `in_progress` row that `runsElsewhere` claims and whose lease has not lapsed.
-So the launching board **does not wait** for a handed-off row — it reports the hand-off and
-retires. When the workstream settles later, there is provably nobody there. **This is stated
-design, not an oversight**, which is why the answer is a registry rather than a longer poll.
+returns true for an `in_progress` row that `runsElsewhere` claims and whose lease has not lapsed. So
+the launching board **does not wait** for a handed-off row — it reports the hand-off and retires.
+When the workstream settles later, there is provably nobody there. **This is stated design, not an
+oversight**, which is why the answer is a registry rather than a longer poll.
 
-**Nothing existing covers it** — the owner's survey, recorded so an issue-6 spec does not repeat
-it:
+#### Nothing existing covers it
+
+The owner's survey, recorded so an issue-6 spec does not repeat it. *(`reactTo` and `resource_change`
+are the two rows that changed meaning under the redefinition: they are no longer merely "not this" —
+they are the **prior art** the primitive is modelled on, and the reason it is small.)*
 
 | Surface | Why it is not this |
 |---|---|
@@ -694,44 +848,53 @@ it:
 | `livenessOf` | An optional hint by its own doc, and lineage-filtered (`request-host.ts:256-273`, theme 10) |
 | `ctx.response.subscribeToItems` | *"on this response"* (`packages/core/src/types/block.ts:123`, `:141`) — the same request, which is the one thing not available |
 | `.waitForCondition` | Needs a response emitter and **holds the caller open** (`packages/core/src/blocks/sequencer-methods.ts:370`) — again the thing not available |
-| `reactTo` | Runs *"in-session — awaited inline as part of the mutating turn"* (`packages/engine/src/context/reactive-dispatch.ts:9`), so a child settling fires it in the **child's** turn |
-| `resource_change` | Reaches whoever streams the *mutating* request (`packages/engine/src/context/resource-registry.ts:749`) — the child's SSE, not the parent's session |
+| `reactTo` | Runs *"in-session — awaited inline as part of the mutating turn"* (`packages/engine/src/context/reactive-dispatch.ts:9`), so a child settling fires it in the **child's** turn. **The sibling, not the answer** — theme 15 |
+| `resource_change` | Reaches whoever streams the *mutating* request (`packages/engine/src/context/resource-registry.ts:749`) — the child's SSE, not the parent's session. **A source the watch manager consumes**, not a delivery path |
 
-**It respects both epic boundaries, and here is why.** *No fan-out* (§1): each watch names **one**
-recipient, so three watchers are **three addressed messages, not one broadcast** — the registry is
-many-holders and every delivery is one-to-one. *Messages do not ride the board* (theme 11): the
-board **triggers**, Relay **delivers**; the row records nothing about the message and the message
+#### It respects both epic boundaries
+
+***No fan-out* (§1).** Each subscription names **one** recipient's `sessionId` **at registration
+time**, so three watchers are **three addressed deliveries, not one broadcast**. The registry is
+many-holders and every delivery is one-to-one. Stated here once so it is not re-litigated as a
+fan-out violation: the banned shape is an *unaddressed* message with no session to run in, and this
+has an address on every entry by construction.
+
+***Messages do not ride the board* (theme 11).** The board **emits** what it already emits, the
+watch manager matches, and Relay delivers. The row records nothing about the message and the message
 carries no board semantics.
 
-**A consumer is already hand-rolling it.** **LAB-138** (*"The harness manager — a task row becomes
-a watched, settled coding run"*, Backlog) specifies a done-condition predicate *"re-evaluated on
-each wake (not computed once)"* and instructs the dispatcher to *"treat a liveness check as a
-hint, never proof — corroborate against the durable row before re-dispatching."* That is a
-dispatcher polling a row it owns because **registering interest is not expressible**.
+**A consumer is already hand-rolling it.** **LAB-138** (*"The harness manager — a task row becomes a
+watched, settled coding run"*, Backlog) specifies a done-condition predicate *"re-evaluated on each
+wake (not computed once)"* and instructs the dispatcher to *"treat a liveness check as a hint, never
+proof — corroborate against the durable row before re-dispatching."* That is a dispatcher polling a
+row it owns because **registering interest is not expressible**.
 
 **It consumes issue 1's verb rather than building a second delivery path**, which is what keeps it
 from becoming the parallel seam `RequestHost` is being cleaned of elsewhere (FIX-1124). An issue-6
 spec that grows its own delivery has left the epic's shape, exactly as issue 3's tripwire says.
 
-**Its real cost is an open question, and the owner named it: see §5 Q6.**
-
-### Composition — the set is under opposite pressure from two directions
+### Composition — the set is six, and the swap proposal is retracted
 
 Stated rather than smoothed, because the gate is where it gets answered.
 
-- **Smaller.** Two independent reviewers recommend cutting to **three** issues: drop
+- **Smaller.** Two independent reviewers recommended cutting to **three** issues: drop
   sibling-spawn (issue 3), externalise `pending feedback` (issue 5, §5 Q5's placement half).
-- **Larger.** The owner proposes adding the watch seam (issue 6).
+- **Larger.** The owner added the watch seam (issue 6), and has **kept issue 3 in**.
 
-**The coordinator's proposal: swap rather than grow — watch in, sibling-spawn out.** The argument
-is fit to the objective, not size: sibling-spawn **creates** a session; watch **reaches one that
-is not running**, which is §1's objective verbatim. The owner, the coordinator and two reviewers
-have now separately judged spawn the weakest fit in the set. A swap holds the set at five while
-improving coherence, instead of making the "too large" critique more correct.
+**Retracted — the coordinator's "swap rather than grow: watch in, sibling-spawn out" proposal.**
+It argued fit-to-the-objective: spawn *creates* a session while watch *reaches one that is not
+running*, and the owner, the coordinator and two reviewers had all seemed to judge spawn the
+weakest fit. **The premise was wrong.** The coordinator's stated reason for issue 3 being in the
+set — implementation economy, "the same missing layer" — was never the owner's reason. Spawn is
+the **address-supply side of cross-session messaging**: it mints the peer the send verb will
+address (§1). The two bot reviewers were reasoning from that same wrong premise, and so was the
+coordinator when it agreed with them. **Issue 3 stays on the owner's reason**, and no swap is on
+the table.
 
-**This is a proposal, not a decision.** Pulling issue 3 would reverse an explicit owner call, and
-only the owner can do that. Recorded here so the gate answers one composition question with all
-of the pressure visible, rather than answering the additions and the cuts separately.
+**So the only composition question left for the gate is the one in §5 Q5's placement half** —
+whether `pending feedback` (issue 5) rides inside this epic or is filed outside it with a
+`relates-to`. That argument is untouched by any of the above, and by §3's settlement verdict.
+**Six issues, and the gate approves that division.**
 
 Epic PR (this doc, never merged):
 [#1357](https://github.com/fixpoint-labs/flow-state-dev/pull/1357).
@@ -801,6 +964,17 @@ detached task stays the only way to start a Workstream", with the tripwire "If s
 channel that is not a task, that is the point where the authored-entrypoint question re-opens…
 Recorded here so that fork is met deliberately rather than discovered." Steering does want a
 channel that is not a task. This is that point.
+
+**New evidence, from the owner's own watch design — an independent argument for the asymmetric
+door.** *(Added by the 2026-08-23 amendment. It is evidence for Q1, not an answer to it: Q1 stays
+open.)* Under issue 6's redefinition, *"a relay action matching that event must be defined to
+receive the payload of that event"* — so a **relay action whose only purpose is to receive a watch
+callback is a pure inside-world verb**. Nothing should be able to invoke it from the public
+surface: an outside caller posting a forged "your task completed" payload to it is not a scenario
+the design should have to reason about. That argument arrives from a different direction than the
+`flow.workstream` asymmetry above and reaches the same place, which is what makes it worth
+recording. **It does not settle Q1** — it is one concrete class of inside-world entry, and the
+question is still what a sender may name in general.
 
 **The epic's lean (not a decision): (b).** The owner's own framing is that a flow's `actions`
 were designed for outside-world contact, not inside-world coordination, and (b) keeps the
@@ -926,42 +1100,52 @@ necessary says nothing about which epic should own it. **This is the composition
 objective gate** — see §1's necessity check, and §4's composition note, which now carries the
 *other* direction of pressure on the same question.
 
-### Q6. What is a watch's own lifetime?
+### ~~Q6. What is a watch's own lifetime?~~ — **CLOSED by decision D3**
 
-**Named by the owner when they proposed the seam, and recorded unanswered because it is the real
-cost of issue 6.** A watch is a registration that outlives the turn that made it, so two things
-have to be decided before one can be built:
+**Raised by the owner when they proposed the seam; closed by the coordinator on 2026-08-23 (EM
+posture — an engineering call, reversible by the owner).** Kept here with its answer so an issue-6
+spec does not reopen it. The decision itself and its reasoning live in §4's issue-6 decisions (D3).
 
-- **Who clears a watch when the watcher dies?** The watcher is by definition a session that is
-  not running. Nothing in the current design gives the registry a way to learn that the party it
-  would deliver to has gone — and `livenessOf` cannot be that mechanism (theme 10: it answers
-  only for the caller's own lineage, by design, and this epic does not widen it).
-- **What happens when the row never settles?** Stated plainly rather than as an edge case: **a
-  row that never reaches a terminal state is the ordinary shape of abandoned work**, not a rare
-  failure. A registry with no lifetime rule therefore **leaks by default**, not exceptionally.
+**The question was two halves.** *Who clears a watch when the watcher dies?* — the watcher is by
+definition a session that is not running, and `livenessOf` cannot be that mechanism (theme 10: it
+answers only for the caller's own lineage, by design, and this epic does not widen it). And *what
+happens when the row never settles?* — stated plainly rather than as an edge case: **a row that
+never reaches a terminal state is the ordinary shape of abandoned work**, so a registry with no
+lifetime rule **leaks by default**, not exceptionally.
 
-**Unanswered here, and the epic has no lean to record.** The shape of the answer — a TTL, an
-owner-scoped sweep, piggy-backing the row's own lease, or refusing to register without an expiry
-— is genuinely open, and picking one is issue 6's spec if issue 6 is admitted. **Blocks nothing
-today**; it is the question that decides whether issue 6 is small.
+**The answer (D3): a TTL field on the entry, and expiry *delivers* rather than drops.** One-off
+plus unsubscribe-on-fire self-cleans the common case, so the only leak is the never-fires case —
+which the TTL bounds. **A TTL checked on read/match needs no sweeper**, which is what keeps the
+answer small: no background job, no liveness probe, no widening of theme 10. And on expiry the
+watcher receives an `expired` outcome rather than silence, which costs nothing and turns a leak
+into a signal a live watcher can act on.
 
-### Q6b. Watch and `pending feedback` touch the same machinery — who owns that surface?
+**What this does *not* claim.** It does not detect a dead watcher; it bounds the entry's life
+instead. A delivery to a session nobody is reading is the same non-event it is anywhere else in
+this epic. **Blocks nothing.**
 
-**A cross-issue collision, raised at the gate by the coordinator, to be resolved before either
-issue is specced.** This is exactly the kind of conflict a later `cross-spec-review` pass would
-catch, and catching it there costs two written specs — so it is recorded now.
+### ~~Q6b. Watch and `pending feedback` touch the same machinery — who owns that surface?~~ — **WITHDRAWN**
 
-Proposed issue 6 and issue 5 have **different intents on adjacent code**: issue 5 is *"the
-worker's own request may end"*; watch is *"a third party is told later."* Both land on
-`countWaitable` (`packages/orchestration/src/task-board/shared.ts:184-198`), `boardQuiescence`,
-and what a drain waits for — the same functions §4's issue-5 cell already names as its residual
-gap. Filed independently, the two specs will contend over them.
+**Raised at the gate by the coordinator on 2026-08-21; withdrawn on 2026-08-23.** Kept with its
+withdrawal so it is not re-raised by a later cross-spec pass.
 
-**The requirement, either way: one spec owns that surface, or the two are explicitly sequenced.**
-There is no third option — two specs each proposing their own exit path for a parked or watched
-row is the failure mode. **Blocks:** issue 5's spec and issue 6's spec, nothing else. It does
-make issue 5, previously the one issue depending on nothing, no longer free-standing *for spec
-purposes*; its merge order is still unconstrained (theme 13).
+**What it claimed.** That proposed issue 6 and issue 5 had different intents on adjacent code —
+issue 5 is *"the worker's own request may end"*, watch is *"a third party is told later"* — and
+that both would land on `countWaitable`
+(`packages/orchestration/src/task-board/shared.ts:184-198`), `boardQuiescence`, and what a drain
+waits for. It required one spec to own that surface, or the two to be explicitly sequenced, before
+either was specced.
+
+**Why it is withdrawn.** It was a consequence of the superseded framing — watch as a *task*
+primitive, registering interest in a board row. Under the owner's redefinition watch is a general
+notification primitive and **touches no board internals at all**: the board only **emits**, which
+it already does (`task-change`, `get-or-create.ts:29-30`), and the matcher and the registry live in
+`engine` (D4). Nothing in issue 6 reads or changes `countWaitable`, `boardQuiescence`, or what a
+drain waits for.
+
+**Consequence: issue 5 is free-standing again**, for spec purposes as well as merge order (theme
+13), and it owns its residual gap alone (§4's issue-5 cell). **Q5's placement half is unaffected**
+and stays open — that argument was never about this collision.
 
 ---
 
@@ -1090,18 +1274,22 @@ purposes*; its merge order is still unconstrained (theme 13).
   plus four adjacent things and contains **no consumer of its own objective**; recorded in §1's
   objective linkage. (2) **A collision with issue 5** over `countWaitable` / `boardQuiescence` /
   what a drain waits for — **§5 Q6b**, requiring one spec to own that surface or the two to be
-  explicitly sequenced, **before either is specced**.
+  explicitly sequenced, **before either is specced**. *(Superseded by the next entry: Q6b is
+  withdrawn — the collision was a consequence of the superseded task-primitive framing.)*
   *And the owner's own open question, recorded unanswered as **§5 Q6**:* the **watch's own
   lifetime** — who clears a watch when the watcher dies, and what happens when the row never
   settles. The never-settles case is the ordinary shape of abandoned work, not an edge case, so a
   registry without a lifetime rule **leaks by default**. That is issue 6's real cost.
+  *(Superseded by the next entry: Q6 is closed by decision D3 — a TTL whose expiry delivers.)*
   *Composition, stated rather than smoothed (§4):* two independent reviewers recommend cutting to
   **three** issues (drop sibling-spawn, externalise `pending feedback`) while the owner proposes
   adding watch. **The coordinator proposes a swap, not growth — watch in, sibling-spawn out**:
   spawn *creates* a session, watch *reaches one that is not running*, which is §1's objective
   verbatim, and owner, coordinator and two reviewers have now separately judged spawn the weakest
   fit. **Marked a proposal, not a decision** — pulling issue 3 reverses an explicit owner call and
-  only the owner can do that. The gate answers it.
+  only the owner can do that. The gate answers it. *(**Superseded by the next entry: the swap
+  proposal is retracted.** It rested on the coordinator's own wrong premise about why issue 3 is in
+  the set.)*
   **§5 Q1's door question is untouched and stays open.**
 - **Deferred decision landed — the configurable admission budget moves from issue 2 to issue 1.**
   Decided earlier by the coordinator and not yet in the document. *Why:* issue 2 depends on issue
@@ -1113,3 +1301,80 @@ purposes*; its merge order is still unconstrained (theme 13).
   line, §4's issue-1 and issue-2 cells, §1's named-risk scope paragraph, and §5 Q3's
   cross-reference; §3's Q4 "Changed" record keeps its original wording with a superseded marker,
   since it is a dated log of what was true then.
+
+- **Owner amendment + set reshape — issue 3 stays on the owner's reason, and watch is redefined as
+  a general notification primitive. Six issues.** *(Folded **outside** the epic PR's two-round
+  budget, which stays spent and the doc stays converged. Legitimate on the same grounds as the
+  previous set change: the gate approves the **objective and the division**, so a division — or a
+  stated rationale — the document no longer matches would put the gate on the wrong thing. **No
+  bot-review findings were folded and no converged material was reopened.** Nothing is filed in
+  Linear; the gate precedes creation.)*
+
+  **(1) Issue 3 stays, and the recorded rationale for it was wrong.** The owner: *"Spawn session was
+  added not because of the task board, but because messages could cross sessions."* Spawn is the
+  **address-supply side of cross-session messaging** — if a session can message a peer, it needs a
+  way to mint the peer it will address; without it, cross-session messaging only ever reaches
+  sessions some outside-world caller happened to create. That is the messaging model completing
+  itself. *What was retracted:* the coordinator's "same missing layer" / implementation-economy
+  rationale, and the **swap spawn for watch** proposal it licensed — pulled from §1, §4's index,
+  §4's composition note and the PR description. *Recorded factually because it matters for how the
+  next such recommendation is read:* **two bot reviewers (a cursor Grok pass and chatgpt-codex)
+  each recommended cutting issue 3, and the coordinator agreed with them. All three were reasoning
+  from the wrong premise about why issue 3 was in the set.** The owner's reason supersedes.
+
+  **(2) Watch is not a task primitive.** The owner's definition, treated as canonical: *"a more
+  reusable notification primitive… a one off subscription. Something happens, a watcher was
+  attached to that thing, tell the watcher the thing happened, unsubscribe."* Their mechanism: a
+  subscription resource holding entries of the form *when this event fires holding this value, call
+  this flow for this session id*; a **relay action matching that event** receives the payload; a
+  completing task **sends its event to the watch manager**, which handles the relay call. Issue 6 is
+  rewritten to that: **a durable subscription registry + an event matcher + delivery as an addressed
+  relay message, with the task board as its first consumer, not its subject.**
+
+  **(3) Verified prior art, cited so issue 6 is not re-derived — it is much smaller than it reads.**
+  A task change **is already an event** (`TASK_CHANGE_COMPONENT_TYPE = "task-change"`,
+  `tasks/collection/get-or-create.ts:29-30`; `TaskChangeEvent`, `change-event.ts:37-44`; already a
+  wake predicate, `predicates.ts:32-41`) — **the board needs no new emit**. A resource change **is
+  already an event** (`onResourceChanged`, `engine/src/context/resource-registry.ts:545`,
+  `:1205-1210`, wired per scope at `createExecutionContext.ts:2137-2170`). And *"when this event
+  fires, run this bound thing"* **already exists synchronously** as `reactTo` /
+  `reactive-dispatch.ts` (FIX-751 PR2, `:1-17`, `:43-46`). *New **theme 15** states the framing:*
+  **watch is the asynchronous, cross-session, runtime-registered sibling of `reactTo`** — same event
+  vocabulary, different binding time, different delivery — so only three things are genuinely new:
+  the registry, a matcher running **outside** the mutating turn, and addressed delivery. Theme 15
+  also binds issue 6's spec to **reuse `reactTo`'s change-payload shape and predicate idiom**.
+
+  **(4) Four engineering calls decided by the coordinator (EM posture), reversible by the owner —
+  §4's issue-6 decisions.** **D1:** the primitive is *"notify me when this becomes true, or
+  immediately if it already is"*, not *"notify me on the next matching event"* — both board
+  backings `emit(...)` **after** the committed write, outside the lock
+  (`resource-backed.ts:450-474`, `sequencer-backed.ts:264-338`), so the register/settle race
+  generalizes to every source; registration reads current state and attaches or immediately
+  enqueues, atomically, making the failure **unrepresentable**. *Price named:* each source owes a
+  small "is this already satisfied?" read adapter, so the primitive is not purely
+  source-agnostic — the rejected alternative is cheaper in the primitive and gives a footgun per
+  source. **D2:** exact-match on an identity key + event name, **not** a predicate language — a
+  content-based matcher is the event bus this epic ruled out; `reactTo`'s `when` stays the escape
+  hatch for the synchronous case. **D3:** a **TTL** on the entry whose **expiry delivers an
+  `expired` outcome** rather than dropping — no sweeper needed, and a leak becomes a signal.
+  **D4:** the watch manager lives in **`engine`**, not `orchestration`, which becomes a consumer
+  forwarding its existing event — this is also what keeps the board single-writer (theme 11).
+
+  **(5) Consequences applied across the document.** **§5 Q6 is CLOSED by D3** and kept with its
+  answer. **§5 Q6b is WITHDRAWN** and kept with its withdrawal — the issue-5 collision was a
+  consequence of the superseded task-primitive framing; under the new model watch touches **no**
+  board internals, so **issue 5 is free-standing again** for spec purposes as well as merge order
+  (theme 13, §4's issue-5 cell, §3's settlement record). **§5 Q1 gains new evidence and stays
+  OPEN:** a relay action whose only purpose is to receive a watch callback is a *pure inside-world
+  verb* that nothing should be able to invoke from the public surface — an independent argument for
+  the asymmetric door, arising from the owner's own watch design, and **not** an answer to Q1.
+  **Restated once so it is not re-litigated as a fan-out violation (§1, §4):** N subscriptions are
+  N **addressed** deliveries, each naming its recipient's `sessionId` at registration time; the
+  banned shape is an *unaddressed* message with no session to run in.
+
+  **The set is six:** 1 address + send verb + two modes + agent tool + configurable admission
+  budget · 2 per-adapter delivery (dep 1) · 3 sibling spawn, address supply for cross-session
+  messaging (dep 1) · 4 cron as a scheduled message (dep 1) · 5 `pending feedback` task status
+  (independent; necessity settled) · 6 watch, a general one-off notification primitive (dep 1; the
+  task board is its first consumer). **§5 Q1's door question is untouched and stays open**, and
+  **the epic is not approved** — the gate is unchanged.
