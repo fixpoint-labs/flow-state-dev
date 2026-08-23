@@ -358,7 +358,7 @@ waits on it (theme 4).*
   worker having run it), corroborated by FIX-982's detached-child-death scenario and by
   `claim-task.ts`'s own *"a lease reclaim deliberately hands an abandoned task to a second
   worker"*.
-  **This is what makes the option load-bearing rather than a comfort.** Left at the default, a
+  **This is what makes the window load-bearing rather than a comfort.** Left at the default, a
   human-length pause lapses the lease before the answer arrives and the next wake's drain starts a
   real duplicate run — and worse, when the answer finally resumes the original, that run's settle
   is refused because its claim ticket no longer names the row's current attempt
@@ -367,8 +367,9 @@ waits on it (theme 4).*
   names it a divergence. The lease value is the only thing standing between an answer and a
   silently different outcome. The window is the trade a board hosting human pauses should make, and
   it is **per-board**, so nothing else inherits it. *(The product owner's call, which the evidence
-  confirms.)* **The mechanism — where the option sits on `taskBoard` and how it threads to the
-  claim — is LAB-139's, in its implementer notes.**
+  confirms.)* **The mechanism is settled: LAB-139 configures the board's existing `dispatcher`, and
+  no option is added to `taskBoard`.** The five-line recipe and its one caveat are in LAB-139's
+  implementer notes.
 
 - **Where conductor's own code lives.** Both LAB-138 and LAB-139 write into the same place and
   neither can settle it alone, so it is the epic's to answer. Raised at epic drafting. **Blocks
