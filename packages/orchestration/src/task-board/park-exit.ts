@@ -47,11 +47,16 @@ export type TaskBoardOnReview = "hold" | "exit";
  * Refuse the board configurations park-exit cannot serve — at construction, by
  * name, with the fix.
  *
- * All three are fatal and none degrades to a warning. A caller who wanted one
- * of these combinations has a coherent intent, and the honest answer is to say
- * what is in the way while they are still writing the board — not to hand back
- * one that half-works and fails in production on a dependency graph nobody
- * tested.
+ * Every refusal here is fatal and none degrades to a warning. A caller who
+ * wanted one of these combinations has a coherent intent, and the honest answer
+ * is to say what is in the way while they are still writing the board. The
+ * alternative is worse than it sounds: each of these configurations *half*
+ * works — one is a total no-op, one runs correctly until a task gains a
+ * dependent, one grows a duplicate only on the second drain — so a warning gets
+ * ignored and the board ships behaving almost right.
+ *
+ * The throws below carry their own diagnosis and their own fix; the comments do
+ * not repeat them, and say only what the message cannot.
  *
  * Shape and register follow `assertDetachedBoardSupported`: name the board,
  * name what it declared, name what to change.
@@ -66,11 +71,6 @@ export function assertParkExitSupported(options: {
   const { name, onReview, backing, onIdle, hasIdlessInitialTasks } = options;
   if (onReview !== "exit") return;
 
-  // The mode's promise is that the parked row survives the drain that released
-  // it, for a *later* drain to claim once a human resumes it. On any backing
-  // whose lifetime is the request (or shorter), that later drain has nothing to
-  // come back to: the exit would simply drop the task on the floor, which is
-  // the abandonment this mode exists to stop, arrived at deliberately.
   if (backing !== "resource") {
     throw new Error(
       `[task-board] "${name}" sets \`onReview: "exit"\` on a ${backing}-backed collection — ` +
@@ -79,10 +79,6 @@ export function assertParkExitSupported(options: {
     );
   }
 
-  // `"wait"` never reaches the counts the option modifies: `boardQuiescence`
-  // answers that mode from `shouldExit` alone. The option would be a total
-  // no-op — the failure mode that survives every test, because nothing about it
-  // looks wrong.
   if (onIdle === "wait") {
     throw new Error(
       `[task-board] "${name}" sets \`onReview: "exit"\` with \`onIdle: "wait"\` — ` +
@@ -93,15 +89,9 @@ export function assertParkExitSupported(options: {
     );
   }
 
-  // `"complete"` is the dangerous one, because it *works* — right up until the
-  // parked task has a dependent. That mode exits only on a fully drained board,
-  // so a `pending` row waiting on the parked one keeps the drain open however
-  // the parked row itself is counted. The result is an option that works on a
-  // leaf and stops working the moment the dep graph grows, which is worse than
-  // a total no-op: it survives testing.
-  //
-  // Excusing the dependents too was rejected — it needs a transitive dependency
-  // walk on the hottest read the board has (§6 decision 3).
+  // Excusing the parked row's *dependents* too was the obvious alternative to
+  // refusing, and was rejected: it needs a transitive dependency walk on the
+  // hottest read the board has (§6 decision 3).
   if (onIdle === "complete") {
     throw new Error(
       `[task-board] "${name}" sets \`onReview: "exit"\` with \`onIdle: "complete"\` — ` +
@@ -113,17 +103,11 @@ export function assertParkExitSupported(options: {
     );
   }
 
-  // Park-exit makes "a later drain re-runs this board" the normal path, and the
-  // drain chain taps the seed step *before* the worker pool — so the next drain
-  // re-seeds. `createSeedCollection`'s replay dedupe is keyed on a seed entry's
-  // id and skips entries that have none, so an id-less entry is added again on
-  // every pass and the resumed board grows a duplicate task the next drain may
-  // run or park all over again.
-  //
-  // Precedented, not invented here: `goalSeekLoop` gates the same combination
-  // on `maxIterations > 1 && board.hasIdlessInitialTasks`, for the other feature
+  // Precedented, not invented here: `goalSeekLoop` gates the same combination on
+  // `maxIterations > 1 && board.hasIdlessInitialTasks`, for the other feature
   // that makes board re-entry the norm. Park-exit is that situation under
-  // another name.
+  // another name, which is why it reads the flag the board already exposes
+  // rather than inspecting the seed itself.
   if (hasIdlessInitialTasks) {
     throw new Error(
       `[task-board] "${name}" sets \`onReview: "exit"\` on a board whose \`initialTasks\` ` +

@@ -14,11 +14,11 @@ import type { TaskWriteToken } from "../write-provenance";
 
 /**
  * Why a write was refused (FIX-976; `not-my-task` added by FIX-981;
- * `immutable-assignee` by FIX-982). Resolved in a **fixed precedence order** —
- * `immutable-assignee` → `terminal` → `not-my-task` → `disallowed` →
- * `lost-claim` — so a decline where two conditions hold always reports the same
- * one, and two callers cannot render two different messages for the same
- * refusal.
+ * `immutable-assignee` by FIX-982; `parked` by FIX-1234). Resolved in a **fixed
+ * precedence order** — `immutable-assignee` → `terminal` → `not-my-task` →
+ * `disallowed` → `parked` → `lost-claim` — so a decline where two conditions
+ * hold always reports the same one, and two callers cannot render two different
+ * messages for the same refusal.
  *
  * - `immutable-assignee` — the board runs detached work, where a task's
  *   assignee is fixed at admission. Reassignment is refused whatever the task's
@@ -30,8 +30,14 @@ import type { TaskWriteToken } from "../write-provenance";
  *   the caller never held.
  * - `disallowed` — the state machine rejects the move from a **non**-terminal
  *   status (`pending → errored`, `blocked → errored`).
+ * - `parked` — the caller passed `refuseWhenParked` and the task is sitting in
+ *   `awaiting_review`. **Not a lost claim:** nobody took the row, the attempt
+ *   still owns it, and a person is deciding what happens to it. The recoveries
+ *   are opposite — `lost-claim` says re-claim and redo, `parked` says do
+ *   neither, because the work is done.
  * - `lost-claim` — the presented `claim` names this task but no longer owns it:
- *   it was reclaimed, re-queued, or parked while the caller was working.
+ *   it was reclaimed or re-queued while the caller was working, or its lease
+ *   ran out while it was still `in_progress`.
  *
  * **Why `not-my-task` sits above `disallowed`, and below `terminal`.** The
  * guard runs inside the atomic write, but a decline aborts that write *before*
@@ -45,6 +51,17 @@ import type { TaskWriteToken } from "../write-provenance";
  * arm would report `disallowed` on one interleaving and `not-my-task` on
  * another for the same cross-task write: accidental protection, not a
  * guarantee, and a reason no caller can act on.
+ *
+ * **Where `parked` sits, and the one case it takes from `lost-claim`.** It is
+ * evaluated after the transition arms and before the ownership arms. For the
+ * caller it is meant for — a worker reporting the result of its own run — the
+ * two never compete: `awaiting_review` is an attempt-owned status and the lease
+ * does not govern it, so neither ownership arm fires and the order is
+ * immaterial. They overlap on one narrow row: a *displaced* attempt writing to
+ * a task that was parked, resumed, re-claimed, and parked again reports
+ * `parked` where `lost-claim` is the more precise fact. Both tell that caller
+ * the same thing — do not redo the work — so the order is left where the guard
+ * reads most simply rather than split to chase the rarer reason.
  *
  * **Why `immutable-assignee` sits above `terminal`.** It reads no mutable task
  * state at all — the board either runs detached work or it does not — so it is

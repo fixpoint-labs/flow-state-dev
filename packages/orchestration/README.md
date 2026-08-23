@@ -129,11 +129,14 @@ Every mutation method except `claim` and `reclaim` resolves to a
 `TaskWriteOutcome`: `recorded` (a field changed and a `task-change` item was
 emitted), `unchanged` (the task already held the state asked for, nothing written),
 or `declined` with a `reason` (`immutable-assignee` / `terminal` / `not-my-task` /
-`disallowed` / `lost-claim`, resolved in that precedence order) and the `status`
-the task was in when the write was refused. `immutable-assignee` means the board
-runs detached work, where the assignee is fixed at admission; `not-my-task` means
-the ticket names a different task, a different collection, or an id since reused;
-`lost-claim` means it names the right task but a claim that has moved on. A
+`disallowed` / `parked` / `lost-claim`, resolved in that precedence order) and the
+`status` the task was in when the write was refused. `immutable-assignee` means the
+board runs detached work, where the assignee is fixed at admission; `not-my-task`
+means the ticket names a different task, a different collection, or an id since
+reused; `parked` means the caller passed `refuseWhenParked` and the task is in
+`awaiting_review` — nobody took it, so unlike `lost-claim` the answer is not to
+re-claim and redo; `lost-claim` means it names the right task but a claim that has
+moved on. A
 decline never throws, and discarding the return value is supported. `cancel` is
 advisory whether or not options are passed: cancelling a settled task declines
 with reason `terminal`.
