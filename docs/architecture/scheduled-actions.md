@@ -199,7 +199,7 @@ wired:
     {
       "id": "monthly-invoices",
       "cron": "0 0 1 * *",
-      "action": "generateInvoices",
+      "action": "generate-invoices",
       "timezone": "UTC",
       "description": "Bill every active account",
       "enabled": true
