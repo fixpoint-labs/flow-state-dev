@@ -66,7 +66,7 @@ Named contracts the agent should look for or modify. Use FSD vocabulary:
 - `<blockName>` / `<generatorName>` / `<patternName>` / `<capabilityName>`
    — the behavioral contract
 - Item types emitted (`message`, `block_output`, `state_change`, etc.)
-- State scopes touched (request / session / user / project) and which
+- State scopes touched (request / session / user / org) and which
    resources or keys
 - Package boundaries crossed (server / client / react / cli)
 

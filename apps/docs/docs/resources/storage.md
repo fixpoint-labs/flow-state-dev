@@ -27,17 +27,28 @@ Good for: mode flags, counters, configuration values, status indicators. Values 
 Named, schema-typed containers attached to a scope. Each carries its own state and optionally content:
 
 ```ts
-session: {
-  resources: {
-    plan: {
-      stateSchema: z.object({
-        steps: z.array(z.string()).default([]),
-        status: z.enum(["draft", "active", "complete"]).default("draft"),
-      }),
-      writable: true,
-    },
+import { defineFlow, defineResource } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const planResource = defineResource({
+  scope: "session",
+  stateSchema: z.object({
+    steps: z.array(z.string()).default([]),
+    status: z.enum(["draft", "active", "complete"]).default("draft"),
+  }),
+  writable: true,
+});
+
+defineFlow({
+  kind: "planner",
+  resources: { plan: planResource },
+  session: {
+    stateSchema: z.object({
+      mode: z.enum(["chat", "agent"]).default("chat"),
+    }),
   },
-}
+  actions: { /* ... */ },
+});
 ```
 
 Good for: artifacts, documents, knowledge entries, configuration bundles. Data that has its own identity, structure, and lifecycle. If you'd naturally think of it as a named object rather than a field, it's a resource.
@@ -66,8 +77,9 @@ This matters most for block-private scratch data. If a block needs a cache or in
 ```ts
 const search = handler({
   name: "search",
-  sessionResources: {
+  resources: {
     searchCache: defineResource({
+      scope: "session",
       stateSchema: z.object({
         lastQuery: z.string().default(""),
         results: z.array(z.string()).default([]),
@@ -77,7 +89,7 @@ const search = handler({
     }),
   },
   execute: async (input, ctx) => {
-    const cache = ctx.session.resources.searchCache;
+    const cache = ctx.resources.searchCache;
     if (cache.state.lastQuery === input.query && Date.now() - cache.state.cachedAt < 60_000) {
       return { results: cache.state.results };
     }

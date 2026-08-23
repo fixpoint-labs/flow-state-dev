@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { applyOffsetLimit } from "../shared";
+import { applyOffsetLimit, assertMaxDepthTwo } from "../shared";
 import { sortByUpdatedAtDesc } from "../../utils/sort";
 import type { ExpectedVersion, SetResult } from "../types";
 import {
@@ -555,12 +555,4 @@ export function createFilesystemRecordStore<
   };
 
   return record;
-}
-
-function assertMaxDepthTwo(path: string[], verb: string): void {
-  if (path.length < 1 || path.length > 2) {
-    throw new Error(
-      `${verb} supports depth-1 or depth-2 paths; received path of length ${path.length}`
-    );
-  }
 }

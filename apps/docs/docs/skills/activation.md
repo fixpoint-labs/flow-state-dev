@@ -24,10 +24,18 @@ The tool-call path is still the right choice when activation is fluid (the agent
 ## Up-front: `createSkillActivator`
 
 ```ts
-import { createSkillActivator } from "@flow-state-dev/orchestration";
+import {
+  createSkillActivator,
+  readSkillsDirectory,
+} from "@flow-state-dev/orchestration";
+
+const { skills: initialSkills } = await readSkillsDirectory(skillsDir);
 
 export const skillActivator = createSkillActivator({
-  scope: "user", // matches the skills capability's scope
+  // The same bundled defaults you give the capability. The activator runs
+  // before the generator, so it seeds the catalog itself — without this the
+  // tiers scan an empty collection on the very first turn.
+  initialSkills,
 });
 ```
 
@@ -58,8 +66,10 @@ A turn that hits tier 1 or 2 pays no LLM cost for the classification. A turn tha
 createSkillActivator({
   // Resource registry key for the skills collection. Default "skills".
   collectionKey: "skills",
-  // Scope to read the collection from. Must match the skills capability.
-  scope: "user",
+  // Where resolved activations are written. Default { scope: "session",
+  // field: "activeSkills" }. Point this at a binding's explicit activeState
+  // field to feed a per-generator binding.
+  activeState: { scope: "session", field: "activeSkills" },
   // Model the tier-3 classifier uses. Default "intent/utility".
   classifierModel: "intent/utility",
   // Per-match confidence threshold (0..1). Default 0.65.
@@ -86,7 +96,7 @@ export const skillsCap = createSkillsCapability({
   scope: "user",
 });
 
-export const skillActivator = createSkillActivator({ scope: "user" });
+export const skillActivator = createSkillActivator({ initialSkills });
 
 // At the use site:
 //   uses: [skillsCap.with({ runSkill: false }), skillActivator, ...]

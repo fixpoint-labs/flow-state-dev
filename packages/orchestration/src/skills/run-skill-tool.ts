@@ -23,9 +23,9 @@ import type {
   BlockDefinition,
   ResourceCollectionRef,
 } from "@flow-state-dev/core/types";
-import type { InitialSkill, SkillState, ToolCatalog } from "@flow-state-dev/core";
+import type { InitialSkill, SkillState } from "@flow-state-dev/core";
 import { skillManifestKey } from "./collection";
-import { getCollection as resolveCollection } from "./internal/get-collection";
+import { resolveResourceCollection } from "../tasks";
 import { listEnabledSkills } from "./internal/list-enabled-skills";
 import { ensureSeeded } from "./seeding";
 import { inlineActivate } from "./inline-activate";
@@ -66,12 +66,6 @@ export interface RunSkillToolOptions {
   collectionKey: string;
   /** Default-on initial skills, lazily seeded on first invocation. */
   initialSkills?: InitialSkill[];
-  /**
-   * Tool catalog. Retained for API compatibility with the prior fork-mode
-   * surface; inline activation does not resolve tools here (the generator
-   * registers the catalog directly).
-   */
-  catalog?: ToolCatalog;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,7 +76,7 @@ function getRequiredCollection(
   ctx: import("@flow-state-dev/core/types").BlockContext,
   key: string,
 ): ResourceCollectionRef {
-  const collection = resolveCollection(ctx, key);
+  const collection = resolveResourceCollection(ctx, key);
   if (!collection) {
     throw new Error(
       `Skills collection "${key}" is not registered on ctx.resources`,

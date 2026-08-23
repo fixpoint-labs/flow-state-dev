@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { handler } from "@flow-state-dev/core";
-import { testBlock } from "@flow-state-dev/testing";
+import { testBlock, testItems } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
   createEventActorsWorkspace,
@@ -164,6 +164,23 @@ describe("eventActors", () => {
 
     expect(result.error).toBeNull();
     expect(seen).toEqual([{ type: "request", topic: "query", body: "hi" }]);
+
+    // Same BP-014 contract as the response-auditor capture-context test, and
+    // asserted the same way. All three of the pattern's state-only steps return
+    // nothing, so each trace carries an empty inline output; a partial echo
+    // would leave a defined value here and fail. The length check is what keeps
+    // a suffix that stops matching from turning its case vacuously green.
+    for (const suffix of ["-stash", "-spawn-initial", "-reemit"]) {
+      const traces = testItems(result.items)
+        .blockOutputs()
+        .filter((trace) => trace.blockName.endsWith(suffix));
+      expect(traces.length).toBeGreaterThan(0);
+      for (const trace of traces) {
+        expect(trace.output).toBeDefined();
+        expect(trace.output!.kind).toBe("inline");
+        expect((trace.output as { kind: "inline"; value: unknown }).value).toBeUndefined();
+      }
+    }
   });
 
   it("only dispatches actors whose watch matches", async () => {

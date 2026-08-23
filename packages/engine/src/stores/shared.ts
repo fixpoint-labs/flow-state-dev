@@ -102,3 +102,18 @@ export function isRegistrySharedAcrossProcesses(
 ): boolean {
   return registry.sharedAcrossProcesses === true;
 }
+
+/**
+ * Guard the depth of a field path for `patchField` / `deleteField`.
+ *
+ * Both the in-memory and filesystem stores support depth-1 and depth-2 paths
+ * only; anything else is a caller bug, so it throws rather than writing a
+ * shape the store cannot read back.
+ */
+export function assertMaxDepthTwo(path: string[], verb: string): void {
+  if (path.length < 1 || path.length > 2) {
+    throw new Error(
+      `${verb} supports depth-1 or depth-2 paths; received path of length ${path.length}`
+    );
+  }
+}
