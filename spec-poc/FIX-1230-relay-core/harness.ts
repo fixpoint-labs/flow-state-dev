@@ -177,6 +177,10 @@ async function blockingSend(
       responseEmitter: null
     });
   } catch (error) {
+    // Deregister on the throw path too. The spec's rule is that every terminal
+    // path releases the waiter, and an artifact people copy from should show
+    // that rather than describe it.
+    waiters.delete(args.correlationId);
     return {
       correlationId: args.correlationId,
       timedOut: true,
