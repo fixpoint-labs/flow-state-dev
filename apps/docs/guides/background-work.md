@@ -127,7 +127,7 @@ Some bounds are worth knowing before you reach for this.
 
 **A workstream releases the request while it is actually working the task.** A task a workstream has in hand is not counted by the board that filed it, so the request that filed it finishes without waiting.
 
-That release lasts as long as somebody is on the task, not for the rest of the task's life. Handing work over says where it belongs; it does not promise the work is still moving. If the workstream stops without settling the task — its process dies, its host is shut down — the task goes back to being the board's to deal with, and the next drain of that board waits on it like any other outstanding work. A task parked for a person counts again too, unless the board asked not to wait on reviews with [`onReview: "exit"`](/docs/orchestration/task-board#waiting-on-a-person-onreview).
+That release lasts only while a workstream is actually holding the task, not for the rest of the task's life. Handing work over says where it belongs; it does not promise the work is still moving. If the workstream stops without settling the task — its process dies, its host is shut down — the task goes back to being the board's to deal with, and the next drain of that board waits on it like any other outstanding work. A task parked for a person counts again too, unless the board asked not to wait on reviews with [`onReview: "exit"`](/docs/orchestration/task-board#waiting-on-a-person-onreview).
 
 ### Which tasks share a workstream
 

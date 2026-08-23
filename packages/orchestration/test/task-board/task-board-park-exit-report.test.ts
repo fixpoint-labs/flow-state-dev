@@ -563,8 +563,21 @@ describe("the exit verdict is carried from the drain that decided it", () => {
     //
     // Ruling for the guard costs §9's case a reason that reads as a stall. Ruling
     // against it ships completion items that say `parked-for-review` beside
-    // `counts.awaiting_review: 0` — two incompatible claims in one payload, which
-    // an operator cannot act on at all.
+    // `counts.awaiting_review: 0` — two incompatible claims in one payload, and
+    // it sends an operator looking for a review that no longer exists.
+    //
+    // ## Do not "restore" §9 by pointing at the test below
+    //
+    // "Keeps the review reason for a row added after the pool classified" looks
+    // like it contradicts this one and does not. The difference is which row
+    // moved. There, an UNRELATED row appears while the parked row is still
+    // parked: `awaiting_review > 0`, the guard passes, and the review really is
+    // still outstanding. Here, THE PARKED ROW ITSELF was resumed: nothing is
+    // parked, and there is no review left to point an operator at.
+    //
+    // So the two are told apart by the one thing the report can check —
+    // `counts.awaiting_review` — which is why the guard is a property check and
+    // not a reconstruction of how the verdict got here.
     const collection = freshCollection();
     await park(collection, "ask");
     expect(await reasonFor(collection, parkedExit)).toBe("parked-for-review");

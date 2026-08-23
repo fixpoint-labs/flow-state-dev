@@ -267,6 +267,110 @@ describe("onReview — the flip: does the drain outlive the park?", () => {
   });
 });
 
+describe("onReview: 'hold' — what an unanswered review actually costs", () => {
+  it("ends at the iteration cap and misreports why", async () => {
+    // The thing both the changeset and the task-board page describe, pinned so
+    // neither can drift into a nicer story than the truth.
+    //
+    // Two beliefs were in circulation and both were wrong. The drain does NOT
+    // wait forever — `maxIterations` is a per-worker `loopBack` cap, so the wait
+    // is bounded. And it does NOT go silent — a completion item is emitted.
+    //
+    // What it does is worse than either: it reports `blocked-by-failures` on a
+    // board where nothing failed, while `counts.awaiting_review` in the same
+    // payload says a task is parked. Two incompatible claims in one item, which
+    // is the confusion `onReview: "exit"` exists to remove.
+    const boardName = "park-hold-cap";
+    const gate = deferred();
+    const gateClaimed = deferred();
+    const attempts = { total: 0 };
+
+    const worker = handler({
+      name: `${boardName}-worker`,
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.object({ ok: z.string() }),
+      execute: async (input) => {
+        if (input.taskId === "gate") {
+          gateClaimed.resolve();
+          await gate.promise;
+        }
+        return { ok: input.taskId };
+      },
+    }) as TaskWorker;
+
+    const board = taskBoard({
+      name: boardName,
+      collection: defineTaskCollection({
+        id: "park-hold-cap",
+        scope: "session",
+        stateSchema: z.object({ topic: z.string() }),
+      }),
+      concurrency: 1,
+      dispatcher: boardDispatcher(attempts),
+      workers: worker,
+      initialTasks: [{ id: "gate", goal: "gate", input: { topic: "g" } }],
+      // The default. Nothing here opts into park-exit.
+      onReview: "hold",
+      idlePollMs: 2,
+      // Small so the cap is reachable in about a second rather than the ~14
+      // hours the shipped default works out to.
+      maxIterations: 5,
+    });
+
+    const actor = handler({
+      name: `${boardName}-actor`,
+      inputSchema: z.unknown(),
+      uses: [board.capability],
+      execute: async (_input, ctx) => {
+        const tasks: TaskCollectionRef = await ctx.cap[boardName].tasks();
+        await gateClaimed.promise;
+        await tasks.addTask({
+          id: "ask",
+          goal: "ask",
+          assignee: REVIEWER_OWNED,
+          input: { topic: "a" },
+        });
+        await tasks.claim("reviewer", { eligibility: (t) => t.id === "ask" });
+        await tasks.awaitReview("ask", "needs a human");
+        gate.resolve();
+        // Nobody ever answers. That is the scenario.
+      },
+    });
+
+    const root = sequencer({
+      name: `${boardName}-root`,
+      inputSchema: z.unknown(),
+      stateSchema: taskBoardStateSchema,
+    }).stepAll([
+      sequencer({ name: `${boardName}-branch`, inputSchema: z.unknown() }).tap(board.drain),
+      actor,
+    ]);
+
+    const result = await testBlock(root, { input: undefined });
+
+    expect(result.error).toBeNull();
+
+    type MetaItem = { type?: string; component?: string; data?: unknown };
+    const meta = (result.items as MetaItem[]).find(
+      (i) => i.type === "component" && i.component === "task-board-meta"
+    );
+    const data = meta?.data as {
+      terminationReason: string;
+      counts: Record<string, number>;
+    };
+
+    // The drain ended rather than hanging: the request is bounded by the cap.
+    expect(data).toBeDefined();
+    // A completion item was emitted — the board is not silent.
+    expect(data.terminationReason).toBe("blocked-by-failures");
+    // …and the same payload says a task is parked. That contradiction is the
+    // point, and it is what park-exit replaces with `parked-for-review`.
+    expect(data.counts.awaiting_review).toBe(1);
+    expect(data.counts.errored).toBe(0);
+    expect(data.counts.cancelled).toBe(0);
+  }, 30_000);
+});
+
 describe("onReview: 'exit' — the second path: a worker asleep when the board becomes eligible", () => {
   /**
    * BP-035's reachable new path. The exit check and the wake predicate have to

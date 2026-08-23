@@ -163,9 +163,11 @@ Most boards leave `onIdle` alone. Override when:
 
 ## Waiting on a person: `onReview`
 
-A worker can park a task with `awaitReview` when it needs a human to look at something. By default the board treats that task the way it treats any other unfinished work: the drain stays open, and so does the request that started it, until someone moves the task out of `awaiting_review`.
+A worker can park a task with `awaitReview` when it needs a human to look at something. By default the board treats that task the way it treats any other unfinished work: the drain stays open, and so does the request that started it, waiting for someone to move the task out of `awaiting_review`.
 
-That is the right default when the answer arrives in seconds. It is the wrong one when it arrives tomorrow. `onReview: "exit"` says the board should not wait:
+That is the right default when the answer arrives in seconds. It is the wrong one when it arrives tomorrow, and the way it goes wrong is worth knowing. Nothing shortens the wait, but it does end: each worker stops after `maxIterations` (default `10000`), which on the default poll interval is most of a day. The task is left parked, and the board reports `terminationReason: "blocked-by-failures"` — on a board where nothing failed. The same item's `counts.awaiting_review` says a task is parked, so the payload contradicts itself, and a monitor watching the reason sees a failure every time somebody is asked a question.
+
+`onReview: "exit"` says the board should not wait:
 
 ```ts
 const board = taskBoard({
