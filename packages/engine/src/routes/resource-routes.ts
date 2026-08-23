@@ -20,9 +20,9 @@ import {
   extractBareTopic,
   jsonResponse,
   loadTenantSession,
-  normalizeResourceState,
   parseJsonBody,
 } from "./route-utils";
+import { normalizeResourceState } from "../resources/normalize-resource-state";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { isJsonObject } from "../utils/json-helpers";
 import {

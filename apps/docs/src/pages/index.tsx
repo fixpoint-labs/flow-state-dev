@@ -13,18 +13,18 @@ const researchBlockExample = `const researchBlock = sequencer({ name: "research"
   .parallel({
     web:  searchWeb,
     docs: searchDocs,
-    past: recall,            // reads ctx.user.resources.pastFindings and locates relevant items
+    past: recall,            // reads ctx.resources.pastFindings and locates relevant items
   })
   .step(synthesize)          // generator — reads ctx.session.state.query and parallel output
-  .sideChain(handler, {
+  .sideChain(handler({
     name: "save-draft",
-    sessionResources: { draft: draftResource },
+    resources: { draft: draftResource },
     sessionStateSchema: z.object({ lastResearched: z.string() }),
     execute: async (input, ctx) => {
-      await ctx.session.resources.draft.setContent(input.response)
-      await ctx.session.state.patch({ lastResearched: input.query })
+      await ctx.resources.draft.writeContent(input.response)
+      await ctx.session.patchState({ lastResearched: input.query })
     },
-  })
+  }))
   .sideChain(updateMemory)        // runs async, never blocks, can continue on after main thread completes
 
 export default defineFlow({
@@ -78,7 +78,7 @@ const systemConcepts: SystemConcept[] = [
   },
   {
     label: "State & Scopes",
-    prop: "Request, session, user, project. Four isolation levels with atomic operations. Each block declares only the fields it touches. State that accumulates and evolves as shared memory space.",
+    prop: "Request, session, user, org. Four isolation levels with atomic operations. Each block declares only the fields it touches. State that accumulates and evolves as shared memory space.",
   },
   {
     label: "Resources",

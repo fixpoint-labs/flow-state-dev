@@ -14,7 +14,7 @@ Primitives → Utility Blocks → Composable Patterns
 
 **Primitives** are the raw building blocks. You configure them directly when you need precise control over a single operation: a specific generator prompt, a handler that writes to state, a router that branches on a condition.
 
-**Utility blocks** are single-block factories that wrap primitives into reusable, named capabilities. `utility.decomposer()` returns a generator pre-configured for task decomposition. `utility.summarizer()` returns one for summarization. You still get one block — it just has sensible defaults and a focused API. Some utilities are general-purpose (no adapter required). Others are adapter-driven: they require a provider configuration to connect to an external service.
+**Utility blocks** are single-block factories that wrap primitives into reusable, named capabilities. `utility.decomposer()` returns a generator pre-configured for task decomposition. `utility.summarizer()` returns one for summarization. You still get one block — it just has sensible defaults and a focused API.
 
 **Composable patterns** are multi-block factory functions that return a fully wired sequencer. `parallelTasks()` returns a sequencer that handles decomposition, parallel dispatch, and merging. `supervisor()` returns one that adds per-task review with retries on rejection. These aren't single blocks — they're complete agentic workflows, composable within larger pipelines.
 
@@ -32,7 +32,7 @@ Use **utility blocks** when you need a standard LLM operation (summarize, decomp
 
 Use **composable patterns** when you need a full agentic workflow. These are the right choice for multi-step, multi-agent tasks where you'd otherwise be wiring together decomposition, dispatch, review, and synthesis by hand.
 
-## Utility blocks: general vs. adapter-driven
+## Utility blocks
 
 Most utility blocks work out of the box with any model:
 
@@ -44,9 +44,7 @@ const decompose = utility.decomposer({ name: "plan" });
 const analyze = utility.analyzer({ name: "review", criteria: ["completeness", "accuracy"] });
 ```
 
-A subset — the **strategy blocks** — require an external provider adapter: `searcher`, `retriever`, `networker`, `claimChecker`. These wrap external services (search engines, vector stores, web crawlers, fact-checking APIs) behind a standard block interface. You configure the adapter; the block handles the rest.
-
-See [Core Utilities](./utility-blocks/core) and [Extension Utilities](./utility-blocks/extensions) for the full catalog.
+See [Core Utilities](./utility-blocks/core) for the full catalog. Web search, page fetch, and site crawl live in `@flow-state-dev/tools` — see [Tools](../tools/overview).
 
 ## Composable patterns
 
@@ -106,9 +104,7 @@ Not sure which to pick? Benchmark them on your own tasks. See [Benchmarks](../te
 
 ## Reaching a pattern from a skill
 
-A skill reaches these patterns two ways now. Both keep the skill as plain inline instructions.
+A skill reaches these patterns two ways. Both keep the skill as plain inline instructions.
 
 - **Delegation.** A skill that declares an `agents:` field gets a private task board plus `taskTools` and a `runBoard` tool. The generator plans the work as tasks (`addTask` with an `assignee`) and drains the board with `runBoard`; the board runs the agents it declared, and any tool it can call. See [Delegation](../skills/delegation).
 - **Blocks as tools.** A deterministic recipe — a `taskBoard(...).drain`, a `goalSeekLoop`, or a whole pattern sequencer — is a block, and [any block can be a tool](../fundamentals/blocks#any-block-can-be-a-tool). Register it in the skills catalog and list it under the skill's `allowed-tools`; the generator calls it as one tool and gets back only the finalized result.
-
-The older `defaultPatternRegistry` path (a `pattern:` frontmatter key that handed control to a session-global dispatcher) has been removed.

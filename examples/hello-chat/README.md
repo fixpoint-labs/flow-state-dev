@@ -2,7 +2,7 @@
 
 This example demonstrates the minimal chat flow shape:
 
-- `defineFlow` with explicit `session.stateSchema` and clientData
+- `defineFlow` with explicit `session.stateSchema` and `client.expose`
 - one generator-backed action (`chat`)
 - emission API: silent-by-default blocks, explicit `ctx.emit.message()` / `ctx.emit.status()`
 - session state mutation via `ctx.session.patchState`
