@@ -73,8 +73,7 @@ they are marked rather than drawn as if decided.**
 
 **Issue 1 does *not* depend on issue 5.** It ships both modes complete — a top-level sender waits
 on `waitForCondition` and needs no park. The park matters only for the **workstream ask-and-end**
-path: **a scenario dependency for the headline case, not a build-order edge.** Issue 5 stays
-independent.
+path: **a scenario dependency for the headline case, not a build-order edge.**
 
 ## 4. The waiting model
 
@@ -123,8 +122,9 @@ reaching into a live request from outside it. **Issue 1 designs it; this documen
 
 - **The inside-world surface is *declared***, as a `relay?` group — a sibling of `webhooks?` /
   `schedules?`. It cannot be derived the way `flow.workstream` is.
-- **Issue 5 rides inside this epic.** It is the only unblocked issue and the headline case needs
-  it. *Cost of being wrong: the set reads as two epics later — documentation, not rework.*
+- **Issue 5 rides inside this epic.** It is the only issue that **does not depend on the send
+  verb** — unblocked like issue 1, but orthogonal to the core — and the headline case needs it.
+  *Cost of being wrong: the set reads as two epics later — documentation, not rework.*
 - **Relay dispatches use unbounded admission**; the wait is bounded by `waitForCondition`.
   *Alternative not taken: propagate admission expiry back to the sender.*
 - **The epic promises nothing about ordering on the durable path.** Pulling durable arbitration in
