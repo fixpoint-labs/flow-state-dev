@@ -62,8 +62,8 @@ they are marked rather than drawn as if decided.**
 - **Issue 2 exists if and only if we build the wake channel.** Its alternative is to **restrict
   blocking wait to in-process** — and issue 1's AC 4 already makes issue 1 refuse blocking sends
   when the dispatcher cannot serve them. **Under the restrict outcome AC 4 is the whole answer and
-  issue 2 has no delta left.** *(Second challenge to issue 2's content — the first said it was
-  empty as described, which the wake channel answered; this says it is empty under one branch.)*
+  issue 2 has no delta left.** *(Second challenge to its content; both were right about different
+  things.)*
 - **Issue 6's edge to issue 4 is conditional on C5.** If the expiry sweep is a scheduled message it
   needs issue 4 — and even then not sufficiently, since the framework runs no ticker (deployment
   fact 1). If C5 instead takes an **engine-owned periodic job**, the sweep invokes issue 1's relay
@@ -147,8 +147,8 @@ reaching into a live request from outside it. **Issue 1 designs it; this documen
 
 - **The framework runs no scheduler.** *"Hosts run their own scheduler … and POST to this endpoint
   when a schedule is due"* (`scheduled/src/index.ts:8-13`). Issue 4 stays true — it never claimed
-  to build a ticker — but anything periodic, **watch expiry included**, needs a host-provisioned
-  one. `bullmq` ships native cron; a bare Vercel deployment needs Vercel Cron configured.
+  to build a ticker — but anything riding on **schedules** needs a host-provisioned one (whether
+  watch expiry does is C5's open choice). `bullmq` ships native cron; bare Vercel needs Vercel Cron.
 - **An expected wait holds a request open.** Fine on a long-lived host or a bullmq worker; **not**
   on a platform with a hard request ceiling. **Serverless deployments get the wake-to-a-new-request
   form** (§4, row 2) — no new mechanism needed.
@@ -235,7 +235,7 @@ own spec — not here.**
   *(That check was once cited here as proof of unreachability. It is not — the POC that found it
   said "once the sender's identity is ctx-derived", and that clause was the whole load.)*
 - **AC 4** — **issue 1 must reject blocking sends when the effective dispatcher lacks cross-worker
-  wake support.** Issue 2 builds that channel and **depends on** issue 1, so without this criterion
+  wake support.** The channel is issue 2's — conditional, and **dependent on** issue 1 — so without this criterion
   the moment issue 1 lands a queue-backed caller can invoke an *advertised* blocking mode with no
   guard in existence, at deployment fact 3's cost. **Second instance of a pattern worth seeing** —
   the same species as shipping the acceptance ack before the admission budget was addressable,
@@ -251,9 +251,11 @@ own spec — not here.**
 
 - **`sessionId` already flows end-to-end** — `DispatchEnvelope` declares it, the host forwards it,
   bullmq serializes and restores it. So "per-adapter delivery" named **no adapter delta** and would
-  have produced an empty spec. **Re-described, not re-scoped:** issue 2's content is deployment
-  fact 3's fork. Restricting blocking wait to in-process is a legitimate outcome — a short spec,
-  not an empty one.
+  have produced an empty spec. **Re-described, then made conditional:** issue 2's content is the
+  **cross-worker wake channel**, and it exists **only if we choose to build it** (§3). Under the
+  other branch — restrict blocking wait to in-process — **issue 1's AC 4 ships the guard and issue
+  2 has nothing left**. *Read as "a short spec", that branch invites an **empty issue being filed** —
+  which is the concrete harm this framing closes.*
 
 ### Issue 4
 
@@ -286,9 +288,9 @@ and addressed delivery — **plus the expiry sweep, which is required, not optio
 | **C1** | Registration must not lose a condition that is **already true** — both board backings `emit(...)` *after* the committed write, outside the lock | Satisfied-or-attach, atomically. *Price:* each source owes a small "is this already satisfied?" adapter |
 | **C1b** | **"Already true" is undefined for an edge source.** A task's terminal status is a **level** predicate; a resource `updated` is an **edge** event, so a current-state read gives no baseline | A **versioned baseline** — per-key versions already exist. **Unverified, check first:** whether that version is readable on a public path at registration time. *Pre-committed fallback:* level-only immediate satisfaction, edge watches carrying the residual race **stated, not hidden** |
 | **C2** | The match key must be the **complete coordinate** — scope kind + owner + collection/namespace + id, on **both** the registration and the event. Three registries can emit the same `storageKey`; `TaskChangeEvent` identity is the `collectionId`+`taskId` pair. A bare id mis-delivers **inside one owner** | Complete coordinate, with the scope **server-derived** per BP-031 |
-| **C3** | A bounded lifetime that **something actually fires**. A lazily-checked TTL never runs for the never-fires case it exists to close | TTL + a **periodic sweep**, itself a scheduled message. *Rejected:* cleanup-on-next-activity with no `expired` promise — it answers the lifetime question with "nothing clears it" |
+| **C3** | A bounded lifetime that **something actually fires**. A lazily-checked TTL never runs for the never-fires case it exists to close | TTL + a **periodic sweep**. **What triggers the sweep is C5's question, not this one** — C3 requires only that a sweep exist. *Rejected:* cleanup-on-next-activity with no `expired` promise — it answers the lifetime question with "nothing clears it" |
 | **C4** | The manager must sit where **both** event sources reach it | `engine`, with `orchestration` a consumer forwarding the event it already emits. Keeps the board single-writer |
-| **C5** | **UNRESOLVED — the sweep has no framework-owned trigger.** `@flow-state-dev/scheduled` runs no loop | *Options, no pick:* an engine-owned periodic job, or a specified required external scheduler + target session |
+| **C5** | **UNRESOLVED — the sweep C3 requires has no framework-owned trigger.** `@flow-state-dev/scheduled` runs no loop. **Trigger selection is this constraint's alone** | *Options, no pick:* an **engine-owned periodic job** (needs no issue 4, and no host scheduler), or a **specified required external scheduler + target session** (a scheduled message, so it needs issue 4 and a host ticker). The choice decides issue 6's edge to issue 4 — §3 |
 | **C6** | **UNRESOLVED — the `expired` announcement can itself be lost**, over the same best-effort path it backstops. If the sweep consumes the entry and the delivery is lost, no entry remains and the watcher is told nothing | *Options, no pick:* retain and retry until handoff is confirmed, or weaken the guarantee explicitly |
 
 **Delivery is explicitly best-effort — no durable outbox** (out of scope by the owner's boundary).
