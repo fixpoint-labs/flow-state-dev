@@ -257,6 +257,6 @@ pnpm --filter @flow-state-dev/store-<name> test
 - **Match the reference adapters exactly.** Same method signatures, same return types, same error semantics. The stores are interchangeable.
 - **Async factory is OK.** Unlike SQLite (synchronous), most databases need async initialization. Return `Promise<StoreRegistry>`.
 - **Microtask batching for items/events.** Follow the SQLite adapter's pattern of buffering writes and flushing on microtask. This prevents excessive database round-trips during streaming.
-- **Don't reinvent the record model.** The record shape (SessionRecord, RequestRecord, etc.) is defined by the server package. Your adapter serializes/deserializes it — nothing more.
+- **Don't reinvent the record model.** The record shape (SessionRecord, RequestRecord, etc.) is defined by the engine package. Your adapter serializes/deserializes it — nothing more.
 - **Test with real queries, not mocks.** Use an embeddable database for tests. Don't mock the database driver — that tests nothing.
 - **Schema initialization must be idempotent.** `CREATE TABLE IF NOT EXISTS` or equivalent. Multiple calls to `initializeSchema` must not fail.

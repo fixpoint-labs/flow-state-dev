@@ -188,10 +188,32 @@ crash, make it static.
 
 ## Listing
 
-`GET /api/flows/:flowKind/schedules` returns the static map plus
-`{ dynamic: { provided: true } }` when a resolver is wired. Dynamic
-rows live in host-owned storage and are not enumerated. The route
-goes through `host.resolvePrincipal` and respects `requireUser`.
+`GET /api/flows/:flowKind/schedules` returns the static schedules as
+an **array** — the `static` config record is flattened, with each key
+becoming the entry's `id` — plus `dynamic.provided` when a resolver is
+wired:
+
+```json
+{
+  "static": [
+    {
+      "id": "monthly-invoices",
+      "cron": "0 0 1 * *",
+      "action": "generate-invoices",
+      "timezone": "UTC",
+      "description": "Bill every active account",
+      "enabled": true
+    }
+  ],
+  "dynamic": { "provided": true }
+}
+```
+
+`action` holds the handler block's `name` — provenance for the
+listing, not a resolver key. `description` is omitted when the
+schedule declares none. Dynamic rows live in host-owned storage and
+are not enumerated. The route goes through `host.resolvePrincipal`
+and respects `requireUser`.
 
 ## Error response codes
 

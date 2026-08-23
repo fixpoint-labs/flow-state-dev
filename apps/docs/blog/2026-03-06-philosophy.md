@@ -151,9 +151,9 @@ The LLM tool loop, streaming, state persistence, and error recovery are all hand
 
 A lot of AI orchestration tools stop at the server. They'll run your LLM pipeline, but getting the output to your users is your problem.
 
-flow-state.dev covers the full path. The server package runs flows and streams results over SSE. The client package manages sessions and dispatches actions from any environment (Node, browser, edge). The React package gives you hooks and a stream renderer. Every layer talks to the others without glue code, because they share the same type contracts.
+flow-state.dev covers the full path. The engine package runs flows and streams results over SSE. The client package manages sessions and dispatches actions from any environment (Node, browser, edge). The React package gives you hooks and a stream renderer. Every layer talks to the others without glue code, because they share the same type contracts.
 
-That said, the server and core packages work fine on their own. If you're building a CLI tool or a mobile backend, you don't pull in React.
+That said, the engine and core packages work fine on their own. If you're building a CLI tool or a mobile backend, you don't pull in React.
 
 ```ts
 // Server: register your flow, get a REST + SSE API for free
