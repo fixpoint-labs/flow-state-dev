@@ -33,7 +33,7 @@ const auditor = responseAuditor({
 
 ```
 input { userInput, response }
-  → captureContext             (store input in sequencer state)
+  → captureContext             (tap: store input in sequencer state, produces no output)
   → map to array               (one copy per analyzer)
   → forEach(safeAnalyzer)      (run analyzers concurrently, with .rescue() per analyzer)
   → filter nulls               (drop failed analyzers)
@@ -243,11 +243,25 @@ const auditor = responseAuditor({
 | `AuditAnnotationSchema` | schema | Zod schema for individual annotations |
 | `auditorInputSchema` | schema | `{ userInput: string, response: string }` |
 | `responseAuditorStateSchema` | schema | Internal sequencer state |
-| `captureContext` | handler | Stores input in sequencer state |
+| `captureContext` | handler | Stores input in sequencer state (tap — no output) |
 | `aggregateResults` | handler | Computes average score across results |
 | `applyThreshold(n)` | factory | Creates threshold filter handler |
 
 The internal blocks (`captureContext`, `aggregateResults`, `applyThreshold`) are exported for flow authors who want to remix the pipeline with custom steps.
+
+:::caution `captureContext` must be composed with `.tap()`
+
+`captureContext` only writes to sequencer state; it returns nothing. Compose it with `.tap()`, which runs a block for its side effect and passes the untouched pipeline value through to the next step:
+
+```ts
+sequencer({ name: "my-auditor", inputSchema: auditorInputSchema, stateSchema: responseAuditorStateSchema })
+  .tap(captureContext)   // state is written, { userInput, response } flows on
+  .step(myCustomAnalyzer)
+```
+
+Composing it as `.step(captureContext)` hands `undefined` to the next step, because `.step()` forwards the block's output and there is no output. Earlier releases echoed the input back, so `.step()` appeared to work; that echo was removed because it duplicated the payload in the items log for no benefit.
+
+:::
 
 ## Composability
 

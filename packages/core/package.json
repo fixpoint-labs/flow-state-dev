@@ -159,7 +159,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "node ../../scripts/typecheck.mjs",
+    "typecheck": "node ../../scripts/typecheck.mjs && tsc -p tsconfig.test-d.json",
     "lint": "echo 'lint not configured yet'",
     "test": "vitest run --root .",
     "test:watch": "vitest --root ."

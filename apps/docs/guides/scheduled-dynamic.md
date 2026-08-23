@@ -100,7 +100,7 @@ const userSchedules = defineResourceCollection<ScheduleResourceState>({
 
 export const reminders = defineFlow({
   kind: "reminders",
-  user: { resources: { schedules: userSchedules } },
+  resources: { schedules: userSchedules },
   schedules: {
     resolve: createResourceCollectionScheduleResolver({ collection: userSchedules })
   },
@@ -110,7 +110,7 @@ export const reminders = defineFlow({
       block: handler({
         name: "subscribe-weekly",
         execute: async ({ topic }, ctx) => {
-          await ctx.user.resources.schedules.create("weekly-digest", {
+          await ctx.resources.schedules.create("weekly-digest", {
             cron: "0 9 * * MON",
             action: "sendDigest",
             input: { topic },
@@ -147,7 +147,7 @@ import { handler } from "@flow-state-dev/core";
 const scheduleFollowup = handler({
   name: "schedule-followup",
   execute: async ({ leadId, when }, ctx) => {
-    await ctx.user.resources.schedules.create(`followup-${leadId}`, {
+    await ctx.resources.schedules.create(`followup-${leadId}`, {
       cron: cronExpressionFor(when),
       action: "sendFollowupEmail",
       input: { leadId },

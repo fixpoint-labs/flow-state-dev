@@ -62,16 +62,16 @@ Each pattern exports a plural `[pattern]Resources` object that maps the correct 
 // workingMemoryResources = { workingMemory: workingMemoryResource } as const
 
 // Simple — just working memory
-sessionResources: workingMemoryResources
+resources: workingMemoryResources
 
 // Compose multiple pattern resources
-sessionResources: {
+resources: {
   ...workingMemoryResources,
   ...episodicMemoryResources,
 }
 
 // Mix with custom resources
-sessionResources: {
+resources: {
   ...workingMemoryResources,
   userPrefs: userPrefsResource,
 }
@@ -107,7 +107,7 @@ When adding a new pattern (e.g., episodic memory):
 The qualified names prevent collisions at the `memory.*` barrel level. `addWorkingMemory` and `addEpisodicMemory` coexist without ambiguity. Pre-keyed resources compose cleanly:
 
 ```ts
-sessionResources: {
+resources: {
   ...workingMemoryResources,
   ...episodicMemoryResources,
 }

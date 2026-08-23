@@ -150,13 +150,14 @@ Purposes and default models live in the catalog — don't restate them here.
 ## Resources and Client Data
 
 - Concrete resources are persisted, attached to scopes
-- `clientData` entries are derived views — every entry is client-visible (no `client: true/false` toggle)
-- Each `clientData` compute function receives only its own scope's state and resources (single-scope context)
+- Scope state is server-private by default; each scope's `client` block declares what crosses — `expose` (verbatim state fields) and `derived` (computed projections). Both land at `snapshot.clientData.<scope>.<name>`
+- `expose` and `derived` share one namespace per scope; colliding names throw at `defineFlow`
+- Each `derived` compute function receives only its own scope's state and resources (single-scope context)
 - Generator context uses `contextFn()` for typed scope access, not raw state dumps
 - `defineResource()` for portable resource declarations
-- Blocks declare resources via a flat `resources` map (accessor key → `defineResource()` value); each resource carries its own `scope`, which routes it to the right storage layer. The scope-specific `sessionResources` / `userResources` / `orgResources` properties are legacy (FIX-435) and exist only on `handler`
+- Blocks and flows declare resources via a flat `resources` map (using `defineResource()` values); each resource's `scope` (`"session"` | `"user"` | `"org"`) routes storage. Access at runtime is `ctx.resources.<key>`
 - Sequencers collect `declaredResources` from all child blocks automatically
-- `defineFlow` merges block-declared resources into flow scope configs; flow-level wins over block-level
+- `defineFlow` merges block-declared resources into the flow's `resources` map; flow-level wins over block-level
 - Same `defineResource()` reference across blocks = no conflict; different references for same name = build-time error
 - Collection snapshots emit `count` always and `prefetched` when `prefetchWindow > 0`; per-item `clientData` is gated by `client.state.read`. Lazy reads via `GET /sessions/:id/resources/:ref` and a flow-static manifest at `GET /sessions/:id/manifest` (FIX-427).
 

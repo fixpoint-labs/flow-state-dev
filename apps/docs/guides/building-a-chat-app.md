@@ -299,7 +299,7 @@ test("message count accumulates across requests", async () => {
 
 **Testing philosophy:** The test harness creates an isolated runtime with in-memory stores. It mocks generators by name: `generators.chat.output` replaces the real LLM call with that string. Same contracts as production: validation, session resolution, block execution, state persistence, lifecycle hooks. No flakiness from API latency or rate limits.
 
-**Seeding state:** Use `seed.session`, `seed.user`, or `seed.project` to simulate scenarios. Here we start with `messageCount: 3` and verify the handler increments to 4. Useful for multi-turn flows, permission checks, and state-dependent behavior.
+**Seeding state:** Use `seed.session`, `seed.user`, or `seed.org` to simulate scenarios. Here we start with `messageCount: 3` and verify the handler increments to 4. Useful for multi-turn flows, permission checks, and state-dependent behavior.
 
 **Generator mocking:** The key in `generators` matches the block name. Our generator is named `"chat"`, so `generators.chat.output` replaces its output. For generators with tools, you can mock tool results too. See the [Testing docs](/docs/testing/testing-flows) for the full API.
 

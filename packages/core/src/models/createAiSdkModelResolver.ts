@@ -256,20 +256,17 @@ function normalizeFinishReason(value: unknown): string | undefined {
   return typeof record.unified === "string" ? record.unified : undefined;
 }
 
+/**
+ * Reads the structured output off an AI SDK result. `output` is a lazy
+ * getter that throws when the call produced no structured output, so the
+ * read stays guarded — callers treat "no structured output" as undefined.
+ */
 function normalizeStructuredOutput(value: Record<string, unknown>): unknown {
-  const keys = ["experimental_output", "experimentalOutput", "output"] as const;
-  for (const key of keys) {
-    try {
-      const candidate = (value as Record<string, unknown>)[key];
-      if (candidate !== undefined) {
-        return candidate;
-      }
-    } catch {
-      // Some AI SDK result getters throw when no structured output exists.
-    }
+  try {
+    return value.output;
+  } catch {
+    return undefined;
   }
-
-  return undefined;
 }
 
 function asProviderMetadata(
@@ -553,10 +550,7 @@ function normalizeSteps(
       toolCalls: normalizeToolCalls(record.toolCalls, toolNameMap),
       toolResults: normalizeToolResults(record.toolResults, toolNameMap),
       finishReason: normalizeFinishReason(record.finishReason),
-      usage: normalizeUsage(
-        record.usage,
-        record.providerMetadata ?? record.experimental_providerMetadata
-      )
+      usage: normalizeUsage(record.usage, record.providerMetadata)
     });
   }
 

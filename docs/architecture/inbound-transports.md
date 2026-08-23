@@ -340,12 +340,14 @@ notes.
 
 ## Conformance suite
 
-`@flow-state-dev/testing` exports `createInboundTransportConformanceTests`,
-modeled on `store-cas-contract.test.ts`. Every adapter implementation
-should run the suite:
+`@flow-state-dev/testing/conformance` exports
+`createInboundTransportConformanceTests`, modeled on
+`store-cas-contract.test.ts`. The helpers live on that subpath because
+they import `vitest` at module top level; the package index does not
+re-export them. Every adapter implementation should run the suite:
 
 ```ts
-import { createInboundTransportConformanceTests } from "@flow-state-dev/testing";
+import { createInboundTransportConformanceTests } from "@flow-state-dev/testing/conformance";
 
 createInboundTransportConformanceTests({
   name: "myAdapter",

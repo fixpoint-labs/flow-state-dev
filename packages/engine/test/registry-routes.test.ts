@@ -844,9 +844,7 @@ describe("createFlowApiRouter", () => {
 
   // FIX-569: the active-streams capacity mechanism is gone — live tail is
   // owned by the store interface and the per-process registry no longer
-  // exists. The `maxConcurrentStreams` knob is preserved for source-compat
-  // but has no behavioral effect. The 503-at-capacity test was removed
-  // along with the registry.
+  // exists. The 503-at-capacity test was removed along with the registry.
 
   describe("requiresOrg via validateDispatch", () => {
     function makeOrgFlow(): FlowInstance {

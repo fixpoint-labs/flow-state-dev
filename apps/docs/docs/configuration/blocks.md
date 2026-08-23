@@ -77,7 +77,7 @@ const chat = generator({
 | `agentName` | `string` | block `name` when visibility is set | Provenance stamp. Shared names collaborate; distinct names stay isolated. |
 | `search` | `true` or search config | off | Provider-native web search, resolved from the model at run time. |
 | `providerTools` | `ProviderTool[]` | — | AI SDK provider-defined tools, passed through as-is. |
-| `loop` | `{ maxIterations?, runTools?, stopWhen? }` | — | Tool-loop policy. |
+| `loop` | `{ maxIterations?, runTools? }` | — | Tool-loop policy. |
 | `maxIterations` | `number` | — | Legacy loop cap. Prefer `loop.maxIterations`. |
 | `maxTokens` | `number` | — | Output token cap. |
 | `repair` | `GeneratorRepairConfig` | — | Structured-output repair. |
@@ -115,7 +115,6 @@ Unset means the generator does **not** auto-emit conversational items. Only type
 |-------|------|---------|--------------|
 | `maxIterations` | `number` | — | Stop the tool loop after this many rounds. |
 | `runTools` | `boolean` | — | When `false`, the model may propose tools but they are not executed. |
-| `stopWhen` | `(state, ctx) => boolean` | — | Early exit. |
 
 ## Handler
 

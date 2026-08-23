@@ -158,8 +158,9 @@ pattern doesn't care whether its blocks call a model.
 
 Because the board is doing the work, your pattern emits `task-change` (per-task
 lifecycle) and `task-board-meta` (board-level aggregate) items automatically.
-Pair them with `<TaskPlan />` from `@flow-state-dev/ui` and a consumer gets a
-live progress view without your pattern rendering anything.
+Install `TaskPlan` with `fsdev ui add task-plan` and import it from
+`@/components/flow-state/task-plan`. Pair the items with `<TaskPlan />` and a
+consumer gets a live progress view without your pattern rendering anything.
 
 ## Where to look next
 

@@ -113,7 +113,7 @@ Actions are the flow's public API. Clients call them by name. Each action maps t
 Four nested state scopes, each with typed atomic operations:
 
 ```
-request → session → user → project
+request → session → user → org
 (one run)  (conversation)  (across sessions)  (shared across users)
 ```
 
@@ -136,7 +136,7 @@ See [Streaming](./streaming.md) and [Items](./items.md).
 
 ### Resources and client data — data with policy
 
-**Resources** are named, typed state containers scoped to sessions, users, or projects. Think of them as structured data stores that blocks can read and write. Blocks declare their resource dependencies via `defineResource()`, and the framework collects and merges these declarations automatically through sequencers up to the flow level. For dynamic collections where the instance count isn't known ahead of time, [Resource Collections](./resource-collections.md) let you create and destroy instances at runtime under a shared schema.
+**Resources** are named, typed state containers scoped to sessions, users, or orgs. Think of them as structured data stores that blocks can read and write. Blocks declare their resource dependencies via `defineResource()`, and the framework collects and merges these declarations automatically through sequencers up to the flow level. For dynamic collections where the instance count isn't known ahead of time, [Resource Collections](./resource-collections.md) let you create and destroy instances at runtime under a shared schema.
 
 **Client data** is the projection of scope state declared by each scope's `client` block (`expose` for verbatim passthrough, `derived` for computed views). Raw state never reaches the client; the snapshot route returns only what `client` declares. The privacy property is structural: a scope without a `client` block exposes nothing, and a new state field doesn't surface on the wire until it's added to `expose` or `derived`.
 
@@ -155,7 +155,7 @@ const pipeline = sequencer({ name: "review" })
   .step(analyze);
 ```
 
-The full catalog — which utilities exist, their kinds, and their default models — is in [Utility Blocks](./utility-blocks.md).
+The catalog of utilities and their kinds is in [Utility Blocks](./utility-blocks.md). Per-utility config and default models live in [Core Utilities](../../apps/docs/docs/patterns/utility-blocks/core.md).
 
 ## Data flow
 

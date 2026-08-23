@@ -176,11 +176,11 @@ If you call an action without a `sessionId`, the framework generates a fallback 
 
 ## The `client` block: exposing state safely
 
-Raw state never reaches the client. Each scope's `client` block declares the slice of state that crosses to the browser. Anything not in `client` stays on the server.
+Raw state never reaches the client. Session, user, and org each take a `client` block that declares the slice of state that crosses to the browser. Anything not in `client` stays on the server.
 
 The block has two halves:
 
-- `expose` — top-level field names that pass through verbatim. Use it for primitives that are already client-shaped.
+- `expose` — top-level state field names that pass through verbatim. Use it for primitives that are already client-shaped.
 - `derived` — named projections computed from `{ state, resources }`. Use it when the client wants a different shape (e.g. mapping a structured resource into an ID + title list).
 
 ```ts
@@ -212,42 +212,17 @@ const data = useClientData(session, {
 });
 ```
 
+The values land at `snapshot.clientData.<scope>.<name>`. `useClientData` reads that object.
+
 Internal state — intermediate processing, raw resource contents, block-private fields — stays on the server. The privacy contract is the default: a scope without a `client` block exposes nothing. Adding a new state field doesn't silently leak to the browser; you have to add it to `expose` or `derived` first.
+
+`expose` and `derived` share a namespace. A name in both throws at `defineFlow`. `expose` names must be top-level keys on that scope's `stateSchema`.
 
 During streaming, `state_change` and `resource_change` events signal that the client view may be stale. The client refetches the authoritative snapshot on `request.completed`.
 
 Mutations to session, user, org, and request state all emit `state_change` items on the wire — the same shape that block-instance / sequencer target state has always emitted — so React's `useClientData` can reflect mid-stream patches without waiting for terminal status. See [`useClientData`](/docs/client/react#useclientdata--client-data). Resources have the same option: one declaring `client: { live: true }` streams its projected delta the same way (see [Resources: client access — Live updates](/docs/resources/client-access#live-updates)), so apps don't need to mirror resource status onto session state.
 
 This mirrors how resources work: a resource without a `client` config is invisible to clients (see [Resources: client access](/docs/resources/client-access)). One mental model — `client` everywhere — instead of two.
-
-### Migrating from `clientData`
-
-The previous shape was a flat `clientData: { name: fn }` map. It still works, with a one-time deprecation warning per scope per process; removal lands in a future minor.
-
-```ts
-// Before
-session: {
-  clientData: {
-    messageCount: (ctx) => ctx.state.messageCount,
-  },
-}
-
-// After
-session: {
-  client: {
-    expose: ["messageCount"],
-  },
-}
-```
-
-Compute functions move under `client.derived`. Pure passthroughs become `expose` entries — no function needed.
-
-Two errors `defineFlow` will reject up front:
-
-- Setting both `client` and `clientData` on the same scope. Pick one.
-- A name appearing in both `expose` and `derived`. They share a namespace.
-
-The on-the-wire shape is unchanged: clients still read `snapshot.clientData.<scope>.<name>`. Only the input syntax changed.
 
 ## The other three scopes
 
