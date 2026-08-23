@@ -178,6 +178,16 @@ export const commitPortfolioManagerMemo = handler({
     let absoluteRating: "Buy" | "Hold" | "Sell" | null = null;
     let relativeRating: "Overweight" | "Equal Weight" | "Underweight" | null = null;
 
+    // FIX-1113 — the envelope is WITHHELD when the three statements could not be
+    // placed at one fiscal period. The clamp below then never runs, so
+    // `finalRating` stays the model's own value, UNBOUNDED. That is fail-open by
+    // construction: withholding the envelope removes the bound, not the rating.
+    // Nothing here can put the bound back — the inputs it needed were never
+    // computed — so the honesty is carried by DISCLOSING it on the record
+    // instead, and by the run marker that makes the frequency answerable.
+    const periodDisclosure = spine?.periodDisclosure ?? null;
+    const ratingUnanchored = periodDisclosure != null;
+
     if (spine?.envelope) {
       const clamped = clampRatingToBand(
         decision.finalRating,
@@ -448,6 +458,8 @@ export const commitPortfolioManagerMemo = handler({
         metrics: displayMetrics,
         decisionSummary: decision.decisionSummary,
         finalRating,
+        ratingUnanchored,
+        periodDisclosure,
         decisionConfidence: decision.decisionConfidence,
         acceptedAdjustments: decision.acceptedAdjustments,
         keyDependencies: decision.keyDependencies,
@@ -515,6 +527,9 @@ export const commitPortfolioManagerMemo = handler({
       ticker: ctx.session.state.ticker,
       asOfDate: ctx.session.state.date,
       finalRating, // post-clamp value computed above
+      // ...except when there was no clamp to apply — see the derivation above.
+      ratingUnanchored,
+      periodDisclosure,
       decisionConfidence: decision.decisionConfidence,
       decisionSummary: decision.decisionSummary,
       direction: traderStance,
@@ -587,6 +602,14 @@ export const commitPortfolioManagerMemo = handler({
       decisionConfidence: decision.decisionConfidence,
       summary: decision.decisionSummary.slice(0, 160),
       decidedAt,
+      // FIX-1113 — mirrors the memo's own field so the Past Reports LIST can
+      // badge an unanchored rating without loading per-session state.
+      ratingUnanchored,
+      // FIX-1113 — the reason `ratingUnanchored` fires. Carried alongside the
+      // boolean so the list can render a reason-specific tooltip via the
+      // shared `disclosurePrintShape` classifier rather than a row re-stating
+      // one specific cause as if it were the only one.
+      periodDisclosure,
     };
     await ctx.session.setMetadata({
       metadata: { decision: decisionMeta, reportStatus: "complete" },

@@ -8,6 +8,7 @@
  */
 import { defineResource } from "@flow-state-dev/core";
 import { z } from "zod";
+import { periodDisclosureSchema } from "./lib/valuation-spine";
 import { ratingSchema } from "./lib/rating-engine";
 
 const expectedReturnSchema = z.object({
@@ -80,16 +81,24 @@ const ratingEnvelopeSchema = z.object({
 export const valuationSpineStateSchema = z.object({
   ticker: z.string(),
   asOf: z.string(),
-  expectedReturn: expectedReturnSchema,
-  fairValue: fairValueSchema,
+  // Nullable from FIX-1113: withheld when the three statements do not share a
+  // fiscal period. `.default(null)` also carries a session persisted before
+  // that change, where the key is present — the default is for the WITHHELD
+  // shape, the nullability for the stored one.
+  expectedReturn: expectedReturnSchema.nullable().default(null),
+  fairValue: fairValueSchema.nullable().default(null),
   // Nullable + default(null) so sessions persisted before FIX-807 (which lack
   // these keys) still parse — the missing key fills to null on `.parse()`.
   dcf: dcfSchema.nullable().default(null),
   triangulation: triangulationSchema.nullable().default(null),
-  setupScore: setupScoreSchema,
-  envelope: ratingEnvelopeSchema,
+  setupScore: setupScoreSchema.nullable().default(null),
+  // The ENVELOPE, not the rating. Absent means the portfolio manager's clamp
+  // never runs, so its rating publishes UNBOUNDED — absence here is permission,
+  // not suppression. `periodDisclosure` is what carries the honesty.
+  envelope: ratingEnvelopeSchema.nullable().default(null),
   valuationMethod: z.enum(["ev-multiples", "equity-multiples"]),
   evidenceBasis: z.enum(["sufficient", "thin"]),
+  periodDisclosure: periodDisclosureSchema.nullable().default(null),
 });
 
 export type ValuationSpineState = z.infer<typeof valuationSpineStateSchema>;

@@ -51,6 +51,7 @@ describe("recordFixture", () => {
     source: "edgar" as const,
     ticker: "NVDA",
     asOf: "2026-06-01",
+    periodEnd: "2026-06-01",
     totalAssets: 100,
     totalLiabilities: 40,
     totalEquity: 60,

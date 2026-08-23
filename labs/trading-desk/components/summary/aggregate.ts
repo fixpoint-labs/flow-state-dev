@@ -20,6 +20,7 @@
  */
 import type { MemoState } from "@/flows/analysis/resources";
 import type { ValuationSpineState } from "@/flows/analysis/valuation-spine-resource";
+import type { PeriodDisclosure } from "@/flows/analysis/lib/valuation-spine";
 import {
   AGENTS,
   ALL_MEMO_KEYS,
@@ -58,6 +59,17 @@ export type DecisionSummary = {
   absoluteRating: MemoState["absoluteRating"];
   /** The PM's call relative to the benchmark. Null when unpublished. */
   relativeRating: MemoState["relativeRating"];
+  /**
+   * True when the rating envelope was WITHHELD (FIX-1113) because the three
+   * financial statements could not be placed at one fiscal period — the
+   * clamp above never ran, so `finalRating` is the model's own, unbounded
+   * value. A disclosure, not a suppression: the rating still publishes.
+   * `periodDisclosure` names which periods and why. Report surfaces must
+   * render this alongside the rating rather than showing an unclamped call
+   * with no marker.
+   */
+  ratingUnanchored: MemoState["ratingUnanchored"];
+  periodDisclosure: PeriodDisclosure | null;
 } | null;
 
 /**
@@ -317,6 +329,8 @@ export function buildReportSummary(
               : null,
           absoluteRating: pm.absoluteRating,
           relativeRating: pm.relativeRating,
+          ratingUnanchored: pm.ratingUnanchored,
+          periodDisclosure: pm.periodDisclosure,
         }
       : null;
 
@@ -367,8 +381,11 @@ export function buildReportSummary(
   };
 
   // Factor scores (valuation spine). The spine's component scores are ~0..100.
+  // `setupScore` is null when the spine WITHHELD its cross-statement outputs
+  // (FIX-1113) — the strip renders its own gap note rather than four zeroes,
+  // which is the same absent-stays-absent rule as every other read here.
   const factorScores: FactorScores =
-    spine !== null
+    spine?.setupScore != null
       ? {
           value: spine.setupScore.value,
           quality: spine.setupScore.quality,

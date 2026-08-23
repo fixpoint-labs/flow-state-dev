@@ -1,6 +1,7 @@
 {
   "ticker": "NVDA",
   "asOf": "2026-01-26",
+  "periodEnd": "2026-01-26",
   "totalAssets": 96.0,
   "totalLiabilities": 22.4,
   "totalEquity": 73.6,

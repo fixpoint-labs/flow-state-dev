@@ -23,6 +23,7 @@ import {
   tradeLineParts,
 } from "@/flows/analysis/lib/trade-levels";
 import { InvalidationList } from "./invalidation-list";
+import { RatingUnanchoredNotice } from "./rating-unanchored-notice";
 import { cn } from "@/lib/utils";
 
 const TIERS = ["Sell", "Underweight", "Hold", "Overweight", "Buy"] as const;
@@ -81,6 +82,15 @@ export function DecisionHeader({
             <p className="text-[14px] leading-snug text-[color:var(--c-fg)]">
               {decision.decisionSummary}
             </p>
+          ) : null}
+
+          {/* FIX-1113 — the rating envelope was withheld (the three financial
+              statements could not be placed at one fiscal period), so the
+              5-tier rating below publishes unbounded rather than clamped.
+              Rendered ABOVE the rating bar so a reader meets the disclosure
+              before the rating, never after. */}
+          {decision.ratingUnanchored === true && decision.periodDisclosure !== null ? (
+            <RatingUnanchoredNotice disclosure={decision.periodDisclosure} />
           ) : null}
 
           {/* 5-tier rating bar */}

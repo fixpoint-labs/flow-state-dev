@@ -7,6 +7,13 @@
  * spine resources the Phase 1 tools wrote via `getOrPatchState`. No re-fetch, no
  * `block.run()`, and no dependence on a warm process cache: this tap reads the
  * stable per-session copy.
+ *
+ * THIS IS ONE OF THE TWO PLACES THE THREE STATEMENTS MEET (FIX-1113), so the
+ * period-coherence check runs here — over the SET, once, before anything is
+ * computed from it. The other site is the fundamentals analyst, which computes
+ * and publishes its OWN valuation from its own tool payloads BEFORE this tap
+ * runs, so a check placed only here is structurally invisible to it. Both call
+ * the same predicate; neither owns it.
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -15,6 +22,7 @@ import { buildValuationSpine } from "./lib/valuation-spine";
 import { valuationSpineResource } from "./valuation-spine-resource";
 import { financialsDataResource } from "./financials-data-resource";
 import { normalizeLegacyFinancials } from "./tools/runtime/normalize-legacy-financials";
+import { statementSetDisclosure } from "./lib/statement-set-period";
 import { quantDataResource } from "./quant-data-resource";
 import { technicalDataResource } from "./technical-data-resource";
 import { profileDataResource } from "./profile-data-resource";
@@ -60,11 +68,18 @@ export const computeAndStoreSpine = handler({
       return;
     }
 
+    // Decide ONCE, over the three statements, after all three have returned.
+    // Non-null means the set is incoherent: the spanning multiples below and
+    // every cross-statement spine output are withheld rather than computed
+    // across periods.
+    const periodDisclosure = statementSetDisclosure(fin);
+
     const valuation = computeValuation({
       fundamentals,
       balanceSheet,
       incomeStatement,
       cashflow,
+      periodsCoherent: periodDisclosure == null,
     });
 
     const sector = companyProfile?.sector ?? null;
@@ -81,6 +96,7 @@ export const computeAndStoreSpine = handler({
       factorRanks,
       technicals: indicators,
       valuation,
+      periodDisclosure,
     });
 
     await ctx.resources.valuationSpine.patchState(spine);
