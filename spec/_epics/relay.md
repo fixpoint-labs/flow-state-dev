@@ -40,7 +40,8 @@ are recorded in §4's composition note rather than smoothed away.
 
 **The address and the door are both settled now.** The owner has stated the address:
 **a recipient is a `sessionId`**, and a sender is identified by its own `sessionId` — possibly
-carrying the `requestId` of the sending request as well (an issue-1 spec detail, §4). Messages
+carrying the `requestId` of the sending request as **provenance** (§4 — it is *not* the
+correlation identifier; that must be per-send). Messages
 never travel from one user to another.
 
 **And the door — the epic's load-bearing fork — is decided: it is asymmetric** *(owner, 2026-08-23:
@@ -161,7 +162,7 @@ saying so here is cheaper than a consumer discovering it.
   and **cross-session progress polling**, which is a later mechanism and not a small addition
   (theme 10).
 - **A new queueing mechanism** — the concurrency policy already arbitrates on the session key.
-  Still true, and **making its admission budget configurable is not one** (theme 14): it is a
+  Still true, and **changing how its admission budget is set is not one** (theme 14): it is a
   parameter on the arbiter that exists, and the unbounded case already works in the shipped gate.
   (Delivery receipt is **no longer** on this list: acceptance already exists in shipped code and
   every send awaits it — theme 6, amended.)
@@ -193,10 +194,18 @@ durable path, and pulling durable arbitration inward is out of scope by the owne
 **The in-process half of that risk is no longer a risk to accept — it is scope.** §3's Q4 ran it:
 a delivery **accepted at 0 ms** is **dropped at 30 001 ms** when the recipient stays busy past the
 arbiter's hardcoded budget, with the sender long since returned and reading `completed`. A
-receipt that can be followed by a silent loss is worse than no receipt, so **a configurable
-admission budget is in scope** — **issue 1** (§4), theme 14. It is small: `Infinity`/omitted
-already disables the timeout in the shipped gate, and Q4 ran the same scenario through it and the
-delivery landed. Nothing about the *durable* path changes; that stays FIX-830's.
+receipt that can be followed by a silent loss is worse than no receipt, so **the admission budget
+is in scope** — **issue 1** (§4), theme 14.
+
+**But configurability alone does not fix it, and saying it did was this document's own gap.**
+*(Corrected 2026-08-23.)* A knob moves the choice to whoever deploys, and **any finite value they
+pick reproduces the Q4 shape exactly** — accepted at 0 ms, discarded later, sender reading
+`completed`. **Recommended: relay dispatches use unbounded admission, and the sender-side answer
+timeout bounds the wait** — admission answers *will this be delivered*, the answer timeout answers
+*how long do I wait* (theme 14). The mechanics are small either way: `Infinity`/omitted already
+disables the timeout in the shipped gate, and Q4 ran the scenario through it and the delivery
+landed. *Alternative recorded, not picked:* propagate admission expiry back to the sender. Nothing
+about the *durable* path changes; that stays FIX-830's.
 
 **It sits on issue 1, not issue 2 — a correction, recorded because the earlier text said issue 2.**
 Issue 2 depends on issue 1 and theme 13 requires issue 1 to land first, so filing the budget on
@@ -281,8 +290,9 @@ can cite one.
    and 5**, and issue 5 is what makes the workstream half representable at all — settled by run,
    not assumed: the board's existing park holds its launching request open (§3's settlement). Because the
    answer is a *new* message rather than the sender's handle resolving, something has to
-   correlate it with the question that was asked — theme 6, and §4's issue-1 spec inputs
-   (relocated there from §5 Q1b).
+   correlate it with the question that was asked — and it must be **per-send**, not per-request,
+   since one request may hold several asks open at once (theme 6, and §4's *"correlation is
+   per-send"* requirement).
 
 6. **Two send modes, not three — and acceptance is the acknowledgement on both.** *(Amended by
    the owner. Still two modes; what changed is that the receipt is not a third one.)*
@@ -290,17 +300,20 @@ can cite one.
    **Every send awaits acceptance before returning.** Fire-and-forget returns there;
    wait-for-response carries on and waits for the answer (theme 14).
 
-   **What correlates an answer with the question it answers is not yet named — and
-   wait-for-response does not work without it.** *(Epic review, round 2.)* The mode is
-   specified; the identifier is not. It has to be carried on the message and echoed on the
-   reply, or a sender with more than one ask outstanding cannot tell which one a message
-   answers — or that it is an answer at all. **The sending `requestId` on the sender's identity is
-   the leading candidate**, and this is a second, independent argument for it: it was justified only
-   by reply-routing granularity and §3 Q4's discoverability gap, which made it a convenience. A send
-   mode that does not function without it makes it load-bearing. **It stays open** — the owner
-   hedged, and the field is issue 1's spec to settle (the case lives in §4's issue-1 spec inputs,
-   relocated there from §5 Q1b). What is settled here is that wait-for-response owes an answer to
-   it.
+   **Wait-for-response requires a correlation identifier, and it must be *per-send*.**
+   *(Epic review round 2 raised the gap; round 11 corrected what fills it.)* The mode is specified;
+   the identifier has to be carried on the message and echoed on the reply, or a sender with more
+   than one ask outstanding cannot tell which one a message answers — or that it is an answer at
+   all.
+
+   **The sending `requestId` cannot be that identifier, and this is settled rather than open.**
+   *(Corrected 2026-08-23 from a chatgpt-codex P1; the earlier text here named it "the leading
+   candidate".)* **One request can issue two wait-for-response sends** — parallel sequencer
+   branches, or several tool calls in one generator turn — and both carry the same `requestId`, so
+   either reply can satisfy the wrong waiter. **`requestId` identifies the asker, not the ask.**
+   The requirement is therefore a **per-send correlation ID**, minted at send time and echoed by the
+   reply, with `requestId` kept as **provenance only**. The shape is issue 1's to design; that
+   `requestId` cannot be it is not open. See §4, *"Issue 1 requirement — correlation is per-send"*.
 
    **The reply is a new inbound message, not a resolution of the sender's handle.** Stated
    plainly because the opposite reading is easy to reach for: on the workstream path the answer
@@ -387,9 +400,10 @@ can cite one.
 
    **The address is a `sessionId`, on both ends** — stated by the owner, so an issue spec builds
    to it rather than re-deriving it. The **recipient** is named by `sessionId`. The **sender** is
-   identified by its own `sessionId`, and **possibly also by the `requestId` of the sending
-   request** — the requestId half is an open detail for issue 1's spec, not a decision here
-   (§4's issue-1 spec inputs, relocated there from §5 Q1b). Neither value is caller-supplied: both
+   identified by its own `sessionId`, and **may also carry the `requestId` of the sending request
+   as provenance** — *provenance only:* `requestId` identifies the asker, not the ask, so it is
+   **not** the correlation identifier wait-for-response needs (theme 6, and §4's *"correlation is
+   per-send"* requirement). Neither value is caller-supplied: both
    read off the execution context
    (`ctx.session.identity`, §3's ctx-gap list). Since sender and recipient are the same owner by
    construction (§1), the address carries no user coordinate and no cross-user authorization
@@ -485,13 +499,44 @@ can cite one.
     0 ms** was **dropped at 30 001 ms** because the recipient stayed busy for 35 s, and the sender
     — already returned, reading `completed` — was never told.
 
-    **So: the admission budget must be configurable**, with `Infinity`/omitted as the unbounded
+    **The admission budget must become configurable** — with `Infinity`/omitted as the unbounded
     case. That case is already supported rather than new work: `runExclusive`'s timer is guarded
     by `waitTimeoutMs !== undefined && waitTimeoutMs !== Infinity && waitTimeoutMs > 0`
     (`keyed-async-gate.ts:141-145`), and Q4 ran the same 35 s scenario through an arbiter whose
-    only difference is that budget, set to `Infinity`. The delivery landed. The fix is therefore
-    **a parameter at the arbiter**, not a structural change — but the epic only gets to say that
-    because it was run.
+    only difference is that budget, set to `Infinity`. The delivery landed. Threading it is
+    therefore **a parameter at the arbiter**, not a structural change — injected through the
+    `arbiter` option `createInboundTransportHost` already accepts (`:106-113`) — but the epic only
+    gets to say that because it was run.
+
+    **Configurability is the *enabling parameter*, not the remedy — and reading it as the remedy
+    was a gap in this theme's own reasoning.** *(Corrected 2026-08-23 from a chatgpt-codex P1.)* A
+    knob only **moves the choice to whoever deploys**. Any **finite** value a deployment picks
+    reproduces exactly the shape §3's Q4 demonstrated: `accepted` resolves at 0 ms, the recipient
+    stays busy past the budget, the queued delivery is discarded, and the sender — long since
+    returned, reading `completed` — is never told. **Exposing the timeout as a knob does not
+    establish the acknowledgement contract the send verb advertises**; it only makes it *possible*
+    to establish.
+
+    **This is the cursor round-3 note's point, and making the budget configurable satisfied its
+    letter while missing it.** That note said the verb *"must **not** ship acking on `accepted`
+    alone while the admission budget is unconfigurable."* The fold made the budget configurable and
+    treated the note as discharged. It was not: the note was about the **contract**, and a
+    configurable budget that a deployment sets to a finite number leaves the contract exactly as
+    broken as a hardcoded one.
+
+    **Recommended resolution: relay dispatches use *unbounded* admission, and the sender-side answer
+    timeout is what bounds the wait.** That is the coherent layering, and it is the two-clocks rule
+    of this theme applied properly: **admission answers *"will this be delivered"*; the answer
+    timeout answers *"how long do I wait"*.** A relay delivery that has been accepted should not be
+    discarded by a clock the sender cannot see. Q4 verified the unbounded path lands the delivery —
+    twice, injected through an option the host already accepts, with no engine code patched.
+
+    **The alternative, recorded and not picked: propagate admission expiry back to the sender.**
+    That keeps finite admission and repairs the contract from the other end — the sender learns its
+    delivery was dropped instead of reading `completed`. It is a real option and it costs a
+    signalling path that does not exist today (§3's Q4: `ConcurrencyQueueTimeoutError` is swallowed
+    at `createInboundTransportHost.ts:692`, and `RequestRecord` carries no error field). Issue 1
+    weighs the two.
 
     **Raising the number is still not the fix.** Q2's cost stands as the argument against merely
     setting a bigger constant: a queue-wait timeout costs the full budget in dead time, leaves a
@@ -516,7 +561,7 @@ can cite one.
     budget is this theme's, and shipping one without the other is what produces a silent drop
     the sender was told was fine.
 
-    **Constrains issue 1, which now owns both halves** — the receipt *and* the configurable budget
+    **Constrains issue 1, which now owns both halves** — the receipt *and* the admission budget
     (see §4). *(Corrected: this theme previously assigned the budget to issue 2.)* The reason is
     the sentence directly above — shipping the receipt without the budget is what produces a
     silent drop the sender was told was fine — and theme 13 puts issue 1 first, so a split across
@@ -723,6 +768,8 @@ is one scope cell and one theme. **Theme 14 is corrected, not extended:** it had
 30 s constant as a deliberate *non-change* on the reasoning that a verb acking on `accepted` is
 never inside the arbiter's wait; Q4 superseded that reasoning — the budget bounds the delivery,
 not the caller — so a **configurable admission budget is now in scope**, on **issue 2** (§4)
+*(superseded twice: the budget moved to **issue 1**, and configurability was later corrected from
+the remedy to the **enabling parameter** — theme 14)*
 *— superseded: the budget was later moved to **issue 1**, see theme 14 and §4* — and §1's named
 risk says so. The two-clocks half of theme 14 stands, and Q2's phantom-record cost
 still argues against merely *raising* the number: a longer wrong number is still a wrong number.
@@ -814,8 +861,8 @@ cell is empty by design, not by omission.
 
 | # | Proposed issue | What it delivers | Depends on | Linear | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|---|---|---|
-| 1 | The address, the send verb, and what a sender may legally address | the recipient address as a **`sessionId`** on the envelope, a **server-derived sender identity** (its `sessionId`, and possibly the sending `requestId` — open; the case is in this section's **issue 1 spec inputs**), the send verb, both send modes **and the reply-correlation identifier wait-for-response requires** (theme 6), **acceptance as the acknowledgement on both** (theme 6) and the **sender-side answer timeout, default 30 min** (theme 14), **the configurable in-process admission budget** (theme 14, §3 Q4 — *moved here from issue 2*: the receipt and the budget ship together or the send API acks deliveries the arbiter can still silently drop, and theme 13 lands this issue first), the self-addressed refusal, and the agent-facing tool — core + engine + tools. **The door is decided (theme 16, owner): both of them** — a sibling resolves `flow.actions`; a workstream resolves a **declared `relay?` group** reusing `flow.workstream`'s terminal resolution. **Acceptance criterion, promoted from an implementer note:** the recipient's **`flowKind` is looked up from the session record, never asserted by the sender** | — | not filed | spec | — | — | Proposed |
-| 2 | Per-adapter delivery | in-process for a Node host; through the `FlowDispatcher` seam so a queue-backed deployment gets durability for free. **The configurable admission budget is no longer here** — it moved to issue 1 (theme 14); issue 2 consumes the parameter rather than introducing it | 1 | not filed | spec | — | — | Proposed |
+| 1 | The address, the send verb, and what a sender may legally address | the recipient address as a **`sessionId`** on the envelope, a **server-derived sender identity** (its `sessionId`, and optionally the sending `requestId` **as provenance only** — it cannot correlate), the send verb, both send modes **and the *per-send* correlation ID wait-for-response requires**, echoed by the reply (theme 6; this section's *"correlation is per-send"* requirement), **acceptance as the acknowledgement on both** (theme 6) and the **sender-side answer timeout, default 30 min** (theme 14), **the in-process admission budget** (theme 14, §3 Q4 — *moved here from issue 2*: the receipt and the budget ship together or the send API acks deliveries the arbiter can still silently drop, and theme 13 lands this issue first; **configurability alone is the enabling parameter, not the remedy** — *recommended:* relay dispatches use **unbounded** admission and the sender-side answer timeout bounds the wait; *alternative recorded:* propagate admission expiry back to the sender), the self-addressed refusal, and the agent-facing tool — core + engine + tools. **The door is decided (theme 16, owner): both of them** — a sibling resolves `flow.actions`; a workstream resolves a **declared `relay?` group** reusing `flow.workstream`'s terminal resolution. **Acceptance criteria — two.** (1) *Promoted from an implementer note:* the recipient's **`flowKind` is looked up from the session record, never asserted by the sender**. (2) *Strengthened 2026-08-23:* **relay dispatches are unbounded-admission, or admission expiry reaches the sender** — the earlier form ("do not ship acking on `accepted` while the budget is unconfigurable") is **insufficient**, because a configurable budget set to any finite value reproduces the accepted-then-silently-dropped shape §3's Q4 demonstrated | — | not filed | spec | — | — | Proposed |
+| 2 | Per-adapter delivery | in-process for a Node host; through the `FlowDispatcher` seam so a queue-backed deployment gets durability for free. **The admission budget is no longer here** — it moved to issue 1 (theme 14); issue 2 consumes whatever issue 1 lands rather than introducing it | 1 | not filed | spec | — | — | Proposed |
 | 3 | The sibling-spawn verb — **address supply for cross-session messaging** | an independent, self-managing session with its own flow kind and addressable key, resolving `flow.actions` like any other caller and talking back by message rather than `settleParentTask`. **In the set because messages cross sessions** (§1, owner): spawn mints the peer the send verb will address; without it, messaging only ever reaches sessions an outside-world caller happened to create. *(The earlier "same missing layer" / implementation-economy rationale, and the swap-out proposal it licensed, are retracted — §1.)* | 1 | not filed | spec | — | — | Proposed |
 | 4 | Cron: a schedule addresses a session and fires as a message | the schema field, the resolver, and the one dispatch envelope; absent address preserves today's behaviour exactly | 1 | not filed | spec | — | — | Proposed |
 | 5 | **An exit/park mode for `awaiting_review`** *(**rescoped 2026-08-23** — it was "a `pending feedback` task status"; see below)* | *"parked awaiting external input; **the request may end**; a later request resumes this task."* **Necessity settled by run, not asserted** (§3's settlement, REFUTED): today's `awaitReview` parks and `resumeFromReview` resumes, but `awaiting_review` is excluded from every board-exit path, so the launching request stays open for the whole park. **The gap to build — and it is the whole issue:** an exit/park mode that does not hold the drain's own request open — either an exit path letting `boardQuiescence` stop returning "continue" while a task sits parked, or routing review-parking through the same `runsElsewhere` exclusion detached dispatch already gets for `in_progress`. **Not a new status:** `awaitReview` already parks durably and `resumeFromReview` already persists feedback and resumes, so the sole missing behaviour is the exit predicate — which a new status does not fix by itself, while duplicating the existing lifecycle, transitions and exhaustiveness surface. **The exit mode still needs a name; `pending feedback` is moot** for a status that no longer exists — folded into §5 Q2's naming bucket, not settled here. **No collision with issue 6** — *corrected;* one was recorded as §5 Q6b and is withdrawn, because watch touches no board internals. Issue 5 owns this surface alone and depends on nothing | — | not filed | spec | — | — | Proposed |
@@ -836,55 +883,41 @@ categorical that routing is never derived from caller-controllable input. A send
 its own recipient's kind could **select the wider door**. That is not a note for the implementer to
 weigh; it is a condition issue 1 is not done without.
 
-#### Issue 1 spec input — does the sender's identity carry a `requestId` as well as a `sessionId`?
+#### Issue 1 requirement — correlation is **per-send**, and `requestId` cannot be it
 
-**Relocated here from §5 Q1b on 2026-08-23.** It was misfiled as a cross-cutting question: it is
-answerable by issue 1 alone and blocks no other issue. **Still open** — this is the case in hand, so
-issue 1's spec does not rebuild it.
+**Rewritten 2026-08-23 from a chatgpt-codex P1. This entry used to ask *"does the sender's identity
+carry a `requestId` as well as a `sessionId`?"* — that question was malformed, and it is recorded as
+a requirement now rather than an open question, because the alternative it weighed is **refuted**,
+not merely disfavoured.**
 
-The owner stated the recipient address as a `sessionId` and the sender as *"sessionId (and **maybe**
-requestId for senders)"*. The hedge is recorded as a hedge. Three arguments for carrying it:
+**The defect.** When **one request issues two wait-for-response sends** — parallel sequencer
+branches, or several tool calls in one generator turn, both plainly reachable in FSD — **both sends
+carry the same sending `requestId`.** Either reply can then satisfy the wrong waiter, or both are
+indistinguishable. **`requestId` identifies the *asker*, not the *ask*.** One asker may have many
+asks outstanding, so it cannot serve as the correlation identifier at all.
 
-- **Reply routing granularity.** A sender's `sessionId` routes a reply back to the *session*. The
-  `requestId` of the sending request is what would route it back to the **specific request that
-  asked** — which matters exactly where a session has more than one question outstanding.
-- **A handle for the discoverability gap.** §3's **Q4** run showed a dropped delivery leaving a
-  bare `failed` record on the recipient with **no reason recorded and no link to what sent it**
-  (`RequestRecord` carries no error field; `ConcurrencyQueueTimeoutError` is swallowed). A sending
-  `requestId` on the envelope is a concrete correlation handle for that, and cheap.
-- **Wait-for-response needs *some* correlation identifier to work at all.** *(Epic review, round
-  2.)* Theme 6 specifies the mode; nothing said what matches an arriving answer to the question it
-  answers, and on the workstream path the answer is a separate inbound message rather than the
-  sender's handle resolving. An identifier carried on the message and echoed on the reply is what
-  closes that. This argument differs in kind from the two above: they are conveniences, this is a
-  send mode that is **under-specified without one**.
+**The requirement on issue 1:** a **per-send correlation ID**, minted at send time, carried on the
+message and **echoed by the reply**. One send, one ID. `requestId` is **retained as provenance
+only** — useful for tracing which request asked, and for the discoverability gap below, and
+load-bearing for neither correlation nor routing.
 
-**None of the three is decisive about the *shape*** — a correlation identifier is required, but
-whether it is the sending `requestId` or a field carried beside it is issue 1's call. **Issue 1
-cannot specify wait-for-response without answering it.**
+**A coordinator error, recorded as one.** Greptile's round-2 P1 said *"nothing specifies a
+correlation identifier tying an answer to its question."* **That was folded as an argument *for*
+`requestId`-on-the-sender.** It was not: it was an argument for **a correlation ID**, which
+`requestId` cannot be. The finding was right, the fold was wrong, and the wrongness survived four
+further rounds inside a question phrased around the wrong candidate. *(Same shape as issue 5's
+framing error — a first-draft name outliving the evidence against it.)*
 
-### Issue 6 — watch, a general one-off notification primitive
+**What survives from the old entry, and what does not:**
 
-**Redefined by the owner (2026-08-23). The earlier framing is superseded.** Issue 6 entered the set
-on 2026-08-21 as *"register interest in a task-board row"*. That was too narrow: it made watch a
-**task** primitive. The owner's definition is canonical and is quoted rather than paraphrased:
+| Argument, as originally recorded | Now |
+|---|---|
+| **Reply routing granularity** — `requestId` routes a reply to the *specific request that asked* | **Refuted as correlation.** It routes to the asker, and one asker may hold several asks. It is still true that a reply must reach the right *request*, which is what the per-send ID plus `requestId`-as-provenance together do |
+| **A handle for the discoverability gap** — §3's Q4 showed a dropped delivery leaving a bare `failed` record with no link to what sent it | **Stands, unchanged.** This is a *provenance* use, and provenance is exactly what `requestId` is good for |
+| **Wait-for-response needs *some* correlation identifier to work at all** *(greptile, round 2)* | **Stands, and is the requirement above.** It was never an argument for `requestId` |
 
-> "Fundamentally watch should be conceived not as a task primitive but as a more reusable
-> notification primitive. It's a one off subscription. Something happens, a watcher was attached to
-> that thing, tell the watcher (or watchers) the thing happened, unsubscribe. A task is completed,
-> a resource value was updated, etc. we should build something that is simple as it needs to be and
-> versatile enough to be reused whenever we need to wait on something else."
-
-And the mechanism, also theirs, treated as the shape:
-
-> "There is a subscription/watch resource holding onto subscriptions. An entry is created by saying
-> when this event is fired holding this value, call this flow for this session id. A relay action
-> matching that event must be defined to receive the payload of that event. When a task completes,
-> it sends its event to the watch manager which handles the flow relay calling."
-
-**So issue 6 is a durable subscription registry + an event matcher + delivery as an addressed relay
-message.** The task board is its **first consumer, not its subject**. That is also what makes it sit
-cleanly inside this epic: the delivery leg *is* issue 1's send verb.
+**Still issue 1's to design:** the ID's shape, where it sits on the envelope, and how a reply echoes
+it. **Not open any more:** whether `requestId` can be the correlator. It cannot.
 
 #### It is much smaller than it reads — three of its four parts already exist
 
@@ -1266,6 +1299,21 @@ issue 6, defer it, or move it out of the set. And it does not close C1–C6: the
 issue 6's spec as constraints it must satisfy, with the evidence and the rejected alternatives
 attached so none of this work is repeated.
 
+**What the stop covers, stated precisely — because the very next review round produced two findings
+that were folded, and that must not read as the stop being abandoned.** *(Added 2026-08-23, round
+11.)* The stop covers **watch's correctness contract (C1–C6)**, where the coordinator was
+**inventing untested durability mechanisms** — a sweep, a retry chain, an expiry semantics — each of
+which was an untested design decision that generated the next defect. It does **not** cover
+findings that are **requirement statements with standard, named resolutions**: *what must be true*,
+not *how to build it*. Round 11's two findings against issue 1 — correlation must be per-send, and
+configurability alone does not establish the acknowledgement contract — are of that second kind, so
+they were folded normally.
+
+**The test between the two, in one line:** *am I stating a property the design must have, or am I
+designing the mechanism that provides it?* The first is epic altitude and belongs here. The second
+needs code, and belongs in the issue's own spec. That is the distinction the stop is drawn on, not
+a per-issue exemption.
+
 #### Why polling cannot cover it — verified, not asserted
 
 The interested party is not running. `countWaitable`
@@ -1379,7 +1427,7 @@ entries:
 | | Status | Who |
 |---|---|---|
 | **Q1** — what may a sender legally address? | **DECIDED 2026-08-23 — the asymmetric door** (theme 16) | Owner |
-| **Q1b** — does the sender's identity carry a `requestId`? | **RELOCATED 2026-08-23 to §4's issue-1 spec inputs** — still open, but it was misfiled here: issue 1 can answer it alone and it blocks nothing else | Issue 1's spec |
+| **Q1b** — does the sender's identity carry a `requestId`? | **RELOCATED then REFRAMED 2026-08-23.** The question was malformed — `requestId` identifies the asker, not the ask, so it cannot correlate. Now a **requirement** on issue 1 (a per-send correlation ID, `requestId` as provenance only), not an open question | Requirement, issue 1 |
 | **Q2** — the name | **Open by the owner's choice** — they want code in front of them first. `relay` is the leaning and theme 16 now uses it for the declared group | Owner, later |
 | **Q3** — does anything promise ordering or exclusion? | **CLOSED 2026-08-23 by derivation** — the epic promises **nothing** on the durable path. The rejected option is out of scope by two boundaries the owner already set, so it was not a fork | Derived |
 | **Q4** — which layer does role materialization belong on? | **Deliberately deferred** — decide with real code in front of you. Recorded so a second issue does not re-open it from scratch | Later, with code |
@@ -1449,17 +1497,21 @@ to land) or over-declare (the wider door, opened by accident), and both failures
 **What it constrains — theme 16, and issue 1's acceptance criteria in §4.** **Blocks nothing
 further:** issue 1's spec is unblocked, and so are 2, 3, 4 and 6.
 
-### ~~Q1b. Does the sender's identity carry a `requestId` as well as a `sessionId`?~~ — **RELOCATED to issue 1**
+### ~~Q1b. Does the sender's identity carry a `requestId` as well as a `sessionId`?~~ — **RELOCATED, then REFRAMED as a requirement**
 
-**Not closed — moved, because it was misfiled here.** *(Relocated 2026-08-23.)* §5 is for questions
-**no single issue can answer**. This one is answerable by issue 1 alone, blocks no other issue, and
-never was cross-cutting; it landed here only because the case for it was assembled here while the
-epic was being drafted. **The full case now lives in §4's issue-1 spec inputs**, where whoever specs
-issue 1 will actually read it.
+**Relocated 2026-08-23 to §4's issue-1 entries, because it was misfiled here** — §5 is for questions
+**no single issue can answer**, and this was answerable by issue 1 alone.
 
-**Unchanged by the move:** it is still open, the owner's hedge (*"and maybe requestId for senders"*)
-still stands, and theme 6 still requires *some* correlation identifier for wait-for-response to
-function — the sending `requestId` being the leading candidate but not the settled shape.
+**Then reframed the same day, because the question itself was malformed.** *(chatgpt-codex P1.)* One
+request can issue **two** wait-for-response sends — parallel sequencer branches, or several tool
+calls in one generator turn — and both carry the same sending `requestId`. So `requestId` identifies
+**the asker, not the ask**, and cannot be a correlation identifier at all. Asking whether the sender
+*carries* one was asking about the wrong candidate.
+
+**What replaced it:** a **requirement** on issue 1 — a **per-send correlation ID**, echoed by the
+reply, with `requestId` retained as **provenance only**. It is not an open question, because the
+alternative is **refuted** rather than disfavoured. See §4, *"Issue 1 requirement — correlation is
+per-send"*, which also records the coordinator's mis-fold of the round-2 finding that raised it.
 
 ### Q2. The name
 
@@ -1510,8 +1562,10 @@ without a session — `"session"` resolves to `undefined` when the envelope has 
 So: in-process a recipient gets FIFO with a 30-second give-up; on a queue-backed deployment it
 gets nothing. **That 30 seconds is an admission budget, not a sender's timeout** — theme 14 — and
 §3's Q4 ran what the give-up costs: an already-accepted delivery is dropped at 30 001 ms with the
-sender reading `completed`. **Making that budget configurable is in scope** (theme 14, **issue 1**
-— moved there from issue 2, see §1 and §4);
+sender reading `completed`. **That budget is in scope** (theme 14, **issue 1** — moved there from
+issue 2, see §1 and §4; *recommended:* unbounded admission for relay dispatches, with the
+sender-side answer timeout bounding the wait — **making it configurable is the enabling parameter,
+not the remedy**);
 this open question is about the *durable* path only, where the epic promises nothing. Two options:
 
 - **Promise nothing beyond what the deployed dispatcher gives, and document it plainly.** Cheap,
@@ -1708,7 +1762,11 @@ on its own terms (§5 Q5).
   sent*, which is a different event from *the answer arriving*. **§5 Q1b — the sending `requestId`
   — is the leading candidate**, and this is its third and first non-optional argument: it moves
   Q1b from a convenience to **load-bearing for a send mode**, and **does not settle it** (the
-  owner hedged; the field is issue 1's spec to settle). Theme 5 and §4's issue-1 cell
+  owner hedged; the field is issue 1's spec to settle).
+  *(**Superseded 2026-08-23:** this fold was wrong. The round-2 finding argued for **a correlation
+  ID**, and `requestId` cannot be one — it identifies the asker, not the ask, so two sends from one
+  request are indistinguishable. The requirement is a **per-send** correlation ID; see the last
+  entry.)* Theme 5 and §4's issue-1 cell
   cross-reference it so the mode and the identifier are not read apart again.
   (2) **§1 led with the objective before the problem**, against BP-039 — worst on the one section
   the gate signs off, since it makes the direction harder to assess independently of its proposed
@@ -2188,3 +2246,63 @@ on its own terms (§5 Q5).
   not open questions on the epic**, and are counted separately on purpose: the epic's cross-cutting
   questions are answered, while a primitive's correctness contract is issue 6's to settle. The epic
   is **not approved**; the objective gate remains the only thing outstanding.
+
+- **Correction fold — correlation must be per-send, and configurability was never the remedy. Both
+  findings are on **issue 1**, not on watch.** *(Folded **outside** the epic PR's two-round budget on
+  the standing justification. **C1–C6 untouched and the stop is not reopened** — see (3). **No other
+  bot findings folded, no converged material reopened.** Nothing filed in Linear.)*
+
+  **(1) P1-h — the correlation identifier must be per-send. `requestId` cannot be it, and Q1b was
+  the wrong question.** *The defect:* **one request can issue two wait-for-response sends** —
+  parallel sequencer branches, or several tool calls in one generator turn, both plainly reachable
+  in FSD — and both carry the same sending `requestId`, so either reply can satisfy the wrong
+  waiter or leave both indistinguishable. **`requestId` identifies the asker, not the ask.** *The
+  requirement now recorded on issue 1:* a **per-send correlation ID**, minted at send time, carried
+  on the message and **echoed by the reply**, with `requestId` retained as **provenance only**.
+  *Recorded as a requirement rather than an open question*, because the alternative is **refuted**,
+  not disfavoured. *And a **coordinator error**, recorded as one:* greptile's round-2 P1 said
+  *"nothing specifies a correlation identifier tying an answer to its question."* **It was folded as
+  an argument *for* `requestId`-on-the-sender.** It was an argument for **a correlation ID**, which
+  `requestId` cannot be — the finding was right, the fold was wrong, and the error then survived
+  four further rounds inside a question phrased around the wrong candidate. *(Same shape as issue
+  5's framing error: a first-draft name outliving the evidence against it.)* *Swept:* §5's Q1b stub
+  and ledger row, §4's issue-1 entry and index cell, and themes 5, 6, 9 and §1 wherever they implied
+  `requestId` does correlation.
+
+  **(2) P1-i — configurability is the enabling parameter, not the remedy. A gap in this document's
+  own reasoning.** *The defect:* making the admission budget configurable **only moves the choice to
+  whoever deploys**, and **any finite value they pick reproduces exactly the shape §3's Q4
+  demonstrated** — `accepted` resolves at 0 ms, the recipient stays busy past the budget, the queued
+  delivery is discarded, and the sender reads `completed`. Exposing the timeout as a knob does not
+  establish the acknowledgement contract the send verb advertises. *And it connects to a note
+  already in the record:* cursor's round-3 note said the verb *"must not ship acking on `accepted`
+  alone while the admission budget is unconfigurable"* — **the fold satisfied that note's letter and
+  missed its point**, since the note was about the **contract**, and a configurable budget set
+  finite leaves it exactly as broken as a hardcoded one. *Recommended resolution:* **relay dispatches
+  use unbounded admission, and the sender-side answer timeout bounds the wait** — the coherent
+  layering, and this theme's own two-clocks rule applied properly: **admission answers *will this be
+  delivered*; the answer timeout answers *how long do I wait*.** Q4 verified the unbounded path lands
+  the delivery, twice, injected through the `arbiter` option `createInboundTransportHost` already
+  accepts (`:106-113`), with no engine code patched. *Alternative recorded, not picked:* propagate
+  admission expiry back to the sender — real, and it costs a signalling path that does not exist
+  today (`ConcurrencyQueueTimeoutError` is swallowed at `createInboundTransportHost.ts:692`;
+  `RequestRecord` carries no error field). *Issue 1's **acceptance criterion is strengthened**:* the
+  earlier form ("do not ship acking on `accepted` while the budget is unconfigurable") is
+  **insufficient as written** and becomes **"relay dispatches are unbounded-admission, or admission
+  expiry reaches the sender."** *Swept:* theme 14, §1's named-risk scope paragraph and its "not
+  doing" bullet, §4's issue-1 and issue-2 cells, §5 Q3's cross-reference, and §3's Q4 dated record
+  (marker, not rewrite).
+
+  **(3) The stop is not reopened, and the document now says why these two were folded anyway.** The
+  stop covers **watch's correctness contract (C1–C6)**, where the coordinator was **inventing
+  untested durability mechanisms**. These two findings are **requirement statements with standard,
+  named resolutions** — *what must be true*, not *how to build it* — which is the altitude an
+  epic-spec should operate at. The stop subsection now carries the distinction and the one-line test
+  it turns on: *am I stating a property the design must have, or designing the mechanism that
+  provides it?* Added because the very next round after declaring a stop producing two folded
+  findings would otherwise read as the stop being abandoned.
+
+  **Counts, unchanged: open questions TWO** (Q2, Q4) — **Q1b does not return to the count**, because
+  it is now a **requirement on issue 1**, not an open question. **Constraints on issue 6: SIX**
+  (C1–C6), untouched by this fold. The epic is **not approved**; the objective gate remains the only
+  thing outstanding.
