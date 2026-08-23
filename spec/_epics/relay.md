@@ -138,14 +138,13 @@ reaching into a live request from outside it. **Issue 1 designs it; this documen
   on a platform with a hard request ceiling. **Serverless deployments get the wake-to-a-new-request
   form** (§4, row 2) — no new mechanism needed.
 - **Blocking wait-for-response is in-process-only today.** `waitForCondition` subscribes to the
-  waiting worker's **in-memory** `ResponseEmitter`; in a queue-backed deployment the reply runs in
-  **another worker**, and the bullmq bridge is a one-way **publisher** aimed at a streaming client
-  (`bullmq/src/worker.ts:74-104` — `createPublisher`, `publishEvent`, *"bridge is best-effort"*).
-  **No inbound path can inject an item into another worker's live emitter.** So a queue-backed
-  deployment needs a **cross-worker wake channel** or it does not get the blocking mode — that is
-  **issue 2** (§3). *Operational, not theoretical:* enough blocked waiters can **exhaust the worker
-  pool** before recipients ever run. *Fork, not picked:* build the channel, or restrict blocking
-  wait to in-process delivery.
+  waiting worker's **in-memory** emitter; in a queue-backed deployment the reply runs in **another
+  worker**, and the bullmq bridge is a one-way **publisher** aimed at a streaming client
+  (`bullmq/src/worker.ts:74-104`, *"bridge is best-effort"*) — **no inbound path can inject an item
+  into another worker's live emitter.** So such a deployment needs a **cross-worker wake channel**
+  or it does not get the blocking mode: that is **issue 2**. *Operational, not theoretical:* enough
+  blocked waiters can **exhaust the worker pool** before recipients ever run. *Fork, not picked:*
+  build the channel, or restrict blocking wait to in-process.
 
 ---
 
@@ -196,6 +195,13 @@ own spec — not here.**
 - **AC 2** — **relay dispatches are unbounded-admission, or admission expiry reaches the sender.**
   Configurability alone is insufficient: any finite value reproduces Q4's accepted-then-dropped
   shape.
+  - **Same rule, new case: late-reply behaviour must be defined and surfaced.** Past `timeoutMs`
+    the waiter's listener is torn down (`core/src/blocks/sequencer.ts:2358-2383`) and the sending
+    request may be **terminal** — yet the model names that stream as the reply's sole target. So a
+    responder either gets an **acceptance ack for an answer that can wake nobody**, or the
+    implementation **appends to a completed request**. Both are the accepted-then-silently-dropped
+    class this criterion exists to prevent. *Reject, or fall back —* **not picked, and the
+    mechanism is not designed here.**
 - **Open, no answer: which callers use `waitForCondition` and which wake to a new request** —
   specifically a workstream drain, whose request does stay open. **This area was specified wrong
   twice** (a suspension-resume form invented, then the blocking form deleted). `suspend` /
@@ -207,10 +213,9 @@ own spec — not here.**
 
 - **`sessionId` already flows end-to-end** — `DispatchEnvelope` declares it, the host forwards it,
   bullmq serializes and restores it. So "per-adapter delivery" named **no adapter delta** and would
-  have produced an empty spec. *Re-described, not re-scoped:* issue 2's real content is the
-  **cross-worker wake channel** that blocking wait-for-response needs on a queue-backed deployment
-  (deployment fact 3) — **or the decision to restrict blocking wait to in-process delivery**, which
-  is a legitimate outcome and would make issue 2 a short spec rather than an empty one.
+  have produced an empty spec. **Re-described, not re-scoped:** issue 2's content is deployment
+  fact 3's fork. Restricting blocking wait to in-process is a legitimate outcome — a short spec,
+  not an empty one.
 
 ### Issue 4
 
@@ -276,8 +281,7 @@ in the tree.**
 | Acceptance resolves while the message is still queued | `engine/src/transports/types.ts:186-227` |
 | Arbitration is **in-process only**; skipped under an external dispatcher | `concurrency/arbiter.ts:22-27`, `createInboundTransportHost.ts:299-301` |
 | `QUEUE_WAIT_TIMEOUT_MS = 30_000`, and the gate is a per-process map | `arbiter.ts:40`, `keyed-async-gate.ts:13-16` |
-| `Infinity`/omitted already disables the admission timer | `keyed-async-gate.ts:141-145` |
-| The arbiter is injectable — the fix is a parameter | `createInboundTransportHost.ts:106-113` |
+| The admission fix is a **parameter**: `Infinity`/omitted already disables the timer, and the arbiter is injectable | `keyed-async-gate.ts:141-145`; `createInboundTransportHost.ts:106-113` |
 | `ConcurrencyQueueTimeoutError` is swallowed; `RequestRecord` has no error field | `createInboundTransportHost.ts:692`; `stores/types.ts:117-172` |
 | The framework runs **no scheduler**; hosts POST when due | `packages/scheduled/src/index.ts:8-13` |
 | bullmq ships native cron (repeatable job schedulers) | `bullmq/src/schedule-index.ts:21-24,43,52` |
@@ -300,9 +304,9 @@ Built on this branch under `spec-poc/epic-relay/`. Throwaway; none of it ships.
 |---|---|---|
 | **Q1** | Can a running block dispatch onto another live session? | **YES** — it ran and landed a request on the recipient. **The sharp edge:** the envelope principal is a plain field and nothing at the seam checks it, so naming another owner *passes*. That is why the sender's identity must be server-derived |
 | **Q2** | Does a self-addressed wait deadlock? | **YES**, and it fails loudly: `ConcurrencyQueueTimeoutError` at 30 016 ms, a `failed` record on the recipient for a run that never started, and the sender reporting `completed` |
-| **Q3** | Does delivery outlive the sending request? | **YES.** The sender reached `completed` in 4 ms; the queued delivery ran later and landed. **And `accepted` settled at 0 ms while still queued** — which is what makes acceptance usable as the ack on both modes |
-| **Q4** | Does the admission budget drop an already-accepted delivery? | **YES.** Accepted at 0 ms, **dropped at 30 001 ms**, handler never ran, nothing in the logs, sender read `completed`. Re-run with an `Infinity` budget — **the delivery landed.** The fix is a parameter, not a redesign |
-| **S** | *(Settlement)* Does the board's existing park already cover the cold path? | **REFUTED.** Park and resume both work, but `awaiting_review` is excluded from every board-exit path, so the launching request stays open for the whole park. *The request may end* is not available today — which is issue 5's gap |
+| **Q3** | Does delivery outlive the sending request? | **YES.** The sender reached `completed` in 4 ms; the queued delivery ran later and landed — **and `accepted` settled at 0 ms while still queued**, which is what makes acceptance usable as the ack on both modes |
+| **Q4** | Does the admission budget drop an already-accepted delivery? | **YES.** Accepted at 0 ms, **dropped at 30 001 ms**, handler never ran, nothing in the logs, sender read `completed`. Re-run unbounded — **the delivery landed** |
+| **S** | *(Settlement)* Does the board's existing park already cover the cold path? | **REFUTED.** Park and resume both work, but the launching request stays open for the whole park, so *the request may end* is not available today — issue 5's gap |
 
 ## 11. How to review this
 
