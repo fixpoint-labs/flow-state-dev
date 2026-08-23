@@ -31,19 +31,27 @@ One known, committed consumer is what keeps this from being speculative surface 
 **What sign-off certifies.** The objective and the grouping — that cron rides on this layer
 rather than keeping a transport of its own, and that a spawn verb belongs beside a send verb
 because **spawn supplies the address the send verb consumes** (the issue-3 paragraph below). It
-certifies **no** issue's contracts: the verb's name and the config surface it hangs off are open
-(§5), and the division in §4 — **six proposed issues** — is a proposal. **The gate is the last
-cheap moment to redraw the set** — after it, redrawing costs specs already written. One
-composition question is still live and §4's composition note states it rather than smoothing it:
-whether issue 5 belongs in this epic at all (§5 Q5's placement half). *(The coordinator's
-"swap issue 3 for issue 6" proposal is **retracted** — see below.)*
+certifies **no** issue's contracts: the noun the config group is called is still open (§5 Q2), and
+the division in §4 — **six proposed issues** — is a proposal. **The gate is the last cheap moment
+to redraw the set** — after it, redrawing costs specs already written. **No composition question
+is left open:** the "swap issue 3 for issue 6" proposal is **retracted**, and whether issue 5
+rides inside this epic is **decided** (§5 Q5, coordinator's call, reversible by the owner). Both
+are recorded in §4's composition note rather than smoothed away.
 
-**What the address *is* is settled; what a sender may address is not.** The owner has stated it:
+**The address and the door are both settled now.** The owner has stated the address:
 **a recipient is a `sessionId`**, and a sender is identified by its own `sessionId` — possibly
-carrying the `requestId` of the sending request as well (open, §5 Q1b). Messages never travel
-from one user to another. What remains the load-bearing fork is the **door** — whether a sender
-resolves `flow.actions` or a narrower author-declared inside-world surface (§5 Q1). That question
-is untouched by the address being named, and it is what the objective gate is asking about.
+carrying the `requestId` of the sending request as well (an issue-1 spec detail, §5 Q1b). Messages
+never travel from one user to another.
+
+**And the door — the epic's load-bearing fork — is decided: it is asymmetric** *(owner, 2026-08-23:
+"Yes, inside world verb/asymmetric door is right")*. **A sibling resolves `flow.actions`** — it *is*
+a caller. **A workstream gets a narrow, author-declared inside-world surface** and never reaches
+`flow.actions`. That is not a new security concept: it **extends an invariant the system already
+enforces**, `flow.workstream`'s terminal resolution — *"an absent core is a named refusal and never
+falls through to actions"* (`packages/core/src/types/flow.ts:549-557`, `:562`). What is new is only
+that the inside-world surface becomes **declared** rather than framework-derived (theme 16, §5 Q1's
+closed record). **The objective gate is therefore asking about the objective and the division, not
+about an unanswered fork.**
 
 **Where this lands against the project objective.** [`docs/objectives.md`](../../docs/objectives.md)
 measures *goals passing over goals defined*. A grep across `goals/**` finds **no goal covering
@@ -81,8 +89,10 @@ costs the set no sequencing.
 **That necessity is now settled by run rather than argued.** §3's settlement took the
 counter-claim — that the board's existing `awaitReview` / `resumeFromReview` already covers the
 cold path — and **refuted** it: parking works and resuming works, but a parked task holds its
-launching request open, so *the request may end* is not available today. What stays open is not
-whether the status is needed but **where it is filed** (§5 Q5).
+launching request open, so *the request may end* is not available today. **Where it is filed is
+now decided too** — inside this epic, as issue 5 (§5 Q5, coordinator's call on 2026-08-23,
+reversible by the owner): it is the set's only unblocked issue and theme 5's headline case depends
+on it, so pointing at it from another epic buys taxonomy at the cost of sequencing.
 
 **Issue 3, the sibling-spawn verb, is in the set because messages cross sessions.** *(Corrected by
 the owner. The reasoning previously recorded here was the coordinator's, and it was wrong.)* Spawn
@@ -209,8 +219,10 @@ can cite one.
    changes is *who may put a message through the door*, not how it is routed once inside.
    `FlowDefinition` already carries per-sender config surfaces beside `actions` (`mcp?`, `chat?`,
    `webhooks?`, `schedules?`, plus the derived `workstream?` and `workstreamBindings?`), so an
-   inside-world surface would be a **sibling of an existing pattern**, not a novel concept.
-   *Which* door it is remains §5 Q1.
+   inside-world surface is a **sibling of an existing pattern**, not a novel concept.
+   ***Which* door it is: decided — asymmetric, theme 16.** *(Was §5 Q1, closed by the owner on
+   2026-08-23.)* The declared `relay?` group is that sibling, and it is the flow's first
+   **authored** inside-world surface.
 
 4. **Cron becomes a sender, not a transport of its own.** A schedule fires, sends a message to an
    addressed session, and the bus routes it. One optional session address on the schedule row
@@ -491,6 +503,40 @@ can cite one.
     describe one `resource_change` in one codebase is exactly the incoherence this theme exists to
     prevent. **Constrains issue 6**, and constrains any later consumer of the primitive.
 
+16. **The door is asymmetric: a sibling resolves `flow.actions`; a workstream gets a narrow,
+    declared inside-world surface.** *(Decided by the **owner**, 2026-08-23 — "Yes, inside world
+    verb/asymmetric door is right." This closes §5 Q1, the epic's load-bearing fork; the closed
+    record with the full reasoning is kept there.)*
+
+    **The two halves get different doors, and that is the point.** A **sibling** is a caller — its
+    own flow kind, nobody's child — so `flow.actions` is its natural entry. A **workstream** is
+    not, and must never reach a caller-addressed action.
+
+    **This extends an invariant that already exists and is already enforced — the cheap half.**
+    `packages/core/src/types/flow.ts:562`, `workstream?: ActionCore`, is *"the single pre-assembled
+    entry a detached dispatch resolves"* (FIX-999), and its doc comment states the rule at
+    `:549-557`: *"resolution for the detached source is **terminal**, so an absent core is a named
+    refusal and never falls through to {@link actions}. That is the security invariant — a detached
+    dispatch must have no route to a caller-addressed action."* We are **widening one core to a
+    declared set**, not inventing a security concept. Terminal resolution is unchanged.
+
+    **The wrinkle, and the call on it — the surface must be *declared*, not derived.**
+    *(Coordinator's engineering call, reversible by the owner.)* The same doc comment,
+    `flow.ts:559-560`: *"Not an app-author surface. It is assembled by the framework from a board's
+    drain bindings; nothing is declared to get one."* Today's inside-world surface is **derived**.
+    A relay-receivable action cannot be: *"another session may address this by name"* is not
+    inferable from block structure the way a drain binding is. So: **reuse the terminal-resolution
+    mechanism, add a declared `relay?` group** — the owner's own naming (§5 Q2). `workstream` stays
+    framework-assembled; **`relay?` becomes the flow's first authored inside-world surface**, the
+    sibling of `webhooks?` / `schedules?` theme 3 anticipated. **Do not attempt to derive it** —
+    inference would either under-declare (a message with nowhere to land) or over-declare (the
+    wider door, opened by accident), and both fail silently.
+
+    **Constrains issues 1, 3 and 6.** Issue 1 builds both doors and owns the promoted acceptance
+    criterion in §4 (the recipient's `flowKind` is looked up, never asserted). Issue 3's sibling
+    lands on `flow.actions` by construction. Issue 6's watch-callback action lands on the narrow
+    surface by construction.
+
 ---
 
 ## 3. Shape of the whole *(POC)*
@@ -499,8 +545,8 @@ can cite one.
 that a running block can re-enter `host.dispatch` onto another live session, that a self-addressed
 wait deadlocks, that a queued delivery outlives the request that sent it, and that the arbiter's
 admission budget does or does not drop an already-accepted delivery. Not an end-state POC: the
-division in §4 is still unchecked against an assembled surface, and §5 Q1 remains a design
-question no run settles.
+division in §4 is still unchecked against an assembled surface, and §5 Q1 was a design
+question no run settles *(since closed by the owner — theme 16)*.
 
 **See it:** `spec-poc/epic-relay/` on this branch.
 
@@ -706,7 +752,7 @@ cell is empty by design, not by omission.
 
 | # | Proposed issue | What it delivers | Depends on | Linear | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|---|---|---|
-| 1 | The address, the send verb, and what a sender may legally address | the recipient address as a **`sessionId`** on the envelope, a **server-derived sender identity** (its `sessionId`, and possibly the sending `requestId` — open, §5 Q1b), the send verb, both send modes **and the reply-correlation identifier wait-for-response requires** (theme 6, §5 Q1b), **acceptance as the acknowledgement on both** (theme 6) and the **sender-side answer timeout, default 30 min** (theme 14), **the configurable in-process admission budget** (theme 14, §3 Q4 — *moved here from issue 2*: the receipt and the budget ship together or the send API acks deliveries the arbiter can still silently drop, and theme 13 lands this issue first), the self-addressed refusal, and the agent-facing tool — core + engine + tools | — | not filed | spec | — | — | Proposed |
+| 1 | The address, the send verb, and what a sender may legally address | the recipient address as a **`sessionId`** on the envelope, a **server-derived sender identity** (its `sessionId`, and possibly the sending `requestId` — open, §5 Q1b), the send verb, both send modes **and the reply-correlation identifier wait-for-response requires** (theme 6, §5 Q1b), **acceptance as the acknowledgement on both** (theme 6) and the **sender-side answer timeout, default 30 min** (theme 14), **the configurable in-process admission budget** (theme 14, §3 Q4 — *moved here from issue 2*: the receipt and the budget ship together or the send API acks deliveries the arbiter can still silently drop, and theme 13 lands this issue first), the self-addressed refusal, and the agent-facing tool — core + engine + tools. **The door is decided (theme 16, owner): both of them** — a sibling resolves `flow.actions`; a workstream resolves a **declared `relay?` group** reusing `flow.workstream`'s terminal resolution. **Acceptance criterion, promoted from an implementer note:** the recipient's **`flowKind` is looked up from the session record, never asserted by the sender** | — | not filed | spec | — | — | Proposed |
 | 2 | Per-adapter delivery | in-process for a Node host; through the `FlowDispatcher` seam so a queue-backed deployment gets durability for free. **The configurable admission budget is no longer here** — it moved to issue 1 (theme 14); issue 2 consumes the parameter rather than introducing it | 1 | not filed | spec | — | — | Proposed |
 | 3 | The sibling-spawn verb — **address supply for cross-session messaging** | an independent, self-managing session with its own flow kind and addressable key, resolving `flow.actions` like any other caller and talking back by message rather than `settleParentTask`. **In the set because messages cross sessions** (§1, owner): spawn mints the peer the send verb will address; without it, messaging only ever reaches sessions an outside-world caller happened to create. *(The earlier "same missing layer" / implementation-economy rationale, and the swap-out proposal it licensed, are retracted — §1.)* | 1 | not filed | spec | — | — | Proposed |
 | 4 | Cron: a schedule addresses a session and fires as a message | the schema field, the resolver, and the one dispatch envelope; absent address preserves today's behaviour exactly | 1 | not filed | spec | — | — | Proposed |
@@ -716,6 +762,17 @@ cell is empty by design, not by omission.
 **The agent-facing tool is deliberately inside issue 1, not beside it.** The constraint is that
 the programmatic sender and the tool are the *same verb*, differing only in who calls them.
 Co-location is the strongest guarantee against the two drifting apart.
+
+**Promoted to issue 1's acceptance criteria: the recipient's `flowKind` is looked up from the
+session record, never asserted by the sender.** *(Promoted 2026-08-23 — by the door decision, not
+by a new finding. It has been in the record since a codex round-5 P1 implementer note, and nothing
+about the note changed.)* **What changed is its status.** Under a single door, asserting the
+recipient's kind was a hygiene problem: the sender could describe its recipient wrongly and get a
+confusing failure. **Under an asymmetric door it is structural** — the server must now decide
+*which door to open*, which makes the recipient's kind a **routing decision**, and BP-031 is
+categorical that routing is never derived from caller-controllable input. A sender able to assert
+its own recipient's kind could **select the wider door**. That is not a note for the implementer to
+weigh; it is a condition issue 1 is not done without.
 
 ### Issue 6 — watch, a general one-off notification primitive
 
@@ -873,6 +930,10 @@ row it owns because **registering interest is not expressible**.
 from becoming the parallel seam `RequestHost` is being cleaned of elsewhere (FIX-1124). An issue-6
 spec that grows its own delivery has left the epic's shape, exactly as issue 3's tripwire says.
 
+**And it lands on the narrow door by construction** — a watch-callback relay action is a pure
+inside-world verb, so it is declared in the `relay?` group and is never reachable from
+`flow.actions` (theme 16). Nothing for issue 6's spec to decide here.
+
 ### Composition — the set is six, and the swap proposal is retracted
 
 Stated rather than smoothed, because the gate is where it gets answered.
@@ -891,10 +952,15 @@ address (§1). The two bot reviewers were reasoning from that same wrong premise
 coordinator when it agreed with them. **Issue 3 stays on the owner's reason**, and no swap is on
 the table.
 
-**So the only composition question left for the gate is the one in §5 Q5's placement half** —
-whether `pending feedback` (issue 5) rides inside this epic or is filed outside it with a
-`relates-to`. That argument is untouched by any of the above, and by §3's settlement verdict.
-**Six issues, and the gate approves that division.**
+**And the last composition question is closed too.** Whether `pending feedback` (issue 5) rides
+inside this epic or is filed outside it with a `relates-to` is **decided: inside** (§5 Q5,
+coordinator's call on 2026-08-23, reversible by the owner). It is the set's only unblocked issue,
+and theme 5's headline case depends on it, so filing it outside would make the epic depend on
+another container for its own leading story. The reviewer's composition argument is kept in Q5's
+record rather than dropped — the cost of being wrong is that the set reads as two epics in
+retrospect, which is a documentation cost and not a rework one.
+
+**So the set is six, no composition question is open, and the gate approves that division.**
 
 Epic PR (this doc, never merged):
 [#1357](https://github.com/fixpoint-labs/flow-state-dev/pull/1357).
@@ -904,7 +970,7 @@ Epic PR (this doc, never merged):
 | Issue | Relationship |
 |---|---|
 | **FIX-441** — cross-flow event bus (Backlog) | **Superseded by this epic.** Its `NotificationFlow` fan-out subscriber shape is the thing ruled out in §1. Its own subscriber half was already superseded by FIX-825. Recommend closing as superseded with a pointer here |
-| **FIX-1056** — no channel to steer a running workstream (Backlog) | The same seam from the steering side. **Should survive as the carrier**: it holds the evidence and the owner decision. Its decision of 2026-08-10 is quoted in §5 Q1 |
+| **FIX-1056** — no channel to steer a running workstream (Backlog) | The same seam from the steering side. **Should survive as the carrier**: it holds the evidence and the owner decision. Its decision of 2026-08-10 named the tripwire ("if steering wants a channel that is not a task, the authored-entrypoint question re-opens"); that fork was met and **answered** on 2026-08-23 — theme 16, §5 Q1's closed record |
 | **FIX-1075** — inbox capability (Backlog) | The same seam from the receiving side; FIX-1075 says so itself. Folds into issue 1 |
 | **LAB-138** — the harness manager (Backlog) | A **consumer already hand-rolling the watch seam**: it polls a row it owns because registering interest is not expressible. Evidence for proposed issue 6, not a dependency of it — LAB-138 keeps working either way, more simply if issue 6 lands |
 | **FIX-830** — BullMQ sunset (In Spec Review) | **Constrains**: build to the `FlowDispatcher` seam (theme 1). Also owns durable arbitration, which is why §5 Q3 does not pull it inward |
@@ -918,78 +984,83 @@ Epic PR (this doc, never merged):
 
 ## 5. Open cross-cutting questions
 
-**The owner is in challenge mode: nothing below is locked, and none of it is settled by this
-document.** Where the epic has a lean, it is marked as the epic's lean rather than a decision.
+**Nothing here blocks the objective gate.** Resolved entries stay with their answers — that is what
+stops a third issue reopening them. The ledger, so the state is readable without reading the
+entries:
 
-### Q1. What may a sender legally address?
+| | Status | Who |
+|---|---|---|
+| **Q1** — what may a sender legally address? | **DECIDED 2026-08-23 — the asymmetric door** (theme 16) | Owner |
+| **Q1b** — does the sender's identity carry a `requestId`? | **Open, and scoped to issue 1's spec** — it blocks no other issue and is not a cross-cutting question. Listed here because the case for it was assembled here | Issue 1's spec |
+| **Q2** — the name | **Open by the owner's choice** — they want code in front of them first. `relay` is the leaning and theme 16 now uses it for the declared group | Owner, later |
+| **Q3** — does anything promise ordering or exclusion? | **Open on the durable path only.** The epic recommends promising nothing beyond the deployed dispatcher and documenting it plainly. Blocks nothing; the in-process half is now scope (theme 14) | Coordinator, if unchallenged |
+| **Q4** — which layer does role materialization belong on? | **Deliberately deferred** — decide with real code in front of you. Recorded so a second issue does not re-open it from scratch | Later, with code |
+| **Q5** — does `pending feedback` belong in this epic? | **CLOSED 2026-08-23 — both halves.** Needed (settled by run, §3); rides inside, as issue 5 | Run + coordinator |
+| **Q6** — what is a watch's own lifetime? | **CLOSED by decision D3** — a TTL whose expiry delivers | Coordinator |
+| **Q6b** — do watch and `pending feedback` collide? | **WITHDRAWN** — a consequence of the superseded task-primitive framing | Coordinator |
 
-**Still open, and still the load-bearing fork.** One half of the addressing space *is* settled:
-the owner has stated that a recipient is a **`sessionId`** and that messaging never crosses
-users (§1). That answers **which sessions exist to be addressed** — the same owner's, always. It
-does **not** answer this question, which is about **what a sender may name once it has a session
-in hand**: the flow's caller-addressed `actions`, or a narrower author-declared inside-world
-surface. Nothing below is settled by the address being named.
+**Four entries remain open and none of them is a gate question.** Q1b is an issue-1 spec detail,
+Q2 is the owner's own deferral, Q3 promises nothing and blocks nothing, and Q4 is explicitly a
+later decision. Where the epic has a lean it is marked as a lean rather than a decision.
 
-**The first design question of the build, not a detail inside it.** `RequestHost` is closed at
-four verbs — `startDetached`, `parentTask`, `settleParentTask`, `livenessOf?`
-(`packages/core/src/types/request-host.ts:29,233,243,254,272`) — and none of them takes a
-session id as a parameter. A caller supplies a seed; identity is closed over. That is precisely
-so nobody can name a session they do not own. Messaging must name a recipient, so it meets that
-constraint head-on.
+### ~~Q1. What may a sender legally address?~~ — **DECIDED by the owner, 2026-08-23: the asymmetric door**
 
-Candidate shapes:
+**The epic's load-bearing fork, and it is closed.** The owner, verbatim: *"Yes, inside world
+verb/asymmetric door is right."* Kept here with its answer so no issue spec reopens it.
 
-- **(a) Messages resolve `flow.actions` like any other caller.** The mailroom reading, and the
-  cheapest. Against it: a workstream is not a trusted caller the way an API client is, and
-  BP-031 says never route from caller-controllable input. `ActionConfig` is explicitly the
-  **caller-addressed** form (`packages/core/src/types/flow.ts:237-243`), and the same doc notes
-  that event-addressed handlers "are a different form — they carry the core inline on their
-  transport binding and never enter this map."
-- **(b) A new author-declared inside-world surface on the flow** — a `relay?:` config, sibling
-  of `webhooks?` / `schedules?` — that the **recipient** declares and the sender may only name a
-  message type within. This would be the flow's **first author-declared inside-world entry**:
-  additive rather than a narrowing of anything shipped.
-- **(c) Something narrower still**, scoped per relationship.
+**The decision.** The two halves get **different doors**, which is what "asymmetric" names:
 
-**The asymmetry that makes this sharp.** A **sibling** *is* a caller, and `flow.actions` is its
-natural entry. A **workstream**'s only entry today is the terminal, board-derived
-`flow.workstream`, whose doc states the security invariant directly
-(`packages/core/src/types/flow.ts:548-566`): "resolution for the detached source is **terminal**,
-so an absent core is a named refusal and never falls through to `actions`. That is the security
-invariant — a detached dispatch must have no route to a caller-addressed action." The two halves
-may therefore not want the same answer, and a shape that gives them one may be forcing it.
+| Sender | Door |
+|---|---|
+| **A sibling session** | resolves **`flow.actions`** like any other caller — it *is* a caller |
+| **A workstream** | a **narrow, author-declared inside-world surface** — never `flow.actions` |
 
-**The owner has already met this fork once.** FIX-1056 carries a decision of 2026-08-10: "a
-detached task stays the only way to start a Workstream", with the tripwire "If steering wants a
-channel that is not a task, that is the point where the authored-entrypoint question re-opens…
-Recorded here so that fork is met deliberately rather than discovered." Steering does want a
-channel that is not a task. This is that point.
+**Why this was the fork.** A sibling has its own flow kind, is nobody's child, and enters the way
+any caller does. A workstream's only entry today is the terminal, board-derived `flow.workstream`.
+Candidate (a) — one door, `flow.actions` for everyone — would have given a detached dispatch a
+route to a caller-addressed action, which is the one thing the shipped invariant forbids. Candidate
+(b) forced both halves through a new narrow surface, which is a second door for a job the sibling
+half already has. The answer is neither: **keep the asymmetry the system already has, and widen
+only the inside-world half.**
 
-**New evidence, from the owner's own watch design — an independent argument for the asymmetric
-door.** *(Added by the 2026-08-23 amendment. It is evidence for Q1, not an answer to it: Q1 stays
-open.)* Under issue 6's redefinition, *"a relay action matching that event must be defined to
-receive the payload of that event"* — so a **relay action whose only purpose is to receive a watch
-callback is a pure inside-world verb**. Nothing should be able to invoke it from the public
-surface: an outside caller posting a forged "your task completed" payload to it is not a scenario
-the design should have to reason about. That argument arrives from a different direction than the
-`flow.workstream` asymmetry above and reaches the same place, which is what makes it worth
-recording. **It does not settle Q1** — it is one concrete class of inside-world entry, and the
-question is still what a sender may name in general.
+**The cheap half — this extends an invariant that already exists and is already enforced.**
+`packages/core/src/types/flow.ts:562`, `workstream?: ActionCore` — *"The single pre-assembled entry
+a detached dispatch resolves"* (FIX-999) — and its doc comment states the invariant directly
+(`:549-557`):
 
-**The epic's lean (not a decision): (b).** The owner's own framing is that a flow's `actions`
-were designed for outside-world contact, not inside-world coordination, and (b) keeps the
-`flow.workstream` invariant intact rather than arguing around it. **What would change it:** a
-concrete case where a sibling needs to invoke an action a human caller can already invoke — if
-that is the common case rather than the exception, (b) is a second door for one job and (a) is
-right for the sibling half at least.
+> resolution for the detached source is **terminal**, so an absent core is a named refusal and
+> never falls through to {@link actions}. That is the security invariant — a detached dispatch must
+> have no route to a caller-addressed action.
 
-**Blocks:** issue 1's spec, and therefore 2, 3 and 4. Issue 5 is unaffected.
+**We are not inventing a security concept. We are widening one** — from a single pre-assembled core
+to a declared set, with terminal resolution unchanged. *(Verified against the tree during this
+fold.)*
+
+**The wrinkle, carried because it shapes issue 1.** The same doc comment, `flow.ts:559-560`:
+
+> Not an app-author surface. It is assembled by the framework from a board's drain bindings;
+> nothing is declared to get one.
+
+**Today the inside-world surface is *derived*, not declared** — and a relay-receivable action
+**cannot** be derived the same way. *"Another session may address this by name"* is not inferable
+from block structure the way a drain binding is; there is no structural fact to read it off.
+
+**Decision on the wrinkle (coordinator's engineering call, reversible by the owner): reuse the
+terminal-resolution *mechanism*, add a *declared* `relay?` group.** `relay` is the owner's own
+naming from §5 Q2. Same invariant, new declaration. **`workstream` stays framework-assembled;
+`relay?` becomes the flow's first authored inside-world surface** — the sibling-of-`webhooks?`/
+`schedules?` shape theme 3 already anticipated. **Do not attempt to derive it.** An attempt to
+infer relay-receivability from block structure would either under-declare (a message with nowhere
+to land) or over-declare (the wider door, opened by accident), and both failures are silent.
+
+**What it constrains — theme 16, and issue 1's acceptance criteria in §4.** **Blocks nothing
+further:** issue 1's spec is unblocked, and so are 2, 3, 4 and 6.
 
 ### Q1b. Does the sender's identity carry a `requestId` as well as a `sessionId`?
 
-**A separate, much smaller question than Q1 — deliberately not merged into it.** Q1 is the door;
-this is one field on the sender's side of the envelope, and answering it settles nothing about
-Q1.
+**A separate, much smaller question than Q1 — deliberately not merged into it.** Q1 was the door
+and is now closed (theme 16); this is one field on the sender's side of the envelope, and it was
+never touched by the door decision either way.
 
 The owner stated the recipient address as a `sessionId` and the sender as "sessionId (and **maybe**
 requestId for senders)". The hedge is recorded as a hedge: **this is an open detail for issue 1's
@@ -1036,6 +1107,12 @@ model this design rejects.
 **Leaning:** message-with-sender-and-recipient, `relay` for the config group. **Not settled
 here** — the owner wants code in front of them first.
 
+**Theme 16 now writes `relay?` for the declared inside-world group, and that is not this question
+being decided by the back door.** The door decision needed *a* name to be legible; it took the
+leaning. **Renaming the group is a find-and-replace on an unshipped surface** — nothing is built,
+so the cost of settling Q2 later is unchanged. What theme 16 fixes is the *shape* (a declared
+sibling of `webhooks?` / `schedules?` with terminal resolution), not the noun.
+
 ### Q3. Does anything promise ordering or exclusion?
 
 **The evidence for §1's named risk.**
@@ -1079,9 +1156,9 @@ block, that piece may belong in `orchestration` rather than in a wrapper over it
 toward building on `workforce`, explicitly not locked. **This epic does not settle it** — decide
 with real code in front of you. Recorded here so a second issue does not re-open it from scratch.
 
-### Q5. Does `pending feedback` belong in this epic or its own?
+### ~~Q5. Does `pending feedback` belong in this epic or its own?~~ — **CLOSED. Both halves.**
 
-**Two halves, and only one of them is settled. Keep them apart.**
+**Two halves. Necessity was settled by run; placement is now decided too.**
 
 **Settled — that it is needed at all.** It is a dependency of the design either way (theme 5),
 and that is no longer an assertion. §3's settlement ran the counter-claim that `awaitReview` /
@@ -1090,15 +1167,27 @@ work, but the parked task keeps its launching request open, so *the request may 
 available today. Recorded so it is not reopened; the residual gap to build is in §4's issue-5
 cell.
 
-**Open — where it is filed.** Whether it rides inside this epic as issue 5, or is filed outside
-it with a `relates-to` and depended on, is a **composition** question the verdict does not touch.
-The epic proposes carrying it as issue 5, unblocked and startable immediately. A reviewer argued
-for filing it outside on composition grounds — it is a task-board addition, not a messaging one,
-and an epic whose point is a message layer absorbing a board status is what makes a set harder to
-reason about later. **That argument survives the verdict entirely:** proving the status is
-necessary says nothing about which epic should own it. **This is the composition half of the
-objective gate** — see §1's necessity check, and §4's composition note, which now carries the
-*other* direction of pressure on the same question.
+**Decided — where it is filed: inside this epic, as issue 5.** *(Coordinator's call, 2026-08-23.
+Reversible by the owner. Recorded as a decision rather than surfaced as a fork, because it is a
+near-zero-cost composition call and it is the coordinator's to make.)*
+
+**The counter-argument, kept because it is a real one.** A reviewer argued for filing it outside on
+composition grounds: it is a task-board addition, not a messaging one, and an epic whose point is a
+message layer absorbing a board status is what makes a set harder to reason about later. That
+argument survived §3's verdict entirely — proving the status is *necessary* says nothing about
+which epic should *own* it.
+
+**Why it rides here anyway.** Two reasons, both about throughput rather than taxonomy. It is the
+**only unblocked issue in the set** (theme 13), so filing it outside means the epic's one
+day-one-startable piece of work sits in a different container with a `relates-to` pointing at it.
+And **the wait-for-response story depends on it**: theme 5's "the reply arrives as a new inbound
+message, nothing suspends" only works if a task can be parked while its request ends, so the epic
+would be depending on an outside issue for its own headline case. A dependency you own is cheaper
+to sequence than one you point at.
+
+**Cost of being wrong:** the set reads as two epics in retrospect. That is a documentation cost,
+not a rework cost, which is what makes this the coordinator's call rather than the owner's.
+**Blocks nothing.**
 
 ### ~~Q6. What is a watch's own lifetime?~~ — **CLOSED by decision D3**
 
@@ -1144,8 +1233,9 @@ it already does (`task-change`, `get-or-create.ts:29-30`), and the matcher and t
 drain waits for.
 
 **Consequence: issue 5 is free-standing again**, for spec purposes as well as merge order (theme
-13), and it owns its residual gap alone (§4's issue-5 cell). **Q5's placement half is unaffected**
-and stays open — that argument was never about this collision.
+13), and it owns its residual gap alone (§4's issue-5 cell). **Q5's placement half was unaffected
+by this withdrawal** — that argument was never about this collision — and has since been decided
+on its own terms (§5 Q5).
 
 ---
 
@@ -1191,7 +1281,7 @@ and stays open — that argument was never about this collision.
   leans on, and **cross-user authorization is now a stated non-goal of the epic** rather than an
   unexamined gap. (2) **The address shape.** The recipient is a `sessionId`; the sender is
   identified by its own `sessionId`. Recorded in theme 9, theme 2, §1 and §4's issue-1 cell.
-  *What it explicitly did not settle:* **§5 Q1's door question is untouched and stays open** —
+  *What it explicitly did not settle:* **§5 Q1's door question is untouched and stays open** *(Superseded 2026-08-23: the owner decided Q1 — the asymmetric door, theme 16.)* —
   whether a sender resolves `flow.actions` or a narrower author-declared inside-world surface is
   still the load-bearing fork the objective gate asks about. Knowing *which sessions* may be
   addressed says nothing about *what may be named* on one. And the `requestId`-on-the-sender half
@@ -1217,7 +1307,7 @@ and stays open — that argument was never about this collision.
   (2) **§1 led with the objective before the problem**, against BP-039 — worst on the one section
   the gate signs off, since it makes the direction harder to assess independently of its proposed
   solution. Reordered: problem first, objective second, nothing dropped.
-  **No re-division — the five issues stand**, and **§5 Q1's door question is untouched**.
+  **No re-division — the five issues stand**, and **§5 Q1's door question is untouched**. *(Superseded 2026-08-23: the owner decided Q1 — the asymmetric door, theme 16.)*
 - **Settlement — the parked-task cold path. Claim REFUTED; the five issues stand.** *(Folded
   **outside** the epic PR's two-round budget, which stays spent and the doc stays converged: a
   settlement records a claim so it cannot be reopened, which is the opposite of reopening review.
@@ -1245,9 +1335,9 @@ and stays open — that argument was never about this collision.
   §3 gains the settlement, marked as a settlement rather than a fifth characterization check;
   §4's issue-5 cell gains **the residual gap to build** — a park mode that does not hold the
   drain's own request open; §5 **Q5's necessity half is now settled and its placement half stays
-  open**, because the composition argument for filing it outside the epic survives the verdict
-  untouched; §1's necessity check and theme 5 now rest on evidence rather than assertion.
-  **No re-division — the five issues stand**, and **§5 Q1's door question is untouched**.
+  open** *(superseded 2026-08-23: the placement half is decided — inside, as issue 5)*, because the
+  composition argument for filing it outside the epic survives the verdict untouched; §1's necessity check and theme 5 now rest on evidence rather than assertion.
+  **No re-division — the five issues stand**, and **§5 Q1's door question is untouched**. *(Superseded 2026-08-23: the owner decided Q1 — the asymmetric door, theme 16.)*
 - **Owner-proposed set change — the watch seam enters as proposed issue 6. Six proposed issues,
   and the set is now under opposite pressure from two directions.** *(A **set change proposed by
   the owner**, not a review fold. The epic PR's two-round budget stays spent and the doc stays
@@ -1290,7 +1380,7 @@ and stays open — that argument was never about this collision.
   only the owner can do that. The gate answers it. *(**Superseded by the next entry: the swap
   proposal is retracted.** It rested on the coordinator's own wrong premise about why issue 3 is in
   the set.)*
-  **§5 Q1's door question is untouched and stays open.**
+  **§5 Q1's door question is untouched and stays open.** *(Superseded 2026-08-23: the owner decided Q1 — the asymmetric door, theme 16.)*
 - **Deferred decision landed — the configurable admission budget moves from issue 2 to issue 1.**
   Decided earlier by the coordinator and not yet in the document. *Why:* issue 2 depends on issue
   1 and theme 13 lands issue 1 first, so leaving the budget on issue 2 would ship an acknowledged
@@ -1365,7 +1455,7 @@ and stays open — that argument was never about this collision.
   consequence of the superseded task-primitive framing; under the new model watch touches **no**
   board internals, so **issue 5 is free-standing again** for spec purposes as well as merge order
   (theme 13, §4's issue-5 cell, §3's settlement record). **§5 Q1 gains new evidence and stays
-  OPEN:** a relay action whose only purpose is to receive a watch callback is a *pure inside-world
+  OPEN** *(Superseded 2026-08-23: the owner decided Q1 — the asymmetric door, theme 16.)***:** a relay action whose only purpose is to receive a watch callback is a *pure inside-world
   verb* that nothing should be able to invoke from the public surface — an independent argument for
   the asymmetric door, arising from the owner's own watch design, and **not** an answer to Q1.
   **Restated once so it is not re-litigated as a fan-out violation (§1, §4):** N subscriptions are
@@ -1376,5 +1466,75 @@ and stays open — that argument was never about this collision.
   budget · 2 per-adapter delivery (dep 1) · 3 sibling spawn, address supply for cross-session
   messaging (dep 1) · 4 cron as a scheduled message (dep 1) · 5 `pending feedback` task status
   (independent; necessity settled) · 6 watch, a general one-off notification primitive (dep 1; the
-  task board is its first consumer). **§5 Q1's door question is untouched and stays open**, and
+  task board is its first consumer). **§5 Q1's door question is untouched and stays open** *(Superseded 2026-08-23: the owner decided Q1 — the asymmetric door, theme 16.)*, and
   **the epic is not approved** — the gate is unchanged.
+
+- **Owner decision — the door is asymmetric. Q1 closed, Q5 closed, and the artifact now carries no
+  gate question.** *(Folded **outside** the epic PR's two-round budget on the same justification as
+  the previous two folds — the gate must be honest about what it approves. **No converged material
+  reopened, no bot findings folded, D1–D4 and theme 15 untouched.** Nothing filed in Linear.)*
+
+  **(1) §5 Q1 — DECIDED by the owner, 2026-08-23.** Verbatim: *"Yes, inside world verb/asymmetric
+  door is right."* **A sibling resolves `flow.actions`** — it *is* a caller. **A workstream gets a
+  narrow, author-declared inside-world surface** and never reaches `flow.actions`. Recorded as
+  **theme 16**, with Q1 kept in §5 as a closed record carrying the full reasoning. *Why it was the
+  fork:* candidate (a), one door for everyone, would have given a detached dispatch a route to a
+  caller-addressed action; candidate (b) forced both halves through a new narrow surface the
+  sibling half does not need. The answer was neither — **keep the asymmetry the system already
+  has, and widen only the inside-world half.**
+
+  **(2) The cheap half — this extends an invariant that already exists and is already enforced.**
+  `packages/core/src/types/flow.ts:562`, `workstream?: ActionCore`, is *"the single pre-assembled
+  entry a detached dispatch resolves"* (FIX-999), and `:549-557` states the rule: *"resolution for
+  the detached source is **terminal**, so an absent core is a named refusal and never falls through
+  to {@link actions}. That is the security invariant — a detached dispatch must have no route to a
+  caller-addressed action."* We are widening **one core to a declared set**, not inventing a
+  security concept. Verified against the tree during this fold.
+
+  **(3) The wrinkle, and the coordinator's call on it (reversible by the owner).** `flow.ts:559-560`:
+  *"Not an app-author surface. It is assembled by the framework from a board's drain bindings;
+  nothing is declared to get one."* Today's inside-world surface is **derived**, and a
+  relay-receivable action cannot be — *"another session may address this by name"* is not inferable
+  from block structure the way a drain binding is. **Decision: reuse the terminal-resolution
+  mechanism, add a *declared* `relay?` group** (the owner's own naming, §5 Q2). `workstream` stays
+  framework-assembled; **`relay?` becomes the flow's first authored inside-world surface**, the
+  sibling of `webhooks?` / `schedules?` theme 3 anticipated. **Do not derive it** — inference would
+  either under-declare (a message with nowhere to land) or over-declare (the wider door, opened by
+  accident), and both fail silently.
+
+  **(4) Promoted to issue 1's acceptance criteria: the recipient's `flowKind` is looked up from the
+  session record, never asserted by the sender.** Promoted **by the door decision, not by a new
+  finding** — it has been in the record since a codex round-5 P1 implementer note and the note is
+  unchanged. What changed is its status: under a single door, asserting the recipient's kind was
+  hygiene; under an **asymmetric** door the server must decide *which door to open*, which makes the
+  recipient's kind a **routing decision**, and BP-031 is categorical that routing is never derived
+  from caller-controllable input. **A sender able to assert its recipient's kind could select the
+  wider door.**
+
+  **(5) §5 Q5 — CLOSED, both halves. `pending feedback` rides inside this epic, as issue 5.**
+  *(Coordinator's call, reversible by the owner; recorded as a decision rather than surfaced as a
+  fork because it is a near-zero-cost composition call.)* Necessity was already settled by §3's
+  run. On placement: issue 5 is the set's **only unblocked issue**, so filing it outside puts the
+  epic's one day-one-startable piece of work in another container; and **theme 5's headline case
+  depends on it**, so the epic would be depending on an outside issue for its own leading story.
+  The reviewer's composition argument is kept in Q5's record rather than dropped. *Cost of being
+  wrong:* the set reads as two epics in retrospect — a documentation cost, not a rework one, which
+  is what makes it the coordinator's call.
+
+  **(6) Issue 6 inherits the door with nothing to decide** — a watch-callback relay action is a pure
+  inside-world verb, so it is declared in the `relay?` group and is never reachable from
+  `flow.actions` (one line in §4; not re-argued).
+
+  **(7) Reconciled across the document (tenet 5).** §1's address/door paragraph, §1's sign-off
+  paragraph, §1's necessity check, theme 3's *"which door it is remains §5 Q1"*, §3's POC framing
+  line, §4's issue-1 cell, §4's composition note, §4's issue-6 subsection, the relationship map's
+  FIX-1056 row, Q1b's opener, Q6b's tail, and **§5's intro, which is now a ledger of every entry's
+  status**. Every earlier "Q1 is open" / "Q5's placement stays open" claim inside a dated log entry
+  carries a superseded marker rather than being rewritten.
+
+  **Open-question count: four remain, and none is a gate question** — Q1b (an issue-1 spec detail
+  that blocks nothing), Q2 (the name; the owner's own deferral until code is in front of them), Q3
+  (durable-path ordering; the epic promises nothing and it blocks nothing), Q4 (the role
+  materialization layer; explicitly deferred to real code). **Zero composition questions and zero
+  door questions.** The epic is **not approved** — the objective gate is the only thing outstanding
+  and nothing in this fold changes it.
