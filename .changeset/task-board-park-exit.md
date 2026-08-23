@@ -18,22 +18,24 @@ queue for whatever drains the board next. The resume does not start a drain
 itself, so something has to come along and run one — a later user turn, a
 schedule, a background job.
 
-The default is `onReview: "hold"`, and a board that leaves it there behaves
-exactly as it does today, detached boards included.
+The default is `onReview: "hold"`. A board that leaves it there holds the
+drain open until someone moves the parked task out, detached boards included.
+That default does change for a worker that parks the task it is holding; see
+**Upgrading** below.
 
-The mode needs a durable board — one built on `defineTaskCollection`, so the
-parked task outlives the drain that released it — on the default `onIdle`, with
-every entry in `initialTasks` carrying an explicit `id`. A board that asks for
-`"exit"` without those is refused when it is built, by name, with the change to
-make.
+The mode needs three things: a collection declared with `defineTaskCollection`,
+so the parked task outlives the drain that released it; the default `onIdle`;
+and an explicit `id` on every entry in `initialTasks`. A board that asks for
+`"exit"` without them throws when it is built, naming the requirement it missed
+and the change to make.
 
 Consumers that switch on `terminationReason` gain one value to handle. Nothing
 reports it unless a board turned the mode on.
 
 **A worker parking its own task now works, on every board.** A worker that calls
-`awaitReview()` on the task it is holding stays parked, whether that worker then
-returns or throws. It did not before: the task was completed or failed out from
-under the review a moment later.
+`awaitReview()` on the task it is holding leaves that task parked, whether the
+worker then returns or throws. It did not before: the task was completed or
+failed out from under the review a moment later.
 
 **Upgrading:** this changes what an existing board does. A board that leaves
 `onReview` on its default and whose worker parks its own task used to see that

@@ -40,7 +40,7 @@ const turn = sequencer({
   .sideChain(captureMemory);
 ```
 
-`respondToUser` streams to the browser and the chain moves straight on. `captureMemory` runs alongside it. On a run that finishes normally the request waits: every queued task settles before the stream closes. Closing the tab doesn't cancel that work — background tasks deliberately don't listen to the transport signal — but nothing waits for it either, so a process that shuts down first can still drop it. An explicit abort does cancel it. A failure is logged rather than surfaced, which is the trade you take for not blocking.
+`respondToUser` streams to the browser and the chain moves straight on. `captureMemory` runs alongside it. On a run that finishes normally the request waits: every queued task settles before the stream closes. Closing the tab doesn't cancel that work — background tasks don't listen to the transport signal — but nothing waits for it either, so a process that shuts down first can still drop it. An explicit abort does cancel it. A failure is logged rather than surfaced, which is the trade you take for not blocking.
 
 Reach for it when the work is cheap, best-effort, and belongs to the turn that produced it. Analytics, cache warming, memory writes, auto-titling.
 

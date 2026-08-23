@@ -138,7 +138,7 @@ Exits only when no `pending`, `in_progress`, or `awaiting_review` tasks remain. 
 
 A board in this mode never decides on its own that it is stuck. If a dep will never resolve, each worker keeps cycling until it hits `maxIterations` (default `10000`, counted per worker). Pick the mode when the board really is supposed to wait.
 
-A task parked for review keeps this mode's loop alive, and [`onReview: "exit"`](#waiting-on-a-person-onreview) cannot change that. A board that sets both is refused when you build it. This mode exits only on a fully drained board, so a `pending` task that depends on the parked one holds the drain open no matter how the parked task itself is counted.
+A task parked for review keeps this mode's loop alive, and [`onReview: "exit"`](#waiting-on-a-person-onreview) cannot change that. A board that sets both is refused when you build it.
 
 ### `"wait"`
 
@@ -193,8 +193,12 @@ The second argument is feedback for whoever picks the task up. It reaches the wo
 
 ```ts
 // Later, in a new request, over the same durable collection:
-await runAction("drain-reviews", { userId });
+await runAction({ flow, actionName: "drain-reviews", input: {}, userId, stores, runtimeConfig: {} });
 ```
+
+`flow` and `stores` are the ones you already built; [Running a flow by
+hand](/docs/advanced/manual-flow-execution) covers assembling them outside the
+HTTP transport, which is where a scheduled or background drain runs.
 
 Whichever drain gets there first claims the task and runs it to completion, exactly as if it had been queued that moment.
 
