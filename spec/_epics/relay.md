@@ -395,8 +395,9 @@ can cite one.
     carries no board semantics. An issue-6 spec that stores message state on the row, or that adds
     a *new* emit to the board, has crossed here.
 
-    **Which is why the watch manager lives in `engine`, not `orchestration`.** *(Decided — D4,
-    §4's issue-6 decisions.)* Both of the owner's named event sources have to reach it, and one of
+    **Which is why the watch manager lives in `engine`, not `orchestration`.** *(Constraint **C4**,
+    §4's issue-6 constraints — the coordinator's recommended resolution, which issue 6's spec must
+    satisfy or better.)* Both of the owner's named event sources have to reach it, and one of
     them — the resource registry's `onResourceChanged`
     (`packages/engine/src/context/resource-registry.ts:545`) — is in `engine`. `orchestration`
     becomes a **consumer** that forwards the `task-change` event it already emits. That placement
@@ -417,10 +418,12 @@ can cite one.
 
     **Proposed issue 6 (watch) joins the first group, and it is the one member with a second
     dependency: it also depends on issue 4.** It consumes the send verb rather than building a
-    second delivery path, so it cannot merge before issue 1 — and D3's expiry **sweep is a
+    second delivery path, so it cannot merge before issue 1 — and **C3**'s expiry **sweep is a
     scheduled message**, which is issue 4's mechanism, so it cannot merge before issue 4 either.
-    *(Added 2026-08-23 with D3's revision. Recorded here rather than left to be discovered during
-    implementation.)* **It carries no spec-ordering constraint against issue 5.** *(Corrected: it did, as §5 Q6b.)* Under the
+    *(Added 2026-08-23 with C3's revision. Recorded here rather than left to be discovered during
+    implementation. The dependency follows from the **recommended resolution**: if issue 6's spec
+    satisfies C3 by some other means than a scheduled sweep, this edge goes away with it — say so in
+    that spec rather than leaving a stale dependency here.)* **It carries no spec-ordering constraint against issue 5.** *(Corrected: it did, as §5 Q6b.)* Under the
     notification-primitive model watch touches **no** board internals — the board only emits, which
     it already does — so Q6b is withdrawn and **issue 5 is free-standing again**, for spec purposes
     as well as merge order.
@@ -506,11 +509,17 @@ can cite one.
     the events, the payload shape, the predicate idiom — is already shipped and already consumed.
 
     **New is not the same as sufficient, and this theme must not be read as the latter.** A fourth
-    part is required: **D3's expiry sweep**. `reactTo` runs inline in the mutating turn, so it
+    part is required: **C3's expiry sweep**. `reactTo` runs inline in the mutating turn, so it
     inherits that turn's atomicity; watch fires *after* it and therefore does **not**. A crash
     between the durable write and the `emit` loses the event while the subscription survives (§4's
     durability disposition). The sibling framing is exact about *vocabulary and binding time* — it
     says nothing about delivery guarantees, and the asynchronous half is where they differ most.
+
+    **A second place the framing misleads if read too far: `reactTo` binds statically, so its
+    author names the resource and the scope in one declaration.** A watch is registered at runtime
+    against a key it supplies, which is why **C2** requires the match key to be a *complete
+    coordinate* with the scope **server-derived** — the sibling has no equivalent problem, and
+    borrowing its simplicity here is how a mis-delivery gets designed in.
 
     **Coherence requirement, binding on issue 6's spec:** reuse `reactTo`'s change-payload shape
     and predicate idiom rather than inventing a second vocabulary for the same events. Two ways to
@@ -773,7 +782,7 @@ cell is empty by design, not by omission.
 | 3 | The sibling-spawn verb — **address supply for cross-session messaging** | an independent, self-managing session with its own flow kind and addressable key, resolving `flow.actions` like any other caller and talking back by message rather than `settleParentTask`. **In the set because messages cross sessions** (§1, owner): spawn mints the peer the send verb will address; without it, messaging only ever reaches sessions an outside-world caller happened to create. *(The earlier "same missing layer" / implementation-economy rationale, and the swap-out proposal it licensed, are retracted — §1.)* | 1 | not filed | spec | — | — | Proposed |
 | 4 | Cron: a schedule addresses a session and fires as a message | the schema field, the resolver, and the one dispatch envelope; absent address preserves today's behaviour exactly | 1 | not filed | spec | — | — | Proposed |
 | 5 | A `pending feedback` task status | "parked awaiting external input; the request may end; a later request resumes this task" — a genuine addition, not a rename of `awaiting_review`. **Necessity settled by run, not asserted** (§3's settlement, REFUTED): today's `awaitReview` parks and `resumeFromReview` resumes, but `awaiting_review` is excluded from every board-exit path, so the launching request stays open for the whole park. **The residual gap to build:** a park mode that does not hold the drain's own request open — either an exit path letting `boardQuiescence` stop returning "continue" while a task sits parked, or routing review-parking through the same `runsElsewhere` exclusion detached dispatch already gets for `in_progress`. **No collision with issue 6** — *corrected;* one was recorded as §5 Q6b and is withdrawn, because watch touches no board internals. Issue 5 owns this surface alone and depends on nothing | — | not filed | spec | — | — | Proposed |
-| 6 | **Watch — a general one-off notification primitive** *(owner-proposed 2026-08-21; **redefined by the owner 2026-08-23** — it is **not** a task primitive)* | a durable **subscription registry**, an **event matcher**, and **delivery as an addressed relay message**. An entry says *when this event fires holding this value, call this flow for this session id*; a **relay action matching that event** must be defined on the recipient to receive the payload; the subscription is **one-off** and unsubscribes on fire. **The task board is its first consumer, not its subject** — a completing task forwards the `task-change` event it already emits; an updated resource value is the second named source. **Three of its four parts already ship** (theme 15: watch is `reactTo`'s async, cross-session, runtime-registered sibling); what is new is the registry, a matcher running outside the mutating turn, and addressed delivery — **plus the expiry sweep, which is required, not optional**. **Four calls decided** — D1 satisfied-or-attach registration · D2 exact-match on identity key + event name · **D3 (revised) a TTL whose expiry *delivers* an outcome, fired by a periodic sweep that is itself a scheduled message — this is why issue 6 depends on issue 4** · D4 the manager lives in `engine`. **Delivery is explicitly best-effort:** `emit` runs after the durable write, so a crash between them loses the event while the subscription survives; loss is **bounded by the TTL and self-announcing**, never prevented | **1, 4** | not filed | spec | — | — | **Proposed (owner)** |
+| 6 | **Watch — a general one-off notification primitive** *(owner-proposed 2026-08-21; **redefined by the owner 2026-08-23** — it is **not** a task primitive)* | a durable **subscription registry**, an **event matcher**, and **delivery as an addressed relay message**. An entry says *when this event fires holding this value, call this flow for this session id*; a **relay action matching that event** must be defined on the recipient to receive the payload; the subscription is **one-off** and unsubscribes on fire. **The task board is its first consumer, not its subject** — a completing task forwards the `task-change` event it already emits; an updated resource value is the second named source. **Three of its four parts already ship** (theme 15: watch is `reactTo`'s async, cross-session, runtime-registered sibling); what is new is the registry, a matcher running outside the mutating turn, and addressed delivery — **plus the expiry sweep, which is required, not optional**. **Four constraints its spec must satisfy** *(relabelled 2026-08-23 from "decided" — a primitive's correctness contract belongs in issue 6's spec, not at epic altitude; the recommended resolutions and their evidence are unchanged)* — **C1** registration must not lose an already-true condition *(recommended: satisfied-or-attach; **unresolved half** — "already true" is undefined for the edge source `resource updated`, so a versioned baseline is recommended, with level-only as the pre-committed fallback)* · **C2** the match key must be the **complete coordinate** (scope + owner + collection/namespace + id), never a bare id, with the scope **server-derived** per BP-031 · **C3** a bounded lifetime that something actually fires *(recommended: TTL + a periodic sweep that is itself a scheduled message — **this is why issue 6 depends on issue 4**)* · **C4** the manager must sit where both sources reach it *(recommended: `engine`)*. **Delivery is explicitly best-effort:** `emit` runs after the durable write, so a crash between them loses the event while the subscription survives; loss is **bounded by the TTL and self-announcing**, never prevented — and *recoverable by re-registration* only where C1's guarantee holds | **1, 4** | not filed | spec | — | — | **Proposed (owner)** |
 
 **The agent-facing tool is deliberately inside issue 1, not beside it.** The constraint is that
 the programmatic sender and the tool are the *same verb*, differing only in who calls them.
@@ -876,30 +885,52 @@ matcher that runs **outside** the mutating turn, **(c)** delivery as an **addres
 rather than an inline block call. Said explicitly because it is what right-sizes the issue.
 
 **Those three are what is *new*; they are not what is *sufficient*.** A fourth part is required and
-it is not optional: **the expiry sweep (D3)**, without which the registry leaks and the
+it is not optional: **the expiry sweep (C3)**, without which the registry leaks and the
 delivery contract is unbounded. The durability disposition immediately below explains why — the
 three parts alone leave a real loss window, and the sweep is what bounds it.
 
 **Coherence requirement for issue 6's spec** (theme 15): reuse `reactTo`'s change-payload shape and
 predicate idiom rather than inventing a second vocabulary for the same events.
 
-#### The four calls the coordinator has already decided
+#### C1–C4 — constraints issue 6's spec must satisfy
 
-Engineering decisions on the owner's model, recorded as **decided** rather than as open questions
-(EM posture). Each is the coordinator's and each is reversible by the owner.
+**Relabelled 2026-08-23, from "the four calls the coordinator has already decided" to constraints
+with a recommended resolution.** Nothing below lost a word: the reasoning, the evidence, the
+`file:line` citations and the rejected alternatives are all as written. **What changed is the
+status, not the substance.**
 
-**D1 — the primitive is *"notify me when this becomes true, or immediately if it already is"*, not
-*"notify me on the next matching event."*** The register/settle race verified in §3 does not go away
-under the new model — it **generalizes**. Both task-board backings commit the terminal state inside
-the serialized / CAS write and call `emit(...)` **after it, outside the lock**
+**Why.** Four valid P1s across two review rounds all landed here, and the honest read is not that
+the reviewers are noisy — they are four *distinct* defects (the TTL's trigger, the post-commit crash
+window, the match key's qualification, edge-versus-level), not one finding reshaped four times. The
+fault is upstream of them: **the coordinator specified issue 6's semantics too tightly, too early,
+at epic altitude.** These are implementation-level correctness calls. Labelled "decided", they
+present an epic-spec as though it had settled a primitive's correctness contract — and reviewers
+correctly hold it to that standard. **An epic-spec carries direction; a primitive's correctness
+contract belongs in issue 6's own spec.**
+
+**What this relabel does not do, stated plainly so nobody reads it as a shield.** It does **not**
+resolve the open questions below, it does **not** stop review rounds, and it is not intended to. It
+makes the document truthful about what is settled (the shape, the boundaries, the recommended
+resolutions and their evidence) versus what issue 6 still owes (a correctness contract that
+survives contact with the code). Each constraint below carries the coordinator's recommendation;
+**issue 6's spec must satisfy the constraint, and may reach it differently with reason.**
+
+**C1 — registration must not lose a condition that is already true, and the primitive owes one
+answer across both event sources.** *Recommended resolution: "notify me when this becomes true, or
+immediately if it already is", not "notify me on the next matching event."*
+
+The register/settle race verified in §3 does not go away under the new model — it **generalizes**.
+Both task-board backings commit the terminal state inside the serialized / CAS write and call
+`emit(...)` **after it, outside the lock**
 (`packages/orchestration/src/tasks/collection/resource-backed.ts:450-474`;
 `sequencer-backed.ts:264-338`). A subscription registered in that window attaches to something that
 will never transition again. Subscribing to a condition that may already hold is the classic
 subscribe-after-the-fact race, and it recurs for **every** event source, not just tasks.
 
-So: **registration reads the current state and either attaches (not yet satisfied) or immediately
-enqueues the delivery (already satisfied), atomically.** That makes the deadlock-shaped failure
-**unrepresentable** rather than documented — theme 7's standing rule, applied to a second mechanism.
+So the recommendation: **registration reads the current state and either attaches (not yet
+satisfied) or immediately enqueues the delivery (already satisfied), atomically.** That makes the
+deadlock-shaped failure **unrepresentable** rather than documented — theme 7's standing rule,
+applied to a second mechanism.
 
 **The price, named honestly:** the primitive is then **not purely event-source-agnostic**. Each
 source must supply a small *"is this already satisfied?"* read adapter. That is the actual cost of
@@ -909,15 +940,87 @@ and buys a footgun *per source*, one that produces a watcher waiting forever on 
 happened. The adapter wins because its cost is paid once per source by the framework, while the
 footgun would be paid every time by a consumer.
 
-**D2 — the match is exact-match on an identity key + event name. Not a predicate language.** Entries
-stay plain serializable data (a `taskId`, a `storageKey`). A general content-based matcher over an
-event stream is an **event bus with content routing**, which this epic has ruled out (§1, fan-out).
-`reactTo`'s `when` predicate remains the escape hatch for the **synchronous, statically-declared**
-case — it runs in-process against a declared binding and never needs serializing.
+##### C1's unresolved half — "already true" is not defined for an edge source
 
-**D3 — lifetime: a TTL on the entry, expiry *delivers* an outcome, and a periodic sweep is what
-fires it.** *(This closes §5 Q6, the owner's own open question. **REVISED 2026-08-23** — the first
-version of this decision was self-contradictory; see immediately below.)*
+**Folded 2026-08-23 from a chatgpt-codex P1. It is the sharpest of the four, and it is a category
+error in the original decision, not a detail.**
+
+The immediate-or-attach rule **cannot be implemented for the second named source from a
+current-state read alone.** The two sources are different kinds of thing:
+
+| Source | Kind | Is "already satisfied?" answerable from a current-state read? |
+|---|---|---|
+| Task reaches a terminal status | **Level** predicate — readable at any time | **Yes.** Immediate satisfaction is well-defined |
+| Resource `updated` | **Edge** event | **No.** *Every* resource has been updated at some point, so a current-state read gives no baseline. The adapter cannot tell whether an update already occurred before registration or whether it should await the next one |
+
+**Recommended resolution: a versioned baseline** — registration records the version it observed for
+the key, and *"updated"* means **the version advanced past that baseline**. The edge becomes
+level-comparable, and C1 stays uniform across both sources instead of fracturing.
+
+**Why this is expected to be cheap, and it was checked before being recommended: resources are
+already version-checked per key** (FIX-992). `packages/engine/src/context/resource-registry.ts:480-491`
+— `mutateResourceKey` *"seeds a per-key container from **the version this context observed**"*
+(D10); `:523-527` — `deleteResourceKey` *"Carries the version this context observed, so a delete
+chosen from a stale snapshot conflicts instead of tombstoning a newer generation"* (D7). **The
+per-key version exists.**
+
+**What has NOT been verified, and issue 6's spec must confirm it first:** whether that version is
+**readable on a public path at registration time**. If it is, this is a read rather than a
+redesign — the same species of finding as §3's Q4 result that the admission-budget fix was already
+a parameter. If it is not, it is a change to a shipped surface and the cost is different.
+
+**Pre-committed fallback, recorded now so the choice is already made when the check comes back:**
+restrict immediate-satisfaction to **level predicates** (terminal task status). Edge watches stay
+purely edge-triggered and **carry the residual registration race, stated rather than hidden**.
+
+**The honest cost, either way:** unless the versioned baseline lands, **C1's guarantee is
+source-dependent** — strong for task watches, weaker for resource watches. That is not papered over
+with "one uniform primitive", and it has a consequence for the durability disposition below, which
+depends on level-triggered re-registration.
+
+**C2 — the match must be an exact match on a *complete coordinate* plus an event name. Not a
+predicate language, and never a bare id.** *(**REVISED 2026-08-23** — the original wording named two
+under-qualified keys, and a reviewer was right to file it as a P1. The defect is stated below rather
+than the text quietly swapped.)*
+
+Entries stay **plain serializable data**, and a general content-based matcher over an event stream
+is an **event bus with content routing**, which this epic has ruled out (§1, fan-out). That half is
+unchanged. `reactTo`'s `when` predicate remains the escape hatch for the **synchronous,
+statically-declared** case — it runs in-process against a declared binding and never needs
+serializing.
+
+**The defect.** This constraint originally read *"exact match on an identity key (`taskId`,
+`storageKey`)"*. **Both of those keys are under-qualified:**
+
+- **A bare `storageKey` is only unique inside a resource scope.** `createExecutionContext.ts`
+  constructs **three separate registries** — `makeResourceChangeHandler("user" | "session" | "org")`
+  (defined at `:2044`, installed at `:2137`, `:2152`, `:2170`) — and each of them may emit **the
+  same path**.
+- **A `TaskChangeEvent` carries `collectionId` *and* `taskId`**
+  (`tasks/collection/change-event.ts:37-44`). Identity is the **pair**, not the id.
+
+**The consequence, which is a correctness bug and not untidiness:** matching globally on a bare id
+can **consume another scope's or another collection's subscription and relay the wrong payload**.
+**Note where this lands — inside the same-owner invariant.** The three scopes all sit within one
+owner, so §1's *"we are never sending from one user to another"* **does not protect against this at
+all.** A mis-delivery here is same-owner by construction, which is exactly the class of failure an
+owner-level invariant is blind to.
+
+**Recommended resolution: the match key is the *complete coordinate*** — scope kind + owner identity
++ collection/namespace + id — **never a bare id**. **Both** the registration **and** the emitted
+event must carry it, or the comparison is not well-defined on one side.
+
+**And a BP-031 clause, without which the qualification is decorative:** the match key is a
+**routing decision**, so **the scope must be server-derived from the registrant's execution
+context, never asserted by the registrant**. A session watching a session-scoped key gets **its**
+scope, not one it names. This is the same rule theme 9 applies to the sender's identity and theme 16
+applies to the recipient's `flowKind`; a registrant able to name its own scope could register
+against another scope's keys, which is the mis-delivery above turned into a capability.
+
+**C3 — a watch entry must have a bounded lifetime, and something must actually fire that bound.**
+*Recommended resolution: a TTL on the entry, expiry **delivers** an outcome, and a periodic sweep is
+what fires it.* *(This answers §5 Q6, the owner's own open question. **REVISED 2026-08-23** — the
+first version was self-contradictory; see immediately below.)*
 
 One-off plus unsubscribe-on-fire self-cleans the common case. What leaks is the **never-fires**
 case, and the owner correctly called never-settles *the ordinary shape of abandoned work*, not an
@@ -927,7 +1030,7 @@ rather than being silently dropped** — that turns a leak into a signal a live 
 **What fires it: a periodic sweep over the registry.** Not per-entry timers — one mechanism, no
 timer storm, and nothing to reconstruct after a restart.
 
-**REVISED, and the reason is recorded rather than quietly rewritten.** This decision originally read
+**REVISED, and the reason is recorded rather than quietly rewritten.** This constraint originally read
 *"a TTL checked on read/match needs no sweeper"*. **That was self-contradictory and a reviewer
 (chatgpt-codex) was right to call it a P1.** The exact defect, because it is instructive: the leak
 this decision exists to close is the **never-fires** case — and in that case there is, by
@@ -948,7 +1051,8 @@ it answers the owner's own lifetime question (*"what happens when the row never 
 **"nothing clears it"**, which is not an answer. It also strands the entry and the watcher
 together: neither is cleaned up, and neither is told.
 
-**D4 — the watch manager lives in `engine`, not `orchestration`.** Both named event sources must
+**C4 — the watch manager must sit where both named event sources can reach it.** *Recommended
+resolution: it lives in `engine`, not `orchestration`.* Both named event sources must
 reach it, and the resource registry is in `engine`. `orchestration` becomes a **consumer** that
 forwards its existing `task-change` event. This also preserves the boundary the owner set (theme
 11): the board **triggers**, Relay **delivers**; the board records nothing about the message and
@@ -963,12 +1067,12 @@ carry an untrue guarantee into the objective gate.
 
 **The window.** `emit(...)` runs **after** the durable write in all three named sources —
 `resource-backed.ts:470-474`, `sequencer-backed.ts:333-338`, `resource-registry.ts:1201-1210`
-(verified during this fold). **D1 closes register-vs-settle; it does nothing for this.** A worker
+(verified during this fold). **C1 closes register-vs-settle; it does nothing for this.** A worker
 that dies between the commit and the emit leaves the **subscription alive and the event gone**: the
 condition became true, the registry still holds a watcher for it, and nothing will ever match.
 
-**Note what this is.** It is the *same structural fact* that justified D1 — emit-after-commit,
-outside the lock — producing a **second, different** failure. D1 handled the case where the
+**Note what this is.** It is the *same structural fact* that justified C1 — emit-after-commit,
+outside the lock — producing a **second, different** failure. C1 handled the case where the
 subscription arrives too late. This is the case where the event never arrives at all.
 
 **Disposition: explicit best-effort. No durable outbox.** An outbox is precisely *"delivery
@@ -976,17 +1080,28 @@ guarantees beyond what the configured adapter gives"*, which the owner ruled out
 scope — the same boundary that keeps durable arbitration with FIX-830 (§5 Q3, theme 1). Building
 one here would be the epic quietly acquiring a durability substrate.
 
-**But the guarantee is stronger than bare best-effort, and that is a *consequence of D1*, not a
+**But the guarantee is stronger than bare best-effort, and that is a *consequence of C1*, not a
 separate mechanism.** The chain, stated so no issue spec re-derives it:
 
-1. Registration is **level-triggered** (D1): *notify when this becomes true, or immediately if it
+1. Registration is **level-triggered** (C1): *notify when this becomes true, or immediately if it
    already is.* So **re-registration recovers** — it is not a replay of a missed edge, it is a
    fresh evaluation of the condition.
 2. A crash loses the event → the watcher stays parked.
-3. **The sweep (D3) expires the entry and delivers `expired`** → the watcher learns that it stopped
+3. **The sweep (C3) expires the entry and delivers `expired`** → the watcher learns that it stopped
    being watched.
 4. The watcher may re-register → and because registration is level-triggered, it **fires
    immediately** if the condition now holds.
+
+**Step 1 is conditional, and step 4 is what it pays for — say so rather than inheriting it
+silently.** *(Noted 2026-08-23, when C1's edge-versus-level defect was folded; nobody raised this as
+its own finding, but it follows directly.)* The chain above assumes C1's guarantee holds **for the
+source being watched**. It does, unconditionally, for **task** watches — a terminal status is a level
+predicate. For **resource `updated`** watches it holds **only if the versioned baseline lands**
+(C1's unresolved half). Under the pre-committed fallback, an edge watch that re-registers after a
+crash does **not** fire immediately for the update it missed; it waits for the *next* one, which may
+never come. **So under the fallback, loss stays bounded — the sweep still expires and still
+announces — but it stops being *recoverable* for edge sources.** Bounded and self-announcing is the
+claim either way; *recoverable by re-registration* is the part that depends on C1.
 
 **The honest claim, and it is what this document asserts: loss is not prevented. Loss is bounded by
 the TTL, and it is self-announcing.** Any reading that the registry + matcher + addressed delivery
@@ -1122,7 +1237,7 @@ entries:
 | **Q3** — does anything promise ordering or exclusion? | **CLOSED 2026-08-23 by derivation** — the epic promises **nothing** on the durable path. The rejected option is out of scope by two boundaries the owner already set, so it was not a fork | Derived |
 | **Q4** — which layer does role materialization belong on? | **Deliberately deferred** — decide with real code in front of you. Recorded so a second issue does not re-open it from scratch | Later, with code |
 | **Q5** — does `pending feedback` belong in this epic? | **CLOSED 2026-08-23 — both halves.** Needed (settled by run, §3); rides inside, as issue 5 | Run + coordinator |
-| **Q6** — what is a watch's own lifetime? | **CLOSED by decision D3** — a TTL whose expiry delivers | Coordinator |
+| **Q6** — what is a watch's own lifetime? | **CLOSED** — answered by constraint **C3**: a TTL whose expiry *delivers*, fired by a periodic sweep | Coordinator |
 | **Q6b** — do watch and `pending feedback` collide? | **WITHDRAWN** — a consequence of the superseded task-primitive framing | Coordinator |
 
 **Two entries remain open, both deliberately deferred, and neither is a gate question.** **Q2** —
@@ -1313,11 +1428,11 @@ to sequence than one you point at.
 not a rework cost, which is what makes this the coordinator's call rather than the owner's.
 **Blocks nothing.**
 
-### ~~Q6. What is a watch's own lifetime?~~ — **CLOSED by decision D3**
+### ~~Q6. What is a watch's own lifetime?~~ — **CLOSED, answered by constraint C3**
 
 **Raised by the owner when they proposed the seam; closed by the coordinator on 2026-08-23 (EM
 posture — an engineering call, reversible by the owner).** Kept here with its answer so an issue-6
-spec does not reopen it. The decision itself and its reasoning live in §4's issue-6 decisions (D3).
+spec does not reopen it. The answer and its reasoning live in §4's issue-6 constraints (**C3**).
 
 **The question was two halves.** *Who clears a watch when the watcher dies?* — the watcher is by
 definition a session that is not running, and `livenessOf` cannot be that mechanism (theme 10: it
@@ -1326,7 +1441,7 @@ happens when the row never settles?* — stated plainly rather than as an edge c
 never reaches a terminal state is the ordinary shape of abandoned work**, so a registry with no
 lifetime rule **leaks by default**, not exceptionally.
 
-**The answer (D3, as revised 2026-08-23): a TTL on the entry, expiry *delivers* an outcome, and a
+**The answer (C3, as revised 2026-08-23): a TTL on the entry, expiry *delivers* an outcome, and a
 periodic sweep is what fires it.** One-off plus unsubscribe-on-fire self-cleans the common case, so
 the only leak is the never-fires case — which the TTL bounds. On expiry the watcher receives an
 `expired` outcome rather than silence, which turns a leak into a signal a live watcher can act on.
@@ -1363,7 +1478,7 @@ either was specced.
 primitive, registering interest in a board row. Under the owner's redefinition watch is a general
 notification primitive and **touches no board internals at all**: the board only **emits**, which
 it already does (`task-change`, `get-or-create.ts:29-30`), and the matcher and the registry live in
-`engine` (D4). Nothing in issue 6 reads or changes `countWaitable`, `boardQuiescence`, or what a
+`engine` (C4). Nothing in issue 6 reads or changes `countWaitable`, `boardQuiescence`, or what a
 drain waits for.
 
 **Consequence: issue 5 is free-standing again**, for spec purposes as well as merge order (theme
@@ -1569,7 +1684,9 @@ on its own terms (§5 Q5).
   also binds issue 6's spec to **reuse `reactTo`'s change-payload shape and predicate idiom**.
 
   **(4) Four engineering calls decided by the coordinator (EM posture), reversible by the owner —
-  §4's issue-6 decisions.** **D1:** the primitive is *"notify me when this becomes true, or
+  §4's issue-6 decisions.**
+  *(**Relabelled 2026-08-23:** D1–D4 are now **C1–C4**, constraints issue 6's spec must satisfy, with recommended resolutions — not decided mechanism. D1 and D2 were also revised on their merits; see the last entry.)*
+  **D1:** the primitive is *"notify me when this becomes true, or
   immediately if it already is"*, not *"notify me on the next matching event"* — both board
   backings `emit(...)` **after** the committed write, outside the lock
   (`resource-backed.ts:450-474`, `sequencer-backed.ts:264-338`), so the register/settle race
@@ -1586,6 +1703,8 @@ on its own terms (§5 Q5).
   message, which makes issue 6 depend on issue 4.)*
   **D4:** the watch manager lives in **`engine`**, not `orchestration`, which becomes a consumer
   forwarding its existing event — this is also what keeps the board single-writer (theme 11).
+  *(D1 superseded in part 2026-08-23: "already true" is undefined for the edge source. D2 revised
+  2026-08-23: the named keys were under-qualified.)*
 
   **(5) Consequences applied across the document.** **§5 Q6 is CLOSED by D3** and kept with its
   answer. **§5 Q6b is WITHDRAWN** and kept with its withdrawal — the issue-5 collision was a
@@ -1610,6 +1729,8 @@ on its own terms (§5 Q5).
   gate question.** *(Folded **outside** the epic PR's two-round budget on the same justification as
   the previous two folds — the gate must be honest about what it approves. **No converged material
   reopened, no bot findings folded, D1–D4 and theme 15 untouched.** Nothing filed in Linear.)*
+  *(Superseded 2026-08-23: theme 15 was subsequently corrected, and D1–D4 revised and relabelled
+  C1–C4.)*
 
   **(1) §5 Q1 — DECIDED by the owner, 2026-08-23.** Verbatim: *"Yes, inside world verb/asymmetric
   door is right."* **A sibling resolves `flow.actions`** — it *is* a caller. **A workstream gets a
@@ -1747,3 +1868,85 @@ on its own terms (§5 Q5).
   materialization layer — deferred to real code). Neither is a gate question. **Not zero**, and the
   ledger says so plainly. The epic is **not approved**; the objective gate remains the only thing
   outstanding.
+
+- **Correction fold — two more codex P1s, both on the watch constraints; and D1–D4 relabelled as
+  constraints rather than decided mechanism.** *(Folded **outside** the epic PR's two-round budget
+  on the standing justification. **No other bot findings folded, no converged material reopened.**
+  Nothing filed in Linear. The corrections landed **first**; the relabel came after, so the text is
+  correct independently of its status label.)*
+
+  **(1) P1-c — the match key was under-qualified. A correctness bug, and the two wrong keys were the
+  coordinator's own.** *What C2 said:* *"exact match on an identity key (`taskId`, `storageKey`)"*.
+  *Why both are wrong, verified during this fold:* `createExecutionContext.ts` builds **three**
+  registries — `makeResourceChangeHandler("user" | "session" | "org")` at `:2044`, installed at
+  `:2137`, `:2152`, `:2170` — and each may emit **the same `storageKey` path**; and a
+  `TaskChangeEvent` carries `collectionId` **and** `taskId` (`change-event.ts:37-44`), so identity
+  is the **pair**. *The consequence:* matching globally on a bare id can **consume another scope's
+  or collection's subscription and relay the wrong payload** — and, importantly, **this happens
+  inside the same-owner invariant**, since the three scopes all sit within one owner. §1's "never
+  from one user to another" is blind to it. *Revised:* the match key is the **complete coordinate**
+  — scope kind + owner identity + collection/namespace + id — carried on **both** the registration
+  and the emitted event, never a bare id. *Plus a BP-031 clause, without which the qualification is
+  decorative:* the match key is a **routing decision**, so **the scope is server-derived from the
+  registrant's execution context, never asserted by the registrant** — the same rule theme 9 applies
+  to the sender's identity and theme 16 to the recipient's `flowKind`.
+
+  **(2) P1-d — C1 conflated edge and level. The sharpest of the four, and a category error rather
+  than a detail.** Immediate-or-attach **cannot be implemented for the second named source from a
+  current-state read alone**: a task's terminal status is a **level** predicate (readable any time,
+  immediate satisfaction well-defined), but a resource `updated` is an **edge** event — *every*
+  resource has been updated at some point, so a current-state read gives no baseline and the adapter
+  cannot tell whether the update already happened or whether it should await the next one.
+  *Recommended resolution — a **versioned baseline**:* registration records the version it observed
+  for the key, and "updated" means the version **advanced past that baseline**, which makes the edge
+  level-comparable and keeps C1 uniform. *Why it is expected to be cheap, checked before being
+  recommended:* resources are **already version-checked per key** (FIX-992) —
+  `resource-registry.ts:480-491`, `mutateResourceKey` *"seeds a per-key container from the version
+  this context observed"* (D10), and `:523-527`, `deleteResourceKey` *"Carries the version this
+  context observed…"* (D7). **The per-key version exists.** *What is **not** verified, and issue 6's
+  spec must confirm it first:* whether that version is **readable on a public path at registration
+  time**. If it is, this is a read rather than a redesign; if not, it touches a shipped surface.
+  *Pre-committed fallback, recorded now so the choice is already made:* restrict
+  immediate-satisfaction to **level predicates**; edge watches stay purely edge-triggered and carry
+  the residual registration race, **stated rather than hidden**. *Honest cost either way:* unless the
+  versioned baseline lands, **C1's guarantee is source-dependent** — and that is not papered over
+  with "one uniform primitive".
+
+  **(3) A consequence nobody filed, followed through anyway.** The durability disposition's recovery
+  chain rests on step 1, *registration is level-triggered*. Under the fallback, an edge watch that
+  re-registers after a crash does **not** fire for the update it missed — it waits for the next one,
+  which may never come. So the disposition now separates the two claims: **bounded and
+  self-announcing holds either way; *recoverable by re-registration* holds only where C1's guarantee
+  does.** Theme 15 gained a second caveat for the same reason — `reactTo` binds statically and names
+  its scope in one declaration, so borrowing the sibling's simplicity is how C2's mis-delivery gets
+  designed in.
+
+  **(4) D1–D4 relabelled to C1–C4: constraints issue 6's spec must satisfy, with the coordinator's
+  recommended resolution and its evidence.** *(Coordinator's call, EM. **No content dropped** — every
+  word of the reasoning, the evidence, the `file:line` citations and the rejected alternatives is
+  retained. The **status** changed, not the substance.)* *The reasoning, and it is about the
+  coordinator rather than the reviewers:* four valid P1s across two rounds all landed on D1–D4, and
+  the non-convergence signature was checked for first — these are **four distinct defects** (the
+  TTL's trigger, the post-commit crash window, the key's qualification, edge-versus-level), **not one
+  finding reshaped four times**, so the reviewers are converging on real gaps and the stop-pushing
+  rule does not apply. The fault is upstream: **issue 6's semantics were specified too tightly, too
+  early, at epic altitude.** These are implementation-level correctness calls; labelled "decided",
+  they presented an epic-spec as though it had settled a primitive's correctness contract, and
+  reviewers correctly held it to that standard. **An epic-spec carries direction; a primitive's
+  correctness contract belongs in issue 6's own spec.** *Stated plainly in the document so the
+  relabel is not read as a shield:* it does **not** resolve the questions, does **not** stop review
+  rounds, and is not intended to — it makes the document truthful about what is settled versus what
+  issue 6 still owes. **It moves no gate, drops nothing, and files nothing.**
+
+  **(5) Reconciled (tenet 5).** The constraint block's heading and all four labels, §4's index row 6,
+  the sufficiency note, the durability disposition, theme 11, theme 13 (including a note that the
+  issue 6 → issue 4 edge follows from C3's *recommended* resolution and goes away if issue 6's spec
+  satisfies C3 otherwise), theme 15, §5's ledger row for Q6, and Q6's closed record. Earlier
+  "decided"/"D1–D4" wording inside dated log entries carries relabel and superseded markers rather
+  than rewrites.
+
+  **Open-question count: unchanged at two** — **Q2** (the name) and **Q4** (the role materialization
+  layer), both deliberately deferred, neither a gate question. **This fold adds none:** C1's
+  unresolved half and the public-readability check are **constraints on issue 6's spec**, not epic
+  cross-cutting questions, and they are recorded where issue 6 will read them. The epic is **not
+  approved**; the objective gate remains the only thing outstanding.
