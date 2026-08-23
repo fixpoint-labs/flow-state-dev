@@ -91,7 +91,7 @@ Exits when one of the following is true on a worker's `checkBoard` iteration:
 - **Drained** — no `pending`, `in_progress`, or `awaiting_review` tasks remain.
 - **Blocked** — no task is `in_progress` or `awaiting_review`, and no `pending` task has all of its `deps` `completed`. Nothing is claimable, and no in-flight work is left to change the dep graph.
 
-Both counts skip tasks sitting in `awaiting_review` when the board sets [`onReview: "exit"`](#waiting-on-a-person-onreview).
+Both checks ignore tasks sitting in `awaiting_review` when the board sets [`onReview: "exit"`](#waiting-on-a-person-onreview).
 
 The final `task-board-meta` item carries a `terminationReason` field saying which case it was:
 
@@ -101,7 +101,7 @@ The final `task-board-meta` item carries a `terminationReason` field saying whic
 - `"handed-off"` — every task still outstanding is running in a Workstream. The board finished its own part and the work continues in the background, so this is a success, not a stall. Only a board with a worker declared `dispatch: { mode: "detached" }` reports it, and `counts.in_progress` is how many are still running.
 - `"parked-for-review"` — the board stopped because the work it has left is waiting on a person. Like `"handed-off"`, it is neither a success nor a failure: nothing went wrong, and nothing is finished. Only a board with [`onReview: "exit"`](#waiting-on-a-person-onreview) reports it. `counts.awaiting_review` is how many tasks are parked.
 
-Order matters when a board ends up in more than one of these states at once. A task that `errored`, was `cancelled`, or was moved to `blocked` reports `"blocked-by-failures"` even if another task is parked for review — something is stuck for a reason a person waiting on a review will not fix, and that is the more useful thing to know. A refused retry outranks both.
+Order matters when a board ends up in more than one of these states at once. `"blocked-by-failures"` wins over `"parked-for-review"` whenever something is stuck for a reason answering a review would not resolve: a task that `errored`, was `cancelled`, or was moved to `blocked`, and also a `pending` task whose `deps` include something that will never complete. A task waiting on the parked task itself is not that case, and the board still reports `"parked-for-review"`. A refused retry outranks all of them.
 
 A delegation board's `runBoard` tool reports a `status` of its own, and the two count different things. `terminationReason` asks whether every task succeeded. `runBoard`'s `status` asks whether any task is still outstanding, so a board whose only problem is one errored task reads `"blocked-by-failures"` here and `"drained"` there. See [Delegation](../skills/delegation.md) for the coordinator's side.
 
@@ -138,7 +138,7 @@ Exits only when no `pending`, `in_progress`, or `awaiting_review` tasks remain. 
 
 A board in this mode never decides on its own that it is stuck. If a dep will never resolve, each worker keeps cycling until it hits `maxIterations` (default `10000`, counted per worker). Pick the mode when the board really is supposed to wait.
 
-A task parked for review keeps this mode's loop alive, and [`onReview: "exit"`](#waiting-on-a-person-onreview) cannot change that — a board that sets both is refused when you build it. The reason is worth knowing before you reach for the combination: this mode exits only on a fully drained board, so a `pending` task that depends on the parked one holds the drain open no matter how the parked task itself is counted.
+A task parked for review keeps this mode's loop alive, and [`onReview: "exit"`](#waiting-on-a-person-onreview) cannot change that. A board that sets both is refused when you build it: this mode exits only on a fully drained board, so a `pending` task that depends on the parked one holds the drain open no matter how the parked task itself is counted.
 
 ### `"wait"`
 
@@ -176,17 +176,20 @@ const board = taskBoard({
 });
 ```
 
-With that set, a task in `awaiting_review` is not counted as work the drain waits on. Once parked tasks are the only thing left, the drain finishes, the request that started it returns, and the completion item says `terminationReason: "parked-for-review"`. The task itself is untouched — parked, on the board, and durable.
+With that set, a task in `awaiting_review` is not counted as work the drain waits on. Once parked tasks are the only thing left, the drain finishes, the request that started it returns, and the completion item says `terminationReason: "parked-for-review"`. The task itself is untouched: parked, on the board, and durable.
 
 ### Picking it back up
 
-There is no new API for the return trip. A resume moves the task back to `pending`:
+A resume moves the task back to `pending`. `tasks` is the board's task list, which any block reaches through the board's capability. See [Commanding the board with its capability](#commanding-the-board-with-its-capability):
 
 ```ts
+const tasks = await ctx.cap.reviews.tasks();
 await tasks.resumeFromReview("draft-42", "approved, ship it");
 ```
 
-**A resume re-queues the task. It does not start anything.** Nothing is watching the board on your behalf, so a resumed task sits in `pending` until something drains the board again — a later turn from the user, a scheduled action, a background job. If you resume a task and nothing happens, this is why. Run the drain:
+The second argument is feedback for whoever picks the task up. It reaches the worker as `input.feedback` on the next attempt, which is how a worker tells "nobody has looked at this yet" from "here is the answer".
+
+**A resume re-queues the task. It does not start anything.** Nothing is watching the board on your behalf, so a resumed task sits in `pending` until something drains the board again: a later turn from the user, a scheduled action, or a background job. If you resume a task and nothing happens, this is why. Run the drain:
 
 ```ts
 // Later, in a new request, over the same durable collection:
@@ -197,17 +200,15 @@ Whichever drain gets there first claims the task and runs it to completion, exac
 
 ### What the mode requires
 
-Every requirement below is checked when you build the board. Get one wrong and `taskBoard()` throws with the specific problem and the change to make, rather than handing you a board that half-works:
+Every requirement below is checked when you build the board. Get one wrong and `taskBoard()` throws, naming the problem and the change to make:
 
 - **A durable collection** — one built with `defineTaskCollection`. The parked task has to outlive the drain that let go of it, or there is nothing for a later drain to come back to.
-- **The default `onIdle`.** `"complete"` and `"wait"` are both refused, for different reasons; the `onIdle` sections above cover each.
+- **The default `onIdle`.** Both other modes are refused. `"complete"` exits only on a fully drained board, so a `pending` task that depends on the parked one would hold the drain open anyway: the option would work while the parked task is a leaf and quietly stop the day it gained a dependent. `"wait"` answers termination from your `shouldExit` predicate and never reads the counts `onReview` changes, so the option would do nothing at all and the predicate is where to put the rule instead.
 - **An explicit `id` on every entry in `initialTasks`.** This mode makes a second drain the normal case, and each drain re-runs the seed step. Seed entries with ids are matched against what is already on the board and skipped; an entry without one is added again every time, so the board grows a duplicate task on every pass.
 
 ### What it does not change
 
-The task lifecycle. `awaitReview` and `resumeFromReview` do the same thing under either setting, and no new status is involved — a parked task is in `awaiting_review` either way, and `onReview` only decides whether the drain counts it.
-
-A board that hands work to a Workstream also does not need this. Detached dispatch is what releases the launching request there, park or no park; see [Work that outlives the turn](/guides/background-work#workstreams-a-job-with-its-own-session). `onReview` is for the board that drains its work inside the request, where a parked task holds that request open until someone answers.
+The task lifecycle is the same under either setting. A parked task sits in `awaiting_review`, `awaitReview` and `resumeFromReview` move it in and out, and `onReview` decides only whether the drain counts it while it sits there.
 
 The setting is board-wide. A board cannot park one task as "release the request" and another as "hold it".
 

@@ -224,12 +224,25 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
  * completed, parked and therefore answerable, or handed to a Workstream) and
  * the loop closes over the rows those release.
  *
- * **Why here and not in the exit classifier.** `boardQuiescence` runs on every
- * idle-wait fan-out event — the hottest read the board has — and a dependency
- * walk there was rejected outright when this mode was designed. This block runs
- * once, after the pool has finished, and the board's own
- * `createCascadeSkipDependents` already does a transitive dep walk at exactly
- * this position for exactly that reason.
+ * **The condition is causal, not positional, and that distinction is the whole
+ * design.** "Is anything here stuck?" is the cheap question and it is the wrong
+ * one: a `pending` row that depends on the parked row is stuck by that measure,
+ * and answering the review releases it. Reporting a stall there would be wrong
+ * on the *expected* shape rather than a corner — §6 decision 3 refuses
+ * `onIdle: "complete"` precisely because a parked task's dependent is the
+ * normal case. So the question asked is "would resuming the parked work unstick
+ * this?", and only a row the answer cannot reach is reported.
+ *
+ * **Two routes were available and this takes the more expensive one.**
+ * Establishing downstream-ness costs this closure; declining to establish it
+ * and keeping `blocked-by-failures` whenever causality is unproven costs
+ * nothing but misreports every dependent of a parked row — the common shape.
+ * The cost objection that ruled a dependency walk out once does not transfer:
+ * §6 decision 3 rejected one in the **exit predicate**, which `boardQuiescence`
+ * evaluates on every idle-wait fan-out event, the hottest read the board has.
+ * This runs once, after the pool has finished, at the same position where the
+ * board's own `createCascadeSkipDependents` already walks the graph
+ * transitively. Same walk, three orders of magnitude fewer evaluations.
  */
 function hasRowGoingNowhere(
   all: readonly Task[],
