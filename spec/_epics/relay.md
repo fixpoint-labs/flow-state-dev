@@ -172,16 +172,44 @@ saying so here is cheaper than a consumer discovering it.
   no open decision behind it. The objective's "two top-level sessions keep each other informed"
   means two sessions with the **same owner**, always.
 
-  Two consequences, both of which make the epic *smaller*:
+  One consequence holds: **`UserBindingMismatchError` is a guard against a bug, not a boundary the
+  design leans on.** `packages/engine/src/context/createExecutionContext.ts:631` throws when the
+  envelope's `userId` differs from the session record's owner, and the POC ran it (§3). A
+  correctly-built sender never exercises that path — the principal is the same on both ends by
+  construction. It stays as a backstop for an incorrectly-built one.
 
-  - **`UserBindingMismatchError` is a guard against a bug, not a boundary the design leans on.**
-    `packages/engine/src/context/createExecutionContext.ts:631` throws when the envelope's
-    `userId` differs from the session record's owner, and the POC ran it (§3). A correctly-built
-    sender never exercises that path — the principal is the same on both ends by construction. It
-    stays as a backstop for an incorrectly-built one.
-  - **The epic does not have to solve cross-user authorization at all.** It was never in the five
-    issues; it is now a **stated non-goal** rather than an unexamined gap. No issue owes a design
-    for it, and no reviewer should read its absence as an omission.
+  **But the second consequence this document used to draw does NOT hold, and removing it is a
+  security correction.** *(Corrected 2026-08-23. It read: "the epic does not have to solve
+  cross-user authorization at all… a stated non-goal." **That conclusion was too strong and it was
+  the coordinator's** — `:631` was verified as a `userId` binding check and the conclusion
+  over-generalised from it to authorization as a whole.)*
+
+  **Org is a second axis, inside one owner.** `createExecutionContext.ts:656-660`:
+
+  ```ts
+  const sessionOrgId = sessionRecord.orgId;
+  if (optionsOrgId !== undefined && optionsOrgId !== sessionOrgId) {
+    throw new OrgBindingMismatchError(sessionId, sessionOrgId ?? "<unbound>", optionsOrgId);
+  }
+  const resolvedOrgId = sessionOrgId;   // :661
+  ```
+
+  An `optionsOrgId` of **`undefined`** — an unbound sender that simply omits `orgId` — **fires no
+  check at all**, and `resolvedOrgId` then becomes **the recipient session's org**. The sender
+  executes against the recipient's org resources. The file states the gap itself: *"only a
+  *differing* value is rejected"* (`:725-728`) and *"Org is the one identity field whose check
+  permits a difference"* (`:733-734`).
+
+  **So the invariant is restated, not deleted.** Same-owner removes the **cross-user** question and
+  nothing more. **Relay authorization is defined against the full server-derived identity tuple —
+  including equality of bound-versus-unbound *org* state — not "same user, therefore fine."**
+
+  **The useful generalisation, said once: the same-owner invariant was carrying more weight than it
+  can bear, and two independent findings show it.** This one, and **C2**'s scope-key defect — a
+  mis-delivery between a user-, session- and org-scoped registry that is **entirely inside one
+  owner**. An owner-level invariant is structurally blind to any distinction *below* the owner, and
+  both org binding and resource scope are exactly that. Any future argument of the form *"it is
+  same-owner, therefore safe"* should be read against these two.
 
 **Named risk: arbitration is in-process only, and this epic does not fix it.** The host skips
 arbitration entirely when an external dispatcher is configured, deferring it to the durable
@@ -284,10 +312,39 @@ can cite one.
 5. **The reply arrives as a new inbound message; nothing suspends across a human's answer.** A
    workstream that asks does not hold a suspension open. It ends its request carrying its
    question, and the answer re-enters as fresh work. That routes around FIX-765 (suspension inside
-   detached durable execution) entirely for the workstream case. A **top-level** session may still
-   block, using the existing durable suspend/resume. **One author-facing verb, two
-   implementations** — documented as one verb rather than shipped as two. **Constrains issues 1
-   and 5**, and issue 5 is what makes the workstream half representable at all — settled by run,
+   detached durable execution) entirely for the workstream case.
+
+   **And it is now *uniform*: a top-level session does the same thing. There is no
+   returning-call variant.** *(Corrected 2026-08-23 — **a coordinator over-promise removed**, on
+   the owner's own model. The earlier text read: "a top-level session may still block, using the
+   existing durable suspend/resume… one author-facing verb, two implementations.")*
+
+   **Why it cannot work.** A correlated relay reply arrives through `dispatch` as a **fresh
+   request**. Resuming a suspension is `continueRequest` on the **same** request id, and that
+   contract is locked: the resume endpoint *"re-invokes the action on the **same** request id
+   (FIX-811)… no new linked request is spawned"*
+   ([`execution-and-errors.md:397-407`](../../docs/architecture/execution-and-errors.md)), and it
+   needs that request's suspension identity and resume payload. **A per-send correlation ID cannot
+   wake `ctx.suspend()`.** This is the *same* locked contract already cited against the workstream
+   half; it bites the top-level half identically.
+
+   **The owner's model already said so, and is the authority here:** *"reply arrives as a new
+   inbound message… This will require tasks being able to suspend across requests. **NOT SUSPEND**
+   but be put into a waiting response type of status."* That waiting status is **issue 5's park
+   mode**. The blocking-call form for top-level sessions was the coordinator's elaboration beyond
+   what the owner described, and it is deleted rather than designed around.
+
+   **So wait-for-response is uniformly send-and-park-plus-a-later-response-handler**, for
+   workstreams and top-level sessions alike. **Still two send modes** — fire-and-forget and
+   wait-for-response — so the owner's "ship two, not three" is untouched; **this removes a
+   *variant*, not a mode.**
+
+   **And it makes the verb *more* uniform, which serves the owner's original constraint better than
+   the old text did.** The constraint is that the agent-facing tool and the programmatic sender are
+   the **same verb**. An earlier retraction conceded that held for *sending* but not for
+   *receiving*; **receiving is now uniform too**, so the concession is withdrawn.
+
+   **Constrains issues 1 and 5**, and issue 5 is what makes the workstream half representable at all — settled by run,
    not assumed: the board's existing park holds its launching request open (§3's settlement). Because the
    answer is a *new* message rather than the sender's handle resolving, something has to
    correlate it with the question that was asked — and it must be **per-send**, not per-request,
@@ -297,8 +354,15 @@ can cite one.
 6. **Two send modes, not three — and acceptance is the acknowledgement on both.** *(Amended by
    the owner. Still two modes; what changed is that the receipt is not a third one.)*
    Fire-and-forget and wait-for-response are genuinely different intents and both are needed.
-   **Every send awaits acceptance before returning.** Fire-and-forget returns there;
-   wait-for-response carries on and waits for the answer (theme 14).
+   **Every send awaits acceptance before returning.** Fire-and-forget returns there and is done.
+
+   **Wait-for-response also returns there — it does *not* block.** *(Corrected 2026-08-23; the
+   earlier text said it "carries on and waits for the answer", which described a returning call.)*
+   It **sends, parks, and the answer arrives later as a fresh inbound message handled by a response
+   handler** — uniformly, for workstreams and top-level sessions alike (theme 5). The sender-side
+   answer timeout (theme 14) bounds **how long the park stays open**, not how long a call blocks.
+   **This is still two modes**, and the difference between them is whether an answer is expected at
+   all — not whether the verb returns.
 
    **Wait-for-response requires a correlation identifier, and it must be *per-send*.**
    *(Epic review round 2 raised the gap; round 11 corrected what fills it.)* The mode is specified;
@@ -405,7 +469,18 @@ can cite one.
    **not** the correlation identifier wait-for-response needs (theme 6, and §4's *"correlation is
    per-send"* requirement). Neither value is caller-supplied: both
    read off the execution context
-   (`ctx.session.identity`, §3's ctx-gap list). Since sender and recipient are the same owner by
+   (`ctx.session.identity`, §3's ctx-gap list).
+
+   **Authorization is defined against the full identity tuple, not against the owner alone.**
+   *(Added 2026-08-23 — a security correction, §1.)* **Org is a second axis inside one owner:**
+   `createExecutionContext.ts:656-660` rejects only a *differing* `orgId`, so an **unbound sender
+   that omits it fires no check** and `resolvedOrgId` becomes **the recipient's** org (`:661`) —
+   the sender then runs against the recipient's org resources. The file says so itself (`:725-728`,
+   `:733-734`: *"Org is the one identity field whose check permits a difference"*). So a relay
+   dispatch is authorized on the **server-derived tuple including bound-versus-unbound org
+   equality**, and "same user, therefore fine" is not the test. **Constrains issues 1, 3 and 4.**
+
+   Since sender and recipient are the same owner by
    construction (§1), the address carries no user coordinate and no cross-user authorization
    question rides on it.
 
@@ -544,7 +619,9 @@ can cite one.
     reports **`completed`**. At 30 minutes that is a half-hour phantom. A longer wrong number is
     still a wrong number — the budget has to be the *deployment's* call, including "don't expire".
 
-    **The sender-side answer timeout: default 30 minutes, explicitly configurable.**
+    **The sender-side answer timeout: default 30 minutes, explicitly configurable.** *(It bounds
+    **how long the park stays open**, not how long a call blocks — wait-for-response does not block;
+    theme 5, theme 6, corrected 2026-08-23.)*
     Wait-for-response takes its own timeout, generous on purpose. What actually detects a dead
     recipient is the **lease** — "if the run dies at any point … the lease lapses and the owner
     recovers the row … no dispatch milestone improves on it"
@@ -861,10 +938,10 @@ cell is empty by design, not by omission.
 
 | # | Proposed issue | What it delivers | Depends on | Linear | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|---|---|---|
-| 1 | The address, the send verb, and what a sender may legally address | the recipient address as a **`sessionId`** on the envelope, a **server-derived sender identity** (its `sessionId`, and optionally the sending `requestId` **as provenance only** — it cannot correlate), the send verb, both send modes **and the *per-send* correlation ID wait-for-response requires**, echoed by the reply (theme 6; this section's *"correlation is per-send"* requirement), **acceptance as the acknowledgement on both** (theme 6) and the **sender-side answer timeout, default 30 min** (theme 14), **the in-process admission budget** (theme 14, §3 Q4 — *moved here from issue 2*: the receipt and the budget ship together or the send API acks deliveries the arbiter can still silently drop, and theme 13 lands this issue first; **configurability alone is the enabling parameter, not the remedy** — *recommended:* relay dispatches use **unbounded** admission and the sender-side answer timeout bounds the wait; *alternative recorded:* propagate admission expiry back to the sender), the self-addressed refusal, and the agent-facing tool — core + engine + tools. **The door is decided (theme 16, owner): both of them** — a sibling resolves `flow.actions`; a workstream resolves a **declared `relay?` group** reusing `flow.workstream`'s terminal resolution. **Acceptance criteria — two.** (1) *Promoted from an implementer note:* the recipient's **`flowKind` is looked up from the session record, never asserted by the sender**. (2) *Strengthened 2026-08-23:* **relay dispatches are unbounded-admission, or admission expiry reaches the sender** — the earlier form ("do not ship acking on `accepted` while the budget is unconfigurable") is **insufficient**, because a configurable budget set to any finite value reproduces the accepted-then-silently-dropped shape §3's Q4 demonstrated | — | not filed | spec | — | — | Proposed |
+| 1 | The address, the send verb, and what a sender may legally address | the recipient address as a **`sessionId`** on the envelope, a **server-derived sender identity** (its `sessionId`, and optionally the sending `requestId` **as provenance only** — it cannot correlate), the send verb, **both send modes — neither of which blocks** (wait-for-response **sends, parks, and handles the answer as a fresh inbound message**, uniformly for workstreams and top-level sessions; theme 5, corrected 2026-08-23) — **and the *per-send* correlation ID wait-for-response requires**, echoed by the reply (theme 6; this section's *"correlation is per-send"* requirement), **acceptance as the acknowledgement on both** (theme 6) and the **sender-side answer timeout, default 30 min** — bounding **how long the park stays open** (theme 14) — **the in-process admission budget** (theme 14, §3 Q4 — *moved here from issue 2*: the receipt and the budget ship together or the send API acks deliveries the arbiter can still silently drop, and theme 13 lands this issue first; **configurability alone is the enabling parameter, not the remedy** — *recommended:* relay dispatches use **unbounded** admission and the sender-side answer timeout bounds the wait; *alternative recorded:* propagate admission expiry back to the sender), the self-addressed refusal, and the agent-facing tool — core + engine + tools. **The door is decided (theme 16, owner): both of them** — a sibling resolves `flow.actions`; a workstream resolves a **declared `relay?` group** reusing `flow.workstream`'s terminal resolution. **Acceptance criteria — two.** (1) *Promoted from an implementer note:* the recipient's **`flowKind` is looked up from the session record, never asserted by the sender**. (2) *Strengthened 2026-08-23:* **relay dispatches are unbounded-admission, or admission expiry reaches the sender** — the earlier form ("do not ship acking on `accepted` while the budget is unconfigurable") is **insufficient**, because a configurable budget set to any finite value reproduces the accepted-then-silently-dropped shape §3's Q4 demonstrated | — | not filed | spec | — | — | Proposed |
 | 2 | Per-adapter delivery | in-process for a Node host; through the `FlowDispatcher` seam so a queue-backed deployment gets durability for free. **The admission budget is no longer here** — it moved to issue 1 (theme 14); issue 2 consumes whatever issue 1 lands rather than introducing it | 1 | not filed | spec | — | — | Proposed |
 | 3 | The sibling-spawn verb — **address supply for cross-session messaging** | an independent, self-managing session with its own flow kind and addressable key, resolving `flow.actions` like any other caller and talking back by message rather than `settleParentTask`. **In the set because messages cross sessions** (§1, owner): spawn mints the peer the send verb will address; without it, messaging only ever reaches sessions an outside-world caller happened to create. *(The earlier "same missing layer" / implementation-economy rationale, and the swap-out proposal it licensed, are retracted — §1.)* | 1 | not filed | spec | — | — | Proposed |
-| 4 | Cron: a schedule addresses a session and fires as a message | the schema field, the resolver, and the one dispatch envelope; absent address preserves today's behaviour exactly | 1 | not filed | spec | — | — | Proposed |
+| 4 | Cron: a schedule addresses a session and fires as a message | the schema field, the resolver, and the one dispatch envelope; absent address preserves today's behaviour exactly. **Open shape question, two options and no pick** *(recorded 2026-08-23)*: **can an addressed schedule target a session on a *different* flow?** `packages/scheduled/src/routes.ts:175-199` builds the envelope with the `flowKind` from the **URL**, resolving the schedule binding from *that* flow — while issue 1's promoted criterion requires the **recipient session's** `flowKind`, looked up from its record. For a cross-flow target both cannot hold. *Options:* **(a)** require schedule targets to be same-flow, or **(b)** define an explicit relay action on the recipient that the schedule addresses. **Pairs with the already-recorded "cron has no sender identity" gap** — same seam, both halves now visible: a schedule has no session of its own to be *from*, and no established flow to be *to* | 1 | not filed | spec | — | — | Proposed |
 | 5 | **An exit/park mode for `awaiting_review`** *(**rescoped 2026-08-23** — it was "a `pending feedback` task status"; see below)* | *"parked awaiting external input; **the request may end**; a later request resumes this task."* **Necessity settled by run, not asserted** (§3's settlement, REFUTED): today's `awaitReview` parks and `resumeFromReview` resumes, but `awaiting_review` is excluded from every board-exit path, so the launching request stays open for the whole park. **The gap to build — and it is the whole issue:** an exit/park mode that does not hold the drain's own request open — either an exit path letting `boardQuiescence` stop returning "continue" while a task sits parked, or routing review-parking through the same `runsElsewhere` exclusion detached dispatch already gets for `in_progress`. **Not a new status:** `awaitReview` already parks durably and `resumeFromReview` already persists feedback and resumes, so the sole missing behaviour is the exit predicate — which a new status does not fix by itself, while duplicating the existing lifecycle, transitions and exhaustiveness surface. **The exit mode still needs a name; `pending feedback` is moot** for a status that no longer exists — folded into §5 Q2's naming bucket, not settled here. **No collision with issue 6** — *corrected;* one was recorded as §5 Q6b and is withdrawn, because watch touches no board internals. Issue 5 owns this surface alone and depends on nothing | — | not filed | spec | — | — | Proposed |
 | 6 | **Watch — a general one-off notification primitive** *(owner-proposed 2026-08-21; **redefined by the owner 2026-08-23** — it is **not** a task primitive)* | a durable **subscription registry**, an **event matcher**, and **delivery as an addressed relay message**. An entry says *when this event fires holding this value, call this flow for this session id*; a **relay action matching that event** must be defined on the recipient to receive the payload; the subscription is **one-off** and unsubscribes on fire. **The task board is its first consumer, not its subject** — a completing task forwards the `task-change` event it already emits; an updated resource value is the second named source. **Three of its four parts already ship** (theme 15: watch is `reactTo`'s async, cross-session, runtime-registered sibling); what is new is the registry, a matcher running outside the mutating turn, and addressed delivery — **plus the expiry sweep, which is required, not optional**. **Six constraints its spec must satisfy** *(C1–C4 relabelled 2026-08-23 from "decided" — a primitive's correctness contract belongs in issue 6's spec, not at epic altitude; recommended resolutions and evidence unchanged. **C5 and C6 are recorded unresolved**, with options and no answer)* — **C1** registration must not lose an already-true condition *(recommended: satisfied-or-attach; **unresolved half** — "already true" is undefined for the edge source `resource updated`, so a versioned baseline is recommended, with level-only as the pre-committed fallback)* · **C2** the match key must be the **complete coordinate** (scope + owner + collection/namespace + id), never a bare id, with the scope **server-derived** per BP-031 · **C3** a bounded lifetime that something actually fires *(recommended: TTL + a periodic sweep that is itself a scheduled message — **this is why issue 6 depends on issue 4**)* · **C4** the manager must sit where both sources reach it *(recommended: `engine`)* · **C5 (UNRESOLVED)** the sweep has **no framework-owned trigger** — `@flow-state-dev/scheduled` runs no loop (`scheduled/src/index.ts:8-13`), so a host-provisioned ticker is a **deployment requirement**; options recorded, not picked · **C6 (UNRESOLVED)** the `expired` announcement travels the **same best-effort path it backstops**, so it can itself be lost; options recorded, not picked. **Delivery is explicitly best-effort:** `emit` runs after the durable write, so a crash between them loses the event while the subscription survives. **Loss is never prevented**, and the bound on it is **conditional** — bounded if C5 is resolved, self-announcing if C6 is, recoverable by re-registration where C1's guarantee holds | **1, 4** | not filed | spec | — | — | **Proposed (owner)** |
 
@@ -967,8 +1044,8 @@ predicate idiom rather than inventing a second vocabulary for the same events.
 
 **Six constraints. C1–C4 were relabelled 2026-08-23 from "the four calls the coordinator has
 already decided" to constraints with a recommended resolution; C5 and C6 arrived the same day and
-are recorded here *unresolved, with options and no answer* — see "Why the coordinator stopped"
-below.** Nothing below lost a word: the reasoning, the evidence, the
+are recorded here *unresolved, with options and no answer* — see "Why implementation-level review
+findings are not resolved here" below.** Nothing below lost a word: the reasoning, the evidence, the
 `file:line` citations and the rejected alternatives are all as written. **What changed is the
 status, not the substance.**
 
@@ -1136,7 +1213,7 @@ stays single-writer.
 
 **C5 — the sweep needs a trigger the framework does not own. UNRESOLVED; recorded, not answered.**
 *(Folded 2026-08-23 from a chatgpt-codex P1. **The coordinator is not resolving this one** — see
-"Why the coordinator stopped" below.)*
+"Why implementation-level review findings are not resolved here" below.)*
 
 **The fact, verified.** `@flow-state-dev/scheduled` runs **no loop**. Its own module doc
 (`packages/scheduled/src/index.ts:8-13`) is explicit:
@@ -1264,7 +1341,10 @@ this best-effort disposition *bounded*; without it, a lost event means a watcher
 nothing to tell it. **If the sweep is ever cut, this disposition is void** and the durability
 question re-opens as a real one.
 
-#### Why the coordinator stopped resolving watch's correctness contract here
+#### Why implementation-level review findings are not resolved here
+
+*(Written for issue 6, where the pattern first became visible; **widened on 2026-08-23 to the whole
+set** on the owner's standing instruction — see the end of this subsection.)*
 
 **A coordinator discipline note, recorded 2026-08-23. It is not a scope cut and not a gate change —
 watch stays in the set, unchanged in scope.**
@@ -1313,6 +1393,25 @@ they were folded normally.
 designing the mechanism that provides it?* The first is epic altitude and belongs here. The second
 needs code, and belongs in the issue's own spec. That is the distinction the stop is drawn on, not
 a per-issue exemption.
+
+**And as of 2026-08-23 it is no longer per-issue at all — it applies to every issue in the set, on
+the owner's standing instruction.** Their words: *"This is the problem with our reviewers. They are
+built to review code more than designs. Take their feedback with a grain of salt, lets ignore their
+feedback for now unless it has real design implications."*
+
+**So the filter is: fold a finding only if it has real design implications** — it changes the
+objective, changes the division into issues, adds or corrects a constraint an issue's spec must
+satisfy, or falsifies a claim this document makes about how the existing system behaves.
+Everything else is implementation altitude and is **not** carried here, for any issue.
+
+**Findings reviewed under this filter and not carried, recorded once so their absence is not read
+as an oversight:** atomic one-off claiming, sweep trigger mechanics beyond §1's deployment fact,
+expiry retry protocol, correlation-to-suspension storage design, and sender-classification
+mechanism. Each is a defect that only exists once someone picks an implementation, which is exactly
+where it gets settled — in the issue's own spec, with a POC. *(They are named in one line and not
+argued; an enumerated list of dropped items is itself the noise this filter exists to remove.)*
+**C5 and C6 are unaffected** — both are unresolved *constraints*, and §1's deployment fact is a
+design-relevant property of the platform, not a mechanism.
 
 #### Why polling cannot cover it — verified, not asserted
 
@@ -2306,3 +2405,76 @@ on its own terms (§5 Q5).
   it is now a **requirement on issue 1**, not an open question. **Constraints on issue 6: SIX**
   (C1–C6), untouched by this fold. The epic is **not approved**; the objective gate remains the only
   thing outstanding.
+
+- **Owner posture change — implementation-level review findings are no longer absorbed here. Three
+  findings folded under the new filter; the rest dropped.** *(Folded **outside** the epic PR's
+  two-round budget on the standing justification. Nothing filed in Linear. **The gate is unchanged
+  and the epic is not approved.** Marked as the **last fold** unless the owner asks for another.)*
+
+  **(0) The posture, which governs the rest of this entry.** The owner, verbatim: *"This is the
+  problem with our reviewers. They are built to review code more than designs. Take their feedback
+  with a grain of salt, lets ignore their feedback for now unless it has real design
+  implications."* **The filter now applied:** fold a finding only if it changes the objective,
+  changes the division into issues, adds or corrects a constraint an issue's spec must satisfy, or
+  **falsifies a claim this document makes about existing system behaviour**. Everything else is
+  implementation altitude and is settled in the issue's own spec, with a POC. The stop subsection —
+  written for issue 6 — is **widened to the whole set** and retitled accordingly, and the **PR's
+  reviewer contract was rewritten to state the altitude unmissably**, since that contract is the
+  only text an uninstructable reviewer reads.
+
+  **(1) FOLDED — the blocking send mode is removed for top-level sessions. Restraint, not growth.**
+  *The finding:* a correlated relay reply arrives through `dispatch` as a **fresh request**, whereas
+  resuming a suspension is `continueRequest` on the **same** request id and needs that request's
+  suspension identity and resume payload. **A per-send correlation ID cannot wake `ctx.suspend()`.**
+  The contract is locked — *"re-invokes the action on the **same** request id (FIX-811)… no new
+  linked request is spawned"* (`docs/architecture/execution-and-errors.md:397-407`) — and it is the
+  *same* contract already cited against the workstream half, biting the top-level half identically.
+  *The resolution is to **delete an over-promise**, on the owner's own model:* *"reply arrives as a
+  new inbound message… This will require tasks being able to suspend across requests. **NOT
+  SUSPEND** but be put into a waiting response type of status."* That waiting status is **issue 5's
+  park mode**; the blocking-call form for top-level sessions was **the coordinator's elaboration
+  beyond what the owner described**. *So:* wait-for-response is **uniformly
+  send-and-park-plus-a-later-response-handler**, for workstreams and top-level sessions alike, with
+  **no returning-call variant**. **Still two send modes** — fire-and-forget and wait-for-response —
+  so "ship two, not three" is untouched; **this removes a *variant*, not a mode.** *The gain:* the
+  verb is **more uniform**, which serves the owner's original "the agent-facing tool and the
+  programmatic sender are the same verb" constraint better than the old text did — an earlier
+  retraction had conceded that held for sending but not receiving, and **receiving is now uniform
+  too**, so the concession is withdrawn. *Swept:* themes 5, 6 and 14, §4's issue-1 cell, and the
+  answer timeout's description (it bounds **how long the park stays open**, not how long a call
+  blocks).
+
+  **(2) FOLDED — same-owner does not settle authorization. Org is a second axis. A security
+  correction, and a coordinator error.** *Verified in the tree:* `createExecutionContext.ts:656-660`
+  rejects an `orgId` only when it **differs** — so an **unbound sender that omits it fires no check
+  at all**, and `resolvedOrgId` becomes **the recipient session's org** (`:661`), letting the sender
+  execute against the recipient's org resources. The file states the gap itself: *"only a
+  *differing* value is rejected"* (`:725-728`) and *"Org is the one identity field whose check
+  permits a difference"* (`:733-734`). *The error:* §1 leaned on same-owner to make authorization a
+  **stated non-goal**. That conclusion was **too strong and it was the coordinator's** — `:631` was
+  verified as a `userId` binding check and the conclusion over-generalised from it. *Restated:*
+  same-owner removes the **cross-user** question and nothing else; **relay authorization is defined
+  against the full server-derived identity tuple, including equality of bound-versus-unbound org
+  state** — not *"same user, therefore fine."* *And the useful generalisation, said once:* **the
+  same-owner invariant was carrying more weight than it can bear, and two independent findings show
+  it** — this one, and **C2**'s scope-key defect, a mis-delivery entirely inside one owner. An
+  owner-level invariant is structurally blind to any distinction *below* the owner, and both org
+  binding and resource scope are exactly that. *Recorded in* §1 and theme 9.
+
+  **(3) FOLDED (smaller) — an addressed schedule cannot target a session on another flow.**
+  `packages/scheduled/src/routes.ts:175-199` builds the envelope with the `flowKind` from the
+  **URL** and resolves the schedule binding from that flow, while issue 1's promoted criterion
+  requires the **recipient session's** `flowKind`. For a cross-flow target both cannot hold.
+  *Recorded on **issue 4** as a shape question with two named options and **no pick**:* require
+  same-flow schedule targets, or define an explicit relay action on the recipient. **Paired with
+  the already-recorded "cron has no sender identity" gap** — same seam, both halves now visible.
+
+  **(4) DROPPED under the filter, recorded in one line and not argued.** Atomic one-off claiming,
+  sweep trigger mechanics beyond §1's deployment fact, expiry retry protocol,
+  correlation-to-suspension storage design, and sender-classification mechanism. Each is a defect
+  that only exists once someone picks an implementation. **C5 and C6 are unaffected** — both are
+  unresolved *constraints*, and §1's deployment fact is a design-relevant property of the platform.
+
+  **Counts unchanged: open questions TWO** (Q2, Q4) — issue 4's cross-flow shape question is
+  recorded **on issue 4**, not as an epic cross-cutting question, for the same reason Q1b was
+  relocated. **Constraints on issue 6: SIX** (C1–C6). **The epic is not approved.**
