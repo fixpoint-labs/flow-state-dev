@@ -58,7 +58,16 @@ export type TaskWriteDeclineReason =
   | "terminal"
   | "not-my-task"
   | "disallowed"
-  | "lost-claim";
+  | "lost-claim"
+  /**
+   * The row is parked for review, and the refused write was a claim-fenced
+   * settlement (FIX-1234). Distinct from `lost-claim` on purpose: nobody took
+   * this row — the attempt still owns it — so the recoveries differ. A caller
+   * that reads `lost-claim` should re-claim and redo the work; a caller that
+   * reads `parked` should do neither, because the work is done and a person is
+   * deciding what happens to it.
+   */
+  | "parked";
 
 /**
  * What a write actually did (FIX-976).
@@ -220,6 +229,35 @@ export interface TaskTransitionOptions {
    * for a coordinator writing to a board it never claimed from.
    */
   claim?: TaskClaimTicket;
+  /**
+   * Decline this write if the task is parked for review (FIX-1234).
+   *
+   * For the caller that is reporting the result of its own run — a task board's
+   * result recorders are the ones in tree. A worker that called `awaitReview()`
+   * on the task it was holding has handed that task to a person and owes the
+   * substrate no result, but nothing else refuses its write-back on the way out:
+   * `awaiting_review` is a status the attempt still owns, and both
+   * `awaiting_review → completed` and `→ errored` are legal. So the settlement
+   * would land and erase the park, and a failure with retries left would go
+   * further and re-queue the row for a sibling worker while the person is still
+   * being asked.
+   *
+   * **Opt-in, because settling a parked task is otherwise legitimate.** A holder
+   * recording a review's rejection as a failure travels the same path, and a
+   * coordinator ending a review with `complete` or `cancel` travels it without a
+   * ticket at all. Neither passes this, and neither changes.
+   *
+   * Applies only to a write that reports a result — `complete`, and `fail` on
+   * both its terminal and its retrying route. `resumeFromReview` and `cancel`
+   * keep working on a parked task with this set, which matters because a
+   * retrying failure and a resume both target `pending` and only the change kind
+   * tells them apart.
+   *
+   * Declines with reason `parked`, evaluated inside the same atomic write as
+   * every other guard here — a pre-read cannot carry this, because a park
+   * arriving between the read and the write is exactly the case it has to catch.
+   */
+  refuseWhenParked?: boolean;
   /**
    * Record this write on the task, so the caller can find out afterwards
    * whether it committed — **even if this call throws** (FIX-989).

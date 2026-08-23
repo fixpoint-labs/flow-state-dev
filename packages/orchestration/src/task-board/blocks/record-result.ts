@@ -113,11 +113,25 @@ function stopLeaseRenewal(): void {
  * is wrong wherever it happens, and gating the guard on board configuration
  * would leave the same defect standing on the default.
  *
- * **Reading first is the conservative direction, not a race.** A resume landing
- * between this read and the write moves the row to `pending`, which the ticket
- * fence declines anyway — so skipping matches what the substrate would have done
- * with the write, and the only outcome this read can change is one where the
- * write should not have happened.
+ * ## This read is an optimisation. The guarantee is in the write.
+ *
+ * An earlier version of this comment claimed the read was "the conservative
+ * direction, not a race", on the grounds that a resume landing between the read
+ * and the write moves the row to `pending`, which the fence declines anyway.
+ * That is true of a **resume** and false of a **park**, and the difference is
+ * the whole point: `awaiting_review` is in `ATTEMPT_OWNED_STATUSES`, so a
+ * concurrent park lands the row in a status this attempt still owns and one that
+ * `awaiting_review → completed` / `→ errored` can legally leave. Nothing in the
+ * fence refused it, so a park arriving in that window was overwritten — the
+ * defect this guard exists to stop, reachable through the guard itself.
+ *
+ * So the refusal now lives in `transitionDeclineReason`, evaluated inside the
+ * atomic write against committed state, and returns `parked`. A check that has
+ * to win a race can be wrong; a check the write cannot bypass cannot be.
+ *
+ * What this read still buys is skipping work the substrate would decline —
+ * resolving nothing, emitting nothing, and leaving the reason in one place
+ * rather than in a discarded verdict. Deleting it would change no outcome.
  */
 function workerParkedItForReview(
   collection: TaskCollectionRef,
@@ -170,6 +184,9 @@ export function createRecordSuccess(options: RecordSuccessOptions) {
       await collection.complete(claim.taskId, output, {
         ifAllowed: true,
         claim,
+        // The guarantee. The status read above can be raced by a park; this
+        // cannot, because it is evaluated inside the same atomic write.
+        refuseWhenParked: true,
       });
       // Only now, and deliberately NOT in a `finally`. The write has settled —
       // recorded or declined — so this claim has nothing left to assert.
@@ -241,6 +258,7 @@ export function createRecordError(options: RecordErrorOptions) {
             await collection.fail(claim.taskId, message, {
               ifAllowed: true,
               claim,
+              refuseWhenParked: true,
             });
           }
           await ctx.sequencer!.patchState({ currentClaim: undefined });

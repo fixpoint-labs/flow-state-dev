@@ -428,7 +428,8 @@ export async function createResourceBackedTaskCollection<TInput = unknown, TOutp
           guards,
           options.collectionId,
           now(),
-          requireFrom
+          requireFrom,
+          kind ?? undefined
         );
         if (reason !== undefined) {
           throw new WriteDeclined(reason, task.status);
