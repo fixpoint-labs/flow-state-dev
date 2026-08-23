@@ -31,13 +31,18 @@ without ending. A coordinator steers a run already in flight. Two top-level sess
 other informed. A schedule fires onto a named session.
 
 > **Identity: relay always sends within a single user identity.** User-to-user communication is
-> **not possible in the framework** — not declined, unreachable. A cross-user dispatch *throws*
-> (`createExecutionContext.ts:631`). The only cross-user mechanism that exists is **org-level
-> resource sharing**, which is not messaging.
+> **not possible in the framework** — there is no such feature. The only cross-user mechanism that
+> exists is **org-level resource sharing**, which is not messaging.
 >
-> **This is distinct from the org constraint below, and they must not be collapsed.** The org
-> constraint concerns **one user with sessions in two orgs** — inside a single user identity,
-> crossing an org boundary. That is a real gap. Cross-*user* messaging is not.
+> **What makes that hold for relay is something we are specifying, not something the framework
+> already guarantees:** the **server-derived sender identity** issue 1 enforces (§8, AC 3). The
+> `userId` binding check is **not** the proof — it guards a *mismatched* request reaching another
+> user's session, and a dispatcher supplying the **recipient's** `userId` passes it. This epic's
+> own POC ran exactly that case.
+>
+> **Distinct from the org constraint, and they must not be collapsed.** The org constraint is **one
+> user with sessions in two orgs** — inside a single user identity, crossing an org boundary. That
+> one is a real gap.
 
 ## 3. The six issues
 
@@ -175,7 +180,7 @@ own spec — not here.**
   An unbound sender that omits `orgId` fires **no check** and `resolvedOrgId` becomes *the
   recipient's* org, so the sender runs against the recipient's org resources
   (`createExecutionContext.ts:656-661`; the file names the gap itself at `:725-728`, `:733-734`).
-  **Distinct from cross-user, which is unreachable** (§2). *The generalisation worth keeping: an
+  **Distinct from cross-user, which has no feature behind it and is held by AC 3** (§2). *The generalisation worth keeping: an
   owner-level invariant is structurally blind to any distinction below the owner — org binding and
   resource scope are both exactly that.*
 - **Key-collision refusal — about the **effective arbiter key**, with self-addressing one instance
@@ -206,6 +211,20 @@ own spec — not here.**
     unsafe retries. *Lean, not a decision:* the idempotency contract — it matches `expired`, and
     cancellation is itself racy (the request may be mid-execution when it arrives). **Neither
     picked; nothing designed here.**
+- **AC 3** — **the sender principal is derived server-side from the sending context, never taken
+  from the envelope.** This is what makes §2's claim true for relay. **The trap: do not rely on the
+  `userId` binding check in its place** — it compares `sessionRecord.userId !== userId`
+  (`createExecutionContext.ts:625-632`), so an envelope naming the **recipient's** `userId` passes.
+  *(Cited here once as proof of unreachability; it is not. The POC that found it said "once the
+  sender's identity is ctx-derived", and that clause was the whole load.)*
+- **AC 4** — **issue 1 must reject blocking sends when the effective dispatcher lacks cross-worker
+  wake support.** Issue 2 builds that channel and **depends on** issue 1, so without this criterion
+  the moment issue 1 lands a queue-backed caller can invoke an *advertised* blocking mode with no
+  guard in existence, at deployment fact 3's cost. **Second instance of a pattern worth seeing** —
+  the same species as shipping the acceptance ack before the admission budget was addressable,
+  which opened the window AC 2 exists to close. *Rejected option:* make issue 2 a hard prerequisite
+  — refusing what it cannot do keeps issue 1 shippable and useful in-process, where a prerequisite
+  would serialise the epic for a case in-process deployments never hit. **Detection not designed here.**
 - **Open, no answer: which callers use `waitForCondition` and which wake to a new request** —
   specifically a workstream drain, whose request does stay open. `suspend` / `continueRequest` is
   **not** the mechanism (§4, §9). **This area was specified wrong twice** — a suspension-resume
@@ -274,7 +293,7 @@ in the tree.**
 |---|---|
 | One dispatch seam already exists; every transport funnels through it | `createInboundTransportHost.ts:268`; callers at `action-routes.ts:171`, `webhook/routes.ts:214`, `scheduled/routes.ts:205`, `chat-sdk/event-handlers.ts:393`, `mcp/createMcpTransportAdapter.ts:410`, `detached-start-operation.ts:135` |
 | The envelope already carries `sessionId` | `engine/src/transports/types.ts:68-172` (`:78`) |
-| A cross-user dispatch throws | `createExecutionContext.ts:631` |
+| The `userId` binding check guards a **mismatched** request, not impersonation — supplying the recipient's `userId` passes it | `createExecutionContext.ts:625-632` |
 | Org is checked only when it **differs**; an omitted `orgId` resolves to the recipient's org | `createExecutionContext.ts:656-661`, `:725-728`, `:733-734` |
 | `flow.workstream` resolves **terminally** — no fall-through to `actions` | `core/src/types/flow.ts:549-557`, `:562` |
 | …and is **framework-assembled**, not author-declared | `core/src/types/flow.ts:559-560` |
