@@ -79,8 +79,8 @@ The gate answers it.
 the owner has made it larger — and has kept issue 3 in. §4's composition note states that tension;
 the coordinator's earlier "swap spawn for watch" resolution is **retracted**, because it rested on
 a wrong premise about why spawn is in the set. This paragraph covers only the original cut
-candidates.)* The cut candidate is issue 5, the `pending
-feedback` task status: a task-board addition, not a messaging one. It stays because theme 5 —
+candidates.)* The cut candidate is issue 5, **an exit/park mode for the board's existing
+`awaiting_review`**: a task-board addition, not a messaging one. It stays because theme 5 —
 the reply arrives as a new inbound message, nothing suspends — only works if a task can be
 *parked* while its request ends. Without it a workstream that asks either holds a loop open or
 loses its place, and the headline case does not land. It also depends on nothing, so carrying it
@@ -93,6 +93,22 @@ launching request open, so *the request may end* is not available today. **Where
 now decided too** — inside this epic, as issue 5 (§5 Q5, coordinator's call on 2026-08-23,
 reversible by the owner): it is the set's only unblocked issue and theme 5's headline case depends
 on it, so pointing at it from another epic buys taxonomy at the cost of sequencing.
+
+**And the *shape* of the fix is now rescoped — a coordinator error, recorded as one.** *(Folded
+2026-08-23 from a chatgpt-codex P2.)* This document called issue 5 *"a `pending feedback` task
+status"* from the day it was drafted. **It should never have been a new status.** `awaitReview`
+already parks durably and `resumeFromReview` already persists feedback and resumes; the *sole*
+missing behaviour is that `boardQuiescence` keeps the launching request open. A new status does not
+fix that exit predicate by itself, and it duplicates the existing lifecycle, its transitions and
+its exhaustiveness surface. **So issue 5 is an exit/park mode for `awaiting_review`, not a new
+status.**
+
+**The evidence for this was already in this document, and the framing hid it.** §3's settlement had
+recorded the residual gap in exactly these terms — *"a park mode that does not hold the drain's own
+request open"* — while the index row and this paragraph went on naming a status. **The necessity
+the settlement proved is entirely unchanged**; only the shape of the fix is corrected. A name
+carried from the first draft outlived the evidence that contradicted it, which is the failure worth
+noting more than the rescope itself.
 
 **Issue 3, the sibling-spawn verb, is in the set because messages cross sessions.** *(Corrected by
 the owner. The reasoning previously recorded here was the coordinator's, and it was wrong.)* Spawn
@@ -113,6 +129,20 @@ appeared (§1, §4's index, §4's composition note, §5, and the PR description)
 
 **Tripwire, unchanged:** if issue 3 grows a delivery path of its own, it should have been its own
 epic and should be pulled out rather than absorbed.
+
+**One deployment fact a reader meets the objective with, because it qualifies what the objective
+promises a consumer: the framework runs no scheduler.** *(Added 2026-08-23 at the owner's
+direction.)* `@flow-state-dev/scheduled` mounts a dispatch endpoint and owns the configuration
+model, the dispatch contract, two-phase auth, idempotency and provenance — and **nothing ticks it**:
+*"Hosts run their own scheduler (Vercel Cron, Cloud Scheduler, EventBridge, GitHub Actions,
+`node-cron`) and POST to this endpoint when a schedule is due"* (`packages/scheduled/src/index.ts:8-13`).
+
+Issue 4's *"cron is a scheduled message"* stays **true** — it never claimed to build a ticker, and it
+does not need to. But **anything in this epic that leans on periodic execution inherits a
+host-provisioned scheduler as a deployment requirement**, watch expiry included (issue 6, C5).
+`@flow-state-dev/bullmq` ships native cron, so a BullMQ deployment has it; a bare Vercel deployment
+needs Vercel Cron configured. **This is a deployment requirement, not a framework guarantee**, and
+saying so here is cheaper than a consumer discovering it.
 
 **Deliberately not doing** — named, not silent:
 
@@ -423,7 +453,14 @@ can cite one.
     *(Added 2026-08-23 with C3's revision. Recorded here rather than left to be discovered during
     implementation. The dependency follows from the **recommended resolution**: if issue 6's spec
     satisfies C3 by some other means than a scheduled sweep, this edge goes away with it — say so in
-    that spec rather than leaving a stale dependency here.)* **It carries no spec-ordering constraint against issue 5.** *(Corrected: it did, as §5 Q6b.)* Under the
+    that spec rather than leaving a stale dependency here.)*
+
+    **The edge is necessary but *not sufficient*, and that is C5.** *(Added 2026-08-23.)* Issue 4
+    landing does **not** hand issue 6 a sweep: issue 4 builds the schedule-as-message path, and the
+    framework runs **no scheduler** at all (`packages/scheduled/src/index.ts:8-13` — hosts run their
+    own and POST when due). So issue 6 additionally inherits a **host-provisioned ticker as a
+    deployment requirement**, which no dependency edge in this table can express. See §1's
+    deployment fact and C5. **It carries no spec-ordering constraint against issue 5.** *(Corrected: it did, as §5 Q6b.)* Under the
     notification-primitive model watch touches **no** board internals — the board only emits, which
     it already does — so Q6b is withdrawn and **issue 5 is free-standing again**, for spec purposes
     as well as merge order.
@@ -781,8 +818,8 @@ cell is empty by design, not by omission.
 | 2 | Per-adapter delivery | in-process for a Node host; through the `FlowDispatcher` seam so a queue-backed deployment gets durability for free. **The configurable admission budget is no longer here** — it moved to issue 1 (theme 14); issue 2 consumes the parameter rather than introducing it | 1 | not filed | spec | — | — | Proposed |
 | 3 | The sibling-spawn verb — **address supply for cross-session messaging** | an independent, self-managing session with its own flow kind and addressable key, resolving `flow.actions` like any other caller and talking back by message rather than `settleParentTask`. **In the set because messages cross sessions** (§1, owner): spawn mints the peer the send verb will address; without it, messaging only ever reaches sessions an outside-world caller happened to create. *(The earlier "same missing layer" / implementation-economy rationale, and the swap-out proposal it licensed, are retracted — §1.)* | 1 | not filed | spec | — | — | Proposed |
 | 4 | Cron: a schedule addresses a session and fires as a message | the schema field, the resolver, and the one dispatch envelope; absent address preserves today's behaviour exactly | 1 | not filed | spec | — | — | Proposed |
-| 5 | A `pending feedback` task status | "parked awaiting external input; the request may end; a later request resumes this task" — a genuine addition, not a rename of `awaiting_review`. **Necessity settled by run, not asserted** (§3's settlement, REFUTED): today's `awaitReview` parks and `resumeFromReview` resumes, but `awaiting_review` is excluded from every board-exit path, so the launching request stays open for the whole park. **The residual gap to build:** a park mode that does not hold the drain's own request open — either an exit path letting `boardQuiescence` stop returning "continue" while a task sits parked, or routing review-parking through the same `runsElsewhere` exclusion detached dispatch already gets for `in_progress`. **No collision with issue 6** — *corrected;* one was recorded as §5 Q6b and is withdrawn, because watch touches no board internals. Issue 5 owns this surface alone and depends on nothing | — | not filed | spec | — | — | Proposed |
-| 6 | **Watch — a general one-off notification primitive** *(owner-proposed 2026-08-21; **redefined by the owner 2026-08-23** — it is **not** a task primitive)* | a durable **subscription registry**, an **event matcher**, and **delivery as an addressed relay message**. An entry says *when this event fires holding this value, call this flow for this session id*; a **relay action matching that event** must be defined on the recipient to receive the payload; the subscription is **one-off** and unsubscribes on fire. **The task board is its first consumer, not its subject** — a completing task forwards the `task-change` event it already emits; an updated resource value is the second named source. **Three of its four parts already ship** (theme 15: watch is `reactTo`'s async, cross-session, runtime-registered sibling); what is new is the registry, a matcher running outside the mutating turn, and addressed delivery — **plus the expiry sweep, which is required, not optional**. **Four constraints its spec must satisfy** *(relabelled 2026-08-23 from "decided" — a primitive's correctness contract belongs in issue 6's spec, not at epic altitude; the recommended resolutions and their evidence are unchanged)* — **C1** registration must not lose an already-true condition *(recommended: satisfied-or-attach; **unresolved half** — "already true" is undefined for the edge source `resource updated`, so a versioned baseline is recommended, with level-only as the pre-committed fallback)* · **C2** the match key must be the **complete coordinate** (scope + owner + collection/namespace + id), never a bare id, with the scope **server-derived** per BP-031 · **C3** a bounded lifetime that something actually fires *(recommended: TTL + a periodic sweep that is itself a scheduled message — **this is why issue 6 depends on issue 4**)* · **C4** the manager must sit where both sources reach it *(recommended: `engine`)*. **Delivery is explicitly best-effort:** `emit` runs after the durable write, so a crash between them loses the event while the subscription survives; loss is **bounded by the TTL and self-announcing**, never prevented — and *recoverable by re-registration* only where C1's guarantee holds | **1, 4** | not filed | spec | — | — | **Proposed (owner)** |
+| 5 | **An exit/park mode for `awaiting_review`** *(**rescoped 2026-08-23** — it was "a `pending feedback` task status"; see below)* | *"parked awaiting external input; **the request may end**; a later request resumes this task."* **Necessity settled by run, not asserted** (§3's settlement, REFUTED): today's `awaitReview` parks and `resumeFromReview` resumes, but `awaiting_review` is excluded from every board-exit path, so the launching request stays open for the whole park. **The gap to build — and it is the whole issue:** an exit/park mode that does not hold the drain's own request open — either an exit path letting `boardQuiescence` stop returning "continue" while a task sits parked, or routing review-parking through the same `runsElsewhere` exclusion detached dispatch already gets for `in_progress`. **Not a new status:** `awaitReview` already parks durably and `resumeFromReview` already persists feedback and resumes, so the sole missing behaviour is the exit predicate — which a new status does not fix by itself, while duplicating the existing lifecycle, transitions and exhaustiveness surface. **The exit mode still needs a name; `pending feedback` is moot** for a status that no longer exists — folded into §5 Q2's naming bucket, not settled here. **No collision with issue 6** — *corrected;* one was recorded as §5 Q6b and is withdrawn, because watch touches no board internals. Issue 5 owns this surface alone and depends on nothing | — | not filed | spec | — | — | Proposed |
+| 6 | **Watch — a general one-off notification primitive** *(owner-proposed 2026-08-21; **redefined by the owner 2026-08-23** — it is **not** a task primitive)* | a durable **subscription registry**, an **event matcher**, and **delivery as an addressed relay message**. An entry says *when this event fires holding this value, call this flow for this session id*; a **relay action matching that event** must be defined on the recipient to receive the payload; the subscription is **one-off** and unsubscribes on fire. **The task board is its first consumer, not its subject** — a completing task forwards the `task-change` event it already emits; an updated resource value is the second named source. **Three of its four parts already ship** (theme 15: watch is `reactTo`'s async, cross-session, runtime-registered sibling); what is new is the registry, a matcher running outside the mutating turn, and addressed delivery — **plus the expiry sweep, which is required, not optional**. **Six constraints its spec must satisfy** *(C1–C4 relabelled 2026-08-23 from "decided" — a primitive's correctness contract belongs in issue 6's spec, not at epic altitude; recommended resolutions and evidence unchanged. **C5 and C6 are recorded unresolved**, with options and no answer)* — **C1** registration must not lose an already-true condition *(recommended: satisfied-or-attach; **unresolved half** — "already true" is undefined for the edge source `resource updated`, so a versioned baseline is recommended, with level-only as the pre-committed fallback)* · **C2** the match key must be the **complete coordinate** (scope + owner + collection/namespace + id), never a bare id, with the scope **server-derived** per BP-031 · **C3** a bounded lifetime that something actually fires *(recommended: TTL + a periodic sweep that is itself a scheduled message — **this is why issue 6 depends on issue 4**)* · **C4** the manager must sit where both sources reach it *(recommended: `engine`)* · **C5 (UNRESOLVED)** the sweep has **no framework-owned trigger** — `@flow-state-dev/scheduled` runs no loop (`scheduled/src/index.ts:8-13`), so a host-provisioned ticker is a **deployment requirement**; options recorded, not picked · **C6 (UNRESOLVED)** the `expired` announcement travels the **same best-effort path it backstops**, so it can itself be lost; options recorded, not picked. **Delivery is explicitly best-effort:** `emit` runs after the durable write, so a crash between them loses the event while the subscription survives. **Loss is never prevented**, and the bound on it is **conditional** — bounded if C5 is resolved, self-announcing if C6 is, recoverable by re-registration where C1's guarantee holds | **1, 4** | not filed | spec | — | — | **Proposed (owner)** |
 
 **The agent-facing tool is deliberately inside issue 1, not beside it.** The constraint is that
 the programmatic sender and the tool are the *same verb*, differing only in who calls them.
@@ -885,17 +922,20 @@ matcher that runs **outside** the mutating turn, **(c)** delivery as an **addres
 rather than an inline block call. Said explicitly because it is what right-sizes the issue.
 
 **Those three are what is *new*; they are not what is *sufficient*.** A fourth part is required and
-it is not optional: **the expiry sweep (C3)**, without which the registry leaks and the
-delivery contract is unbounded. The durability disposition immediately below explains why — the
+it is not optional: **the expiry sweep (C3)** — and the sweep in turn needs a **trigger the
+framework does not provide** (C5). Without the sweep the registry leaks and the delivery contract is
+unbounded; without a trigger there is no sweep. The durability disposition immediately below explains why — the
 three parts alone leave a real loss window, and the sweep is what bounds it.
 
 **Coherence requirement for issue 6's spec** (theme 15): reuse `reactTo`'s change-payload shape and
 predicate idiom rather than inventing a second vocabulary for the same events.
 
-#### C1–C4 — constraints issue 6's spec must satisfy
+#### C1–C6 — constraints issue 6's spec must satisfy
 
-**Relabelled 2026-08-23, from "the four calls the coordinator has already decided" to constraints
-with a recommended resolution.** Nothing below lost a word: the reasoning, the evidence, the
+**Six constraints. C1–C4 were relabelled 2026-08-23 from "the four calls the coordinator has
+already decided" to constraints with a recommended resolution; C5 and C6 arrived the same day and
+are recorded here *unresolved, with options and no answer* — see "Why the coordinator stopped"
+below.** Nothing below lost a word: the reasoning, the evidence, the
 `file:line` citations and the rejected alternatives are all as written. **What changed is the
 status, not the substance.**
 
@@ -903,7 +943,9 @@ status, not the substance.**
 the reviewers are noisy — they are four *distinct* defects (the TTL's trigger, the post-commit crash
 window, the match key's qualification, edge-versus-level), not one finding reshaped four times. The
 fault is upstream of them: **the coordinator specified issue 6's semantics too tightly, too early,
-at epic altitude.** These are implementation-level correctness calls. Labelled "decided", they
+at epic altitude.** *(Two more arrived at round 10, and their shape was different — each faulted a
+previous round's **fix**. That is what ended the coordinator's attempts to resolve them here; the
+trace is below.)* These are implementation-level correctness calls. Labelled "decided", they
 present an epic-spec as though it had settled a primitive's correctness contract — and reviewers
 correctly hold it to that standard. **An epic-spec carries direction; a primitive's correctness
 contract belongs in issue 6's own spec.**
@@ -1059,7 +1101,61 @@ forwards its existing `task-change` event. This also preserves the boundary the 
 stays single-writer.
 
 
-#### Durability: delivery is explicitly best-effort, and loss is bounded rather than prevented
+**C5 — the sweep needs a trigger the framework does not own. UNRESOLVED; recorded, not answered.**
+*(Folded 2026-08-23 from a chatgpt-codex P1. **The coordinator is not resolving this one** — see
+"Why the coordinator stopped" below.)*
+
+**The fact, verified.** `@flow-state-dev/scheduled` runs **no loop**. Its own module doc
+(`packages/scheduled/src/index.ts:8-13`) is explicit:
+
+> Hosts run their own scheduler (Vercel Cron, Cloud Scheduler, EventBridge, GitHub Actions,
+> `node-cron`) and POST to this endpoint when a schedule is due. The framework owns the
+> configuration model (`schedules` on `defineFlow`), dispatch contract, two-phase auth
+> (gateway → schedule.principal), idempotency dedupe, and provenance stamping.
+
+`routes.ts` is **an endpoint someone else hits**, not a ticker.
+
+**So C3's recommended resolution does not, on its own, create a sweep.** This is a coordinator error
+and is recorded as one: the fix for P1-a replaced *"lazily checked, so it never runs"* with
+*"scheduled, so it never runs **unless the host provisions a ticker**"* — **the same defect
+relocated**, not removed.
+
+**The nuance that keeps this honest rather than fatal.** `@flow-state-dev/bullmq` ships **native
+cron** (repeatable job schedulers — `packages/bullmq/src/schedule-index.ts:21-24,43,52`), so the
+sweep genuinely is available wherever the host provides ticking. The correct framing is therefore a
+**deployment requirement, not a framework guarantee** (§1 now says this where a reader meets the
+objective).
+
+**Options for issue 6 to weigh — recorded, deliberately not picked:** an **engine-owned periodic
+job**, or a **specified required external scheduler plus a target session**. Each has a different
+cost and a different blast radius, and choosing between them is a correctness decision that needs
+code.
+
+**And it qualifies theme 13's issue 6 → issue 4 edge further.** That edge was already made
+*conditional* on C3's recommended resolution. It is also **insufficient**: issue 4 landing does not
+give issue 6 a sweep, because issue 4 builds the schedule-as-message path and not the thing that
+fires it. The dependency is necessary-not-sufficient, and theme 13 now says so.
+
+**C6 — the announcement can itself be lost, so "bounded and self-announcing" is not unconditionally
+true. UNRESOLVED; recorded, not answered.** *(Folded 2026-08-23 from a chatgpt-codex P1.)*
+
+**The defect.** The recovery chain in the durability disposition runs over **the same best-effort
+relay path it is backstopping**. If the sweep consumes the one-off entry and the `expired` delivery
+is then lost, **no entry remains to sweep** and the watcher receives no signal at all. A loss was
+bounded with a mechanism that carries **the identical loss mode** — so the guarantee as originally
+written is **false**, not merely optimistic.
+
+**Options for issue 6 to weigh — recorded, deliberately not picked:** **retain and retry** expired
+entries until handoff is confirmed, or **weaken the stated guarantee explicitly** so no consumer
+builds on a promise the transport cannot keep. The first costs a retention rule and a
+confirmation signal; the second costs consumers a weaker contract. Both are real; neither is
+decidable from a document.
+
+**What this changes in this document right now:** the durability disposition below **no longer
+asserts bounded-and-self-announcing unconditionally**. It holds only if C6 is resolved, and it says
+so.
+
+#### Durability: delivery is explicitly best-effort, and the bound on loss is **conditional**
 
 **Folded 2026-08-23 from a chatgpt-codex P1. The finding is correct and it corrected a false
 sufficiency claim in this document** — not an implementer note, because a converged spec must not
@@ -1103,9 +1199,23 @@ never come. **So under the fallback, loss stays bounded — the sweep still expi
 announces — but it stops being *recoverable* for edge sources.** Bounded and self-announcing is the
 claim either way; *recoverable by re-registration* is the part that depends on C1.
 
-**The honest claim, and it is what this document asserts: loss is not prevented. Loss is bounded by
-the TTL, and it is self-announcing.** Any reading that the registry + matcher + addressed delivery
-are *sufficient* is wrong and has been corrected wherever it appeared.
+**The honest claim, and it is now stated with its conditions rather than flat.** *(Amended
+2026-08-23 by C6; the earlier text asserted it unconditionally, and that was false.)*
+
+- **Loss is not prevented.** That part is unconditional and is the whole point of "best-effort".
+- **Loss is bounded by the TTL — *if C5 is resolved.*** The bound is the sweep, and the framework
+  provides no trigger for one (C5). Without a host-provisioned ticker there is no sweep and no
+  bound.
+- **The bound is self-announcing — *if C6 is resolved.*** The `expired` delivery travels the same
+  best-effort path it backstops; if the sweep consumes the entry and that delivery is lost, no
+  entry remains and the watcher is told nothing.
+- **Recoverable by re-registration — *if C1's guarantee holds for the source being watched.***
+  Unconditional for task watches; for resource `updated` it depends on the versioned baseline.
+
+**So the sentence a reader should carry away is: loss is not prevented, and the mechanisms that
+bound and announce it are themselves unresolved constraints on issue 6 (C1, C5, C6).** Any reading
+that the registry + matcher + addressed delivery are *sufficient* is wrong and has been corrected
+wherever it appeared.
 
 **The `expired` semantic — get this noun wrong and a recoverable miss becomes a false negative.**
 In the crash case **the condition did occur**. So `expired` must **not** mean *"it did not
@@ -1120,6 +1230,41 @@ which is exactly the crash case, and is why the noun has to carry no claim about
 this best-effort disposition *bounded*; without it, a lost event means a watcher parked forever with
 nothing to tell it. **If the sweep is ever cut, this disposition is void** and the durability
 question re-opens as a real one.
+
+#### Why the coordinator stopped resolving watch's correctness contract here
+
+**A coordinator discipline note, recorded 2026-08-23. It is not a scope cut and not a gate change —
+watch stays in the set, unchanged in scope.**
+
+**The trace, because it is the evidence and not an impression:**
+
+| Round | Finding | Coordinator's fix | Next round |
+|---|---|---|---|
+| r8 | **P1-a** — a lazily-checked TTL never triggers for the never-fires case | sweep via a scheduled message | **r10 P1-e** — that transport is not a sweeper; the framework runs no loop (**C5**) |
+| r8 | **P1-b** — the post-commit crash window loses the event | best-effort, *bounded and self-announcing* | **r10 P1-f** — the announcement travels the same lossy path (**C6**) |
+
+**Two for two: each fix drew a new defect *in the fix itself*.** That is the signature that matters,
+and it was checked for before being acted on. At **round 9** the same test did **not** fire — those
+four findings were four *distinct* defects (the TTL's trigger, the crash window, the key's
+qualification, edge-versus-level), which is reviewers converging on real gaps rather than a loop. At
+**round 10** it fires: two consecutive findings whose subject is a previous round's repair.
+
+**The governing rule applies: when findings stop converging, stop pushing and raise once with what
+is still flagged.** What is still flagged is **C1 through C6** — including C1's unresolved edge/level
+half, and C5 and C6 recorded above with options and no answer.
+
+**The root cause, stated plainly, because it is more useful than the individual defects.** *A
+primitive's correctness contract cannot be settled without code.* Every epic-altitude "fix" here was
+an **untested design decision**, and an untested design decision is exactly the thing that generates
+the next defect. The document was not being careless; it was working at an altitude that cannot
+produce the evidence its claims required. **C1–C6 are resolved in issue 6's own spec**, where a POC
+can run them — which is also why they were relabelled from decisions to constraints.
+
+**What this does not mean.** It does not mean the findings were wrong or unwelcome — all six are
+valid, and four of them corrected claims this document was asserting as true. It does not shrink
+issue 6, defer it, or move it out of the set. And it does not close C1–C6: they are carried into
+issue 6's spec as constraints it must satisfy, with the evidence and the rejected alternatives
+attached so none of this work is repeated.
 
 #### Why polling cannot cover it — verified, not asserted
 
@@ -1180,7 +1325,8 @@ inside-world verb, so it is declared in the `relay?` group and is never reachabl
 Stated rather than smoothed, because the gate is where it gets answered.
 
 - **Smaller.** Two independent reviewers recommended cutting to **three** issues: drop
-  sibling-spawn (issue 3), externalise `pending feedback` (issue 5, §5 Q5's placement half).
+  sibling-spawn (issue 3), externalise issue 5 — then "a `pending feedback` status", since rescoped
+  to an `awaiting_review` exit/park mode (§5 Q5's placement half).
 - **Larger.** The owner added the watch seam (issue 6), and has **kept issue 3 in**.
 
 **Retracted — the coordinator's "swap rather than grow: watch in, sibling-spawn out" proposal.**
@@ -1193,7 +1339,8 @@ address (§1). The two bot reviewers were reasoning from that same wrong premise
 coordinator when it agreed with them. **Issue 3 stays on the owner's reason**, and no swap is on
 the table.
 
-**And the last composition question is closed too.** Whether `pending feedback` (issue 5) rides
+**And the last composition question is closed too.** Whether issue 5 — the `awaiting_review`
+exit/park mode — rides
 inside this epic or is filed outside it with a `relates-to` is **decided: inside** (§5 Q5,
 coordinator's call on 2026-08-23, reversible by the owner). It is the set's only unblocked issue,
 and theme 5's headline case depends on it, so filing it outside would make the epic depend on
@@ -1236,7 +1383,7 @@ entries:
 | **Q2** — the name | **Open by the owner's choice** — they want code in front of them first. `relay` is the leaning and theme 16 now uses it for the declared group | Owner, later |
 | **Q3** — does anything promise ordering or exclusion? | **CLOSED 2026-08-23 by derivation** — the epic promises **nothing** on the durable path. The rejected option is out of scope by two boundaries the owner already set, so it was not a fork | Derived |
 | **Q4** — which layer does role materialization belong on? | **Deliberately deferred** — decide with real code in front of you. Recorded so a second issue does not re-open it from scratch | Later, with code |
-| **Q5** — does `pending feedback` belong in this epic? | **CLOSED 2026-08-23 — both halves.** Needed (settled by run, §3); rides inside, as issue 5 | Run + coordinator |
+| **Q5** — does issue 5 (the `awaiting_review` exit/park mode) belong in this epic? | **CLOSED 2026-08-23 — both halves.** Needed (settled by run, §3); rides inside, as issue 5. *(Issue 5 was rescoped the same day from "a new `pending feedback` status"; the placement answer is unaffected.)* | Run + coordinator |
 | **Q6** — what is a watch's own lifetime? | **CLOSED** — answered by constraint **C3**: a TTL whose expiry *delivers*, fired by a periodic sweep | Coordinator |
 | **Q6b** — do watch and `pending feedback` collide? | **WITHDRAWN** — a consequence of the superseded task-primitive framing | Coordinator |
 
@@ -1334,6 +1481,12 @@ model this design rejects.
 **Leaning:** message-with-sender-and-recipient, `relay` for the config group. **Not settled
 here** — the owner wants code in front of them first.
 
+**A second name now sits in this bucket: issue 5's exit/park mode.** *(Added 2026-08-23 with issue
+5's rescope.)* The owner said `pending feedback` when they raised it, and that name is **moot** — it
+named a status that no longer exists. The exit mode still needs one, it is unsettled on the same
+terms as the noun above, and it is recorded here rather than decided so the two naming calls are
+made together with code in front of you.
+
 **Theme 16 now writes `relay?` for the declared inside-world group, and that is not this question
 being decided by the back door.** The door decision needed *a* name to be legible; it took the
 leaning. **Renaming the group is a find-and-replace on an unshipped surface** — nothing is built,
@@ -1395,7 +1548,11 @@ block, that piece may belong in `orchestration` rather than in a wrapper over it
 toward building on `workforce`, explicitly not locked. **This epic does not settle it** — decide
 with real code in front of you. Recorded here so a second issue does not re-open it from scratch.
 
-### ~~Q5. Does `pending feedback` belong in this epic or its own?~~ — **CLOSED. Both halves.**
+### ~~Q5. Does issue 5 — the `awaiting_review` exit/park mode — belong in this epic or its own?~~ — **CLOSED. Both halves.**
+
+*(The question was originally phrased "does `pending feedback` belong…"; issue 5 was rescoped on
+2026-08-23 from a new status to an exit/park mode. **The placement answer is untouched by the
+rescope** — it was never about the shape of the fix.)*
 
 **Two halves. Necessity was settled by run; placement is now decided too.**
 
@@ -1730,7 +1887,7 @@ on its own terms (§5 Q5).
   the previous two folds — the gate must be honest about what it approves. **No converged material
   reopened, no bot findings folded, D1–D4 and theme 15 untouched.** Nothing filed in Linear.)*
   *(Superseded 2026-08-23: theme 15 was subsequently corrected, and D1–D4 revised and relabelled
-  C1–C4.)*
+  C1–C4 — and **C5 and C6 joined them the same day**, recorded unresolved.)*
 
   **(1) §5 Q1 — DECIDED by the owner, 2026-08-23.** Verbatim: *"Yes, inside world verb/asymmetric
   door is right."* **A sibling resolves `flow.actions`** — it *is* a caller. **A workstream gets a
@@ -1835,7 +1992,10 @@ on its own terms (§5 Q5).
   event → watcher stays parked → **the sweep expires the entry and delivers `expired`** → the
   watcher learns and may re-register → level-triggered registration **fires immediately** if the
   condition now holds. *The honest claim, now what the document says:* **loss is not prevented; loss
-  is bounded by the TTL and self-announcing.** Wording implying the registry + matcher + addressed
+  is bounded by the TTL and self-announcing.**
+  *(**Superseded 2026-08-23 by C6:** the bound is **conditional**, not flat — the `expired`
+  announcement travels the same best-effort path it backstops, and the sweep that fires it has no
+  framework-owned trigger (C5).)* Wording implying the registry + matcher + addressed
   delivery are *sufficient* has been corrected in §4's issue-6 subsection, §4's row 6, and theme 15.
   *The semantic that makes or breaks it:* in the crash case **the condition did occur**, so
   `expired` must **not** mean *"it did not happen"* — it means **"I stopped watching; no
@@ -1950,3 +2110,81 @@ on its own terms (§5 Q5).
   unresolved half and the public-readability check are **constraints on issue 6's spec**, not epic
   cross-cutting questions, and they are recorded where issue 6 will read them. The epic is **not
   approved**; the objective gate remains the only thing outstanding.
+
+- **Correction + record fold — issue 5 rescoped to an exit/park mode; C5 and C6 recorded
+  **unresolved**; and the coordinator stops resolving watch's correctness contract at epic
+  altitude.** *(Folded **outside** the epic PR's two-round budget on the standing justification.
+  **No other bot findings folded, no converged material reopened.** Nothing filed in Linear. **No
+  scope was cut and no gate moved** — watch stays in the set at full scope.)*
+
+  **(1) P2-g folded — issue 5 is an exit/park mode for `awaiting_review`, not a new
+  `pending feedback` status.** *The finding:* `awaitReview` already parks durably,
+  `resumeFromReview` already persists feedback and resumes, and the **sole** missing behaviour is
+  that `boardQuiescence` keeps the launching request open. A new status does not fix that exit
+  predicate by itself and duplicates the existing lifecycle, transitions and exhaustiveness surface.
+  *Why this is a **coordinator error**, recorded as one:* §3's settlement had **already** written the
+  residual gap in exactly these terms — *"a park mode that does not hold the drain's own request
+  open"* — while the index row and §1 went on naming a status. **The document's own framing hid
+  evidence it already held**, and a name carried from the first draft outlived the evidence
+  contradicting it. *What is unchanged:* **the necessity the settlement proved.** Only the shape of
+  the fix moved. *On the name:* the owner said `pending feedback` when they raised it, and that name
+  is now **moot** — it named a status that no longer exists. The exit mode still needs one; folded
+  into **§5 Q2's naming bucket**, not settled here.
+
+  **(2) C5 — the sweep has no framework-owned trigger. RECORDED UNRESOLVED.** *Verified:*
+  `@flow-state-dev/scheduled` runs **no loop** — *"Hosts run their own scheduler (Vercel Cron, Cloud
+  Scheduler, EventBridge, GitHub Actions, `node-cron`) and POST to this endpoint when a schedule is
+  due"* (`packages/scheduled/src/index.ts:8-13`). The framework owns the config model, dispatch
+  contract, two-phase auth, idempotency and provenance; `routes.ts` is an endpoint someone else hits.
+  *So C3's recommended resolution does not create a sweep on its own* — **a coordinator error**: the
+  P1-a fix replaced *"lazily checked, so it never runs"* with *"scheduled, so it never runs unless
+  the host provisions a ticker"*, which is **the same defect relocated**. *The nuance that keeps it
+  honest:* `@flow-state-dev/bullmq` ships **native cron** (`bullmq/src/schedule-index.ts:21-24,43,52`),
+  so the sweep is genuinely available where the host ticks — making this a **deployment requirement,
+  not a framework guarantee**. *Options recorded and deliberately not picked:* an engine-owned
+  periodic job, or a specified required external scheduler plus target session. *Consequence:*
+  theme 13's issue 6 → issue 4 edge is now **necessary but not sufficient**, and says so.
+
+  **(3) C6 — the announcement can itself be lost. RECORDED UNRESOLVED.** The recovery chain runs over
+  **the same best-effort relay path it backstops**: if the sweep consumes the one-off entry and the
+  `expired` delivery is then lost, **no entry remains to sweep** and the watcher gets nothing. A loss
+  was bounded with a mechanism carrying **the identical loss mode**, so *"bounded and
+  self-announcing"* as written was **false**. *Options recorded and deliberately not picked:* retain
+  and retry expired entries until handoff is confirmed, or weaken the stated guarantee explicitly.
+  *What changed here now:* the durability subsection **no longer asserts the bound unconditionally**
+  — it is split into *loss is never prevented* (unconditional), *bounded if C5 is resolved*,
+  *self-announcing if C6 is*, and *recoverable by re-registration where C1's guarantee holds*.
+
+  **(4) The coordinator has STOPPED resolving watch's correctness contract at epic altitude.** *(A
+  discipline note. **Not a scope cut, not a gate change** — watch stays in the set.)* *The trace, as
+  evidence:* r8 P1-a (TTL never triggers) → coordinator fix (sweep via scheduled message) → **r10
+  P1-e (that transport is not a sweeper)**; r8 P1-b (crash window) → coordinator fix (best-effort,
+  bounded + self-announcing) → **r10 P1-f (the announcement can itself be lost)**. **Two for two:
+  each fix drew a new defect *in the fix*.** *The test was applied, not assumed:* at **round 9** it
+  correctly did **not** fire — those four findings were four *distinct* defects, which is convergence
+  on real gaps; at **round 10** it fires, because two consecutive findings take a previous round's
+  repair as their subject. *The rule:* when findings stop converging, stop pushing and raise once
+  with what is still flagged — **C1 through C6**. *Root cause, stated plainly:* **a primitive's
+  correctness contract cannot be settled without code.** Every epic-altitude fix was an untested
+  design decision, and an untested design decision is what generates the next defect. **C1–C6 are
+  resolved in issue 6's own spec**, where a POC can run them — which is why they are constraints
+  rather than decisions.
+
+  **(5) §1 gains the deployment fact, at the owner's direction.** Where a reader meets the
+  objective, not buried in issue 6: **the framework runs no scheduler.** Issue 4's "cron is a
+  scheduled message" remains **true** — it never claimed to build a ticker — but anything leaning on
+  periodic execution, **watch expiry included**, inherits a **host-provisioned scheduler as a
+  deployment requirement**. bullmq has native cron; a bare Vercel deployment needs Vercel Cron
+  configured.
+
+  **(6) Reconciled (tenet 5).** §1's necessity paragraph and its "not doing" preamble, §4's index
+  rows 5 and 6, the constraint block's heading and intro (now **C1–C6**), the sufficiency note, the
+  durability subsection (heading and claim), theme 13, §5's Q5 heading and ledger row, §5 Q2's
+  naming bucket, and §4's composition note. The flat "bounded and self-announcing" claim inside the
+  previous dated entry carries a superseded marker rather than a rewrite.
+
+  **Counts, held deliberately steady: open questions remain TWO** — **Q2** (the name, now carrying a
+  second naming call) and **Q4** (role materialization). **C1–C6 are constraints on issue 6's spec,
+  not open questions on the epic**, and are counted separately on purpose: the epic's cross-cutting
+  questions are answered, while a primitive's correctness contract is issue 6's to settle. The epic
+  is **not approved**; the objective gate remains the only thing outstanding.
