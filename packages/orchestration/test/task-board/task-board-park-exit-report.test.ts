@@ -292,6 +292,28 @@ describe("termination ladder — a review gate must not mask an unrelated stall"
     expect(await reasonFor(collection, parkedExit)).toBe("blocked-by-failures");
   });
 
+  it("keeps the review reason for a row added after the pool classified", async () => {
+    // A PIN, not a new behaviour — it passes before and after the rung existed,
+    // and it is here so a future reader does not "fix" it.
+    //
+    // This is the one window where the pool's verdict and the rows genuinely
+    // disagree: `excusedParked` was decided when nothing else was waitable, and
+    // a ready row arrived before this block's fresh read. Reporting a stall here
+    // would announce a failure on a board where nothing failed and the new row
+    // is perfectly runnable.
+    //
+    // Reachable only through this seam, which is why the test uses it. With the
+    // ready row present *at classification time* the classifier answers
+    // `continue` and never issues a park verdict at all — see the reachability
+    // note on `hasRowGoingNowhere`. Constructing the two halves separately is
+    // what the window is, not a fake of it.
+    const collection = freshCollection();
+    await park(collection, "ask");
+    await collection.addTask({ id: "late", goal: "arrived after the drain stopped" });
+
+    expect(await reasonFor(collection, parkedExit)).toBe("parked-for-review");
+  });
+
   it("does not fire on a handed-off row, which is going somewhere", async () => {
     // The separation the rung rests on: handed-off work is progressing
     // elsewhere, so a row waiting on it is waiting on something that moves.

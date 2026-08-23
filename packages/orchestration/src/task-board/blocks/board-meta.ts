@@ -120,6 +120,42 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
  * This runs once, after the pool has finished, at the same position where the
  * board's own `createCascadeSkipDependents` already walks the graph
  * transitively. Same walk, three orders of magnitude fewer evaluations.
+ *
+ * **The vacuous `every()` on an empty `deps` list is not a hole**, and this is
+ * the note that saves the next reader re-deriving it. A `pending` row with no
+ * dependencies joins `willResolve` unconditionally, so it can never be reported
+ * as going nowhere. That looks like a gap — an unrelated, perfectly runnable row
+ * sitting on a board that reports `parked-for-review`. It is unreachable,
+ * because a row in that state stops the park verdict from being issued at all.
+ * `classifyBoard` carries `excusedParked: true` out of exactly two returns, and
+ * a ready row defeats both:
+ *
+ * - `"drained"` requires `inFlight.waiting === 0`. A ready row is `pending`, so
+ *   it is neither handed off nor `awaiting_review`, and `countWaitable` counts
+ *   it. `waiting >= 1`, and this return is not taken.
+ * - `"blocked"` requires `!hasClaimableTask(collection)`. `isClaimable` reduces
+ *   to `depsSatisfied` for a `pending` row — there is deliberately no attempts
+ *   arm — and `depsSatisfied` is vacuously true on an empty `deps` list. So the
+ *   row is claimable, the guard fails, and this return is not taken either.
+ *
+ * With such a row present the classifier answers `continue`, which carries
+ * `excusedParked: false`. **An exhausted `maxIterations` cannot manufacture one
+ * either**: the cap trips on whatever the last classification returned, and that
+ * classification was the `continue` above. The same argument covers an unrelated
+ * `in_progress` row, which `activeWorkerCount` counts unless it is handed off —
+ * and a handed-off row is seeded into `willResolve` deliberately.
+ *
+ * **The one window that is real** is a row added *after* the pool's last
+ * classification and before this block's fresh read. The excusal was decided
+ * honestly, when nothing else was waitable; the collection has moved since. The
+ * reason stays `parked-for-review`, which is correct rather than merely
+ * tolerable: a review genuinely is outstanding, and the row that arrived late is
+ * not something this drain declined to run. Reporting `blocked-by-failures`
+ * there would announce a failure on a board where nothing failed and the new row
+ * is perfectly runnable — the same defect class this rung exists to remove,
+ * since that is exactly how hand-off used to report its own success as a
+ * terminal failure. "Another drain is required" is not evidence against the
+ * reason; it is what the reason means.
  */
 function hasRowGoingNowhere(
   all: readonly Task[],
