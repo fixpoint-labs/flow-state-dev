@@ -13,7 +13,7 @@ twice, with the instruction *"do not attempt a third variant without code."* So:
 
 ```
 pnpm tsx spec-poc/FIX-1230-relay-core/q5-correlated-reply.ts   # ~1s
-pnpm tsx spec-poc/FIX-1230-relay-core/q6-arbiter-key.ts        # ~6s
+pnpm tsx spec-poc/FIX-1230-relay-core/q6-arbiter-key.ts        # ~10s
 ```
 
 No server, no store, no keys, no model. `createInMemoryStores` +
@@ -77,13 +77,15 @@ the sender already holds. It did not settle **what key the delivery resolves to*
 decides whether the refusal leaves the blocking mode usable. Two candidates crossed with the
 flow's declared key and the target — every case under `policy: "queue"`:
 
-| case | flow key | relay keying | target | keys collide | recipient ran | sender |
-|---|---|---|---|---|---|---|
-| 1 | `user` | inherit | peer | **yes** | no | timed out |
-| 2 | `user` | pin to recipient session | peer | no | yes | woke, 153 ms |
-| 3 | `user` | pin to recipient session | **self** | no | **yes** | woke, 153 ms |
-| 4 | `session` | inherit | peer | no | yes | woke, 154 ms |
-| 5 | `session` | inherit | **self** | **yes** | no | timed out |
+| case | declared | flow key | relay keying | target | keys collide | recipient ran | sender |
+|---|---|---|---|---|---|---|---|
+| 1 | `queue` | `user` | inherit | peer | **yes** | no | timed out |
+| 2 | `queue` | `user` | pin to recipient session | peer | no | yes | woke |
+| 3 | `queue` | `user` | pin to recipient session | **self** | no | **yes** | woke |
+| 4 | `queue` | `session` | inherit | peer | no | yes | woke |
+| 5 | `queue` | `session` | inherit | **self** | **yes** | no | timed out |
+| 6 | **none** | — | inherit | peer | no | yes | woke |
+| 7 | **none** | — | inherit | **self** | no | **yes** | woke |
 
 **Predicted collision matched observed stall in every case.** The refusal needs no heuristic:
 compare the key the sender's own dispatch resolved against the key the delivery resolves, and
@@ -104,6 +106,17 @@ Three things fall out that prose had not:
 3. **A stalled delivery is not a dropped one.** Unbounded admission keeps it queued and it
    runs once the sender's request ends (epic Q3/Q4). That is why the refusal has to happen at
    **send** time: by the time the wait times out, the delivery is still coming.
+4. **Cases 6 and 7 are the default configuration, and 7 is a trap.** They were added after
+   the first five let a real defect through: every original case declared `policy: "queue"`,
+   so the matrix never exercised what most apps actually have — no `concurrency` block at
+   all. **A resolved key is not a held key.** `normalizeConfig(undefined)` returns
+   `{ policy: "allow", key: "session" }` (`arbiter.ts:88-93`), so an undeclared flow still
+   *resolves* a populated session key, but `gate` short-circuits on `policy === "allow"` and
+   acquires **nothing** (`:164-167`). Case 7 is a self-addressed blocking send on that
+   config: the naive resolved-key comparison says *collide*, and the run says **permitted** —
+   recipient ran, sender woke. A refusal built on the resolved key would fire falsely on the
+   common path. The row prints both (`naiveResolvedKeyCollide` vs `keysCollide`) so the
+   distinction is visible rather than argued.
 
 ## What this did not test
 

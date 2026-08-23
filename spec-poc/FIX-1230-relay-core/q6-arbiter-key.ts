@@ -51,6 +51,8 @@ function pinRelayToRecipientSession(): ConcurrencyArbiter {
 
 type Case = {
   label: string;
+  /** "none" = the flow declares NO `concurrency` — what most apps have. */
+  declared: "queue" | "none";
   flowKey: "user" | "session";
   keying: "inherit" | "pin";
   target: "peer" | "self";
@@ -59,7 +61,7 @@ type Case = {
 async function run(c: Case): Promise<Record<string, unknown>> {
   received.length = 0;
   const { host } = boot(
-    { policy: "queue", key: c.flowKey },
+    c.declared === "none" ? undefined : { policy: "queue", key: c.flowKey },
     c.keying === "pin" ? pinRelayToRecipientSession() : undefined
   );
   const USER = "user_a";
@@ -76,17 +78,24 @@ async function run(c: Case): Promise<Record<string, unknown>> {
   );
   const output = (result as { output?: { timedOut?: boolean; elapsedMs?: number } }).output;
 
-  // The two keys the refusal would compare, computed the way the send verb
-  // would have to: the key the SENDER's own dispatch resolved, and the key the
-  // delivery resolves.
-  const senderHeldKey = c.flowKey === "user" ? "user_a" : "sess_sender";
+  // THE DISTINCTION THIS CASE SET EXISTS FOR: a RESOLVED key is not a HELD key.
+  // `normalizeConfig(undefined)` returns `{ policy: "allow", key: "session" }`
+  // (`arbiter.ts:88-93`), so an undeclared flow still RESOLVES a populated
+  // session key — but `gate` short-circuits on `policy === "allow"` and acquires
+  // NOTHING (`:164-167`). Comparing the resolved key would refuse here; comparing
+  // what is actually held does not.
+  const senderResolvedKey = c.flowKey === "user" ? "user_a" : "sess_sender";
+  const senderHoldsIt = c.declared !== "none";
+  const senderHeldKey = senderHoldsIt ? senderResolvedKey : undefined;
   const deliveryKey = c.keying === "pin" ? to : c.flowKey === "user" ? "user_a" : to;
 
   const row = {
     ...c,
-    senderHeldKey,
+    senderResolvedKey,
+    senderHeldKey: senderHeldKey ?? "(none held)",
     deliveryKey,
-    keysCollide: senderHeldKey === deliveryKey,
+    naiveResolvedKeyCollide: senderResolvedKey === deliveryKey,
+    keysCollide: senderHeldKey !== undefined && senderHeldKey === deliveryKey,
     recipientRanWhileSenderWaited: received.length > 0,
     senderTimedOut: output?.timedOut,
     senderWaitedMs: output?.elapsedMs
@@ -97,11 +106,15 @@ async function run(c: Case): Promise<Record<string, unknown>> {
 
 async function main(): Promise<void> {
   const cases: Case[] = [
-    { label: "1. key:user · inherit · peer", flowKey: "user", keying: "inherit", target: "peer" },
-    { label: "2. key:user · pin · peer", flowKey: "user", keying: "pin", target: "peer" },
-    { label: "3. key:user · pin · SELF", flowKey: "user", keying: "pin", target: "self" },
-    { label: "4. key:session · inherit · peer", flowKey: "session", keying: "inherit", target: "peer" },
-    { label: "5. key:session · inherit · SELF", flowKey: "session", keying: "inherit", target: "self" }
+    { label: "1. queue key:user · inherit · peer", declared: "queue", flowKey: "user", keying: "inherit", target: "peer" },
+    { label: "2. queue key:user · pin · peer", declared: "queue", flowKey: "user", keying: "pin", target: "peer" },
+    { label: "3. queue key:user · pin · SELF", declared: "queue", flowKey: "user", keying: "pin", target: "self" },
+    { label: "4. queue key:session · inherit · peer", declared: "queue", flowKey: "session", keying: "inherit", target: "peer" },
+    { label: "5. queue key:session · inherit · SELF", declared: "queue", flowKey: "session", keying: "inherit", target: "self" },
+    // 6 and 7 are THE DEFAULT CONFIGURATION — no `concurrency` declared at all,
+    // which is what most apps have and what cases 1-5 never exercised.
+    { label: "6. NO concurrency declared · peer", declared: "none", flowKey: "session", keying: "inherit", target: "peer" },
+    { label: "7. NO concurrency declared · SELF", declared: "none", flowKey: "session", keying: "inherit", target: "self" }
   ];
   const rows: Array<Record<string, unknown>> = [];
   for (const c of cases) rows.push(await run(c));
@@ -123,6 +136,11 @@ async function main(): Promise<void> {
     "predicted collision matched observed stall in every case": rows.every(
       (r) => r.keysCollide === (r.recipientRanWhileSenderWaited === false)
     ),
+    "case 7 IS THE TRAP: on the default config a self-addressed send is PERMITTED, and comparing the RESOLVED key instead of the HELD key would have refused it":
+      rows[6].recipientRanWhileSenderWaited === true &&
+      rows[6].senderTimedOut === false &&
+      rows[6].naiveResolvedKeyCollide === true &&
+      rows[6].keysCollide === false,
     "pinning rescues key:user (case 2) …": rows[1].recipientRanWhileSenderWaited === true,
     "… but case 3 is the price: a SELF-addressed delivery ran CONCURRENTLY with the sender's own open request on the same session, which the queue policy exists to prevent":
       rows[2].recipientRanWhileSenderWaited === true && rows[2].senderTimedOut === false,
