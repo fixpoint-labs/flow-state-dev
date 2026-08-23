@@ -13,11 +13,14 @@
  *
  * Run: pnpm tsx spec-poc/FIX-1230-relay-core/q5-correlated-reply.ts   (~1s)
  */
-import { boot, concludeOrFail, deliveries, fromOutside, received, show } from "./harness";
+import { boot, concludeOrFail, fromOutside, show } from "./harness";
 import { itemToLLMMessages } from "../../packages/engine/src/context/history";
 
 async function main(): Promise<void> {
-  const { host, stores } = boot();
+  // `obs` is this host's own observation sink — the harness no longer keeps a
+  // module-global one. q5 boots once, so it reads its own and only its own.
+  const { host, stores, obs } = boot();
+  const { received, deliveries } = obs;
 
   // Three sessions, one owner. Cross-user is refused by an existing invariant
   // (epic Q1) and is not what this asks about.

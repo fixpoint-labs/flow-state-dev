@@ -26,10 +26,29 @@ refuted experiment for a confirmed one. Verified in the direction that matters:
 |---|---|
 | Q5's carrier stamped `history: true` | exit **1**, `replyIsAbsentFromReconstructedLLMHistory` named |
 | Q6's rule using the *resolved* key instead of the *held* one | exit **1**, two conditions named, including the case-7 trap |
-| both restored | exit **0** |
+| Q6's case-2 pin replaced by `inherit` (the rescue removed) | exit **1**, `pinning rescues key:user` named — **which it was not, until the observation sinks were isolated** |
+| all restored | exit **0** |
 
 The second row is the round-5 defect itself: had the scripts asserted from the start, that
 bug would have exited nonzero rather than being caught three rounds later by reading.
+
+**The third row is a later defect, and it is the worse kind.** Q6 boots a fresh host per case
+but kept ONE module-global `received` array, cleared at the top of each case and read at the
+bottom. Cases 1 and 5 deliberately time out and leave their delivery **queued**; it runs once
+the sender releases the key, and the measured margin is that it lands **~4 ms INSIDE the next
+case's window**. A late push can only move a count up, so the only value it could fabricate
+is `recipientRanWhileSenderWaited: true` — the reading that means "no deadlock", which is the
+outcome the pin candidate wanted. **The error ran in the direction of confirming the thing
+the POC was built to test.**
+
+The matrix below survived it: both polluted cells (2 and 6) were `true` on their own merits,
+and re-running with per-host sinks reproduces every cell exactly. But *"the answer was right"*
+is not *"the check worked"* — with the pin deliberately removed, the old shared array still
+reported the rescue as working (row 3 above). That condition was **unfalsifiable**, which is
+the same §12 rule this POC has now broken twice. Each host now owns its sink
+(`Observations` in `harness.ts`), so the leak is unrepresentable rather than unlikely, and
+`q6-arbiter-key.ts` prints a replay of what the shared array *would* have reported so the
+contamination stays visible rather than becoming folklore.
 
 ```
 ```

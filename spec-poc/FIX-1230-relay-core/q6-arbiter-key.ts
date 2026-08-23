@@ -24,7 +24,7 @@ import {
   createConcurrencyArbiter,
   type ConcurrencyArbiter
 } from "../../packages/engine/src/transports/concurrency/arbiter";
-import { boot, concludeOrFail, fromOutside, received, show } from "./harness";
+import { boot, concludeOrFail, fromOutside, show } from "./harness";
 
 /**
  * The "pin" candidate, as an injected arbiter rather than an engine patch.
@@ -58,9 +58,23 @@ type Case = {
   target: "peer" | "self";
 };
 
-async function run(c: Case): Promise<Record<string, unknown>> {
-  received.length = 0;
-  const { host } = boot(
+/**
+ * One case's run, plus the two timestamps that bound the window the OLD shared
+ * array was read over. `main` replays those windows against every case's sink to
+ * reconstruct what the module-global version reported — see `readingUnderSharedArray`.
+ */
+type Ran = {
+  row: Record<string, unknown>;
+  obs: { received: Array<Record<string, unknown>> };
+  /** When the old code ran `received.length = 0`. */
+  clearedAt: number;
+  /** When the old code read `received.length > 0`. */
+  readAt: number;
+};
+
+async function run(c: Case): Promise<Ran> {
+  const clearedAt = Date.now();
+  const { host, obs } = boot(
     c.declared === "none" ? undefined : { policy: "queue", key: c.flowKey },
     c.keying === "pin" ? pinRelayToRecipientSession() : undefined
   );
@@ -96,12 +110,27 @@ async function run(c: Case): Promise<Record<string, unknown>> {
     deliveryKey,
     naiveResolvedKeyCollide: senderResolvedKey === deliveryKey,
     keysCollide: senderHeldKey !== undefined && senderHeldKey === deliveryKey,
-    recipientRanWhileSenderWaited: received.length > 0,
+    recipientRanWhileSenderWaited: obs.received.length > 0,
     senderTimedOut: output?.timedOut,
     senderWaitedMs: output?.elapsedMs
   };
+  const readAt = Date.now();
   show(c.label, row);
-  return row;
+  return { row, obs, clearedAt, readAt };
+}
+
+/**
+ * What `received.length > 0` reported when ONE array was shared by all seven
+ * hosts: any push, from any case, landing inside this case's clear→read window.
+ * Faithful because that is literally what the old line measured.
+ */
+function readingUnderSharedArray(self: Ran, all: Ran[]): boolean {
+  return all.some((other) =>
+    other.obs.received.some((r) => {
+      const at = r.at as number;
+      return at >= self.clearedAt && at <= self.readAt;
+    })
+  );
 }
 
 async function main(): Promise<void> {
@@ -116,8 +145,14 @@ async function main(): Promise<void> {
     { label: "6. NO concurrency declared · peer", declared: "none", flowKey: "session", keying: "inherit", target: "peer" },
     { label: "7. NO concurrency declared · SELF", declared: "none", flowKey: "session", keying: "inherit", target: "self" }
   ];
-  const rows: Array<Record<string, unknown>> = [];
-  for (const c of cases) rows.push(await run(c));
+  const ran: Ran[] = [];
+  for (const c of cases) ran.push(await run(c));
+  const rows = ran.map((r) => r.row);
+
+  // Cases 1 and 5 leave a delivery QUEUED; it runs once the sender releases the
+  // key. Let the stragglers land before replaying the windows, or the replay
+  // under-reports the very leak it exists to measure.
+  await new Promise((r) => setTimeout(r, 1_000));
 
   show(
     "MATRIX",
@@ -128,6 +163,32 @@ async function main(): Promise<void> {
       senderTimedOut: r.senderTimedOut
     }))
   );
+
+  // THE ISOLATION CHECK. Every host now writes only to its own sink, so this
+  // replay is the only place the old shared-array reading still exists. Any
+  // `differs: true` row is a cell the previous matrix got wrong.
+  const contamination = ran.map((r, i) => ({
+    case: r.row.label,
+    isolated: r.row.recipientRanWhileSenderWaited,
+    underSharedArray: readingUnderSharedArray(r, ran),
+    differs: readingUnderSharedArray(r, ran) !== r.row.recipientRanWhileSenderWaited,
+    /** Recipients that arrived AFTER this case's row was read — the leak's fuel. */
+    lateArrivalsFromThisCase: r.obs.received.filter((x) => (x.at as number) > r.readAt).length,
+    /**
+     * How the late arrivals MISSED. Positive = the stray push happened before the
+     * next case cleared the shared array, so the clear wiped it; negative = it
+     * landed inside the next case's window and corrupted that cell. The margin
+     * matters: it says whether the old matrix was right by structure or by luck.
+     */
+    msBeforeNextCaseWindowOpened:
+      ran[i + 1] === undefined
+        ? null
+        : r.obs.received
+            .filter((x) => (x.at as number) > r.readAt)
+            .map((x) => ran[i + 1].clearedAt - (x.at as number)),
+    caseIndex: i + 1
+  }));
+  show("SHARED-ARRAY CONTAMINATION REPLAY", contamination);
 
   concludeOrFail("VERDICT", {
     "the deadlock is specific to a SHARED key, not to relay":
@@ -149,7 +210,16 @@ async function main(): Promise<void> {
     note:
       "A stalled delivery is not a dropped one — unbounded admission keeps it queued " +
       "and it runs once the sender's request ends (epic Q3/Q4). That is AC 2's " +
-      "late-delivery case, and it is why the refusal has to happen at SEND time."
+      "late-delivery case, and it is why the refusal has to happen at SEND time.",
+    isolationNote:
+      "Isolation is NOT asserted above, deliberately. Each host now owns its sink, so " +
+      "cross-case leakage is unrepresentable rather than merely absent — a boolean for it " +
+      "could not fail, and §12 says a check that cannot fail is not a check. The replay " +
+      "table above is evidence instead: it reconstructs what the old shared array reported. " +
+      "Read `differs`. When cases 1 and 5 stall they DO push late, ~4ms INSIDE the next " +
+      "case's window; the old matrix survived only because both polluted cells were true " +
+      "on their own merits. Break the pin in case 2 and the old reading says the rescue " +
+      "worked while the isolated one says it did not — that condition was unfalsifiable."
   });
 }
 

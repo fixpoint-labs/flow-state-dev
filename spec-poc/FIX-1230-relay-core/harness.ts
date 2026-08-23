@@ -236,12 +236,36 @@ async function blockingSend(
   return { correlationId: args.correlationId, ...outcome, elapsedMs: Date.now() - started };
 }
 
-/** What the recipient saw, read back after the run. */
-export const received: Array<Record<string, unknown>> = [];
-/** What each reply delivery reported. */
-export const deliveries: Array<Record<string, unknown>> = [];
+/**
+ * What ONE host observed. Created per `boot()`, never module-global.
+ *
+ * IT WAS MODULE-GLOBAL, AND THAT WAS NOT TEST HYGIENE. q6 boots a fresh host
+ * per case but shared one array across all seven. Cases that deliberately time
+ * out leave their delivery QUEUED behind the sender's held key; it runs once the
+ * sender's request ends, which is after the next case has already cleared the
+ * shared array. So a push from case N could land inside case N+1's window.
+ *
+ * The error had a direction: a late push can only move a count UP, so the only
+ * value it could fabricate is `recipientRanWhileSenderWaited: true` — the
+ * reading that says "no deadlock, the recipient ran while the sender waited",
+ * which is the outcome the pin candidate wanted. The contamination ran toward
+ * confirming the thing the POC was built to test, and `concludeOrFail` would
+ * have ratified it.
+ *
+ * Handing each host its own sink makes the leak unrepresentable rather than
+ * unlikely: the flow closes over this object and no host can reach another's.
+ */
+export type Observations = {
+  /** What this host's recipient action saw. */
+  received: Array<Record<string, unknown>>;
+  /** What each reply delivery on this host reported. */
+  deliveries: Array<Record<string, unknown>>;
+};
 
-export function buildFlow(concurrency?: { policy: "queue" | "allow"; key?: "session" | "user" }) {
+export function buildFlow(
+  obs: Observations,
+  concurrency?: { policy: "queue" | "allow"; key?: "session" | "user" }
+) {
   return defineFlow({
     kind: FLOW_KIND,
     ...(concurrency !== undefined ? { request: { concurrency } } : {}),
@@ -263,9 +287,13 @@ export function buildFlow(concurrency?: { policy: "queue" | "allow"; key?: "sess
         block: handler<{ text: string; correlationId: string }, { handled: true }>({
           name: "receiveAndReply",
           execute: async (input, ctx) => {
-            received.push({
+            obs.received.push({
               sessionId: ctx.session.identity.id,
               requestId: ctx.request.identity.id,
+              // When this recipient actually started. q6 replays these against
+              // each case's clear→read window to reconstruct what the old
+              // shared array reported.
+              at: Date.now(),
               ...input
             });
             // A real recipient does work first. Keep it long enough that the
@@ -276,7 +304,7 @@ export function buildFlow(concurrency?: { policy: "queue" | "allow"; key?: "sess
               answerTo: input.correlationId,
               echo: input.text
             });
-            deliveries.push({ correlationId: input.correlationId, ...outcome });
+            obs.deliveries.push({ correlationId: input.correlationId, ...outcome });
             return { handled: true } as const;
           }
         })
@@ -338,12 +366,17 @@ export function buildFlow(concurrency?: { policy: "queue" | "allow"; key?: "sess
 
 export const hostLogs: Array<{ level: string; message: string; context?: unknown }> = [];
 
+/**
+ * Stand up one host. The returned `obs` is THIS host's only observation sink —
+ * see `Observations` for why that isolation is load-bearing rather than tidy.
+ */
 export function boot(
   concurrency?: { policy: "queue" | "allow"; key?: "session" | "user" },
   arbiter?: ConcurrencyArbiter
-): { host: InboundTransportHost; stores: StoreRegistry } {
+): { host: InboundTransportHost; stores: StoreRegistry; obs: Observations } {
+  const obs: Observations = { received: [], deliveries: [] };
   const registry = createFlowRegistry();
-  registry.register(buildFlow(concurrency));
+  registry.register(buildFlow(obs, concurrency));
   const stores = createInMemoryStores();
   const host = createInboundTransportHost({
     registry,
@@ -358,7 +391,7 @@ export function boot(
     }
   });
   HOST = host;
-  return { host, stores };
+  return { host, stores, obs };
 }
 
 /** Dispatch from OUTSIDE — what an HTTP caller does — and await the run. */
