@@ -12,16 +12,16 @@
 
 ## 1. What this is
 
-- **A session that is already running cannot be reached.** FSD can start a session, and start a
-  detached child of one, but there is no way back *in*. A background workstream that hits a
-  question finishes or fails. A schedule that fires can only begin something new.
-- **Relay is an internal message layer**: one session addresses another by `sessionId` and sends
-  it a message, which arrives as an ordinary request on the recipient.
+- **A running session cannot be reached.** FSD can start a session, and start a detached child of
+  one, but there is no way back *in*. A workstream that hits a question finishes or fails; a
+  schedule that fires can only begin something new.
+- **Relay is an internal message layer**: one session addresses another by `sessionId`, and the
+  message arrives as an ordinary request on the recipient.
 - **Cron rides on it** — a schedule becomes a sender. Absent address means a new session per run,
   exactly as today.
-- **The consumer is Conductor**, a meta-harness driving coding-agent runs across many sessions.
-  One committed consumer is what keeps this from being speculative surface.
-- **Not an event bus.** No fan-out, no subscribers, no discovery service. Every message names one
+- **The consumer is Conductor**, a meta-harness driving coding-agent runs across many sessions —
+  one committed consumer, so this is not speculative surface.
+- **Not an event bus.** No fan-out, no subscribers, no discovery. Every message names one
   recipient.
 
 ## 2. The objective — this is what the gate approves
@@ -46,7 +46,7 @@ Nothing is filed; the gate precedes creation. Every row is a proposal.
 | # | Issue | Depends on |
 |---|---|---|
 | 1 | The address, the send verb, both send modes, the agent-facing tool, admission | — |
-| 2 | Per-adapter delivery (in-process; through the `FlowDispatcher` seam for durability) | 1 |
+| 2 | **The cross-worker wake channel** — what a queue-backed deployment needs for blocking wait-for-response, or the decision to restrict it to in-process | 1 |
 | 3 | Sibling spawn — **address supply**: it mints the peer the send verb addresses | 1 |
 | 4 | Cron: a schedule addresses a session and fires as a message | 1 |
 | 5 | An exit/park mode for `awaiting_review` — a parked task whose request may **end** | — |
@@ -56,8 +56,7 @@ Nothing is filed; the gate precedes creation. Every row is a proposal.
 expiry sweep, but the framework runs no ticker (deployment fact 1), so issue 4 landing does not by
 itself give issue 6 a working sweep.
 
-**Issue 1 does *not* depend on issue 5** *(derived under the corrected waiting model; a reviewer
-argued the opposite from a superseded one)*. Issue 1 ships the verb and both modes complete: a
+**Issue 1 does *not* depend on issue 5.** Issue 1 ships the verb and both modes complete: a
 top-level sender waits on `waitForCondition` and needs no park. The park matters only for the
 **workstream ask-and-end** path, where a drain must not hold its request open. **That is a
 scenario dependency for the headline case, not a build-order edge** — and issue 5 stays
@@ -138,6 +137,15 @@ reaching into a live request from outside it. **Issue 1 designs it; this documen
 - **An expected wait holds a request open.** Fine on a long-lived host or a bullmq worker; **not**
   on a platform with a hard request ceiling. **Serverless deployments get the wake-to-a-new-request
   form** (§4, row 2) — no new mechanism needed.
+- **Blocking wait-for-response is in-process-only today.** `waitForCondition` subscribes to the
+  waiting worker's **in-memory** `ResponseEmitter`; in a queue-backed deployment the reply runs in
+  **another worker**, and the bullmq bridge is a one-way **publisher** aimed at a streaming client
+  (`bullmq/src/worker.ts:74-104` — `createPublisher`, `publishEvent`, *"bridge is best-effort"*).
+  **No inbound path can inject an item into another worker's live emitter.** So a queue-backed
+  deployment needs a **cross-worker wake channel** or it does not get the blocking mode — that is
+  **issue 2** (§3). *Operational, not theoretical:* enough blocked waiters can **exhaust the worker
+  pool** before recipients ever run. *Fork, not picked:* build the channel, or restrict blocking
+  wait to in-process delivery.
 
 ---
 
@@ -156,7 +164,15 @@ own spec — not here.**
   `requestId` identifies the **asker, not the ask** — one request can issue two wait-for-response
   sends (parallel branches, multiple tool calls) — so it is **provenance only**, never the
   correlator.
-- **A correlated reply must land as an item on the waiting request's response stream** (§4).
+- **A correlated reply must land as an item on the waiting request's response stream** (§4) —
+  **and issue 1 owns a runtime correlation-aware wait seam, not just that delivery target.**
+  `waitForCondition`'s predicate is fixed when the **sequencer is defined** and receives only the
+  shared request item array (`core/src/blocks/sequencer.ts:2297-2318`), while a correlation ID is
+  minted at **tool-call runtime**. Framework tool calls in one model step run **concurrently** on a
+  shared parent emitter (`core/src/blocks/generator.ts:1286-1309`), so two relay invocations cannot
+  each bind that static predicate to their own new ID — one reply satisfies **both waiters or
+  neither**. *Note: this is the second time "just use `waitForCondition`" has turned out to need a
+  new seam.* **State it; do not design it** — the stop applies.
 - **Authorization on the full identity tuple**, including bound-versus-unbound **org** equality.
   An unbound sender that omits `orgId` fires **no check** and `resolvedOrgId` becomes *the
   recipient's* org, so the sender runs against the recipient's org resources
@@ -164,12 +180,17 @@ own spec — not here.**
   **Distinct from cross-user, which is unreachable** (§2). *The generalisation worth keeping: an
   owner-level invariant is structurally blind to any distinction below the owner — org binding and
   resource scope are both exactly that.*
-- **Self-addressed refusal, coupled to the waiting mechanism** — not an unconditional guard:
-  - **Expected-wait path** (request open, concurrency key **held**) → **refusal required.** Under
-    `queue` one request runs to completion before the next starts, so a sender awaiting its own
-    message never lets it start. Q2 measured the deadlock.
+- **Key-collision refusal — far broader than self-addressing, and coupled to the waiting
+  mechanism.** The rule is about the **effective arbiter key**, and self-addressing is one instance
+  of it:
+  - **Expected-wait path** (request open, key **held**) → **refusal required** when the target
+    resolves to a key the sender already holds. Under `queue` one request runs to completion before
+    the next starts, so the recipient can never start. Q2 measured it.
   - **Wake-to-new-request path** (request ended, key released) → **not required.**
-  - Refuse on the **effective arbiter key**, not on `sessionId` equality.
+  - **Severity, stated plainly: under the supported `{policy:"queue", key:"user"}` every blocking
+    send deadlocks.** A same-owner A→C send targets the user key **A already holds**, and
+    **every send is same-owner by design invariant** (§2) — so this is the common case, not an
+    edge. Custom shared keys collide identically despite different `sessionId`s.
 - **AC 1** — the recipient's `flowKind` is **looked up from the session record, never asserted by
   the sender**. Under an asymmetric door this is a *routing* decision, and BP-031 is categorical.
 - **AC 2** — **relay dispatches are unbounded-admission, or admission expiry reaches the sender.**
@@ -181,6 +202,15 @@ own spec — not here.**
   `continueRequest` is **not** the mechanism and never will be — a reply is a fresh request, a
   resume is the *same* request id (`execution-and-errors.md:397-407`). **Do not attempt a third
   variant without code.**
+
+### Issue 2
+
+- **`sessionId` already flows end-to-end** — `DispatchEnvelope` declares it, the host forwards it,
+  bullmq serializes and restores it. So "per-adapter delivery" named **no adapter delta** and would
+  have produced an empty spec. *Re-described, not re-scoped:* issue 2's real content is the
+  **cross-worker wake channel** that blocking wait-for-response needs on a queue-backed deployment
+  (deployment fact 3) — **or the decision to restrict blocking wait to in-process delivery**, which
+  is a legitimate outcome and would make issue 2 a short spec rather than an empty one.
 
 ### Issue 4
 
@@ -241,11 +271,9 @@ in the tree.**
 | Org is checked only when it **differs**; an omitted `orgId` resolves to the recipient's org | `createExecutionContext.ts:656-661`, `:725-728`, `:733-734` |
 | `flow.workstream` resolves **terminally** — no fall-through to `actions` | `core/src/types/flow.ts:549-557`, `:562` |
 | …and is **framework-assembled**, not author-declared | `core/src/types/flow.ts:559-560` |
-| `RequestHost` is closed at four verbs, none taking a session id | `core/src/types/request-host.ts:218-273` |
 | `waitForCondition` watches **one request's own response stream**; `{ timeoutMs, wakeOn? }` in, `{ timedOut }` out | `core/src/blocks/sequencer-methods.ts:344-379` |
 | A suspension resume re-invokes the **same** request id; no new request is spawned | `docs/architecture/execution-and-errors.md:397-407` (FIX-811) |
 | Acceptance resolves while the message is still queued | `engine/src/transports/types.ts:186-227` |
-| The lease, not a dispatch milestone, is what detects a dead recipient | `engine/src/transports/types.ts:212-217` |
 | Arbitration is **in-process only**; skipped under an external dispatcher | `concurrency/arbiter.ts:22-27`, `createInboundTransportHost.ts:299-301` |
 | `QUEUE_WAIT_TIMEOUT_MS = 30_000`, and the gate is a per-process map | `arbiter.ts:40`, `keyed-async-gate.ts:13-16` |
 | `Infinity`/omitted already disables the admission timer | `keyed-async-gate.ts:141-145` |
@@ -263,7 +291,6 @@ in the tree.**
 | Both board backings `emit(...)` **after** the committed write, outside the lock | `resource-backed.ts:450-474`; `sequencer-backed.ts:264-338` |
 | `awaiting_review` is excluded from every board-exit path | `task-board/shared.ts:140-144`; `countWaitable` `:184-198`; `isHandedOff` `:111-120` |
 | `livenessOf` is lineage-filtered — a peer returns `false` | `liveness-read.ts:127`, `:131`; `create-request-host.ts:433,493` |
-| `debounce` is reserved in the policy enum and rejected at definition time | `core/src/types/concurrency.ts:33`, `:90`, `:110-116` |
 
 ## 10. POC verdicts
 
@@ -271,7 +298,7 @@ Built on this branch under `spec-poc/epic-relay/`. Throwaway; none of it ships.
 
 | | Question | Verdict |
 |---|---|---|
-| **Q1** | Can a running block dispatch onto another live session? | **YES.** It ran, landed a request on the recipient, and its message is in the recipient's items. **The sharp edge:** the envelope principal is a plain field and nothing at the seam checks it — naming another owner *passes*. That is why the sender's identity must be server-derived |
+| **Q1** | Can a running block dispatch onto another live session? | **YES** — it ran and landed a request on the recipient. **The sharp edge:** the envelope principal is a plain field and nothing at the seam checks it, so naming another owner *passes*. That is why the sender's identity must be server-derived |
 | **Q2** | Does a self-addressed wait deadlock? | **YES**, and it fails loudly: `ConcurrencyQueueTimeoutError` at 30 016 ms, a `failed` record on the recipient for a run that never started, and the sender reporting `completed` |
 | **Q3** | Does delivery outlive the sending request? | **YES.** The sender reached `completed` in 4 ms; the queued delivery ran later and landed. **And `accepted` settled at 0 ms while still queued** — which is what makes acceptance usable as the ack on both modes |
 | **Q4** | Does the admission budget drop an already-accepted delivery? | **YES.** Accepted at 0 ms, **dropped at 30 001 ms**, handler never ran, nothing in the logs, sender read `completed`. Re-run with an `Infinity` budget — **the delivery landed.** The fix is a parameter, not a redesign |
@@ -299,13 +326,15 @@ and the **constraints each issue's spec must satisfy**. It does **not** specify 
 - **Any defect that only exists once someone picks an implementation.** If your finding requires
   assuming a particular implementation to be a defect, it belongs in that issue's spec review.
 
-**This is not a soft preference.** Findings of the second kind are read, judged at their altitude,
-and **not carried**. Six of them landed on issue 6's semantics; each epic-altitude repair was an
-untested design decision that generated the next defect, which is why the repairs stopped. **A
-primitive's correctness contract cannot be settled without code.**
+**This is not a soft preference** — findings of the second kind are read, judged, and **not
+carried**. Six landed on issue 6's semantics, and each epic-altitude repair was an untested design
+decision that generated the next defect. **A primitive's correctness contract cannot be settled
+without code.**
 
-**The most useful thing a reviewer can do here is challenge the objective or the division.**
-Neither has been challenged in fourteen rounds.
+**The most useful thing a reviewer can do here is challenge the objective or the division.** In
+round 15 one finally did — that issue 2 named no adapter delta — and it was **right, in scope, and
+sharpened the division rather than collapsing it**: issue 2 was described wrong, not scoped wrong.
+That is this contract working.
 
 **POC files on this branch are out of scope entirely** — this PR never merges and none of it ships.
 React to what §10 says they showed, not to the code.
