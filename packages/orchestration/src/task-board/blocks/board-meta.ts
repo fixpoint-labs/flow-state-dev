@@ -278,6 +278,25 @@ function hasRowGoingNowhere(
  * Did this drain's worker pool stop because rows parked for a human were
  * excused from the board's waitable count (FIX-1234)?
  *
+ * **This answers about the pool, not about the board, and the ladder pairs it
+ * with a check on the board.** A carried verdict is a statement about a moment
+ * that has passed: the pool decided, and the collection kept moving. It can
+ * therefore be *stale* — a resume landing before the pool finishes, on a board
+ * whose other workers then stop for their own reasons, leaves this reading
+ * `true` with nothing parked any more.
+ *
+ * Rung 5 requires `counts.awaiting_review > 0` alongside it for that reason, and
+ * the shape of that guard is deliberate. Three separate attempts were made to
+ * enumerate the routes by which this verdict can go stale, and each turned up
+ * another one. `"parked-for-review"` names a state, so the cheap and complete
+ * check is whether the board is in it — a check that cannot be wrong about the
+ * thing it names beats one that has to be right about how it got there.
+ *
+ * The verdict is still necessary: the counts alone cannot tell a board that
+ * stopped *because* of a review from one that merely happens to have a parked
+ * row while stopping for another reason. Verdict says why, counts say whether;
+ * the reason needs both.
+ *
  * `input` is the value the completion tap receives, which in the composed board
  * is the `forEach` result — one final `checkBoard` output per worker loop. Any
  * one worker deciding it stopped for that reason is enough: workers exit
@@ -337,15 +356,19 @@ function excusedParkedByPool(input: unknown): boolean {
  *    a row stuck by its own *status*; this catches one stuck by its
  *    *dependencies*, or abandoned by a worker that died. See
  *    {@link hasRowGoingNowhere}.
- * 5. the exit decision excused rows as parked → `parked-for-review`. Read from
- *    the verdict this drain's own pool carried out, never from the rows as they
- *    stand now.
+ * 5. the exit decision excused rows as parked, **and a row is still parked** →
+ *    `parked-for-review`. The verdict comes from this drain's own pool, never
+ *    from the rows as they stand now — but the reason names a state, so it is
+ *    also checked against that state: a board with nothing in `awaiting_review`
+ *    never reports it, whatever the pool carried.
  * 6. every remaining row is handed off → `handed-off`.
  * 7. otherwise → `blocked-by-failures`.
  *
  * **On a board with no parked row the reason is exactly what it was before
- * FIX-1234.** Rung 5 is unreachable without a park verdict, and rung 4 fires
- * only where rung 7 already reported `blocked-by-failures` by another route.
+ * FIX-1234.** Rung 5 is unreachable without a parked row — checkable by looking
+ * at `counts.awaiting_review`, not by reasoning about how the verdict got here —
+ * and rung 4 fires only where rung 7 already reported `blocked-by-failures` by
+ * another route.
  *
  * Note: in `onIdle: "wait"` mode an early-firing `shouldExit` while tasks are
  * still `in_progress` / `pending` reports `"blocked-by-failures"` even though
@@ -415,7 +438,7 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
             ? "blocked-by-failures"
             : hasRowGoingNowhere(all, remaining, now)
               ? "blocked-by-failures"
-              : excusedParkedByPool(input)
+              : excusedParkedByPool(input) && counts.awaiting_review > 0
                 ? "parked-for-review"
                 : allRemainingHandedOff
                   ? "handed-off"

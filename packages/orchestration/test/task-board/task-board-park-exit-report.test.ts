@@ -520,10 +520,51 @@ describe("the exit verdict is carried from the drain that decided it", () => {
     expect(await reasonFor(collection, plainExit)).toBe("blocked-by-failures");
   });
 
-  it("survives a resume landing between the pool finishing and the completion item", async () => {
-    // Written as a flip. The naive implementation — infer the reason from the
-    // rows as they stand now — passes the first assertion and fails the second,
-    // because by then the parked row is `pending` again and reads as a stall.
+  it("refuses to say `parked-for-review` when nothing is parked any more", async () => {
+    // The carried verdict is a statement about a moment that has passed, and it
+    // can go stale: with `concurrency > 1`, one worker can decide the board is
+    // parked-only and carry that out while a resume lands BEFORE the pool
+    // finishes and the remaining workers stop for their own reasons. The pool's
+    // outputs still say "we excused a park"; the board has none.
+    //
+    // This is not the "row added after the pool classified" case that stays
+    // `parked-for-review` — there a review really is still outstanding. Here
+    // there is nothing to answer, so the reason would be false by inspection.
+    //
+    // Guarded by a property of the report rather than by tracing the route: the
+    // reason names a state, so it is checked against that state.
+    const collection = freshCollection();
+    await park(collection, "ask");
+    await collection.resumeFromReview("ask", "answered while the pool was still running");
+    expect(collection.count({ status: "awaiting_review" })).toBe(0);
+
+    // Falls through to what a board in this shape reported before FIX-1234: one
+    // un-completed row remaining, nothing stuck, nothing handed off.
+    expect(await reasonFor(collection, parkedExit)).toBe("blocked-by-failures");
+  });
+
+  it("stops reporting the review once the resume has cleared it", async () => {
+    // ⚠️ THIS OVERTURNS A NORMATIVE SPEC ROW, and the change is deliberate.
+    //
+    // §9's table says a resume landing between the pool finishing and the
+    // completion item still reports `parked-for-review`, on the grounds that the
+    // carried verdict cannot be erased by a row that has since gone back to
+    // `pending`. This asserts the opposite, because rung 5 now also requires a
+    // row to actually be parked.
+    //
+    // Why the row had to move: the same observable state — verdict carried,
+    // `awaiting_review: 0`, one `pending` row — is reachable two ways, and they
+    // want opposite answers. §9's way is a race in the completion window, where
+    // the drain really did stop for the review. The other is a resume landing
+    // BEFORE the pool finishes, on a board whose remaining workers then stop for
+    // their own reasons; there the review was already answered and the drain
+    // stopped for something else. At report time the two are indistinguishable,
+    // so no rule can be right about both.
+    //
+    // Ruling for the guard costs §9's case a reason that reads as a stall. Ruling
+    // against it ships completion items that say `parked-for-review` beside
+    // `counts.awaiting_review: 0` — two incompatible claims in one payload, which
+    // an operator cannot act on at all.
     const collection = freshCollection();
     await park(collection, "ask");
     expect(await reasonFor(collection, parkedExit)).toBe("parked-for-review");
@@ -531,7 +572,7 @@ describe("the exit verdict is carried from the drain that decided it", () => {
     await collection.resumeFromReview("ask", "approved");
     expect(collection.get("ask")?.status).toBe("pending");
 
-    expect(await reasonFor(collection, parkedExit)).toBe("parked-for-review");
+    expect(await reasonFor(collection, parkedExit)).toBe("blocked-by-failures");
   });
 
   it("ignores a pool output that carries no park verdict, on a board with a parked row", async () => {
