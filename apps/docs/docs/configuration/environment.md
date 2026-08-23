@@ -60,7 +60,7 @@ Full rules: [Models → Environment overrides](/docs/fundamentals/models).
 |----------|----------------|
 | `FSDEV_DEBUG_ENDPOINTS` | `1` enables privileged debug routes (same as `debugEndpointsEnabled: true`). |
 | `FSDEV_TRACING_LEVEL` | Observability verbosity for the CLI/dev router. `fsdev dev` defaults this to `verbose`. |
-| `FSDEV_TRACE_OBSERVABILITY` | `true` / `false` toggles `block_trace` capture. Overrides the older `FSDEV_DEBUG_ITEMS` when both are set. |
+| `FSDEV_TRACE_OBSERVABILITY` | `true` / `false` toggles `block_trace` capture. Defaults to on outside production. |
 
 `createFlowState({ devtool: { userId, bearerToken } })` is not an env var. Put secrets you want DevTool to send in that object, reading them from the environment yourself.
 

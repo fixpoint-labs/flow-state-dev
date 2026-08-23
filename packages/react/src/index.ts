@@ -42,7 +42,6 @@ export {
 export {
   useResourceCollection,
   type CollectionActions,
-  type CollectionItem,
   type CollectionListOptions,
   type UseResourceCollectionResult
 } from "./hooks/useResourceCollection";

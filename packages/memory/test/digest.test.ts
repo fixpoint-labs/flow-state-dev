@@ -9,7 +9,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { runForTest } from '@flow-state-dev/testing'
-import type { ResourceHandle } from '@flow-state-dev/core'
+import type { ResourceRef } from '@flow-state-dev/core/types'
 
 import { workingMemoryStateSchema } from '../src/working-memory.js'
 import type { WorkingMemoryState } from '../src/working-memory.js'
@@ -49,7 +49,7 @@ import type { MemorySystemState } from '../src/memory-system.js'
 // Mock resource refs
 // ---------------------------------------------------------------------------
 
-function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceHandle<WorkingMemoryState> {
+function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceRef<WorkingMemoryState> {
   let state: WorkingMemoryState = { entries: [], currentTurn: 0, ...initial }
   return {
     name: 'workingMemory',
@@ -61,10 +61,10 @@ function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceHandle<
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: workingMemoryStateSchema, writable: true },
-  } as ResourceHandle<WorkingMemoryState>
+  } as ResourceRef<WorkingMemoryState>
 }
 
-function createMockSysRef(initial?: Partial<MemorySystemState>): ResourceHandle<MemorySystemState> {
+function createMockSysRef(initial?: Partial<MemorySystemState>): ResourceRef<MemorySystemState> {
   let state: MemorySystemState = {
     lastProcessedIndex: -1,
     episodicWritesSinceLastConsolidation: 0,
@@ -82,10 +82,10 @@ function createMockSysRef(initial?: Partial<MemorySystemState>): ResourceHandle<
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: memorySystemStateSchema, writable: true },
-  } as ResourceHandle<MemorySystemState>
+  } as ResourceRef<MemorySystemState>
 }
 
-function createMockSemRef(initial?: Partial<SemanticMemoryState>): ResourceHandle<SemanticMemoryState> {
+function createMockSemRef(initial?: Partial<SemanticMemoryState>): ResourceRef<SemanticMemoryState> {
   let state: SemanticMemoryState = {
     facts: [],
     totalExtracted: 0,
@@ -102,10 +102,10 @@ function createMockSemRef(initial?: Partial<SemanticMemoryState>): ResourceHandl
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: semanticMemoryStateSchema, writable: true },
-  } as ResourceHandle<SemanticMemoryState>
+  } as ResourceRef<SemanticMemoryState>
 }
 
-function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceHandle<EpisodicMemoryState> {
+function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceRef<EpisodicMemoryState> {
   let state: EpisodicMemoryState = { episodes: [], totalEncoded: 0, ...initial }
   return {
     name: 'episodicMemory',
@@ -117,10 +117,10 @@ function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceHandle
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: episodicMemoryStateSchema, writable: true },
-  } as ResourceHandle<EpisodicMemoryState>
+  } as ResourceRef<EpisodicMemoryState>
 }
 
-function createMockDigestRef(initial?: Partial<DigestMemoryState>): ResourceHandle<DigestMemoryState> {
+function createMockDigestRef(initial?: Partial<DigestMemoryState>): ResourceRef<DigestMemoryState> {
   let state: DigestMemoryState = { totalGenerated: 0, ...initial }
   return {
     name: 'digestMemory',
@@ -132,7 +132,7 @@ function createMockDigestRef(initial?: Partial<DigestMemoryState>): ResourceHand
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: digestMemoryStateSchema, writable: true },
-  } as ResourceHandle<DigestMemoryState>
+  } as ResourceRef<DigestMemoryState>
 }
 
 function createMockResources(refs: Record<string, any>) {

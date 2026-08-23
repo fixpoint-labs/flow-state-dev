@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { ResourceHandle } from '@flow-state-dev/core'
+import type { ResourceRef } from '@flow-state-dev/core/types'
 import {
   episodeSchema,
   episodicMemoryStateSchema,
@@ -18,7 +18,7 @@ import {
 
 function createMockEpRef(
   initialState?: Partial<EpisodicMemoryState>,
-): ResourceHandle<EpisodicMemoryState> {
+): ResourceRef<EpisodicMemoryState> {
   let state: EpisodicMemoryState = {
     episodes: [],
     totalEncoded: 0,
@@ -37,7 +37,7 @@ function createMockEpRef(
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: episodicMemoryStateSchema, writable: true },
-  } as ResourceHandle<EpisodicMemoryState>
+  } as ResourceRef<EpisodicMemoryState>
 }
 
 function makeEpisode(overrides: Partial<Episode> & { id: string }): Episode {

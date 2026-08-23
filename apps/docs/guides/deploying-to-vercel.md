@@ -316,7 +316,7 @@ Vercel serverless functions have execution time limits:
 | Pro | 60 seconds |
 | Enterprise | 900 seconds |
 
-The `@flow-state-dev/vercel/config` module exports `maxDuration = 300`. If your Vercel plan's limit is lower, the plan limit takes precedence. The adapter sets the max so that plan upgrades immediately unlock longer execution times without redeploying.
+Set `export const maxDuration = 300` in the route file. If your Vercel plan's limit is lower, the plan limit takes precedence.
 
 **What this means in practice:**
 

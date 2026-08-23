@@ -13,14 +13,11 @@ export { isEphemeralContent } from "./content";
 export { ITEM_UPDATE_INVARIANT_KEYS } from "./events";
 
 export type {
-  AgentType,
   BlockTraceItem,
   BlockValue,
   ComponentItem,
   ContainerItem,
   ContinuationItem,
-  /** @deprecated The `context` item type has been removed from the OutputItem union. */
-  ContextItem,
   ErrorItem,
   GeneratorStepItem,
   InvalidationItem,

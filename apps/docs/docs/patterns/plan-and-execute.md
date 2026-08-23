@@ -266,7 +266,6 @@ import {
   planAndExecuteStateSchema,
   PlanSchema,
   PlanTaskSchema,
-  PlanStepSchema,   // backward-compat alias for PlanTaskSchema
   iterationOutputSchema,
 } from "@flow-state-dev/patterns";
 
@@ -276,7 +275,6 @@ import type {
   PlanAndExecuteState,
   Plan,
   PlanTask,
-  PlanStep,         // backward-compat alias for PlanTask
   IterationOutput,
 } from "@flow-state-dev/patterns";
 ```

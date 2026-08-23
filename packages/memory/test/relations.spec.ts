@@ -17,7 +17,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { runForTest } from '@flow-state-dev/testing'
-import type { ResourceHandle } from '@flow-state-dev/core'
+import type { ResourceRef } from '@flow-state-dev/core/types'
 import { system } from '../src/memory-system.js'
 import { createResourceEdgeApi } from '@flow-state-dev/core/graph'
 import type { EdgeSlotConfig } from '@flow-state-dev/core/graph'
@@ -55,7 +55,7 @@ import { memorySystemJanitor } from '../src/janitor-blocks.js'
 function createMockSemRef(
   initial?: Partial<SemanticMemoryState>,
   relations?: EdgeSlotConfig,
-): ResourceHandle<SemanticMemoryState> {
+): ResourceRef<SemanticMemoryState> {
   let state: SemanticMemoryState = {
     facts: [],
     totalExtracted: 0,
@@ -73,14 +73,14 @@ function createMockSemRef(
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: semanticMemoryStateSchema, writable: true },
-  } as unknown as ResourceHandle<SemanticMemoryState>
+  } as unknown as ResourceRef<SemanticMemoryState>
   if (relations) {
     ;(ref as { edges?: unknown }).edges = createResourceEdgeApi(ref as never, relations)
   }
   return ref
 }
 
-function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceHandle<WorkingMemoryState> {
+function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceRef<WorkingMemoryState> {
   let state: WorkingMemoryState = { entries: [], currentTurn: 0, ...initial }
   return {
     name: 'workingMemory',
@@ -92,10 +92,10 @@ function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceHandle<
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: workingMemoryStateSchema, writable: true },
-  } as ResourceHandle<WorkingMemoryState>
+  } as ResourceRef<WorkingMemoryState>
 }
 
-function createMockSysRef(initial?: Partial<MemorySystemState>): ResourceHandle<MemorySystemState> {
+function createMockSysRef(initial?: Partial<MemorySystemState>): ResourceRef<MemorySystemState> {
   let state: MemorySystemState = {
     lastProcessedIndex: -1,
     episodicWritesSinceLastConsolidation: 0,
@@ -113,10 +113,10 @@ function createMockSysRef(initial?: Partial<MemorySystemState>): ResourceHandle<
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: memorySystemStateSchema, writable: true },
-  } as ResourceHandle<MemorySystemState>
+  } as ResourceRef<MemorySystemState>
 }
 
-function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceHandle<EpisodicMemoryState> {
+function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceRef<EpisodicMemoryState> {
   let state: EpisodicMemoryState = { episodes: [], totalEncoded: 0, ...initial }
   return {
     name: 'episodicMemory',
@@ -128,10 +128,10 @@ function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceHandle
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: episodicMemoryStateSchema, writable: true },
-  } as ResourceHandle<EpisodicMemoryState>
+  } as ResourceRef<EpisodicMemoryState>
 }
 
-function createMockJanRef(initial?: Partial<JanitorState>): ResourceHandle<JanitorState> {
+function createMockJanRef(initial?: Partial<JanitorState>): ResourceRef<JanitorState> {
   let state: JanitorState = {
     lastRunTurn: 0,
     totalRuns: 0,
@@ -150,7 +150,7 @@ function createMockJanRef(initial?: Partial<JanitorState>): ResourceHandle<Janit
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: janitorStateSchema, writable: true },
-  } as ResourceHandle<JanitorState>
+  } as ResourceRef<JanitorState>
 }
 
 function createMockResources(refs: Record<string, any>) {
@@ -197,9 +197,9 @@ const baseConfig = {
 
 async function runPersist(
   config: any,
-  semRef: ResourceHandle<SemanticMemoryState>,
+  semRef: ResourceRef<SemanticMemoryState>,
   input: ConsolidationOutput,
-  epRef: ResourceHandle<EpisodicMemoryState> = createMockEpRef(),
+  epRef: ResourceRef<EpisodicMemoryState> = createMockEpRef(),
 ) {
   const block = consolidationPersist(config)
   const ctx = {

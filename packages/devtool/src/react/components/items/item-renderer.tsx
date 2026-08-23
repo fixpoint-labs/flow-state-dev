@@ -15,7 +15,6 @@ import { ErrorItemView } from "./error-item";
 import { StatusItemView } from "./status-item";
 import { ComponentItemView } from "./component-item";
 import { ContainerItemView } from "./container-item";
-import { ContextItemView } from "./context-item";
 import { StateChangeItemView } from "./state-change-item";
 import { ResourceChangeItemView } from "./resource-change-item";
 import { ToolOutputItemView } from "./block-tool-output-item";
