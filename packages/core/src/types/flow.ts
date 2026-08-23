@@ -308,12 +308,6 @@ export type SessionConfig = {
    * projections appear in `clientData.session`.
    */
   client?: ScopeClientConfig<JsonObject>;
-  /**
-   * @deprecated Use `client.derived` instead. `clientData` keeps working
-   * with a one-time deprecation warning per scope per process; removal
-   * lands in a future minor.
-   */
-  clientData?: Record<string, ClientDataComputeFn<JsonObject>>;
   /** Retention policy that bounds session item log size. */
   retention?: RetentionPolicy;
   /**
@@ -391,8 +385,6 @@ export type UserConfig = {
   cas?: CASOptions;
   /** See `SessionConfig.client`. */
   client?: ScopeClientConfig<JsonObject>;
-  /** @deprecated Use `client.derived` instead. See `SessionConfig.clientData`. */
-  clientData?: Record<string, ClientDataComputeFn<JsonObject>>;
 };
 
 export type OrgConfig = {
@@ -400,8 +392,6 @@ export type OrgConfig = {
   cas?: CASOptions;
   /** See `SessionConfig.client`. */
   client?: ScopeClientConfig<JsonObject>;
-  /** @deprecated Use `client.derived` instead. See `SessionConfig.clientData`. */
-  clientData?: Record<string, ClientDataComputeFn<JsonObject>>;
 };
 
 export type FlowDefinition<

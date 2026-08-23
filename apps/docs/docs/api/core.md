@@ -354,7 +354,7 @@ defineFlow({
 
 `expose` and `derived` share a namespace. A name in both throws at `defineFlow`. `expose` names that aren't on the scope's `stateSchema` throw too.
 
-`clientData` is the previous name for `client.derived` and is deprecated. Setting both `client` and `clientData` on the same scope throws at definition time; setting only `clientData` emits a one-time deprecation warning.
+`clientData` was the previous name for `client.derived`. It has been removed: `defineFlow` throws if a scope config still sets it. Move compute functions under `client.derived`, and plain passthroughs into `client.expose`. (The wire shape is unchanged — clients still read `snapshot.clientData.<scope>.<name>`.)
 
 Clients read the result at `snapshot.clientData.<scope>.<name>`.
 
