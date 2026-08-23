@@ -12,13 +12,13 @@
 
 ## 1. What this is
 
-- **A running session cannot be reached.** FSD can start a session, and start a detached child of
-  one, but there is no way back *in*. A workstream that hits a question finishes or fails; a
-  schedule that fires can only begin something new.
+- **A running session cannot be reached.** FSD can start one, and start a detached child of one,
+  but there is no way back *in*. A workstream that hits a question finishes or fails; a schedule
+  that fires can only begin something new.
 - **Relay is an internal message layer**: one session addresses another by `sessionId`, and the
   message arrives as an ordinary request on the recipient.
 - **Cron rides on it** — a schedule becomes a sender. Absent address means a new session per run,
-  exactly as today.
+  as today.
 - **The consumer is Conductor**, a meta-harness driving coding-agent runs across many sessions —
   one committed consumer, so this is not speculative surface.
 - **Not an event bus.** No fan-out, no subscribers, no discovery. Every message names one
@@ -31,40 +31,49 @@ without ending. A coordinator steers a run already in flight. Two top-level sess
 other informed. A schedule fires onto a named session.
 
 > **Identity: relay always sends within a single user identity.** User-to-user communication is
-> **not possible in the framework** — there is no such feature. The only cross-user mechanism that
-> exists is **org-level resource sharing**, which is not messaging.
+> **not possible in the framework** — there is no such feature. The only cross-user mechanism is
+> **org-level resource sharing**, which is not messaging.
 >
 > **What makes that hold for relay is something we are specifying, not something the framework
 > already guarantees:** the **server-derived sender identity** issue 1 enforces (§8, AC 3). The
 > `userId` binding check is **not** the proof — it guards a *mismatched* request reaching another
-> user's session, and a dispatcher supplying the **recipient's** `userId` passes it. This epic's
-> own POC ran exactly that case.
+> user's session, and a dispatcher supplying the **recipient's** `userId` passes it — our own POC
+> ran that case.
 >
-> **Distinct from the org constraint, and they must not be collapsed.** The org constraint is **one
-> user with sessions in two orgs** — inside a single user identity, crossing an org boundary. That
-> one is a real gap.
+> **Distinct from the org constraint — never collapse them.** That one is **one user with sessions
+> in two orgs**: inside a single user identity, crossing an org boundary, and a real gap.
 
-## 3. The six issues
+## 3. The issues — five certain, one conditional
 
 Nothing is filed; the gate precedes creation. Every row is a proposal.
 
 | # | Issue | Depends on |
 |---|---|---|
 | 1 | The address, the send verb, both send modes, the agent-facing tool, admission | — |
-| 2 | **The cross-worker wake channel** — what a queue-backed deployment needs for blocking wait-for-response, or the decision to restrict it to in-process | 1 |
+| **2** | **CONDITIONAL** — **the cross-worker wake channel**, which exists **only if we choose to build it** | 1 |
 | 3 | Sibling spawn — **address supply**: it mints the peer the send verb addresses | 1 |
 | 4 | Cron: a schedule addresses a session and fires as a message | 1 |
 | 5 | An exit/park mode for `awaiting_review` — a parked task whose request may **end** | — |
-| 6 | Watch — a general one-off notification primitive; the task board is its first consumer | 1, 4* |
+| 6 | Watch — a general one-off notification primitive; the task board is its first consumer | 1, 4† |
 
-\* **Necessary, not sufficient.** Issue 4 gives issue 6 the schedule-as-message path for its
-expiry sweep, but the framework runs no ticker (deployment fact 1), so issue 4 landing does not by
-itself give issue 6 a working sweep.
+**† Two of these edges are conditional on constraint forks this document has *not* settled, and
+they are marked rather than drawn as if decided.**
 
-**Issue 1 does *not* depend on issue 5.** Issue 1 ships the verb and both modes complete: a
-top-level sender waits on `waitForCondition` and needs no park. The park matters only for the
-**workstream ask-and-end** path, where a drain must not hold its request open. **That is a
-scenario dependency for the headline case, not a build-order edge** — and issue 5 stays
+- **Issue 2 exists if and only if we build the wake channel.** Its alternative is to **restrict
+  blocking wait to in-process** — and issue 1's AC 4 already makes issue 1 refuse blocking sends
+  when the dispatcher cannot serve them. **Under the restrict outcome AC 4 is the whole answer and
+  issue 2 has no delta left.** *(Second challenge to issue 2's content — the first said it was
+  empty as described, which the wake channel answered; this says it is empty under one branch.)*
+- **Issue 6's edge to issue 4 is conditional on C5.** If the expiry sweep is a scheduled message it
+  needs issue 4 — and even then not sufficiently, since the framework runs no ticker (deployment
+  fact 1). If C5 instead takes an **engine-owned periodic job**, the sweep invokes issue 1's relay
+  seam directly and **issue 4 is not needed at all**.
+
+**So the gate approves five certain issues and one conditional**, not six certain.
+
+**Issue 1 does *not* depend on issue 5.** It ships both modes complete — a top-level sender waits
+on `waitForCondition` and needs no park. The park matters only for the **workstream ask-and-end**
+path: **a scenario dependency for the headline case, not a build-order edge.** Issue 5 stays
 independent.
 
 ## 4. The waiting model
@@ -101,7 +110,8 @@ reaching into a live request from outside it. **Issue 1 designs it; this documen
 - **The door is asymmetric.** A **sibling** resolves `flow.actions` (it *is* a caller); a
   **workstream** gets a narrow, author-declared inside-world surface and never reaches
   `flow.actions`. Extends an invariant already enforced — `flow.workstream` resolves *terminally*.
-- **The address is a `sessionId`** on both ends, server-derived, never caller-supplied.
+- **The address is a `sessionId`** on both ends — the **recipient locator** caller-supplied, the
+  **sender identity** server-derived (AC 3).
 - **Two send modes, not three** — fire-and-forget and wait-for-response. Acceptance is the
   acknowledgement on both, not a third mode.
 - **Cron rides on this layer** rather than keeping a transport of its own.
@@ -122,7 +132,7 @@ reaching into a live request from outside it. **Issue 1 designs it; this documen
 - **Authorization is defined on the full server-derived identity tuple**, including
   bound-versus-unbound **org** equality — see §2's distinction, and §8's issue-1 requirements.
 
-**Deliberately not doing:** fan-out · session discovery (consumer-owned domain state) · widening
+**Deliberately not doing:** session discovery (consumer-owned domain state) · widening
 `livenessOf` · cross-session progress polling · a new queueing mechanism.
 
 ## 6. Still open — two questions, neither gating
@@ -147,9 +157,8 @@ reaching into a live request from outside it. **Issue 1 designs it; this documen
   worker**, and the bullmq bridge is a one-way **publisher** aimed at a streaming client
   (`bullmq/src/worker.ts:74-104`, *"bridge is best-effort"*) — **no inbound path can inject an item
   into another worker's live emitter.** So such a deployment needs a **cross-worker wake channel**
-  or it does not get the blocking mode: that is **issue 2**. *Operational, not theoretical:* enough
-  blocked waiters can **exhaust the worker pool** before recipients ever run. *Fork, not picked:*
-  build the channel, or restrict blocking wait to in-process.
+  or it does not get the blocking mode — the fork §3 marks as conditional. *Operational, not
+  theoretical:* enough blocked waiters can **exhaust the worker pool** before recipients ever run.
 
 ---
 
@@ -211,12 +220,20 @@ own spec — not here.**
     unsafe retries. *Lean, not a decision:* the idempotency contract — it matches `expired`, and
     cancellation is itself racy (the request may be mid-execution when it arrives). **Neither
     picked; nothing designed here.**
-- **AC 3** — **the sender principal is derived server-side from the sending context, never taken
-  from the envelope.** This is what makes §2's claim true for relay. **The trap: do not rely on the
-  `userId` binding check in its place** — it compares `sessionRecord.userId !== userId`
+- **AC 3 — two halves, and conflating them breaks the epic.** The **sender identity and the
+  authorization tuple** used to validate a send are **derived server-side from the sending context,
+  never taken from the envelope**; that is what makes §2's claim true for relay. **The recipient
+  locator is not covered by this rule.** *Which* session to reach is **caller-supplied and
+  opaque**, and must be: the objective includes *"two top-level sessions keep each other
+  informed"* — sessions that **already exist**, where issue 3 only mints *new* siblings and
+  discovery is out of scope — and the session API takes a caller-supplied `sessionId` by design
+  (`state-and-scopes.md:398`, `:402`). **A rule phrased "never caller-supplied" is exactly the kind
+  an implementer over-applies, and over-applying it here makes the headline case unreachable.**
+  **The trap on the other half: do not rely on the `userId` binding check in place of deriving
+  identity** — it compares `sessionRecord.userId !== userId`
   (`createExecutionContext.ts:625-632`), so an envelope naming the **recipient's** `userId` passes.
-  *(Cited here once as proof of unreachability; it is not. The POC that found it said "once the
-  sender's identity is ctx-derived", and that clause was the whole load.)*
+  *(That check was once cited here as proof of unreachability. It is not — the POC that found it
+  said "once the sender's identity is ctx-derived", and that clause was the whole load.)*
 - **AC 4** — **issue 1 must reject blocking sends when the effective dispatcher lacks cross-worker
   wake support.** Issue 2 builds that channel and **depends on** issue 1, so without this criterion
   the moment issue 1 lands a queue-backed caller can invoke an *advertised* blocking mode with no
