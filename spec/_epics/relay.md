@@ -229,6 +229,15 @@ own spec — not here.**
   discovery is out of scope — and the session API takes a caller-supplied `sessionId` by design
   (`state-and-scopes.md:398`, `:402`). **A rule phrased "never caller-supplied" is exactly the kind
   an implementer over-applies, and over-applying it here makes the headline case unreachable.**
+  **AC 3 assumes a sending session, and not every origin has one — so the rule is stated once
+  here rather than patched per origin.** **Any origin that is not a session must carry
+  server-derived authority persisted at registration or definition time, or go through a narrow
+  trusted system-origin door.** Three origins already need this — **cron** (issue 4), **C5's
+  engine-owned periodic job**, and AC 3's own framing, which presumes a session — and stating it
+  as a rule covers the next one by construction. **The door is not designed here:** a design that
+  picks the engine-owned job must satisfy this rule, and that is the whole of what this document
+  says about it.
+
   **The trap on the other half: do not rely on the `userId` binding check in place of deriving
   identity** — it compares `sessionRecord.userId !== userId`
   (`createExecutionContext.ts:625-632`), so an envelope naming the **recipient's** `userId` passes.
@@ -262,8 +271,10 @@ own spec — not here.**
 - **Can an addressed schedule target a session on another flow?** `scheduled/src/routes.ts:175-199`
   resolves the binding from the **URL** flow, while issue 1 requires the **recipient's** `flowKind`.
   Both cannot hold for a cross-flow target. *Options, no pick:* require same-flow targets, or
-  define an explicit relay action on the recipient. Pairs with the existing **"cron has no sender
-  identity"** gap — same seam, both halves.
+  define an explicit relay action on the recipient. Pairs with the **"cron has no sender identity"**
+  gap — same seam, both halves. **That gap is an instance of AC 3's non-session-origin rule**, not
+  a problem of its own: a schedule has no sending session, so it carries persisted server-derived
+  authority or uses the system-origin door.
 
 ### Issue 5
 
@@ -279,18 +290,19 @@ own spec — not here.**
 
 **Watch is `reactTo`'s asynchronous, cross-session, runtime-registered sibling** — same event
 vocabulary, different binding time and delivery. Reuse `reactTo`'s change-payload shape and
-predicate idiom. Three of its four parts already ship (task-change and resource-change already
-emit; `reactTo` already does bound dispatch); what is new is the registry, an out-of-turn matcher,
+predicate idiom — **including its split between state and content updates** (C1b). Three of its
+four parts already ship (task-change and resource-change already emit; `reactTo` already does bound
+dispatch); what is new is the registry, an out-of-turn matcher,
 and addressed delivery — **plus the expiry sweep, which is required, not optional.**
 
 | | Constraint | Recommended resolution |
 |---|---|---|
 | **C1** | Registration must not lose a condition that is **already true** — both board backings `emit(...)` *after* the committed write, outside the lock | Satisfied-or-attach, atomically. *Price:* each source owes a small "is this already satisfied?" adapter |
-| **C1b** | **"Already true" is undefined for an edge source.** A task's terminal status is a **level** predicate; a resource `updated` is an **edge** event, so a current-state read gives no baseline | A **versioned baseline** — per-key versions already exist. **Unverified, check first:** whether that version is readable on a public path at registration time. *Pre-committed fallback:* level-only immediate satisfaction, edge watches carrying the residual race **stated, not hidden** |
+| **C1b** | **"Already true" is undefined for an edge source.** A task's terminal status is a **level** predicate; a resource `updated` is an **edge** event, so a current-state read gives no baseline. **And "resource updated" is two kinds, not one:** a **content** write goes to the separate content store and fires the seam with `{ contentWrite: true }` and **no state delta** — *"A content write carries no state delta"* (`resource-registry.ts:853-859`) — so there is no version to compare and a content write between the baseline read and the attach is **still missed** | A **versioned baseline for state writes**, where per-key versions already exist — **the cheapness claim holds for state and not for content.** **Unverified, check first:** whether that version is readable on a public path at registration time. **For content, mirror `reactTo`'s existing split** rather than inventing a cursor across two stores: the framework already treats a content update as its own kind, mapping `contentWrite` to `reactTo.contentUpdated` (FIX-843), and mirroring it is both the smaller change and coherent with watch reusing `reactTo`'s vocabulary. *Rejected:* a unified cursor spanning both stores — larger, and it invents a vocabulary where one already exists. *Pre-committed fallback:* level-only immediate satisfaction, edge watches carrying the residual race **stated, not hidden** |
 | **C2** | The match key must be the **complete coordinate** — scope kind + owner + collection/namespace + id, on **both** the registration and the event. Three registries can emit the same `storageKey`; `TaskChangeEvent` identity is the `collectionId`+`taskId` pair. A bare id mis-delivers **inside one owner** | Complete coordinate, with the scope **server-derived** per BP-031 |
 | **C3** | A bounded lifetime that **something actually fires**. A lazily-checked TTL never runs for the never-fires case it exists to close | TTL + a **periodic sweep**. **What triggers the sweep is C5's question, not this one** — C3 requires only that a sweep exist. *Rejected:* cleanup-on-next-activity with no `expired` promise — it answers the lifetime question with "nothing clears it" |
 | **C4** | The manager must sit where **both** event sources reach it | `engine`, with `orchestration` a consumer forwarding the event it already emits. Keeps the board single-writer |
-| **C5** | **UNRESOLVED — the sweep C3 requires has no framework-owned trigger.** `@flow-state-dev/scheduled` runs no loop. **Trigger selection is this constraint's alone** | *Options, no pick:* an **engine-owned periodic job** (needs no issue 4, and no host scheduler), or a **specified required external scheduler + target session** (a scheduled message, so it needs issue 4 and a host ticker). The choice decides issue 6's edge to issue 4 — §3 |
+| **C5** | **UNRESOLVED — the sweep C3 requires has no framework-owned trigger.** `@flow-state-dev/scheduled` runs no loop. **Trigger selection is this constraint's alone** | *Options, no pick:* an **engine-owned periodic job** (needs no issue 4, and no host scheduler — but it has **no sending session**, so it is an instance of AC 3's non-session-origin rule and must satisfy it), or a **specified required external scheduler + target session** (a scheduled message, so it needs issue 4 and a host ticker). The choice decides issue 6's edge to issue 4 — §3 |
 | **C6** | **UNRESOLVED — the `expired` announcement can itself be lost**, over the same best-effort path it backstops. If the sweep consumes the entry and the delivery is lost, no entry remains and the watcher is told nothing | *Options, no pick:* retain and retry until handoff is confirmed, or weaken the guarantee explicitly |
 
 **Delivery is explicitly best-effort — no durable outbox** (out of scope by the owner's boundary).
@@ -330,7 +342,8 @@ in the tree.**
 | A task change is **already an event** | `tasks/collection/get-or-create.ts:29-30`; `change-event.ts:37-44`; consumed at `predicates.ts:32-41` |
 | A resource change is **already an event**, wired per scope | `resource-registry.ts:545`, `:1205-1210`; `createExecutionContext.ts:2137-2170` |
 | Three scope registries can emit the **same** `storageKey` | `createExecutionContext.ts:2044`, installed `:2137`, `:2152`, `:2170` |
-| Per-key versions already exist | `resource-registry.ts:480-491` (D10), `:523-527` (D7) |
+| Per-key versions already exist — **for state writes only** | `resource-registry.ts:480-491` (D10), `:523-527` (D7) |
+| A **content** write carries **no state delta**; it fires the seam with `{ contentWrite: true }`, which maps to `reactTo.contentUpdated` (FIX-843) | `resource-registry.ts:853-859` |
 | `reactTo` already does bound dispatch — **in-session, inline in the mutating turn** | `reactive-dispatch.ts:1-17`, `:43-46` |
 | Both board backings `emit(...)` **after** the committed write, outside the lock | `resource-backed.ts:450-474`; `sequencer-backed.ts:264-338` |
 | `awaiting_review` is excluded from every board-exit path | `task-board/shared.ts:140-144`; `countWaitable` `:184-198`; `isHandedOff` `:111-120` |
