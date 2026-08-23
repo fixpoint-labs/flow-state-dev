@@ -129,7 +129,7 @@ The host verifies credentials. The framework applies `defaultUserId` and `requir
 | `heartbeatIntervalMs` | `number` | `10000` | Active-request heartbeat. `0` disables the heartbeat *and* cross-process abort delivery. |
 | `sseHeartbeatMs` | `number` | `15000` | SSE `: ping` cadence. `0` disables. |
 | `concurrency` | `ConcurrencyConfig` | `"allow"` | Default for actions that omit `concurrency`. |
-| `mutationTimeoutMs` | `number` | `30000` | Budget for in-memory state writes. `Infinity` disables. Persistent stores use CAS retries instead. |
+| `mutationTimeoutMs` | `number` | `30000` | Budget for in-memory state writes. `Infinity` disables. Scopes that persist — request, session, user, org — are not covered by it. |
 | `cleanupCheckpointsOnTerminal` | `boolean` | `false` | Delete durable sequencer checkpoints when the request finishes. |
 
 ## Tools defaults
