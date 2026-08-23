@@ -145,6 +145,15 @@ host-provisioned scheduler as a deployment requirement**, watch expiry included 
 needs Vercel Cron configured. **This is a deployment requirement, not a framework guarantee**, and
 saying so here is cheaper than a consumer discovering it.
 
+**A second platform constraint, in the same register: an expected wait holds a request open, and
+not every host allows that.** *(Added 2026-08-23 with the waiting model, theme 5.)* Wait-for-response
+is `waitForCondition`, so the waiting request **stays open** for the duration. That is fine on a
+**long-lived host** or a **bullmq worker**, and it is not fine on a platform with a **hard request
+ceiling** — a serverless function will be killed mid-wait regardless of what the timeout says. So a
+**serverless deployment gets the wake-to-a-new-request form** instead, which is the second row of
+theme 5's table and needs no new mechanism. Like the scheduler fact above, this is a **deployment
+property the objective inherits**, not something this epic can decide away.
+
 **Deliberately not doing** — named, not silent:
 
 - **Fan-out. Ruled out, not deferred.** A request runs in a session, and nothing is processed
@@ -229,7 +238,8 @@ is in scope** — **issue 1** (§4), theme 14.
 *(Corrected 2026-08-23.)* A knob moves the choice to whoever deploys, and **any finite value they
 pick reproduces the Q4 shape exactly** — accepted at 0 ms, discarded later, sender reading
 `completed`. **Recommended: relay dispatches use unbounded admission, and the sender-side answer
-timeout bounds the wait** — admission answers *will this be delivered*, the answer timeout answers
+timeout bounds the wait** — admission answers *will this be delivered*, `waitForCondition`'s
+`timeoutMs` answers
 *how long do I wait* (theme 14). The mechanics are small either way: `Infinity`/omitted already
 disables the timeout in the shipped gate, and Q4 ran the scenario through it and the delivery
 landed. *Alternative recorded, not picked:* propagate admission expiry back to the sender. Nothing
@@ -309,60 +319,91 @@ can cite one.
    `createResourceCollectionScheduleResolver.ts:56-65,109` synthesizes `principal: { userId }`),
    so the address is a new field on that row and not a repurposed one.
 
-5. **The reply arrives as a new inbound message; nothing suspends across a human's answer.** A
-   workstream that asks does not hold a suspension open. It ends its request carrying its
-   question, and the answer re-enters as fresh work. That routes around FIX-765 (suspension inside
-   detached durable execution) entirely for the workstream case.
+5. **The waiting model: an *expected* wait uses `waitForCondition`; otherwise you wake to a new
+   request; `suspend` is neither.** *(**Rewritten 2026-08-23 — this is a coordinator correction that
+   partly reverses the previous day's fold**, and the reversal is visible below rather than smoothed
+   away.)*
 
-   **And it is now *uniform*: a top-level session does the same thing. There is no
-   returning-call variant.** *(Corrected 2026-08-23 — **a coordinator over-promise removed**, on
-   the owner's own model. The earlier text read: "a top-level session may still block, using the
-   existing durable suspend/resume… one author-facing verb, two implementations.")*
+   **The owner's rule, verbatim, and it is the authority for this theme:**
 
-   **Why it cannot work.** A correlated relay reply arrives through `dispatch` as a **fresh
-   request**. Resuming a suspension is `continueRequest` on the **same** request id, and that
-   contract is locked: the resume endpoint *"re-invokes the action on the **same** request id
-   (FIX-811)… no new linked request is spawned"*
-   ([`execution-and-errors.md:397-407`](../../docs/architecture/execution-and-errors.md)), and it
-   needs that request's suspension identity and resume payload. **A per-send correlation ID cannot
-   wake `ctx.suspend()`.** This is the *same* locked contract already cited against the workstream
-   half; it bites the top-level half identically.
+   > there are two ways we may need to watch things, and suspend isn't one of them. That is an
+   > "unexpected" wait in my mind. If a request expects to wait for something, then it should just
+   > use `waitForCondition`. Otherwise we are waking to a new request.
 
-   **The owner's model already said so, and is the authority here:** *"reply arrives as a new
-   inbound message… This will require tasks being able to suspend across requests. **NOT SUSPEND**
-   but be put into a waiting response type of status."* That waiting status is **issue 5's park
-   mode**. The blocking-call form for top-level sessions was the coordinator's elaboration beyond
-   what the owner described, and it is deleted rather than designed around.
+   **Three cases, kept distinct — most of the confusion in this area came from collapsing them:**
 
-   **So wait-for-response is uniformly send-and-park-plus-a-later-response-handler**, for
-   workstreams and top-level sessions alike. **Still two send modes** — fire-and-forget and
-   wait-for-response — so the owner's "ship two, not three" is untouched; **this removes a
-   *variant*, not a mode.**
+   | Case | Mechanism | The request |
+   |---|---|---|
+   | **Expected wait** — the caller knows it is waiting for a specific thing | **`waitForCondition`** | stays **open** |
+   | **Otherwise** | wake to a **new request** | ends, and a later one resumes the work |
+   | **Unexpected wait** — human-in-the-loop, arbitrary duration | `ctx.suspend()` / `continueRequest` | **Relay does not use this** |
 
-   **And it makes the verb *more* uniform, which serves the owner's original constraint better than
-   the old text did.** The constraint is that the agent-facing tool and the programmatic sender are
-   the **same verb**. An earlier retraction conceded that held for *sending* but not for
-   *receiving*; **receiving is now uniform too**, so the concession is withdrawn.
+   **What was right before, and what was wrong.** *(Superseded: the 2026-08-23 text that read "wait-for-response is
+   uniformly send-and-park-plus-a-later-response-handler… there is no returning-call variant".)*
+   The **conclusion about `suspend` stands**: a correlated relay reply arrives through `dispatch`
+   as a **fresh request**, while resuming a suspension is `continueRequest` on the **same** request
+   id — *"re-invokes the action on the **same** request id (FIX-811)… no new linked request is
+   spawned"*
+   ([`execution-and-errors.md:397-407`](../../docs/architecture/execution-and-errors.md)) — so **a
+   per-send correlation ID cannot wake `ctx.suspend()`**, and it never will. **What was wrong was
+   the replacement.** Deleting the blocking form was the coordinator's inference, not the owner's
+   instruction; the answer is not "no blocking form" but **a different mechanism for it**.
 
-   **Constrains issues 1 and 5**, and issue 5 is what makes the workstream half representable at all — settled by run,
-   not assumed: the board's existing park holds its launching request open (§3's settlement). Because the
-   answer is a *new* message rather than the sender's handle resolving, something has to
-   correlate it with the question that was asked — and it must be **per-send**, not per-request,
-   since one request may hold several asks open at once (theme 6, and §4's *"correlation is
-   per-send"* requirement).
+   **So wait-for-response is `waitForCondition`** — not suspension, and not send-and-park.
+   **Still two send modes**, fire-and-forget and wait-for-response: the owner's *"ship two, not
+   three"* is untouched, and what changed is only the mechanism underneath one of them.
+
+   **But `waitForCondition` is scoped to one request's own response stream — and that is the design
+   implication this theme exists to state.** Its contract is explicit
+   (`packages/core/src/blocks/sequencer-methods.ts:344-379`): *"Suspend the chain until `predicate`
+   over **the request's item stream** returns true, or until `timeoutMs` elapses"*, evaluated once
+   at entry against *"the items already emitted **on the response**"* and then subscribed to
+   subsequent item lifecycle events **on that response**. **It is not a general, system-wide wait.**
+
+   - **Why the board drain works today:** everything it waits on is emitted into its **own** stream
+     by its own children — which is why `onTaskChangeFor` is a `wakeOn` filter over `OutputItem`s.
+   - **Why relay does not, today:** the reply arrives as a **fresh request on the replier's side**
+     and produces items on **that** response. A different stream. **Nothing puts it on the waiter's.**
+
+   > **A correlated reply must LAND AS AN ITEM ON THE WAITING REQUEST'S RESPONSE STREAM.**
+
+   **This is not a new waiting mechanism. It is a delivery target** — the same species as the
+   dispatch seam itself (theme 2): reaching into a **live** request from outside it.
+   **Issue 1 owns it, and this document does not design it** — per §4's stop, the requirement is
+   stated and stops there.
+
+   **A workstream whose request ends does not use wait-for-response at all.** It uses
+   **fire-and-forget plus a handler for the inbound reply**. That is a **composition of mode 1**,
+   not a third mode, and saying it that way is what keeps the mode count honest.
+
+   **Constrains issues 1 and 5.** Because the answer is a *new* message rather than the sender's
+   handle resolving, something has to correlate it with the question that was asked — and it must
+   be **per-send**, not per-request, since one request may hold several asks open at once (theme 6,
+   and §4's *"correlation is per-send"* requirement).
+
+   **Which callers use which is *not* settled here.** Whether a workstream drain — whose request
+   *does* stay open — can use `waitForCondition` is **issue 1's spec question**, recorded in §4
+   with no answer. This document has over-specified this area twice; it is not doing so a third
+   time.
 
 6. **Two send modes, not three — and acceptance is the acknowledgement on both.** *(Amended by
    the owner. Still two modes; what changed is that the receipt is not a third one.)*
    Fire-and-forget and wait-for-response are genuinely different intents and both are needed.
    **Every send awaits acceptance before returning.** Fire-and-forget returns there and is done.
 
-   **Wait-for-response also returns there — it does *not* block.** *(Corrected 2026-08-23; the
-   earlier text said it "carries on and waits for the answer", which described a returning call.)*
-   It **sends, parks, and the answer arrives later as a fresh inbound message handled by a response
-   handler** — uniformly, for workstreams and top-level sessions alike (theme 5). The sender-side
-   answer timeout (theme 14) bounds **how long the park stays open**, not how long a call blocks.
-   **This is still two modes**, and the difference between them is whether an answer is expected at
-   all — not whether the verb returns.
+   **Wait-for-response waits on `waitForCondition`.** *(**Corrected 2026-08-23**, superseding the
+   same-day text that read "wait-for-response also returns there — it does not block… sends, parks,
+   and the answer arrives later as a fresh inbound message". That was the coordinator's inference;
+   see theme 5 for the owner's rule and the reversal.)* It is an **expected** wait, which is exactly
+   the case `waitForCondition` exists for, so the request **stays open** and the reply resolves it.
+   **This is still two modes** — the difference between them is whether an answer is expected at
+   all.
+
+   **Its timeout is `waitForCondition`'s own `timeoutMs`, and there is no separate answer timeout.**
+   The signature is `(predicate(items), { timeoutMs, wakeOn? }) -> { timedOut }`
+   (`packages/core/src/blocks/sequencer-methods.ts:344-379`), so **`{ timedOut }` is the
+   signal** — one fewer invented concept, and theme 14's separately-specified answer timeout is
+   deleted rather than reconciled.
 
    **Wait-for-response requires a correlation identifier, and it must be *per-send*.**
    *(Epic review round 2 raised the gap; round 11 corrected what fills it.)* The mode is specified;
@@ -619,16 +660,23 @@ can cite one.
     reports **`completed`**. At 30 minutes that is a half-hour phantom. A longer wrong number is
     still a wrong number — the budget has to be the *deployment's* call, including "don't expire".
 
-    **The sender-side answer timeout: default 30 minutes, explicitly configurable.** *(It bounds
-    **how long the park stays open**, not how long a call blocks — wait-for-response does not block;
-    theme 5, theme 6, corrected 2026-08-23.)*
-    Wait-for-response takes its own timeout, generous on purpose. What actually detects a dead
-    recipient is the **lease** — "if the run dies at any point … the lease lapses and the owner
-    recovers the row … no dispatch milestone improves on it"
-    (`packages/engine/src/transports/types.ts:212-217`). So the sender's clock is a **backstop**,
-    not the primary safety mechanism, and a short default would fire on healthy slow work rather
-    than catch anything the lease does not already catch. **This supersedes any reading elsewhere
-    in this document that 30 s is the relevant number for a sender** — 30 s is the arbiter's
+    **The sender's clock is `waitForCondition`'s `timeoutMs`. There is no separately-invented
+    answer timeout.** *(**Corrected 2026-08-23**, deleting a concept this theme had specified twice.
+    **Superseded:** first *"the sender-side answer timeout: default 30 minutes, explicitly
+    configurable"*, then the same-day amendment that it *"bounds how long the park stays open, not
+    how long a call blocks"*. Wait-for-response is `waitForCondition` — theme 5 — so the timeout is
+    already part of that call's signature: `{ timeoutMs, wakeOn? } -> { timedOut }`
+    (`packages/core/src/blocks/sequencer-methods.ts:344-379`), and **`{ timedOut }` is the
+    signal**.)*
+
+    **What survives from the deleted text, because it is about the clock rather than the concept:**
+    a generous value is right, and what actually detects a dead recipient is the **lease** — *"if
+    the run dies at any point … the lease lapses and the owner recovers the row … no dispatch
+    milestone improves on it"* (`packages/engine/src/transports/types.ts:212-217`). So the sender's
+    timeout is a **backstop**, not the primary safety mechanism, and a short one would fire on
+    healthy slow work rather than catch anything the lease does not already catch. **This still
+    supersedes any reading elsewhere in this document that 30 s is the relevant number for a
+    sender** — 30 s is the arbiter's
     number, and it is the *delivery's* deadline, not the sender's.
 
     **Why acceptance alone is not enough, stated so issue 1 does not ship the receipt and stop.**
@@ -938,11 +986,11 @@ cell is empty by design, not by omission.
 
 | # | Proposed issue | What it delivers | Depends on | Linear | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|---|---|---|
-| 1 | The address, the send verb, and what a sender may legally address | the recipient address as a **`sessionId`** on the envelope, a **server-derived sender identity** (its `sessionId`, and optionally the sending `requestId` **as provenance only** — it cannot correlate), the send verb, **both send modes — neither of which blocks** (wait-for-response **sends, parks, and handles the answer as a fresh inbound message**, uniformly for workstreams and top-level sessions; theme 5, corrected 2026-08-23) — **and the *per-send* correlation ID wait-for-response requires**, echoed by the reply (theme 6; this section's *"correlation is per-send"* requirement), **acceptance as the acknowledgement on both** (theme 6) and the **sender-side answer timeout, default 30 min** — bounding **how long the park stays open** (theme 14) — **the in-process admission budget** (theme 14, §3 Q4 — *moved here from issue 2*: the receipt and the budget ship together or the send API acks deliveries the arbiter can still silently drop, and theme 13 lands this issue first; **configurability alone is the enabling parameter, not the remedy** — *recommended:* relay dispatches use **unbounded** admission and the sender-side answer timeout bounds the wait; *alternative recorded:* propagate admission expiry back to the sender), the self-addressed refusal, and the agent-facing tool — core + engine + tools. **The door is decided (theme 16, owner): both of them** — a sibling resolves `flow.actions`; a workstream resolves a **declared `relay?` group** reusing `flow.workstream`'s terminal resolution. **Acceptance criteria — two.** (1) *Promoted from an implementer note:* the recipient's **`flowKind` is looked up from the session record, never asserted by the sender**. (2) *Strengthened 2026-08-23:* **relay dispatches are unbounded-admission, or admission expiry reaches the sender** — the earlier form ("do not ship acking on `accepted` while the budget is unconfigurable") is **insufficient**, because a configurable budget set to any finite value reproduces the accepted-then-silently-dropped shape §3's Q4 demonstrated | — | not filed | spec | — | — | Proposed |
+| 1 | The address, the send verb, and what a sender may legally address | the recipient address as a **`sessionId`** on the envelope, a **server-derived sender identity** (its `sessionId`, and optionally the sending `requestId` **as provenance only** — it cannot correlate), the send verb, **both send modes** — wait-for-response is an **expected wait on `waitForCondition`**, so the request **stays open** and its `timeoutMs` / `{ timedOut }` are the clock and the signal; **there is no separately-invented answer timeout** *(theme 5, theme 6 — corrected 2026-08-23, reversing the same-day "sends, parks" text)* — **and the *per-send* correlation ID wait-for-response requires**, echoed by the reply (theme 6; this section's *"correlation is per-send"* requirement), **acceptance as the acknowledgement on both** (theme 6), **the in-process admission budget** (theme 14, §3 Q4 — *moved here from issue 2*: the receipt and the budget ship together or the send API acks deliveries the arbiter can still silently drop, and theme 13 lands this issue first; **configurability alone is the enabling parameter, not the remedy** — *recommended:* relay dispatches use **unbounded** admission and `waitForCondition`'s `timeoutMs` bounds the wait; *alternative recorded:* propagate admission expiry back to the sender), **the requirement that a correlated reply lands as an item on the waiting request's response stream** (theme 5 — a **delivery target**, not a new waiting mechanism; **issue 1 designs it, this document does not**), the self-addressed refusal, and the agent-facing tool — core + engine + tools. **The door is decided (theme 16, owner): both of them** — a sibling resolves `flow.actions`; a workstream resolves a **declared `relay?` group** reusing `flow.workstream`'s terminal resolution. **Acceptance criteria — two.** (1) *Promoted from an implementer note:* the recipient's **`flowKind` is looked up from the session record, never asserted by the sender**. (2) *Strengthened 2026-08-23:* **relay dispatches are unbounded-admission, or admission expiry reaches the sender** — the earlier form ("do not ship acking on `accepted` while the budget is unconfigurable") is **insufficient**, because a configurable budget set to any finite value reproduces the accepted-then-silently-dropped shape §3's Q4 demonstrated | — | not filed | spec | — | — | Proposed |
 | 2 | Per-adapter delivery | in-process for a Node host; through the `FlowDispatcher` seam so a queue-backed deployment gets durability for free. **The admission budget is no longer here** — it moved to issue 1 (theme 14); issue 2 consumes whatever issue 1 lands rather than introducing it | 1 | not filed | spec | — | — | Proposed |
 | 3 | The sibling-spawn verb — **address supply for cross-session messaging** | an independent, self-managing session with its own flow kind and addressable key, resolving `flow.actions` like any other caller and talking back by message rather than `settleParentTask`. **In the set because messages cross sessions** (§1, owner): spawn mints the peer the send verb will address; without it, messaging only ever reaches sessions an outside-world caller happened to create. *(The earlier "same missing layer" / implementation-economy rationale, and the swap-out proposal it licensed, are retracted — §1.)* | 1 | not filed | spec | — | — | Proposed |
 | 4 | Cron: a schedule addresses a session and fires as a message | the schema field, the resolver, and the one dispatch envelope; absent address preserves today's behaviour exactly. **Open shape question, two options and no pick** *(recorded 2026-08-23)*: **can an addressed schedule target a session on a *different* flow?** `packages/scheduled/src/routes.ts:175-199` builds the envelope with the `flowKind` from the **URL**, resolving the schedule binding from *that* flow — while issue 1's promoted criterion requires the **recipient session's** `flowKind`, looked up from its record. For a cross-flow target both cannot hold. *Options:* **(a)** require schedule targets to be same-flow, or **(b)** define an explicit relay action on the recipient that the schedule addresses. **Pairs with the already-recorded "cron has no sender identity" gap** — same seam, both halves now visible: a schedule has no session of its own to be *from*, and no established flow to be *to* | 1 | not filed | spec | — | — | Proposed |
-| 5 | **An exit/park mode for `awaiting_review`** *(**rescoped 2026-08-23** — it was "a `pending feedback` task status"; see below)* | *"parked awaiting external input; **the request may end**; a later request resumes this task."* **Necessity settled by run, not asserted** (§3's settlement, REFUTED): today's `awaitReview` parks and `resumeFromReview` resumes, but `awaiting_review` is excluded from every board-exit path, so the launching request stays open for the whole park. **The gap to build — and it is the whole issue:** an exit/park mode that does not hold the drain's own request open — either an exit path letting `boardQuiescence` stop returning "continue" while a task sits parked, or routing review-parking through the same `runsElsewhere` exclusion detached dispatch already gets for `in_progress`. **Not a new status:** `awaitReview` already parks durably and `resumeFromReview` already persists feedback and resumes, so the sole missing behaviour is the exit predicate — which a new status does not fix by itself, while duplicating the existing lifecycle, transitions and exhaustiveness surface. **The exit mode still needs a name; `pending feedback` is moot** for a status that no longer exists — folded into §5 Q2's naming bucket, not settled here. **No collision with issue 6** — *corrected;* one was recorded as §5 Q6b and is withdrawn, because watch touches no board internals. Issue 5 owns this surface alone and depends on nothing | — | not filed | spec | — | — | Proposed |
+| 5 | **An exit/park mode for `awaiting_review`** *(**rescoped 2026-08-23** — it was "a `pending feedback` task status"; see below)* | *"parked awaiting external input; **the request may end**; a later request resumes this task."* **Necessity settled by run, not asserted** (§3's settlement, REFUTED): today's `awaitReview` parks and `resumeFromReview` resumes, but `awaiting_review` is excluded from every board-exit path, so the launching request stays open for the whole park. **The gap to build — and it is the whole issue:** an exit/park mode that does not hold the drain's own request open — either an exit path letting `boardQuiescence` stop returning "continue" while a task sits parked, or routing review-parking through the same `runsElsewhere` exclusion detached dispatch already gets for `in_progress`. **Not a new status:** `awaitReview` already parks durably and `resumeFromReview` already persists feedback and resumes, so the sole missing behaviour is the exit predicate — which a new status does not fix by itself, while duplicating the existing lifecycle, transitions and exhaustiveness surface. **The exit mode still needs a name; `pending feedback` is moot** for a status that no longer exists — folded into §5 Q2's naming bucket, not settled here. **A third waiting case, clarified so the three do not blur** *(added 2026-08-23)*: this is the **board drain waiting on a *human***, where the wait is genuinely **unbounded**. It is **not a relay send**, and it is neither of theme 5's first two rows — which is exactly why it needs its own exit predicate rather than a timeout. **No collision with issue 6** — *corrected;* one was recorded as §5 Q6b and is withdrawn, because watch touches no board internals. Issue 5 owns this surface alone and depends on nothing | — | not filed | spec | — | — | Proposed |
 | 6 | **Watch — a general one-off notification primitive** *(owner-proposed 2026-08-21; **redefined by the owner 2026-08-23** — it is **not** a task primitive)* | a durable **subscription registry**, an **event matcher**, and **delivery as an addressed relay message**. An entry says *when this event fires holding this value, call this flow for this session id*; a **relay action matching that event** must be defined on the recipient to receive the payload; the subscription is **one-off** and unsubscribes on fire. **The task board is its first consumer, not its subject** — a completing task forwards the `task-change` event it already emits; an updated resource value is the second named source. **Three of its four parts already ship** (theme 15: watch is `reactTo`'s async, cross-session, runtime-registered sibling); what is new is the registry, a matcher running outside the mutating turn, and addressed delivery — **plus the expiry sweep, which is required, not optional**. **Six constraints its spec must satisfy** *(C1–C4 relabelled 2026-08-23 from "decided" — a primitive's correctness contract belongs in issue 6's spec, not at epic altitude; recommended resolutions and evidence unchanged. **C5 and C6 are recorded unresolved**, with options and no answer)* — **C1** registration must not lose an already-true condition *(recommended: satisfied-or-attach; **unresolved half** — "already true" is undefined for the edge source `resource updated`, so a versioned baseline is recommended, with level-only as the pre-committed fallback)* · **C2** the match key must be the **complete coordinate** (scope + owner + collection/namespace + id), never a bare id, with the scope **server-derived** per BP-031 · **C3** a bounded lifetime that something actually fires *(recommended: TTL + a periodic sweep that is itself a scheduled message — **this is why issue 6 depends on issue 4**)* · **C4** the manager must sit where both sources reach it *(recommended: `engine`)* · **C5 (UNRESOLVED)** the sweep has **no framework-owned trigger** — `@flow-state-dev/scheduled` runs no loop (`scheduled/src/index.ts:8-13`), so a host-provisioned ticker is a **deployment requirement**; options recorded, not picked · **C6 (UNRESOLVED)** the `expired` announcement travels the **same best-effort path it backstops**, so it can itself be lost; options recorded, not picked. **Delivery is explicitly best-effort:** `emit` runs after the durable write, so a crash between them loses the event while the subscription survives. **Loss is never prevented**, and the bound on it is **conditional** — bounded if C5 is resolved, self-announcing if C6 is, recoverable by re-registration where C1's guarantee holds | **1, 4** | not filed | spec | — | — | **Proposed (owner)** |
 
 **The agent-facing tool is deliberately inside issue 1, not beside it.** The constraint is that
@@ -995,6 +1043,20 @@ framing error — a first-draft name outliving the evidence against it.)*
 
 **Still issue 1's to design:** the ID's shape, where it sits on the envelope, and how a reply echoes
 it. **Not open any more:** whether `requestId` can be the correlator. It cannot.
+
+#### Issue 1 question — which callers use `waitForCondition`, and which wake to a new request?
+
+**Recorded 2026-08-23 with **no answer**, deliberately.** Theme 5 fixes the *rule* — an expected wait
+uses `waitForCondition`, otherwise you wake to a new request — and it does **not** assign callers to
+rows. The specific open case: **a workstream drain, whose request *does* stay open**, might
+legitimately use `waitForCondition` rather than the wake-to-new-request form, and whether it should
+depends on things only issue 1's spec will know.
+
+**This document has over-specified this area twice** — first inventing a suspension-resume form for
+top-level sessions, then deleting the blocking form entirely — **and it is not doing so a third
+time.** The rule is stated; the assignment is issue 1's, with a POC if it needs one. *(This is an
+issue-1 question, not an epic cross-cutting question, so it does not enter §5's ledger — same
+reasoning as the relocated correlation entry above.)*
 
 #### It is much smaller than it reads — three of its four parts already exist
 
@@ -1663,7 +1725,7 @@ gets nothing. **That 30 seconds is an admission budget, not a sender's timeout**
 §3's Q4 ran what the give-up costs: an already-accepted delivery is dropped at 30 001 ms with the
 sender reading `completed`. **That budget is in scope** (theme 14, **issue 1** — moved there from
 issue 2, see §1 and §4; *recommended:* unbounded admission for relay dispatches, with the
-sender-side answer timeout bounding the wait — **making it configurable is the enabling parameter,
+`waitForCondition`'s `timeoutMs` bounding the wait — **making it configurable is the enabling parameter,
 not the remedy**);
 this open question is about the *durable* path only, where the epic promises nothing. Two options:
 
@@ -2378,7 +2440,10 @@ on its own terms (§5 Q5).
   alone while the admission budget is unconfigurable"* — **the fold satisfied that note's letter and
   missed its point**, since the note was about the **contract**, and a configurable budget set
   finite leaves it exactly as broken as a hardcoded one. *Recommended resolution:* **relay dispatches
-  use unbounded admission, and the sender-side answer timeout bounds the wait** — the coherent
+  use unbounded admission, and the sender-side answer timeout bounds the wait** *(**superseded
+  2026-08-23 as to the clock only:** there is no separate "sender-side answer timeout" — it is
+  `waitForCondition`'s own `timeoutMs`. The unbounded-admission recommendation itself stands
+  unchanged)* — the coherent
   layering, and this theme's own two-clocks rule applied properly: **admission answers *will this be
   delivered*; the answer timeout answers *how long do I wait*.** Q4 verified the unbounded path lands
   the delivery, twice, injected through the `arbiter` option `createInboundTransportHost` already
@@ -2423,6 +2488,12 @@ on its own terms (§5 Q5).
   only text an uninstructable reviewer reads.
 
   **(1) FOLDED — the blocking send mode is removed for top-level sessions. Restraint, not growth.**
+  *(**PARTLY REVERSED the next day — see the last entry.** The conclusion about `suspend` stands and
+  always will; **the replacement was wrong**. Wait-for-response is not send-and-park — it is
+  `waitForCondition`, and the blocking form is restored on that mechanism. Everything below about
+  `suspend` being unreachable is still true; everything below proposing send-and-park as the answer
+  is superseded, including "no returning-call variant" and the answer timeout bounding "how long the
+  park stays open".)*
   *The finding:* a correlated relay reply arrives through `dispatch` as a **fresh request**, whereas
   resuming a suspension is `continueRequest` on the **same** request id and needs that request's
   suspension identity and resume payload. **A per-send correlation ID cannot wake `ctx.suspend()`.**
@@ -2478,3 +2549,76 @@ on its own terms (§5 Q5).
   **Counts unchanged: open questions TWO** (Q2, Q4) — issue 4's cross-flow shape question is
   recorded **on issue 4**, not as an epic cross-cutting question, for the same reason Q1b was
   relocated. **Constraints on issue 6: SIX** (C1–C6). **The epic is not approved.**
+
+- **Coordinator correction — the waiting model. This PARTLY REVERSES the previous entry: `suspend`
+  is still not the mechanism, but the answer is `waitForCondition`, not send-and-park.** *(Folded
+  **outside** the epic PR's two-round budget on the standing justification. Nothing filed in Linear.
+  **The gate is unchanged and the epic is not approved.** The reversal is marked on the previous
+  entry rather than rewritten out of it, so a reader can see it happened.)*
+
+  **(0) What happened, plainly.** The previous fold deleted the blocking form **on the
+  coordinator's instruction, and that instruction was wrong.** The owner then gave the actual rule,
+  verbatim, and it is the authority:
+
+  > there are two ways we may need to watch things, and suspend isn't one of them. That is an
+  > "unexpected" wait in my mind. If a request expects to wait for something, then it should just
+  > use `waitForCondition`. Otherwise we are waking to a new request.
+
+  **So the previous fold's *conclusion* about `suspend` was right and its *replacement* was wrong.**
+  `ctx.suspend()` / `continueRequest` is the **unexpected-wait** mechanism (human-in-the-loop
+  resume) and relay does not use it — that stands. But the answer was never "delete the blocking
+  form"; it is **a different mechanism for it**.
+
+  **(1) The waiting model, now theme 5, recorded as three distinct cases** — collapsing them is
+  where the confusion came from. **Expected wait → `waitForCondition`, request stays open.
+  Otherwise → wake to a new request. `suspend` → neither; relay does not use it.**
+
+  **(2) The design implication, and it is the centrepiece.** `waitForCondition` is **scoped to one
+  request's own response stream** — *"Suspend the chain until `predicate` over **the request's item
+  stream** returns true, or until `timeoutMs` elapses"*, evaluated at entry against *"the items
+  already emitted **on the response**"* and then subscribed to item events **on that response**
+  (`packages/core/src/blocks/sequencer-methods.ts:344-379`). **It is not a general system-wide
+  wait.** *Why the board drain works today:* everything it waits on is emitted into its **own**
+  stream by its own children, which is why `onTaskChangeFor` is a `wakeOn` filter over
+  `OutputItem`s. *Why relay does not:* the reply arrives as a **fresh request on the replier's
+  side**, producing items on **that** response — a different stream, and nothing puts it on the
+  waiter's. **Therefore: a correlated reply must LAND AS AN ITEM ON THE WAITING REQUEST'S RESPONSE
+  STREAM.** That is **not a new waiting mechanism — it is a delivery target**, the same species as
+  the dispatch seam itself (theme 2): reaching into a **live** request from outside it. **Issue 1
+  owns it and this document does not design it**, per the stop.
+
+  **(3) Still TWO modes**, fire-and-forget and wait-for-response — the previous fold's reassurance
+  survives verbatim, and only the mechanism underneath one of them changed. **And a workstream whose
+  request ends does not use wait-for-response at all:** it uses **fire-and-forget plus a handler for
+  the inbound reply**, which is a **composition of mode 1**, not a third mode.
+
+  **(4) The separately-invented answer timeout is DELETED** — a concept this document had specified
+  twice (first *"default 30 minutes, explicitly configurable"*, then *"bounds how long the park
+  stays open"*). It is `waitForCondition`'s own `timeoutMs`, and **`{ timedOut }` is the signal**.
+  One fewer invented concept. What survives from the deleted text is only the part about the
+  *clock*: a generous value is right, because the **lease** is what actually detects a dead
+  recipient and a short timeout would fire on healthy slow work.
+
+  **(5) Which callers use which is NOT resolved here.** Whether a workstream drain — whose request
+  *does* stay open — can use `waitForCondition` is recorded in §4 as an **issue-1 question with no
+  answer**. **This area has been over-specified twice** (a suspension-resume form invented, then the
+  blocking form deleted) and is not being specified a third time. *(An issue-1 question, so it does
+  not enter §5's ledger.)*
+
+  **(6) §1 gains a second platform constraint**, in the same register as the no-framework-scheduler
+  fact: **an expected wait holds a request open**, which is fine on a long-lived host or a bullmq
+  worker and **not** on a platform with a hard request ceiling. **Serverless deployments get the
+  wake-to-a-new-request form** — theme 5's second row, no new mechanism required.
+
+  **(7) Issue 5 is a third waiting case, clarified rather than competed with:** the board drain
+  waiting on a **human**, where the wait is genuinely **unbounded**. Not a relay send, and neither
+  of theme 5's first two rows — which is exactly why it needs its own exit predicate rather than a
+  timeout.
+
+  **Unchanged from the previous fold, deliberately untouched:** the hardened reviewer contract; the
+  **org-axis authorization correction** and its generalisation (*an owner-level invariant is
+  structurally blind to any distinction below the owner*); issue 4's cross-flow shape question; the
+  dropped-items line; **C1–C6**.
+
+  **Counts unchanged: open questions TWO** (Q2, Q4). **Constraints on issue 6: SIX** (C1–C6). **The
+  epic is not approved.**
