@@ -167,11 +167,11 @@ Two directories, different purposes:
 The framework ships as six packages with strict dependency boundaries:
 
 ```
-core ← server ← testing
+core ← engine ← testing
 core ← client ← react ← apps/devtool
 ```
 
-- `server` never depends on `client` or `react`
+- `engine` never depends on `client` or `react`
 - `react` wraps `client` — no transport logic in the UI layer
 - `apps/devtool` uses only public APIs
 
