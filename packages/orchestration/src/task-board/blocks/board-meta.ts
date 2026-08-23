@@ -83,6 +83,116 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
 }
 
 /**
+ * Is any remaining row going nowhere — stuck on dependencies that answering
+ * every review would not satisfy (FIX-1234)?
+ *
+ * This is the question that keeps a review gate from masking an unrelated
+ * stall. A parked row moves when a person acts; a handed-off row is moving
+ * elsewhere right now; a `pending` row waiting on a task that will never
+ * complete is moving nowhere at all, and that is the fact an operator needs
+ * even when a review also happens to be outstanding.
+ *
+ * **A reachability closure, not a one-level check**, and the difference is
+ * load-bearing. `A` depends on the parked row and `B` depends on `A`: answering
+ * the review releases both, so neither is going nowhere. A one-level test —
+ * "would this row be claimable if the parked rows completed?" — sees `B`'s
+ * dependency unsatisfied and would report a stall on a board that only needs an
+ * answer. So the seed set is everything that will resolve on its own (already
+ * completed, parked and therefore answerable, or handed to a Workstream) and
+ * the loop closes over the rows those release.
+ *
+ * **The condition is causal, not positional, and that distinction is the whole
+ * design.** "Is anything here stuck?" is the cheap question and it is the wrong
+ * one: a `pending` row that depends on the parked row is stuck by that measure,
+ * and answering the review releases it. Reporting a stall there would be wrong
+ * on the *expected* shape rather than a corner — §6 decision 3 refuses
+ * `onIdle: "complete"` precisely because a parked task's dependent is the
+ * normal case. So the question asked is "would resuming the parked work unstick
+ * this?", and only a row the answer cannot reach is reported.
+ *
+ * **Two routes were available and this takes the more expensive one.**
+ * Establishing downstream-ness costs this closure; declining to establish it
+ * and keeping `blocked-by-failures` whenever causality is unproven costs
+ * nothing but misreports every dependent of a parked row — the common shape.
+ * The cost objection that ruled a dependency walk out once does not transfer:
+ * §6 decision 3 rejected one in the **exit predicate**, which `boardQuiescence`
+ * evaluates on every idle-wait fan-out event, the hottest read the board has.
+ * This runs once, after the pool has finished, at the same position where the
+ * board's own `createCascadeSkipDependents` already walks the graph
+ * transitively. Same walk, three orders of magnitude fewer evaluations.
+ */
+function hasRowGoingNowhere(
+  all: readonly Task[],
+  remaining: readonly Task[],
+  now: number,
+  runsElsewhere: RunsElsewhere | undefined
+): boolean {
+  // Seed: rows nothing further is owed on, plus rows something other than this
+  // board's dependency graph will settle.
+  const willResolve = new Set<string>();
+  for (const task of all) {
+    if (
+      task.status === "completed" ||
+      task.status === "awaiting_review" ||
+      isHandedOff(task, now, runsElsewhere)
+    ) {
+      willResolve.add(task.id);
+    }
+  }
+  // Close over the rows those release. Each pass adds at least one row or the
+  // loop ends, so it is bounded by the board's row count.
+  let added = true;
+  while (added) {
+    added = false;
+    for (const task of all) {
+      if (willResolve.has(task.id)) continue;
+      // `errored` / `cancelled` / `blocked` never resolve. Rung 3 has already
+      // reported them by the time this runs; the check keeps this function
+      // honest when it is read on its own.
+      if (task.status !== "pending" && task.status !== "in_progress") continue;
+      if ((task.deps ?? []).every((dep) => willResolve.has(dep))) {
+        willResolve.add(task.id);
+        added = true;
+      }
+    }
+  }
+  return remaining.some((task) => !willResolve.has(task.id));
+}
+
+/**
+ * Did this drain's worker pool stop because rows parked for a human were
+ * excused from the board's waitable count (FIX-1234)?
+ *
+ * `input` is the value the completion tap receives, which in the composed board
+ * is the `forEach` result — one final `checkBoard` output per worker loop. Any
+ * one worker deciding it stopped for that reason is enough: workers exit
+ * independently, and the ladder above is what keeps a *stale* park claim from
+ * mattering (a resumed row that then completed reaches rung 2, an errored one
+ * rung 3, both before the park rung is consulted).
+ *
+ * Written defensively, and permissively, rather than by declaring an
+ * `inputSchema` on the block: this block is exported and constructed directly
+ * by callers outside the composed drain, so an input that is anything else has
+ * to mean "no park verdict was carried", not a validation failure. The
+ * end-to-end board tests are what hold the wiring, since a rewiring that broke
+ * the carry would change the reported reason.
+ */
+function excusedParkedByPool(input: unknown): boolean {
+  if (!Array.isArray(input)) return false;
+  // A property check rather than a cast: this input crosses no schema boundary
+  // (the block declares `inputSchema: z.unknown()` so callers outside the
+  // composed drain keep working), so asserting the shape with `as` would be
+  // claiming a guarantee nothing checked.
+  return input.some(
+    (exit) =>
+      typeof exit === "object" &&
+      exit !== null &&
+      "excusedParked" in exit &&
+      (exit as { excusedParked?: unknown }).excusedParked === true
+  );
+}
+
+/**
  * Emit `{ status: "completed", terminationReason, counts: ... }` after
  * the forEach drains. The counts snapshot the final lifecycle
  * distribution so a renderer can display "5 completed, 1 errored"
@@ -205,116 +315,6 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
  * task on the board and no retry ever denied. A termination reason that
  * can lie is worse than no new reason at all.
  */
-/**
- * Is any remaining row going nowhere — stuck on dependencies that answering
- * every review would not satisfy (FIX-1234)?
- *
- * This is the question that keeps a review gate from masking an unrelated
- * stall. A parked row moves when a person acts; a handed-off row is moving
- * elsewhere right now; a `pending` row waiting on a task that will never
- * complete is moving nowhere at all, and that is the fact an operator needs
- * even when a review also happens to be outstanding.
- *
- * **A reachability closure, not a one-level check**, and the difference is
- * load-bearing. `A` depends on the parked row and `B` depends on `A`: answering
- * the review releases both, so neither is going nowhere. A one-level test —
- * "would this row be claimable if the parked rows completed?" — sees `B`'s
- * dependency unsatisfied and would report a stall on a board that only needs an
- * answer. So the seed set is everything that will resolve on its own (already
- * completed, parked and therefore answerable, or handed to a Workstream) and
- * the loop closes over the rows those release.
- *
- * **The condition is causal, not positional, and that distinction is the whole
- * design.** "Is anything here stuck?" is the cheap question and it is the wrong
- * one: a `pending` row that depends on the parked row is stuck by that measure,
- * and answering the review releases it. Reporting a stall there would be wrong
- * on the *expected* shape rather than a corner — §6 decision 3 refuses
- * `onIdle: "complete"` precisely because a parked task's dependent is the
- * normal case. So the question asked is "would resuming the parked work unstick
- * this?", and only a row the answer cannot reach is reported.
- *
- * **Two routes were available and this takes the more expensive one.**
- * Establishing downstream-ness costs this closure; declining to establish it
- * and keeping `blocked-by-failures` whenever causality is unproven costs
- * nothing but misreports every dependent of a parked row — the common shape.
- * The cost objection that ruled a dependency walk out once does not transfer:
- * §6 decision 3 rejected one in the **exit predicate**, which `boardQuiescence`
- * evaluates on every idle-wait fan-out event, the hottest read the board has.
- * This runs once, after the pool has finished, at the same position where the
- * board's own `createCascadeSkipDependents` already walks the graph
- * transitively. Same walk, three orders of magnitude fewer evaluations.
- */
-function hasRowGoingNowhere(
-  all: readonly Task[],
-  remaining: readonly Task[],
-  now: number,
-  runsElsewhere: RunsElsewhere | undefined
-): boolean {
-  // Seed: rows nothing further is owed on, plus rows something other than this
-  // board's dependency graph will settle.
-  const willResolve = new Set<string>();
-  for (const task of all) {
-    if (
-      task.status === "completed" ||
-      task.status === "awaiting_review" ||
-      isHandedOff(task, now, runsElsewhere)
-    ) {
-      willResolve.add(task.id);
-    }
-  }
-  // Close over the rows those release. Each pass adds at least one row or the
-  // loop ends, so it is bounded by the board's row count.
-  let added = true;
-  while (added) {
-    added = false;
-    for (const task of all) {
-      if (willResolve.has(task.id)) continue;
-      // `errored` / `cancelled` / `blocked` never resolve. Rung 3 has already
-      // reported them by the time this runs; the check keeps this function
-      // honest when it is read on its own.
-      if (task.status !== "pending" && task.status !== "in_progress") continue;
-      if ((task.deps ?? []).every((dep) => willResolve.has(dep))) {
-        willResolve.add(task.id);
-        added = true;
-      }
-    }
-  }
-  return remaining.some((task) => !willResolve.has(task.id));
-}
-
-/**
- * Did this drain's worker pool stop because rows parked for a human were
- * excused from the board's waitable count (FIX-1234)?
- *
- * `input` is the value the completion tap receives, which in the composed board
- * is the `forEach` result — one final `checkBoard` output per worker loop. Any
- * one worker deciding it stopped for that reason is enough: workers exit
- * independently, and the ladder above is what keeps a *stale* park claim from
- * mattering (a resumed row that then completed reaches rung 2, an errored one
- * rung 3, both before the park rung is consulted).
- *
- * Written defensively, and permissively, rather than by declaring an
- * `inputSchema` on the block: this block is exported and constructed directly
- * by callers outside the composed drain, so an input that is anything else has
- * to mean "no park verdict was carried", not a validation failure. The
- * end-to-end board tests are what hold the wiring, since a rewiring that broke
- * the carry would change the reported reason.
- */
-function excusedParkedByPool(input: unknown): boolean {
-  if (!Array.isArray(input)) return false;
-  // A property check rather than a cast: this input crosses no schema boundary
-  // (the block declares `inputSchema: z.unknown()` so callers outside the
-  // composed drain keep working), so asserting the shape with `as` would be
-  // claiming a guarantee nothing checked.
-  return input.some(
-    (exit) =>
-      typeof exit === "object" &&
-      exit !== null &&
-      "excusedParked" in exit &&
-      (exit as { excusedParked?: unknown }).excusedParked === true
-  );
-}
-
 export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
   const { name, collection: collectionFactory, collectionId, runsElsewhere } = options;
   return handler({

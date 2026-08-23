@@ -191,17 +191,17 @@ function countWaitable(
   excuseParked = false
 ): WaitableCount {
   if (runsElsewhere === undefined && !excuseParked) {
-    return { waiting: collection.count({ status: statuses }), excusedParked: 0 };
+    return { waiting: collection.count({ status: statuses }), excusedParked: false };
   }
   const rows = collection.list({ status: statuses });
   const now = collection.now();
   let waiting = 0;
-  let excusedParked = 0;
+  let excusedParked = false;
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows[i]!;
     if (isHandedOff(row, now, runsElsewhere)) continue;
     if (excuseParked && row.status === "awaiting_review") {
-      excusedParked += 1;
+      excusedParked = true;
       continue;
     }
     waiting += 1;
@@ -210,7 +210,7 @@ function countWaitable(
 }
 
 /**
- * A waitable count, plus how much of it the park exclusion took off.
+ * A waitable count, plus whether the park exclusion took anything off it.
  *
  * The two travel together because the second is only meaningful about the pass
  * that produced the first. `excusedParked` is what the board's completion item
@@ -219,12 +219,17 @@ function countWaitable(
  * re-derived from rows that may have moved since. A resume landing between the
  * worker pool finishing and the completion item would otherwise turn a
  * successful review exit into a reported failure.
+ *
+ * A flag rather than a count, because every reader asks only whether the
+ * exclusion fired. How many rows are parked is already on the completion item
+ * as `counts.awaiting_review`, read fresh, which is the number a caller
+ * actually wants.
  */
 export interface WaitableCount {
   /** Rows this drain must still wait on. */
   waiting: number;
-  /** Rows dropped from `waiting` because they are parked for a human. */
-  excusedParked: number;
+  /** Did the park exclusion drop at least one row from `waiting`? */
+  excusedParked: boolean;
 }
 
 /**

@@ -156,7 +156,7 @@ export function classifyBoard(
   // human this drain was told not to wait on.
   const inFlight = inFlightCount(collection, options.runsElsewhere, excuseParked);
   if (inFlight.waiting === 0) {
-    return { verdict: "drained", excusedParked: inFlight.excusedParked > 0 };
+    return { verdict: "drained", excusedParked: inFlight.excusedParked };
   }
   if (options.onIdle === "complete") {
     return { verdict: "continue", excusedParked: false };
@@ -166,7 +166,7 @@ export function classifyBoard(
     // The parked row's `pending` dependent is what kept `inFlight` non-zero;
     // excusing the parked row is still why the board is stopping rather than
     // spinning, so the excusal is carried from here too.
-    return { verdict: "blocked", excusedParked: active.excusedParked > 0 };
+    return { verdict: "blocked", excusedParked: active.excusedParked };
   }
   return { verdict: "continue", excusedParked: false };
 }
