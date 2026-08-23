@@ -55,7 +55,7 @@ Narrative: [Flows](/docs/fundamentals/flows), [Actions](/docs/fundamentals/actio
 | `user` | `UserConfig` | — | User-scoped state and client projection. |
 | `org` | `OrgConfig` | — | Org-scoped state and client projection. |
 | `resources` | resource map | — | Flat map of `defineResource` / collection declarations. Each resource's own `scope` decides where it persists. |
-| `tools` | `ToolsConfig` | — | Default timeout, concurrency, retry, and lifecycle hooks for tools. |
+| `tools` | `ToolsConfig` | — | Default timeout, retry, and lifecycle hooks for tools. |
 | `voice` | `VoiceConfig` | — | Flow-level TTS provider and speak defaults. |
 | `mcp` | `McpConfig` | off | Opt-in MCP exposure for this flow. Definition-only: you cannot override it on the instance. |
 | `chat` | `ChatConfig` | — | Chat-transport event bindings. Definition-only. |
@@ -65,7 +65,6 @@ Narrative: [Flows](/docs/fundamentals/flows), [Actions](/docs/fundamentals/actio
 | `costEstimator` | `CostEstimator` | — | Custom USD cost estimate from model usage. |
 | `isolateUserState` | `boolean` | `false` | Key user state (and the default for user resources) per flow kind. A resource's own `flowIsolation` always wins. |
 | `isolateOrgState` | `boolean` | `false` | Org-scope equivalent of `isolateUserState`. |
-| `defaultBlockRenderer` | renderer or `false` | — | Default UI renderer for blocks in this flow. |
 
 `mcp`, `chat`, `webhooks`, and `schedules` belong on the definition. Passing them to the factory call (`defineFlow({ ... })({ mcp: ... })`) is rejected.
 
@@ -119,7 +118,7 @@ The host verifies credentials. The framework applies `defaultUserId` and `requir
 | `historyWindow` | `{ turns: number }` | `50` | Caps cross-turn history loaded per request. `0` or a negative number disables it. Per-call `history({ limit })` can only shrink this window. |
 | `cas` | `CASOptions` | — | Optimistic-concurrency options for this scope. |
 
-`clientData` on a scope still works and logs a deprecation warning. Use `client.derived`.
+`clientData` on a scope was removed. `defineFlow` throws if it is still set — use `client.derived` (or `expose` for verbatim passthrough).
 
 ### `request`
 
@@ -140,7 +139,6 @@ The host verifies credentials. The framework applies `defaultUserId` and `requir
 | Field | Type | Default | What it does |
 |-------|------|---------|--------------|
 | `defaults.timeoutMs` | `number` | — | Tool timeout. |
-| `defaults.concurrency` | `"parallel"` \| `"serial"` | — | Whether tools in a step run together or one at a time. |
 | `defaults.retry` | `RetryPolicy` | — | `{ maxAttempts?, baseDelayMs?, maxDelayMs?, retryableErrors? }`. |
 | `onToolStarted` / `onToolCompleted` / `onToolErrored` | hook or block | — | Observe tool lifecycle. Cache hits still fire started/completed; errors are never cached. |
 

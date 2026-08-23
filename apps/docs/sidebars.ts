@@ -256,7 +256,6 @@ const sidebars: SidebarsConfig = {
               label: "Utility Blocks",
               items: [
                 "patterns/utility-blocks/core",
-                "patterns/utility-blocks/extensions",
               ],
             },
           ],

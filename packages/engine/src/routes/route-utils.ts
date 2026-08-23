@@ -27,6 +27,7 @@ import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { isJsonObject } from "../utils/json-helpers";
 import { isCollectionConfig } from "../resources/is-collection-config";
 import { resourceStorageKeys } from "../resources/storage-keys";
+import { normalizeResourceState } from "../resources/normalize-resource-state";
 import { sortItemsChronologically } from "../utils/sort";
 
 export const JSON_HEADERS = {
@@ -225,33 +226,6 @@ export function isResourceConfig(value: unknown): value is ResourceConfig {
     candidate.stateSchema !== null &&
     typeof candidate.stateSchema.safeParse === "function"
   );
-}
-
-export function normalizeResourceDefault(config: ResourceConfig): JsonObject {
-  if (config.default !== undefined && isJsonObject(config.default)) {
-    return cloneValue(config.default);
-  }
-
-  const parsedUndefined = config.stateSchema.safeParse(undefined);
-  if (parsedUndefined.success && isJsonObject(parsedUndefined.data)) {
-    return parsedUndefined.data;
-  }
-
-  const parsedEmpty = config.stateSchema.safeParse({});
-  if (parsedEmpty.success && isJsonObject(parsedEmpty.data)) {
-    return parsedEmpty.data;
-  }
-
-  return {};
-}
-
-export function normalizeResourceState(config: ResourceConfig, value: unknown): JsonObject {
-  const parsed = config.stateSchema.safeParse(value);
-  if (parsed.success && isJsonObject(parsed.data)) {
-    return parsed.data;
-  }
-
-  return normalizeResourceDefault(config);
 }
 
 export function createScopeResources(options: {

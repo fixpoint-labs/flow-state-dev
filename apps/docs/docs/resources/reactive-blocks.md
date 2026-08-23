@@ -43,6 +43,7 @@ const announceMemo = handler({
 
 const memos = defineResourceCollection({
   pattern: "memos/**",
+  scope: "session",
   stateSchema: memoSchema,
   reactTo: {
     created: announceMemo,
@@ -110,6 +111,7 @@ const summarize = sequencer({ name: "summarize", inputSchema: resourceContentCha
 
 const artifacts = defineResourceCollection({
   pattern: "artifacts/**",
+  scope: "session",
   stateSchema: artifactSchema,
   reactTo: { contentUpdated: summarize },
 });

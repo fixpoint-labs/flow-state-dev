@@ -17,6 +17,7 @@ import { defineResource } from "@flow-state-dev/core";
 import { z } from "zod";
 
 const artifactResource = defineResource({
+  scope: "session",
   stateSchema: z.object({
     title: z.string().default("Untitled"),
     tags: z.array(z.string()).default([]),
@@ -28,10 +29,15 @@ const artifactResource = defineResource({
 });
 ```
 
+`scope` is required. It must be `"session"`, `"user"`, or `"org"`. Any other value throws:
+
+`defineResource() requires an explicit scope of "session", "user", or "org" (got …)`
+
 The `stateSchema` defines the structured metadata. The `content` field holds the body — the "file" part. Both are versioned, both support atomic operations.
 
 Config options:
 
+- **scope** — `"session"`, `"user"`, or `"org"`. Required. Routes the resource to that storage layer.
 - **stateSchema** — Zod schema for structured metadata
 - **content** — initial content body (a string: markdown, code, prose, anything)
 - **contentFile** — load initial content from a file path (mutually exclusive with `content`). A bare string resolves from the working directory; pass `{ path, importerUrl: import.meta.url }` to resolve relative to the declaring module instead
@@ -82,11 +88,11 @@ Read content with `readContent()` (renders templates) or `readContentRaw()` (ret
 
 ```ts
 execute: async (input, ctx) => {
-  const artifact = ctx.session.resources.get("artifact");
+  const artifact = ctx.resources.get("artifact");
 
   // Read the content body
-  const raw = artifact.readContentRaw();     // "# {{ title }}\n\nDraft content..."
-  const rendered = artifact.readContent();   // "# My Document\n\nDraft content..."
+  const raw = await artifact.readContentRaw();     // "# {{ title }}\n\nDraft content..."
+  const rendered = await artifact.readContent();   // "# My Document\n\nDraft content..."
 
   // Read structured metadata
   const { title, status, tags } = artifact.state;
@@ -101,6 +107,7 @@ Use `render` to interpolate state into content templates:
 
 ```ts
 defineResource({
+  scope: "session",
   stateSchema: z.object({
     title: z.string().default("Untitled"),
     author: z.string().default(""),
@@ -135,6 +142,7 @@ import { defineResourceCollection } from "@flow-state-dev/core";
 
 const filesCollection = defineResourceCollection({
   pattern: "files/**",
+  scope: "session",
   stateSchema: z.object({ language: z.string().default("text") }),
   maxInstances: 200,
   eviction: "lru",
@@ -147,14 +155,14 @@ To run a block when a resource or collection changes (emitting items, calling mo
 
 ## Block-level resource declarations
 
-Blocks declare resource dependencies with `sessionResources`, `userResources`, and `orgResources`:
+Blocks declare resource dependencies with a flat `resources` map. The accessor key is what you read on `ctx.resources`. The resource's own `scope` decides where it is stored:
 
 ```ts
 const planManager = handler({
   name: "plan-manager",
-  sessionResources: { plan: planResource },
+  resources: { plan: planResource },
   execute: async (_input, ctx) => {
-    await ctx.session.resources.plan.patchState({ status: "active" });
+    await ctx.resources.plan.patchState({ status: "active" });
   },
 });
 ```
@@ -176,7 +184,7 @@ This is a per-resource data spine, not a cache — there's no time-based expiry.
 
 ## Automatic resource collection
 
-Sequencers merge `declaredResources` from all child blocks. `defineFlow` collects resources from action blocks and merges them into the flow's scope configs. Flow-level resource declarations take priority over block-level ones. Blocks are self-documenting: their resource needs bubble up automatically.
+Sequencers merge `declaredResources` from all child blocks. `defineFlow` collects resources from action blocks and merges them into the flow's `resources` map. Flow-level resource declarations take priority over block-level ones. Blocks are self-documenting: their resource needs bubble up automatically.
 
 ## Only declared resources load
 

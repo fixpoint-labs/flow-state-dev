@@ -249,24 +249,17 @@ function normalizeFinishReason(value: unknown): string | undefined {
   return typeof record.unified === "string" ? record.unified : undefined;
 }
 
+/**
+ * Reads the structured output off an AI SDK result. `output` is a lazy
+ * getter that throws when the call produced no structured output, so the
+ * read stays guarded — callers treat "no structured output" as undefined.
+ */
 function normalizeStructuredOutput(value: Record<string, unknown>): unknown {
-  // TODO(ai-sdk-7-cleanup): the `experimental_*` names are legacy dual-reads
-  // (BP-030). `ai` removed the `experimental_output` alias in 7.0.0 and this
-  // package depends on `ai@^7.0.15`, so they can no longer fire — drop them in
-  // a dedicated change, not inside a refactor.
-  const keys = ["experimental_output", "experimentalOutput", "output"] as const;
-  for (const key of keys) {
-    try {
-      const candidate = value[key];
-      if (candidate !== undefined) {
-        return candidate;
-      }
-    } catch {
-      // Some AI SDK result getters throw when no structured output exists.
-    }
+  try {
+    return value.output;
+  } catch {
+    return undefined;
   }
-
-  return undefined;
 }
 
 function asProviderMetadata(
@@ -550,12 +543,7 @@ function normalizeSteps(
       toolCalls: normalizeToolCalls(record.toolCalls, toolNameMap),
       toolResults: normalizeToolResults(record.toolResults, toolNameMap),
       finishReason: normalizeFinishReason(record.finishReason),
-      usage: normalizeUsage(
-        record.usage,
-        // TODO(ai-sdk-7-cleanup): `experimental_providerMetadata` was removed
-        // in `ai@5.0.0`; this legacy dual-read (BP-030) can no longer fire.
-        record.providerMetadata ?? record.experimental_providerMetadata
-      )
+      usage: normalizeUsage(record.usage, record.providerMetadata)
     });
   }
 

@@ -26,7 +26,7 @@ export const AnalyzerResultSchema = z.object({
 export type AnalyzerResult = z.infer<typeof AnalyzerResultSchema>;
 
 // ---------------------------------------------------------------------------
-// Auditor Input (what captureContext produces)
+// Auditor Input (what the side-chain connector supplies)
 // ---------------------------------------------------------------------------
 
 export const auditorInputSchema = z.object({

@@ -46,18 +46,24 @@ function makeClientDataFlow(kind: string, id = kind): FlowInstance {
       }
     },
     session: {
-      clientData: {
-        sessionInfo: () => ({ ready: true })
+      client: {
+        derived: {
+          sessionInfo: () => ({ ready: true })
+        }
       }
     },
     user: {
-      clientData: {
-        userInfo: () => ({ active: true })
+      client: {
+        derived: {
+          userInfo: () => ({ active: true })
+        }
       }
     },
     org: {
-      clientData: {
-        orgInfo: () => ({ configured: true })
+      client: {
+        derived: {
+          orgInfo: () => ({ configured: true })
+        }
       }
     }
   })({
@@ -463,14 +469,18 @@ describe("createFlowApiRouter", () => {
       },
       user: {
         stateSchema: z.object({ nickname: z.string().optional() }),
-        clientData: {
-          userLabel: (ctx) => ({ nickname: ctx.state.nickname })
+        client: {
+          derived: {
+            userLabel: (ctx) => ({ nickname: ctx.state.nickname })
+          }
         }
       },
       org: {
         stateSchema: z.object({ title: z.string().optional() }),
-        clientData: {
-          orgLabel: (ctx) => ({ title: ctx.state.title })
+        client: {
+          derived: {
+            orgLabel: (ctx) => ({ title: ctx.state.title })
+          }
         }
       }
     })({ id: "isolated-state-route" });
@@ -673,11 +683,13 @@ describe("createFlowApiRouter", () => {
       },
       session: {
         stateSchema: z.object({ count: z.number().default(0) }),
-        clientData: {
-          summary: (ctx) => ({
-            totalCount: (ctx.state as { count?: number }).count ?? 0,
-            label: `Count is ${(ctx.state as { count?: number }).count ?? 0}`
-          })
+        client: {
+          derived: {
+            summary: (ctx) => ({
+              totalCount: (ctx.state as { count?: number }).count ?? 0,
+              label: `Count is ${(ctx.state as { count?: number }).count ?? 0}`
+            })
+          }
         }
       }
     })();
@@ -844,9 +856,7 @@ describe("createFlowApiRouter", () => {
 
   // FIX-569: the active-streams capacity mechanism is gone — live tail is
   // owned by the store interface and the per-process registry no longer
-  // exists. The `maxConcurrentStreams` knob is preserved for source-compat
-  // but has no behavioral effect. The 503-at-capacity test was removed
-  // along with the registry.
+  // exists. The 503-at-capacity test was removed along with the registry.
 
   describe("requiresOrg via validateDispatch", () => {
     function makeOrgFlow(): FlowInstance {

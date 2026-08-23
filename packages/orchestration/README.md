@@ -90,15 +90,13 @@ server-only on every one.
 **How far claim safety reaches.** Both backings are compare-and-swap with retry. The
 state backings mutate through `atomicState`; the resource backing mutates through
 `ResourceRef.updateState`, which chains writes per key within one execution context
-and then persists at the version that context read — so a claim written against a
+and then persists at the version that context read. A claim written against a
 stale read is refused and re-applied against the state that won, rather than
-overwriting it. Two workers contending for one task can no longer both land a write.
+overwriting it. Two workers contending for one task cannot both land a write.
 
-Two limits worth stating. On the filesystem store the comparison is held per key
-within a single process, so a durable collection fanned across replicas wants SQLite
-or Postgres underneath it. And this is storage-level safety: it stops a claim write
-from being silently lost, which is the part that used to be missing, but the claim
-protocol built on top is its own concern.
+The filesystem store is safe inside one process. A durable collection shared
+across replicas needs SQLite or Postgres. A stale write is refused, not
+overwritten.
 
 **Freshness is scoped to one request.** Every ref resolved over the same collection
 inside a request sees the same tasks, so a task added through any of them is

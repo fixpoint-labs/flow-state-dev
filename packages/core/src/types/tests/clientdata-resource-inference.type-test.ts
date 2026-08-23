@@ -35,10 +35,12 @@ const clientDataResourceInferenceSmoke = defineFlow({
   },
   session: {
     stateSchema: z.object({ mode: z.string() }),
-    clientData: {
-      modeLabel: (ctx) => {
-        const mode = ctx.state.mode;
-        return mode ?? "unknown";
+    client: {
+      derived: {
+        modeLabel: (ctx) => {
+          const mode = ctx.state.mode;
+          return mode ?? "unknown";
+        }
       }
     }
   }
