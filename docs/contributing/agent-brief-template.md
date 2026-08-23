@@ -68,7 +68,7 @@ Named contracts the agent should look for or modify. Use FSD vocabulary:
 - Item types emitted (`message`, `block_output`, `state_change`, etc.)
 - State scopes touched (request / session / user / org) and which
    resources or keys
-- Package boundaries crossed (engine / client / react / cli)
+- Package boundaries crossed (engine / client / react / fsdev)
 
 Reference `docs/architecture/<area>.md` for any contract this touches —
 the architecture doc, not a file path, is the durable anchor.
