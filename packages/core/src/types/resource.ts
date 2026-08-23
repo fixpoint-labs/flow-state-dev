@@ -370,11 +370,6 @@ export interface ResourceRef<TState extends JsonObject = JsonObject> {
   edges?: ResourceEdgeApi;
 }
 
-
-
-/** @deprecated Use ResourceRef instead. */
-export type ResourceHandle<TState extends JsonObject = JsonObject> = ResourceRef<TState>;
-
 /** Union of handle types that can appear in a resource registry. */
 export type AnyResourceRef =
   | ResourceRef<any>

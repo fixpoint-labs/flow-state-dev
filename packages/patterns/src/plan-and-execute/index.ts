@@ -69,7 +69,6 @@ import { createSynthesize, normalizeOutputStatus } from "./blocks/synthesize";
 
 export {
   PlanSchema,
-  PlanStepSchema,
   PlanTaskSchema,
   planAndExecuteStateSchema,
   planAndExecuteInputSchema,
@@ -79,7 +78,6 @@ export {
 
 export type {
   Plan,
-  PlanStep,
   PlanTask,
   PlanAndExecuteState,
   PlanAndExecuteInput,
@@ -94,10 +92,12 @@ export {
 } from "./blocks/evaluate-progress";
 
 export { createCaptureAndPlan } from "./blocks/capture-and-plan";
-export { createApplyReplan } from "./blocks/apply-replan";
-// Re-exported from the task-board substrate (its true home, FIX-631) to
-// preserve plan-and-execute's public subpath API.
-export { createCascadeSkipDependents } from "@flow-state-dev/orchestration/task-board";
+// Re-exported from the task-board substrate (true home after FIX-910 / FIX-631)
+// to preserve plan-and-execute's public subpath API (BP-034).
+export {
+  createApplyReplan,
+  createCascadeSkipDependents,
+} from "@flow-state-dev/orchestration/task-board";
 export {
   createSynthesize,
   createBuildPlanOutput,

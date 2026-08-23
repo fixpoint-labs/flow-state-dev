@@ -330,8 +330,8 @@ Most new UI needs can be expressed via `component` items with a registered rende
 
 If a new type is genuinely needed:
 
-1. **Define the schema** in `packages/core/src/items/types.ts` and add it to the `OutputItem` union.
-2. **Decide visibility** — which category? In `packages/core/src/items/resolve-visibility.ts`: if trace, add it to `TRACE_TYPES` (always `{ client: false, history: false }`); if conversational, add it to `CONVERSATIONAL_TYPES` so `item.itemVisibility` governs visibility. Structural types need no edit — anything not in `TRACE_TYPES` or `CONVERSATIONAL_TYPES` falls through to `STRUCTURAL_DEFAULT` (`{ client: true, history: false }`).
+1. **Define the schema** in `packages/contracts/src/items/types.ts` and add it to the `OutputItem` union.
+2. **Decide visibility** — which category? In `packages/contracts/src/items/resolve-visibility.ts`: if trace, add it to `TRACE_TYPES` (always `{ client: false, history: false }`); if conversational, add it to `CONVERSATIONAL_TYPES` so `item.itemVisibility` governs visibility. Structural types need no edit — anything not in `TRACE_TYPES` or `CONVERSATIONAL_TYPES` falls through to `STRUCTURAL_DEFAULT` (`{ client: true, history: false }`).
 3. **Add a registry row** to the table in this document — all columns required.
 4. **Set persistence** — `transient: true` at emission for stream-only items.
 5. **Define kitchen sink rendering** — register a built-in fallback in `ItemRenderer.ts`, add to `NON_RENDERABLE_TYPES`, or accept the JSON dev fallback. Don't leave it implicit.

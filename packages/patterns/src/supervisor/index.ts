@@ -46,7 +46,6 @@ export {
   supervisorStateSchema,
   reviewerVerdictSchema,
   reviewerInputSchema,
-  reviewOutputSchema,
   plannerOutputSchema,
   executableTaskSchema,
 } from "./schemas";
@@ -54,7 +53,6 @@ export {
 export type {
   SupervisorInput,
   SupervisorState,
-  ReviewOutput,
   PlannerOutput,
   ExecutableTask,
   ReviewerVerdict,

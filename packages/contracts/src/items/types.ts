@@ -15,13 +15,6 @@ export type ItemVisibility = {
   history: boolean;
 };
 
-/**
- * @deprecated Use `ItemVisibility` instead. Retained as an internal type alias
- * for test backward-compat and transition-period tooling. Will be removed in a
- * future release.
- */
-export type AgentType = "primary" | "sub" | "trace";
-
 export type ItemProvenance = {
   blockName: string;
   blockDefinitionId?: string;
@@ -451,16 +444,6 @@ export type StatusItem = OutputItemBase & {
   blocked?: boolean;
   /** Number of background work tasks still running. */
   sideChainTasks?: number;
-};
-
-/**
- * @deprecated The `context` item type has been removed. Use generator
- * `context` slot configuration or `ctx.emit.message` with `history: true,
- * client: false` instead.
- */
-export type ContextItem = OutputItemBase & {
-  type: "context";
-  text: string;
 };
 
 /**

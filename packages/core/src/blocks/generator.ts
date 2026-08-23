@@ -334,11 +334,6 @@ export type InstructionsSlot<TInput = unknown> =
   | ((input: TInput, ctx: any) => MaybePromise<string>);
 
 /**
- * @deprecated Use GeneratorTool. Kept as an alias for compatibility.
- */
-export type ToolBinding = GeneratorTool;
-
-/**
  * Wraps a Vercel AI SDK provider-defined tool for use in a generator's
  * `providerTools` array. The tool is passed through to the AI SDK without
  * compilation — the provider executes it server-side.

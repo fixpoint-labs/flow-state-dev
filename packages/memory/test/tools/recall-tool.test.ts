@@ -10,7 +10,7 @@
 import { describe, it, expect } from 'vitest'
 import { handler } from '@flow-state-dev/core'
 import { runForTest } from '@flow-state-dev/testing'
-import type { ResourceHandle } from '@flow-state-dev/core'
+import type { ResourceRef } from '@flow-state-dev/core/types'
 import {
   workingMemoryStateSchema,
   type WorkingMemoryState,
@@ -31,7 +31,6 @@ import {
   capContent,
   TRUNCATION_MARKER,
   DEFAULT_PER_ITEM_CHAR_CAP,
-  PRE_RANK_CAP,
   PRE_RANK_EPISODIC_CAP,
   RECENCY_HALF_LIFE,
   intrinsicSemanticScore,
@@ -51,7 +50,7 @@ import {
 // Mock resource handles
 // ---------------------------------------------------------------------------
 
-function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceHandle<WorkingMemoryState> {
+function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceRef<WorkingMemoryState> {
   let state: WorkingMemoryState = { entries: [], currentTurn: 0, ...initial }
   return {
     name: 'workingMemory',
@@ -63,10 +62,10 @@ function createMockWmRef(initial?: Partial<WorkingMemoryState>): ResourceHandle<
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: workingMemoryStateSchema, writable: true },
-  } as ResourceHandle<WorkingMemoryState>
+  } as ResourceRef<WorkingMemoryState>
 }
 
-function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceHandle<EpisodicMemoryState> {
+function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceRef<EpisodicMemoryState> {
   let state: EpisodicMemoryState = { episodes: [], totalEncoded: 0, ...initial }
   return {
     name: 'episodicMemory',
@@ -78,10 +77,10 @@ function createMockEpRef(initial?: Partial<EpisodicMemoryState>): ResourceHandle
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: episodicMemoryStateSchema, writable: true },
-  } as ResourceHandle<EpisodicMemoryState>
+  } as ResourceRef<EpisodicMemoryState>
 }
 
-function createMockSemRef(initial?: Partial<SemanticMemoryState>): ResourceHandle<SemanticMemoryState> {
+function createMockSemRef(initial?: Partial<SemanticMemoryState>): ResourceRef<SemanticMemoryState> {
   let state: SemanticMemoryState = {
     facts: [],
     totalExtracted: 0,
@@ -98,7 +97,7 @@ function createMockSemRef(initial?: Partial<SemanticMemoryState>): ResourceHandl
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: semanticMemoryStateSchema, writable: true },
-  } as ResourceHandle<SemanticMemoryState>
+  } as ResourceRef<SemanticMemoryState>
 }
 
 function makeFact(overrides: Partial<SemanticFact> & { id: string }): SemanticFact {
@@ -128,9 +127,9 @@ function makeEpisode(overrides: Partial<Episode> & { id: string }): Episode {
 }
 
 function buildCtx(args: {
-  wm?: ResourceHandle<WorkingMemoryState>
-  ep?: ResourceHandle<EpisodicMemoryState>
-  sem?: ResourceHandle<SemanticMemoryState>
+  wm?: ResourceRef<WorkingMemoryState>
+  ep?: ResourceRef<EpisodicMemoryState>
+  sem?: ResourceRef<SemanticMemoryState>
 }): any {
   const refs: Record<string, any> = {}
   if (args.wm) refs.workingMemory = args.wm
@@ -569,14 +568,6 @@ describe('tools/recall — intrinsic scoring', () => {
     const halfLifeAgo = makeEpisode({ id: 'c', significance: 0.8, occurredAtTurn: currentTurn - RECENCY_HALF_LIFE })
     const expected = 0.8 * Math.exp(-1)
     expect(intrinsicEpisodicScore(halfLifeAgo, currentTurn)).toBeCloseTo(expected, 4)
-  })
-
-  it('PRE_RANK_CAP retains its documented value (kept exported as a deprecated alias)', () => {
-    // The strategy no longer references this constant — episodes are now
-    // capped at PRE_RANK_EPISODIC_CAP and semantic facts pass through
-    // unconditionally. Asserting the historical value keeps the export
-    // contract stable for any external consumer that imported it for parity.
-    expect(PRE_RANK_CAP).toBe(50)
   })
 
   it('PRE_RANK_EPISODIC_CAP is the active episodic cap', () => {
