@@ -80,7 +80,7 @@ The owner's rule, and it governs the epic:
 `{ timedOut }` is the signal — no separate answer timeout exists.
 
 **The design implication, and it is the sharp one.** `waitForCondition` watches **one request's
-own response stream** (`sequencer-methods.ts:344-379`). The board drain works because its children
+own response stream** (§9). The board drain works because its children
 emit into its own stream; relay does not, because the reply is a fresh request on the *replier's*
 side. Therefore:
 
@@ -163,8 +163,7 @@ own spec — not here.**
   `requestId` identifies the **asker, not the ask** — one request can issue two wait-for-response
   sends (parallel branches, multiple tool calls) — so it is **provenance only**, never the
   correlator.
-- **A correlated reply must land as an item on the waiting request's response stream** (§4) —
-  **and issue 1 owns a runtime correlation-aware wait seam, not just that delivery target.**
+- **Beyond §4's delivery target, issue 1 owns a runtime correlation-aware wait seam.**
   `waitForCondition`'s predicate is fixed when the **sequencer is defined** and receives only the
   shared request item array (`core/src/blocks/sequencer.ts:2297-2318`), while a correlation ID is
   minted at **tool-call runtime**. Framework tool calls in one model step run **concurrently** on a
@@ -179,35 +178,38 @@ own spec — not here.**
   **Distinct from cross-user, which is unreachable** (§2). *The generalisation worth keeping: an
   owner-level invariant is structurally blind to any distinction below the owner — org binding and
   resource scope are both exactly that.*
-- **Key-collision refusal — far broader than self-addressing, and coupled to the waiting
-  mechanism.** The rule is about the **effective arbiter key**, and self-addressing is one instance
-  of it:
-  - **Expected-wait path** (request open, key **held**) → **refusal required** when the target
-    resolves to a key the sender already holds. Under `queue` one request runs to completion before
-    the next starts, so the recipient can never start. Q2 measured it.
-  - **Wake-to-new-request path** (request ended, key released) → **not required.**
-  - **Severity, stated plainly: under the supported `{policy:"queue", key:"user"}` every blocking
-    send deadlocks.** A same-owner A→C send targets the user key **A already holds**, and
-    **every send is same-owner by design invariant** (§2) — so this is the common case, not an
-    edge. Custom shared keys collide identically despite different `sessionId`s.
+- **Key-collision refusal — about the **effective arbiter key**, with self-addressing one instance
+  of it, and coupled to the waiting mechanism.** On the **expected-wait path** (request open, key
+  **held**) a send whose target resolves to a key the sender already holds must be **refused**:
+  under `queue` one request runs to completion before the next starts, so the recipient can never
+  start. Q2 measured it. On the **wake-to-new-request path** (request ended, key released) no
+  refusal is needed. **Severity: under the supported `{policy:"queue", key:"user"}` every blocking
+  send deadlocks** — a same-owner A→C send targets the user key A already holds, and **every send
+  is same-owner by design invariant** (§2), so this is the common case, not an edge. Custom shared
+  keys collide identically despite different `sessionId`s.
 - **AC 1** — the recipient's `flowKind` is **looked up from the session record, never asserted by
   the sender**. Under an asymmetric door this is a *routing* decision, and BP-031 is categorical.
 - **AC 2** — **relay dispatches are unbounded-admission, or admission expiry reaches the sender.**
   Configurability alone is insufficient: any finite value reproduces Q4's accepted-then-dropped
   shape.
-  - **Same rule, new case: late-reply behaviour must be defined and surfaced.** Past `timeoutMs`
-    the waiter's listener is torn down (`core/src/blocks/sequencer.ts:2358-2383`) and the sending
-    request may be **terminal** — yet the model names that stream as the reply's sole target. So a
-    responder either gets an **acceptance ack for an answer that can wake nobody**, or the
-    implementation **appends to a completed request**. Both are the accepted-then-silently-dropped
-    class this criterion exists to prevent. *Reject, or fall back —* **not picked, and the
-    mechanism is not designed here.**
+  - **One rule, and it closes this region: a bounded wait over an unbounded delivery yields an
+    UNKNOWN outcome, never a negative one.** `{ timedOut }` means *"I stopped waiting"*, not *"it
+    did not happen"* — **the same rule as watch's `expired`** below. **Two instances:** *the reply
+    arrives late* — past `timeoutMs` the listener is torn down (`core/src/blocks/sequencer.ts:2358-2383`) and the
+    sending request may be terminal, so an ack for an answer that can wake nobody, or an append to
+    a completed request; and *the delivery happens late* — unbounded admission keeps it queued, so
+    it **will** run, and a caller that retried gets **both executions**. Duplicate execution is the
+    worse class, and both fall out of **two of our own decisions composed**: unbounded admission
+    plus a bounded wait mean delivery is certain while the caller may have stopped waiting.
+    **Requirement:** define and surface the timeout outcome as **unknown**, with either
+    cancellation of the undelivered request or a **durable status / idempotency contract** blocking
+    unsafe retries. *Lean, not a decision:* the idempotency contract — it matches `expired`, and
+    cancellation is itself racy (the request may be mid-execution when it arrives). **Neither
+    picked; nothing designed here.**
 - **Open, no answer: which callers use `waitForCondition` and which wake to a new request** —
-  specifically a workstream drain, whose request does stay open. **This area was specified wrong
-  twice** (a suspension-resume form invented, then the blocking form deleted). `suspend` /
-  `continueRequest` is **not** the mechanism and never will be — a reply is a fresh request, a
-  resume is the *same* request id (`execution-and-errors.md:397-407`). **Do not attempt a third
-  variant without code.**
+  specifically a workstream drain, whose request does stay open. `suspend` / `continueRequest` is
+  **not** the mechanism (§4, §9). **This area was specified wrong twice** — a suspension-resume
+  form invented, then the blocking form deleted. **Do not attempt a third variant without code.**
 
 ### Issue 2
 
@@ -256,8 +258,8 @@ and addressed delivery — **plus the expiry sweep, which is required, not optio
 **Delivery is explicitly best-effort — no durable outbox** (out of scope by the owner's boundary).
 **Loss is never prevented.** The bound is **conditional**: bounded *if C5 is resolved*,
 self-announcing *if C6 is*, recoverable by re-registration *where C1's guarantee holds*.
-**`expired` means "I stopped watching; no notification arrived in the window; re-check if you still
-care"** — never "it did not happen", because in the crash case it did.
+**`expired` is AC 2's rule again:** *"I stopped watching; re-check if you still care"* — never
+"it did not happen", because in the crash case it did.
 
 **Boundary:** the board **emits** (it already does), the watch manager **matches**, Relay
 **delivers**. A spec that stores message state on the row, or adds a new emit to the board, has
