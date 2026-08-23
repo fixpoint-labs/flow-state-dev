@@ -44,8 +44,20 @@ the POC was built to test.**
 The matrix below survived it: both polluted cells (2 and 6) were `true` on their own merits,
 and re-running with per-host sinks reproduces every cell exactly. But *"the answer was right"*
 is not *"the check worked"* — with the pin deliberately removed, the old shared array still
-reported the rescue as working (row 3 above). That condition was **unfalsifiable**, which is
-the same §12 rule this POC has now broken twice. Each host now owns its sink
+reported the rescue as working (row 3 above). That condition was **unfalsifiable**.
+
+**This is the SECOND verdict condition on this POC that could not fail, and two is a
+pattern.** The first was `concludeOrFail` itself: for ten rounds every condition printed
+`false` and exited `0`, so the whole verdict was unfalsifiable at the process level. This one
+is narrower and nastier — the assertion machinery works, and a single condition was reading a
+number that another case could write. Both were found by a reviewer, neither by a run. The
+rule they point at, and the one worth carrying past this throwaway: **every verdict condition
+ships with the sabotage that makes it fail.** Not a re-read, not an argument — the deleted
+field, the removed pin, the flipped stamp, exercised and recorded. The table at the top of
+this file is that record for these three; it exists because the two defects above are what
+happens without it.
+
+Each host now owns its sink
 (`Observations` in `harness.ts`), so the leak is unrepresentable rather than unlikely, and
 `q6-arbiter-key.ts` prints a replay of what the shared array *would* have reported so the
 contamination stays visible rather than becoming folklore.
