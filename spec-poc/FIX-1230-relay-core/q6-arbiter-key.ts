@@ -24,7 +24,7 @@ import {
   createConcurrencyArbiter,
   type ConcurrencyArbiter
 } from "../../packages/engine/src/transports/concurrency/arbiter";
-import { boot, fromOutside, received, show } from "./harness";
+import { boot, concludeOrFail, fromOutside, received, show } from "./harness";
 
 /**
  * The "pin" candidate, as an injected arbiter rather than an engine patch.
@@ -129,7 +129,7 @@ async function main(): Promise<void> {
     }))
   );
 
-  show("VERDICT", {
+  concludeOrFail("VERDICT", {
     "the deadlock is specific to a SHARED key, not to relay":
       rows[0].recipientRanWhileSenderWaited === false &&
       rows[3].recipientRanWhileSenderWaited === true,

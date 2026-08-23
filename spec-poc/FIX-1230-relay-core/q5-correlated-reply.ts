@@ -13,7 +13,7 @@
  *
  * Run: pnpm tsx spec-poc/FIX-1230-relay-core/q5-correlated-reply.ts   (~1s)
  */
-import { boot, deliveries, fromOutside, received, show } from "./harness";
+import { boot, concludeOrFail, deliveries, fromOutside, received, show } from "./harness";
 import { itemToLLMMessages } from "../../packages/engine/src/context/history";
 
 async function main(): Promise<void> {
@@ -133,7 +133,7 @@ async function main(): Promise<void> {
     replyIsAbsentFromReconstructedLLMHistory: replyTextInHistory.length === 0
   });
 
-  show("VERDICT", verdict);
+  concludeOrFail("VERDICT", verdict);
 }
 
 void main();

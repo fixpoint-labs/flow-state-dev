@@ -381,6 +381,36 @@ export async function fromOutside(
   return { requestId: handle.requestId, result: await handle.finished };
 }
 
+/**
+ * Print the verdict AND make the process exit nonzero if any of it is false.
+ *
+ * THE LAST FINDING ON THIS POC, AND THE ONE THAT INDICTS IT MOST. For ten review
+ * rounds these scripts printed `false` and exited **0**. The spec cited them as
+ * CONFIRMED evidence for the reply design and the concurrency design the whole
+ * time, so an automated runner — or any reviewer checking status rather than
+ * reading output — would have accepted a refuted experiment as a confirmed one.
+ * The evidence mechanism could not tell confirmation from refutation.
+ *
+ * The bite: §12's rules `prove the check can fail` and `for each promise, name the
+ * way it could be silently unmet and make that the test` were BOTH derived from
+ * these scripts. The artifact that produced the lesson was exempt from it.
+ *
+ * Only booleans are asserted; string keys (`note`) are commentary.
+ */
+export function concludeOrFail(label: string, verdict: Record<string, unknown>): void {
+  show(label, verdict);
+  const failed = Object.entries(verdict)
+    .filter(([, v]) => v === false)
+    .map(([k]) => k);
+  if (failed.length > 0) {
+    console.error(`\nREFUTED — ${failed.length} condition(s) false:`);
+    for (const k of failed) console.error(`  - ${k}`);
+    process.exitCode = 1;
+    return;
+  }
+  console.log("\nCONFIRMED — every condition held.");
+}
+
 export function show(label: string, value: unknown): void {
   console.log(`\n--- ${label} ---`);
   console.log(JSON.stringify(value, null, 2));

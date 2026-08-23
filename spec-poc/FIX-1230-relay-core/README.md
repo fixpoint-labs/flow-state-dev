@@ -17,6 +17,23 @@ pnpm tsx spec-poc/FIX-1230-relay-core/q6-arbiter-key.ts        # ~10s
 node_modules/.bin/tsc -p spec-poc/FIX-1230-relay-core          # the carrier's type check
 ```
 
+**Both scripts exit nonzero when a verdict condition is false.** They did not for ten review
+rounds — they printed `false` and exited `0`, while the spec cited them as CONFIRMED evidence
+the whole time, so anything checking status rather than reading output would have taken a
+refuted experiment for a confirmed one. Verified in the direction that matters:
+
+| broken on purpose | result |
+|---|---|
+| Q5's carrier stamped `history: true` | exit **1**, `replyIsAbsentFromReconstructedLLMHistory` named |
+| Q6's rule using the *resolved* key instead of the *held* one | exit **1**, two conditions named, including the case-7 trap |
+| both restored | exit **0** |
+
+The second row is the round-5 defect itself: had the scripts asserted from the start, that
+bug would have exited nonzero rather than being caught three rounds later by reading.
+
+```
+```
+
 No server, no store, no keys, no model. `createInMemoryStores` +
 `createInboundTransportHost`, one flow (`harness.ts`).
 
