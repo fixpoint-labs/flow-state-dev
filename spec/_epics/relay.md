@@ -736,7 +736,8 @@ through the same `runsElsewhere` exclusion that detached dispatch already gets f
 `in_progress`.
 
 **Changed:** §1's necessity check now rests on evidence; §4's issue-5 cell carries the residual
-gap; §5 **Q5's necessity half is settled and its placement half is not**. **No re-division — the
+gap; §5 **Q5's necessity half is settled and its placement half is not** *(superseded 2026-08-23:
+the placement half is decided — inside, as issue 5)*. **No re-division — the
 five issues stand** *(true of this settlement; the owner has since proposed a sixth. The
 issue-5/issue-6 collision once recorded here as **§5 Q6b is withdrawn** — under the
 notification-primitive model watch touches no board internals, so issue 5's residual gap is issue
