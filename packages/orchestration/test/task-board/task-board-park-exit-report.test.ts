@@ -37,6 +37,31 @@ import type { RunsElsewhere } from "../../src/task-board/shared";
 import { createFakeSequencerState } from "../helpers";
 
 let seq = 0;
+
+/**
+ * A collection whose clock the test drives, so a lease can lapse *between* two
+ * reads of the same rows. Nothing else in this file needs one: leases only
+ * matter where the hand-off exclusion does.
+ */
+function clockedCollection(): {
+  collection: TaskCollectionRef;
+  advance: (ms: number) => void;
+} {
+  seq += 1;
+  let t = 1_000_000;
+  const collection = createSequencerBackedTaskCollection({
+    collectionId: `park-report-clock-${seq}`,
+    sequencer: createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} }),
+    now: () => t,
+  });
+  return {
+    collection,
+    advance: (ms: number) => {
+      t += ms;
+    },
+  };
+}
+
 function freshCollection(caps?: { maxTotalRetries?: number | null }): TaskCollectionRef {
   seq += 1;
   return createSequencerBackedTaskCollection({
@@ -290,6 +315,45 @@ describe("termination ladder — a review gate must not mask an unrelated stall"
     await collection.addTask({ id: "b", goal: "b", deps: ["a"] });
 
     expect(await reasonFor(collection, parkedExit)).toBe("blocked-by-failures");
+  });
+
+  it("reports the stall when a handed-off row's lease lapsed after the pool classified", async () => {
+    // Written as a flip on the clock, and it is the sharpest shape in this file:
+    // the rows never change, the carried verdict never changes, and only time
+    // moves between the two assertions.
+    //
+    // At the pool's last classification the row's lease was live, so
+    // `countWaitable` excused it as handed off and the drain honestly exited
+    // `drained` with a park verdict. By the time the completion block takes its
+    // own `collection.now()` the lease has lapsed, and that row is no longer
+    // work in flight — it is ABANDONED. Answering the review does not recover
+    // it; a lease reclaim on a later drain does, which is a different
+    // mechanism, so a reason pointing at the human is the wrong one.
+    //
+    // The ladder already treats this state as a stall when no review is
+    // outstanding: `allRemainingHandedOff` re-reads the lease, finds it lapsed,
+    // and falls through to `blocked-by-failures`. This test is what stops the
+    // park rung masking that.
+    const { collection, advance } = clockedCollection();
+    await park(collection, "ask");
+    await collection.addTask({ id: "bg", goal: "bg", assignee: "background" });
+    await collection.claim("workstream", {
+      eligibility: (t) => t.id === "bg",
+      leaseDurationMs: 1_000,
+    });
+    const runsElsewhere = (task: Task): boolean => task.assignee === "background";
+
+    // Lease live: the hand-off is real work in flight, and the review is why
+    // the board stopped. This is the parked-plus-handed-off guard.
+    expect(await reasonFor(collection, parkedExit, runsElsewhere)).toBe(
+      "parked-for-review"
+    );
+
+    // Lease lapsed, nothing else touched.
+    advance(5_000);
+    expect(await reasonFor(collection, parkedExit, runsElsewhere)).toBe(
+      "blocked-by-failures"
+    );
   });
 
   it("keeps the review reason for a row added after the pool classified", async () => {

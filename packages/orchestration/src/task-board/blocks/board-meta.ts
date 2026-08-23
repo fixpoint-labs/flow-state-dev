@@ -26,6 +26,55 @@
  * produce no novel output, just side-effect a component item via
  * `ctx.emit.component`. Wired with `.tap()` per BP-012.
  *
+ * ## Why hand-off needs a reason of its own
+ *
+ * The structural test is `counts.completed === counts.total`, and a detached
+ * board that did exactly what it was built to do fails it: the row it handed
+ * over is still `in_progress`, owned by a Workstream. So every successful
+ * detached drain announced itself as `"blocked-by-failures"` — permanently,
+ * since no later drain re-emits this item once the child settles. The feature
+ * whose entire point is that background work is *visible* was reporting its own
+ * success as a terminal failure.
+ *
+ * Reusing `"all-completed"` would be the same defect facing the other way: a
+ * consumer reads it as "nothing left to do" and stops watching while a child is
+ * still working. The honest answer is a third thing, so it is a third value.
+ *
+ * A board is `"handed-off"` only when **every** remaining non-`completed` row is
+ * handed off. One errored row alongside them is a board that had failures, and
+ * `"blocked-by-failures"` still says so. When the reason is `"handed-off"`,
+ * `counts.in_progress` is exactly the number of rows still running elsewhere —
+ * there is no other kind of remaining row left for it to count.
+ *
+ * ## Why the park reason is carried in rather than derived here
+ *
+ * This block runs *after* the worker pool finishes and it reads the collection
+ * fresh. A resume landing in that window turns the parked row back into a
+ * `pending` one, so a reason inferred from the rows at this moment cannot see
+ * why the drain stopped — it would report a board that exited successfully for
+ * review as a failure. So the causal verdict is recorded where it is decided,
+ * in `checkBoard`, and travels here on the worker loop's own output.
+ *
+ * That path is the drain's dataflow, not a shared bag: each worker's final
+ * `checkBoard` output is an element of the `forEach` result, which is the value
+ * this block's `.tap` receives. It is therefore scoped to this drain
+ * *invocation* by construction — two drains of the same board, even inside one
+ * request, each read their own pool's outputs and cannot see the other's. A
+ * verdict parked on the board's flow-state bag would not have that property:
+ * that object is allocated once per board *definition*, so one drain's teardown
+ * would clear the other's mid-run.
+ *
+ * The `counts`, by contrast, stay a final snapshot. They are descriptive, and a
+ * caller reading them wants the board's actual last state.
+ *
+ * The retry reason is read from a persisted DENIAL MARKER on the tasks,
+ * never inferred from `counts.retries === maxTotalRetries` — that
+ * arithmetic does not establish a refusal. A task can consume the last
+ * grant and then succeed while an unrelated task with no `maxAttempts`
+ * fails normally, leaving the count exactly at the limit with an errored
+ * task on the board and no retry ever denied. A termination reason that
+ * can lie is worse than no new reason at all.
+ *
  * The emitted item is keyed by `collectionId`, so the latest state
  * replaces the previous one in the client UI — `active` then
  * `completed` resolves to one rendered status per board.
@@ -36,6 +85,7 @@ import { z } from "zod";
 import type { Task, TaskCollectionRef } from "../../tasks";
 import { anyRetryDeniedByBudget, sumGrantedRetries } from "../../tasks/collection/internal";
 import { isHandedOff, type RunsElsewhere } from "../shared";
+import { leaseLapsed } from "../../tasks";
 
 /** Component-item type emitted by both board-meta blocks. */
 export const TASK_BOARD_META_COMPONENT_TYPE = "task-board-meta";
@@ -121,71 +171,100 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
  * board's own `createCascadeSkipDependents` already walks the graph
  * transitively. Same walk, three orders of magnitude fewer evaluations.
  *
- * **The vacuous `every()` on an empty `deps` list is not a hole**, and this is
- * the note that saves the next reader re-deriving it. A `pending` row with no
- * dependencies joins `willResolve` unconditionally, so it can never be reported
- * as going nowhere. That looks like a gap — an unrelated, perfectly runnable row
- * sitting on a board that reports `parked-for-review`. It is unreachable,
- * because a row in that state stops the park verdict from being issued at all.
- * `classifyBoard` carries `excusedParked: true` out of exactly two returns, and
- * a ready row defeats both:
+ * **Why not "the park was the sole cause".**
+ * The tempting shape for rung 5 is a guard asking whether anything
+ * *other than the park* contributed to the exit. It was considered and
+ * rejected, and rung 4 exists because of what it got wrong: on a board
+ * with a parked row **and** a handed-off row, the hand-off exclusion
+ * also contributed, so under a sole-cause rule the reason falls
+ * through to `handed-off` and the operator loses the one fact they
+ * need. Rung 4 asks a different question — is anything here going
+ * nowhere? — and handed-off work is going somewhere, so it is not
+ * caught. That is the whole distinction: `parked-for-review` must keep
+ * beating `handed-off`, and must not beat a row that will never run.
  *
- * - `"drained"` requires `inFlight.waiting === 0`. A ready row is `pending`, so
- *   it is neither handed off nor `awaiting_review`, and `countWaitable` counts
- *   it. `waiting >= 1`, and this return is not taken.
- * - `"blocked"` requires `!hasClaimableTask(collection)`. `isClaimable` reduces
- *   to `depsSatisfied` for a `pending` row — there is deliberately no attempts
- *   arm — and `depsSatisfied` is vacuously true on an empty `deps` list. So the
- *   row is claimable, the guard fails, and this return is not taken either.
+ * **Three routes to a park verdict standing beside a row this closure did not
+ * flag, and they do not have the same answer.** The empty `deps` list is
+ * vacuously true, so any row admitted to the expansion loop joins `willResolve`
+ * whatever it is waiting for. Whether that matters depends on how the row got
+ * there:
  *
- * With such a row present the classifier answers `continue`, which carries
- * `excusedParked: false`. **An exhausted `maxIterations` cannot manufacture one
- * either**: the cap trips on whatever the last classification returned, and that
- * classification was the `continue` above. The same argument covers an unrelated
- * `in_progress` row, which `activeWorkerCount` counts unless it is handed off —
- * and a handed-off row is seeded into `willResolve` deliberately.
- *
- * **The one window that is real** is a row added *after* the pool's last
- * classification and before this block's fresh read. The excusal was decided
- * honestly, when nothing else was waitable; the collection has moved since. The
- * reason stays `parked-for-review`, which is correct rather than merely
- * tolerable: a review genuinely is outstanding, and the row that arrived late is
- * not something this drain declined to run. Reporting `blocked-by-failures`
- * there would announce a failure on a board where nothing failed and the new row
- * is perfectly runnable — the same defect class this rung exists to remove,
- * since that is exactly how hand-off used to report its own success as a
- * terminal failure. "Another drain is required" is not evidence against the
- * reason; it is what the reason means.
+ * 1. **An unrelated *ready* `pending` row — unreachable.** Such a row stops the
+ *    park verdict from being issued at all. `classifyBoard` carries
+ *    `excusedParked: true` out of exactly two returns and a ready row defeats
+ *    both: `"drained"` needs `inFlight.waiting === 0`, and `countWaitable`
+ *    counts a `pending` row that is neither handed off nor parked; `"blocked"`
+ *    needs `!hasClaimableTask`, and `isClaimable` reduces to `depsSatisfied`
+ *    for a `pending` row (there is deliberately no attempts arm), which is
+ *    vacuously true here. The classifier answers `continue`, carrying
+ *    `excusedParked: false`. An exhausted `maxIterations` cannot manufacture
+ *    one either: the cap trips on whatever the last classification returned,
+ *    and that was the `continue`.
+ * 2. **A row added *after* the pool's last classification — real, and the
+ *    reason correctly stays `parked-for-review`.** The excusal was decided
+ *    honestly, when nothing else was waitable; the collection moved afterwards.
+ *    The late row is not something this drain declined to run, and reporting
+ *    `blocked-by-failures` would announce a failure on a board where nothing
+ *    failed and the new row is perfectly runnable — the same defect class this
+ *    rung exists to remove, since that is how hand-off used to report its own
+ *    success as a terminal failure. "Another drain is required" is not evidence
+ *    against the reason; it is what the reason means.
+ * 3. **A row whose lease lapsed after that classification — real, and it is
+ *    what the lease check in the seed handles.** A handed-off row with a live
+ *    lease is excused by `countWaitable`, so the drain can exit `drained` with
+ *    a park verdict while that row is still in flight. If the lease then lapses
+ *    before this block takes its own `collection.now()`, the row is abandoned
+ *    rather than in flight, and answering the review does not recover it — a
+ *    lease reclaim on a later drain does. Here `parked-for-review` genuinely
+ *    would be wrong, and the ladder already agrees: with no review outstanding,
+ *    `allRemainingHandedOff` re-reads the lease, finds it lapsed, and falls
+ *    through to `blocked-by-failures`. Seeding on the lease rather than on
+ *    `in_progress` is what keeps the park rung from masking that.
  */
 function hasRowGoingNowhere(
   all: readonly Task[],
   remaining: readonly Task[],
-  now: number,
-  runsElsewhere: RunsElsewhere | undefined
+  now: number
 ): boolean {
-  // Seed: rows nothing further is owed on, plus rows something other than this
-  // board's dependency graph will settle.
+  // Seed: rows this board's dependency graph is not what resolves. Either they
+  // are already done, or a person owes an answer on them, or somebody is
+  // working them right now.
+  //
+  // **The last of those is a lease question, not a status or routing one**, and
+  // that is the whole correctness of this seed. `in_progress` alone would seed
+  // an ABANDONED row — a worker died, the lease lapsed, and nothing is coming
+  // back for it until a later drain reclaims it. `isHandedOff` alone would miss
+  // a row another drain's live worker is holding, because that predicate needs
+  // `runsElsewhere` and an inline board declares none; the row would be called
+  // stuck while it is being actively worked. The live lease answers for both,
+  // which is why this reads it directly instead of asking where the work was
+  // routed.
   const willResolve = new Set<string>();
   for (const task of all) {
     if (
       task.status === "completed" ||
       task.status === "awaiting_review" ||
-      isHandedOff(task, now, runsElsewhere)
+      (task.status === "in_progress" && !leaseLapsed(task, now))
     ) {
       willResolve.add(task.id);
     }
   }
-  // Close over the rows those release. Each pass adds at least one row or the
-  // loop ends, so it is bounded by the board's row count.
+  // Close over the rows those release. `pending` only: expansion models
+  // "becomes runnable once its deps resolve", which is a property of a row
+  // waiting to be claimed. An `in_progress` row is not waiting on deps at all,
+  // so its fate is settled by the seed above and admitting it here would let a
+  // lapsed one back in through a vacuously-true empty `deps` list.
+  //
+  // Each pass adds at least one row or the loop ends, so it is bounded by the
+  // board's row count.
   let added = true;
   while (added) {
     added = false;
     for (const task of all) {
       if (willResolve.has(task.id)) continue;
-      // `errored` / `cancelled` / `blocked` never resolve. Rung 3 has already
-      // reported them by the time this runs; the check keeps this function
-      // honest when it is read on its own.
-      if (task.status !== "pending" && task.status !== "in_progress") continue;
+      // `errored` / `cancelled` / `blocked` never resolve, and rung 3 has
+      // already reported them by the time this runs.
+      if (task.status !== "pending") continue;
       if ((task.deps ?? []).every((dep) => willResolve.has(dep))) {
         willResolve.add(task.id);
         added = true;
@@ -229,127 +308,52 @@ function excusedParkedByPool(input: unknown): boolean {
 }
 
 /**
- * Emit `{ status: "completed", terminationReason, counts: ... }` after
- * the forEach drains. The counts snapshot the final lifecycle
- * distribution so a renderer can display "5 completed, 1 errored"
- * without re-walking the per-task event stream.
+ * Emit `{ status: "completed", terminationReason, counts }` after the forEach
+ * drains. The counts snapshot the final lifecycle distribution so a renderer can
+ * display "5 completed, 1 errored" without re-walking the per-task event stream.
  *
- * `terminationReason` distinguishes a clean drain (`"all-completed"`)
- * from a board that exited with non-`completed` tasks remaining
- * (`"blocked-by-failures"`), from one the collection's cumulative
- * retry budget stopped (`"retry-budget-exhausted"`, FIX-948), from one
- * that exited because it handed its remaining work to a Workstream
- * (`"handed-off"`, FIX-1074), and from one that exited because the
- * only work left is parked for a human (`"parked-for-review"`,
- * FIX-1234). Note: in `onIdle: "wait"` mode an early-firing
- * `shouldExit` while tasks are still `in_progress` / `pending` will
- * report `"blocked-by-failures"` even though nothing actually failed;
- * users overriding termination can read `counts` directly to
- * disambiguate.
+ * `terminationReason` says why the board stopped:
  *
- * ## The ladder, in order — the order is the contract
+ * - `"all-completed"` — every task reached `completed`.
+ * - `"blocked-by-failures"` — something is stuck for a reason no review will
+ *   clear.
+ * - `"retry-budget-exhausted"` — the collection's cumulative retry budget
+ *   refused a retry (FIX-948). Read from a persisted denial marker, never
+ *   inferred from `counts.retries === maxTotalRetries`, which does not
+ *   establish that a refusal happened.
+ * - `"handed-off"` — every remaining row is running in a Workstream (FIX-1074).
+ *   A success, not a stall; `counts.in_progress` is how many.
+ * - `"parked-for-review"` — the board stopped because the work it has left is
+ *   waiting on a person (FIX-1234). Only a board with `onReview: "exit"`
+ *   reports it; `counts.awaiting_review` is how many.
  *
- * First match wins, and getting the order wrong silently regresses
- * behaviour that is deliberate:
+ * **The ladder's order is the contract.** First match wins:
  *
  * 1. a persisted retry-denial marker exists → `retry-budget-exhausted`.
- *    First because an operator needs to know the *budget* stopped the
- *    board, and a denied retry settles its task terminal `errored`, so
- *    any later failure rule would swallow it.
  * 2. nothing un-`completed` remains → `all-completed`.
  * 3. any remaining row is `errored`, `cancelled`, or `blocked` →
- *    `blocked-by-failures`. Something did fail, and the failure is the
- *    more actionable fact. `blocked` sits on THIS rung rather than
- *    falling through to the default because a row moved to `blocked`
- *    deliberately is a second, independent reason the board stopped —
- *    and rung 4 may not say "we stopped because a human is owed an
- *    answer" while something else is also stuck. This changes no
- *    reported string: with no parked row a remaining `blocked` row
- *    reported `blocked-by-failures` before and reports it here, only
- *    the rung deciding it moved.
- * 4. any remaining row is going nowhere → `blocked-by-failures`.
- *    Rung 3 catches a row stuck by its own *status*; this catches one
- *    stuck by its *dependencies* — a `pending` row that cannot run
- *    even once every review is answered. See
- *    {@link hasRowGoingNowhere}. Without this rung an unrelated
- *    dep-blocked row hides behind a review gate: the board reports
- *    that a human is the reason it stopped, the human answers, and the
- *    board is still stuck on something the answer never touched.
- * 5. the exit decision excused rows as parked → `parked-for-review`.
- *    Read from the carried verdict, never from the rows as they stand
- *    now. Reachable only once rungs 1–4 have ruled out every other
- *    reason the board could have stopped, which is what lets it mean
- *    "the park is why" without a second predicate that has to be kept
- *    in step with the exclusion list.
+ *    `blocked-by-failures`.
+ * 4. any remaining row is going nowhere → `blocked-by-failures`. Rung 3 catches
+ *    a row stuck by its own *status*; this catches one stuck by its
+ *    *dependencies*, or abandoned by a worker that died. See
+ *    {@link hasRowGoingNowhere}.
+ * 5. the exit decision excused rows as parked → `parked-for-review`. Read from
+ *    the verdict this drain's own pool carried out, never from the rows as they
+ *    stand now.
  * 6. every remaining row is handed off → `handed-off`.
  * 7. otherwise → `blocked-by-failures`.
  *
- * With no parked row anywhere, rung 5 is inert and the ladder reports
- * exactly what the classifier reported before FIX-1234 — rung 4 fires
- * only on boards that already reached rung 7's `blocked-by-failures`
- * by another route.
+ * **On a board with no parked row the reason is exactly what it was before
+ * FIX-1234.** Rung 5 is unreachable without a park verdict, and rung 4 fires
+ * only where rung 7 already reported `blocked-by-failures` by another route.
  *
- * ## Why not "the park was the sole cause"
+ * Note: in `onIdle: "wait"` mode an early-firing `shouldExit` while tasks are
+ * still `in_progress` / `pending` reports `"blocked-by-failures"` even though
+ * nothing failed. Callers overriding termination can read `counts` to
+ * disambiguate.
  *
- * The tempting shape for rung 5 is a guard asking whether anything
- * *other than the park* contributed to the exit. It was considered and
- * rejected, and rung 4 exists because of what it got wrong: on a board
- * with a parked row **and** a handed-off row, the hand-off exclusion
- * also contributed, so under a sole-cause rule the reason falls
- * through to `handed-off` and the operator loses the one fact they
- * need. Rung 4 asks a different question — is anything here going
- * nowhere? — and handed-off work is going somewhere, so it is not
- * caught. That is the whole distinction: `parked-for-review` must keep
- * beating `handed-off`, and must not beat a row that will never run.
- *
- * ## Why hand-off needs a reason of its own
- *
- * The structural test is `counts.completed === counts.total`, and a detached
- * board that did exactly what it was built to do fails it: the row it handed
- * over is still `in_progress`, owned by a Workstream. So every successful
- * detached drain announced itself as `"blocked-by-failures"` — permanently,
- * since no later drain re-emits this item once the child settles. The feature
- * whose entire point is that background work is *visible* was reporting its own
- * success as a terminal failure.
- *
- * Reusing `"all-completed"` would be the same defect facing the other way: a
- * consumer reads it as "nothing left to do" and stops watching while a child is
- * still working. The honest answer is a third thing, so it is a third value.
- *
- * A board is `"handed-off"` only when **every** remaining non-`completed` row is
- * handed off. One errored row alongside them is a board that had failures, and
- * `"blocked-by-failures"` still says so. When the reason is `"handed-off"`,
- * `counts.in_progress` is exactly the number of rows still running elsewhere —
- * there is no other kind of remaining row left for it to count.
- *
- * ## Why the park reason is carried in rather than derived here
- *
- * This block runs *after* the worker pool finishes and it reads the collection
- * fresh. A resume landing in that window turns the parked row back into a
- * `pending` one, so a reason inferred from the rows at this moment cannot see
- * why the drain stopped — it would report a board that exited successfully for
- * review as a failure. So the causal verdict is recorded where it is decided,
- * in `checkBoard`, and travels here on the worker loop's own output.
- *
- * That path is the drain's dataflow, not a shared bag: each worker's final
- * `checkBoard` output is an element of the `forEach` result, which is the value
- * this block's `.tap` receives. It is therefore scoped to this drain
- * *invocation* by construction — two drains of the same board, even inside one
- * request, each read their own pool's outputs and cannot see the other's. A
- * verdict parked on the board's flow-state bag would not have that property:
- * that object is allocated once per board *definition*, so one drain's teardown
- * would clear the other's mid-run.
- *
- * The `counts`, by contrast, stay a final snapshot. They are descriptive, and a
- * caller reading them wants the board's actual last state.
- *
- * The retry reason is read from a persisted DENIAL MARKER on the tasks,
- * never inferred from `counts.retries === maxTotalRetries` — that
- * arithmetic does not establish a refusal. A task can consume the last
- * grant and then succeed while an unrelated task with no `maxAttempts`
- * fails normally, leaving the count exactly at the limit with an errored
- * task on the board and no retry ever denied. A termination reason that
- * can lie is worse than no new reason at all.
+ * Why each reason exists and why the ladder is ordered this way is in the module
+ * header; the closure rung's reasoning is on {@link hasRowGoingNowhere}.
  */
 export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
   const { name, collection: collectionFactory, collectionId, runsElsewhere } = options;
@@ -409,7 +413,7 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
           ? "all-completed"
           : anyRemainingStuck
             ? "blocked-by-failures"
-            : hasRowGoingNowhere(all, remaining, now, runsElsewhere)
+            : hasRowGoingNowhere(all, remaining, now)
               ? "blocked-by-failures"
               : excusedParkedByPool(input)
                 ? "parked-for-review"
