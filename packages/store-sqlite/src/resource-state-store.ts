@@ -5,7 +5,7 @@
  * (scope_type, scope_id, resource_key) and stored durably in the
  * `resource_state` table. SQLite has no JSONB type, so state is JSON stored as
  * TEXT: `JSON.stringify` on write, `JSON.parse` on read. Defined locally so
- * store-sqlite keeps a type-only dependency on the server package.
+ * store-sqlite keeps a type-only dependency on the engine package.
  *
  * Concurrency is compare-and-swap, not last-write-wins: each row carries a
  * monotonic `version` and a `lifecycle`, deletes tombstone rather than remove,

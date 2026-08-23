@@ -326,7 +326,9 @@ A custom `idempotencyKey` on the body wins over the default key.
 GET /api/flows/:flowKind/schedules
 ```
 
-Returns the static map and a `dynamic.provided` flag. The flag tells
+Returns the static schedules as an array, plus a `dynamic.provided`
+flag. You configure `schedules.static` as a record; the listing
+flattens it, and each key becomes that entry's `id`. The flag tells
 operators whether a resolver is wired up without exposing the dynamic
 data (which lives in host-owned storage and isn't the framework's to
 enumerate).

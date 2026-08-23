@@ -12,7 +12,7 @@
  *   namespace (documents the spec's intentional non-guarantee for
  *   retryRequest-style recovery).
  * - Store adapter coverage: memory + filesystem here; SQLite contract
- *   lives in packages/store-sqlite/test/stores.test.ts (the server package
+ *   lives in packages/store-sqlite/test/stores.test.ts (the engine package
  *   cannot depend on adapter packages).
  */
 import { handler, defineFlow } from "@flow-state-dev/core";
