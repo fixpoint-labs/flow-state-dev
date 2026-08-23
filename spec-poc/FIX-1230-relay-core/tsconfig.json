@@ -1,0 +1,33 @@
+{
+  "// why this exists": [
+    "Type-checks the reply CARRIER, which is the thing four hand-shaped attempts kept",
+    "getting wrong while passing at runtime (see reply-item.ts):",
+    "  node_modules/.bin/tsc -p spec-poc/FIX-1230-relay-core",
+    "",
+    "Scoped to reply-item.ts on purpose. The rest of the harness is throwaway glue whose",
+    "generic-variance noise would bury the one signal this check exists to give.",
+    "",
+    "The explicit `paths` are not decoration. pnpm installs per package, so there is no",
+    "root node_modules to resolve `@flow-state-dev/core` from; without them tsc silently",
+    "types the import as `any`, `MessageItem` becomes `any`, and the check reports clean",
+    "while catching nothing. That false green happened here once already — verify the",
+    "check can FIRE (delete a required field, expect an error) before trusting it green.",
+    "",
+    "Still outside the workspace: no package.json here, so turbo's typecheck and knip",
+    "never see it and a spec PR's CI stays green (spec-poc/README.md)."
+  ],
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "skipLibCheck": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "types": [],
+    "baseUrl": "../..",
+    "paths": {
+      "@flow-state-dev/core/items": ["packages/core/src/items/index.ts"],
+      "@flow-state-dev/contracts/*": ["packages/contracts/src/*"]
+    }
+  },
+  "include": ["./reply-item.ts"]
+}

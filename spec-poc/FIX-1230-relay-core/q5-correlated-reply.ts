@@ -14,6 +14,7 @@
  * Run: pnpm tsx spec-poc/FIX-1230-relay-core/q5-correlated-reply.ts   (~1s)
  */
 import { boot, deliveries, fromOutside, received, show } from "./harness";
+import { itemToLLMMessages } from "../../packages/engine/src/context/history";
 
 async function main(): Promise<void> {
   const { host, stores } = boot();
@@ -111,6 +112,25 @@ async function main(): Promise<void> {
     persistedPayloadsCarryBothCorrelationIds:
       persistedPayloads.some((x) => x.correlationId === "corr_A") &&
       persistedPayloads.some((x) => x.correlationId === "corr_B")
+  });
+
+  // THE PROPERTY THAT ACTUALLY MATTERS, and presence-in-the-store does not test it:
+  // run the persisted items through the real history reconstruction and confirm the
+  // reply carrier contributes NOTHING. `message` is a conversational type, so an
+  // unstamped carrier would come back as a fake `user` turn and the sender's next
+  // generator step would read its own answer twice.
+  const allItems = persisted as never[];
+  const reconstructed = allItems.flatMap((i) => itemToLLMMessages(i, allItems));
+  const replyTextInHistory = reconstructed.filter((m) =>
+    JSON.stringify(m).includes("relay_reply_") || JSON.stringify(m).includes("correlationId")
+  );
+  show("reply carrier's contribution to reconstructed LLM history", {
+    totalReconstructedMessages: reconstructed.length,
+    messagesMentioningTheReply: replyTextInHistory.length
+  });
+
+  Object.assign(verdict, {
+    replyIsAbsentFromReconstructedLLMHistory: replyTextInHistory.length === 0
   });
 
   show("VERDICT", verdict);

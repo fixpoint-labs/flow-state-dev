@@ -22,6 +22,7 @@
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
 import type { BlockContext, ResponseEmitterHandle } from "@flow-state-dev/core";
+import { buildReplyItem } from "./reply-item";
 import { z } from "zod";
 import {
   createFlowRegistry,
@@ -51,10 +52,10 @@ export function theHost(): InboundTransportHost {
  * The shipped abort registry is `Map<string, AbortController>`; this is the
  * same map holding the thing a reply needs instead of the thing a cancel needs.
  */
-const liveReplyTargets = new Map<string, ResponseEmitterHandle>();
+const liveReplyTargets = new Map<string, { response: ResponseEmitterHandle; requestId: string }>();
 
 export function registerReplyTarget(requestId: string, response: ResponseEmitterHandle): void {
-  liveReplyTargets.set(requestId, response);
+  liveReplyTargets.set(requestId, { response, requestId });
 }
 export function deregisterReplyTarget(requestId: string): void {
   liveReplyTargets.delete(requestId);
@@ -90,27 +91,19 @@ export function deliverReply(
 ): { delivered: boolean; reason?: string } {
   const requestId = waiters.get(correlationId);
   if (requestId === undefined) return { delivered: false, reason: "no-waiter" };
-  const response = liveReplyTargets.get(requestId);
-  if (response === undefined) return { delivered: false, reason: "waiter-not-live-in-this-process" };
-  // SECOND FINDING, and it invalidated the first version of this proof: the item
-  // has to be a VALID `MessageItem`. `isOutputItem` (`response-emitter.ts:142-151`)
-  // only checks `id` / `type` / `itemIndex`, so an object carrying a made-up
-  // `payload` field and no `role`/`content` sails through the runtime check and
-  // is then treated by history reconstruction as a message with EMPTY content.
-  // The earlier version did exactly that, so "the sender got the payload" was
-  // being asserted against an item production would never accept.
-  // `MessageItem` = `{ type: "message", role, content: Content[] }`
-  // (`contracts/src/items/types.ts:364-384`).
-  const item = {
-    id: `relay_reply_${correlationId}`,
-    type: "message" as const,
+  const target = liveReplyTargets.get(requestId);
+  if (target === undefined) return { delivered: false, reason: "waiter-not-live-in-this-process" };
+  const { response, requestId: waitingRequestId } = target;
+  // The carrier is built by `reply-item.ts`, which is TYPE-CHECKED. Four hand-shaped
+  // versions of this object were invalid and all four passed at runtime, because
+  // `response.emit` takes `unknown` and the emitter's guard is shallower than the type.
+  // Read that file's header for the sequence; run `tsc -p spec-poc/FIX-1230-relay-core`.
+  const item = buildReplyItem({
+    correlationId,
+    waitingRequestId,
     itemIndex: response.getItemCount(),
-    status: "completed" as const,
-    role: "user" as const,
-    content: [
-      { type: "output_text" as const, text: JSON.stringify({ correlationId, payload }) }
-    ]
-  };
+    payload
+  });
   void response.emit({ type: "item.added", item });
   void response.emit({ type: "item.done", item });
   return { delivered: true };

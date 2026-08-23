@@ -14,6 +14,7 @@ twice, with the instruction *"do not attempt a third variant without code."* So:
 ```
 pnpm tsx spec-poc/FIX-1230-relay-core/q5-correlated-reply.ts   # ~1s
 pnpm tsx spec-poc/FIX-1230-relay-core/q6-arbiter-key.ts        # ~10s
+node_modules/.bin/tsc -p spec-poc/FIX-1230-relay-core          # the carrier's type check
 ```
 
 No server, no store, no keys, no model. `createInMemoryStores` +
@@ -53,6 +54,29 @@ Two seams are hand-wired in `harness.ts`, and they are the proposal:
   `waitForCondition`'s own engine (`core/src/blocks/sequencer.ts:2295-2385`) with a call-time
   predicate, and `ctx.response` already exposes everything it reads
   (`core/src/types/block.ts:107-146`, `:271`).
+
+### The reply carrier took four attempts, and only the compiler ended it
+
+Worth reading `reply-item.ts` for the sequence, because the shape of the mistake matters
+more than any one instance. Four times this item was written as a hand-shaped object
+literal; four times it was invalid; **four times it passed at runtime.** `response.emit`
+takes `unknown` and `isOutputItem` (`response-emitter.ts:142-151`) checks `id`, `type` and
+`itemIndex` — a guard strictly shallower than the type it guards.
+
+The carrier now lives in its own file, annotated `MessageItem`, and is type-checked. Deleting
+a required field fails with *"Property 'ts' is missing … but required in type
+`OutputItemBase`"*, which is how the check was **verified able to fire** rather than merely
+reported green — the first version of that check resolved the import to `any` and reported
+clean while catching nothing (tenet 7).
+
+`itemVisibility: { client: true, history: false }` on it is load-bearing, not tidiness.
+`message` is a conversational type, so an unstamped carrier resolves to `history: true`
+(`contracts/src/items/resolve-visibility.ts:43-45`) and the serialized correlation envelope
+is replayed into a later generator turn **as a fake user utterance** — the sender reading its
+own answer twice, once as the tool result it awaited and once as invented history. Q5 asserts
+this against the real reconstruction (`itemToLLMMessages`), and that assertion was also
+checked by flipping the stamp: `history: true` yields 2 reconstructed messages, `false`
+yields 0.
 
 ### The first run failed, and that is the sharpest thing here
 
