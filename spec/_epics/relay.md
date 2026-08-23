@@ -40,7 +40,7 @@ are recorded in §4's composition note rather than smoothed away.
 
 **The address and the door are both settled now.** The owner has stated the address:
 **a recipient is a `sessionId`**, and a sender is identified by its own `sessionId` — possibly
-carrying the `requestId` of the sending request as well (an issue-1 spec detail, §5 Q1b). Messages
+carrying the `requestId` of the sending request as well (an issue-1 spec detail, §4). Messages
 never travel from one user to another.
 
 **And the door — the epic's load-bearing fork — is decided: it is asymmetric** *(owner, 2026-08-23:
@@ -157,7 +157,8 @@ arbitration entirely when an external dispatcher is configured, deferring it to 
 substrate (FIX-830); in-process, the gate is a per-process map and a queued waiter gives up
 after 30 seconds. So "arbitration already exists" is **true in-process and false on the durable
 path**. For a busy recipient that means two messages can run against one session at once on a
-queue-backed deployment. Evidence and the options are §5 Q3; nothing is promised here.
+queue-backed deployment. Evidence is §5 Q3, now **closed**: the epic promises **nothing** on the
+durable path, and pulling durable arbitration inward is out of scope by the owner's own boundaries.
 
 **The in-process half of that risk is no longer a risk to accept — it is scope.** §3's Q4 ran it:
 a delivery **accepted at 0 ms** is **dropped at 30 001 ms** when the recipient stays busy past the
@@ -250,7 +251,8 @@ can cite one.
    and 5**, and issue 5 is what makes the workstream half representable at all — settled by run,
    not assumed: the board's existing park holds its launching request open (§3's settlement). Because the
    answer is a *new* message rather than the sender's handle resolving, something has to
-   correlate it with the question that was asked — theme 6, and §5 Q1b.
+   correlate it with the question that was asked — theme 6, and §4's issue-1 spec inputs
+   (relocated there from §5 Q1b).
 
 6. **Two send modes, not three — and acceptance is the acknowledgement on both.** *(Amended by
    the owner. Still two modes; what changed is that the receipt is not a third one.)*
@@ -262,12 +264,13 @@ can cite one.
    wait-for-response does not work without it.** *(Epic review, round 2.)* The mode is
    specified; the identifier is not. It has to be carried on the message and echoed on the
    reply, or a sender with more than one ask outstanding cannot tell which one a message
-   answers — or that it is an answer at all. **§5 Q1b, the sending `requestId` on the sender's
-   identity, is the leading candidate**, and this is a second, independent argument for it: Q1b
-   was justified only by reply-routing granularity and §3 Q4's discoverability gap, which made
-   it a convenience. A send mode that does not function without it makes it load-bearing.
-   **Q1b stays open** — the owner hedged, and the field is issue 1's spec to settle. What is
-   settled here is that wait-for-response owes an answer to it.
+   answers — or that it is an answer at all. **The sending `requestId` on the sender's identity is
+   the leading candidate**, and this is a second, independent argument for it: it was justified only
+   by reply-routing granularity and §3 Q4's discoverability gap, which made it a convenience. A send
+   mode that does not function without it makes it load-bearing. **It stays open** — the owner
+   hedged, and the field is issue 1's spec to settle (the case lives in §4's issue-1 spec inputs,
+   relocated there from §5 Q1b). What is settled here is that wait-for-response owes an answer to
+   it.
 
    **The reply is a new inbound message, not a resolution of the sender's handle.** Stated
    plainly because the opposite reading is easy to reach for: on the workstream path the answer
@@ -356,7 +359,8 @@ can cite one.
    to it rather than re-deriving it. The **recipient** is named by `sessionId`. The **sender** is
    identified by its own `sessionId`, and **possibly also by the `requestId` of the sending
    request** — the requestId half is an open detail for issue 1's spec, not a decision here
-   (§5 Q1b). Neither value is caller-supplied: both read off the execution context
+   (§4's issue-1 spec inputs, relocated there from §5 Q1b). Neither value is caller-supplied: both
+   read off the execution context
    (`ctx.session.identity`, §3's ctx-gap list). Since sender and recipient are the same owner by
    construction (§1), the address carries no user coordinate and no cross-user authorization
    question rides on it.
@@ -411,9 +415,12 @@ can cite one.
     address and the verb, so none can merge before issue 1 — they can be *specced* in parallel.
     Issue 5 depends on nothing in the set and can start immediately.
 
-    **Proposed issue 6 (watch) joins the first group** — it consumes the send verb rather than
-    building a second delivery path, so it cannot merge before issue 1 either. **It carries no
-    spec-ordering constraint against issue 5.** *(Corrected: it did, as §5 Q6b.)* Under the
+    **Proposed issue 6 (watch) joins the first group, and it is the one member with a second
+    dependency: it also depends on issue 4.** It consumes the send verb rather than building a
+    second delivery path, so it cannot merge before issue 1 — and D3's expiry **sweep is a
+    scheduled message**, which is issue 4's mechanism, so it cannot merge before issue 4 either.
+    *(Added 2026-08-23 with D3's revision. Recorded here rather than left to be discovered during
+    implementation.)* **It carries no spec-ordering constraint against issue 5.** *(Corrected: it did, as §5 Q6b.)* Under the
     notification-primitive model watch touches **no** board internals — the board only emits, which
     it already does — so Q6b is withdrawn and **issue 5 is free-standing again**, for spec purposes
     as well as merge order.
@@ -498,6 +505,13 @@ can cite one.
     delivery as an **addressed relay message** rather than an inline block call. Everything else —
     the events, the payload shape, the predicate idiom — is already shipped and already consumed.
 
+    **New is not the same as sufficient, and this theme must not be read as the latter.** A fourth
+    part is required: **D3's expiry sweep**. `reactTo` runs inline in the mutating turn, so it
+    inherits that turn's atomicity; watch fires *after* it and therefore does **not**. A crash
+    between the durable write and the `emit` loses the event while the subscription survives (§4's
+    durability disposition). The sibling framing is exact about *vocabulary and binding time* — it
+    says nothing about delivery guarantees, and the asynchronous half is where they differ most.
+
     **Coherence requirement, binding on issue 6's spec:** reuse `reactTo`'s change-payload shape
     and predicate idiom rather than inventing a second vocabulary for the same events. Two ways to
     describe one `resource_change` in one codebase is exactly the incoherence this theme exists to
@@ -559,7 +573,8 @@ pnpm tsx spec-poc/epic-relay/q4-admission-budget-drop.ts     # ~80s, on purpose
 
 **In-process only.** `arbiter.ts:22-27` and `createInboundTransportHost.ts:299-301` skip
 arbitration entirely under an external dispatcher, so nothing below speaks to the durable path
-(§5 Q3, §1's named risk). All four remain unchecked by run there.
+(§5 Q3 — closed: the epic promises nothing there — and §1's named risk). All four remain unchecked
+by run there.
 
 **Showed — Q1, the tracer bullet: it works, and identity is the sharp edge.** A block in
 `sess_sender` dispatched onto a live peer session and the second request ran to completion,
@@ -753,12 +768,12 @@ cell is empty by design, not by omission.
 
 | # | Proposed issue | What it delivers | Depends on | Linear | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|---|---|---|
-| 1 | The address, the send verb, and what a sender may legally address | the recipient address as a **`sessionId`** on the envelope, a **server-derived sender identity** (its `sessionId`, and possibly the sending `requestId` — open, §5 Q1b), the send verb, both send modes **and the reply-correlation identifier wait-for-response requires** (theme 6, §5 Q1b), **acceptance as the acknowledgement on both** (theme 6) and the **sender-side answer timeout, default 30 min** (theme 14), **the configurable in-process admission budget** (theme 14, §3 Q4 — *moved here from issue 2*: the receipt and the budget ship together or the send API acks deliveries the arbiter can still silently drop, and theme 13 lands this issue first), the self-addressed refusal, and the agent-facing tool — core + engine + tools. **The door is decided (theme 16, owner): both of them** — a sibling resolves `flow.actions`; a workstream resolves a **declared `relay?` group** reusing `flow.workstream`'s terminal resolution. **Acceptance criterion, promoted from an implementer note:** the recipient's **`flowKind` is looked up from the session record, never asserted by the sender** | — | not filed | spec | — | — | Proposed |
+| 1 | The address, the send verb, and what a sender may legally address | the recipient address as a **`sessionId`** on the envelope, a **server-derived sender identity** (its `sessionId`, and possibly the sending `requestId` — open; the case is in this section's **issue 1 spec inputs**), the send verb, both send modes **and the reply-correlation identifier wait-for-response requires** (theme 6), **acceptance as the acknowledgement on both** (theme 6) and the **sender-side answer timeout, default 30 min** (theme 14), **the configurable in-process admission budget** (theme 14, §3 Q4 — *moved here from issue 2*: the receipt and the budget ship together or the send API acks deliveries the arbiter can still silently drop, and theme 13 lands this issue first), the self-addressed refusal, and the agent-facing tool — core + engine + tools. **The door is decided (theme 16, owner): both of them** — a sibling resolves `flow.actions`; a workstream resolves a **declared `relay?` group** reusing `flow.workstream`'s terminal resolution. **Acceptance criterion, promoted from an implementer note:** the recipient's **`flowKind` is looked up from the session record, never asserted by the sender** | — | not filed | spec | — | — | Proposed |
 | 2 | Per-adapter delivery | in-process for a Node host; through the `FlowDispatcher` seam so a queue-backed deployment gets durability for free. **The configurable admission budget is no longer here** — it moved to issue 1 (theme 14); issue 2 consumes the parameter rather than introducing it | 1 | not filed | spec | — | — | Proposed |
 | 3 | The sibling-spawn verb — **address supply for cross-session messaging** | an independent, self-managing session with its own flow kind and addressable key, resolving `flow.actions` like any other caller and talking back by message rather than `settleParentTask`. **In the set because messages cross sessions** (§1, owner): spawn mints the peer the send verb will address; without it, messaging only ever reaches sessions an outside-world caller happened to create. *(The earlier "same missing layer" / implementation-economy rationale, and the swap-out proposal it licensed, are retracted — §1.)* | 1 | not filed | spec | — | — | Proposed |
 | 4 | Cron: a schedule addresses a session and fires as a message | the schema field, the resolver, and the one dispatch envelope; absent address preserves today's behaviour exactly | 1 | not filed | spec | — | — | Proposed |
 | 5 | A `pending feedback` task status | "parked awaiting external input; the request may end; a later request resumes this task" — a genuine addition, not a rename of `awaiting_review`. **Necessity settled by run, not asserted** (§3's settlement, REFUTED): today's `awaitReview` parks and `resumeFromReview` resumes, but `awaiting_review` is excluded from every board-exit path, so the launching request stays open for the whole park. **The residual gap to build:** a park mode that does not hold the drain's own request open — either an exit path letting `boardQuiescence` stop returning "continue" while a task sits parked, or routing review-parking through the same `runsElsewhere` exclusion detached dispatch already gets for `in_progress`. **No collision with issue 6** — *corrected;* one was recorded as §5 Q6b and is withdrawn, because watch touches no board internals. Issue 5 owns this surface alone and depends on nothing | — | not filed | spec | — | — | Proposed |
-| 6 | **Watch — a general one-off notification primitive** *(owner-proposed 2026-08-21; **redefined by the owner 2026-08-23** — it is **not** a task primitive)* | a durable **subscription registry**, an **event matcher**, and **delivery as an addressed relay message**. An entry says *when this event fires holding this value, call this flow for this session id*; a **relay action matching that event** must be defined on the recipient to receive the payload; the subscription is **one-off** and unsubscribes on fire. **The task board is its first consumer, not its subject** — a completing task forwards the `task-change` event it already emits; an updated resource value is the second named source. **Three of its four parts already ship** (theme 15: watch is `reactTo`'s async, cross-session, runtime-registered sibling); what is new is the registry, a matcher running outside the mutating turn, and addressed delivery. **Four calls already decided** — D1 satisfied-or-attach registration · D2 exact-match on identity key + event name · D3 TTL whose expiry *delivers* · D4 the manager lives in `engine` | 1 | not filed | spec | — | — | **Proposed (owner)** |
+| 6 | **Watch — a general one-off notification primitive** *(owner-proposed 2026-08-21; **redefined by the owner 2026-08-23** — it is **not** a task primitive)* | a durable **subscription registry**, an **event matcher**, and **delivery as an addressed relay message**. An entry says *when this event fires holding this value, call this flow for this session id*; a **relay action matching that event** must be defined on the recipient to receive the payload; the subscription is **one-off** and unsubscribes on fire. **The task board is its first consumer, not its subject** — a completing task forwards the `task-change` event it already emits; an updated resource value is the second named source. **Three of its four parts already ship** (theme 15: watch is `reactTo`'s async, cross-session, runtime-registered sibling); what is new is the registry, a matcher running outside the mutating turn, and addressed delivery — **plus the expiry sweep, which is required, not optional**. **Four calls decided** — D1 satisfied-or-attach registration · D2 exact-match on identity key + event name · **D3 (revised) a TTL whose expiry *delivers* an outcome, fired by a periodic sweep that is itself a scheduled message — this is why issue 6 depends on issue 4** · D4 the manager lives in `engine`. **Delivery is explicitly best-effort:** `emit` runs after the durable write, so a crash between them loses the event while the subscription survives; loss is **bounded by the TTL and self-announcing**, never prevented | **1, 4** | not filed | spec | — | — | **Proposed (owner)** |
 
 **The agent-facing tool is deliberately inside issue 1, not beside it.** The constraint is that
 the programmatic sender and the tool are the *same verb*, differing only in who calls them.
@@ -774,6 +789,33 @@ confusing failure. **Under an asymmetric door it is structural** — the server 
 categorical that routing is never derived from caller-controllable input. A sender able to assert
 its own recipient's kind could **select the wider door**. That is not a note for the implementer to
 weigh; it is a condition issue 1 is not done without.
+
+#### Issue 1 spec input — does the sender's identity carry a `requestId` as well as a `sessionId`?
+
+**Relocated here from §5 Q1b on 2026-08-23.** It was misfiled as a cross-cutting question: it is
+answerable by issue 1 alone and blocks no other issue. **Still open** — this is the case in hand, so
+issue 1's spec does not rebuild it.
+
+The owner stated the recipient address as a `sessionId` and the sender as *"sessionId (and **maybe**
+requestId for senders)"*. The hedge is recorded as a hedge. Three arguments for carrying it:
+
+- **Reply routing granularity.** A sender's `sessionId` routes a reply back to the *session*. The
+  `requestId` of the sending request is what would route it back to the **specific request that
+  asked** — which matters exactly where a session has more than one question outstanding.
+- **A handle for the discoverability gap.** §3's **Q4** run showed a dropped delivery leaving a
+  bare `failed` record on the recipient with **no reason recorded and no link to what sent it**
+  (`RequestRecord` carries no error field; `ConcurrencyQueueTimeoutError` is swallowed). A sending
+  `requestId` on the envelope is a concrete correlation handle for that, and cheap.
+- **Wait-for-response needs *some* correlation identifier to work at all.** *(Epic review, round
+  2.)* Theme 6 specifies the mode; nothing said what matches an arriving answer to the question it
+  answers, and on the workstream path the answer is a separate inbound message rather than the
+  sender's handle resolving. An identifier carried on the message and echoed on the reply is what
+  closes that. This argument differs in kind from the two above: they are conveniences, this is a
+  send mode that is **under-specified without one**.
+
+**None of the three is decisive about the *shape*** — a correlation identifier is required, but
+whether it is the sending `requestId` or a field carried beside it is issue 1's call. **Issue 1
+cannot specify wait-for-response without answering it.**
 
 ### Issue 6 — watch, a general one-off notification primitive
 
@@ -833,6 +875,11 @@ delivery.**
 matcher that runs **outside** the mutating turn, **(c)** delivery as an **addressed relay message**
 rather than an inline block call. Said explicitly because it is what right-sizes the issue.
 
+**Those three are what is *new*; they are not what is *sufficient*.** A fourth part is required and
+it is not optional: **the expiry sweep (D3)**, without which the registry leaks and the
+delivery contract is unbounded. The durability disposition immediately below explains why — the
+three parts alone leave a real loss window, and the sweep is what bounds it.
+
 **Coherence requirement for issue 6's spec** (theme 15): reuse `reactTo`'s change-payload shape and
 predicate idiom rather than inventing a second vocabulary for the same events.
 
@@ -868,18 +915,96 @@ event stream is an **event bus with content routing**, which this epic has ruled
 `reactTo`'s `when` predicate remains the escape hatch for the **synchronous, statically-declared**
 case — it runs in-process against a declared binding and never needs serializing.
 
-**D3 — lifetime: a TTL field on the entry, and expiry *delivers* rather than drops.** *(This closes
-§5 Q6, the owner's own open question.)* One-off plus unsubscribe-on-fire self-cleans the common
-case. What leaks is the **never-fires** case, and the owner correctly called never-settles *the
-ordinary shape of abandoned work*, not an edge. A **TTL checked on read/match needs no sweeper**. On
-expiry, deliver an `expired` outcome to the watcher instead of silently dropping it: it costs
-nothing and turns a leak into a signal a live watcher can act on.
+**D3 — lifetime: a TTL on the entry, expiry *delivers* an outcome, and a periodic sweep is what
+fires it.** *(This closes §5 Q6, the owner's own open question. **REVISED 2026-08-23** — the first
+version of this decision was self-contradictory; see immediately below.)*
+
+One-off plus unsubscribe-on-fire self-cleans the common case. What leaks is the **never-fires**
+case, and the owner correctly called never-settles *the ordinary shape of abandoned work*, not an
+edge. So the entry carries a TTL, and **on expiry the watcher is delivered an `expired` outcome
+rather than being silently dropped** — that turns a leak into a signal a live watcher can act on.
+
+**What fires it: a periodic sweep over the registry.** Not per-entry timers — one mechanism, no
+timer storm, and nothing to reconstruct after a restart.
+
+**REVISED, and the reason is recorded rather than quietly rewritten.** This decision originally read
+*"a TTL checked on read/match needs no sweeper"*. **That was self-contradictory and a reviewer
+(chatgpt-codex) was right to call it a P1.** The exact defect, because it is instructive: the leak
+this decision exists to close is the **never-fires** case — and in that case there is, by
+definition, no later read and no later match. A lazily-checked TTL only runs when there *is*
+activity, so it would neither remove the entry nor deliver the promised `expired` outcome for
+precisely the entries it was introduced to handle. *"No sweeper needed"* and *"expiry delivers"*
+cannot both be true. The sweep is what makes them compatible.
+
+**The sweep is a scheduled message — which is coherent with this epic, and creates a real
+dependency.** Issue 4 is building exactly this: cron as a message addressed to a session (theme 4).
+The sweep therefore needs no new scheduling mechanism; it *is* one of issue 4's schedules. **So
+issue 6 depends on issue 4 as well as issue 1** — named here, in §4's index row, and in theme 13,
+because a dependency discovered during implementation is far more expensive than one written down.
+
+**Rejected alternative: weaken the contract to cleanup-on-next-activity, with no `expired`
+promise.** It is genuinely smaller — no sweep, no dependency on issue 4. It was rejected because
+it answers the owner's own lifetime question (*"what happens when the row never settles?"*) with
+**"nothing clears it"**, which is not an answer. It also strands the entry and the watcher
+together: neither is cleaned up, and neither is told.
 
 **D4 — the watch manager lives in `engine`, not `orchestration`.** Both named event sources must
 reach it, and the resource registry is in `engine`. `orchestration` becomes a **consumer** that
 forwards its existing `task-change` event. This also preserves the boundary the owner set (theme
 11): the board **triggers**, Relay **delivers**; the board records nothing about the message and
 stays single-writer.
+
+
+#### Durability: delivery is explicitly best-effort, and loss is bounded rather than prevented
+
+**Folded 2026-08-23 from a chatgpt-codex P1. The finding is correct and it corrected a false
+sufficiency claim in this document** — not an implementer note, because a converged spec must not
+carry an untrue guarantee into the objective gate.
+
+**The window.** `emit(...)` runs **after** the durable write in all three named sources —
+`resource-backed.ts:470-474`, `sequencer-backed.ts:333-338`, `resource-registry.ts:1201-1210`
+(verified during this fold). **D1 closes register-vs-settle; it does nothing for this.** A worker
+that dies between the commit and the emit leaves the **subscription alive and the event gone**: the
+condition became true, the registry still holds a watcher for it, and nothing will ever match.
+
+**Note what this is.** It is the *same structural fact* that justified D1 — emit-after-commit,
+outside the lock — producing a **second, different** failure. D1 handled the case where the
+subscription arrives too late. This is the case where the event never arrives at all.
+
+**Disposition: explicit best-effort. No durable outbox.** An outbox is precisely *"delivery
+guarantees beyond what the configured adapter gives"*, which the owner ruled out of this epic's
+scope — the same boundary that keeps durable arbitration with FIX-830 (§5 Q3, theme 1). Building
+one here would be the epic quietly acquiring a durability substrate.
+
+**But the guarantee is stronger than bare best-effort, and that is a *consequence of D1*, not a
+separate mechanism.** The chain, stated so no issue spec re-derives it:
+
+1. Registration is **level-triggered** (D1): *notify when this becomes true, or immediately if it
+   already is.* So **re-registration recovers** — it is not a replay of a missed edge, it is a
+   fresh evaluation of the condition.
+2. A crash loses the event → the watcher stays parked.
+3. **The sweep (D3) expires the entry and delivers `expired`** → the watcher learns that it stopped
+   being watched.
+4. The watcher may re-register → and because registration is level-triggered, it **fires
+   immediately** if the condition now holds.
+
+**The honest claim, and it is what this document asserts: loss is not prevented. Loss is bounded by
+the TTL, and it is self-announcing.** Any reading that the registry + matcher + addressed delivery
+are *sufficient* is wrong and has been corrected wherever it appeared.
+
+**The `expired` semantic — get this noun wrong and a recoverable miss becomes a false negative.**
+In the crash case **the condition did occur**. So `expired` must **not** mean *"it did not
+happen."* It means:
+
+> **I stopped watching. No notification arrived within the window. Re-check if you still care.**
+
+A watcher that re-registers on `expired` will fire immediately when the condition is already true —
+which is exactly the crash case, and is why the noun has to carry no claim about the world.
+
+**The two findings resolve each other, and neither is sufficient alone.** P1-a's sweep is what makes
+this best-effort disposition *bounded*; without it, a lost event means a watcher parked forever with
+nothing to tell it. **If the sweep is ever cut, this disposition is void** and the durability
+question re-opens as a real one.
 
 #### Why polling cannot cover it — verified, not asserted
 
@@ -974,7 +1099,7 @@ Epic PR (this doc, never merged):
 | **FIX-1056** — no channel to steer a running workstream (Backlog) | The same seam from the steering side. **Should survive as the carrier**: it holds the evidence and the owner decision. Its decision of 2026-08-10 named the tripwire ("if steering wants a channel that is not a task, the authored-entrypoint question re-opens"); that fork was met and **answered** on 2026-08-23 — theme 16, §5 Q1's closed record |
 | **FIX-1075** — inbox capability (Backlog) | The same seam from the receiving side; FIX-1075 says so itself. Folds into issue 1 |
 | **LAB-138** — the harness manager (Backlog) | A **consumer already hand-rolling the watch seam**: it polls a row it owns because registering interest is not expressible. Evidence for proposed issue 6, not a dependency of it — LAB-138 keeps working either way, more simply if issue 6 lands |
-| **FIX-830** — BullMQ sunset (In Spec Review) | **Constrains**: build to the `FlowDispatcher` seam (theme 1). Also owns durable arbitration, which is why §5 Q3 does not pull it inward |
+| **FIX-830** — BullMQ sunset (In Spec Review) | **Constrains**: build to the `FlowDispatcher` seam (theme 1). Also owns durable arbitration, which is why §5 Q3 — now closed — promises nothing there and does not pull it inward |
 | **FIX-1124** — delete `parentTask`/`settleParentTask` from `RequestHost` | No direct conflict, but it sets the precedent theme 9 encodes: a stateless verb taking an explicit address is fine, a per-request bound one is not |
 | **FIX-1122** — `WorkstreamAddress` | A **board coordinate** `(boardId, coordinate, topic)`, explicitly frozen at that content. **Not** the session address this epic needs; reusable for the workstream-side coordinate only |
 | **FIX-1179** — a detached run cannot resume its external session | Related, **not** in the epic. It gates *steer-with-continuity*; the ask direction needs nothing from it |
@@ -992,17 +1117,22 @@ entries:
 | | Status | Who |
 |---|---|---|
 | **Q1** — what may a sender legally address? | **DECIDED 2026-08-23 — the asymmetric door** (theme 16) | Owner |
-| **Q1b** — does the sender's identity carry a `requestId`? | **Open, and scoped to issue 1's spec** — it blocks no other issue and is not a cross-cutting question. Listed here because the case for it was assembled here | Issue 1's spec |
+| **Q1b** — does the sender's identity carry a `requestId`? | **RELOCATED 2026-08-23 to §4's issue-1 spec inputs** — still open, but it was misfiled here: issue 1 can answer it alone and it blocks nothing else | Issue 1's spec |
 | **Q2** — the name | **Open by the owner's choice** — they want code in front of them first. `relay` is the leaning and theme 16 now uses it for the declared group | Owner, later |
-| **Q3** — does anything promise ordering or exclusion? | **Open on the durable path only.** The epic recommends promising nothing beyond the deployed dispatcher and documenting it plainly. Blocks nothing; the in-process half is now scope (theme 14) | Coordinator, if unchallenged |
+| **Q3** — does anything promise ordering or exclusion? | **CLOSED 2026-08-23 by derivation** — the epic promises **nothing** on the durable path. The rejected option is out of scope by two boundaries the owner already set, so it was not a fork | Derived |
 | **Q4** — which layer does role materialization belong on? | **Deliberately deferred** — decide with real code in front of you. Recorded so a second issue does not re-open it from scratch | Later, with code |
 | **Q5** — does `pending feedback` belong in this epic? | **CLOSED 2026-08-23 — both halves.** Needed (settled by run, §3); rides inside, as issue 5 | Run + coordinator |
 | **Q6** — what is a watch's own lifetime? | **CLOSED by decision D3** — a TTL whose expiry delivers | Coordinator |
 | **Q6b** — do watch and `pending feedback` collide? | **WITHDRAWN** — a consequence of the superseded task-primitive framing | Coordinator |
 
-**Four entries remain open and none of them is a gate question.** Q1b is an issue-1 spec detail,
-Q2 is the owner's own deferral, Q3 promises nothing and blocks nothing, and Q4 is explicitly a
-later decision. Where the epic has a lean it is marked as a lean rather than a decision.
+**Two entries remain open, both deliberately deferred, and neither is a gate question.** **Q2** —
+the name — is the owner's own deferral until they have code in front of them. **Q4** — which layer
+role materialization belongs on — is explicitly a later decision, to be made with real code. Where
+the epic has a lean it is marked as a lean rather than a decision.
+
+**Everything else here is answered or relocated**, and each entry keeps its answer so a later issue
+cannot reopen it. *(Not zero, and the count is not rounded down: two open entries, honestly
+stated.)*
 
 ### ~~Q1. What may a sender legally address?~~ — **DECIDED by the owner, 2026-08-23: the asymmetric door**
 
@@ -1057,36 +1187,17 @@ to land) or over-declare (the wider door, opened by accident), and both failures
 **What it constrains — theme 16, and issue 1's acceptance criteria in §4.** **Blocks nothing
 further:** issue 1's spec is unblocked, and so are 2, 3, 4 and 6.
 
-### Q1b. Does the sender's identity carry a `requestId` as well as a `sessionId`?
+### ~~Q1b. Does the sender's identity carry a `requestId` as well as a `sessionId`?~~ — **RELOCATED to issue 1**
 
-**A separate, much smaller question than Q1 — deliberately not merged into it.** Q1 was the door
-and is now closed (theme 16); this is one field on the sender's side of the envelope, and it was
-never touched by the door decision either way.
+**Not closed — moved, because it was misfiled here.** *(Relocated 2026-08-23.)* §5 is for questions
+**no single issue can answer**. This one is answerable by issue 1 alone, blocks no other issue, and
+never was cross-cutting; it landed here only because the case for it was assembled here while the
+epic was being drafted. **The full case now lives in §4's issue-1 spec inputs**, where whoever specs
+issue 1 will actually read it.
 
-The owner stated the recipient address as a `sessionId` and the sender as "sessionId (and **maybe**
-requestId for senders)". The hedge is recorded as a hedge: **this is an open detail for issue 1's
-spec to settle**, not a decision the epic makes. Three things argue for carrying it, recorded here
-so whoever specs issue 1 has the case in hand rather than rebuilding it:
-
-- **Reply routing granularity.** A sender's `sessionId` routes a reply back to the *session*. The
-  `requestId` of the sending request is what would route it back to the **specific request that
-  asked** — which matters exactly where a session has more than one question outstanding.
-- **A handle for the discoverability gap.** §3's **Q4** run showed a dropped delivery leaving a
-  bare `failed` record on the recipient with **no reason recorded and no link to what sent it**
-  (`RequestRecord` carries no error field; `ConcurrencyQueueTimeoutError` is swallowed). A sending
-  `requestId` on the envelope is a concrete correlation handle for that, and cheap.
-- **Wait-for-response needs *some* correlation identifier to work at all.** *(Epic review, round
-  2.)* Theme 6 specifies the mode; nothing said what matches an arriving answer to the question it
-  answers, and on the workstream path the answer is a separate inbound message rather than the
-  sender's handle resolving. An identifier carried on the message and echoed on the reply is what
-  closes that, and the sending `requestId` is the obvious candidate. This argument is different in
-  kind from the two above: they are conveniences, this is a send mode that is under-specified
-  without one.
-
-None of the three is decisive about the *shape* — a correlation identifier is required, but
-whether it is the sending `requestId` or a field carried beside it is issue 1's call — which is why
-this stays open. **Scope:** issue 1's spec. **Blocks no other issue** — the address itself is
-settled without it — but issue 1 cannot specify wait-for-response without answering it.
+**Unchanged by the move:** it is still open, the owner's hedge (*"and maybe requestId for senders"*)
+still stands, and theme 6 still requires *some* correlation identifier for wait-for-response to
+function — the sending `requestId` being the leading candidate but not the settled shape.
 
 ### Q2. The name
 
@@ -1140,11 +1251,23 @@ this open question is about the *durable* path only, where the epic promises not
 - **Pull durable arbitration in.** That is FIX-830 territory, and it would roughly double the
   epic.
 
-**The epic's recommendation (not a decision): the first.** Retracting a promise is expensive;
-adding one is not, and FIX-830 already owns the durable half. The cost of being wrong is that a
-consumer builds on ordering that only holds in development and breaks in a queue-backed
-deployment — which is exactly what documenting it plainly is meant to prevent. **Blocks
-nothing**; issue 2's spec records whichever answer lands.
+**DECIDED — the first: the epic promises nothing about ordering on the durable path.**
+*(Closed 2026-08-23 **by derivation**, not by coordinator preference — see below. Reversible by
+the owner like any coordinator call, but there is nothing here they have not already decided.)*
+Retracting a promise is expensive; adding one is not, and FIX-830 already owns the durable half.
+The cost of being wrong is that a consumer builds on ordering that only holds in development and
+breaks in a queue-backed deployment — which is exactly what documenting it plainly is meant to
+prevent. **Blocks nothing**; issue 2's spec records the promise as written here.
+
+**Why this is derivation and not a call being quietly absorbed.** The rejected option — pulling
+durable arbitration into this epic — is **out of scope by the owner's own stated boundary**, twice
+over. The original brief set it: *"no new queueing mechanism where the concurrency policy already
+arbitrates"* (§1's "deliberately not doing"). And theme 1 records the standing instruction *"build
+to the `FlowDispatcher` seam, not to BullMQ"*, with FIX-830 owning the durable substrate. An
+option ruled out by two decisions the owner already made is not a fork for them to re-decide; it
+is a consequence. **This is recorded explicitly because the rejected option roughly doubles the
+epic**, and a call of that size closed by a coordinator should show its derivation rather than
+assert its conclusion.
 
 ### Q4. Which layer does role materialization belong on?
 
@@ -1203,16 +1326,26 @@ happens when the row never settles?* — stated plainly rather than as an edge c
 never reaches a terminal state is the ordinary shape of abandoned work**, so a registry with no
 lifetime rule **leaks by default**, not exceptionally.
 
-**The answer (D3): a TTL field on the entry, and expiry *delivers* rather than drops.** One-off
-plus unsubscribe-on-fire self-cleans the common case, so the only leak is the never-fires case —
-which the TTL bounds. **A TTL checked on read/match needs no sweeper**, which is what keeps the
-answer small: no background job, no liveness probe, no widening of theme 10. And on expiry the
-watcher receives an `expired` outcome rather than silence, which costs nothing and turns a leak
-into a signal a live watcher can act on.
+**The answer (D3, as revised 2026-08-23): a TTL on the entry, expiry *delivers* an outcome, and a
+periodic sweep is what fires it.** One-off plus unsubscribe-on-fire self-cleans the common case, so
+the only leak is the never-fires case — which the TTL bounds. On expiry the watcher receives an
+`expired` outcome rather than silence, which turns a leak into a signal a live watcher can act on.
+The sweep is **a scheduled message** — issue 4's mechanism, not a new one — which is why **issue 6
+depends on issue 4** (theme 13).
+
+**The first version of this answer was wrong, and the correction belongs here.** It read *"a TTL
+checked on read/match needs no sweeper"*. A reviewer (chatgpt-codex) correctly filed it as a P1:
+the leak being closed **is** the never-fires case, and in that case there is no later read and no
+later match, so a lazily-checked TTL would neither remove the entry nor deliver the promised
+`expired` outcome for exactly the entries it was introduced for. *"No sweeper needed"* and *"expiry
+delivers"* cannot both hold. **The sweep is what makes them compatible**, at the cost of one
+dependency.
 
 **What this does *not* claim.** It does not detect a dead watcher; it bounds the entry's life
 instead. A delivery to a session nobody is reading is the same non-event it is anywhere else in
-this epic. **Blocks nothing.**
+this epic. And **`expired` carries no claim about the world** — it means *"I stopped watching; no
+notification arrived in the window; re-check if you still care"*, never *"it did not happen"*
+(§4's durability disposition, where that distinction is load-bearing). **Blocks nothing.**
 
 ### ~~Q6b. Watch and `pending feedback` touch the same machinery — who owns that surface?~~ — **WITHDRAWN**
 
@@ -1448,6 +1581,9 @@ on its own terms (§5 Q5).
   content-based matcher is the event bus this epic ruled out; `reactTo`'s `when` stays the escape
   hatch for the synchronous case. **D3:** a **TTL** on the entry whose **expiry delivers an
   `expired` outcome** rather than dropping — no sweeper needed, and a leak becomes a signal.
+  *(**Superseded 2026-08-23:** "no sweeper needed" was self-contradictory — the never-fires case has
+  no later read or match to check the TTL. D3 is revised: a **periodic sweep**, itself a scheduled
+  message, which makes issue 6 depend on issue 4.)*
   **D4:** the watch manager lives in **`engine`**, not `orchestration`, which becomes a consumer
   forwarding its existing event — this is also what keeps the board single-writer (theme 11).
 
@@ -1533,9 +1669,81 @@ on its own terms (§5 Q5).
   status**. Every earlier "Q1 is open" / "Q5's placement stays open" claim inside a dated log entry
   carries a superseded marker rather than being rewritten.
 
-  **Open-question count: four remain, and none is a gate question** — Q1b (an issue-1 spec detail
+  **Open-question count: four remain, and none is a gate question**
+  *(Superseded 2026-08-23: two remain — Q3 closed by derivation, Q1b relocated to issue 1.)* — Q1b (an issue-1 spec detail
   that blocks nothing), Q2 (the name; the owner's own deferral until code is in front of them), Q3
   (durable-path ordering; the epic promises nothing and it blocks nothing), Q4 (the role
   materialization layer; explicitly deferred to real code). **Zero composition questions and zero
   door questions.** The epic is **not approved** — the objective gate is the only thing outstanding
   and nothing in this fold changes it.
+
+- **Correction fold — two valid P1s from chatgpt-codex, both against decisions the coordinator wrote
+  last dispatch. Q3 closed by derivation; Q1b relocated.** *(Folded **outside** the epic PR's
+  two-round budget on the standing justification. These were **not** implementer notes: the document
+  was asserting something **false**, and a converged spec must not carry an untrue sufficiency claim
+  into the objective gate. **No other bot findings folded, no converged material reopened.** Nothing
+  filed in Linear.)*
+
+  **(1) P1-a — D3 was self-contradictory. REVISED, not silently rewritten.** *What it said:* a TTL
+  *"checked on read/match needs no sweeper"*. *Why that is wrong, and the reviewer was right:* the
+  leak D3 exists to close **is** the never-fires case, and in that case there is by definition no
+  later read and no later match — so a lazily-checked TTL would neither remove the entry nor deliver
+  the promised `expired` outcome for exactly the entries it was introduced to handle. *"No sweeper
+  needed"* and *"expiry delivers"* cannot both hold. *The revision:* keep `expired`-delivers, and add
+  **a periodic sweep over the registry** — not per-entry timers (one mechanism, no timer storm,
+  nothing to reconstruct after a restart). **Coherence:** this epic is already building cron as a
+  scheduled message (issue 4, theme 4), so **the sweep *is* a scheduled message** — no new
+  scheduling mechanism, and **a real new dependency: issue 6 → issue 4**, named in §4's row 6 and in
+  theme 13 rather than left to be discovered during implementation. *Rejected alternative, recorded
+  with its reason:* weaken the contract to cleanup-on-next-activity with no `expired` promise —
+  genuinely smaller, and rejected because it answers the owner's own lifetime question with
+  **"nothing clears it"**, which is not an answer, and strands entry and watcher together.
+
+  **(2) P1-b — the post-commit crash window, and the sufficiency claim was FALSE.** *The fact,
+  re-verified during this fold:* `emit(...)` runs **after** the durable write in all three named
+  sources — `resource-backed.ts:470-474`, `sequencer-backed.ts:333-338`,
+  `resource-registry.ts:1201-1210`. **D1 closes register-vs-settle and does nothing for this:** a
+  worker dying between commit and emit leaves **the subscription alive and the event gone**. Note
+  the shape — this is the *same structural fact* that justified D1, producing a **second, different**
+  failure. *Disposition:* **explicit best-effort, no durable outbox** — an outbox is precisely the
+  *"delivery guarantees beyond what the configured adapter gives"* the owner ruled out of scope, the
+  same boundary that leaves durable arbitration with FIX-830. *But the guarantee is stronger than
+  bare best-effort, and it is a **consequence of D1**, not a new mechanism:* registration is
+  **level-triggered** ("notify when true, or immediately if already true"), so re-registration
+  **re-evaluates the condition** rather than replaying a missed edge. The chain: crash loses the
+  event → watcher stays parked → **the sweep expires the entry and delivers `expired`** → the
+  watcher learns and may re-register → level-triggered registration **fires immediately** if the
+  condition now holds. *The honest claim, now what the document says:* **loss is not prevented; loss
+  is bounded by the TTL and self-announcing.** Wording implying the registry + matcher + addressed
+  delivery are *sufficient* has been corrected in §4's issue-6 subsection, §4's row 6, and theme 15.
+  *The semantic that makes or breaks it:* in the crash case **the condition did occur**, so
+  `expired` must **not** mean *"it did not happen"* — it means **"I stopped watching; no
+  notification arrived within the window; re-check if you still care."** Getting that noun wrong
+  turns a recoverable miss into a false negative. *And the two findings resolve each other:* **the
+  sweep is what makes best-effort bounded**, so this disposition **depends on P1-a's sweep existing**
+  — **if the sweep is ever cut, the disposition is void** and durability re-opens as a real question.
+
+  **(3) §5 Q3 — CLOSED by derivation, not by preference.** The epic promises **nothing** about
+  ordering on the durable path. Recorded as derivation because the rejected option — pulling durable
+  arbitration inward — is out of scope by **two boundaries the owner already set**: the original
+  brief's *"no new queueing mechanism where the concurrency policy already arbitrates"* (§1), and
+  theme 1's standing *"build to the `FlowDispatcher` seam, not to BullMQ"*, with FIX-830 owning the
+  durable substrate. An option ruled out by two prior owner decisions is a consequence, not a fork.
+  **Stated explicitly because that rejected option roughly doubles the epic**, and a call of that
+  size closed by a coordinator should show its derivation rather than assert its conclusion.
+
+  **(4) §5 Q1b — RELOCATED to §4's issue-1 spec inputs, not closed.** It is answerable by issue 1
+  alone and blocks nothing else, so it was misfiled in a section reserved for questions no single
+  issue can answer. Still open; the full three-argument case moved with it, and §5 keeps a stub
+  saying where it went.
+
+  **(5) Reconciled (tenet 5).** D3's text, its summary in §4's row 6, theme 13's sequencing, theme
+  15's "three things", §4's issue-6 subsection, §5 Q6's closed record, §1's named-risk paragraph,
+  §3's in-process-only note, the FIX-830 relationship row, themes 5/6/9's Q1b pointers, and §5's
+  ledger. Earlier "no sweeper needed" and "four remain" claims inside dated log entries carry
+  superseded markers rather than rewrites.
+
+  **Open-question count: two.** **Q2** (the name — the owner's own deferral) and **Q4** (the role
+  materialization layer — deferred to real code). Neither is a gate question. **Not zero**, and the
+  ledger says so plainly. The epic is **not approved**; the objective gate remains the only thing
+  outstanding.
