@@ -510,7 +510,8 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom lo
 - `createFilesystemStores` — Persistent stores for local development (not for production load; use SQLite or Postgres in production)
 - `createInMemoryContentStore` / `createFilesystemContentStore` — Content store adapters
 - `createInMemoryResourceStateStore` / `createFilesystemResourceStateStore` — Resource state store adapters
-- Scope store factories and CAS/state ops
+- `createInMemoryOrgStore` / `createFilesystemOrgStore` — Org scope store adapters, implementing `OrgStore`. The filesystem adapter keeps org records under `{rootDir}/projects/`.
+- Session, user, and request scope store factories, and CAS/state ops
 
 **Streaming:**
 - `createResponseEmitter` — Create an SSE emitter for a request
