@@ -209,12 +209,100 @@ describe("termination ladder — the order is the contract (§9)", () => {
     expect(await reasonFor(collection, parkedExit)).toBe("all-completed");
   });
 
-  it("rung 4 outranks rung 5: a parked row alongside a handed-off one reports the park", async () => {
+  it("the park outranks the hand-off: a parked row alongside a handed-off one reports the park", async () => {
     // Both are released from this drain. The one a human owes an answer to is
     // what the operator needs to see.
+    //
+    // KEEP THIS PAIRING. It is the reason the "going nowhere" rung below asks
+    // what will never run rather than what contributed to the exit. Under a
+    // "the park was the sole cause" rule the hand-off also contributed, so the
+    // reason would fall through to `handed-off` and the operator would lose the
+    // fact that somebody is owed an answer. Any future attempt to simplify that
+    // rung into a sole-cause guard fails here, which is the point.
     const collection = freshCollection();
     const runsElsewhere = await handOff(collection, "background-work");
     await park(collection, "ask");
+
+    expect(await reasonFor(collection, parkedExit, runsElsewhere)).toBe(
+      "parked-for-review"
+    );
+  });
+});
+
+describe("termination ladder — a review gate must not mask an unrelated stall", () => {
+  it("reports the stall when a pending row's deps can never be satisfied", async () => {
+    // The defect this rung exists for. The parked row and the stranded row are
+    // unrelated: answering the review releases nothing, and the board is still
+    // stuck afterwards. Reporting `parked-for-review` here tells an operator a
+    // human is the reason the drain stopped, sends them to answer it, and
+    // leaves them exactly where they started.
+    //
+    // Note that rung 3 cannot catch this. That rung reads *status*, and this
+    // row's status is an ordinary `pending`; what is wrong with it is which
+    // task it is waiting for.
+    const collection = freshCollection();
+    await park(collection, "ask");
+    await collection.addTask({ id: "stranded", goal: "stranded", deps: ["ghost"] });
+
+    expect(await reasonFor(collection, parkedExit)).toBe("blocked-by-failures");
+  });
+
+  it("reports the review when the stuck row is stuck ON the review", async () => {
+    // The normative counterpart, and the case a careless fix breaks. This
+    // pending row is also unclaimable right now — but it is unclaimable
+    // *because* of the parked row, so the review is genuinely why the board
+    // stopped and answering it releases the work.
+    const collection = freshCollection();
+    await park(collection, "ask");
+    await collection.addTask({ id: "after", goal: "after", deps: ["ask"] });
+
+    expect(await reasonFor(collection, parkedExit)).toBe("parked-for-review");
+  });
+
+  it("follows the chain: a row two hops behind the review is still the review's", async () => {
+    // Why the rung is a reachability closure rather than a one-level check. A
+    // one-level test sees `second`'s dependency unsatisfied and calls the board
+    // stalled, on a board that needs nothing but an answer.
+    const collection = freshCollection();
+    await park(collection, "ask");
+    await collection.addTask({ id: "first", goal: "first", deps: ["ask"] });
+    await collection.addTask({ id: "second", goal: "second", deps: ["first"] });
+
+    expect(await reasonFor(collection, parkedExit)).toBe("parked-for-review");
+  });
+
+  it("reports the stall when one row waits on the review and another waits on nothing reachable", async () => {
+    // A board where both are true. The row that will never run outranks the one
+    // an answer would release: the operator can act on a review, but they
+    // cannot act on a stall they were never told about.
+    const collection = freshCollection();
+    await park(collection, "ask");
+    await collection.addTask({ id: "after", goal: "after", deps: ["ask"] });
+    await collection.addTask({ id: "stranded", goal: "stranded", deps: ["ghost"] });
+
+    expect(await reasonFor(collection, parkedExit)).toBe("blocked-by-failures");
+  });
+
+  it("reports the stall on a dependency cycle, which no status makes visible", async () => {
+    const collection = freshCollection();
+    await park(collection, "ask");
+    await collection.addTask({ id: "a", goal: "a", deps: ["b"] });
+    await collection.addTask({ id: "b", goal: "b", deps: ["a"] });
+
+    expect(await reasonFor(collection, parkedExit)).toBe("blocked-by-failures");
+  });
+
+  it("does not fire on a handed-off row, which is going somewhere", async () => {
+    // The separation the rung rests on: handed-off work is progressing
+    // elsewhere, so a row waiting on it is waiting on something that moves.
+    const collection = freshCollection();
+    const runsElsewhere = await handOff(collection, "background-work");
+    await park(collection, "ask");
+    await collection.addTask({
+      id: "after",
+      goal: "after",
+      deps: ["background-work"],
+    });
 
     expect(await reasonFor(collection, parkedExit, runsElsewhere)).toBe(
       "parked-for-review"
@@ -269,6 +357,21 @@ describe("termination ladder — equivalence with the pre-FIX-1234 classifier", 
       name: "a stranded pending row",
       build: async (c) => {
         await c.addTask({ id: "waiting", goal: "waiting", deps: ["ghost"] });
+        return undefined;
+      },
+    },
+    {
+      name: "a dependency cycle",
+      build: async (c) => {
+        await c.addTask({ id: "a", goal: "a", deps: ["b"] });
+        await c.addTask({ id: "b", goal: "b", deps: ["a"] });
+        return undefined;
+      },
+    },
+    {
+      name: "a claimable pending row the drain never got to",
+      build: async (c) => {
+        await c.addTask({ id: "ready", goal: "ready" });
         return undefined;
       },
     },

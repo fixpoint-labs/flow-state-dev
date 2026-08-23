@@ -33,7 +33,7 @@
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import type { TaskCollectionRef } from "../../tasks";
+import type { Task, TaskCollectionRef } from "../../tasks";
 import { anyRetryDeniedByBudget, sumGrantedRetries } from "../../tasks/collection/internal";
 import { isHandedOff, type RunsElsewhere } from "../shared";
 
@@ -121,17 +121,40 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
  *    reported string: with no parked row a remaining `blocked` row
  *    reported `blocked-by-failures` before and reports it here, only
  *    the rung deciding it moved.
- * 4. the exit decision excused rows as parked → `parked-for-review`.
+ * 4. any remaining row is going nowhere → `blocked-by-failures`.
+ *    Rung 3 catches a row stuck by its own *status*; this catches one
+ *    stuck by its *dependencies* — a `pending` row that cannot run
+ *    even once every review is answered. See
+ *    {@link hasRowGoingNowhere}. Without this rung an unrelated
+ *    dep-blocked row hides behind a review gate: the board reports
+ *    that a human is the reason it stopped, the human answers, and the
+ *    board is still stuck on something the answer never touched.
+ * 5. the exit decision excused rows as parked → `parked-for-review`.
  *    Read from the carried verdict, never from the rows as they stand
- *    now. Reachable only once rungs 1–3 have ruled out every other
+ *    now. Reachable only once rungs 1–4 have ruled out every other
  *    reason the board could have stopped, which is what lets it mean
  *    "the park is why" without a second predicate that has to be kept
  *    in step with the exclusion list.
- * 5. every remaining row is handed off → `handed-off`.
- * 6. otherwise → `blocked-by-failures`.
+ * 6. every remaining row is handed off → `handed-off`.
+ * 7. otherwise → `blocked-by-failures`.
  *
- * With no parked row anywhere, rung 4 is inert and the ladder is
- * exactly the classifier it was before FIX-1234.
+ * With no parked row anywhere, rung 5 is inert and the ladder reports
+ * exactly what the classifier reported before FIX-1234 — rung 4 fires
+ * only on boards that already reached rung 7's `blocked-by-failures`
+ * by another route.
+ *
+ * ## Why not "the park was the sole cause"
+ *
+ * The tempting shape for rung 5 is a guard asking whether anything
+ * *other than the park* contributed to the exit. It was considered and
+ * rejected, and rung 4 exists because of what it got wrong: on a board
+ * with a parked row **and** a handed-off row, the hand-off exclusion
+ * also contributed, so under a sole-cause rule the reason falls
+ * through to `handed-off` and the operator loses the one fact they
+ * need. Rung 4 asks a different question — is anything here going
+ * nowhere? — and handed-off work is going somewhere, so it is not
+ * caught. That is the whole distinction: `parked-for-review` must keep
+ * beating `handed-off`, and must not beat a row that will never run.
  *
  * ## Why hand-off needs a reason of its own
  *
@@ -182,6 +205,70 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
  * task on the board and no retry ever denied. A termination reason that
  * can lie is worse than no new reason at all.
  */
+/**
+ * Is any remaining row going nowhere — stuck on dependencies that answering
+ * every review would not satisfy (FIX-1234)?
+ *
+ * This is the question that keeps a review gate from masking an unrelated
+ * stall. A parked row moves when a person acts; a handed-off row is moving
+ * elsewhere right now; a `pending` row waiting on a task that will never
+ * complete is moving nowhere at all, and that is the fact an operator needs
+ * even when a review also happens to be outstanding.
+ *
+ * **A reachability closure, not a one-level check**, and the difference is
+ * load-bearing. `A` depends on the parked row and `B` depends on `A`: answering
+ * the review releases both, so neither is going nowhere. A one-level test —
+ * "would this row be claimable if the parked rows completed?" — sees `B`'s
+ * dependency unsatisfied and would report a stall on a board that only needs an
+ * answer. So the seed set is everything that will resolve on its own (already
+ * completed, parked and therefore answerable, or handed to a Workstream) and
+ * the loop closes over the rows those release.
+ *
+ * **Why here and not in the exit classifier.** `boardQuiescence` runs on every
+ * idle-wait fan-out event — the hottest read the board has — and a dependency
+ * walk there was rejected outright when this mode was designed. This block runs
+ * once, after the pool has finished, and the board's own
+ * `createCascadeSkipDependents` already does a transitive dep walk at exactly
+ * this position for exactly that reason.
+ */
+function hasRowGoingNowhere(
+  all: readonly Task[],
+  remaining: readonly Task[],
+  now: number,
+  runsElsewhere: RunsElsewhere | undefined
+): boolean {
+  // Seed: rows nothing further is owed on, plus rows something other than this
+  // board's dependency graph will settle.
+  const willResolve = new Set<string>();
+  for (const task of all) {
+    if (
+      task.status === "completed" ||
+      task.status === "awaiting_review" ||
+      isHandedOff(task, now, runsElsewhere)
+    ) {
+      willResolve.add(task.id);
+    }
+  }
+  // Close over the rows those release. Each pass adds at least one row or the
+  // loop ends, so it is bounded by the board's row count.
+  let added = true;
+  while (added) {
+    added = false;
+    for (const task of all) {
+      if (willResolve.has(task.id)) continue;
+      // `errored` / `cancelled` / `blocked` never resolve. Rung 3 has already
+      // reported them by the time this runs; the check keeps this function
+      // honest when it is read on its own.
+      if (task.status !== "pending" && task.status !== "in_progress") continue;
+      if ((task.deps ?? []).every((dep) => willResolve.has(dep))) {
+        willResolve.add(task.id);
+        added = true;
+      }
+    }
+  }
+  return remaining.some((task) => !willResolve.has(task.id));
+}
+
 /**
  * Did this drain's worker pool stop because rows parked for a human were
  * excused from the board's waitable count (FIX-1234)?
@@ -273,11 +360,13 @@ export function createBoardMetaCompleted(options: BoardMetaCompletedOptions) {
           ? "all-completed"
           : anyRemainingStuck
             ? "blocked-by-failures"
-            : excusedParkedByPool(input)
-              ? "parked-for-review"
-              : allRemainingHandedOff
-                ? "handed-off"
-                : "blocked-by-failures";
+            : hasRowGoingNowhere(all, remaining, now, runsElsewhere)
+              ? "blocked-by-failures"
+              : excusedParkedByPool(input)
+                ? "parked-for-review"
+                : allRemainingHandedOff
+                  ? "handed-off"
+                  : "blocked-by-failures";
       ctx.emit.component(
         TASK_BOARD_META_COMPONENT_TYPE,
         { collectionId, status: "completed", terminationReason, counts, maxTotalRetries },
