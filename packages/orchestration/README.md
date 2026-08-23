@@ -264,7 +264,12 @@ single uniform worker or a
 `defaultWorker` (optional fallback for a task whose assignee is unmatched or
 omitted — reached only on a miss, declared workers untouched),
 `concurrency` (default 4), `dispatcher` (default `"topological"`),
-`onIdle` (`"complete-or-blocked"` default | `"complete"` | `"wait"`), `initialTasks`,
+`onIdle` (`"complete-or-blocked"` default | `"complete"` | `"wait"`),
+`onReview` (`"hold"` default | `"exit"` — whether a task parked with `awaitReview`
+keeps the drain open, or is excused from the in-flight counts so the drain returns
+and leaves it parked for a later one to claim once it is resumed; `"exit"` needs a
+`defineTaskCollection` collection, the default `onIdle`, and ids on `initialTasks`,
+and is refused at construction otherwise), `initialTasks`,
 `onError`, `maxIterations` (per-worker claim-loop cap, default 10000), the two creation caps
 `maxEnqueuedTasks` (default 100 — tasks addable while others are `pending`,
 refreshes on drain) and `maxTotalTasks` (default 500 — lifetime count incl.

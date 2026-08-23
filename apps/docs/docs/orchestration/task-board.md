@@ -91,12 +91,17 @@ Exits when one of the following is true on a worker's `checkBoard` iteration:
 - **Drained** — no `pending`, `in_progress`, or `awaiting_review` tasks remain.
 - **Blocked** — no task is `in_progress` or `awaiting_review`, and no `pending` task has all of its `deps` `completed`. Nothing is claimable, and no in-flight work is left to change the dep graph.
 
+Both counts skip tasks sitting in `awaiting_review` when the board sets [`onReview: "exit"`](#waiting-on-a-person-onreview).
+
 The final `task-board-meta` item carries a `terminationReason` field saying which case it was:
 
 - `"all-completed"` — every task reached `completed` (or the board started empty).
 - `"blocked-by-failures"` — at least one task did not reach `completed`. Could be `errored`, `cancelled`, or `pending` with unresolvable deps.
 - `"retry-budget-exhausted"` — the board refused a retry because `maxTotalRetries` was spent. See [Bounding the retries](#bounding-the-retries).
 - `"handed-off"` — every task still outstanding is running in a Workstream. The board finished its own part and the work continues in the background, so this is a success, not a stall. Only a board with a worker declared `dispatch: { mode: "detached" }` reports it, and `counts.in_progress` is how many are still running.
+- `"parked-for-review"` — the board stopped because the work it has left is waiting on a person. Like `"handed-off"`, it is neither a success nor a failure: nothing went wrong, and nothing is finished. Only a board with [`onReview: "exit"`](#waiting-on-a-person-onreview) reports it. `counts.awaiting_review` is how many tasks are parked.
+
+Order matters when a board ends up in more than one of these states at once. A task that `errored`, was `cancelled`, or was moved to `blocked` reports `"blocked-by-failures"` even if another task is parked for review — something is stuck for a reason a person waiting on a review will not fix, and that is the more useful thing to know. A refused retry outranks both.
 
 A delegation board's `runBoard` tool reports a `status` of its own, and the two count different things. `terminationReason` asks whether every task succeeded. `runBoard`'s `status` asks whether any task is still outstanding, so a board whose only problem is one errored task reads `"blocked-by-failures"` here and `"drained"` there. See [Delegation](../skills/delegation.md) for the coordinator's side.
 
@@ -107,7 +112,8 @@ A delegation board's `runBoard` tool reports a `status` of its own, and the two 
   data: {
     collectionId: "echo",
     status: "completed",
-    terminationReason: "all-completed",   // or "blocked-by-failures" | "retry-budget-exhausted" | "handed-off"
+    terminationReason: "all-completed",   // or "blocked-by-failures" | "retry-budget-exhausted"
+                                          //  | "handed-off" | "parked-for-review"
     maxTotalRetries: 50,
     counts: {
       total: 2,
@@ -124,13 +130,15 @@ A delegation board's `runBoard` tool reports a `status` of its own, and the two 
 }
 ```
 
-The choice between `"all-completed"` and `"blocked-by-failures"` comes from the counts (`completed === total`), so in `"wait"` mode a `shouldExit` that fires while tasks are still running reports `"blocked-by-failures"` even though nothing failed. Read `counts` when you override termination. The other two are not count comparisons: `"retry-budget-exhausted"` appears only when a retry was actually refused, and `"handed-off"` only when every outstanding task is one a Workstream is holding.
+The choice between `"all-completed"` and `"blocked-by-failures"` comes from the counts (`completed === total`), so in `"wait"` mode a `shouldExit` that fires while tasks are still running reports `"blocked-by-failures"` even though nothing failed. Read `counts` when you override termination. The other three are not count comparisons: `"retry-budget-exhausted"` appears only when a retry was actually refused, `"handed-off"` only when every outstanding task is one a Workstream is holding, and `"parked-for-review"` only when the board stopped because it was told not to wait on a review.
 
 ### `"complete"`
 
 Exits only when no `pending`, `in_progress`, or `awaiting_review` tasks remain. Use it when a pending task with a non-`completed` dep is a transient state: something outside the worker pool will eventually mark the dep complete (an external service, an HITL approval pumping a queue).
 
 A board in this mode never decides on its own that it is stuck. If a dep will never resolve, each worker keeps cycling until it hits `maxIterations` (default `10000`, counted per worker). Pick the mode when the board really is supposed to wait.
+
+A task parked for review keeps this mode's loop alive, and [`onReview: "exit"`](#waiting-on-a-person-onreview) cannot change that — a board that sets both is refused when you build it. The reason is worth knowing before you reach for the combination: this mode exits only on a fully drained board, so a `pending` task that depends on the parked one holds the drain open no matter how the parked task itself is counted.
 
 ### `"wait"`
 
@@ -152,6 +160,56 @@ Most boards leave `onIdle` alone. Override when:
 
 - You're modeling a board that legitimately waits on an external pump (use `"complete"`).
 - You're building a session-scoped board that lives across many drains (use `"wait"` + `shouldExit`).
+
+## Waiting on a person: `onReview`
+
+A worker can park a task with `awaitReview` when it needs a human to look at something. By default the board treats that task the way it treats any other unfinished work: the drain stays open, and so does the request that started it, until someone moves the task out of `awaiting_review`.
+
+That is the right default when the answer arrives in seconds. It is the wrong one when it arrives tomorrow. `onReview: "exit"` says the board should not wait:
+
+```ts
+const board = taskBoard({
+  name: "reviews",
+  collection: reviewLedger,   // defineTaskCollection — required for this mode
+  workers,
+  onReview: "exit",
+});
+```
+
+With that set, a task in `awaiting_review` is not counted as work the drain waits on. Once parked tasks are the only thing left, the drain finishes, the request that started it returns, and the completion item says `terminationReason: "parked-for-review"`. The task itself is untouched — parked, on the board, and durable.
+
+### Picking it back up
+
+There is no new API for the return trip. A resume moves the task back to `pending`:
+
+```ts
+await tasks.resumeFromReview("draft-42", "approved, ship it");
+```
+
+**A resume re-queues the task. It does not start anything.** Nothing is watching the board on your behalf, so a resumed task sits in `pending` until something drains the board again — a later turn from the user, a scheduled action, a background job. If you resume a task and nothing happens, this is why. Run the drain:
+
+```ts
+// Later, in a new request, over the same durable collection:
+await runAction("drain-reviews", { userId });
+```
+
+Whichever drain gets there first claims the task and runs it to completion, exactly as if it had been queued that moment.
+
+### What the mode requires
+
+Every requirement below is checked when you build the board. Get one wrong and `taskBoard()` throws with the specific problem and the change to make, rather than handing you a board that half-works:
+
+- **A durable collection** — one built with `defineTaskCollection`. The parked task has to outlive the drain that let go of it, or there is nothing for a later drain to come back to.
+- **The default `onIdle`.** `"complete"` and `"wait"` are both refused, for different reasons; the `onIdle` sections above cover each.
+- **An explicit `id` on every entry in `initialTasks`.** This mode makes a second drain the normal case, and each drain re-runs the seed step. Seed entries with ids are matched against what is already on the board and skipped; an entry without one is added again every time, so the board grows a duplicate task on every pass.
+
+### What it does not change
+
+The task lifecycle. `awaitReview` and `resumeFromReview` do the same thing under either setting, and no new status is involved — a parked task is in `awaiting_review` either way, and `onReview` only decides whether the drain counts it.
+
+A board that hands work to a Workstream also does not need this. Detached dispatch is what releases the launching request there, park or no park; see [Work that outlives the turn](/guides/background-work#workstreams-a-job-with-its-own-session). `onReview` is for the board that drains its work inside the request, where a parked task holds that request open until someone answers.
+
+The setting is board-wide. A board cannot park one task as "release the request" and another as "hold it".
 
 ## Cascade-skipping dep-blocked tasks
 

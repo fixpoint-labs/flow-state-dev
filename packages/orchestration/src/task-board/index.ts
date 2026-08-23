@@ -58,6 +58,15 @@
  *   `shouldExit`; the loop runs until that returns `true` or
  *   `maxIterations` trips.
  *
+ * `onReview` is the second, independent knob (FIX-1234). On the default
+ * `'hold'` an `awaiting_review` task holds the drain open in every mode
+ * above. On `'exit'` it does not: parked rows are excused from the
+ * board's waitable count, the drain returns reporting
+ * `terminationReason: "parked-for-review"`, and the task stays parked
+ * and durable for a later drain to claim once it is resumed. The mode
+ * requires a durable board on the default `onIdle` with id-carrying
+ * seeds, and refuses anything else at construction — see `./park-exit`.
+ *
  * ## CAS-safe dispatch
  *
  * The substrate's `collection.claim` runs eligibility scan + CAS flip
@@ -142,6 +151,7 @@ import {
   type TaskWorkerSlot,
   type TaskWorkerSlotRegistry,
 } from "./detached";
+import { assertParkExitSupported, type TaskBoardOnReview } from "./park-exit";
 import { buildDetachedRunner } from "./detached-runner";
 import { createSpawnDetached } from "./blocks/spawn-detached";
 import { coordinateKey, type WorkerCoordinate } from "./coordinate";
@@ -237,6 +247,8 @@ export type {
   TaskWorkerSlot,
   TaskWorkerSlotRegistry,
 } from "./detached";
+export { assertParkExitSupported } from "./park-exit";
+export type { TaskBoardOnReview } from "./park-exit";
 export { coordinateKey, coordinateLabel, workstreamRoutingSeed } from "./coordinate";
 export type { WorkerCoordinate } from "./coordinate";
 
@@ -458,6 +470,26 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    */
   onIdle?: "wait" | "complete" | "complete-or-blocked";
 
+  /**
+   * What the board does when the only work left is parked for review
+   * (FIX-1234). Default `"hold"`.
+   *
+   * - `"hold"`: an `awaiting_review` task keeps the drain open, and the
+   *   launching request with it, until an external actor moves the task out.
+   *   What every board does today.
+   * - `"exit"`: a parked task is not this drain's to wait on. The drain
+   *   finishes and returns, the completion item reports
+   *   `terminationReason: "parked-for-review"`, and the task stays parked and
+   *   durable. A later `resumeFromReview` re-queues it — it does not start
+   *   anything, so whatever drains the board next is what picks it up.
+   *
+   * Separate from `onIdle` deliberately, and **refused at construction** on
+   * three configurations it cannot serve: a board whose tasks don't outlive
+   * the request, either non-default `onIdle`, and `initialTasks` without
+   * explicit ids. Each refusal names the board and the fix.
+   */
+  onReview?: TaskBoardOnReview;
+
   /** Tasks seeded into the collection at board start. Optional. */
   initialTasks?: readonly TaskInit<TInput>[];
 
@@ -650,6 +682,7 @@ export function taskBoard<
     concurrency = 4,
     dispatcher: dispatcherInput = "topological",
     onIdle = "complete-or-blocked",
+    onReview = "hold",
     initialTasks = [],
     onError = "skip",
     maxIterations = 10_000,
@@ -734,6 +767,19 @@ export function taskBoard<
   // `initialTasks` config field (not the `collection` spec).
   const hasIdlessInitialTasks = initialTasks.some((t) => t.id === undefined);
 
+  // FIX-1234 decision 3 — park-exit's three refusals. After the binding, like
+  // the detached ones, because two of the facts they test (the once-chosen
+  // backing, the seed's ids) are only known here. The third condition is the
+  // one park-exit itself creates: the mode makes a later drain the normal path,
+  // and the drain re-seeds ahead of the pool.
+  assertParkExitSupported({
+    name,
+    onReview,
+    backing,
+    onIdle,
+    hasIdlessInitialTasks,
+  });
+
   const seedBlock = createSeedCollection<TInput>({
     name: `${name}-seed`,
     collection: collectionFactory,
@@ -752,6 +798,13 @@ export function taskBoard<
   // agree with the other two — a board that exited because its work is running
   // elsewhere must not then report that exit as a failure.
   const runsElsewhere = detachedTaskPredicate(resolvedWorkers.slots);
+
+  // FIX-1234: the second exclusion, threaded to the exit check and the wake
+  // predicate from here — the same discipline `runsElsewhere` follows, and for
+  // the same reason. Neither reader derives it; a board that left `onReview` on
+  // the default passes `false` and both answer exactly what they answered
+  // before.
+  const excuseParked = onReview === "exit";
 
   const boardMetaCompleted = createBoardMetaCompleted({
     name: `${name}-meta-completed`,
@@ -856,6 +909,7 @@ export function taskBoard<
     onIdle,
     shouldExit,
     ...(runsElsewhere !== undefined ? { runsElsewhere } : {}),
+    ...(excuseParked ? { excuseParked } : {}),
   });
 
   // Worker body: the worker block runs directly (BP-011 conformance —
@@ -1017,6 +1071,7 @@ export function taskBoard<
                 onIdle,
                 shouldExit,
                 ...(runsElsewhere !== undefined ? { runsElsewhere } : {}),
+                ...(excuseParked ? { excuseParked } : {}),
               })(items),
         // Long timeout: a quiet board still wakes on task-change items.
         // The timeout is the upper bound on starvation if the wake
@@ -1091,6 +1146,14 @@ export function taskBoard<
       (workerId: number) => makeWorker(workerId),
       { maxConcurrency: concurrency }
     )
+    // The completion item reads the pool's own exit outputs — the `forEach`
+    // result this tap receives — for the one fact it cannot re-derive: whether
+    // the drain stopped because rows were excused as parked (FIX-1234). Keep
+    // this tap directly after the `forEach`; a step inserted between the two
+    // would replace the value and the board would start reporting a review exit
+    // as a failure. The drain-level tests in `task-board-park-exit.test.ts`
+    // assert the reported reason, so a rewiring fails there rather than
+    // silently.
     .tap(boardMetaCompleted)
     // FIX-610: teardown on the success path. The `.rescue` below also
     // runs teardown on errors so cleanup is symmetric — leaving stale

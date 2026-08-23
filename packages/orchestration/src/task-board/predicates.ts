@@ -21,7 +21,9 @@ import { hasClaimableTask, type RunsElsewhere } from "./shared";
  *   task (a worker should re-attempt `claim`) OR has fully drained
  *   (the worker should wake up, observe the drain, and exit via
  *   `checkBoard`). Stays asleep while the only remaining work is
- *   `in_progress` on a sibling or parked in `awaiting_review`.
+ *   `in_progress` on a sibling — or parked in `awaiting_review`, unless
+ *   the board declared `onReview: "exit"`, in which case a parked row
+ *   is excused from the counts and the board reads as drained.
  *
  * - `"complete-or-blocked"`: same as `"complete"` plus wake when no
  *   active worker is in `in_progress`/`awaiting_review` — if there's
@@ -53,6 +55,14 @@ import { hasClaimableTask, type RunsElsewhere } from "./shared";
  * Workstream holds has a live lease renewed from the child, so it is already
  * not claimable here. Once that lease does lapse the row is genuinely
  * recoverable and waking on it is correct.
+ *
+ * A board in park-exit mode passes `excuseParked` (FIX-1234) the same way, and
+ * that it reaches this predicate at all is the point: the wake test and the
+ * exit check have to agree, or a worker already asleep when the board becomes
+ * exit-eligible sits there until its timeout and the exit is late rather than
+ * absent — the shape of defect a passing test would miss (BP-035). The
+ * claimable disjunct needs no adjustment here either: an `awaiting_review` row
+ * is not in the status set `hasClaimableTask` scans.
  */
 export function whenBoardClaimable(
   collection: TaskCollectionRef,
@@ -65,6 +75,12 @@ export function whenBoardClaimable(
      * wake test and the exit check keep answering out of one definition.
      */
     runsElsewhere?: RunsElsewhere;
+    /**
+     * The board declared `onReview: "exit"` (FIX-1234). Forwarded verbatim on
+     * the same terms as `runsElsewhere`, and by the same board that hands it
+     * to the exit check.
+     */
+    excuseParked?: boolean;
   }
 ): (items: readonly OutputItem[]) => boolean {
   return () =>

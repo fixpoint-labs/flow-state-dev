@@ -125,6 +125,8 @@ Some bounds are worth knowing before you reach for this.
 
 **A `worker-only` process starts workstreams that aren't durable.** That mode dispatches nothing, so the work runs in the worker process and nothing re-runs it if that process stops. See [From a worker-only process](/docs/cli/overview#from-a-worker-only-process).
 
+**Handing work to a workstream is what releases the request.** A task running in a workstream is not counted by the board that filed it, so the request that filed it finishes without waiting — and that holds for the rest of the task's life, including a stretch where the task parks itself for a person to look at. The board's [`onReview: "exit"`](/docs/orchestration/task-board#waiting-on-a-person-onreview) is not part of this; durable storage is the switch, and you declared it two paragraphs ago. `onReview` is for the other shape: a board that drains its work inline, in the request, where a task parked for a person holds that request open until someone answers.
+
 ### Which tasks share a workstream
 
 A workstream is one `boardId`, one worker, one topic. A task matching an earlier task on all three lands in the workstream that task is already using and continues its history. Differ in any one and the task gets a workstream of its own.
