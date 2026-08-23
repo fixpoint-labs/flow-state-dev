@@ -1,42 +1,10 @@
 import type { OutputItem, SuspensionItem } from "@flow-state-dev/core/items";
 import { describe, expect, it } from "vitest";
-import {
-  ItemRenderer,
-  getFlowContext,
-  setFlowContext,
-  withFlowContext
-} from "../src";
+import { ItemRenderer } from "../src";
 import {
   resolveRenderer,
   type RendererRegistry
 } from "../src/registry/block-renderers";
-
-describe("FlowContext legacy helpers", () => {
-  it("sets, reads, and restores context values", () => {
-    setFlowContext({
-      flowKind: "demo",
-      userId: "devuser"
-    });
-
-    expect(getFlowContext()).toMatchObject({
-      flowKind: "demo",
-      userId: "devuser"
-    });
-
-    const value = withFlowContext(
-      {
-        flowKind: "nested",
-        userId: "inner"
-      },
-      () => getFlowContext()
-    );
-
-    expect(value.flowKind).toBe("nested");
-    expect(getFlowContext().flowKind).toBe("demo");
-
-    setFlowContext({});
-  });
-});
 
 describe("renderer map utilities", () => {
   it("resolves keyed component renderers", () => {

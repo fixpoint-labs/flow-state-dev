@@ -73,10 +73,11 @@ The model won't re-research a topic it already covered, because the state system
 
 A filesystem gives you bytes at a path. That's a low enough abstraction that almost anything can use it, but it pushes all the meaning-making onto the application. The filesystem doesn't know what a "draft document" is, which user it belongs to, or whether a write was valid.
 
-Resources are the typed, scoped alternative. A resource is a named container attached to a scope — a session, a user, or a project — that combines structured state with file content. You define what a resource means: its schema, its content type, its mutability. A `draft` resource isn't a path; it's a contract any block can work with directly.
+Resources are the typed, scoped alternative. A resource is a named container attached to a scope — a session, a user, or an org — that combines structured state with file content. You define what a resource means: its schema, its content type, its mutability. A `draft` resource isn't a path; it's a contract any block can work with directly.
 
 ```ts
 const draftResource = defineResource({
+  scope: "session",
   stateSchema: z.object({
     title: z.string().default(""),
     wordCount: z.number().default(0),
@@ -138,7 +139,8 @@ const agent = generator({
 
 export default defineFlow({
   kind: "research-assistant",
-  session: { stateSchema, resources: { docs: docResource } },
+  resources: { docs: docResource },
+  session: { stateSchema },
   actions: { chat: { block: agent } },
 })({ id: "default" });
 ```
@@ -312,7 +314,8 @@ export default defineFlow({
   actions: {
     chat: { block: agent, userMessage: (i) => i.message },
   },
-  session: { stateSchema, resources: { docs: docResource } },
+  resources: { docs: docResource },
+  session: { stateSchema },
 })({ id: "default" });
 ```
 

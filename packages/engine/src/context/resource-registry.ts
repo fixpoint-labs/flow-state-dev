@@ -53,6 +53,10 @@ import {
   ResourceDeletedError
 } from "../errors/flow-error";
 import { resourceStorageKeys } from "../resources/storage-keys";
+import {
+  normalizeResourceDefault,
+  normalizeResourceState
+} from "../resources/normalize-resource-state";
 import { isAnchoredPath, resolveContentPath } from "../resources/content-paths";
 import { isJsonObject, asJsonObject } from "../utils/json-helpers";
 import {
@@ -158,24 +162,16 @@ export type ScopeLazyLoad = {
   getInstance(storageKey: string): Promise<LazyLoadOutcome>;
   getByPrefix(keyPrefix: string): Promise<LazyLoadOutcome>;
 };
-function normalizeResourceDefault(config: ResourceConfig): JsonObject {
-  if (config.default !== undefined && isJsonObject(config.default)) {
-    return cloneValue(config.default);
-  }
 
-  const parsedFromUndefined = config.stateSchema.safeParse(undefined);
-  if (parsedFromUndefined.success && isJsonObject(parsedFromUndefined.data)) {
-    return asJsonObject(parsedFromUndefined.data);
-  }
-
-  const parsedFromEmptyObject = config.stateSchema.safeParse({});
-  if (parsedFromEmptyObject.success && isJsonObject(parsedFromEmptyObject.data)) {
-    return asJsonObject(parsedFromEmptyObject.data);
-  }
-
-  return {};
-}
-
+/**
+ * The default state for a bare `stateSchema`, with no resource config around it.
+ *
+ * Deliberately not a wrapper over `normalizeResourceDefault`, despite the
+ * similar `safeParse(undefined)` → `safeParse({})` ladder: there is no
+ * `config.default` rung, the schema itself may be absent, and a rung that
+ * parses to a non-object settles here (`asJsonObject` coerces to `{}`) rather
+ * than falling through to the next rung as it does for a resource.
+ */
 export function normalizeStateDefault(
   stateSchema: { safeParse: (value: unknown) => { success: boolean; data?: unknown } } | undefined
 ): JsonObject {
@@ -194,18 +190,6 @@ export function normalizeStateDefault(
   }
 
   return {};
-}
-
-function normalizeResourceState(
-  config: ResourceConfig,
-  value: unknown
-): JsonObject {
-  const parsed = config.stateSchema.safeParse(value);
-  if (parsed.success && isJsonObject(parsed.data)) {
-    return asJsonObject(parsed.data);
-  }
-
-  return normalizeResourceDefault(config);
 }
 
 export function isCollectionConfig(config: unknown): config is ResourceCollectionConfig {

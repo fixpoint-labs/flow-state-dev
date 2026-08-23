@@ -52,23 +52,6 @@ export function resolveDispatcher(
 }
 
 /**
- * True when a `pending` task's deps are all `completed`. Mirrors the
- * substrate's default eligibility but reads through the collection's
- * `get` so dep status reflects the latest committed view.
- */
-export function depsSatisfied(
-  task: Task,
-  collection: TaskCollectionRef
-): boolean {
-  if (task.deps === undefined || task.deps.length === 0) return true;
-  for (const depId of task.deps) {
-    const dep = collection.get(depId);
-    if (dep === undefined || dep.status !== "completed") return false;
-  }
-  return true;
-}
-
-/**
  * Would this row's work be *routed* to a Workstream rather than run in the
  * drain that is asking (FIX-982)?
  *
@@ -270,10 +253,4 @@ export function hasClaimableTask(collection: TaskCollectionRef): boolean {
     if (isClaimable(candidates[i], lookup, now)) return true;
   }
   return false;
-}
-
-/** Sleep for `ms` milliseconds. Used for idle-poll backoff in the worker loop. */
-export function sleep(ms: number): Promise<void> {
-  if (ms <= 0) return Promise.resolve();
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

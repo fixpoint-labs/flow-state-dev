@@ -78,13 +78,15 @@ Otherwise omit it — the block's schema is the source of truth, and the runtime
 
 ## Scope Configuration
 
-Flows configure state and resources across four scopes:
+Flows configure state across four scopes. Resources live in a single flat `resources` map; each resource's intrinsic `scope` (`"session"` | `"user"` | `"org"`) routes storage.
 
 ```ts
 defineFlow({
   kind: "my-flow",
   requireUser: true,
   actions: { /* ... */ },
+
+  resources: { /* accessor → defineResource / defineResourceCollection */ },
 
   request: {
     stateSchema: z.object({ /* per-request state */ }),
@@ -97,20 +99,17 @@ defineFlow({
 
   session: {
     stateSchema: z.object({ mode: z.enum(["plan", "edit"]).default("plan") }),
-    resources: { /* concrete persisted resources */ },
-    client: { derived: { /* derived views for the client */ } },
+    client: { /* expose / derived views for the client */ },
   },
 
   user: {
     stateSchema: z.object({ /* per-user state */ }),
-    resources: { /* ... */ },
-    client: { derived: { /* ... */ } },
+    client: { /* ... */ },
   },
 
-  project: {
-    stateSchema: z.object({ /* project-wide state */ }),
-    resources: { /* ... */ },
-    client: { derived: { /* ... */ } },
+  org: {
+    stateSchema: z.object({ /* org-wide state */ }),
+    client: { /* ... */ },
   },
 });
 ```
@@ -149,49 +148,60 @@ When an action is invoked, the framework executes this sequence:
 
 ## Resources and Client Data
 
-Resources are **concrete persisted data** attached to a scope. Client data entries are **derived views** computed from state and resources — the mechanism for exposing data to clients.
+Resources are **concrete persisted data**. They are declared once in the flow-level `resources` map — each resource's own `scope` decides where it persists. Scope configs carry state and a `client` block; they do not carry resources.
+
+A scope's state is private to the server by default. The `client` block declares the slice that crosses the boundary: `expose` passes top-level state fields through verbatim, and `derived` computes named projections from `{ state, resources }`. Both land under `clientData.<scope>.<name>` on the client.
 
 ```ts
-session: {
-  stateSchema: sessionStateSchema,
+defineFlow({
+  kind: "my-flow",
+  actions: { /* ... */ },
+
   resources: {
-    plan: {
+    plan: defineResource({
+      scope: "session",
       stateSchema: z.object({ steps: z.array(z.string()).default([]) }),
       writable: true,
+    }),
+  },
+
+  session: {
+    stateSchema: sessionStateSchema,
+    client: {
+      expose: ["messageCount"],
+      derived: {
+        activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
+      },
     },
   },
-  client: {
-    derived: {
-      activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
-      messageCount: (ctx) => ctx.state.messageCount ?? 0,
-    },
-  },
-},
+});
 ```
 
 **Key rules:**
-- Client-facing values are exposed through the scope's `client` config — `expose` passes named state fields through verbatim, `derived` computes views; both are client-visible
+- Resources are flow-level and flat — `session.resources` / `user.resources` / `org.resources` are gone
+- State does not reach the client unless named in `expose` or `derived`
+- `expose` and `derived` share one namespace per scope; colliding names throw at `defineFlow`
+- Each `derived` compute function receives only its own scope's state and resources
 - Generator context should use `contextFn()` for typed scope access
 - Use `defineResource()` for portable resource reuse
-- Each `client.derived` compute function receives only its own scope's state and resources
 
 ### Automatic Resource Collection
 
-Blocks can declare resource dependencies directly via `sessionResources`, `userResources`, and `projectResources` (using `defineResource()` values). When `defineFlow` is called, it collects `declaredResources` from all action blocks and merges them into the flow's scope configs. Flow-level resource declarations take priority — blocks bring defaults, and the flow can override them:
+Blocks declare resource dependencies via `resources` (using `defineResource()` values). When `defineFlow` is called, it collects `declaredResources` from all action blocks and merges them into the flow's `resources` map. Flow-level declarations take priority — blocks bring defaults, and the flow can override them:
 
 ```ts
 // Block declares its resource dependency
 const planManager = handler({
   name: "plan-manager",
-  sessionResources: { plan: planResource },
-  execute: async (input, ctx) => { /* ... */ },
+  resources: { plan: planResource },
+  execute: async (input, ctx) => { /* ctx.resources.plan */ },
 });
 
-// defineFlow merges block-declared resources into session.resources
+// defineFlow merges block-declared resources into flow.resources
 const flow = defineFlow({
   kind: "my-app",
   actions: { manage: { block: planManager } },
-  // session.resources will automatically include { plan: planResource }
+  // flow.resources will include { plan: planResource }
   // even without declaring it here
 });
 ```
@@ -231,7 +241,6 @@ defineFlow({
   tools: {
     defaults: {
       timeoutMs: 30000,
-      concurrency: "parallel",
       retry: { maxAttempts: 2 },
     },
     onToolStarted: (event, ctx) => { /* ... */ },

@@ -43,7 +43,7 @@ const bot = new Chat({
 
 export const flowstate = createFlowState({
   flows: { support: supportFlow },
-  stores: { default: inMemoryStores() },
+  stores: { default: { primary: inMemoryStores() } },
   adapters: [createChatTransportAdapter({ bot })],
 });
 ```

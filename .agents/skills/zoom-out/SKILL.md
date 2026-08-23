@@ -12,7 +12,7 @@ Use **FSD vocabulary** for everything you name:
 - **Flow** and its **actions** — what's the top-level surface, and which actions live on it?
 - **Block** kinds in the area — handlers, generators, sequencers, routers. Name the root block of each action.
 - **Pattern** factories and **capabilities** in play — what's the reusable composition machinery here?
-- **State scopes** the area reads/writes (request / session / user / project) and which resources it touches.
+- **State scopes** the area reads/writes (request / session / user / org) and which resources it touches.
 - **Items** the area emits to the stream (message / reasoning / block_output / component / status / state_change / error / etc.) — useful for understanding what reaches the client.
 - **Boundaries** — does this area cross `server`↔`client` or `client`↔`react`? Where are the seams?
 - **Callers** — what flows, blocks, or external entry points pull on this area? Where would a change ripple?

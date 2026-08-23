@@ -5,7 +5,7 @@
  * any generator via `.sideChain()`, runs pluggable analyzers against the completed
  * response + original input, and produces structured annotations.
  *
- * Pipeline: [captureContext] → [map to tasks] → [forEach analyzer] → [aggregateResults] → [applyThreshold]
+ * Pipeline: [captureContext tap] → [map to tasks] → [forEach analyzer] → [aggregateResults] → [applyThreshold]
  *
  * Because it runs via `.sideChain()`, the primary response streams unblocked. Audit
  * results appear after the response completes as a "second pass" annotation.
@@ -47,18 +47,20 @@ export type {
  * `.sideChain()` should map the pipeline value to this shape.
  *
  * Stores the captured context in sequencer state for downstream blocks.
+ * Wired as `.tap()` — state-only, no echoed output (BP-012 / BP-014).
+ *
+ * @remarks Compose this with `.tap(captureContext)`, never `.step(captureContext)`.
+ * It returns nothing, so as a `.step()` it hands `undefined` to the next step.
  */
 export const captureContext = handler({
   name: "capture-context",
   inputSchema: auditorInputSchema,
-  outputSchema: auditorInputSchema,
   sequencerStateSchema: responseAuditorStateSchema,
   execute: async (input, ctx) => {
     await ctx.sequencer!.patchState({
       userInput: input.userInput,
       response: input.response,
     });
-    return input;
   },
 });
 
@@ -196,7 +198,7 @@ export function responseAuditor(config: ResponseAuditorConfig) {
   );
 
   // Build the pipeline using the sequencer DSL:
-  // 1. captureContext stores input in state
+  // 1. captureContext taps the input into sequencer state
   // 2. map creates an array of identical inputs (one per analyzer) for forEach
   // 3. forEach fans out to analyzers using a factory function that selects
   //    the correct rescue-wrapped analyzer per index
@@ -210,7 +212,7 @@ export function responseAuditor(config: ResponseAuditorConfig) {
     inputSchema: auditorInputSchema,
     stateSchema: responseAuditorStateSchema,
   })
-    .step(captureContext)
+    .tap(captureContext)
     .map((input: { userInput: string; response: string }) =>
       analyzers.map(() => ({ userInput: input.userInput, response: input.response })),
     )

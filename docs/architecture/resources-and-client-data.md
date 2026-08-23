@@ -44,7 +44,6 @@ type ResourceConfig = {
   render?: (content: string, state: JsonObject) => string | Promise<string>; // Optional renderer
   llmReadable?: boolean;        // Allows read tool access when readResourceContentTool is installed
   llmWritable?: boolean;        // Allows write tool access when writeResourceContentTool is installed
-  dynamic?: boolean;            // Resolved at runtime
   writable?: boolean;           // Allow mutation from blocks
   allowedExtensions?: string[]; // Content type restrictions
   metadata?: Record<string, unknown>;
@@ -282,20 +281,23 @@ Identity-equal re-registration is always safe (diamond dependencies through capa
 
 ## Client Data
 
-Client data entries are derived views — computed from state and resources within a single scope. They're the mechanism for exposing server-side data to clients.
+Scope state is private to the server by default. Each scope declares what crosses the boundary with a `client` block, which has two halves:
+
+- **`expose`** — names of top-level state fields, passed through verbatim.
+- **`derived`** — named projections computed from `{ state, resources }` within that single scope.
 
 ```ts
 session: {
   client: {
+    expose: ["messageCount"],
     derived: {
       activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
-      messageCount: (ctx) => ctx.state.messageCount ?? 0,
     },
   },
 }
 ```
 
-Every `client.derived` entry is a function, and every entry is client-visible. There's no `client: true/false` toggle — if it's under `client`, clients can see it. Its sibling `client.expose` takes a list of state field names and passes them through verbatim, no function needed.
+Everything named in `expose` or `derived` is client-visible; there is no per-entry `client: true/false` toggle. The two share one namespace per scope (the scope's `clientData` object on the wire), so a name used in both throws at `defineFlow`.
 
 ### ClientDataComputeFn
 
@@ -310,7 +312,7 @@ type ClientDataContext<TState, TResources> = {
 ```
 
 **Key differences from the former projection system:**
-- **Single-scope context**: Each compute function receives only the state and resources from its own scope — no cross-scope access. A session-level `client.derived` entry sees session state and session resources, nothing else.
+- **Single-scope context**: Each compute function receives only the state and resources from its own scope — no cross-scope access. A session-level `derived` entry sees session state and session resources, nothing else.
 - **No output schema validation**: Compute functions return `JsonValue` directly. Type safety comes from usage patterns, not runtime schema validation.
 - **No `defineProjection()`**: There's no portable projection builder. For shared computation logic, extract a regular function.
 
@@ -346,7 +348,7 @@ defineFlow({
       },
     },
   },
-  project: {
+  org: {
     client: {
       derived: {
         sharedConfig: (ctx) => ctx.state.config ?? {},
@@ -363,14 +365,13 @@ Generators use `contextFn()` to pull typed data from scopes into model context �
 ```ts
 import { contextFn } from "@flow-state-dev/core";
 
-const myContext = contextFn({
-  sessionStateSchema: z.object({ mode: z.string() }),
-  sessionResources: { plan: planResource },
-  fn: (ctx) => {
-    const steps = ctx.session.resources.plan?.state.steps ?? [];
-    return `Current mode: ${ctx.session.state.mode}\nPlan steps: ${steps.join(", ")}`;
+const myContext = contextFn(
+  { session: z.object({ mode: z.string() }) },
+  ({ session }, ctx) => {
+    const steps = ctx.resources.plan?.state.steps ?? [];
+    return `Current mode: ${session.mode}\nPlan steps: ${steps.join(", ")}`;
   },
-});
+);
 
 const chatGenerator = generator({
   name: "chat",
@@ -417,12 +418,12 @@ type PlanCtx = ContextOf<typeof planResource, "resource">;
 
 Client-facing data is exposed through two complementary mechanisms:
 
-1. **Scope-level `client`** — `expose` passes named state fields through verbatim; `derived` computes views from scope state and resources. Best for cross-resource projections and non-resource data.
+1. **Scope-level `client`** — `expose` for verbatim state fields, `derived` for views computed from scope state and resources. Best for cross-resource projections and non-resource data.
 2. **Resource-level `client`** — per-resource visibility, data projection, and content access. `client.content` controls content endpoints. `client.data` derives metadata for the snapshot. Best for exposing resource data directly to clients without manual projection.
 
 ### Scope-Level Client Data
 
-A scope's `client` config computes values from state and resources within that single scope, and they arrive on the wire under `clientData`:
+A scope's `client` block projects state and resources from that single scope. The result is served grouped by scope:
 
 ```
 GET /api/flows/sessions/:sessionId/state
@@ -554,7 +555,7 @@ await actions.create({ topic: 'spec.md', content: '# New Spec' })
 await actions.update({ topic: 'readme.md', content: '# Updated' })
 ```
 
-Mid-request, `state_change` and `resource_change` stream items signal invalidation — clients should refetch the snapshot on `request.completed`. The `resource_change` projection rides the registry's internal post-mutation seam (`onResourceChanged`); the same seam also drives in-session reactive blocks (`reactTo`) — see [Reactive blocks](/docs/resources/reactive-blocks) and the seam contract in [Resource Collections](./resource-collections.md#reactive-blocks-reactto).
+Mid-request, `state_change` and `resource_change` stream items signal invalidation — clients should refetch the snapshot on `request.completed`. The `resource_change` projection rides the registry's internal post-mutation seam (`onResourceChanged`); the same seam also drives in-session reactive blocks (`reactTo`) — see [Reactive blocks](../../apps/docs/docs/resources/reactive-blocks.md) and the seam contract in [Resource Collections](./resource-collections.md#reactive-blocks-reactto).
 
 ## Canonical Authority
 

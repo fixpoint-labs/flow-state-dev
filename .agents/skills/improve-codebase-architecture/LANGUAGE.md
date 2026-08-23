@@ -69,7 +69,7 @@ The architectural overlay above coexists with FSD's primary domain vocabulary. W
 | **store adapter** | a literal **adapter** at a real seam | `StoreRegistry` interface (sessions / state / resources / etc.). Two adapters today (`@flow-state-dev/store-sqlite` + in-memory) = real seam, not hypothetical. |
 | **flow** | the **top-level module** | Actions + scope schemas + resources + capabilities. The flow's `actions` map is its external interface to callers (`fsdev run`, server routes, client). |
 | **action** | an **entry point on a flow** | `inputSchema`, the root block it dispatches to, side-effects on declared scopes. |
-| **scope** (request / session / user / project) | a **lifetime contract**, not a module | Not a module itself, but determines how a module's state mutations propagate. |
+| **scope** (request / session / user / org) | a **lifetime contract**, not a module | Not a module itself, but determines how a module's state mutations propagate. |
 | **item** (message / reasoning / block_output / component / etc.) | the **wire format** at the streaming seam | Item types are part of the streaming contract documented in `docs/architecture/items.md` and `docs/architecture/streaming.md`. Changing the item taxonomy is a cross-cutting change that ripples through server, client, react, and all renderers. |
 | **provider** (e.g. Vercel AI SDK) | a **true-external dependency** behind a seam | Currently single-provider in Phase 1; the seam exists for future providers. |
 

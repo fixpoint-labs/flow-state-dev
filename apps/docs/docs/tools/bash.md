@@ -24,7 +24,7 @@ export const bashCap = createBashCapability({
 });
 ```
 
-That's it. No `sessionResources`, no `collectionKey` — bash auto-discovers every `ResourceCollectionRef` installed on the block's resource context at runtime and mounts each at its pattern prefix:
+That's it. No extra resource wiring — bash auto-discovers every `ResourceCollectionRef` installed on `ctx.resources` at runtime and mounts each at its pattern prefix:
 
 | Collection pattern | Workspace path |
 |--------------------|----------------|
@@ -248,7 +248,7 @@ A grant is a credential MOAT holds for a third-party provider (GitHub, OpenAI, a
 
 On the first bash call in a session:
 
-1. **Discover mounts** — walk `ctx.session.resources`, `ctx.user.resources`, `ctx.org.resources`; any `ResourceCollectionRef` becomes a mount at its pattern prefix. `collections` / `exclude` can override.
+1. **Discover mounts** — walk `ctx.resources`; any `ResourceCollectionRef` becomes a mount at its pattern prefix. `collections` / `exclude` can override.
 2. **Hydrate** — write every mount's entries into the sandbox under its prefix. Seed `./tmp/.keep` so the scratch directory exists.
 3. **Run the command** — whatever the agent requested.
 4. **Flush** — walk the workspace with `find`. For each file:
@@ -278,6 +278,7 @@ import { z } from "zod";
 
 const artifacts = defineResourceCollection({
   pattern: "artifacts/**",
+  scope: "session",
   stateSchema: z.object({
     path: z.string(),
     hash: z.string(),
@@ -305,7 +306,7 @@ File content is stored separately via the resource content system (`readContent`
 import { createBashTool } from "@flow-state-dev/tools/bash";
 
 const { tools, sandbox } = await createBashTool({
-  collections: { artifacts: ctx.session.resources.artifacts },
+  collections: { artifacts: ctx.resources.artifacts },
   provider: { type: "local", cwd: "./workspace" },
 });
 ```

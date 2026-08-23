@@ -57,8 +57,6 @@ A run that prints `flow_complete` and then sits there is usually waiting on back
 | `-f, --input-file <path>` | Read input from a JSON file | Long fixtures |
 | `-s, --session <id>` | Reuse session state across invocations | Multi-turn flows |
 | `--seed-session <json\|path>` | Pre-populate session state | Reproducing a specific bug state |
-| `--seed-user <json\|path>` | Pre-populate user-scoped state | User-memory features |
-| `--seed-org <json\|path>` | Pre-populate org-scoped state | Multi-tenant features |
 | `-m, --model <id>` | Override the model for every generator in this process; [not for background work sent to a queue](./overview.md#model-overrides) | Cheap iteration, forcing a path |
 | `--flow-dir <path>` | Restrict flow discovery (repeatable) | Monorepo with many candidate flows |
 | `--capture <path>` | Write the full structured run output to a JSON file (additive with stdout) | Diffing runs, sharing a trace |

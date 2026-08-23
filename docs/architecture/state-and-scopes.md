@@ -181,18 +181,18 @@ ctx.request.patchState()   // + all ScopeStateOps
 // Session scope (always available in Phase 1)
 ctx.session.state          // Readonly<TSessionState>
 ctx.session.metadata       // Readonly<SessionMetadata> (title, description, tags)
-ctx.session.resources      // ResourceRegistry
 ctx.session.items          // SessionItemViews (client/llm views)
 ctx.session.getJournal()
 ctx.session.setMetadata()
 
 // User scope (always available in Phase 1)
 ctx.user.state             // Readonly<TUserState>
-ctx.user.resources         // ResourceRegistry
 
 // Org scope (optional)
-ctx.org?.state         // Readonly<TOrgState>
-ctx.org?.resources     // ResourceRegistry
+ctx.org?.state             // Readonly<TOrgState>
+
+// Flat resource registry (every declared resource, any scope)
+ctx.resources              // ResourceRegistry — keyed by accessor, routed by resource.scope
 ```
 
 ### Partial State Schemas
