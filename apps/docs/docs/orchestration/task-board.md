@@ -192,9 +192,25 @@ The second argument is feedback for whoever picks the task up. It reaches the wo
 **A resume re-queues the task. It does not start anything.** Nothing is watching the board on your behalf, so a resumed task sits in `pending` until something drains the board again: a later turn from the user, a scheduled action, or a background job. If you resume a task and nothing happens, this is why. Run the drain:
 
 ```ts
-// Later, in a new request, over the same durable collection:
-await runAction({ flow, actionName: "drain-reviews", input: {}, userId, stores, runtimeConfig: {} });
+// Later, in a new request:
+await runAction({
+  flow,
+  actionName: "drain-reviews",
+  input: {},
+  userId,
+  sessionId, // the session whose task list holds the parked task
+  stores,
+  runtimeConfig: {},
+});
 ```
+
+**The later drain has to reach the same task list**, and that is the part this
+call does not make obvious. A collection declared `scope: "session"` lives in one
+session, so the drain has to name it. Leave `sessionId` out and nothing
+complains: the runtime starts a fresh session, the drain resolves an empty task
+list, reports that it drained, and never sees the parked task. A `user`- or
+`org`-scoped collection spans every session that principal has, so it does not
+need this.
 
 `flow` and `stores` are the ones you already built; [Running a flow by
 hand](/docs/advanced/manual-flow-execution) covers assembling them outside the
