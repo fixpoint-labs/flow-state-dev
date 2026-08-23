@@ -16,7 +16,7 @@
 import { boot, deliveries, fromOutside, received, show } from "./harness";
 
 async function main(): Promise<void> {
-  const { host } = boot();
+  const { host, stores } = boot();
 
   // Three sessions, one owner. Cross-user is refused by an existing invariant
   // (epic Q1) and is not what this asks about.
@@ -25,7 +25,7 @@ async function main(): Promise<void> {
     await fromOutside(host, "seed", { note: s }, s, USER);
   }
 
-  const { result } = await fromOutside(
+  const { requestId: senderRequestId, result } = await fromOutside(
     host,
     "sendTwo",
     { toA: "sess_peer_a", toB: "sess_peer_b", timeoutMs: 5_000 },
@@ -67,6 +67,52 @@ async function main(): Promise<void> {
       (r) => r.requestId === output?.myRequestId
     )
   };
+  // THROUGH PERSISTENCE, not just the live emitter. A reply that only ever
+  // existed in memory would satisfy everything above and still be absent from
+  // the history a later turn rebuilds from.
+  const record = await stores.request.get(senderRequestId);
+  const persisted = (record?.items ?? []) as Array<{
+    id?: string;
+    type?: string;
+    role?: string;
+    content?: Array<{ type?: string; text?: string }>;
+  }>;
+  const persistedReplies = persisted.filter((i) => i.id?.startsWith("relay_reply_"));
+  show(
+    "the sender's PERSISTED items (what a later turn rebuilds from)",
+    persistedReplies.map((i) => ({
+      id: i.id,
+      type: i.type,
+      role: i.role,
+      contentText: i.content?.[0]?.text
+    }))
+  );
+
+  const shaped = persistedReplies.every(
+    (i) =>
+      i.type === "message" &&
+      typeof i.role === "string" &&
+      Array.isArray(i.content) &&
+      typeof i.content[0]?.text === "string"
+  );
+  const persistedPayloads = persistedReplies.map((i) => {
+    try {
+      return JSON.parse(i.content?.[0]?.text ?? "{}") as { correlationId?: string };
+    } catch {
+      return {};
+    }
+  });
+
+  Object.assign(verdict, {
+    // Both replies survived to the request record, still shaped as valid
+    // MessageItems — the half the live-emitter assertions cannot see.
+    bothRepliesPersisted: persistedReplies.length === 2,
+    persistedRepliesAreValidMessageItems: shaped,
+    persistedPayloadsCarryBothCorrelationIds:
+      persistedPayloads.some((x) => x.correlationId === "corr_A") &&
+      persistedPayloads.some((x) => x.correlationId === "corr_B")
+  });
+
   show("VERDICT", verdict);
 }
 

@@ -31,6 +31,7 @@ import {
 } from "../../packages/engine/src";
 import type { InboundTransportHost } from "../../packages/engine/src/transports/types";
 import type { ConcurrencyArbiter } from "../../packages/engine/src/transports/concurrency/arbiter";
+import type { StoreRegistry } from "../../packages/engine/src/stores/types";
 
 export const FLOW_KIND = "relay-core-poc";
 
@@ -91,16 +92,27 @@ export function deliverReply(
   if (requestId === undefined) return { delivered: false, reason: "no-waiter" };
   const response = liveReplyTargets.get(requestId);
   if (response === undefined) return { delivered: false, reason: "waiter-not-live-in-this-process" };
-  void response.emit({
-    type: "item.added",
-    item: {
-      id: `relay_reply_${correlationId}`,
-      type: "message",
-      itemIndex: response.getItemCount(),
-      status: "completed",
-      payload: { text: JSON.stringify({ correlationId, payload }) }
-    }
-  });
+  // SECOND FINDING, and it invalidated the first version of this proof: the item
+  // has to be a VALID `MessageItem`. `isOutputItem` (`response-emitter.ts:142-151`)
+  // only checks `id` / `type` / `itemIndex`, so an object carrying a made-up
+  // `payload` field and no `role`/`content` sails through the runtime check and
+  // is then treated by history reconstruction as a message with EMPTY content.
+  // The earlier version did exactly that, so "the sender got the payload" was
+  // being asserted against an item production would never accept.
+  // `MessageItem` = `{ type: "message", role, content: Content[] }`
+  // (`contracts/src/items/types.ts:364-384`).
+  const item = {
+    id: `relay_reply_${correlationId}`,
+    type: "message" as const,
+    itemIndex: response.getItemCount(),
+    status: "completed" as const,
+    role: "user" as const,
+    content: [
+      { type: "output_text" as const, text: JSON.stringify({ correlationId, payload }) }
+    ]
+  };
+  void response.emit({ type: "item.added", item });
+  void response.emit({ type: "item.done", item });
   return { delivered: true };
 }
 
@@ -125,7 +137,8 @@ type WaitOutcome = { timedOut: boolean; sawItemId?: string; replyPayload?: unkno
  * ask-and-continue flow. Asserting the mechanism instead of the promise.
  */
 function readReply(item: unknown): unknown {
-  const text = (item as { payload?: { text?: string } })?.payload?.text;
+  // Read the real field, not an invented one — see `deliverReply`.
+  const text = (item as { content?: Array<{ text?: string }> })?.content?.[0]?.text;
   if (typeof text !== "string") return undefined;
   try {
     return (JSON.parse(text) as { payload?: unknown }).payload;
@@ -335,12 +348,13 @@ export const hostLogs: Array<{ level: string; message: string; context?: unknown
 export function boot(
   concurrency?: { policy: "queue" | "allow"; key?: "session" | "user" },
   arbiter?: ConcurrencyArbiter
-): { host: InboundTransportHost } {
+): { host: InboundTransportHost; stores: StoreRegistry } {
   const registry = createFlowRegistry();
   registry.register(buildFlow(concurrency));
+  const stores = createInMemoryStores();
   const host = createInboundTransportHost({
     registry,
-    stores: createInMemoryStores(),
+    stores,
     ...(arbiter !== undefined ? { arbiter } : {}),
     resolvePrincipal: defaultBodyUserIdPrincipalResolver,
     runtimeConfig: {
@@ -351,7 +365,7 @@ export function boot(
     }
   });
   HOST = host;
-  return { host };
+  return { host, stores };
 }
 
 /** Dispatch from OUTSIDE — what an HTTP caller does — and await the run. */
