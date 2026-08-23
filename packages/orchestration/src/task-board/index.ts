@@ -1151,9 +1151,14 @@ export function taskBoard<
     // the drain stopped because rows were excused as parked (FIX-1234). Keep
     // this tap directly after the `forEach`; a step inserted between the two
     // would replace the value and the board would start reporting a review exit
-    // as a failure. The drain-level tests in `task-board-park-exit.test.ts`
-    // assert the reported reason, so a rewiring fails there rather than
-    // silently.
+    // as a failure. The drain-level tests in
+    // `test/task-board/task-board-park-exit-drain.test.ts` assert the reported
+    // reason, so a rewiring fails there rather than silently.
+    //
+    // Known fragility, deliberately not designed away here: this is ordering
+    // discipline, not a typed contract. Nothing stops a future step being
+    // inserted between the `forEach` and this tap, and the failure would be
+    // silent at the type level — caught only by those tests.
     .tap(boardMetaCompleted)
     // FIX-610: teardown on the success path. The `.rescue` below also
     // runs teardown on errors so cleanup is symmetric — leaving stale

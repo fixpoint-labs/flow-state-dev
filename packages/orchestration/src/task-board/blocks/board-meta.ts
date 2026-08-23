@@ -36,7 +36,6 @@ import { z } from "zod";
 import type { TaskCollectionRef } from "../../tasks";
 import { anyRetryDeniedByBudget, sumGrantedRetries } from "../../tasks/collection/internal";
 import { isHandedOff, type RunsElsewhere } from "../shared";
-import type { CheckBoardOutput } from "../schemas";
 
 /** Component-item type emitted by both board-meta blocks. */
 export const TASK_BOARD_META_COMPONENT_TYPE = "task-board-meta";
@@ -203,11 +202,16 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
  */
 function excusedParkedByPool(input: unknown): boolean {
   if (!Array.isArray(input)) return false;
+  // A property check rather than a cast: this input crosses no schema boundary
+  // (the block declares `inputSchema: z.unknown()` so callers outside the
+  // composed drain keep working), so asserting the shape with `as` would be
+  // claiming a guarantee nothing checked.
   return input.some(
     (exit) =>
       typeof exit === "object" &&
       exit !== null &&
-      (exit as CheckBoardOutput).excusedParked === true
+      "excusedParked" in exit &&
+      (exit as { excusedParked?: unknown }).excusedParked === true
   );
 }
 

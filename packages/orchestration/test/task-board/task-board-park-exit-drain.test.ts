@@ -31,15 +31,18 @@
  */
 import { describe, expect, it } from "vitest";
 import { handler, sequencer } from "@flow-state-dev/core";
+import type { BlockContext } from "@flow-state-dev/core/types";
 import { testBlock } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
   defineTaskCollection,
+  type DefinedTaskCollection,
   type Task,
   type TaskCollectionRef,
   type TaskDispatcher,
   type TaskWorker,
 } from "../../src/tasks";
+import { resolveResourceTaskCollection } from "../../src/task-board/resolve-resource";
 import {
   taskBoard,
   taskBoardStateSchema,
@@ -657,5 +660,238 @@ describe("onReview: 'exit' — two drains of one board, concurrently, in one req
     // The parked row is untouched by either drain.
     expect(tasks.get("ask")?.status).toBe("awaiting_review");
     expect(tasks.list().map((t) => t.id).sort()).toEqual(["ask", "gate"]);
+  });
+});
+
+/**
+ * A worker reaching its own board's rows.
+ *
+ * This is the route a real worker takes: the caller declared the ledger, so the
+ * caller's worker has it in scope and resolves it. The board's capability is
+ * not available here — it does not exist until `taskBoard()` returns, and the
+ * worker is an argument to that call — and the task tools deliberately cannot
+ * reach `awaiting_review` at all.
+ */
+function boardTasks(
+  ctx: BlockContext,
+  boardName: string,
+  ledgerId: string,
+  ledger: DefinedTaskCollection
+): Promise<TaskCollectionRef> {
+  return resolveResourceTaskCollection(ctx, {
+    boardName,
+    resourceKey: ledgerId,
+    collectionId: ledgerId,
+    ledger,
+  });
+}
+
+describe("onReview: 'exit' — a worker parking its OWN task", () => {
+  /**
+   * THE PROMISE, and the case every other test in this file walks around.
+   *
+   * The sibling-actor scenarios above park a row the board's worker never
+   * claimed, so they exercise the exclusion — parked rows are excused from the
+   * count — without ever exercising what the docs actually describe: a worker
+   * calls `awaitReview()` on the task it is holding and returns, and the park
+   * has to survive the step that runs next.
+   *
+   * It did not. `recordSuccess` completed the row unconditionally, and both
+   * `awaiting_review → completed` and `awaiting_review → errored` are legal
+   * transitions the claim ticket admits, so the park was overwritten a
+   * millisecond after it was made. Nothing was left parked, the exclusion had
+   * nothing to excuse, and `parked-for-review` was unreachable by this route —
+   * while every test still passed, because none of them took it.
+   *
+   * These three assert the promise rather than the mechanism.
+   */
+  function buildWorkerParkScenario(config: {
+    ledgerId: string;
+    boardName: string;
+    /** What the worker does after parking: return normally, or throw. */
+    after: "return" | "throw";
+  }) {
+    const { ledgerId, boardName, after } = config;
+    const processed: string[] = [];
+    const ledger = defineTaskCollection({
+      id: ledgerId,
+      scope: "session",
+      stateSchema: z.object({ topic: z.string() }),
+    });
+
+    const worker = handler({
+      name: `${boardName}-worker`,
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.object({ ok: z.string() }),
+      execute: async (input, ctx) => {
+        const tasks = await boardTasks(ctx, boardName, ledgerId, ledger);
+        // The human's answer arrives as `feedback` on the next attempt, so its
+        // absence is "nobody has looked at this yet".
+        if (input.feedback === undefined) {
+          await tasks.awaitReview(input.taskId, "does this look right?");
+          if (after === "throw") throw new Error("fell over after parking");
+          return { ok: `${input.taskId}:parked` };
+        }
+        processed.push(`${input.taskId}:${input.feedback}`);
+        return { ok: input.taskId };
+      },
+    }) as TaskWorker;
+
+    const board = taskBoard({
+      name: boardName,
+      collection: ledger,
+      concurrency: 1,
+      dispatcher: "fifo",
+      workers: worker,
+      initialTasks: [{ id: "ask", goal: "ask", input: { topic: "a" } }],
+      onReview: "exit",
+      idlePollMs: 2,
+      maxIterations: 20,
+    });
+
+    return { board, boardName, ledgerId, ledger, processed };
+  }
+
+  it("leaves the row parked when the worker parks it and returns", async () => {
+    const { board, boardName, ledgerId, ledger } = buildWorkerParkScenario({
+      ledgerId: "park-exit-worker-return",
+      boardName: "park-exit-worker-return",
+      after: "return",
+    });
+
+    const seen: { status?: string } = {};
+    const inspect = handler({
+      name: `${boardName}-inspect`,
+      inputSchema: z.unknown(),
+      outputSchema: z.null(),
+      uses: [board.capability],
+      execute: async (_input, ctx) => {
+        const tasks: TaskCollectionRef = await ctx.cap[boardName].tasks();
+        seen.status = tasks.get("ask")?.status;
+        return null;
+      },
+    });
+
+    const root = sequencer({
+      name: `${boardName}-root`,
+      inputSchema: z.unknown(),
+      stateSchema: taskBoardStateSchema,
+    })
+      .tap(board.drain)
+      .tap(inspect);
+
+    const result = await testBlock(root, { input: undefined });
+
+    expect(result.error).toBeNull();
+    // The park survived the worker's return. Without the guard in
+    // `recordSuccess` this reads `"completed"`.
+    expect(seen.status).toBe("awaiting_review");
+    // And the drain returned rather than holding the request open.
+    expect(reasonFrom(result.items)).toBe("parked-for-review");
+    void ledgerId;
+    void ledger;
+  });
+
+  it("leaves the row parked when the worker parks it and then throws", async () => {
+    const { board, boardName } = buildWorkerParkScenario({
+      ledgerId: "park-exit-worker-throw",
+      boardName: "park-exit-worker-throw",
+      after: "throw",
+    });
+
+    const seen: { status?: string } = {};
+    const inspect = handler({
+      name: `${boardName}-inspect`,
+      inputSchema: z.unknown(),
+      outputSchema: z.null(),
+      uses: [board.capability],
+      execute: async (_input, ctx) => {
+        const tasks: TaskCollectionRef = await ctx.cap[boardName].tasks();
+        seen.status = tasks.get("ask")?.status;
+        return null;
+      },
+    });
+
+    const root = sequencer({
+      name: `${boardName}-root`,
+      inputSchema: z.unknown(),
+      stateSchema: taskBoardStateSchema,
+    })
+      .tap(board.drain)
+      .tap(inspect);
+
+    const result = await testBlock(root, { input: undefined });
+
+    expect(result.error).toBeNull();
+    // The mirror of the case above. Without the guard in `recordError` this
+    // reads `"errored"` — and on a task carrying `maxAttempts` it would read
+    // `"pending"`, re-queued for a sibling to run while the human is still
+    // being asked.
+    expect(seen.status).toBe("awaiting_review");
+    expect(reasonFrom(result.items)).toBe("parked-for-review");
+  });
+
+  it("completes the round trip: worker parks, human answers, a second drain finishes it", async () => {
+    // The full workflow the task-board page describes, walked end to end. The
+    // first drain returns with the row parked; the answer arrives after that
+    // request is over; a later drain picks the row up and the worker sees the
+    // feedback.
+    const { board, boardName, processed } = buildWorkerParkScenario({
+      ledgerId: "park-exit-worker-round-trip",
+      boardName: "park-exit-worker-round-trip",
+      after: "return",
+    });
+
+    const checkpoint: { status?: string; count?: number } = {};
+    const answer = handler({
+      name: `${boardName}-answer`,
+      inputSchema: z.unknown(),
+      outputSchema: z.null(),
+      uses: [board.capability],
+      execute: async (_input, ctx) => {
+        const tasks: TaskCollectionRef = await ctx.cap[boardName].tasks();
+        checkpoint.status = tasks.get("ask")?.status;
+        checkpoint.count = tasks.count();
+        await tasks.resumeFromReview("ask", "approved, carry on");
+        return null;
+      },
+    });
+
+    const finalState: { status?: string; ids?: string[] } = {};
+    const inspect = handler({
+      name: `${boardName}-inspect`,
+      inputSchema: z.unknown(),
+      outputSchema: z.null(),
+      uses: [board.capability],
+      execute: async (_input, ctx) => {
+        const tasks: TaskCollectionRef = await ctx.cap[boardName].tasks();
+        finalState.status = tasks.get("ask")?.status;
+        finalState.ids = tasks.list().map((t) => t.id).sort();
+        return null;
+      },
+    });
+
+    const root = sequencer({
+      name: `${boardName}-root`,
+      inputSchema: z.unknown(),
+      stateSchema: taskBoardStateSchema,
+    })
+      .tap(board.drain)
+      .tap(answer)
+      .tap(board.drain)
+      .tap(inspect);
+
+    const result = await testBlock(root, { input: undefined });
+
+    expect(result.error).toBeNull();
+    // The first drain returned with the row still parked and nothing else added.
+    expect(checkpoint.status).toBe("awaiting_review");
+    expect(checkpoint.count).toBe(1);
+    // The second drain re-claimed it, and the human's answer reached the worker.
+    expect(processed).toEqual(["ask:approved, carry on"]);
+    expect(finalState.status).toBe("completed");
+    // The re-seed grew no duplicate.
+    expect(finalState.ids).toEqual(["ask"]);
+    expect(reasonFrom(result.items)).toBe("all-completed");
   });
 });

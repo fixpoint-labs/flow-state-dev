@@ -32,3 +32,19 @@ something is.
 
 Consumers that switch on `terminationReason` gain one value to handle. Nothing
 reports it unless a board turned the mode on.
+
+**A worker parking its own task now works, on every board.** A worker that calls
+`awaitReview()` on the task it is holding and then returns had that task
+completed a moment later, by the board's own result recorder — so the park did
+not survive the worker that made it, and the same was true of a worker that
+parked and then failed. The recorders now leave a parked row alone on both
+paths.
+
+This changes what an existing board does, so it is worth being plain about
+where. A board that leaves `onReview` on its default and whose worker parks its
+own task used to see that task complete and the drain finish. It will now see
+the task stay parked and the drain wait for an external actor to move it, which
+is what the default has always meant for a task parked from anywhere else. If
+that board wants the drain to return instead, `onReview: "exit"` is the setting
+for it. Boards whose tasks are parked by something other than the worker holding
+them are unaffected.
