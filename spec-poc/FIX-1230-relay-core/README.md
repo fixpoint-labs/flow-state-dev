@@ -57,6 +57,23 @@ field, the removed pin, the flipped stamp, exercised and recorded. The table at 
 this file is that record for these three; it exists because the two defects above are what
 happens without it.
 
+**And a THIRD challenge to the same value, which is the one that matters most.** Isolating the
+sinks fixed the *cross-case* leak; it did nothing about a *within-case* ordering problem.
+`obs.received` was read only after `fromOutside()` awaited the sender's completion — but in a
+collision case the queued recipient is released **by that same request ending**, so promise
+scheduling decided whether its push landed before or after the read. A recipient stalled for
+the entire wait could still be counted as having run during it, and again the error could only
+ever produce `true`.
+
+**Measured, because "it agrees today" is not an answer.** The reading is now an ordering
+comparison against a `waitEndedAt` stamp captured *inside* the request while it still holds its
+key, and both readings are printed side by side. Across 20 stress runs of the two collision
+cases: **0 disagreements, and no cell moved.** The reason they agreed is worth writing down —
+the queued release lands **2.9–7.2 ms after the wait ends** (median 4.11). Milliseconds, not
+structure: a GC pause between the `await` resolving and the read would have inverted it. Three
+rounds, three challenges, one value — the pattern is that *"did X happen while Y was true"* was
+being answered by looking at a variable afterwards instead of by comparing two timestamps.
+
 Each host now owns its sink
 (`Observations` in `harness.ts`), so the leak is unrepresentable rather than unlikely, and
 `q6-arbiter-key.ts` prints a replay of what the shared array *would* have reported so the

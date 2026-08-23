@@ -189,6 +189,24 @@ export type SendResult = {
   sawItemId?: string;
   /** The recipient's answer. What the sender actually came for. */
   replyPayload?: unknown;
+  /**
+   * When THIS SENDER STOPPED WAITING, monotonic, captured inside the request
+   * while it still holds its arbitration key.
+   *
+   * THE POINT, and it is the third correction to this one measurement. q6 used
+   * to answer "did the recipient run while the sender waited?" by reading the
+   * observation array after `handle.finished` resolved. That is not the question
+   * — it is a proxy for it, and a bad one: in a collision case the queued
+   * recipient is released BY the sender's own request ending, so promise
+   * scheduling decides whether its push lands before or after the read. A
+   * recipient that stalled for the entire wait could still be counted as having
+   * run during it, and the error only ever pointed at `true` — the no-deadlock
+   * reading, which is the answer the pin candidate wanted.
+   *
+   * Comparing the recipient's start against this stamp measures the ordering the
+   * claim is actually about, instead of the ordering of our own reads.
+   */
+  waitEndedAt: number;
   elapsedMs: number;
   dispatchRefused?: string;
 };
@@ -232,8 +250,17 @@ async function blockingSend(
     (item) => item.id === `relay_reply_${args.correlationId}`,
     args.timeoutMs
   );
+  // Immediately: the wait is over but this request has NOT finished, so it still
+  // holds its key. Anything the recipient pushed before this instant genuinely
+  // ran while the sender waited; anything after it was released by the sender.
+  const waitEndedAt = performance.now();
   waiters.delete(args.correlationId);
-  return { correlationId: args.correlationId, ...outcome, elapsedMs: Date.now() - started };
+  return {
+    correlationId: args.correlationId,
+    ...outcome,
+    waitEndedAt,
+    elapsedMs: Date.now() - started
+  };
 }
 
 /**
@@ -290,10 +317,11 @@ export function buildFlow(
             obs.received.push({
               sessionId: ctx.session.identity.id,
               requestId: ctx.request.identity.id,
-              // When this recipient actually started. q6 replays these against
-              // each case's clear→read window to reconstruct what the old
-              // shared array reported.
-              at: Date.now(),
+              // When this recipient actually STARTED, on a monotonic clock.
+              // `performance.now()` rather than `Date.now()` because the whole
+              // question is an ordering one and the events it separates can land
+              // inside a single millisecond — see `waitEndedAt` below.
+              at: performance.now(),
               ...input
             });
             // A real recipient does work first. Keep it long enough that the

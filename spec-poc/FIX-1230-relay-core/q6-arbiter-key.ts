@@ -73,7 +73,7 @@ type Ran = {
 };
 
 async function run(c: Case): Promise<Ran> {
-  const clearedAt = Date.now();
+  const clearedAt = performance.now();  // same clock as `at` — the replay compares them
   const { host, obs } = boot(
     c.declared === "none" ? undefined : { policy: "queue", key: c.flowKey },
     c.keying === "pin" ? pinRelayToRecipientSession() : undefined
@@ -90,7 +90,9 @@ async function run(c: Case): Promise<Ran> {
     "sess_sender",
     USER
   );
-  const output = (result as { output?: { timedOut?: boolean; elapsedMs?: number } }).output;
+  const output = (result as {
+    output?: { timedOut?: boolean; elapsedMs?: number; waitEndedAt?: number };
+  }).output;
 
   // THE DISTINCTION THIS CASE SET EXISTS FOR: a RESOLVED key is not a HELD key.
   // `normalizeConfig(undefined)` returns `{ policy: "allow", key: "session" }`
@@ -110,11 +112,23 @@ async function run(c: Case): Promise<Ran> {
     deliveryKey,
     naiveResolvedKeyCollide: senderResolvedKey === deliveryKey,
     keysCollide: senderHeldKey !== undefined && senderHeldKey === deliveryKey,
-    recipientRanWhileSenderWaited: obs.received.length > 0,
+    // THE MEASUREMENT. Ordering against the sender's own wait-end stamp, not
+    // against when this code happens to look at the array. See `waitEndedAt` in
+    // harness.ts for why the read-time version was unsound in exactly the
+    // collision cases the verdict depends on.
+    recipientRanWhileSenderWaited:
+      output?.waitEndedAt === undefined
+        ? false
+        : obs.received.some((r) => (r.at as number) <= (output.waitEndedAt as number)),
+    // The old, discredited reading, kept for one release so the two can be
+    // diffed rather than swapped silently. If these ever disagree, the
+    // difference IS the defect this correction was made for.
+    recipientRanAtReadTime: obs.received.length > 0,
+    senderWaitEndedAt: output?.waitEndedAt,
     senderTimedOut: output?.timedOut,
     senderWaitedMs: output?.elapsedMs
   };
-  const readAt = Date.now();
+  const readAt = performance.now();
   show(c.label, row);
   return { row, obs, clearedAt, readAt };
 }
@@ -160,6 +174,9 @@ async function main(): Promise<void> {
       case: r.label,
       collide: r.keysCollide,
       recipientRan: r.recipientRanWhileSenderWaited,
+      // Printed beside it so a reader can see the two measurements agree — and
+      // notice immediately if they ever stop agreeing.
+      recipientRanAtReadTime: r.recipientRanAtReadTime,
       senderTimedOut: r.senderTimedOut
     }))
   );
