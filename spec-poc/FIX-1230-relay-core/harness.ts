@@ -114,13 +114,39 @@ export function deliverReply(
  * predicate is fixed when the sequencer is DEFINED, and the correlation id
  * does not exist until the send runs.
  */
+type WaitOutcome = { timedOut: boolean; sawItemId?: string; replyPayload?: unknown };
+
+/**
+ * Pull the reply payload back out of the delivered item.
+ *
+ * THE POINT, and it is a correction: this used to return only `sawItemId`, so
+ * the experiment proved an item with the right id arrived and proved NOTHING
+ * about the sender receiving the recipient's answer — which is the entire
+ * ask-and-continue flow. Asserting the mechanism instead of the promise.
+ */
+function readReply(item: unknown): unknown {
+  const text = (item as { payload?: { text?: string } })?.payload?.text;
+  if (typeof text !== "string") return undefined;
+  try {
+    return (JSON.parse(text) as { payload?: unknown }).payload;
+  } catch {
+    return undefined;
+  }
+}
+
 async function waitForCorrelated(
   response: ResponseEmitterHandle,
   match: (item: { id?: string }) => boolean,
   timeoutMs: number
-): Promise<{ timedOut: boolean; sawItemId?: string }> {
+): Promise<WaitOutcome> {
   const already = response.getItems().find((i) => match(i as { id?: string }));
-  if (already !== undefined) return { timedOut: false, sawItemId: (already as { id?: string }).id };
+  if (already !== undefined) {
+    return {
+      timedOut: false,
+      sawItemId: (already as { id?: string }).id,
+      replyPayload: readReply(already)
+    };
+  }
 
   return await new Promise((resolve) => {
     let settled = false;
@@ -138,7 +164,11 @@ async function waitForCorrelated(
       settled = true;
       clearTimeout(timer);
       unsubscribe?.();
-      resolve({ timedOut: false, sawItemId: (item as { id?: string }).id });
+      resolve({
+        timedOut: false,
+        sawItemId: (item as { id?: string }).id,
+        replyPayload: readReply(item)
+      });
     });
   });
 }
@@ -151,6 +181,8 @@ export type SendResult = {
   correlationId: string;
   timedOut: boolean;
   sawItemId?: string;
+  /** The recipient's answer. What the sender actually came for. */
+  replyPayload?: unknown;
   elapsedMs: number;
   dispatchRefused?: string;
 };
@@ -233,7 +265,11 @@ export function buildFlow(concurrency?: { policy: "queue" | "allow"; key?: "sess
             // A real recipient does work first. Keep it long enough that the
             // sender is genuinely parked rather than racing a synchronous reply.
             await new Promise((r) => setTimeout(r, 150));
-            const outcome = deliverReply(input.correlationId, { echo: input.text });
+            // Distinct per message, so "did A get A's answer" is answerable.
+            const outcome = deliverReply(input.correlationId, {
+              answerTo: input.correlationId,
+              echo: input.text
+            });
             deliveries.push({ correlationId: input.correlationId, ...outcome });
             return { handled: true } as const;
           }

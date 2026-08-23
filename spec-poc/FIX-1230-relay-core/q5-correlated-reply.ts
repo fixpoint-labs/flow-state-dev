@@ -38,13 +38,26 @@ async function main(): Promise<void> {
   show("what the recipients saw", received);
   show("what each reply delivery reported", deliveries);
 
-  const a = output?.a as { correlationId: string; timedOut: boolean; sawItemId?: string };
-  const b = output?.b as { correlationId: string; timedOut: boolean; sawItemId?: string };
+  type R = {
+    correlationId: string;
+    timedOut: boolean;
+    sawItemId?: string;
+    replyPayload?: { answerTo?: string; echo?: string };
+  };
+  const a = output?.a as R;
+  const b = output?.b as R;
 
   const verdict = {
     bothWokeWithoutTimingOut: a?.timedOut === false && b?.timedOut === false,
     eachWokeOnItsOwnReply:
       a?.sawItemId === "relay_reply_corr_A" && b?.sawItemId === "relay_reply_corr_B",
+    // THE PROMISE, not the mechanism: the sender got the recipient's ANSWER,
+    // and got its OWN one. Waking on the right item id proves neither.
+    eachReceivedItsOwnRecipientPayload:
+      a?.replyPayload?.answerTo === "corr_A" &&
+      a?.replyPayload?.echo === "question A" &&
+      b?.replyPayload?.answerTo === "corr_B" &&
+      b?.replyPayload?.echo === "question B",
     bothRepliesDelivered: deliveries.every((d) => d.delivered === true),
     tworecipientRequests: received.length === 2,
     recipientsRanOnTheirOwnSessions:
