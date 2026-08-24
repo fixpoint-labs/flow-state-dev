@@ -41,8 +41,7 @@ designed against that case, not against the happy one.
 >   - **The park and the wake** are the **honest task substrate's** —
 >     [FIX-980](https://linear.app/fixpoint-labs/issue/FIX-980), *related to* Relay but **not
 >     parented under it**: park-exit [FIX-1234](https://linear.app/fixpoint-labs/issue/FIX-1234)
->     (**In Review**), its verdict carrier
->     [FIX-1238](https://linear.app/fixpoint-labs/issue/FIX-1238) (Backlog), and unblock-with-input
+>     (**In Review**) and unblock-with-input
 >     [FIX-1244](https://linear.app/fixpoint-labs/issue/FIX-1244) (**Backlog**).
 >   - **Continuing the same coding session** across the wait —
 >     [FIX-1246](https://linear.app/fixpoint-labs/issue/FIX-1246), a **POC** under
@@ -1009,3 +1008,8 @@ rename. Whether that gap ever changes this epic's shape is the **owner's**, live
   the verdict is missing. **The hazard is real but it is a trap, not a blocker**, and it is aimed at
   the drain LAB-138 composes — routed there as a caution in its implementer note rather than promoted
   to a dependency here.
+  **And FIX-1238 is out of §1's enumeration entirely, not merely excluded from the count.** Listing
+  it beside FIX-1234 and FIX-1244 — which the Proof genuinely waits on — gave it a status it does not
+  have, and left a reader counting **five** links under a sentence that says **four**. That is the
+  same class of internal inconsistency this document spent the day removing, so the list and the
+  count now agree by construction rather than by a caveat.
