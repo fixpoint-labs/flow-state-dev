@@ -359,7 +359,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     </div>
   </div>
 
-  <p><strong>The coordinator owns the conversation; the manager owns the work.</strong> Those two sit in the same session because their subject is the same epic, and the manager reaching the board through the coordinator's chain is in any case the only shape the framework allows &#8212; the contract note below is why. Whether the manager may act on what it finds, or only report it, is genuinely open (thread 12).</p>
+  <p><strong>The coordinator owns the conversation; the manager owns the work.</strong> Those two sit in the same session because their subject is the same epic, and the manager reaching the board through the coordinator's chain keeps the board single-writer &#8212; the contract note below is why that is a choice and not a constraint. Whether the manager may act on what it finds, or only report it, is genuinely open (thread 12).</p>
 
   <p>The architect lands somewhere else, and for a principled reason rather than a taste: <strong>the manager's subject is one epic; the architect's spans many</strong>. A role whose whole value is seeing across epics cannot have its memory tied to one of them. Which is a claim about scope, and scope turns out to be a separate axis from the one the next heading is about.</p>
 
@@ -381,12 +381,13 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
     </table>
   </div>
 
-  <p>One shape is genuinely ruled out rather than chosen against, and it is worth stating as a fact rather than a preference, because it is written into the only spawn verb there is.</p>
+  <p>One constraint here is real and worth quoting exactly, because it is written into the only spawn verb there is &#8212; and because the inference usually drawn from it does not hold.</p>
 
   <div class="note">
     <span class="lbl">The contract, verbatim</span>
     <p><code>startDetached</code> creates a derived <strong>child</strong> session. Its own documentation: the child session key is derived from <code>[principal, parent session, seed]</code>; the child <em>&#8220;inherits tenant, user, org and flow kind from the running request and records it as its parent&#8221;</em>; and <em>&#8220;there is no flow or action parameter, so <code>flow.actions</code> is not reachable.&#8221;</em></p>
-    <p>So a workstream is fixed in its parent's flow kind and cannot dispatch to an action. A <strong>manager implemented as a workstream could not set tasks for peer workstreams</strong> &#8212; not because it would take more code, but because the primitive does not have that shape. The coordinator routes to a manager <strong>block</strong> inside its own sequence chain instead. That is not a workaround for a missing feature; it is the only shape the framework supports, and it is the same shape the call-site rule above already gives.</p>
+    <p>So a workstream is fixed in its parent's flow kind and cannot dispatch to an action. That much is a fact. The conclusion people draw from it &#8212; that a manager therefore cannot be a workstream &#8212; is not, because <strong><code>flow.actions</code> is not the route to the board</strong>. A detached manager reaches the board the way any block does, through <code>ctx.cap.&lt;board&gt;.addTask(&#8230;)</code>. That was run rather than reasoned about: the row landed in the durable store, and the same manager spawned a peer.</p>
+    <p>That makes the manager being a <strong>block</strong> in the coordinator's own chain a <strong>design choice</strong>, not a shape the framework forced. The choice is single-writer: one author per board transition, one place to look when a task is in a state nobody expects. Section 6 makes the same call for workstreams generally, and thread 5 holds it open rather than closing it.</p>
   </div>
 
   <div class="note">
@@ -580,7 +581,7 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 738" role="img" aria-label="The proposed conductor flow. A flow declares five actions: startEpic which seeds the board, wake which runs one drain step, approve which is durable and resumes a suspension, steer which classifies a reply and dispatches it into a running workstream, and status which only reads rows. Four of them feed a sequencer whose single step is the task board's drain; status reads the board without dispatching. The board claims the next ready task, dispatches it with the topological dispatcher which honours dependencies expressing both the issue graph and the phase order, and routes it by assignee to one of three thin phase-logic records for spec, implement and review. All three feed one shared harness manager, the only proposed block of substance, which provisions a workspace, starts the run, lets the turn finish, reads the outcome, and then settles, retries, waits for a steer, or posts a row to the inbox. It dispatches claudeCodeAgent with detached true, so the run gets its own session and items but no session state, every task starts the agent fresh, and continuity comes from a resume id handed in from the run row described in section six. The child settles the parent's task row through settleParentTask.">
+      <svg viewBox="0 0 940 738" role="img" aria-label="The proposed conductor flow. A flow declares five actions: startEpic which seeds the board, wake which runs one drain step, approve which releases a parked task row, steer which classifies a reply and dispatches it into a running workstream, and status which only reads rows. Four of them feed a sequencer whose single step is the task board's drain; status reads the board without dispatching. The board claims the next ready task, dispatches it with the topological dispatcher which honours dependencies expressing both the issue graph and the phase order, and routes it by assignee to one of three thin phase-logic records for spec, implement and review. All three feed one shared harness manager, the only proposed block of substance, which provisions a workspace, starts the run, lets the turn finish, reads the outcome, and then settles, retries, waits for a steer, or posts a row to the inbox. It dispatches claudeCodeAgent with detached true, so the run gets its own session and items but no session state. The flag is a board-construction shim rather than a decision to start fresh, and continuity comes from a resume handle carried on the task itself, as described in section six. The workstream settles its own task row through the detached runner's ticket-fenced recorders, the same ones the inline drain uses.">
         <rect class="n-grp" x="16" y="26" width="908" height="112" rx="5"/>
         <text class="t-api" x="32" y="46">PROPOSED &middot; defineFlow({ kind, actions, resources, uses })</text>
 
@@ -596,8 +597,8 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
 
         <rect class="n-prop" x="388" y="58" width="168" height="64" rx="4"/>
         <text class="t-b f-accent" x="402" y="80">approve</text>
-        <text class="t-xs" x="402" y="97">durable: true</text>
-        <text class="t-s" x="402" y="113">resumes a gate</text>
+        <text class="t-xs" x="402" y="97">RELEASES A PARKED ROW</text>
+        <text class="t-s" x="402" y="113">answers a gate</text>
 
         <rect class="n-prop" x="568" y="58" width="168" height="64" rx="4"/>
         <text class="t-b f-accent" x="582" y="80">steer</text>
@@ -682,13 +683,13 @@ td.num { font-family: var(--mono); font-size: 12px; color: var(--ink-3); font-va
         <rect class="n-box" x="210" y="578" width="520" height="78" rx="4"/>
         <text class="t-s" x="470" y="601" text-anchor="middle">claudeCodeAgent({ detached: true })</text>
         <text class="t-xs" x="470" y="620" text-anchor="middle">inputSchema { prompt } &middot; OWN SESSION &middot; OWN ITEMS &middot; NO SESSION STATE</text>
-        <text class="t-xs" x="470" y="638" text-anchor="middle">EVERY TASK STARTS FRESH &middot; CONTINUITY IS A resume id HANDED IN (SECTION 06)</text>
+        <text class="t-xs" x="470" y="638" text-anchor="middle">detached IS A CONSTRUCTION SHIM &middot; THE RESUME HANDLE RIDES THE TASK (SECTION 06)</text>
 
         <path class="ln" d="M470,656 L470,674"/>
 
         <rect class="n-box" x="40" y="674" width="860" height="50" rx="4"/>
-        <text class="t-s" x="60" y="697">ctx.requestHost.settleParentTask(input)</text>
-        <text class="t-xs" x="60" y="715">EXISTS &middot; THE CHILD CLOSES THE PARENT&#8217;S ROW. THE PARENT RETURNED LONG AGO, WITH terminationReason: "handed-off"</text>
+        <text class="t-s" x="60" y="697">the detached runner&#8217;s ticket-fenced recorders</text>
+        <text class="t-xs" x="60" y="715">EXISTS &middot; THE WORKSTREAM SETTLES ITS OWN ROW. THE PARENT RETURNED LONG AGO, WITH terminationReason: "handed-off"</text>
       </svg>
     </div>
     <figcaption><b>The spine.</b> Everything solid is assembly of parts that already work. Note what is <em>not</em> here: three adapters. There is <b>one</b> harness manager and three small records that differ only in prompt, done-condition, and readable collections &#8212; section 7 shows the work of getting to that answer.</figcaption>
@@ -719,7 +720,7 @@ export const conductor = <em>defineFlow</em>({
   actions: {
     startEpic: { block: seedEpic },             <i>// objective -&gt; epic + (issue x phase) tasks</i>
     wake:      { block: conduct },              <i>// an event advances whatever is ready</i>
-    approve:   { block: gate, durable: true },  <i>// resumes a suspended request</i>
+    approve:   { block: gate },                 <i>// releases a parked task row</i>
     <b>steer</b>:     { block: classifyAndRoute },     <i>// a reply -&gt; the workstream that asked</i>
     status:    { block: readBoard },            <i>// reads rows, dispatches nothing</i>
   },
@@ -734,7 +735,7 @@ export const conductor = <em>defineFlow</em>({
         <tr><td>Action shape</td><td><span class="tag t-real">exists</span></td><td><code>{ block, inputSchema?, onCompleted?, onErrored?, userMessage?, tokenBudget?, durable?, description?, mcp?, concurrency? }</code>. Input schema <strong>defaults to</strong> <code>block.inputSchema</code>. Real multi-action example: <code>apps/kitchen-sink/flows/chat-agent/flow.ts</code></td></tr>
         <tr><td>Where <code>userId</code> comes from</td><td><span class="tag t-real">exists</span></td><td>Not on the action. The flow carries <code>requireUser?</code> (default true); the caller passes it at dispatch: <code>runAction({ flow, actionName, input, userId, sessionId, stores, runtimeConfig })</code></td></tr>
         <tr><td><code>request: { concurrency }</code></td><td><span class="tag t-real">exists</span></td><td><code>"allow"</code> (default) | <code>"queue"</code> | <code>"reject"</code>, keyed on <code>session</code> by default. <code>queue</code> serializes same-key requests FIFO &#8212; the property section 6 relies on. <code>debounce</code> and <code>restart</code> parse but are rejected today</td></tr>
-        <tr><td>The five actions</td><td><span class="tag t-prop">proposed</span></td><td><code>startEpic</code>, <code>wake</code>, <code>approve</code>, <code>steer</code>, <code>status</code>. Only <code>approve</code> needs <code>durable: true</code></td></tr>
+        <tr><td>The five actions</td><td><span class="tag t-prop">proposed</span></td><td><code>startEpic</code>, <code>wake</code>, <code>approve</code>, <code>steer</code>, <code>status</code>. None of them suspends: <code>approve</code> releases a parked task row, the same way <code>steer</code> answers one</td></tr>
         <tr><td><code>taskBoard(...)</code></td><td><span class="tag t-real">exists</span></td><td>Returns <code>{ drain, collectionId, capability, backing, boardId, detachedWorkers, caps }</code>. <code>drain</code> is a plain <code>SequencerDefinition</code>, used as a step. The capability lands at <code>ctx.cap.&lt;name&gt;.addTask / listTasks / tasks()</code></td></tr>
         <tr><td>Tasks as (issue &#215; phase)</td><td><span class="tag t-prop">proposed</span></td><td>The shape exists &#8212; <code>TaskInit { id, goal, deps?, assignee?, priority?, maxAttempts? }</code>. This use of it does not. Both the issue graph and the phase order inside an issue are just <code>deps</code></td></tr>
         <tr><td><code>dispatcher: "topological"</code></td><td><span class="tag t-real">exists</span></td><td>Enforces <code>deps</code>. Alternatives are <code>fifo</code> and <code>priority</code>, neither of which respects ordering</td></tr>
@@ -742,7 +743,7 @@ export const conductor = <em>defineFlow</em>({
         <tr><td>The harness manager</td><td><span class="tag t-prop">proposed</span></td><td>The one block of substance this design adds. Its nearest precedent is real: <code>packages/orchestration/src/skills/worker-materializer.ts</code> already adapts non-worker-shaped blocks into board workers by wrapping them compositionally</td></tr>
         <tr><td><code>claudeCodeAgent(options)</code></td><td><span class="tag t-real">exists</span></td><td>A factory returning a handler with <code>inputSchema: z.object({ prompt: z.string() })</code> &#8212; <em>not</em> <code>taskWorkerInputSchema</code>, so it is never a board worker directly. Options include <code>model, systemPrompt, allowedTools, permissionMode, maxTurns, onToolApproval</code></td></tr>
         <tr><td><code>dispatch: { mode: "detached" }</code></td><td><span class="tag t-real">exists</span></td><td>Needs <code>boardId</code> and a durable collection. Spawns via <code>requireRequestHost(ctx).startDetached({ seed, input, provenance })</code>; the parent returns immediately with the row <code>in_progress</code></td></tr>
-        <tr><td><code>ctx.suspend(options)</code></td><td><span class="tag t-real">exists</span></td><td>Durable human gate. <code>{ reason, message?, data?, resumeSchema?, timeoutMs?, render?, allow? }</code>. Pauses the request that calls it &#8212; which is why a workstream's question cannot use it (section 6)</td></tr>
+        <tr><td><code>ctx.suspend(options)</code></td><td><span class="tag t-real">exists</span></td><td>Durable human gate. <code>{ reason, message?, data?, resumeSchema?, timeoutMs?, render?, allow? }</code>. Pauses the request that calls it, and throws inside a workstream &#8212; which is why a workstream's question cannot use it (section 6)</td></tr>
       </tbody>
     </table>
   </div>
@@ -751,7 +752,9 @@ export const conductor = <em>defineFlow</em>({
 
   <p><code>ctx.suspend(options)</code> durably pauses a flow pending external human action: request status becomes <code>"suspended"</code>, a <code>SuspensionRecord</code> persists the whole context (<code>suspensionId, requestId, flowKind, actionName, sessionId, userId, reason, message, data, resumeSchema, render, allow, status, blockInstanceId, stepIndex</code>), and an HTTP resume route re-enters the action with <strong>completed steps replayed from the durable log rather than re-executed</strong>. <code>reason: "human_approval"</code> defaults <code>allow</code> to <code>["approve","reject"]</code>; <code>"human_input"</code> to <code>["submit"]</code>. It needs <code>durable: true</code> on the action and on the runtime. Four working shapes live in <code>apps/kitchen-sink/flows/chat-agent/</code>: <code>requestApproval</code>, <code>askQuestion</code>, <code>collectForm</code>, <code>chooseOption</code>.</p>
 
-  <p>So the three gates of section 3 are the easy case. They are parent-side, raised by the coordinator's own request, and an approval survives a restart because it lives in the suspension record. The hard case is everything a <em>detached</em> run needs to ask, and that is a different mechanism entirely.</p>
+  <p>All of that belongs to the <strong>main session</strong>, and it stays exactly as described. It is not the mechanism for anything a workstream is involved in: <code>ctx.suspend</code> throws inside a workstream, so it is not a channel a detached run can be talked into using by accident.</p>
+
+  <p>Which reaches further than the detached case. Take the three gates of section 3. Two of them &#8212; a spec waiting on approval, a PR waiting on a merge &#8212; are raised <em>after</em> the workstream that did the work has ended, so there is no request left to suspend by the time anyone is asked. The third could suspend and does not, because running one gate on a different mechanism from the other two buys nothing and costs a second thing to reason about. What waits in all three cases is the task row, parked, and <code>approve</code> releases it. Nothing is given up by dropping the suspension: a parked row is durable state, so it survives a restart the same way a suspension record does, and it survives the run that created it too. The next section is that mechanism.</p>
 </section>
 
 <section id="start">
@@ -821,11 +824,11 @@ export const conductor = <em>defineFlow</em>({
   <div class="sec-head"><span class="sec-num">06</span><h2>Questions, in and out</h2></div>
   <p class="lede">The load-bearing subsystem. A detached workstream cannot stop and ask you something &#8212; so a question travels as data, and an answer travels back the same way.</p>
 
-  <p>Start with the constraint, because it is why this section exists. <code>ctx.suspend</code> pauses <em>the request that calls it</em>. A detached worker's parent has already returned &#8212; the row is <code>in_progress</code> and the parent's <code>terminationReason</code> is <code>"handed-off"</code>. If a workstream suspends, the workstream pauses and nothing else does. You are never told. The epic keeps running around a run that is quietly waiting for a person who does not know they are needed.</p>
+  <p>Start with the constraint, because it is why this section exists. <code>ctx.suspend</code> pauses <em>the request that calls it</em>, and inside a workstream it pauses nothing at all &#8212; it throws. Even if it did not, there would be nothing worth pausing. A detached worker's parent has already returned: the row is <code>in_progress</code> and the parent's <code>terminationReason</code> is <code>"handed-off"</code>. A workstream that could suspend would pause alone, tell nobody, and leave the epic running around a run quietly waiting for a person who does not know they are needed.</p>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 300" role="img" aria-label="Two placements for a pause. On the left, a gate in the parent action: the action is durable, it calls suspend with reason human approval, the request status becomes suspended and a suspension record persists, the resume route re-enters the action and completed steps replay from the durable log, so the same request continues and the epic waits. On the right, a pause inside a detached run: the parent returns the instant the child spawns, with the board row in progress and termination reason handed-off; the child calls suspend, the child pauses and nothing else does, and the parent request no longer exists, producing a silent stall that looks like work. Therefore a question must travel as data, not as a pause.">
+      <svg viewBox="0 0 940 300" role="img" aria-label="Two placements for a pause. On the left, a gate in the parent action: the action is durable, it calls suspend with reason human approval, the request status becomes suspended and a suspension record persists, the resume route re-enters the action and completed steps replay from the durable log, so the same request continues and the epic waits. On the right, a pause inside a detached run: the parent returns the instant the child spawns, with the board row in progress and termination reason handed-off; the child calls suspend and it throws, because a workstream cannot suspend at all, and the parent request no longer exists in any case, so there is nothing there to pause. Therefore a question must travel as data, not as a pause.">
         <rect class="n-grp" x="16" y="26" width="446" height="212" rx="5"/>
         <text class="t-lbl f-code" x="34" y="48">THE EPIC WAITS</text>
         <text class="t-b f-human" x="34" y="72">A gate in the parent action</text>
@@ -842,20 +845,21 @@ export const conductor = <em>defineFlow</em>({
         <text class="t-s" x="496" y="100">parent returns the instant the child spawns</text>
         <text class="t-xs" x="496" y="118">ROW in_progress &middot; terminationReason: "handed-off"</text>
         <text class="t-s" x="496" y="142">child calls ctx.suspend(&#8230;)</text>
-        <text class="t-xs" x="496" y="160">THE CHILD PAUSES. YOU ARE NEVER TOLD</text>
-        <text class="t-s" x="496" y="184">the parent request no longer exists</text>
-        <text class="t-b f-gone" x="496" y="214">a silent stall that looks like work</text>
+        <text class="t-xs" x="496" y="160">IT THROWS &#8212; A WORKSTREAM CANNOT SUSPEND</text>
+        <text class="t-s" x="496" y="184">and the parent request is gone anyway</text>
+        <text class="t-b f-gone" x="496" y="214">there is nothing here to pause</text>
 
         <text class="t-lbl" x="470" y="272" text-anchor="middle">SO A QUESTION TRAVELS AS DATA, NOT AS A PAUSE</text>
       </svg>
     </div>
-    <figcaption><b>Suspend pauses the caller, and the caller is the child.</b> This is not a missing feature to be added &#8212; it is what "detached" means. The consequence is a subsystem with three faces: a place questions land, a thing that watches each run, and a channel back in.</figcaption>
+    <figcaption><b>Suspend belongs to the main session, and a workstream is not one.</b> This is not a missing feature to be added &#8212; it is what "detached" means. The consequence is a subsystem with three faces: a place questions land, a thing that watches each run, and a channel back in.</figcaption>
   </figure>
 
   <div class="note">
     <span class="lbl">Detached closes session state, not resources</span>
     <p><code>detached: true</code> on <code>claudeCodeAgent</code> suppresses three things at once, and the option's own doc explains why they are one decision rather than three: the <code>sessionStateSchema</code> <strong>declaration</strong>, the <strong>reads and writes</strong> that go with it, and the SDK <strong><code>resume</code></strong> &#8212; <em>&#8220;the session provider is not consulted at all.&#8221;</em> Every one of those three is <code>ctx.session.state</code> or <code>ctx.session.patchState</code>.</p>
-    <p><strong>Resources are a separate channel, and it stays open.</strong> The same block declares three session-scoped collections under <code>recordWork</code> and writes them from a detached run. So both halves of this subsystem are resources: the inbox is how a workstream asks a question, and a run row is how a workstream is continued. Neither travels the channel <code>detached</code> closes, which is why neither needs a framework guard narrowed to make it work.</p>
+    <p><strong>Read why the flag is set, though, because it is easy to mistake for a stance.</strong> It is set so the board will construct at all: a detached worker may declare no <code>sessionStateSchema</code> anywhere in its tree, and <code>claudeCodeAgent</code> authors one unless the flag is on. A construction shim. It is not a decision that every run starts fresh, and it is not a bet that runs cannot be resumed.</p>
+    <p><strong>Resources are a separate channel, and it stays open.</strong> The same block declares three session-scoped collections under <code>recordWork</code> and writes them from a detached run. The inbox is how a workstream asks a question, and it travels a channel <code>detached</code> leaves open, which is why asking needs no guard narrowed. Continuity is not a resource at all &#8212; it rides the task, below &#8212; and it does not travel that channel either.</p>
   </div>
 
   <figure>
@@ -971,20 +975,21 @@ export const inbox = <em>defineResourceCollection</em>({
     </div>
     <div class="card" style="--tc: var(--code)">
       <h5><code>awaiting_review</code></h5><span class="role">a blocking wait &middot; exists today</span>
-      <p>Real, and worth naming for what it is: it holds the request open, and the board's worker loop stays alive around it. Right for &#8220;the operator is here, answering now.&#8221; Not the mechanism the coordinator uses.</p>
+      <p>Real, and worth naming for what it is: it holds the request open, and the board's worker loop stays alive around it. Right for &#8220;the operator is here, answering now.&#8221; Not the mechanism the coordinator uses, and not what the first real run ships on.</p>
     </div>
   </div>
 
   <div class="note">
     <span class="lbl">Nothing is held open, and nothing polls</span>
     <p>The blocking wait is tempting because it costs nothing to build. It is the wrong shape for the workload this project exists to survive. Holding a worker slot and a live loop open for the hours &#8212; or days &#8212; a person takes to answer means the machinery carrying a multi-day epic is a loop that must not die for a multi-day epic. Anything that restarts, redeploys, or trips a lease inside that window takes the run with it. A design that leans on an idle poll has quietly made the poll interval its liveness guarantee, which is not a guarantee.</p>
-    <p>So the intended path is quieter than that. <strong>A workstream blocked on a question ends its request, carrying the question out with it. Its task stays on the board, parked.</strong> The coordinator is not looping either &#8212; it holds a watch, and a watch costs a row. Nothing has to drain to nothing, because <strong>the board is the durable state</strong>: when the next request arrives, hopefully the answer, it picks that task back up and continues from there. <code>awaiting_review</code> stays as the short-horizon convenience for &#8220;the operator is right here, answering now&#8221; &#8212; not as the thing the design depends on. What is left to design carefully is what re-enters, and how it finds the right outstanding row. The rest of this section is the answer; section 12 carries what it leaves to a separate build. One thing to read correctly: this is the shape the design settles on, not the order it gets built in. The first real run deliberately ships on the short-horizon path and adopts this one when the layer under it lands &#8212; section 11 is why.</p>
+    <p>So the intended path is quieter than that. <strong>A workstream blocked on a question ends its request, carrying the question out with it. Its task stays on the board, parked.</strong> The coordinator is not looping either &#8212; it holds a watch, and a watch costs a row. Nothing has to drain to nothing, because <strong>the board is the durable state</strong>: when the next request arrives, hopefully the answer, it picks that task back up and continues from there. <code>awaiting_review</code> stays as the short-horizon convenience for &#8220;the operator is right here, answering now&#8221; &#8212; not as the thing the design depends on. What is left to design carefully is what re-enters, and how it finds the right outstanding row. The rest of this section is the answer; section 12 carries what it leaves to a separate build. Read it as the shape the first real run ships on rather than as a later upgrade to it. The Proof is relay plus a parked task row, and the short-horizon loop is not a stepping stone toward that &#8212; section 11 is why.</p>
   </div>
 
   <div class="note">
-    <span class="lbl">A verified gap &#8212; no status on the board means &#8220;parked&#8221;</span>
+    <span class="lbl">The gap the board had, and the three names that come with it</span>
     <p>Checked in <code>packages/orchestration/src/task-board/blocks/check-board.ts</code>. <code>awaiting_review</code> is the <strong>blocking</strong> wait, and says so: it <em>&#8220;keeps the loop alive in both modes &#8212; the worker's preceding <code>.waitForCondition</code> blocks until an external actor transitions the task back to <code>pending</code>.&#8221;</em> The request stays open, which is precisely what the cold path is trying not to do. Everything else in the status set is terminal (<code>completed</code>, <code>errored</code>, <code>cancelled</code>) or out of reach from a claimed row: the state machine admits <code>blocked</code> only from <code>pending</code>, and it means <em>a dependency is not met</em>, not <em>a person is</em>. Leaving the row <code>in_progress</code> and ending the request is worse than either &#8212; it is indistinguishable from a child still working.</p>
-    <p>So the cold path needs something the board does not have: a way for a parked task to let its request end, with a later request resuming it. This document proposed that as a new status, <strong><code>pending feedback</code></strong>. <strong>The filed answer is a different shape, and a better one.</strong> <span class="tag t-real">spec approved</span> The gap turned out to be an <strong>exit predicate</strong> rather than a status: <code>awaitReview</code> and <code>resumeFromReview</code> already park a task durably and already resume it, so what was missing was permission for the launching request to <em>exit</em> while the row sits parked, and for the board to report that exit as neither success nor failure. Same property &#8212; whether the request stays open while the wait happens &#8212; without a fourth status to teach the state machine. Section 11 carries where it sits and what it unblocks.</p>
+    <p>So the cold path needs something the board does not have: a way for a parked task to let its request end, with a later request resuming it. This document proposed that as a new status, <strong><code>pending feedback</code></strong>. <strong>The answer that shipped is a different shape, and a better one.</strong> <span class="tag t-real">shipped</span> The gap turned out to be an <strong>exit predicate</strong> rather than a status: <code>awaitReview</code> and <code>resumeFromReview</code> already park a task durably and already resume it, so what was missing was permission for the launching request to <em>exit</em> while the row sits parked, and for the board to report that exit as neither success nor failure. Same property &#8212; whether the request stays open while the wait happens &#8212; without a fourth status to teach the state machine. It is merged. Section 11 carries where it sits and what it unblocks.</p>
+    <p><strong>Three names travel with this, and they are not interchangeable.</strong> The status this design calls for is <strong><code>parked</code></strong>. The enum shipped today still spells it <strong><code>awaiting_review</code></strong>, and that is what <code>task-status.ts</code> carries until the rename lands &#8212; so a schema written against <code>parked</code> is rejected right now. <strong><code>needs_input</code></strong> is display and reason text only. It has never been an enum member, and putting it in a schema is the same rejection from the other side. Picking the wrong one of the three is not a naming quibble; it is a validation failure at the boundary.</p>
   </div>
 
   <div class="tw">
@@ -993,11 +998,11 @@ export const inbox = <em>defineResourceCollection</em>({
       <tbody>
         <tr><td>A <strong>watch</strong> on the workstream&#8217;s task</td><td>both</td><td><span class="tag t-prop">proposed</span></td><td><strong>The route the coordinator uses.</strong> A keyed row saying <em>when this task goes terminal, send me a message</em>. It holds nothing open and polls nothing; the settle is what fires it. Its shape is below, and it is filed as work of its own (section 11)</td></tr>
         <tr><td>Mail addressed to the coordinator&#8217;s session</td><td>both</td><td><span class="tag t-prop">proposed</span></td><td><strong>What a watch sends &#8212; and what anything else sends too.</strong> One message, one named recipient, handled as a request on that session. Nothing in the tree sends a message today, so this is a build rather than a wiring job. Its shape is below; the build is scoped and under review (section 11)</td></tr>
-        <tr><td><code>awaiting_review</code> keeps the drain alive</td><td>hot</td><td><span class="tag t-real">exists</span></td><td>The <strong>blocking</strong> wait, and the only route here that holds a request open. An <code>awaiting_review</code> row keeps the worker loop alive in both <code>complete</code> and <code>complete-or-blocked</code>, because the worker's <code>.waitForCondition</code> blocks until someone moves the row back to <code>pending</code>; the loop's idle poll (<code>idlePollMs</code>, default 50ms) is what turns while it waits. Real, and fine for a wait measured in minutes. Not what the coordinator uses</td></tr>
+        <tr><td><code>awaiting_review</code> keeps the drain alive</td><td>hot</td><td><span class="tag t-real">exists</span></td><td>The <strong>blocking</strong> wait, and the only route here that holds a request open. An <code>awaiting_review</code> row keeps the worker loop alive in both <code>complete</code> and <code>complete-or-blocked</code>, because the worker's <code>.waitForCondition</code> blocks until someone moves the row back to <code>pending</code>; the loop's idle poll (<code>idlePollMs</code>, default 50ms) is what turns while it waits. Real, and fine for a wait measured in minutes. Not what the coordinator uses, and not what the first real run ships on</td></tr>
         <tr><td>A scheduled action re-enters</td><td>cold</td><td><span class="tag t-none">no address</span></td><td><strong>The transport is real. The route is not.</strong> <code>@flow-state-dev/scheduled</code> does dispatch on a timer and stamp <code>source: "scheduled"</code> &#8212; but it dispatches with <strong>no session</strong> (<em>&#8220;scheduled envelopes have no session&#8221;</em>), and a dynamic schedule&#8217;s row carries a user, not a session. A tick can start fresh work; it cannot re-enter the coordinator, because it cannot name it. Cron becomes a sender instead &#8212; below</td></tr>
         <tr><td>You open the session and see the row</td><td>cold</td><td><span class="tag t-real">exists</span></td><td>Resource mutations emit <code>resource_change</code> events and <code>client.live</code> merges them into the cached snapshot. A person re-entering is itself a wake, and the inbox is visible without anything else happening</td></tr>
         <tr><td>An existing inbound transport</td><td>&#8212;</td><td><span class="tag t-none">wrong seam</span></td><td>The packages are real and none of them is this. <code>mcp</code>, <code>chat-sdk</code>, <code>voice-openai</code> and <code>scheduled</code> carry <em>external</em> origin into a flow. <code>node</code> and <code>bullmq</code> host the server and run the jobs &#8212; they are not receivers at all</td></tr>
-        <tr><td>Session-addressed messaging</td><td>&#8212;</td><td><span class="tag t-none">doesn&#8217;t exist</span></td><td>&#8220;Send this to that session&#8221; has no implementation today &#8212; which is precisely the gap mail fills. <code>RequestHost</code> is closed at four verbs &#8212; <code>startDetached</code>, <code>parentTask</code>, <code>settleParentTask</code>, <code>livenessOf?</code> &#8212; and the only child-to-parent channel among them is <code>settleParentTask</code>, which is <strong>structural</strong>: a task row transition, not a message</td></tr>
+        <tr><td>Session-addressed messaging</td><td>&#8212;</td><td><span class="tag t-none">doesn&#8217;t exist</span></td><td>&#8220;Send this to that session&#8221; has no implementation today &#8212; which is precisely the gap mail fills. <code>RequestHost</code> is closed at four verbs &#8212; <code>startDetached</code>, <code>parentTask</code>, <code>settleParentTask</code>, <code>livenessOf?</code> &#8212; and the only child-to-parent verb among them is <code>settleParentTask</code>, which has no production caller and is in any case <strong>structural</strong>: a task row transition, not a message</td></tr>
         <tr><td><code>reactTo</code> on the inbox</td><td>&#8212;</td><td><span class="tag t-none">wrong tool</span></td><td>Runs in the mutating session, inline in the workstream's own turn. Useful for workstream-side bookkeeping; it can never reach the coordinator</td></tr>
       </tbody>
     </table>
@@ -1025,7 +1030,7 @@ export const inbox = <em>defineResourceCollection</em>({
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 336" role="img" aria-label="Claim and watch on one task row. On the left, claim, which exists today: at most one holder at a time, flipping the row to in progress under a lease. In the centre, one durable task row, whose terminal statuses are completed, errored and cancelled. On the right, watch rows, which are proposed: one keyed row per watcher and task, drawn as watch slash coordinator colon task fourteen and watch slash architect colon task fourteen, and never a list held on the task row itself. Below, the settle sequence runs left to right: the row goes terminal through settleParentTask, which exists; a send goes to each watch row, best-effort and inside the settle, which is proposed; and the watcher wakes as a request on its own session. If the send is lost, the row is still the truth and the watcher catches up. A watch is mail with a trigger: the message is ephemeral, the row is the truth.">
+      <svg viewBox="0 0 940 336" role="img" aria-label="Claim and watch on one task row. On the left, claim, which exists today: at most one holder at a time, flipping the row to in progress under a lease. In the centre, one durable task row, whose terminal statuses are completed, errored and cancelled. On the right, watch rows, which are proposed: one keyed row per watcher and task, drawn as watch slash coordinator colon task fourteen and watch slash architect colon task fourteen, and never a list held on the task row itself. Below, the settle sequence runs left to right: the row goes terminal through the detached runner's fenced recorders, which exist; a send goes to each watch row, best-effort and inside the settle, which is proposed; and the watcher wakes as a request on its own session. If the send is lost, the row is still the truth and the watcher catches up. A watch is mail with a trigger: the message is ephemeral, the row is the truth.">
         <text class="t-lbl" x="16" y="24">WHO DOES IT &#183; EXISTS TODAY</text>
         <text class="t-lbl" x="470" y="24" text-anchor="middle">THE ROW</text>
         <text class="t-lbl" x="664" y="24">WHO CARES &#183; PROPOSED</text>
@@ -1056,7 +1061,7 @@ export const inbox = <em>defineResourceCollection</em>({
 
         <rect class="n-box2" x="16" y="176" width="280" height="64" rx="4"/>
         <text class="t-s" x="32" y="204">the row goes terminal</text>
-        <text class="t-xs" x="32" y="224">EXISTS &#183; settleParentTask</text>
+        <text class="t-xs" x="32" y="224">EXISTS &#183; THE FENCED RECORDERS</text>
 
         <path class="ln" d="M296,208 L336,208"/>
 
@@ -1083,7 +1088,7 @@ export const inbox = <em>defineResourceCollection</em>({
 
   <p><strong>Watches are keyed rows, one per (watcher, task) &#8212; not a list on the task row.</strong> A list is read-modify-write on one row by many writers, and the losers' writes vanish. That is the same contention this document rules out for the run index further down, for the same reason, and the fix is the same one: let the key carry the identity and let the collection do what a collection is for. &#8220;Everyone watching this task&#8221; is a <code>list()</code>, not an array anybody rewrites.</p>
 
-  <p><strong>The send is best-effort, inside the settle.</strong> Settle-then-send can half-fail: the row goes terminal and the message never leaves. That is acceptable here, and it is acceptable because of the durability split two headings up rather than because of any care taken in the code. <strong>The message is ephemeral; the row is the truth.</strong> A lost send costs a wake, not a fact &#8212; the watcher re-reads the board on its next entry and catches up on everything it missed. So there is nothing here to engineer around. A two-phase commit between a task row and a message would buy latency in exchange for closing a failure mode the design already absorbs.</p>
+  <p><strong>The send is best-effort, inside the settle</strong> &#8212; the fenced recorders, where every settle already goes. Settle-then-send can half-fail: the row goes terminal and the message never leaves. That is acceptable here, and it is acceptable because of the durability split two headings up rather than because of any care taken in the code. <strong>The message is ephemeral; the row is the truth.</strong> A lost send costs a wake, not a fact &#8212; the watcher re-reads the board on its next entry and catches up on everything it missed. So there is nothing here to engineer around. A two-phase commit between a task row and a message would buy latency in exchange for closing a failure mode the design already absorbs.</p>
 
   <h3>The wake is mail, not a broadcast</h3>
 
@@ -1165,7 +1170,7 @@ export const inbox = <em>defineResourceCollection</em>({
       <thead><tr><th>Missing piece</th><th>Status</th><th>What it is</th></tr></thead>
       <tbody>
         <tr><td>An address on the envelope</td><td><span class="tag t-prop">proposed</span></td><td>A <code>to</code> naming the recipient session. Nothing carries one today, which is the whole reason a workstream cannot reach a coordinator</td></tr>
-        <tr><td>A send verb for a running request</td><td><span class="tag t-prop">proposed</span></td><td><code>RequestHost</code> is closed at four verbs &#8212; <code>startDetached</code>, <code>parentTask</code>, <code>settleParentTask</code>, <code>livenessOf?</code> &#8212; and <strong>none of them sends a message</strong></td></tr>
+        <tr><td>A send verb for a running request</td><td><span class="tag t-prop">proposed</span></td><td><code>RequestHost</code> is closed at four verbs &#8212; <code>startDetached</code>, <code>parentTask</code>, <code>settleParentTask</code>, <code>livenessOf?</code> &#8212; and <strong>none of them sends a message</strong>. The one that looks closest, <code>settleParentTask</code>, has no production caller either</td></tr>
         <tr><td>Per-adapter delivery</td><td><span class="tag t-prop">proposed</span></td><td>In-process for a Node host; a job for BullMQ, which is where surviving a restart comes from</td></tr>
       </tbody>
     </table>
@@ -1187,7 +1192,7 @@ export const inbox = <em>defineResourceCollection</em>({
         <tr><td>Session key</td><td>Derived from <code>[principal, parent session, seed]</code></td><td>Its own, and addressable</td></tr>
         <tr><td>Entry it resolves</td><td><code>flow.workstream</code>, which is terminal</td><td><code>flow.actions</code>, like any other caller</td></tr>
         <tr><td>Who manages it</td><td>The parent, through the durable task row</td><td>Itself</td></tr>
-        <tr><td>How it talks back</td><td><code>settleParentTask</code> &#8212; a row transition, not a message</td><td>Mail, addressed to its originator</td></tr>
+        <tr><td>How it talks back</td><td>A fenced settle on its own task row &#8212; a row transition, not a message</td><td>Mail, addressed to its originator</td></tr>
         <tr><td>Status</td><td><span class="tag t-real">exists</span></td><td><span class="tag t-prop">proposed</span></td></tr>
       </tbody>
     </table>
@@ -1277,16 +1282,22 @@ export const inbox = <em>defineResourceCollection</em>({
         <tr><td>Starts the run and lets the turn finish</td><td><span class="tag t-real">exists</span></td><td><code>claudeCodeAgent</code> runs the SDK's own agentic loop to completion and returns a handle carrying status, usage and cost. <code>maxTurns</code> bounds it</td></tr>
         <tr><td>Reads the outcome</td><td><span class="tag t-real">exists</span></td><td>A terminal SDK subtype other than <code>"success"</code> is an <em>outcome</em>, not a throw &#8212; a handle with <code>status: "errored"</code> plus an error item. An SDK throw mid-stream is wrapped and rethrown</td></tr>
         <tr><td>Decides: settle, retry, wait, or ask</td><td><span class="tag t-prop">proposed</span></td><td>The one genuinely new piece of logic. Its inputs are the handle, the done-condition, and the attempt count</td></tr>
-        <tr><td>Posts a row to the inbox when it must ask</td><td><span class="tag t-prop">proposed</span></td><td><code>inbox.create(key, {&#8230;})</code>, and then &#8212; on the cold path &#8212; <strong>parks the task and ends its request</strong>, so nothing is held open while the question waits and the row is the resume point (the exit mode above). Waiting in <code>awaiting_review</code> instead keeps the request open, and is the short-horizon option for a question being answered right now &#8212; <strong>and it is deliberately what the first build ships on</strong>, adopting the cold path when the layer under it lands (section 11)</td></tr>
-        <tr><td>Records the run's session handle</td><td><span class="tag t-real">exists</span></td><td>The block returns an <code>SdkAgentHandle</code> carrying <code>sessionId</code> even when detached &#8212; the detached guard skips the <em>write to session state</em>, not the return. The manager takes it off the output and upserts the <code>runs/*</code> row</td></tr>
-        <tr><td>Continues the conversation on a steer</td><td><span class="tag t-prop">proposed</span></td><td>A detached agent starts fresh on every task, so continuity is not automatic. The manager reads <code>sdkSessionId</code> back off the row and hands it in as the next run's resume id &#8212; the one input <code>claudeCodeAgent</code> does not yet accept on the detached path (section 12)</td></tr>
-        <tr><td>Settles the row</td><td><span class="tag t-real">exists</span></td><td><code>settleParentTask({ outcome, output?, error? })</code>. Fenced &#8212; a displaced child's settle is refused with <code>"fence-rejected"</code></td></tr>
+        <tr><td>Posts a row to the inbox when it must ask</td><td><span class="tag t-prop">proposed</span></td><td><code>inbox.create(key, {&#8230;})</code>, and then <strong>parks the task and ends its request</strong>, so nothing is held open while the question waits and the row is the resume point (the exit mode above, now merged). Blocking in <code>awaiting_review</code> instead keeps the request open. That is the short-horizon option for a question being answered right now, and <strong>it is not what the first real run ships on</strong> (section 11)</td></tr>
+        <tr><td>Records the run's session handle</td><td><span class="tag t-real">exists</span></td><td>The block returns an <code>SdkAgentHandle</code> carrying <code>sessionId</code> even when detached &#8212; the detached guard skips the <em>write to session state</em>, not the return. The manager takes it off the output, writes it back onto the task, and copies it to the <code>runs/**</code> row for whoever is reading</td></tr>
+        <tr><td>Continues the conversation on a steer</td><td><span class="tag t-prop">proposed</span></td><td>Continuity is not automatic: nothing hands a prior handle to a detached run today. The manager reads the handle off the claimed task and passes it in as the next run's resume id &#8212; the one input <code>claudeCodeAgent</code> does not yet accept on the detached path (section 12)</td></tr>
+        <tr><td>Settles the row</td><td><span class="tag t-real">exists</span></td><td>The detached runner's ticket-fenced recorders &#8212; the same ones the inline drain uses, not a second settlement path. Fenced: a displaced child's settle comes back <code>"fence-rejected"</code>. The note below is why the distinction is worth holding</td></tr>
         <tr><td>Notices a dead run</td><td><span class="tag t-real">exists</span></td><td><code>ctx.requestHost.livenessOf(requestIds)</code> &#8212; an <em>optional</em> verb, absent when the liveness gate refuses. <code>false</code> means "no live registration found", never "definitely dead". Design for both</td></tr>
       </tbody>
     </table>
   </div>
 
   <p>The middle row is the design. Everything above and below it is substrate that already works; "decide what happens next" is the judgement the meta-harness exists to hold.</p>
+
+  <div class="note">
+    <span class="lbl">The settle verb, and the settle that actually runs</span>
+    <p><code>settleParentTask</code> sits on the <code>RequestHost</code> interface and is not the route anything takes. It has <strong>zero production callers</strong>. <code>createFlowState</code> leaves <code>parentTask</code> unwired and says so in a comment. Nothing anywhere constructs a <code>ParentTaskBinding</code>. And with no binding the verb does not throw &#8212; it <strong>returns a refusal</strong>, <code>{ ok: false, refused: "no-parent-task" }</code>. Worth a clause of its own, because a test that only checks nothing threw walks straight past that.</p>
+    <p>What runs instead is the <strong>detached runner's ticket-fenced recorders</strong>. The runner mints a ticket from the row it has just re-read and verified, never from the dispatch payload, and the workstream settles its own task through the <em>same</em> recorders the inline drain uses. One settlement path, not two. Which is also why a displaced child's settle comes back <code>"fence-rejected"</code> rather than corrupting a row: the fence sits on the recorder, and every settle goes through it.</p>
+  </div>
 
   <h3>In &#8212; the steer action</h3>
 
@@ -1308,23 +1319,27 @@ const steerInput = z.object({
 
   <p><strong>How it reaches a detached run.</strong> Not as an arbitrary message. The workstream dispatch envelope is fixed and server-derived &#8212; <code>{ boardId, coordinateKey, taskId, attempt, createdAt, incarnationId?, payload }</code> &#8212; and the runner re-reads the durable row and routes on the row's own <code>assignee</code>, never on the envelope. That is deliberate: a forged envelope can at most name a different board. So a steer rides a <strong>task row</strong>, exactly like the work does.</p>
 
-  <p>Because the child session key is derived from <code>(principal, parent session, seed)</code> and the seed carries the topic, a steer row on the same topic lands in the <strong>same child session</strong> &#8212; <code>startDetached</code> returns <code>adopted: true</code> rather than creating a second one. The FSD session is reused, and the workstream's item history continues. <strong>The Claude conversation does not</strong>, and that is the part of this design that was wrong.</p>
+  <p>Because the child session key is derived from <code>(principal, parent session, seed)</code> and the seed carries the topic, a steer row on the same topic lands in the <strong>same child session</strong> &#8212; <code>startDetached</code> returns <code>adopted: true</code> rather than creating a second one. The FSD session is reused, and the workstream's item history continues. <strong>The Claude conversation does not, unless something hands the handle back in</strong> &#8212; which is the part of this design that was wrong, and the part the Proof now rests on.</p>
 
-  <p>A detached agent keeps no session state, so there is nothing to read a prior <code>sdkSessionId</code> back out of. The option's doc states the consequence in as many words: <em>&#8220;a second task addressed to the same workstream starts the agent fresh.&#8221;</em> The obvious repair &#8212; run the manager detached and leave <code>claudeCodeAgent</code> bound inside it &#8212; is refused before anything runs. The board walks a detached worker's composed children, because <em>&#8220;a detached worker is routinely a sequencer or a router, and the block that declares the schema is usually a step inside it&#8221;</em>; a bound agent authors <code>claudeAgentSessionStateSchema</code>, so a detached manager containing one never constructs.</p>
+  <p>A detached agent keeps no session state, so there is nothing to read a prior <code>sdkSessionId</code> back out of. The option's doc states the consequence in as many words: <em>&#8220;a second task addressed to the same workstream starts the agent fresh.&#8221;</em> The obvious repair &#8212; run the manager detached and leave <code>claudeCodeAgent</code> bound inside it &#8212; is refused before anything runs. The board walks a detached worker's composed children, because <em>&#8220;a detached worker is routinely a sequencer or a router, and the block that declares the schema is usually a step inside it&#8221;</em>; a bound agent authors <code>claudeAgentSessionStateSchema</code>, so a detached manager containing one never constructs. Which is the whole of what <code>detached: true</code> is doing on the worker: satisfying that check. It says nothing about whether a run can be resumed.</p>
 
-  <h3>Continuity as a row, not as session state</h3>
+  <h3>Continuity as a field on the task, not as session state</h3>
 
-  <p>The handle moves to a resource. One row per run, keyed by topic, in a session-scoped collection given a single identity across the lineage &#8212; the <code>runs/*</code> collection section 8 lists.</p>
+  <p>The handle moves onto the <strong>task</strong>. A typed top-level field on the task row, read at claim and written back after the turn, alongside the fields the board already carries. Not <code>metadata</code>. The task schema has already made that call once and left the reasoning attached: <code>abandonments</code> sits top-level with a docblock saying top-level, never inside <code>metadata</code>, on BP-031 grounds. A resume handle is the same kind of thing, so it follows the same precedent.</p>
+
+  <p>That is an engineering call rather than a product one, and it is not finished. <strong>No such field exists yet</strong>, and its shape is still to be designed &#8212; what it holds, whether the board writes it or the worker does, what happens to it across a retry. <span class="tag t-prop">proposed</span></p>
+
+  <p>The <code>runs/**</code> row may carry a copy of the id, and probably should, because it is what a person reads when they want to know what a run did. A copy is bookkeeping. The task is the mechanism, and the two should not be confused &#8212; a design that reads continuity out of the run row has put the load on the wrong record.</p>
 
   <pre class="code"><i>// PROPOSED &#8212; defineResourceCollection and every option below exist.</i>
 export const runs = <em>defineResourceCollection</em>({
-  pattern: "runs/*",                 <i>// ONE ROW PER RUN, KEYED BY TOPIC</i>
+  pattern: "runs/**",                <i>// ONE ROW PER RUN, KEYED BY TOPIC</i>
   scope: "session",
   <b>sharedToWorkstream</b>: true,          <i>// one identity across the whole session lineage</i>
   stateSchema: z.object({
     topic:        z.string(),                            <i>// which run this row is</i>
     phase:        z.enum(["spec", "implement", "review"]),
-    <b>sdkSessionId</b>: z.string().<b>nullable</b>().<b>default</b>(null),  <i>// the resume handle</i>
+    <b>sdkSessionId</b>: z.string().<b>nullable</b>().<b>default</b>(null),  <i>// a copy of the handle, for reading</i>
     childSession: z.string().<b>nullable</b>().<b>default</b>(null),
     requestId:    z.string().<b>nullable</b>().<b>default</b>(null),
     worktree:     z.string().<b>nullable</b>().<b>default</b>(null),
@@ -1339,30 +1354,37 @@ export const runs = <em>defineResourceCollection</em>({
 
   <p><strong>One row per run &#8212; not one row holding an array of runs.</strong> N concurrent workstreams read-modify-writing a single row lose each other's writes, and that contention is exactly what a collection removes. "All sessions" is a <code>list()</code>, not an array you rewrite. And if the index should later outlive the session lineage &#8212; a handle you want on Monday for a run that started Friday &#8212; the same collection moves to <code>scope: "user"</code> and drops the flag. That is a scope change, not a redesign.</p>
 
-  <p><strong>The write side needs no framework change at all.</strong> The agent block's detached guard is on persistence alone, and the comment sitting on it draws the line explicitly: <em>&#8220;Skipped wholesale when conversation state is off &#8212; a value written under an undeclared key is a silent corruption. The handle is still RETURNED; that is this block's output, not persisted state.&#8221;</em> The returned <code>SdkAgentHandle</code> carries <code>sessionId</code> whether or not the block is detached. The manager takes it off the output and writes the row.</p>
+  <p><strong>The write side needs nothing from the agent block.</strong> Its detached guard is on persistence alone, and the comment sitting on it draws the line explicitly: <em>&#8220;Skipped wholesale when conversation state is off &#8212; a value written under an undeclared key is a silent corruption. The handle is still RETURNED; that is this block's output, not persisted state.&#8221;</em> The returned <code>SdkAgentHandle</code> carries <code>sessionId</code> whether or not the block is detached. The manager takes it off the output and writes it onto the task.</p>
 
   <pre class="code"><i>// PROPOSED &#8212; the harness manager loop, around the agent block that already exists.</i>
-<i>// READ &#8212; before the run</i>
-const prior  = await <em>runs</em>.<b>getOptional</b>(topic);
-const resume = prior?.state.<b>sdkSessionId</b> ?? null;
+<i>// READ &#8212; off the claimed task. Not session state, and not metadata.</i>
+const resume = claim.task.<b>sessionHandle</b> ?? null;   <i>// typed, top-level, shape undesigned</i>
 
-const handle = await runAgent({ prompt, <b>resume</b> });   <i>// &#8592; the one proposed input</i>
+const handle = await runAgent({ prompt, <b>resume</b> });   <i>// &#8592; the proposed input</i>
 
-<i>// WRITE &#8212; after the turn, off the block's OUTPUT, never off session state</i>
-await <em>runs</em>.<b>upsert</b>(topic, {
-  <b>sdkSessionId</b>: handle.sessionId ?? resume,   <i>// keep the last known id if the SDK reported none</i>
+<i>// WRITE &#8212; after the turn, off the block's OUTPUT, back onto the task's own field</i>
+await <b>writeSessionHandle</b>(claim.taskId, handle.sessionId ?? resume);
+
+<i>// BOOKKEEPING &#8212; the row a person reads. defineResourceCollection returns a</i>
+<i>// DECLARATION; the runtime methods live on the ref, off ctx.resources by key.</i>
+const runs   = <em>ctx.resources.runs</em>;
+const prior  = await runs.<b>getOptional</b>(topic);
+await runs.<b>upsert</b>(topic, {
+  <b>sdkSessionId</b>: handle.sessionId ?? resume,   <i>// a copy; the task is the mechanism</i>
   lastOutcome: outcome,                        <i>// what the manager decided, not the raw status</i>
   costUsd:     handle.costUsd,
   attempts:    (prior?.state.attempts ?? 0) + 1,
 });</pre>
 
-  <p><strong>Only the read needs an addition.</strong> <code>sessionProvider.resolve(&#8230;)</code> is consulted inside <code>if (!detached)</code> and nowhere else, so today there is no way to hand a prior id in on the detached path. An input carrying a resume id is the <em>only</em> framework change this design needs, and it narrows no guard: session state stays off, the board's refusal stays intact, and the id arrives as ordinary block input. <span class="tag t-prop">proposed</span> &#8212; filed as a change of its own. Until it lands, a steer restarts the coding agent rather than continuing it (section 12).</p>
+  <p><strong>The read is where the framework has to move.</strong> <code>sessionProvider.resolve(&#8230;)</code> is consulted inside <code>if (!detached)</code> and nowhere else, so today there is no way to hand a prior id in on the detached path. An input carrying a resume id narrows no guard: session state stays off, the board's refusal stays intact, and the id arrives as ordinary block input. <span class="tag t-prop">proposed</span> &#8212; filed as a change of its own.</p>
+
+  <p>It is <strong>on the Proof's critical path, not beside it</strong>. A second turn that re-reads a diff the agent had already read is not the loop this design claims; proving the loop means resuming. What is still open is what that work leaves behind &#8212; a path the workstreams epic can call, or a harness that proves it and goes away. Thread 14.</p>
 
   <div class="tw">
     <table>
       <thead><tr><th>Steer kind</th><th>Transport</th><th>Status</th></tr></thead>
       <tbody>
-        <tr><td><code>answer</code> / <code>instruct</code> / <code>tangent</code></td><td>A steer task row on the run's topic &#8594; the same derived child session &#8594; a fresh agent run handed the <code>sdkSessionId</code> read back off <code>runs/*</code></td><td><span class="tag t-prop">proposed</span> &#8212; every part exists except the resume input</td></tr>
+        <tr><td><code>answer</code> / <code>instruct</code> / <code>tangent</code></td><td>A steer task row on the run's topic &#8594; the same derived child session &#8594; an agent run handed the resume handle read back off the claimed task</td><td><span class="tag t-prop">proposed</span> &#8212; every part exists except the resume input</td></tr>
         <tr><td><code>cancel</code>, <code>urgency: "interrupt"</code></td><td><code>POST /api/flows/:flowKind/requests/:requestId/abort</code>. Fires the in-process abort controller here, or records the intent for the owning process to pick up on its next heartbeat. <code>claudeCodeAgent</code> forwards <code>ctx.signal</code> into the SDK's own abort controller</td><td><span class="tag t-real">exists</span></td></tr>
         <tr><td><code>cancel</code>, before the next turn</td><td>Cancel the task row. The detached runner's start gate re-reads the row and aborts unless the claim is still current and the status is still <code>in_progress</code></td><td><span class="tag t-real">exists</span></td></tr>
       </tbody>
@@ -1383,7 +1405,7 @@ await <em>runs</em>.<b>upsert</b>(topic, {
         <tr><td>Does a steer wait for a free worker slot?</td><td>Yes, if it rides a task row and the board is at <code>concurrency</code>. On the cold path that is the ordinary case: the run ended when it asked and its task is parked, so the answer arrives as fresh work, picks the parked task back up, and queues like any other. A steer aimed at a run still waiting in <code>awaiting_review</code> does not contend &#8212; but that is the short-horizon path, not the one to size for</td></tr>
         <tr><td>The agent answers its own question before the steer lands?</td><td>Possible. The row moves to <code>withdrawn</code> rather than being deleted, and a late answer against a withdrawn row is reported back, not applied</td></tr>
         <tr><td>The run died while the question was open?</td><td><code>livenessOf</code> is the hint, never the proof. Corroborate against the durable row before re-dispatching &#8212; re-dispatching on a <code>false</code> answer alone is how double execution ships</td></tr>
-        <tr><td>Who settles the row?</td><td>The child, via <code>settleParentTask</code>. Never the parent</td></tr>
+        <tr><td>Who settles the row?</td><td>The workstream, through the runner's fenced recorders. Never the parent</td></tr>
       </tbody>
     </table>
   </div>
@@ -1448,18 +1470,18 @@ type PhaseLogic = {
   <div class="sec-head"><span class="sec-num">08</span><h2>What we track</h2></div>
   <p class="lede">A collection is the unit of state a block can read and a model can be shown. It is also, in this design, where the coordinator's memory lives instead of in its context.</p>
 
-  <p>The primitive is <code>defineResourceCollection({ pattern, scope, stateSchema, flowIsolation?, sharedToWorkstream?, maxInstances?, eviction?, prefetchMode?, contentTemplate?, client?, llmReadable?, llmWritable?, edges?, onInstanceCreated/Updated/Deleted, reactTo })</code>. Reads and writes from inside a block are async regardless of prefetch: <code>const ref = await coll.getOptional(key); await ref.readContent(); await ref.patchState({&#8230;})</code>.</p>
+  <p>The primitive is <code>defineResourceCollection({ pattern, scope, stateSchema, flowIsolation?, sharedToWorkstream?, maxInstances?, eviction?, prefetchMode?, contentTemplate?, client?, llmReadable?, llmWritable?, edges?, onInstanceCreated/Updated/Deleted, reactTo })</code>. Reads and writes from inside a block are async regardless of prefetch, and they go through the <em>ref</em> rather than the declaration &#8212; <code>defineResourceCollection</code> returns config plus a brand, and the block picks the ref off <code>ctx.resources</code> by accessor key: <code>const ref = await ctx.resources.epics.getOptional(key); await ref.readContent(); await ref.patchState({&#8230;})</code>.</p>
 
   <div class="tw">
     <table>
       <thead><tr><th>Collection</th><th>Pattern</th><th>Scope</th><th>Status</th><th>Holds</th></tr></thead>
       <tbody>
         <tr><td>epics</td><td><code>epics/**</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td>The objective, gate state, the issue set, wrap output</td></tr>
-        <tr><td>issues</td><td><code>epics/[epicId]/issues/**</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td>Category, position in the graph, current phase, PR, review rounds spent</td></tr>
+        <tr><td>issues</td><td><code>epics/[epicId]/issues/[issueId]</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td>Category, position in the graph, current phase, PR, review rounds spent</td></tr>
         <tr><td>specs</td><td><code>specs/**</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td>Spec body and approval state</td></tr>
         <tr><td><strong>inbox</strong></td><td><code>inbox/*</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td><strong>The coordinator's working set.</strong> One row per open question, with the workstream that asked it</td></tr>
         <tr><td><strong>sessions</strong></td><td><code>sessions/*</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td><strong>What the other coordinators are doing.</strong> One row per session, written by that session: the epic it holds, phase and open counts, when it last moved, and the address to reach it</td></tr>
-        <tr><td>runs</td><td><code>runs/*</code></td><td>session + <code>sharedToWorkstream</code></td><td><span class="tag t-prop">proposed</span></td><td>One row per run, keyed by topic: <code>sdkSessionId</code>, child session, request id, worktree, branch, outcome, cost. The resume handle a detached agent cannot keep for itself (section 6)</td></tr>
+        <tr><td>runs</td><td><code>runs/**</code></td><td>session + <code>sharedToWorkstream</code></td><td><span class="tag t-prop">proposed</span></td><td>One row per run, keyed by topic: child session, request id, worktree, branch, outcome, cost, and a copy of the resume handle. The handle itself rides the task; this row is what a person reads (section 6)</td></tr>
         <tr><td>decisions</td><td><code>decisions/**</code></td><td>user</td><td><span class="tag t-prop">proposed</span></td><td>Gates and steers as records: what was asked, who answered, when, and the reason given</td></tr>
         <tr><td>observed-file-ops</td><td><code>[topic]/observations</code></td><td>session</td><td><span class="tag t-real">exists</span></td><td>What a run changed</td></tr>
         <tr><td>observed-plan</td><td><code>[topic]/observations</code></td><td>session</td><td><span class="tag t-real">exists</span></td><td>What a run thought its job was</td></tr>
@@ -1468,7 +1490,9 @@ type PhaseLogic = {
     </table>
   </div>
 
-  <p>Scope is not a detail here. <code>user</code> scope is what lets a workstream and the coordinator see one instance set, because a detached child inherits tenant, user and org from the request that started it. <code>session</code> scope needs <code>sharedToWorkstream: true</code> to span a session and its background children at all, and the framework rejects that flag anywhere else. <code>runs/*</code> takes that route deliberately: the SDK sessions it indexes die with the lineage, so an index outliving them would be a list of dead handles. Section 6 carries the reasoning, and the escape hatch if that ever stops being true.</p>
+  <p><strong>A pattern either parameterizes or wildcards, and it cannot do both.</strong> <code>epics/[epicId]/issues/[issueId]</code> takes the parameterized resolver; <code>epics/**</code> takes the glob one. Mixing them &#8212; <code>epics/[epicId]/issues/**</code> &#8212; validates cleanly and then behaves as neither, because the parameterized path escapes <code>**</code> to a literal: the collection quietly holds one degenerate row per epic with the asterisks still in the key. Nothing in the repo mixes the two.</p>
+
+  <p>Scope is not a detail here. <code>user</code> scope is what lets a workstream and the coordinator see one instance set, because a detached child inherits tenant, user and org from the request that started it. <code>session</code> scope needs <code>sharedToWorkstream: true</code> to span a session and its background children at all, and the framework rejects that flag anywhere else. <code>runs/**</code> takes that route deliberately: the SDK sessions it indexes die with the lineage, so an index outliving them would be a list of dead handles. Section 6 carries the reasoning, and the escape hatch if that ever stops being true.</p>
 
   <p><code>llmReadable</code>, <code>llmWritable</code> and <code>contentTemplate</code> decide what a phase prompt can show and what a run may write back without a block in between. Those are policy calls per collection, not defaults to accept &#8212; a review phase that can write to <code>specs/**</code> is a different product from one that cannot.</p>
 
@@ -1566,7 +1590,7 @@ type PhaseLogic = {
     <figcaption><b>Addressing, not bookkeeping.</b> Nothing registers a running child. Identity is derived &#8212; which is what lets a steer find a run without a registry, and equally what makes two runs that should differ collapse into one if they share a topic and an assignee. A per-phase decision, not a default to accept.</figcaption>
   </figure>
 
-  <p>Each concurrent run is identified by a derived child session id, hashed from tenant, principal, parent session, topic, and key. <code>topic</code> comes from <code>task.metadata.topic</code>, falling back to <code>taskId</code>. The worker coordinate is <code>{kind:"assignee",name} | {kind:"uniform"} | {kind:"floor"}</code>, and the spawn seed is <code>workstreamRoutingSeed({ boardId, coordinate, topic, topicFallback: claim.taskId })</code>. The child enters with <code>source: "workstream"</code> and resolves <code>flow.workstream</code>, which is terminal &#8212; <code>flow.actions</code> is unreachable from inside a workstream. That terminality is also what rules out the one call site a role may not have (section 1): a workstream cannot reach an action, so a role dispatched into one cannot set work for its peers.</p>
+  <p>Each concurrent run is identified by a derived child session id, hashed from tenant, principal, parent session, topic, and key. <code>topic</code> comes from <code>task.metadata.topic</code>, falling back to <code>taskId</code>. The worker coordinate is <code>{kind:"assignee",name} | {kind:"uniform"} | {kind:"floor"}</code>, and the spawn seed is <code>workstreamRoutingSeed({ boardId, coordinate, topic, topicFallback: claim.taskId })</code>. The child enters with <code>source: "workstream"</code> and resolves <code>flow.workstream</code>, which is terminal &#8212; <code>flow.actions</code> is unreachable from inside a workstream. That terminality is what the call-site rule of section 1 rests on. It does not by itself stop a dispatched role writing to the board, which is reachable as a capability from anywhere &#8212; keeping one writer is a choice the design makes, not one the framework makes for it (thread 5).</p>
 
   <p><strong>Topic is the discriminator, and section 6 leans on it.</strong> Deriving identity from the topic is exactly what makes a steer routable: the coordinator reads the topic off the inbox row, and the same seed lands in the same child session. It also means two implement runs on one issue that must proceed concurrently need different topics, and two runs that should share a session need the same one. The design has to say which, per phase.</p>
 
@@ -1578,7 +1602,7 @@ type PhaseLogic = {
         <tr><td>How does the parent find them?</td><td>It re-reads the durable task rows. That is the handle</td></tr>
         <tr><td>Can it enumerate live runs?</td><td>No. There is no "list my workstreams" API and no registry</td></tr>
         <tr><td>Can it tell whether one is alive?</td><td><code>ctx.requestHost.livenessOf(requestIds)</code> &#8212; an <em>optional</em> method, absent when the liveness gate refuses. Design for it being missing</td></tr>
-        <tr><td>What settles a row?</td><td>The child, via <code>settleParentTask</code>. Never the parent</td></tr>
+        <tr><td>What settles a row?</td><td>The workstream, through the runner's fenced recorders. Never the parent</td></tr>
         <tr><td>What does the operator see?</td><td><code>task-change</code> items plus a transient board-meta component carrying <code>{ status, terminationReason, counts }</code>, both already emitted &#8212; and, with <code>client.live</code>, inbox rows as they appear</td></tr>
       </tbody>
     </table>
@@ -1650,6 +1674,7 @@ export const conductorConfig = <b>createConductorCapability</b>({
   <p class="lede">The sections above are the shape. This one is the order &#8212; what work exists, what each piece contains, and what has to land before what. Tracking identifiers appear in this section and nowhere else in this document, because naming the work is the whole point of a roadmap.</p>
 
   <div class="key">
+    <span><span class="tag t-real">shipped</span> merged to main</span>
     <span><span class="tag t-real">spec approved</span> direction signed off</span>
     <span><span class="tag t-prose">in spec review</span> spec written, under review</span>
     <span><span class="tag t-prop">filed</span> tracked, not yet specced</span>
@@ -1657,14 +1682,15 @@ export const conductorConfig = <b>createConductorCapability</b>({
   </div>
 
   <div class="note">
-    <span class="lbl">Checked against the tracker, not remembered &#8212; 23 August 2026</span>
-    <p>Three things had moved since they were last written down, and the sequence below reflects the checked state rather than the remembered one. <strong>Watch is filed</strong> &#8212; it is the sixth issue of the Relay epic, not the unfiled gap section 6 leaves it as. <strong>The parked-task problem is filed, spec-approved, and a different shape</strong>: not the new <code>pending feedback</code> status section 6 proposes, but an exit predicate on the <code>awaiting_review</code> the board already has. And <strong>the harness-manager proof is an epic with three issues under it</strong>, one of which &#8212; workspaces &#8212; already has an approved direction.</p>
+    <span class="lbl">Checked against the tracker, not remembered &#8212; 24 August 2026</span>
+    <p><strong>Which epic is in flight, first, because it is the thing most often misread.</strong> LAB-68 delivered L0 and is not the epic in flight &#8212; it is the one this document was written under. The work moving now is the <strong>harness-manager epic and its two siblings</strong>. The join between them is issue <strong>#1429</strong>, and the harness-manager epic's own objective gate sits on PR <strong>#1362</strong>. Read the sequence below as that set.</p>
+    <p>Three other things had moved since they were last written down. <strong>Watch is filed</strong> &#8212; an issue of the Relay epic, not the unfiled gap section 6 leaves it as. <strong>The parked-task problem has shipped</strong>: not the new <code>pending feedback</code> status section 6 proposes, but an exit predicate on the <code>awaiting_review</code> the board already has, merged to <code>main</code>. It also sits somewhere other than this document used to say &#8212; under the honest-task-substrate epic, <em>related</em> to Relay rather than filed inside it, which makes them two issues, not one. And <strong>the harness-manager proof is an epic with three issues under it</strong>, one of which &#8212; workspaces &#8212; already has an approved direction.</p>
   </div>
 
   <figure>
     <div class="fig-body">
-      <svg viewBox="0 0 940 500" role="img" aria-label="The dependency shape of the build. On the left, four pieces of work that start now because nothing blocks them: Relay core, issue FIX-1230, in spec review on PR 1420, which is the send verb and addressing and is marked the critical path; the harness-manager proof, epic LAB-140, made of LAB-138 then LAB-139, which drives one real issue end to end and whose provisioning is deliberately throwaway; workspaces, FIX-150, spec approved with four sub-PRs, one file projection serving both callers; and the board's exit and park mode, FIX-1234, spec approved, which stops a parked task holding a request open. In the centre, five pieces unlocked by the left. Four of them hang off Relay core: watch, FIX-1235; cron as a sender, FIX-1233, which also needs a session address on the schedule row; sibling-session spawn, FIX-1232; and the durable question path, which LAB-139 first ships on the hot path and Relay later makes cold, and which the board's exit and park mode also feeds. The fifth, real provisioning, hangs off workspaces, where sub-PR c replaces the throwaway stub. On the right, two later pieces that gate nothing and are additive: resuming an external session, FIX-1179, in backlog under no epic, which upgrades a steered run's second turn; and strands, epic FIX-1169, where FIX-1170 comes first and FIX-1171 and FIX-996 follow, parked by its author. Along the bottom, a dashed band lists what is not filed anywhere and is proposed in this document only: the classify-and-route step, the manager and architect roles, the sessions collection, the config capability, more than one issue on the board, and any user interface. The closing line reads: the proof does not wait for its own dependencies, because throwaway provisioning is enough to expose the join.">
-        <text class="t-lbl" x="20" y="28">START NOW &#8212; NOTHING BLOCKS THESE</text>
+      <svg viewBox="0 0 940 500" role="img" aria-label="The dependency shape of the build. On the left, the unblocked set: three pieces of work that start now because nothing blocks them, and one that has already shipped. Relay core, issue FIX-1230, in spec review on PR 1420, which is the send verb and addressing and is marked the critical path; the harness-manager proof, epic LAB-140, made of LAB-138 then LAB-139, which drives one real issue end to end and whose provisioning is deliberately throwaway; workspaces, FIX-150, spec approved with four sub-PRs, one file projection serving both callers; and the board's exit and park mode, FIX-1234, already merged, which stops a parked task holding a request open and which is filed under the honest-task-substrate epic rather than inside Relay. In the centre, five pieces unlocked by the left. Four of them hang off Relay core: watch, FIX-1235; cron as a sender, FIX-1233, which also needs a session address on the schedule row; sibling-session spawn, FIX-1232; and the durable question path, which is what the first real run ships on rather than a later upgrade to it, and which the board's exit and park mode also feeds. The fifth, real provisioning, hangs off workspaces, where sub-PR c replaces the throwaway stub. On the right, two later pieces that gate nothing and are additive: resuming an external session, FIX-1179, in backlog under no epic, which upgrades a steered run's second turn; and strands, epic FIX-1169, where FIX-1170 comes first and FIX-1171 and FIX-996 follow, parked by its author. Along the bottom, a dashed band lists what is not filed anywhere and is proposed in this document only: the classify-and-route step, the manager and architect roles, the sessions collection, the config capability, more than one issue on the board, and any user interface. The closing line reads: the proof does not wait for its own dependencies, because throwaway provisioning is enough to expose the join.">
+        <text class="t-lbl" x="20" y="28">UNBLOCKED &#8212; THREE TO DO, ONE DONE</text>
         <text class="t-lbl" x="352" y="28">UNLOCKED BY THE LEFT</text>
         <text class="t-lbl" x="650" y="28">LATER &#8212; ADDITIVE, GATES NOTHING</text>
 
@@ -1685,9 +1711,9 @@ export const conductorConfig = <b>createConductorCapability</b>({
         <text class="t-xs" x="36" y="265">FIX-150 &middot; SPEC APPROVED &middot; FOUR SUB-PRs</text>
         <text class="t-s" x="36" y="281">one projection, both callers</text>
 
-        <rect class="n-box2" x="20" y="302" width="272" height="62" rx="4"/>
+        <rect class="n-code" x="20" y="302" width="272" height="62" rx="4"/>
         <text class="t-b" x="36" y="326">The board&#8217;s exit / park mode</text>
-        <text class="t-xs" x="36" y="343">FIX-1234 &middot; SPEC APPROVED</text>
+        <text class="t-xs" x="36" y="343">FIX-1234 &middot; SHIPPED &middot; NOT A RELAY ISSUE</text>
         <text class="t-s" x="36" y="359">a parked task stops holding a request</text>
 
         <path class="ln" d="M292,77 L322,77"/>
@@ -1713,7 +1739,7 @@ export const conductorConfig = <b>createConductorCapability</b>({
 
         <rect class="n-box" x="352" y="248" width="250" height="54" rx="4"/>
         <text class="t-b" x="368" y="274">The durable question path</text>
-        <text class="t-xs" x="368" y="292">LAB-139 RUNS HOT &middot; THIS MAKES IT COLD</text>
+        <text class="t-xs" x="368" y="292">LAB-139 SHIPS ON IT, NOT AFTER</text>
 
         <rect class="n-box" x="352" y="316" width="250" height="54" rx="4"/>
         <text class="t-b" x="368" y="342">Real provisioning</text>
@@ -1739,24 +1765,24 @@ export const conductorConfig = <b>createConductorCapability</b>({
         <text class="t-lbl" x="470" y="486" text-anchor="middle">THE PROOF DOES NOT WAIT FOR ITS OWN DEPENDENCIES &#8212; THROWAWAY PROVISIONING IS ENOUGH TO EXPOSE THE JOIN</text>
       </svg>
     </div>
-    <figcaption><b>One layer with four consumers &#8212; and most of the picture needing none of it.</b> Everything drawn here is filed except the dashed band, which is this document proposing work nobody is tracking. The spine out of Relay core is the only hard sequencing constraint in the picture &#8212; the rest of the left column is genuinely parallel, and the right column gates nothing at all.</figcaption>
+    <figcaption><b>One layer with four consumers &#8212; and most of the picture needing none of it.</b> Everything drawn here is filed except the dashed band, which is this document proposing work nobody is tracking; the green box is already merged. The spine out of Relay core is the only hard sequencing constraint in the picture &#8212; the rest of the left column is genuinely parallel, and the right column gates nothing at all.</figcaption>
   </figure>
 
   <h3>Relay is the critical path</h3>
 
   <p>Addressing, a send verb, and per-adapter delivery are <strong>one missing layer</strong>, and section 6 is most of the argument for it. Four filed pieces of work wait on that layer and cannot start without it. <strong>Watch</strong> has nowhere to deliver a notification. <strong>Cron as a sender</strong> needs a schedule row that can name a session, which the row's schema cannot express today. <strong>Sibling-session spawn</strong> is the same seam's other verb &#8212; a spawn verb and a send verb both address a session and both need per-adapter delivery. And the <strong>durable</strong> half of the question channel needs a run to be reachable after its own request has ended.</p>
 
-  <p>It is also the piece furthest along. The epic is approved on PR #1357, and its first issue &#8212; FIX-1230, the send verb, addressing, and both send modes &#8212; is in spec review on PR #1420. One of the epic's six issues, FIX-1231, exists conditionally: it builds a cross-worker wake channel <em>only</em> if the blocking send mode has to work on a queue-backed dispatcher, and that fork is settled inside FIX-1230's own review rather than here.</p>
+  <p>It is also the piece furthest along. The epic is approved on PR #1357, and its first issue &#8212; FIX-1230, the send verb, addressing, and both send modes &#8212; is in spec review on PR #1420. One of the epic's five issues, FIX-1231, exists conditionally: it builds a cross-worker wake channel <em>only</em> if the blocking send mode has to work on a queue-backed dispatcher, and that fork is settled inside FIX-1230's own review rather than here.</p>
 
-  <h3>Four things start now, and none of them waits</h3>
+  <h3>Three things start now, and a fourth already landed</h3>
 
-  <p>Everything in the left column of the figure is unblocked today. Three of them are the obvious ones &#8212; the substrate, the proof, and the file layer. The fourth is easy to miss, because it is filed <em>inside</em> the Relay epic and reads like part of it.</p>
+  <p>Everything in the left column of the figure is unblocked today. Three of them are still to do &#8212; the substrate, the proof, and the file layer. The fourth is already merged.</p>
 
   <ol>
     <li><strong>Relay's first issue</strong> (FIX-1230). The substrate everything else in the messaging story rides on.</li>
     <li><strong>The harness-manager proof</strong> (LAB-140). Drive one real issue end to end through the join &#8212; board claim, provision, start the run, read the outcome, decide. LAB-138 is the run; LAB-139 is the question and the answer coming back.</li>
     <li><strong>Workspaces</strong> (FIX-150). Independent of Relay entirely, direction already approved, and split into four sub-PRs: the package, then the shell tool and the coding-agent path in parallel, then the overlap check across both.</li>
-    <li><strong>The board's exit / park mode</strong> (FIX-1234). Filed as the Relay epic's fifth issue, but its own scope says plainly that it does <strong>not</strong> depend on the send verb. It rides in that epic because the headline scenario needs it, not because it is blocked by it &#8212; so it is a fourth parallel start, not a gated one.</li>
+    <li><strong>The board's exit / park mode</strong> (FIX-1234). <strong>Done, and merged.</strong> It never depended on the send verb, and it is not a Relay issue: it sits under the honest-task-substrate epic, <em>related</em> to Relay rather than inside it &#8212; two issues, not one. It is why the Proof can park a task and end its request today rather than after the bus lands.</li>
   </ol>
 
   <div class="note">
@@ -1772,14 +1798,14 @@ export const conductorConfig = <b>createConductorCapability</b>({
         <tr>
           <td><strong>Relay</strong><br><code>FIX-1197</code></td>
           <td><span class="tag t-real">epic approved</span> <span class="tag t-prose">issue 1 in spec review</span></td>
-          <td>The send verb and addressing (<code>FIX-1230</code>), a conditional cross-worker wake channel (<code>1231</code>), sibling spawn (<code>1232</code>), addressed cron (<code>1233</code>), the board's exit mode (<code>1234</code>), watch (<code>1235</code>)</td>
-          <td>Watch, cron-as-sender, sibling spawn, and the cold half of the question channel</td>
-          <td>Nothing. <code>FIX-1230</code> is unblocked today; the other five wait on it, except <code>1234</code></td>
+          <td>The send verb and addressing (<code>FIX-1230</code>), a conditional cross-worker wake channel (<code>1231</code>), sibling spawn (<code>1232</code>), addressed cron (<code>1233</code>), watch (<code>1235</code>)</td>
+          <td>Watch, cron-as-sender, sibling spawn, and the durable question path the Proof runs on</td>
+          <td>Nothing. <code>FIX-1230</code> is unblocked today; the other four wait on it</td>
         </tr>
         <tr>
           <td><strong>The harness-manager proof</strong><br><code>LAB-140</code></td>
           <td><span class="tag t-prop">epic spec on PR #1362</span></td>
-          <td><code>LAB-138</code> turns a task row into a watched, settled coding run and records it as <code>runs/*</code>. <code>LAB-139</code> gives that run a way to ask and be answered &#8212; the inbox collection and the <code>steer</code> action. <code>FIX-150</code> sits under the same epic</td>
+          <td><code>LAB-138</code> turns a task row into a watched, settled coding run and records it as <code>runs/**</code>. <code>LAB-139</code> gives that run a way to ask and be answered &#8212; the inbox collection and the <code>steer</code> action. <code>FIX-150</code> sits under the same epic</td>
           <td>Everything above the seam &#8212; the phase machine, context assembly, filing. None of them can be built on a dispatch that returns and forgets</td>
           <td>Nothing to start. <code>LAB-139</code> needs <code>LAB-138</code>; the objective gate on PR #1362 is not yet marked approved</td>
         </tr>
@@ -1792,9 +1818,9 @@ export const conductorConfig = <b>createConductorCapability</b>({
         </tr>
         <tr>
           <td><strong>The board's exit / park mode</strong><br><code>FIX-1234</code></td>
-          <td><span class="tag t-real">spec approved</span></td>
-          <td>An exit predicate so a task parked in <code>awaiting_review</code> releases its launching request, and the board reports the exit as neither success nor failure</td>
-          <td>The cold path &#8212; a workstream that asks a question and <em>ends</em>, rather than blocking</td>
+          <td><span class="tag t-real">shipped</span></td>
+          <td>An exit predicate so a task parked in <code>awaiting_review</code> releases its launching request, and the board reports the exit as neither success nor failure. Merged to <code>main</code>, and filed under the honest-task-substrate epic rather than inside Relay</td>
+          <td>The parked half of the Proof &#8212; a workstream that asks a question and <em>ends</em>, rather than blocking</td>
           <td>Nothing, and specifically not the send verb</td>
         </tr>
         <tr>
@@ -1885,19 +1911,19 @@ export const conductorConfig = <b>createConductorCapability</b>({
 
 <section id="open">
   <div class="sec-head"><span class="sec-num">12</span><h2>Open threads</h2></div>
-  <p class="lede">Thirteen threads this design cannot close on its own. Five now have answers, settled by the work section 11 puts on the roadmap; they are kept here with their reasoning rather than deleted, because a decision without its reasoning cannot be re-checked. The other eight are still live.</p>
+  <p class="lede">Fourteen threads this design cannot close on its own. Five now have answers, settled by the work section 11 puts on the roadmap; they are kept here with their reasoning rather than deleted, because a decision without its reasoning cannot be re-checked. The other nine are still live.</p>
 
   <div class="tension">
     <h5>1 &middot; Nothing has driven one real issue end to end through this seam</h5>
-    <p>Every diagram here routes through the harness manager, and it does not exist. The parts do: the board claims and routes, <code>claudeCodeAgent</code> runs, <code>startDetached</code> spawns, <code>settleParentTask</code> closes the row. What is unproven is the join &#8212; and the join is where the surprises live, particularly around a run that asks something on its first turn.</p>
+    <p>Every diagram here routes through the harness manager, and it does not exist. The parts do: the board claims and routes, <code>claudeCodeAgent</code> runs, <code>startDetached</code> spawns, and the runner's fenced recorders close the row. What is unproven is the join &#8212; and the join is where the surprises live, particularly around a run that asks something on its first turn.</p>
     <span class="ask">Answered &#8212; yes, and it is filed as an epic of its own: the manager, then one real issue driven end to end, question and all, on throwaway provisioning (section 11). What is still outstanding is the objective gate on it, not the approach.</span>
   </div>
 
   <div class="tension">
     <h5>2 &middot; Mail, and the cron changes that ride on it</h5>
-    <p>The cold path has a named answer: a workstream sends mail to the coordinator&#8217;s session, and the flow handles it as a request like any other input (section 6). The <em>build</em> is no longer open &#8212; it is an approved epic with six issues under it, and this document still deliberately does not specify it. Its shape is what section 6 argued for: <strong>an address on the envelope, a send verb for a running request, and per-adapter delivery</strong>, plus the cron half, a schedule that can name a session so a tick stops being a session-less dispatch and becomes a sender like everything else. The sibling-spawn verb is scoped with that layer rather than after it &#8212; same addressing, same per-adapter delivery. The two additions on the <em>board</em> rather than the bus are in the same epic and land independently of the send verb: the parked-task exit mode section 6 records, and the <strong>watch</strong> &#8212; a keyed row per (watcher, task) plus a best-effort send inside the settle, which borrows the send verb and needs nothing else.</p>
+    <p>The cold path has a named answer: a workstream sends mail to the coordinator&#8217;s session, and the flow handles it as a request like any other input (section 6). The <em>build</em> is no longer open &#8212; it is an approved epic with five issues under it, and this document still deliberately does not specify it. Its shape is what section 6 argued for: <strong>an address on the envelope, a send verb for a running request, and per-adapter delivery</strong>, plus the cron half, a schedule that can name a session so a tick stops being a session-less dispatch and becomes a sender like everything else. The sibling-spawn verb is scoped with that layer rather than after it &#8212; same addressing, same per-adapter delivery. One addition sits on the <em>board</em> rather than the bus, it never depended on the send verb, and it has already shipped: the parked-task exit mode section 6 records, filed under the honest-task-substrate epic rather than inside Relay. The <strong>watch</strong> stays in Relay &#8212; a keyed row per (watcher, task) plus a best-effort send inside the settle, which borrows the send verb and needs nothing else.</p>
     <p>The question the existing seam raises deliberately has an answer too, and it is a subtraction. <code>RequestHost</code> never takes a session id as a parameter &#8212; a caller supplies only a seed, and identity is closed over &#8212; precisely so nobody can name a session they do not own. <strong>What a sender may legally address</strong> is settled by ruling <em>discovery</em> out of the layer entirely: a sender addresses a session it already holds, or one it spawned itself. There is no lookup, and there is not going to be one.</p>
-    <span class="ask">Answered &#8212; the conductor build does not wait. Its first real issue runs on the hot path, a question held in <code>awaiting_review</code> and answered while the operator is right there, and adopts relay when it lands. The cost is accepted and named in the filed work: a worker slot stays open for as long as the answer takes, which is exactly what section 6 says not to <em>depend</em> on &#8212; and depending on it is different from starting on it.</span>
+    <span class="ask">Answered &#8212; the Proof is relay plus a parked task row, and it waits for both. The earlier plan was to start on the hot path, hold the question in <code>awaiting_review</code> while the operator answered, and adopt relay afterwards. That is not what gets built. A worker slot held open for as long as an answer takes is the thing section 6 says not to depend on, and starting on it is how a stopgap quietly becomes the design. The first real run parks its task, ends its request, and is woken by a relayed message.</span>
   </div>
 
   <div class="tension">
@@ -1924,7 +1950,7 @@ export const conductorConfig = <b>createConductorCapability</b>({
   <div class="tension">
     <h5>6 &middot; A detached agent has no way to be handed a resume id</h5>
     <p>The design's one real dependency on framework code, and it is small. <code>claudeCodeAgent</code> consults its session provider only on the non-detached path, so nothing today carries a prior <code>sdkSessionId</code> into a detached run. Until something does, a steer starts the coding agent from nothing: the workstream keeps its item history and the model loses its own. The write half already works &#8212; the handle is returned regardless of <code>detached</code> &#8212; so what is missing is an input and a conditional <code>resume</code>, not a change to what <code>detached</code> means.</p>
-    <span class="ask">Answered &#8212; ship restarting. The filed question-channel issue accepts the cost in as many words and says not to build a workaround for it: a re-stated prompt is correct and expensive, and it pays again for a diff the agent had already read. The input itself is filed separately and upgrades a steered run&#8217;s <em>second</em> turn, which is why it gates nothing (section 11).</span>
+    <span class="ask">Answered &#8212; resume, not restart. Restarting is correct and expensive: a re-stated prompt pays again for a diff the agent had already read, and a Proof whose second turn does that is not proving the loop it claims to. So the input is on the Proof's critical path rather than beside it, and shipping the Proof without it is off the table. Two things follow that are not settled by this answer: the shape of the typed handle field on the task (section 6), and what the resume work lands as &#8212; thread 14.</span>
   </div>
 
   <div class="tension">
@@ -1978,9 +2004,16 @@ export const conductorConfig = <b>createConductorCapability</b>({
     <span class="ask">Leaning: per-role is enough, so do not build the keyed form. Conductor&#8217;s workstreams are all one kind of thing, a phase run, and the differences it wants per phase (<code>askPolicy</code>, <code>model</code>, <code>gate</code>) already live in the phase table the manager reads at dispatch, not in the relay door. Say it rather than leave it silent, though: Relay&#8217;s first issue is where the seam gets reserved or consciously closed, and its spec is silent on parent-versus-child divergence, which closes it by default. A seam closed by decision and one closed by silence cost the same today and very different amounts later. What being wrong costs: widening a flat <code>relay?</code> group to a keyed or resolver form, pre-1.0, no persisted-row migration implied. Cheap, which is what makes the restrained call a default rather than a gamble.</span>
   </div>
 
+  <div class="tension">
+    <h5>14 &middot; Does the resume POC land as a path, or as a harness?</h5>
+    <p>The Proof needs resume rather than restart (thread 6), so the work that proves it sits on the critical path rather than beside it. What that work <em>leaves behind</em> is not decided. It could land as <strong>a path the workstreams epic can call</strong> &#8212; a real seam, carried forward, at the cost of having to get its shape right before anything has resumed once. Or it could land as <strong>a throwaway harness</strong> that establishes the behaviour and is then deleted, with the seam built afterwards against a known answer.</p>
+    <p>Not colour to bury at the end of a section. The two produce different plans: one puts the seam's design inside the Proof, the other puts it after &#8212; and the typed handle field on the task (section 6) is undesigned either way. It belongs to the parent resume issue, which is where the shape of the resume input is being settled in any case.</p>
+    <span class="ask">Which does the Proof need &#8212; a callable path, or a proof and a delete? Both ways of being wrong are the expensive kind. A throwaway that quietly becomes the path is the one this document keeps naming; a permanent seam designed before anything has resumed once is the other. Answered inside the resume issue it costs a paragraph. Answered after the Proof ships it costs a rewrite.</span>
+  </div>
+
   <div class="note" style="margin-top:26px">
     <span class="lbl">The one-sentence version</span>
-    <p>Conductor is a meta-harness for our own SDLC, built on a substrate that already has the flow, the board, the detached runs and the durable gate &#8212; and its bet is that the session you talk to stays small, because the open questions live in an inbox rather than in its head.</p>
+    <p>Conductor is a meta-harness for our own SDLC, built on a substrate that already has the flow, the board, the detached runs and the parked task row &#8212; and its bet is that the session you talk to stays small, because the open questions live in an inbox rather than in its head.</p>
   </div>
 </section>
 
