@@ -306,6 +306,8 @@ export type {
 } from "./types/relay";
 export { defineRelayBinding, validateRelayConfig } from "./types/relay";
 export type { SendMessageRefusal, SendMessageResult } from "./types/relay-results";
+export { mergeRetryPolicy } from "./types/retry-merge";
+export type { ResolvedRetryPolicy } from "./types/retry-merge";
 export type {
   TokenCounter,
 } from "./types/tokens";

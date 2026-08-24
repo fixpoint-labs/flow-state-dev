@@ -1,57 +1,21 @@
 /**
  * Retry policy resolution and retry-loop execution utilities for runtime blocks/actions.
  *
- * The retry loop itself is delegated to `p-retry`; this file owns the
- * framework-specific policy merge, retryable-error classification, abort
- * mapping, and the `onRetry` "scheduled" semantics.
+ * The retry loop itself is delegated to `p-retry`; this file owns
+ * retryable-error classification, abort mapping, and the `onRetry` "scheduled"
+ * semantics.
+ *
+ * The **policy merge** is not here: `mergeRetryPolicy` and `ResolvedRetryPolicy`
+ * live in `@flow-state-dev/core` beside the `RetryPolicy` type they operate on
+ * (FIX-1230). They are re-exported below so this module's public surface is
+ * unchanged. The merge is pure arithmetic on a core type and `core` cannot
+ * import `engine`, so keeping it here put it out of reach of core's own
+ * `buildToolExecutor`.
  */
 import pRetry, { AbortError, type FailedAttemptError } from "p-retry";
-import type { RetryPolicy } from "@flow-state-dev/core/types";
-import { SuspensionError } from "@flow-state-dev/core";
+import { SuspensionError, mergeRetryPolicy } from "@flow-state-dev/core";
+import type { ResolvedRetryPolicy } from "@flow-state-dev/core";
 import { FlowError } from "../errors/flow-error";
-
-/**
- * Concrete retry settings after block and runtime policy merge.
- */
-export type ResolvedRetryPolicy = {
-  maxAttempts: number;
-  baseDelayMs: number;
-  maxDelayMs: number;
-  retryableErrors?: Array<new (...args: any[]) => Error>;
-};
-
-const DEFAULT_MAX_ATTEMPTS = 1;
-const DEFAULT_BASE_DELAY_MS = 0;
-const DEFAULT_MAX_DELAY_MS = 5000;
-
-/**
- * Merges block-level and runtime retry policy with normalized defaults.
- */
-export function mergeRetryPolicy(
-  blockRetry: RetryPolicy | undefined,
-  runtimeRetry: RetryPolicy | undefined
-): ResolvedRetryPolicy | undefined {
-  if (blockRetry === undefined && runtimeRetry === undefined) {
-    return undefined;
-  }
-
-  const merged: RetryPolicy = {
-    ...runtimeRetry,
-    ...blockRetry
-  };
-  const baseDelayMs = Math.max(0, merged.baseDelayMs ?? DEFAULT_BASE_DELAY_MS);
-  const maxDelayMs = Math.max(
-    baseDelayMs,
-    merged.maxDelayMs ?? DEFAULT_MAX_DELAY_MS
-  );
-
-  return {
-    maxAttempts: Math.max(1, merged.maxAttempts ?? DEFAULT_MAX_ATTEMPTS),
-    baseDelayMs,
-    maxDelayMs,
-    retryableErrors: merged.retryableErrors
-  };
-}
 
 /**
  * Returns whether an error should be retried under the provided policy.
@@ -175,3 +139,8 @@ function isAbortError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   return err.name === "AbortError";
 }
+
+// Re-exported so `execution/index.ts` and existing importers keep one import
+// site for the retry surface even though the merge now lives in core.
+export { mergeRetryPolicy };
+export type { ResolvedRetryPolicy };
