@@ -231,12 +231,14 @@ down an altitude; push it into the issue spec that will write it.*
    `test/public-reentry-opt-in.test.ts` covers it. The reason is in the source and it is
    deliberate: a detached dispatch is not caller-addressed at all, so re-entering it from a public
    route would run it with caller-supplied input — BP-031, exactly. An implementer meets this as a
-   **404** from `/api/flows/:kind/requests/:id/resume` on a request that is provably live and
-   resumable in-process. That 404 is the guard doing its job. **An issue that reaches for the
-   allow-list has hit this theme, not a bug** — the answer's route in is theme 5's, over Relay.
-   **D-1 makes this theme easier to honour, not harder:** the answer no longer needs to re-enter a
-   suspended request at all, so nothing in the chosen design has a reason to go near the
-   allow-list.
+   **404** from `/api/flows/:kind/requests/:id/resume`. **Under D-1 that 404 is simply less likely
+   to come up** — Conductor does not resume requests at all, so nobody on this path is knocking on
+   that route. Said plainly rather than dressed in a new illustration.
+   **The rule binds exactly as hard, and the reason is the Relay path itself:** an answer arrives
+   from **outside** the run, and it must still never re-enter a detached dispatch through a
+   caller-addressed route — a detached dispatch was never caller-addressed, so doing so would run it
+   with caller-supplied input (BP-031). **An issue that reaches for the allow-list has hit this
+   theme, not a bug**; the answer's route in is theme 5's, over Relay.
 
 7. **The runner contract must not encode any one harness's shape.** The Atlas frames Conductor as
    a *meta-harness* whose harness is swappable, and the runner is the seam where that lives, so a
@@ -403,8 +405,12 @@ waits on it (theme 4).*
 - **~~Does a steer resume the coding agent, or restart it?~~** *Decided: it restarts it.* Nothing
   can hand a prior SDK session id into a detached run today (FIX-1179), so an answer re-states
   the prompt and pays again for context already read. Expensive and accepted — an issue building
-  continuity machinery has left scope. Theme 5 does not soften this: `continueRequest` resumes the
-  **FSD request**, and the coding agent inside it still starts over.
+  continuity machinery has left scope. **D-1 does not soften this, and it is not what re-entry
+  looks like that matters** — re-entering the work after an answer starts the coding agent over
+  regardless of *how* the board is re-entered, because the session id is what nothing can hand back.
+  *(This entry previously justified itself with `continueRequest` resuming the FSD request while the
+  agent inside it started over. True of the framework, but that path is withdrawn — the decision
+  never rested on it.)*
 
 - **~~Is the inbox a new framework capability?~~** *Decided: no — a plain user-scoped resource
   collection.* FIX-1075 asks the right scoping question and the answer here is *nothing this
