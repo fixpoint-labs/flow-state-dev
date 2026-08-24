@@ -55,13 +55,19 @@ which is a different problem from the one Decision 2 anticipated.
 | FIX-1234 | **In Review** | Park/exit mode. Impl PR [#1422](https://github.com/fixpoint-labs/flow-state-dev/pull/1422) — CI green, one approving review, review rounds in progress. |
 | FIX-1238 | Backlog | The park-exit verdict's carrier depends on step adjacency, and a break is silent. |
 | FIX-1244 | Backlog | Unblock-with-input. **Blocked by FIX-1234.** A *new* request carrying a payload — not `continueRequest`, not `ctx.suspend`. D-1: FIX-1241 / [#1429](https://github.com/fixpoint-labs/flow-state-dev/pull/1429). |
+| FIX-1245 | Backlog · **P2 High** | Rename the shipped status `awaiting_review` → `needs_input`. **Gates the close of Track 2** — filed 2026-08-24 after the widening comment, which had listed the rename as out. It is now in. |
 
 **Related to Relay ([FIX-1197](https://linear.app/fixpoint-labs/issue/FIX-1197)), not parented
 under it or LAB-140.**
 
+**FIX-1245 is the objective applied to the epic's own vocabulary.** Park-exit, unblock-with-input
+and Conductor all speak `needs_input` while the board writes `awaiting_review` — a status that
+names the wrong thing is the same defect this epic exists to remove, one level up. It is **not**
+the vehicle for park-exit: PR #1422 ships against whichever name is live when it merges, and the
+rename lands before Track 2 closes.
+
 **Explicitly out of this epic:** coordinator UX · Conductor-specific flow (LAB-139 consumes
-it) · FIX-1231 · FIX-765 (a second pause model) · the `awaiting_review` → `needs_input`
-rename (still a D-1 checkbox).
+it) · FIX-1231 · FIX-765 (a second pause model).
 
 ---
 
@@ -100,11 +106,11 @@ number. **Refreshed 2026-08-24** against live Linear state.
 | ├ **Shipped** | 3 | FIX-951 (anchor), FIX-976, FIX-948 |
 | └ **Open** | 3 | FIX-963, FIX-964, FIX-978 |
 | **Track 1 — joined and shipped after the epic opened** | 3 | FIX-989 ✅, FIX-992 ✅, FIX-995 ✅ |
-| **Track 2 — human-wait board pair** *(added 2026-08-24)* | 3 | FIX-1234, FIX-1238, FIX-1244 |
+| **Track 2 — human-wait board pair** *(added 2026-08-24)* | 4 | FIX-1234, FIX-1238, FIX-1244, FIX-1245 |
 | **Decision-1-bound** | **1** | FIX-976 *(shipped — the decision is spent)* |
 | **Project siblings** — off-objective, direct-fix, *not* parented | 2 | FIX-972 (PR #984), FIX-962 (PR #985) |
 | **Discovered work** — same defect family, filed separately, *not* parented | 1 | FIX-985 |
-| **Carried, off-objective** — parented but not this epic's work; see §3.5 | 9 | FIX-1000, FIX-1002, FIX-1030, FIX-1034, FIX-1035, FIX-1036, FIX-1037, FIX-1038, FIX-1156 |
+| **Removed 2026-08-24** — off-objective, detached from FIX-980; see §3.5 | 9 | FIX-1000, FIX-1002, FIX-1030, FIX-1034, FIX-1035, FIX-1036, FIX-1037, FIX-1038, FIX-1156 |
 
 **Track 2's members are not in the Decision-1-bound set and the arithmetic is not
 recounted.** Decision 1 was decided, spent and shipped on FIX-976 before the widening;
@@ -672,6 +678,7 @@ the question for each is no longer *"is the spec right"* but *"is the defect sti
 | **FIX-1234** | Exit/park mode so `awaiting_review` doesn't hold the launching request open | **In Review** | [#1419](https://github.com/fixpoint-labs/flow-state-dev/pull/1419) *approved* | [#1422](https://github.com/fixpoint-labs/flow-state-dev/pull/1422) · CI green, 1 approve, in review rounds |
 | **FIX-1238** | The park-exit verdict's carrier depends on step adjacency; a break is silent | Backlog | — | — |
 | **FIX-1244** | Unblock a parked task with an input, starting a new request | Backlog · *blocked by FIX-1234* | — | — |
+| **FIX-1245** | Rename the shipped status `awaiting_review` → `needs_input` | Backlog · **P2 High** · *gates Track 2's close* | — | — |
 
 **Project siblings** — *off-objective · direct-fix*, **not** parented under FIX-980, listed
 for audit continuity only. Neither shapes any cross-cutting decision here:
@@ -696,17 +703,18 @@ changing any cross-cutting decision. It is also **evidence for Decision 1** — 
 first-party caller that the current `void` return already misled. *(Now that Decision 1 has shipped,
 FIX-985 is also the first caller that should adopt `TaskWriteOutcome`.)*
 
-## 3.5 Carried, off-objective — proposed to leave the epic
+## 3.5 Removed from the epic, 2026-08-24 — off-objective
 
 While the epic was dormant, **nine issues were parented under FIX-980 that this epic's
 objective does not cover.** They are honesty-shaped, which is presumably how they got here,
 but they are honest-*request-record* problems in `@flow-state-dev/engine`, not
 honest-*task-substrate* problems in `@flow-state-dev/orchestration`. Different package,
-different caller, different lifecycle. Keeping them makes the epic unfinishable and hides
-its actual remaining surface.
+different caller, different lifecycle. Keeping them made the epic unfinishable and hid its
+actual remaining surface.
 
-**None of them is dropped — the proposal is to unparent, not to close.** They keep their
-project, priority and relations.
+**Detached on 2026-08-24 — unparented, not closed.** Every one keeps its project, priority,
+labels and relations; only the epic link is gone. Re-parenting any of them is one field
+change if this call was wrong. Listed here so the epic's audit trail shows where they went.
 
 | Issue | Linear | Why it isn't this epic |
 |---|---|---|
@@ -719,6 +727,12 @@ project, priority and relations.
 | **FIX-1000** | Backlog | Fence the scope generation against a create racing session deletion. Session/scope storage. |
 | **FIX-1030** | **Canceled** | Dead row. |
 | **FIX-1038** | **Duplicate** | Dead row. |
+
+**FIX-1001** (*Background work pool is not drained on the abort/disconnect/error paths*,
+**Done**) is the parent investigation the five request-record rows came out of, and it stays
+parented. It is the same engine layer, but it is closed, so it costs the epic nothing and its
+own defect — *a request reports itself finished while its background work is still running* —
+is this objective almost verbatim, one layer up. Kept as history, not as work.
 
 **FIX-993** (*Replan output can stamp an unvalidated `maxAttempts` onto a task*, Ready to
 Spec, **P2 High**) is the one genuine judgment call. It **is** in the task substrate and it
@@ -989,7 +1003,7 @@ removing the `?`, and nobody should retry it.
   recording it. **The lesson is in the gap:** an epic-spec that is only refreshed by its own
   coordinator goes stale silently, and the staler it gets the more it argues about a codebase
   that no longer exists.
-- **Revived 2026-08-24 — widened, re-verified, and pruned.** Epic PR reopened. Three changes:
+- **Revived 2026-08-24 — widened, re-verified, and pruned.** Epic PR reopened. Four changes:
   1. **Widened to two tracks** on the owner's call. The original honesty set keeps its frame;
      a **human-wait board pair** (FIX-1234 / FIX-1238 / FIX-1244) joins it under the same
      objective, with one clause added to §1 — *a drain that left because a human is owed must
@@ -1001,7 +1015,11 @@ removing the `?`, and nobody should retry it.
      FIX-978 looks **subsumed** by FIX-1005's `leaseLapsed` → `isClaimable` change; raised as
      **OQ-E**, and its spec PR #990 must not be built from as written. Three specs at review
      for four weeks are now a staleness problem, not a review problem.
-  3. **Nine off-objective issues proposed to leave the epic** (§3.5) — engine request-record
-     and session-scope defects that are honesty-shaped but sit in a different package with a
-     different caller. Unparent, not close. FIX-993 flagged as the one judgment call and
-     recommended to stay.
+  3. **Nine off-objective issues removed from the epic** (§3.5) — engine request-record and
+     session-scope defects that are honesty-shaped but sit in a different package with a
+     different caller. Detached, not closed; each keeps its project, priority and relations.
+     FIX-993 flagged as the one genuine judgment call and kept in.
+  4. **FIX-1245 folded in.** Filed by the owner at 18:49 on 2026-08-24, after the widening
+     comment that had listed the `awaiting_review` → `needs_input` rename as out of scope.
+     It is now in, at High, and it gates the close of Track 2. Recorded here because the
+     comment and the ticket disagree and the ticket is later.
