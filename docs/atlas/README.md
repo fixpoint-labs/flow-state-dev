@@ -5,6 +5,11 @@ atlas is one self-contained HTML file — inline CSS, no build step — that ope
 from a checkout or from GitHub's raw view. Reach for it when the argument needs
 layout: diagrams, comparisons, a navigation rail.
 
+This directory is also published to GitHub Pages by
+`.github/workflows/pages.yml`, which uploads `docs/atlas` as the site root.
+`conductor.html` is the entry point; `index.html` redirects the bare URL
+there.
+
 These merge. That is what separates them from specs, which are point-in-time and
 stay on a never-merged spec PR (BP-037). An atlas describes a shape we mean to
 keep, so it lives on `main` and is updated in place. Being internal, it may cite
