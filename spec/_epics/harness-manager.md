@@ -25,7 +25,7 @@ designed against that case, not against the happy one.
 > `packages/claude-code/src/sdk/headless.ts` does not exist and `maxTurns` is forwarded straight
 > into the query options at `agent.ts:443`.)*
 >
-> **What the Proof does not show** — four limits, stated so it is not oversold:
+> **What the Proof does not show** — five limits, stated so it is not oversold:
 > - **The ask is forced, not spontaneous.** LAB-139's implement prompt *requires* the run to
 >   confirm one named decision through the inbox before it opens the PR. That is a chosen
 >   experimental design: it isolates the variable under test — the channel, not the model's
@@ -51,10 +51,18 @@ designed against that case, not against the happy one.
 >   **Four pieces, and this epic consumes all of them and owns none** (owner decisions on
 >   [#1429](https://github.com/fixpoint-labs/flow-state-dev/issues/1429), where **D-1 is now
 >   closed**). Priced the way FIX-150 is priced (theme 4) — named rather than hidden, and **the
->   epic's schedule is not quietly made anyone else's.** Before they land, LAB-139 can build and
->   goal-check the phase record, the question's inbox row and its replay-safe write, **the human-wait
->   status**, and settlement. What it **cannot** do is run the round trip — and the round trip is the
->   Proof.
+>   epic's schedule is not quietly made anyone else's.** Before they land, LAB-139 can **build and
+>   unit-test its components** — the phase record, the question's inbox row and its replay-safe write,
+>   the human-wait status write in isolation, and settlement's handle check.
+>
+>   **What it cannot do before FIX-1234 is goal-check the parked phase end to end through the manager
+>   loop**, and this document already says why: today's runner is unconditionally
+>   `.step(worker).tap(recordSuccess)`, so an `awaitReview` write is **stomped to `completed` on any
+>   normal return** — row 1 of theme 5's measured table. The loop completes the row out from under the
+>   park. So *"build and unit-test the parts"* and *"goal-check the phase"* are **different claims**,
+>   and only the first is available now. *(Same class as the status correction below: a claim about
+>   what is **decided** outrunning what is **landed**.)* And what LAB-139 cannot do until all four
+>   land is run the round trip — which is the Proof.
 >
 >   **On the status, the distinction that keeps tripping this document: the *name* is decided and the
 >   *enum member* is not landed, and those are different facts.** `parked` is the decided target name
@@ -95,6 +103,36 @@ designed against that case, not against the happy one.
 >   does not build the resume.** *(What this replaces: "a steer restarts the coding agent — correct
 >   and expensive; accepted, and not to be worked around." That was wrong, not merely open, and it is
 >   struck wherever it appeared.)*
+>
+> - **Nothing currently owns a *shipped* same-session resume, and the Proof now requires one.** The
+>   three legs, each verified in source or in the issue, and stated together because separately they
+>   each look survivable:
+>   - **D-1 made same-session continuation mandatory for the Proof** — restart does not count as the
+>     Proof passing (the limit above).
+>   - **The only path Conductor has deliberately prevents it.**
+>     `claudeCodeAgent({ detached: true })` — exactly what Conductor uses — **suppresses the SDK
+>     `resume`**, and it is a design decision rather than an oversight: the docblock
+>     (`packages/claude-code/src/sdk/agent.ts:124-135`) calls the suppression of the declaration, its
+>     reads/writes and `resume` *"one decision rather than three"*, because *"the session provider is
+>     not consulted at all, so a custom provider cannot hand back a saved id that silently resumes a
+>     prior conversation."* Its stated consequence is exactly the blocker: **"a second task addressed
+>     to the same workstream starts the agent fresh."**
+>   - **The issue we consume proves feasibility without shipping it.**
+>     [FIX-1246](https://linear.app/fixpoint-labs/issue/FIX-1246) is scoped **POC-only** — *in:*
+>     *"POC that the association already on the task is enough to resume the same session from a new
+>     request"*; *out:* *"full FIX-1179 rewrite if the POC is narrower."*
+>
+>   **So every named issue and every consumed dependency can finish and the Proof still will not
+>   run.** That is the same shape as the wake gap, and it gets the same treatment: **stated, named as
+>   the owner's, and not designed here.** A production path means **revisiting a documented decision**
+>   — `detached: true`'s deliberate suppression — not filling a hole nobody noticed, and those are
+>   different kinds of work to schedule. **This document does not re-open that decision**; naming that
+>   it would have to be revisited is the point, and it is a different act from revisiting it.
+>   [FIX-1179](https://linear.app/fixpoint-labs/issue/FIX-1179) — *"a detached run cannot resume its
+>   external session"* — is the **natural** home, and this document does **not** assert it is the
+>   answer. **Whether the shipped path is FIX-1179's, LAB-139's, or whether the Proof narrows, is the
+>   owner's call**, live on the epic PR. **No mechanism is proposed here, no scope is added to
+>   LAB-139, and FIX-1179 is not in the consumed set.**
 >
 > **Lead measure** — the set's goal-proven issues, named: FIX-150 · LAB-138 · LAB-139.
 >
@@ -366,8 +404,11 @@ rename under FIX-980; and **FIX-1247**, the fence making `ctx.suspend` error ins
 under FIX-1200.)*
 
 **The visibility point is unchanged and still worth stating: every issue in this index can close
-while the Proof's round trip is still unrunnable**, because FIX-1244 and FIX-1246 are Backlog. Said
-here because the table otherwise reads as the whole set. **This is visibility, not a plan** — no
+while the Proof's round trip is still unrunnable**, because FIX-1244 and FIX-1246 are Backlog — **and
+now for a second, independent reason: nothing owns a *shipped* same-session resume at all.** FIX-1246
+proves feasibility POC-only, and `detached: true` suppresses the SDK `resume` by design, so even
+every consumed dependency landing does not by itself make the round trip runnable (§1). Said here
+because the table otherwise reads as the whole set. **This is visibility, not a plan** — no
 issue is proposed, no scope is added to LAB-139, and this document designs no wake, no resume and no
 rename. Whether that gap ever changes this epic's shape is the **owner's**, live on the epic PR
 ([#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362)).
@@ -1013,3 +1054,29 @@ rename. Whether that gap ever changes this epic's shape is the **owner's**, live
   have, and left a reader counting **five** links under a sentence that says **four**. That is the
   same class of internal inconsistency this document spent the day removing, so the list and the
   count now agree by construction rather than by a caveat.
+- **Correction fold — two claims that outran what is landed, both narrowed rather than gated.**
+  Trigger: two Codex findings on `78408a8`, both verified.
+  **First (P2): the goal-check claim.** §1 said LAB-139 could *"build and goal-check"* the human-wait
+  status and settlement before the consumed work lands. It can build and **unit-test** those; it
+  **cannot goal-check the parked phase end to end through the manager loop** until FIX-1234, because
+  today's runner is unconditionally `.step(worker).tap(recordSuccess)` and stomps an `awaitReview`
+  write to `completed` on any normal return — **row 1 of this document's own measured table.** The
+  two claims are now separated on the page. Same class as the `parked` correction directly above: a
+  claim about what is **decided** outrunning what is **landed**, which is the failure mode this
+  document keeps returning to.
+  **Second (P1), and it is the sharpest finding of the day — stated, not solved.** Three legs that
+  each look survivable alone: D-1 made same-session continuation **mandatory for the Proof**; the
+  only path Conductor has, `claudeCodeAgent({ detached: true })`, **deliberately suppresses the SDK
+  `resume`** — *"one decision rather than three… the session provider is not consulted at all"*, with
+  the stated consequence *"a second task addressed to the same workstream starts the agent fresh"*
+  (`sdk/agent.ts:124-135`); and FIX-1246 is scoped **POC-only**, explicitly excluding the full
+  FIX-1179 rewrite. Together: **every named issue and every consumed dependency can finish and the
+  Proof still will not run.** Added as a §1 limit beside the wake gap and given the same treatment —
+  **named as the owner's, designed nowhere.** The point worth carrying is that a production path
+  means **revisiting a documented decision**, not filling an unnoticed hole, and those schedule
+  differently. **This document does not re-open that decision**; naming that it would have to be is a
+  different act. FIX-1179 is named as the **natural** home and explicitly **not asserted** as the
+  answer — the owner decides whether the shipped path is FIX-1179's, LAB-139's, or whether the Proof
+  narrows. **§1 goes from four limits to five.** §4's index note gains one clause: its "every issue
+  can close while the round trip is unrunnable" point is now true for a **second, independent**
+  reason. **Consumed set stays four** — FIX-1179 is not added to it.
