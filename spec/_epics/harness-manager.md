@@ -55,9 +55,19 @@ designed against that case, not against the happy one.
 >   epic's schedule is not quietly made anyone else's.** Before they land, LAB-139 can build and
 >   goal-check the phase record, the question's inbox row and its replay-safe write, **the human-wait
 >   status**, and settlement. What it **cannot** do is run the round trip — and the round trip is the
->   Proof. *(The status was briefly listed as separately gated on an undecided enum landing. That
->   confirm has since returned — the status is `parked`, theme 5 — so the gate is gone and the status
->   is buildable.)*
+>   Proof.
+>
+>   **On the status, the distinction that keeps tripping this document: the *name* is decided and the
+>   *enum member* is not landed, and those are different facts.** `parked` is the decided target name
+>   (theme 5). `TaskStatus` today accepts **`awaiting_review`** and not `parked`, and the rename is
+>   **[FIX-1245](https://linear.app/fixpoint-labs/issue/FIX-1245)** — Backlog, external, consumed by
+>   this epic. **So LAB-139 builds against the shipped `awaiting_review` now**, per the owner:
+>   *"keep shipped `awaiting_review` in this cycle… park-exit ships against whichever name is live."*
+>   The status **is** buildable — against today's name, not tomorrow's. **This is not a re-gate:** the
+>   enum-landing confirm did return, so the gate that once sat on LAB-139's spec at the field-naming
+>   point is gone and stays gone. *(Third revision of this passage — gated · buildable ·
+>   buildable-against-the-shipped-name — which is why the two facts are now separated on the page
+>   rather than left to be inferred.)*
 > - **The wake has an owner and does not have an implementation, and the second half is the risk.**
 >   **[FIX-1244](https://linear.app/fixpoint-labs/issue/FIX-1244) — unblock-with-input, under
 >   FIX-980 — owns it**, and says so itself: park-exit lets a drain *leave* while a row sits parked,
@@ -227,7 +237,10 @@ down an altitude; push it into the issue spec that will write it.*
      human-wait closes — **this epic consumes it and does not own it.** Park-exit (#1422) is **not**
      gated on it and ships against whichever name is live.
      **There is no longer a gate on LAB-139's spec here.** It existed only while the representation
-     was undecided; the confirm returned, so the spec names the field and proceeds.
+     was undecided; the confirm returned, so the spec names the field and proceeds — **and the field
+     it names today is the shipped `awaiting_review`.** `parked` is the decided name, not a landed
+     enum member; **the decision and the schema are different facts**, and conflating them is what
+     made this passage move three times (§1).
      *(Neutral fact, unchanged throughout: the shipped **verbs** `awaitReview` and `resumeFromReview`
      are not renamed by any of this.)*
    - **Settle** only after checking the run handle's status: a terminal SDK error subtype returns
@@ -328,7 +341,7 @@ down an altitude; push it into the issue spec that will write it.*
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
 | [LAB-138](https://linear.app/fixpoint-labs/issue/LAB-138/the-harness-manager-a-task-row-becomes-a-watched-settled-coding-run) | The manager loop — a task row becomes a watched, settled coding run. Provisions the run's working directory and owns the **per-run `cwd` seam** that makes handing it down possible (theme 4). Settles on a **handle-status check**, not on a normal return (theme 5). **Defines the runner contract**, which must not encode any one harness's shape (theme 7) — the clause-level detail (the bound, the result shape, token usage, permission posture) is in this issue's implementer notes, deliberately not in the epic-spec. Adds the per-run `cwd` to the **SDK path** — the only surface that can host a watched run (theme 4) | spec | — | — | Needs spec |
-| [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof** (FIX-1166). Blocked by LAB-138. Builds theme 5's ask-and-wait as decided by **D-1** (now closed) — the question travels **Relay**, and the row sits in **`parked`** (dependencies stay **`blocked`**; `needs_input` is the human-ask **reason**, not the status; shipped `awaiting_review` stays this cycle, renamed by FIX-1245 under FIX-980, which this epic consumes). Owns the **inbox row and its replay-safe write**. *(Rescoped by D-1: the `ctx.suspend` park, the in-process resume action, the `suspensionId` projection seam and the configured lease window are all withdrawn.)* **Cannot run the round trip until four consumed pieces land** — the ask (FIX-1230), park-exit (FIX-1234), the wake (FIX-1244) and **session resume (FIX-1246)**; **restart is not Proof**. Before that it can build and goal-check the phase record, the inbox row and its replay-safe write, the `parked` status, and settlement (§1) | spec | — | — | Needs spec |
+| [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof** (FIX-1166). Blocked by LAB-138. Builds theme 5's ask-and-wait as decided by **D-1** (now closed) — the question travels **Relay**, and the row sits in **`parked`** (dependencies stay **`blocked`**; `needs_input` is the human-ask **reason**, not the status; shipped `awaiting_review` stays this cycle, renamed by FIX-1245 under FIX-980, which this epic consumes). Owns the **inbox row and its replay-safe write**. *(Rescoped by D-1: the `ctx.suspend` park, the in-process resume action, the `suspensionId` projection seam and the configured lease window are all withdrawn.)* **Cannot run the round trip until four consumed pieces land** — the ask (FIX-1230), park-exit (FIX-1234), the wake (FIX-1244) and **session resume (FIX-1246)**; **restart is not Proof**. Before that it can build and goal-check the phase record, the inbox row and its replay-safe write, the human-wait status — **against the shipped `awaiting_review`, since `parked` is the decided name but not yet a landed enum member (FIX-1245)** — and settlement (§1) | spec | — | — | Needs spec |
 | [FIX-150](https://linear.app/fixpoint-labs/issue/FIX-150/workspaces-if-validated-workspacerunner-block-and-virtual-filesystem) | Workspaces — the file-projection component. Large, three PRs (a component · b shell-tool migration · c coding-agent path). Subsumes FIX-998. **Own track — carries no dependency edge into the Proof** (theme 4) | spec | [#1345](https://github.com/fixpoint-labs/flow-state-dev/pull/1345) — **approved** | — | Needs implementation |
 
 *FIX-150 is on team **flow-state**, not Labs; it is a sub-issue of LAB-140 across teams. Its
@@ -975,3 +988,24 @@ rename. Whether that gap ever changes this epic's shape is the **owner's**, live
   where the task's association to it is read, are the issue specs' with the source open, and one line
   in each of LAB-138's and LAB-139's implementer notes points at the constraint. **Nothing else
   moved:** D-1 stays closed, the consumed set stays four, `parked` stays the status.
+- **Correction fold — the decided name and the landed enum member are different facts.** Trigger: a
+  Codex P2 on `b155d3f`, accepted. §1 listed the human-wait status as buildable on the strength of
+  the enum-landing confirm having returned. **True about the decision, false about the code:**
+  `TaskStatus` accepts `awaiting_review` and not `parked`, and the rename is FIX-1245 — Backlog and
+  external — so an implementer reading "buildable" would reach for a value the schema rejects.
+  **The owner's answer is not a re-gate**: *"keep shipped `awaiting_review` in this cycle… park-exit
+  ships against whichever name is live."* So **LAB-139 builds against the shipped `awaiting_review`
+  now**, `parked` is the decided target, and FIX-1245 renames it later. §1, theme 5 and LAB-139's
+  index row all now separate the two facts on the page instead of leaving them to be inferred —
+  **this passage has moved three times** (gated · buildable · buildable-against-the-shipped-name),
+  and every move came from collapsing a naming decision into a schema state. **The gate that once sat
+  on LAB-139's spec is gone and stays gone.**
+  **Declined in the same round, and recorded because the reasoning is worth keeping:** a Codex P1
+  wanted **FIX-1238** added to the consumed Proof-blocker set, on the grounds that without its
+  carrier the manager could misclassify a parked phase. **FIX-1238 does not supply the carrier — it
+  hardens one that already works.** In its own words the current path *"works, and it is
+  invocation-scoped by construction… But it rests on **ordering discipline, not a typed contract**."*
+  The verdict already travels. So **the consumed set stays four** and this document does not imply
+  the verdict is missing. **The hazard is real but it is a trap, not a blocker**, and it is aimed at
+  the drain LAB-138 composes — routed there as a caution in its implementer note rather than promoted
+  to a dependency here.
