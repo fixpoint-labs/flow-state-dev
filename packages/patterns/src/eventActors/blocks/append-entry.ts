@@ -7,6 +7,10 @@
  * when multiple actors emit entries with identical topics; treating
  * (type, topic) as the dedupe key matches the original pattern's
  * behavior.
+ *
+ * State-only: the block writes the workspace resource and emits, and returns
+ * nothing. Compose it with `.tap()` — as a `.step()` it hands `undefined` to
+ * the next step.
  */
 import { handler } from "@flow-state-dev/core";
 import type { DefinedResource } from "@flow-state-dev/core/types";
@@ -24,7 +28,6 @@ export function createAppendEntry(
   return handler({
     name: `${name}-append`,
     inputSchema: z.any(),
-    outputSchema: z.any(),
     resources: { [resourceKey]: workspaceResource },
     activeStatusMessage: (entry) => {
       const entryTopic =
@@ -43,7 +46,7 @@ export function createAppendEntry(
         (e: Record<string, unknown>) =>
           e.type === entryType && e.topic === entryTopic
       );
-      if (isDuplicate) return entry;
+      if (isDuplicate) return;
 
       await (ctx.resources as Record<string, any>)[resourceKey].patchState({
         entries: [...state.entries, entry],
@@ -62,8 +65,6 @@ export function createAppendEntry(
         },
         { key: `entry-${emissionCount}` }
       );
-
-      return entry;
     },
   });
 }
