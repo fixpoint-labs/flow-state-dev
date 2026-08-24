@@ -341,20 +341,30 @@ waits on it (theme 4).*
   question: *"do not treat this comment as closing D-1."* These stay open on
   [#1429](https://github.com/fixpoint-labs/flow-state-dev/issues/1429) / FIX-1241, and **this
   document records them rather than picking any of them.** Three of them reach the Proof.
-  - **The status *name* — CLOSED**, see the decided entry below. What stays open is how that state
-    is **represented on the row**.
-  - **How `needs_input` is represented — a rename of the shipped `awaiting_review`, or two statuses.**
-    **Open, and pending a confirm on D-1.** *(The owner briefly called this as a rename and then
-    pulled it back within two minutes — "leave the enum-landing question open … don't pick it in
-    this spec until that returns." This document holds it open.)*
+  - **The human-wait status: what is DECIDED and what is OPEN.** This has been mis-recorded twice,
+    in both directions, so the split is stated before anything else.
+    **DECIDED, and not reopened by any of this:** **`needs_input` is the product name for the
+    cannot-proceed wait**, and **dependencies stay `blocked`**. A row waiting on a person must be
+    distinguishable from a row waiting on other work.
+    **OPEN: how that state lands on the row.** Three readings, and **this document picks none**:
+    1. **rename** the shipped `awaiting_review` member. *(What this option would cost, noted as the
+       option's price and not as an obligation this epic has taken on: persisted rows already hold
+       `awaiting_review`, so it would carry a dual-read, plus `ALLOWED_TRANSITIONS` and every
+       exhaustiveness site.)*
+    2. **two statuses** — keep a real *"done, waiting for a look"* gate **and** add a
+       cannot-proceed status alongside it. **This is a genuine product distinction, not an
+       implementation variant of (1):** those are two different things a row can be waiting for, and
+       a board that collapses them loses the difference.
+    3. **display name** over the shipped member.
+    **Pending a confirm on D-1, and it is awaiting the owner** — *"Decision Manager will not close
+    that on my rec. Jake has not answered it."* Not a process step; a person's call.
     `packages/orchestration/src/tasks/schema/task-status.ts` ships
     `["pending","in_progress","blocked","awaiting_review","completed","errored","cancelled"]` —
-    `needs_input` is **not** in it, `awaiting_review` **is**, and `awaiting_review` carries its own
+    `needs_input` is not in it, `awaiting_review` is, and `awaiting_review` carries its own
     `ALLOWED_TRANSITIONS` (`in_progress → awaiting_review`; `awaiting_review → pending | completed |
-    cancelled | errored`). **FIX-1234 (In Review) is unaffected either way** — its own scope says
-    *"the gap is the exit predicate, not a new status"*, and it lands on the shipped status
-    regardless of how this confirm returns. **This blocks LAB-139's spec only where that spec must
-    name the field** (theme 5). **With the owner.**
+    cancelled | errored`). **Park-exit #1422 / FIX-1234 is unblocked either way** — the owner
+    reaffirmed this, and its own scope says *"the gap is the exit predicate, not a new status"*.
+    **This gates LAB-139's spec only where that spec must name the field** (theme 5), not the issue.
   - **Who wakes a parked-and-exited board.** **FIX-1234 will not build it.** On the Proof's critical
     path; carried as §1's largest open risk, and no wake is proposed in this document.
   - **Whether FIX-1234 / Relay issue 5 stays in Relay** now that recapture has died.
@@ -368,10 +378,10 @@ waits on it (theme 4).*
   (#1429). **Dependencies stay `blocked`**; neither `awaiting_review` nor `awaiting_feedback` is the
   product name. The reasoning is the point of the status: a board must be able to show which rows
   are waiting on a **person** rather than on other work, so a **distinct name is the decision, not a
-  synonym of `blocked`.** **`needs_input` is a product name — the shipped verbs `awaitReview` and
-  `resumeFromReview` are unchanged**, and this decision renamed no API. How the name lands in the
-  shipped status enum is open, above. *(This comment settled the name only; every other D-1 open
-  item stays open.)*
+  synonym of `blocked`.** **`needs_input` is the product name for the cannot-proceed wait — the
+  shipped verbs `awaitReview` and `resumeFromReview` are unchanged**, and this decision renamed no
+  API. **How that state lands on the row is OPEN and awaiting the owner**, in three readings, above.
+  *(This settled the name only; every other D-1 open item stays open.)*
 
 - **Where conductor's own code lives.** Both LAB-138 and LAB-139 write into the same place and
   neither can settle it alone, so it is the epic's to answer. Raised at epic drafting. **Blocks
@@ -754,25 +764,34 @@ waits on it (theme 4).*
   name; the shipped verbs `awaitReview` and `resumeFromReview` are unchanged.** Recorded as a **new
   open item, deliberately unpicked**: how `needs_input` relates to the shipped status enum — which
   has `awaiting_review` and not `needs_input`, while FIX-1234 (In Review) says the gap is *"the exit
-  predicate, not a new status"* — rename · join · product-layer name, with BP-030 on persisted rows
-  if it is a rename. **Every other D-1 open item stays open; this settled the name only.**
-- **Reversal fold — the enum landing goes back to open, and two decided entries were resting on
-  moved premises.** Trigger: the owner's own reversal on D-1 (#1429) two minutes after the call —
-  *"leave the enum-landing question open … don't pick it in this spec until that returns"* — plus two
-  Codex P1s on `98eb2d1`. **Reverted:** the `needs_input`-renames-the-enum-member decision and
-  everything it carried (the BP-030 acceptance condition, the FIX-1234 boundary as a *decided*
-  consequence, the deprecation-path language). The open question is recorded with the owner's
-  **widened** framing — rename the shipped member **vs two statuses** — pending a confirm.
-  **Folded (P1):** theme 5 required persisting `needs_input` while §5 deliberately left the
-  representation open, so an implementer had to invent a persisted-schema decision to satisfy the
-  theme. It now states the **obligation** — a status distinct from `blocked` — names `needs_input` as
-  the product name for that state, and says the representation is D-1's open confirm that **blocks
-  LAB-139's spec only where it must name the field.** A named gate instead of a contradiction.
-  **Folded (P1):** the steer entry stood as *decided: it restarts* while D-1 carries *"does 'answered'
-  mean continue the coding-agent conversation?"* as open. Re-opened, narrowed to what survives — **as
-  things stand** nothing can hand a prior SDK session id into a detached run (FIX-1179) — with the
-  declaration withdrawn, because Relay now owns the answer path and its lifecycle is undesigned. The
-  no-continuity-machinery boundary is unchanged. **The lesson, and it is about this document's
-  reflexes:** that entry was re-grounded twice on premises that kept moving, and the honest move the
-  second time was to hold it open rather than find it a new justification. **Kept as neutral fact:**
-  the shipped verbs `awaitReview` / `resumeFromReview` are not renamed by anything in D-1.
+  predicate, not a new status"* — rename · two statuses · product-layer name. **Every other D-1 open item stays open; this settled the name only.**
+- **Reversal fold — the enum landing was closed and reopened, and the churn is the record.** The
+  sequence, written out because a reader six weeks from now should see that this question moved
+  twice rather than find a silent flip: the owner called `needs_input` a **rename of the shipped
+  enum member at 16:34:14Z**; **pulled it back at 16:36:15Z** — *"leave the enum-landing question
+  open. D-1 still has a confirm (rename of shipped `awaiting_review` vs two statuses). Don't pick it
+  in this spec until that returns."*; the close had already been pushed as **`3a51956`** before the
+  reversal reached this agent; it was **reverted in `8d1bf43`** and the open state rewritten here.
+  The owner then reaffirmed on the PR: *"Decision Manager will not close that on my rec. Jake has
+  not answered it."*
+  **What the reverted close wrongly carried, now removed:** the BP-030 dual-read as **this epic's
+  decided path** (it is a consequence of the rename reading only, so asserting it presumed the
+  answer — it now appears as that option's price, inside the option), a deprecation/sweep path this
+  epic has no business designing, and a follow-up-issue claim for a rename issue that does not
+  exist. **The split is now stated before anything else in §5**, because it has been mis-recorded in
+  both directions: **`needs_input` as the product name and dependencies staying `blocked` are
+  DECIDED**; only the **representation on the row** is open, in three readings — with option 2
+  sharpened to the owner's framing, a genuine product distinction rather than an implementation
+  variant. **Park-exit #1422 / FIX-1234 is unblocked either way**, the one boundary that survives.
+  **Folded in the same pass (Codex P1s on `98eb2d1`):** theme 5 required *persisting* `needs_input`
+  while §5 deliberately left the representation open, which made it unimplementable — it now states
+  the obligation (a status distinct from `blocked`) and names the representation as the gate on
+  **LAB-139's spec at the point it names the field**, not on the issue. And the steer entry stood as
+  *decided: it restarts* while D-1 carries *"does 'answered' mean continue the coding-agent
+  conversation? (FIX-1179)"* as open — re-opened, narrowed to what holds regardless (nothing today
+  can hand a prior SDK session id into a detached run), with §1's Not-doing line narrowed the same
+  way and the no-continuity-machinery scope-out unchanged.
+  **Kept as neutral fact:** the shipped verbs `awaitReview` / `resumeFromReview` are not renamed by
+  anything in D-1. **The lesson about this document's reflexes:** two entries here were re-grounded
+  on premises that kept moving, and both times the honest move was to hold the question open rather
+  than find the old answer a new justification.
