@@ -25,14 +25,14 @@ designed against that case, not against the happy one.
 > `packages/claude-code/src/sdk/headless.ts` does not exist and `maxTurns` is forwarded straight
 > into the query options at `agent.ts:443`.)*
 >
-> **What the Proof does not show** — three limits, stated so it is not oversold:
+> **What the Proof does not show** — four limits, stated so it is not oversold:
 > - **The ask is forced, not spontaneous.** LAB-139's implement prompt *requires* the run to
 >   confirm one named decision through the inbox before it opens the PR. That is a chosen
 >   experimental design: it isolates the variable under test — the channel, not the model's
 >   judgment about when to reach for it. Whether a run asks unprompted is the *next* epic's
 >   evidence, not this one's. FIX-1166 makes this weigh **more**, not less: the fix is one line,
 >   so almost none of this run's value is the fix — the ask *is* the experiment, and it is staged.
-> - **The Proof depends on two named pieces of work outside this epic, and they are not the same
+> - **The Proof depends on four named pieces of work outside this epic, and they are not one
 >   dependency.** *(Corrected: this document previously priced them as one "Relay" dependency, and
 >   put park-exit under Relay. It is not.)*
 >   - **The ask** is **Relay's** — [FIX-1230](https://linear.app/fixpoint-labs/issue/FIX-1230)
@@ -44,25 +44,20 @@ designed against that case, not against the happy one.
 >     (**In Review**), its verdict carrier
 >     [FIX-1238](https://linear.app/fixpoint-labs/issue/FIX-1238) (Backlog), and unblock-with-input
 >     [FIX-1244](https://linear.app/fixpoint-labs/issue/FIX-1244) (**Backlog**).
+>   - **Continuing the same coding session** across the wait —
+>     [FIX-1246](https://linear.app/fixpoint-labs/issue/FIX-1246), a **POC** under
+>     [FIX-1179](https://linear.app/fixpoint-labs/issue/FIX-1179), **Backlog**. New, and it is a
+>     **Proof blocker**: see the continuity limit below.
 >
->   **This epic consumes all of it and owns none of it** (owner decision on
->   [#1429](https://github.com/fixpoint-labs/flow-state-dev/issues/1429); D-1 membership closed).
->   Priced the way FIX-150 is priced (theme 4) — named rather than hidden, and **the epic's schedule
->   is not quietly made anyone else's.** Before these land, LAB-139 can build and goal-check the
->   phase record, the question's inbox row and its replay-safe write, and settlement.
->
->   **Two different things block LAB-139, and conflating them is how this document contradicted
->   itself once already.**
->   - **The round trip is blocked on unbuilt code** — FIX-1230, FIX-1234, FIX-1244. Somebody has to
->     write it, and **no decision unblocks it.** This is the schedule dependency above.
->   - **The human-wait status is blocked on an unmade decision** — D-1's enum-landing confirm.
->     **Nothing needs to be built; the owner needs to answer.** It could clear this afternoon at zero
->     engineering cost. Theme 5 names exactly where the gate falls: `TaskStatus` has no `needs_input`
->     today, so LAB-139's spec is blocked **at the point it names the field**, and only there.
->
->   So the status is **not** on the list of things LAB-139 can build while waiting for the external
->   work — it is gated separately, by a different owner, at a different cost. And what LAB-139 cannot
->   do either way is **run the round trip** — which is the Proof.
+>   **Four pieces, and this epic consumes all of them and owns none** (owner decisions on
+>   [#1429](https://github.com/fixpoint-labs/flow-state-dev/issues/1429), where **D-1 is now
+>   closed**). Priced the way FIX-150 is priced (theme 4) — named rather than hidden, and **the
+>   epic's schedule is not quietly made anyone else's.** Before they land, LAB-139 can build and
+>   goal-check the phase record, the question's inbox row and its replay-safe write, **the human-wait
+>   status**, and settlement. What it **cannot** do is run the round trip — and the round trip is the
+>   Proof. *(The status was briefly listed as separately gated on an undecided enum landing. That
+>   confirm has since returned — the status is `parked`, theme 5 — so the gate is gone and the status
+>   is buildable.)*
 > - **The wake has an owner and does not have an implementation, and the second half is the risk.**
 >   **[FIX-1244](https://linear.app/fixpoint-labs/issue/FIX-1244) — unblock-with-input, under
 >   FIX-980 — owns it**, and says so itself: park-exit lets a drain *leave* while a row sits parked,
@@ -79,13 +74,25 @@ designed against that case, not against the happy one.
 >   epic's own finding from the other side: `resumeFromReview`/`continueRequest` are the wrong shape
 >   after park-exit, because they assume the launching request is still open.)*
 >
+> - **Restart is not Proof — the run must continue the *same* coding session across the wait.**
+>   **Reversed by the owner**, and this document carried the opposite since it was drafted:
+>   *"LAB-139's 'continuity out of scope / restart accepted' is **stale** — strike it. This epic is
+>   **blocked on that POC for Proof**, it does not build the resume itself."* So a run that answers by
+>   **re-stating the prompt and starting the agent over does not count as the Proof passing.** The
+>   POC is [FIX-1246](https://linear.app/fixpoint-labs/issue/FIX-1246) under
+>   [FIX-1179](https://linear.app/fixpoint-labs/issue/FIX-1179), **Backlog**, in its own words:
+>   *"the task is already associated to the coding session, so resume from a second request should be
+>   possible… This is a POC, not Proof. Restart is not the POC passing."* **This epic consumes it and
+>   does not build the resume.** *(What this replaces: "a steer restarts the coding agent — correct
+>   and expensive; accepted, and not to be worked around." That was wrong, not merely open, and it is
+>   struck wherever it appeared.)*
+>
 > **Lead measure** — the set's goal-proven issues, named: FIX-150 · LAB-138 · LAB-139.
 >
 > **Not doing** — **building** Relay (FIX-1197 is its own epic; this epic consumes the channel and
 > does not build it — the dependency is priced in the limits above, not hidden here) ·
-> resume-with-continuity for a
-> steered run (FIX-1179 — nothing in this set builds continuity machinery; whether an answer
-> *should* continue the agent's conversation is D-1's open item, §5) · the spec and review phase records and the durable approval gate between phases · the
+> **building** the session resume itself (FIX-1179 / the FIX-1246 POC — this epic consumes it; the
+> Proof now *requires* continuation, so this is a scope-out of the building, never of the outcome) · the spec and review phase records and the durable approval gate between phases · the
 > coordinator's classify-and-route generator (an answer names its inbox row explicitly) · the
 > manager and architect roles · more than one issue on the board at a time · any inbox UI ·
 > the measurement instrument · the workforce-layer question.
@@ -208,17 +215,21 @@ down an altitude; push it into the issue spec that will write it.*
    - **Ask** over **Relay**. The question leaves the run through the relay channel, not by
      suspending the request in place. Conductor **consumes** that channel and does not build it —
      Relay is its own epic (FIX-1197), and §1's limits price the dependency rather than hide it.
-   - **Wait** as a **task status distinct from `blocked`**, not as a suspended request. A row
-     waiting on a person must be distinguishable from a row waiting on other work — that is the
-     obligation, and it is settled. **The product name for that state is `needs_input`** (owner call
-     on D-1). **How it is represented on the row is D-1's open confirm and this document does not
-     pick it** (§5): a rename of the shipped `awaiting_review`, or two statuses side by side.
-     **This is a named gate, not a contradiction to work around.** `TaskStatus` today accepts
-     `awaiting_review` and not `needs_input`, so **LAB-139's spec is blocked at the point where it
-     has to name the field** — and only there. Everything else in that spec proceeds. Do not invent
-     a persisted-schema decision to get past this; raise it and let the confirm return.
-     *(Neutral fact, unchanged by any of this: the shipped verbs `awaitReview` and
-     `resumeFromReview` are not renamed by anything in D-1.)*
+   - **Wait** in **`parked`**, not as a suspended request. A row waiting on a person must be
+     distinguishable from a row waiting on other work; **`parked` is the status** and
+     **dependencies stay `blocked`**. **`needs_input` is the human-ask display/reason — the *why*, not
+     the *what*** — so a row is `parked`, and `needs_input` says what it is parked on. *(Owner call,
+     and it **supersedes** an earlier call in this document that made `needs_input` the status
+     itself.)*
+     **Shipped `awaiting_review` stays this cycle.** The rename `awaiting_review → parked` is
+     [FIX-1245](https://linear.app/fixpoint-labs/issue/FIX-1245) under
+     [FIX-980](https://linear.app/fixpoint-labs/issue/FIX-980), Backlog, to land before FIX-980's
+     human-wait closes — **this epic consumes it and does not own it.** Park-exit (#1422) is **not**
+     gated on it and ships against whichever name is live.
+     **There is no longer a gate on LAB-139's spec here.** It existed only while the representation
+     was undecided; the confirm returned, so the spec names the field and proceeds.
+     *(Neutral fact, unchanged throughout: the shipped **verbs** `awaitReview` and `resumeFromReview`
+     are not renamed by any of this.)*
    - **Settle** only after checking the run handle's status: a terminal SDK error subtype returns
      normally as `status: "errored"`, so settling on a normal return alone reports a failed run as
      completed. `buildDetachedRunner`'s body is unconditionally `.step(worker).tap(recordSuccess)`,
@@ -296,7 +307,7 @@ down an altitude; push it into the issue spec that will write it.*
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
 | [LAB-138](https://linear.app/fixpoint-labs/issue/LAB-138/the-harness-manager-a-task-row-becomes-a-watched-settled-coding-run) | The manager loop — a task row becomes a watched, settled coding run. Provisions the run's working directory and owns the **per-run `cwd` seam** that makes handing it down possible (theme 4). Settles on a **handle-status check**, not on a normal return (theme 5). **Defines the runner contract**, which must not encode any one harness's shape (theme 7) — the clause-level detail (the bound, the result shape, token usage, permission posture) is in this issue's implementer notes, deliberately not in the epic-spec. Adds the per-run `cwd` to the **SDK path** — the only surface that can host a watched run (theme 4) | spec | — | — | Needs spec |
-| [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof** (FIX-1166). Blocked by LAB-138. Builds theme 5's ask-and-wait as decided by **D-1** — the question travels **Relay**, and the row carries the **`needs_input`** status (dependencies stay **`blocked`**; product name, shipped verbs unchanged — **how it is represented on the row is D-1's open confirm**, §5, and it **blocks this spec only where it must name the field**). Owns the **inbox row and its replay-safe write**. *(Rescoped by D-1: the `ctx.suspend` park, the in-process resume action, the `suspensionId` projection seam and the configured lease window are all withdrawn.)* **Cannot run the round trip until the consumed substrate lands** — the ask (FIX-1230), park-exit (FIX-1234) and the wake (FIX-1244), not Relay's channel alone. Before that it can build and goal-check the phase record, the inbox row and its replay-safe write, and settlement — **but not the status**, which is gated separately on D-1's confirm rather than on any of that work (§1) | spec | — | — | Needs spec |
+| [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof** (FIX-1166). Blocked by LAB-138. Builds theme 5's ask-and-wait as decided by **D-1** (now closed) — the question travels **Relay**, and the row sits in **`parked`** (dependencies stay **`blocked`**; `needs_input` is the human-ask **reason**, not the status; shipped `awaiting_review` stays this cycle, renamed by FIX-1245 under FIX-980, which this epic consumes). Owns the **inbox row and its replay-safe write**. *(Rescoped by D-1: the `ctx.suspend` park, the in-process resume action, the `suspensionId` projection seam and the configured lease window are all withdrawn.)* **Cannot run the round trip until four consumed pieces land** — the ask (FIX-1230), park-exit (FIX-1234), the wake (FIX-1244) and **session resume (FIX-1246)**; **restart is not Proof**. Before that it can build and goal-check the phase record, the inbox row and its replay-safe write, the `parked` status, and settlement (§1) | spec | — | — | Needs spec |
 | [FIX-150](https://linear.app/fixpoint-labs/issue/FIX-150/workspaces-if-validated-workspacerunner-block-and-virtual-filesystem) | Workspaces — the file-projection component. Large, three PRs (a component · b shell-tool migration · c coding-agent path). Subsumes FIX-998. **Own track — carries no dependency edge into the Proof** (theme 4) | spec | [#1345](https://github.com/fixpoint-labs/flow-state-dev/pull/1345) — **approved** | — | Needs implementation |
 
 *FIX-150 is on team **flow-state**, not Labs; it is a sub-issue of LAB-140 across teams. Its
@@ -304,22 +315,29 @@ spec gate is already passed (`spec approved` on #1345), so it enters at implemen
 member of this set because the manager will adopt its projection — not because anything here
 waits on it (theme 4).*
 
-**What this index does not contain — and why that is correct.** The pieces that carry the Proof's
-question *out* and the answer *back in* are not in this table, because they are **not this epic's to
-build**. The ask is Relay's ([FIX-1230](https://linear.app/fixpoint-labs/issue/FIX-1230), In
-Development). The park and the wake belong to the honest task substrate,
-[FIX-980](https://linear.app/fixpoint-labs/issue/FIX-980) — park-exit
-[FIX-1234](https://linear.app/fixpoint-labs/issue/FIX-1234) (In Review) and **unblock-with-input
-[FIX-1244](https://linear.app/fixpoint-labs/issue/FIX-1244) (Backlog)**, which **owns the wake**;
-LAB-139 is its **first consumer, not its owner**. *(Corrected: this note previously said nobody
-owned the wake. FIX-1244 does — it is a schedule dependency, not an ownership gap.)*
+**What this index does not contain — and why that is correct.** **Four** pieces the Proof's round
+trip needs are not in this table, because they are **not this epic's to build**. It consumes all
+four and owns none.
+
+- **The ask** — [FIX-1230](https://linear.app/fixpoint-labs/issue/FIX-1230) (In Development), under
+  Relay (FIX-1197).
+- **Park-exit** — [FIX-1234](https://linear.app/fixpoint-labs/issue/FIX-1234) (In Review), under the
+  honest task substrate [FIX-980](https://linear.app/fixpoint-labs/issue/FIX-980).
+- **The wake** — [FIX-1244](https://linear.app/fixpoint-labs/issue/FIX-1244) (Backlog), under
+  FIX-980; LAB-139 is its **first consumer, not its owner**.
+- **Session resume** — [FIX-1246](https://linear.app/fixpoint-labs/issue/FIX-1246) (Backlog), a POC
+  under FIX-1179. **New, and a Proof blocker: restart is not Proof** (§1).
+
+*(Also consumed, not owned, and not Proof blockers: **FIX-1245**, the `awaiting_review → parked`
+rename under FIX-980; and **FIX-1247**, the fence making `ctx.suspend` error inside a workstream,
+under FIX-1200.)*
 
 **The visibility point is unchanged and still worth stating: every issue in this index can close
-while the Proof's round trip is still unrunnable**, because FIX-1244 is Backlog. Said here because
-the table otherwise reads as the whole set. **This is visibility, not a plan** — no issue is
-proposed, no scope is added to LAB-139, and this document designs no wake. Whether that gap ever
-changes this epic's shape — a narrowing of the Proof to *"asked"*, or waiting — is the **owner's**,
-live on the epic PR ([#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362)).
+while the Proof's round trip is still unrunnable**, because FIX-1244 and FIX-1246 are Backlog. Said
+here because the table otherwise reads as the whole set. **This is visibility, not a plan** — no
+issue is proposed, no scope is added to LAB-139, and this document designs no wake, no resume and no
+rename. Whether that gap ever changes this epic's shape is the **owner's**, live on the epic PR
+([#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362)).
 
 ## 5. Open cross-cutting questions
 
@@ -382,58 +400,59 @@ live on the epic PR ([#1362](https://github.com/fixpoint-labs/flow-state-dev/pul
   the window as five lines of dispatcher configuration in Conductor's own code, which was true and
   is now moot — there is no window to configure, because the run does not park the request.)*
 
-- **D-1's own open items — the owner's, and deliberately unanswered here.** Decision D-1 settled the
-  *path* (Relay + a board wait-status, not `ctx.suspend`) and explicitly did **not** close the
-  question: *"do not treat this comment as closing D-1."* These stay open on
-  [#1429](https://github.com/fixpoint-labs/flow-state-dev/issues/1429) / FIX-1241, and **this
-  document records them rather than picking any of them.** *(One item — **membership**: who owns the
-  wake and where park-exit lives — was **closed** by the owner on #1429 and is recorded as closed
-  below rather than dropped.)*
-  - **The human-wait status: what is DECIDED and what is OPEN.** This has been mis-recorded twice,
-    in both directions, so the split is stated before anything else.
-    **DECIDED, and not reopened by any of this:** **`needs_input` is the product name for the
-    cannot-proceed wait**, and **dependencies stay `blocked`**. A row waiting on a person must be
-    distinguishable from a row waiting on other work.
-    **OPEN: how that state lands on the row.** Three readings, and **this document picks none**:
-    1. **rename** the shipped `awaiting_review` member. *(What this option would cost, noted as the
-       option's price and not as an obligation this epic has taken on: persisted rows already hold
-       `awaiting_review`, so it would carry a dual-read, plus `ALLOWED_TRANSITIONS` and every
-       exhaustiveness site.)*
-    2. **two statuses** — keep a real *"done, waiting for a look"* gate **and** add a
-       cannot-proceed status alongside it. **This is a genuine product distinction, not an
-       implementation variant of (1):** those are two different things a row can be waiting for, and
-       a board that collapses them loses the difference.
-    3. **display name** over the shipped member.
-    **Pending a confirm on D-1, and it is awaiting the owner** — *"Decision Manager will not close
-    that on my rec. Jake has not answered it."* Not a process step; a person's call.
-    `packages/orchestration/src/tasks/schema/task-status.ts` ships
-    `["pending","in_progress","blocked","awaiting_review","completed","errored","cancelled"]` —
-    `needs_input` is not in it, `awaiting_review` is, and `awaiting_review` carries its own
-    `ALLOWED_TRANSITIONS` (`in_progress → awaiting_review`; `awaiting_review → pending | completed |
-    cancelled | errored`). **Park-exit #1422 / FIX-1234 is unblocked either way** — the owner
-    reaffirmed this, and its own scope says *"the gap is the exit predicate, not a new status"*.
-    **This gates LAB-139's spec only where that spec must name the field** (theme 5), not the issue.
-  - **~~Who wakes a parked-and-exited board, and where park-exit lives~~ — CLOSED by the owner on
-    #1429 (D-1 membership).** The wake is **FIX-1244** (unblock-with-input) and park-exit is
-    **FIX-1234**, both under **[FIX-980](https://linear.app/fixpoint-labs/issue/FIX-980)**, the
-    honest task substrate — **related to Relay, not parented under it, and not under LAB-140.**
-    **This epic consumes them and owns neither**; LAB-139 is FIX-1244's first consumer. What remains
-    is a **schedule** dependency (FIX-1244 is Backlog), carried in §1's limits — not an open
-    question, and **this document still proposes no wake.**
-  - **Whether a pre-chosen lease is an acceptable product control at all** — *likely no*, given the
-    Relay path.
-  - **FIX-1200's sequencing**; whether *"answered"* means continuing the coding agent's own
-    conversation (FIX-1179); BullMQ/serverless this release; and whether `onIdle: complete` HITL
-    boards are in or out — **they cannot take park-exit.**
+- **~~D-1's own open items~~ — ALL CLOSED.** *(Owner, #1362: "Issue #1429 still-open list is
+  empty.")* D-1 settled the path (Relay + a board wait-status, not `ctx.suspend`) and for a while
+  carried a live open list. **That list is now empty.** The questions are kept below as **answered**
+  rather than deleted, so a reader can see they were asked — and so nobody re-opens one thinking it
+  was never considered.
+  - **~~The human-wait status and how it lands on the row~~ — ANSWERED: the status is `parked`.**
+    `needs_input` is **demoted to the human-ask display/reason — the *why*, not the *what***;
+    dependencies stay `blocked`. **This supersedes an earlier answer recorded here** that made
+    `needs_input` the status itself. **Shipped `awaiting_review` stays this cycle**; the rename
+    `awaiting_review → parked` is [FIX-1245](https://linear.app/fixpoint-labs/issue/FIX-1245) under
+    FIX-980 (Backlog), to land before FIX-980's human-wait closes. **Park-exit #1422 is not gated on
+    it** and ships against whichever name is live. *(The three readings this entry once weighed —
+    rename · two statuses · display name — are moot; the answer is a rename, owned by FIX-1245,
+    which this epic consumes and does not own. **The gate this put on LAB-139's spec is gone.**)*
+  - **~~Who wakes a parked-and-exited board, and where park-exit lives~~ — ANSWERED (D-1
+    membership).** The wake is **FIX-1244** (unblock-with-input) and park-exit is **FIX-1234**, both
+    under **[FIX-980](https://linear.app/fixpoint-labs/issue/FIX-980)** — **related to Relay, not
+    parented under it, and not under LAB-140.** **This epic consumes them and owns neither**;
+    LAB-139 is FIX-1244's first consumer. What remains is a **schedule** dependency (FIX-1244 is
+    Backlog), carried in §1's limits — and **this document still proposes no wake.**
+  - **~~Does "answered" mean continuing the coding agent's own conversation?~~ — ANSWERED: yes, and
+    it is a Proof blocker.** **Restart is not Proof.** The POC is
+    [FIX-1246](https://linear.app/fixpoint-labs/issue/FIX-1246) under FIX-1179 (Backlog); this epic
+    **consumes it and does not build the resume**. §1 carries it as a limit. *(This reverses this
+    document's oldest decided entry — see the struck entry below.)*
+  - **~~FIX-1200's sequencing~~ — ANSWERED, and narrower than the question assumed.** The scoped
+    piece is a **fence**: `ctx.suspend` must **error** if called inside a workstream —
+    [FIX-1247](https://linear.app/fixpoint-labs/issue/FIX-1247) under FIX-1200, Backlog. **Not a full
+    FIX-1200 rewrite**, and not this epic's to build.
+  - **~~BullMQ / serverless this release~~ — ANSWERED: out of cycle.** **In-process Relay is enough
+    for the Proof**; BullMQ HITL is not in this cycle.
+  - **~~Are `onIdle: complete` HITL boards in or out?~~ — ANSWERED, as a substrate expectation this
+    epic relies on rather than builds:** `onIdle: complete` **must not report success while parked
+    rows are still open.** The owner's model — *"a drain drains what it can. Held rows block
+    dependents. The board is **not complete** while anything is on hold and not cancelled."*
+    Recorded here because the Proof leans on it; **nothing in this set implements it.**
+  - **~~Whether a pre-chosen lease is an acceptable product control~~ — moot.** The lease design was
+    withdrawn with the suspend park; there is no pre-chosen window to accept or reject.
+  - **Coordinator UX — not D-1's, and not the substrate's.** Both constructions are already allowed
+    by the substrate, so there is no substrate pick to make. Any remaining presentation choice is
+    **this epic's own product decision** (LAB-139 / LAB-140), and it is moved out of the D-1 list on
+    that basis.
 
-- **~~What is the human-wait status called?~~** *Decided: **`needs_input`**.* Owner call on D-1
-  (#1429). **Dependencies stay `blocked`**; neither `awaiting_review` nor `awaiting_feedback` is the
-  product name. The reasoning is the point of the status: a board must be able to show which rows
-  are waiting on a **person** rather than on other work, so a **distinct name is the decision, not a
-  synonym of `blocked`.** **`needs_input` is the product name for the cannot-proceed wait — the
-  shipped verbs `awaitReview` and `resumeFromReview` are unchanged**, and this decision renamed no
-  API. **How that state lands on the row is OPEN and awaiting the owner**, in three readings, above.
-  *(This settled the name only; every other D-1 open item stays open.)*
+- **~~What is the human-wait status called?~~** *Decided: the status is **`parked`**.* Owner call on
+  #1362, and it **supersedes an earlier answer recorded here** — this entry read *"Decided:
+  `needs_input`"* for part of a day. **`needs_input` is the human-ask display/reason, not the
+  status**: a row is `parked`, and `needs_input` says what it is parked *on*. **Dependencies stay
+  `blocked`.** The reasoning that produced the distinction is unchanged and still holds — a board
+  must be able to show which rows wait on a **person** rather than on other work, so this was never a
+  naming preference. **Shipped `awaiting_review` stays this cycle**; the rename to `parked` is
+  **[FIX-1245](https://linear.app/fixpoint-labs/issue/FIX-1245)** under FIX-980 (Backlog), which this
+  epic **consumes and does not own**, and **park-exit #1422 is not gated on it.** The shipped
+  **verbs** `awaitReview` and `resumeFromReview` are unchanged by any of it.
 
 - **Where conductor's own code lives.** Both LAB-138 and LAB-139 write into the same place and
   neither can settle it alone, so it is the epic's to answer. Raised at epic drafting. **Blocks
@@ -470,17 +489,21 @@ live on the epic PR ([#1362](https://github.com/fixpoint-labs/flow-state-dev/pul
   price the dependency: Relay is its own epic, this one consumes it, and the epic's schedule is not
   silently made Relay's.
 
-- **Does an answer continue the coding-agent conversation, or restart it?** **Re-opened by D-1**,
-  which carries *"does 'answered' mean continue the coding-agent conversation? (FIX-1179)"* as an
-  open item. **This document previously declared it decided — restarts — and that no longer stands.**
-  **What is still true, independent of the answer path:** nothing today can hand a prior SDK session
-  id into a detached run (FIX-1179), so **as things stand** an answer re-states the prompt and pays
-  again for context already read. **What this document can no longer declare** is that this is the
-  settled shape. The old reasoning ran through the withdrawn park — the request resumed, the agent
-  inside it started over — and **Relay now owns the answer path, whose lifecycle has not been
-  designed**, so what happens to the coding-agent session is not this document's to call. **Nothing
-  in this set builds continuity machinery** either way; that boundary is unchanged. *(Twice
-  re-grounded on a premise that kept moving. Held open now rather than re-grounded a third time.)*
+- **~~Does an answer continue the coding-agent conversation, or restart it?~~** *Answered: **it must
+  continue**, and **restart is not Proof**.* **This reverses this document's oldest decided entry**,
+  which read *"it restarts it… correct and expensive; accepted, and not to be worked around"* from
+  the day the epic was drafted. The owner: *"LAB-139's 'continuity out of scope / restart accepted'
+  is **stale** — strike it. This epic is **blocked on that POC for Proof**, it does not build the
+  resume itself."*
+  So a run that answers by **re-stating the prompt and starting the agent over does not count as the
+  Proof passing.** The POC is [FIX-1246](https://linear.app/fixpoint-labs/issue/FIX-1246) under
+  [FIX-1179](https://linear.app/fixpoint-labs/issue/FIX-1179), **Backlog**, and it says the same in
+  its own words: *"the task is already associated to the coding session, so resume from a second
+  request should be possible… This is a POC, not Proof. Restart is not the POC passing."*
+  **This epic consumes it and does not build the resume** — that boundary is the one part of the old
+  entry that survives. §1 carries it as a limit and as the fourth consumed dependency.
+  *(Entry history, because this one moved twice: decided *restart* at drafting; re-grounded twice on
+  premises that kept moving; held open when D-1 listed it; now answered the other way.)*
 
 - **~~Is the inbox a new framework capability?~~** *Decided: no — a plain user-scoped resource
   collection.* FIX-1075 asks the right scoping question and the answer here is *nothing this
@@ -809,7 +832,8 @@ live on the epic PR ([#1362](https://github.com/fixpoint-labs/flow-state-dev/pul
   **Why this is not a retreat, in the architect's words on #1429: there is no single primitive, and
   the split is allowed** — an in-request `suspend`, a board wait-status and a Relay send are three
   different things.
-- **Owner decision fold — D-1 addendum: the human-wait status is `needs_input`.** Trigger: the
+- **Owner decision fold — D-1 addendum: the human-wait status is `needs_input`.** *(Superseded by
+  the closing fold below: the status is **`parked`**; `needs_input` is the display/reason.)* Trigger: the
   product owner's follow-up on #1429. What changed: theme 5's *Wait* obligation, LAB-139's index row,
   and §5 — the status name moves from the open list to a decided entry. **Dependencies stay
   `blocked`**; a distinct name is the decision rather than a synonym, because a board must be able to
@@ -882,3 +906,36 @@ live on the epic PR ([#1362](https://github.com/fixpoint-labs/flow-state-dev/pul
   scope is added to LAB-139, and no issue is created or implied. **The remaining D-1 opens are
   untouched:** rename vs two statuses · FIX-1200 sequencing · continuity (FIX-1179) ·
   BullMQ/serverless · `onIdle: complete` boards.
+- **D-1 closing fold — the decision closed, and two of its answers reversed what this document had
+  written.** Trigger: three owner comments on
+  [#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362) (18:49 · 18:50 · 19:25);
+  **where they conflict the latest wins**, which matters because the status answer moved between
+  them. **D-1 is closed — #1429's still-open list is empty.**
+  **The status is `parked`, and `needs_input` is demoted to the human-ask display/reason — the *why*,
+  not the *what*.** This **supersedes** the answer recorded here earlier the same day, which made
+  `needs_input` the status itself; every place calling it "the product name for the status" was
+  wrong and is corrected. Dependencies still stay `blocked`. **Shipped `awaiting_review` stays this
+  cycle**; the rename is **FIX-1245** under FIX-980, before FIX-980's human-wait closes, and
+  **park-exit #1422 is not gated on it.** **The enum-landing question is closed, so the gate it put
+  on LAB-139's spec at the field-naming point is gone** — and the status returns to LAB-139's
+  buildable list, reversing an edit made an hour earlier when the representation was still undecided.
+  **Restart is not Proof — and this kills the oldest decision in this document.** *"LAB-139's
+  'continuity out of scope / restart accepted' is **stale** — strike it. This epic is **blocked on
+  that POC for Proof**, it does not build the resume itself."* The Proof now **requires** continuing
+  the same coding session across the wait; a run that re-states the prompt and starts the agent over
+  **does not count as the Proof passing**. The POC is **FIX-1246** under FIX-1179 (Backlog), which
+  says the same itself. Struck from §1's Not-doing, §5's decided entry, and the index row. **So the
+  consumed set is four, not three** — FIX-1230 · FIX-1234 · FIX-1244 · **FIX-1246** — and every place
+  that counted three now counts four.
+  **The smaller closures, all recorded as answered rather than dropped:** the FIX-1200 question is
+  narrower than asked — the scoped piece is a **fence** (`ctx.suspend` errors inside a workstream),
+  **FIX-1247** under FIX-1200, not a rewrite; **in-process Relay is enough for the Proof** and BullMQ
+  HITL is out of cycle; **`onIdle: complete` must not report success while parked rows are open** —
+  *"the board is not complete while anything is on hold and not cancelled"* — recorded as a
+  **substrate expectation this epic relies on**, not as something it builds; and **coordinator UX is
+  not a substrate pick at all** (both constructions are already allowed), so it moves out of D-1 and
+  into this epic's own product scope.
+  **§5 keeps every closed question as struck-and-answered rather than deleting it**, the same
+  treatment membership got — a reader has to be able to see what was asked, or the next round
+  re-opens it believing nobody considered it. **Boundaries held:** no wake, no resume and no rename
+  is designed here; the only scope change to LAB-139 is the status returning to its buildable list.
