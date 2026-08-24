@@ -48,10 +48,21 @@ designed against that case, not against the happy one.
 >   **This epic consumes all of it and owns none of it** (owner decision on
 >   [#1429](https://github.com/fixpoint-labs/flow-state-dev/issues/1429); D-1 membership closed).
 >   Priced the way FIX-150 is priced (theme 4) — named rather than hidden, and **the epic's schedule
->   is not quietly made anyone else's.** Before these land, LAB-139 can build and goal-check
->   everything on its own side: the phase record, the question's inbox row and its replay-safe write,
->   the human-wait status, and settlement. What it **cannot** do is run the round trip — and the
->   round trip is the Proof.
+>   is not quietly made anyone else's.** Before these land, LAB-139 can build and goal-check the
+>   phase record, the question's inbox row and its replay-safe write, and settlement.
+>
+>   **Two different things block LAB-139, and conflating them is how this document contradicted
+>   itself once already.**
+>   - **The round trip is blocked on unbuilt code** — FIX-1230, FIX-1234, FIX-1244. Somebody has to
+>     write it, and **no decision unblocks it.** This is the schedule dependency above.
+>   - **The human-wait status is blocked on an unmade decision** — D-1's enum-landing confirm.
+>     **Nothing needs to be built; the owner needs to answer.** It could clear this afternoon at zero
+>     engineering cost. Theme 5 names exactly where the gate falls: `TaskStatus` has no `needs_input`
+>     today, so LAB-139's spec is blocked **at the point it names the field**, and only there.
+>
+>   So the status is **not** on the list of things LAB-139 can build while waiting for the external
+>   work — it is gated separately, by a different owner, at a different cost. And what LAB-139 cannot
+>   do either way is **run the round trip** — which is the Proof.
 > - **The wake has an owner and does not have an implementation, and the second half is the risk.**
 >   **[FIX-1244](https://linear.app/fixpoint-labs/issue/FIX-1244) — unblock-with-input, under
 >   FIX-980 — owns it**, and says so itself: park-exit lets a drain *leave* while a row sits parked,
@@ -285,7 +296,7 @@ down an altitude; push it into the issue spec that will write it.*
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
 | [LAB-138](https://linear.app/fixpoint-labs/issue/LAB-138/the-harness-manager-a-task-row-becomes-a-watched-settled-coding-run) | The manager loop — a task row becomes a watched, settled coding run. Provisions the run's working directory and owns the **per-run `cwd` seam** that makes handing it down possible (theme 4). Settles on a **handle-status check**, not on a normal return (theme 5). **Defines the runner contract**, which must not encode any one harness's shape (theme 7) — the clause-level detail (the bound, the result shape, token usage, permission posture) is in this issue's implementer notes, deliberately not in the epic-spec. Adds the per-run `cwd` to the **SDK path** — the only surface that can host a watched run (theme 4) | spec | — | — | Needs spec |
-| [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof** (FIX-1166). Blocked by LAB-138. Builds theme 5's ask-and-wait as decided by **D-1** — the question travels **Relay**, and the row carries the **`needs_input`** status (dependencies stay **`blocked`**; product name, shipped verbs unchanged — **how it is represented on the row is D-1's open confirm**, §5, and it **blocks this spec only where it must name the field**). Owns the **inbox row and its replay-safe write**. *(Rescoped by D-1: the `ctx.suspend` park, the in-process resume action, the `suspensionId` projection seam and the configured lease window are all withdrawn.)* **Cannot run the round trip until Relay's channel lands** — everything on its own side can be built and goal-checked before that (§1) | spec | — | — | Needs spec |
+| [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof** (FIX-1166). Blocked by LAB-138. Builds theme 5's ask-and-wait as decided by **D-1** — the question travels **Relay**, and the row carries the **`needs_input`** status (dependencies stay **`blocked`**; product name, shipped verbs unchanged — **how it is represented on the row is D-1's open confirm**, §5, and it **blocks this spec only where it must name the field**). Owns the **inbox row and its replay-safe write**. *(Rescoped by D-1: the `ctx.suspend` park, the in-process resume action, the `suspensionId` projection seam and the configured lease window are all withdrawn.)* **Cannot run the round trip until the consumed substrate lands** — the ask (FIX-1230), park-exit (FIX-1234) and the wake (FIX-1244), not Relay's channel alone. Before that it can build and goal-check the phase record, the inbox row and its replay-safe write, and settlement — **but not the status**, which is gated separately on D-1's confirm rather than on any of that work (§1) | spec | — | — | Needs spec |
 | [FIX-150](https://linear.app/fixpoint-labs/issue/FIX-150/workspaces-if-validated-workspacerunner-block-and-virtual-filesystem) | Workspaces — the file-projection component. Large, three PRs (a component · b shell-tool migration · c coding-agent path). Subsumes FIX-998. **Own track — carries no dependency edge into the Proof** (theme 4) | spec | [#1345](https://github.com/fixpoint-labs/flow-state-dev/pull/1345) — **approved** | — | Needs implementation |
 
 *FIX-150 is on team **flow-state**, not Labs; it is a sub-issue of LAB-140 across teams. Its
