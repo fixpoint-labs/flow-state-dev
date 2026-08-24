@@ -11,7 +11,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { runForTest } from '@flow-state-dev/testing'
-import type { ResourceHandle } from '@flow-state-dev/core'
+import type { ResourceRef } from '@flow-state-dev/core/types'
 import { createResourceEdgeApi } from '@flow-state-dev/core/graph'
 import type { Edge, EdgeSlotConfig } from '@flow-state-dev/core/graph'
 
@@ -31,7 +31,7 @@ import { createMemoryCapability } from '../../src/memory-capability.js'
 function createMockSemRef(
   edges?: Edge[],
   relations?: EdgeSlotConfig,
-): ResourceHandle<SemanticMemoryState> {
+): ResourceRef<SemanticMemoryState> {
   let state: SemanticMemoryState = {
     facts: [],
     totalExtracted: 0,
@@ -48,7 +48,7 @@ function createMockSemRef(
     readContent: async () => JSON.stringify(state),
     writeContent: async () => {},
     config: { stateSchema: semanticMemoryStateSchema, writable: true },
-  } as unknown as ResourceHandle<SemanticMemoryState>
+  } as unknown as ResourceRef<SemanticMemoryState>
   if (relations) {
     ;(ref as { edges?: unknown }).edges = createResourceEdgeApi(ref as never, relations)
   }
@@ -67,7 +67,7 @@ function makeEdge(overrides: Partial<Edge> & { from: string; to: string; type: s
   }
 }
 
-function buildCtx(sem?: ResourceHandle<SemanticMemoryState>): any {
+function buildCtx(sem?: ResourceRef<SemanticMemoryState>): any {
   const refs: Record<string, any> = {}
   if (sem) refs.semanticMemory = sem
   return {
@@ -187,7 +187,7 @@ describe('memory/connect tool', () => {
 // ---------------------------------------------------------------------------
 
 describe('memory capability relation helpers', () => {
-  function buildCapCtx(sem?: ResourceHandle<SemanticMemoryState>): any {
+  function buildCapCtx(sem?: ResourceRef<SemanticMemoryState>): any {
     const refs: Record<string, any> = {}
     if (sem) refs.semanticMemory = sem
     return {
@@ -200,7 +200,7 @@ describe('memory capability relation helpers', () => {
   }
 
   /** Invoke the composed capability's fns against a ctx. */
-  function fnsFor(sem?: ResourceHandle<SemanticMemoryState>) {
+  function fnsFor(sem?: ResourceRef<SemanticMemoryState>) {
     const cap = createMemoryCapability({
       model: 'gpt-5-mini',
       working: true,

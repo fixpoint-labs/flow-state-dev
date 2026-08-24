@@ -32,7 +32,7 @@ This codebase has its own primary domain vocabulary. The architectural overlay (
 
 **FSD-native domain language** (use these as the names of things):
 
-- **block** (handler / generator / sequencer / router), **pattern**, **capability**, **flow**, **action**, **scope** (request/session/user/project), **item** (message, reasoning, block_output, component, container, status, context, state_change, error, step_error), **store adapter**.
+- **block** (handler / generator / sequencer / router), **pattern**, **capability**, **flow**, **action**, **scope** (request/session/user/org), **item** (message, reasoning, block_output, component, container, status, context, state_change, error, step_error), **store adapter**.
 - See [LANGUAGE.md § "FSD vocabulary mapping"](LANGUAGE.md) for how each maps to module/interface/seam/adapter.
 
 **Authority hierarchy** (suggestions must respect this):
@@ -53,7 +53,7 @@ This codebase has its own primary domain vocabulary. The architectural overlay (
 **Lock state to check before proposing**:
 
 - BP-001–BP-039 are constraints, not guidelines. A candidate that violates a BP needs to either (a) align with it instead, or (b) explicitly justify why the BP should be revisited.
-- Package boundaries: `server` never depends on `client` or `react`; `react` wraps `client` (no transport in `react`). Cross-boundary refactors are off-limits — the boundary validator at `scripts/validate-package-boundaries.mjs` will catch violations.
+- Package boundaries: `engine` never depends on `client` or `react`; `react` wraps `client` (no transport in `react`). Cross-boundary refactors are off-limits — the boundary validator at `scripts/validate-package-boundaries.mjs` will catch violations.
 - Block interception: there is no block-middleware system (retracted and removed) — `docs/architecture/internal-execution-seams.md` documents `InternalExecutionSeams`, the framework-internal interception hooks. Keep suggestions aligned with what's currently exposed (lifecycle hooks, `.tap()`, capabilities, seams) rather than inventing a parallel middleware mechanism.
 
 ## Process

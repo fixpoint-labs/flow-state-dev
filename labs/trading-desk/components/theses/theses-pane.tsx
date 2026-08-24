@@ -608,6 +608,8 @@ function PmHeroWithScenarios({
       policyDecision={data?.policyDecision ?? null}
       evidenceDecision={data?.evidenceDecision ?? null}
       levels={levels}
+      ratingUnanchored={data?.ratingUnanchored ?? null}
+      periodDisclosure={data?.periodDisclosure ?? null}
       />
     </div>
   );

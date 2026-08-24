@@ -147,3 +147,4 @@ You should see streaming text in your terminal. If it fails with a provider erro
 - **[Quick Start](/docs/getting-started/quick-start)** — Wire it into a React UI.
 - **[Your First Flow](/docs/getting-started/your-first-flow)** — A walkthrough that explains each piece as you build.
 - **[Models](/docs/fundamentals/models)** — Dynamic selection, retry policy, prompt caching, gateway details.
+- **[Environment variables](/docs/configuration/environment)** — Provider keys, `FSDEV_INTENT_*`, and `FSD_ENV`.

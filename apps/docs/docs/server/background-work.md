@@ -260,6 +260,6 @@ labels, timestamps and status. Fetch the session itself if you need more.
 - [Client overview](../client/overview.md#background-work) — the same two calls from an app
 - [Claude Code SDK agent](../tools/claude-code-sdk.md#turning-it-off-for-background-work) — running
   a coding agent as a job, and what its workstream records
-- [Server setup](./setup.md) — the full HTTP route table
+- [Engine setup](./setup.md) — the full HTTP route table
 - [Authentication](./authentication.md) — how addressed routes scope by owner
 - [Persistence](../persistence/overview.md) — where sessions and requests are stored

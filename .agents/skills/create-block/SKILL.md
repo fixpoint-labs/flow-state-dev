@@ -148,16 +148,17 @@ import { defineCapability, defineResource, handler } from "@flow-state-dev/core"
 // Define a capability (usually in its own file)
 const counterCapability = defineCapability({
   name: "counter",
-  sessionResources: { counter: defineResource({
+  resources: { counter: defineResource({
+    scope: "session",
     stateSchema: z.object({ count: z.number().default(0) }),
     writable: true
   })},
   fns: (ctx) => ({
     increment: async () => {
-      const current = ctx.session.resources.counter.state.count;
-      await ctx.session.resources.counter.patchState({ count: current + 1 });
+      const current = ctx.resources.counter.state.count;
+      await ctx.resources.counter.patchState({ count: current + 1 });
     },
-    getCount: () => ctx.session.resources.counter.state.count,
+    getCount: () => ctx.resources.counter.state.count,
   }),
 });
 
@@ -179,7 +180,7 @@ const myHandler = handler({
 ```typescript
 const memoryCapability = defineCapability({
   name: "memory",
-  sessionResources: { memory: memoryResource },
+  resources: { memory: memoryResource },
   presets: {
     context: { context: [memoryContextFormatter] },  // Injects into generator prompt
     tools: { tools: [recallTool, storeTool] },       // Adds tools to generator

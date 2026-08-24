@@ -70,6 +70,16 @@ export const runSummaryStateSchema = z.object({
 
   // Decision-of-record (null on stopped / errored runs).
   finalRating: ratingSchema.nullable().default(null),
+  // FIX-1113 — the published rating carries NO deterministic bound because the
+  // three statements could not be placed at one fiscal period, so the valuation
+  // envelope was withheld and its clamp never ran. This is the DISCLOSURE, not a
+  // suppression: the rating above is the portfolio manager's own, published
+  // unchanged. Absent/false means the ordinary path (either the clamp ran, or
+  // the envelope was absent for an unrelated reason).
+  // It is also the RUN MARKER: this is the field that makes "how often does the
+  // period guard fire" answerable from ordinary runs, which is the number the
+  // publish-or-suppress question waits on.
+  ratingUnanchored: z.boolean().nullable().default(null),
   decisionConfidence: z.number().nullable().default(null),
   targetWeightPct: z.number().nullable().default(null),
   direction: z.enum(["long", "short", "flat"]).nullable().default(null),
@@ -201,6 +211,7 @@ export function buildRunSummary(input: BuildRunSummaryInput): RunSummary {
     ranAt,
 
     finalRating: decision?.finalRating ?? null,
+    ratingUnanchored: decision?.ratingUnanchored ?? null,
     decisionConfidence: decision?.decisionConfidence ?? null,
     targetWeightPct,
     direction: decision?.direction ?? null,

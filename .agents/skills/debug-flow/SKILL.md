@@ -46,8 +46,9 @@ Find the flow definition and its blocks:
 2. Read the flow's `defineFlow()` call to understand:
    - Which actions are defined
    - The root block for the target action (sequencer, generator, handler, or router)
-   - What state schemas are declared (session, request, user, project)
-   - What resources and clientData are configured
+   - What state schemas are declared (session, request, user, org)
+   - What flow-level `resources` are declared, and what each scope's `client` block
+     exposes (`expose` / `derived`)
 3. Read each block referenced by the action's root block
 4. For sequencers, trace the full `.step()` chain to understand the execution order
 
@@ -68,8 +69,6 @@ source ~/.zshrc && cd <repo-root> && pnpm --filter @flow-state-dev/fsdev fsdev r
 | `-m <model>` | Override model for all generator blocks |
 | `-s <session-id>` | Reuse session state across invocations |
 | `--seed-session '<json>'` | Pre-populate session state before execution |
-| `--seed-user '<json>'` | Pre-populate user state |
-| `--seed-project '<json>'` | Pre-populate project state |
 | `--flow-dir <path>` | Explicit flow directory (repeatable) |
 
 **Environment:** The CLI auto-loads `.env.local` files walking up from cwd. Ensure API keys (e.g., `OPENAI_API_KEY`) are set.
@@ -110,7 +109,7 @@ Each line is a JSON object. The five event types:
 |-------|-------------------|
 | `{"type":"item_added","item":{...}}` | A new output item was created. Check `item.type` (message, reasoning, block_output, error), `item.provenance.blockName`, `item.status` |
 | `{"type":"content_delta","itemId":"...","delta":"..."}` | Streaming text chunk from a generator. Accumulate deltas to see the full response. |
-| `{"type":"state_change","scope":"...","resourcePath":"...","changeType":"..."}` | State was mutated. Check scope (session/request/user/project) and what changed. |
+| `{"type":"state_change","scope":"...","resourcePath":"...","changeType":"..."}` | State was mutated. Check scope (session/request/user/org) and what changed. |
 | `{"type":"flow_complete","output":"...","durationMs":...,"items":...}` | Success. Shows final output and total item count. |
 | `{"type":"error","message":"...","code":"..."}` | Failure. This replaces `flow_complete`. The `code` maps to the error taxonomy (see reference). |
 
@@ -232,7 +231,7 @@ Summarize for the user:
 | **request** | Single action execution | Attempt counters, temporary flags |
 | **session** | Across requests in a session | Conversation history, mode settings |
 | **user** | Across all sessions for a user | Preferences, profile data |
-| **project** | Across sessions and users | Shared config, knowledge base |
+| **org** | Across sessions and users | Shared config, knowledge base |
 
 **State ops** (all atomic, CAS-guarded):
 `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`

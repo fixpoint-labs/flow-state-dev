@@ -6,7 +6,7 @@ sidebar_label: Host adapters
 
 # Host adapters
 
-Your `createFlowState` config describes a runtime — flows, models, stores. It says nothing about how HTTP requests reach it. A host adapter is the glue that turns that runtime into something a particular platform can serve: it takes incoming requests, hands them to the flow router, and streams responses back.
+Your `createFlowState` config describes the engine — flows, models, stores. It says nothing about how HTTP requests reach it. Hosting is the web-server face of that engine. A host adapter is the glue: it takes incoming requests, hands them to the flow router, and streams responses back.
 
 The router itself is portable. It speaks Web standard `Request` and `Response`, so the same app runs long-lived on a Node process, on AWS Lambda, on Bun, or on Deno. What changes per platform is the thin wrapper around it. This page covers which wrapper to reach for.
 
@@ -80,5 +80,5 @@ For Bun and Deno that is the whole adapter. For platforms with an event-shaped e
 
 - [Deployment overview](/guides/deployment) — SSE and persistence per platform
 - [Deploying to AWS Lambda](/guides/deploying-to-aws-lambda) — a worked Lambda example
-- [Server setup](/docs/server/setup) — configuring the router
-- [CLI API Reference](/docs/api/cli) — `fsdev serve` wraps `serve()` to run a config from the terminal
+- [Engine setup](/docs/server/setup) — configuring the router
+- [CLI API](/docs/api/cli) — `fsdev serve` wraps `serve()` to run a config from the terminal

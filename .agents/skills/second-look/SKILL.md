@@ -73,7 +73,7 @@ For diff and feature targets, pull the **real line counts** before estimating. E
 | Sequencer steps for a requirement that didn't land | Dead branches in the pipeline | Remove the steps |
 | Generator `outputSchema` fields never read downstream | Schema surface > consumed surface | Trim to consumed fields |
 | One-adapter "seam" | Hypothetical seam (one adapter = hypothetical; two = real, per `improve-codebase-architecture/LANGUAGE.md`) | Collapse the indirection until a 2nd adapter is real |
-| `project` scope where only `session` is read | Speculative scope | Narrow the scope |
+| `org` scope where only `session` is read | Speculative scope | Narrow the scope |
 | Defensive handling for impossible cases | Error paths that can't fire | Delete (CLAUDE.md §2) |
 | Resources / state-ops written but never read | Unused state | Remove |
 

@@ -18,6 +18,7 @@ import { ThesisBody } from "./thesis-body";
 import { MandatePanel } from "./mandate-panel";
 import { PolicyPanel } from "./policy-panel";
 import { EvidencePanel } from "./evidence-panel";
+import { RatingUnanchoredNotice } from "@/components/summary/rating-unanchored-notice";
 import type {
   MemoState,
   ThesisSection,
@@ -107,6 +108,13 @@ export type PmHeroProps = {
   // trader memo is not readable (no Phase 3 yet, or a still-loading resource):
   // render no level block rather than the stored keys.
   levels: TradeLevelModel | null;
+  // FIX-1113 — true when the rating envelope was withheld because the three
+  // financial statements could not be placed at one fiscal period, so
+  // `finalRating` above is the model's own, unbounded value. `periodDisclosure`
+  // names which periods and why; non-null exactly when `ratingUnanchored` is
+  // true (mirrors the PM memo's own pairing).
+  ratingUnanchored: boolean | null;
+  periodDisclosure: MemoState["periodDisclosure"];
 };
 
 /**
@@ -186,6 +194,8 @@ export function PmHero({
   policyDecision,
   evidenceDecision,
   levels,
+  ratingUnanchored,
+  periodDisclosure,
 }: PmHeroProps): ReactElement {
   const meta = AGENTS[agent];
   const idx = tierIndex(finalRating);
@@ -259,6 +269,13 @@ export function PmHero({
             ))}
           </div>
         </div>
+      ) : null}
+
+      {/* FIX-1113 — same disclosure as the Summary decision header, rendered
+          above the rating bar for the same reason: a reader must meet the
+          "not bounded" marker before the rating, not after. */}
+      {ratingUnanchored === true && periodDisclosure !== null ? (
+        <RatingUnanchoredNotice disclosure={periodDisclosure} />
       ) : null}
 
       <div

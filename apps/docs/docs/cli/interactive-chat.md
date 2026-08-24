@@ -84,4 +84,4 @@ Store:   app-configured stores
 ## Next steps
 
 - [Agent Dev Loop](./agent-dev-loop.md) — the non-interactive edit → `fsdev run` → read loop.
-- [CLI API Reference](/docs/api/cli) — the full `fsdev chat` flag and command reference.
+- [CLI API](/docs/api/cli) — the full `fsdev chat` flag and command reference.

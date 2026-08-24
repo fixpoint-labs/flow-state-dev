@@ -47,7 +47,6 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
 });
 
 import { useSession } from "../src/hooks/useSession";
-import { setFlowContext } from "../src/context/FlowContext";
 
 function message(id: string, text: string) {
   return {
@@ -90,7 +89,6 @@ function request(status: string, id = "req1") {
 
 describe("useSession mount catch-up (FIX-1012)", () => {
   beforeEach(() => {
-    setFlowContext({});
     // resetAllMocks, not clearAllMocks: the queued `mockResolvedValueOnce`
     // values below outlive a `clear`, so a test that consumes fewer of them
     // than it queues would hand the leftovers to the next test.
@@ -107,7 +105,6 @@ describe("useSession mount catch-up (FIX-1012)", () => {
 
   afterEach(() => {
     cleanup();
-    setFlowContext({});
   });
 
   it("surfaces the final items when the request completes between the snapshot read and the in-progress lookup", async () => {

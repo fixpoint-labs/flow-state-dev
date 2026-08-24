@@ -121,9 +121,3 @@ export function scoreSalience<TOutputSchema extends ZodTypeAny = typeof salience
     }
   })
 }
-
-export {
-  DEFAULT_DIMENSIONS as scoreSalienceDefaultDimensions,
-  salienceInputSchema as scoreSalienceInputSchema,
-  salienceOutputSchema as scoreSalienceOutputSchema
-}

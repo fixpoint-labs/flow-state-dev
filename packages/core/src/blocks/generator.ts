@@ -313,7 +313,6 @@ export interface GeneratorLoopState<TInput = unknown> {
 export interface GeneratorLoopConfig<TInput = unknown, TCtx = BlockContext> {
   maxIterations?: number;
   runTools?: boolean;
-  stopWhen?: (state: GeneratorLoopState<TInput>, ctx: TCtx) => MaybePromise<boolean>;
 }
 
 export interface GeneratorToolResult {
@@ -333,11 +332,6 @@ export type ToolsSlot = GeneratorTool[] | ((ctx: any) => MaybePromise<GeneratorT
 export type InstructionsSlot<TInput = unknown> =
   | string
   | ((input: TInput, ctx: any) => MaybePromise<string>);
-
-/**
- * @deprecated Use GeneratorTool. Kept as an alias for compatibility.
- */
-export type ToolBinding = GeneratorTool;
 
 /**
  * Wraps a Vercel AI SDK provider-defined tool for use in a generator's

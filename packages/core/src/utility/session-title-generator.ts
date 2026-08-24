@@ -27,8 +27,9 @@ export interface SessionTitleGeneratorConfig {
  * changed. The metadata update emits a `session.metadata.changed` SSE event
  * so connected clients see the title in real-time.
  *
- * The block is a passthrough — it returns its input unchanged so it can be
- * inserted anywhere in a pipeline without affecting downstream steps.
+ * The persist handler is a `.tap()`, so the sequencer output is `{ title }`
+ * from the generator step — discarded when composed as a `.sideChain()`, and
+ * passed downstream in place of the action input when composed as a `.step()`.
  *
  * ```ts
  * const titleBlock = sessionTitleGenerator({
@@ -71,17 +72,15 @@ Current title: ${currentTitle ?? "(none)"}`;
   const persistTitle = handler({
     name: `${config.name}:persist`,
     inputSchema: titleSchema,
-    outputSchema: z.unknown(),
     execute: async (input, ctx) => {
       const newTitle = input.title.trim();
       if (newTitle.length > 0 && newTitle !== ctx.session.metadata.title) {
         await ctx.session.setMetadata({ title: newTitle });
       }
-      return input;
     }
   });
 
   return sequencer({ name: config.name, inputSchema: z.unknown() })
     .step(titleGenerator)
-    .step(persistTitle);
+    .tap(persistTitle);
 }

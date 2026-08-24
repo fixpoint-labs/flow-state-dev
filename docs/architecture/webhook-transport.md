@@ -19,7 +19,7 @@ delivery-id extraction, and the optional handshake — at adapter mount, keyed b
 the same provider name. This keeps secrets and Node `crypto` out of the
 isomorphic flow definition.
 
-## Packaging: core (declaration) + server (runtime)
+## Packaging: core (declaration) + engine (runtime)
 
 The webhook transport does **not** ship as a separate package. It splits across
 two existing ones:

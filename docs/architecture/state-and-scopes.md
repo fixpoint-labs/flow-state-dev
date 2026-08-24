@@ -114,7 +114,7 @@ Deliberately unconditional, each for a stated reason rather than because it was 
 - **`create({ replace: true })`** writes at `"any"`. It is an explicit overwrite of a key the caller has decided it owns; opting out of the version check is the posture being requested
 - **`deleteAll`** takes no expected version at all. It is a scope operation, not a key operation — a bulk lifecycle mark over every live key
 - **the two seed helpers in `@flow-state-dev/testing`** pass `"any"` when priming a fresh scope, where no concurrent writer exists by construction
-- **scope state** — `request` / `session` / `user` / `org` — is not this driver's at all. It keeps `runWithCAS`, and `createScopePersist` downgrades to `"any"` for commutative hints on adapters advertising a delta verb, as described above
+- **scope state** — `session` / `user` / `org` drive `runWithCAS` directly. Request scope runs that same driver under `withScopeLock` (`serialize: true`), so a same-process fan-out serializes rather than exhausting the retry budget, and the budget stays for a writer the queue cannot see. `createScopePersist` still downgrades to `"any"` for commutative hints on adapters advertising a delta verb, as described above
 
 The collection-item HTTP routes write this store directly, outside the registry and its queue, so they carry their own versions and surface a conflict to the client rather than retrying it. Their request/response contract — including when a caller sees a 409 — is [the resource client reference](./resources-and-client-data.md)'s, not this document's.
 
@@ -181,18 +181,18 @@ ctx.request.patchState()   // + all ScopeStateOps
 // Session scope (always available in Phase 1)
 ctx.session.state          // Readonly<TSessionState>
 ctx.session.metadata       // Readonly<SessionMetadata> (title, description, tags)
-ctx.session.resources      // ResourceRegistry
 ctx.session.items          // SessionItemViews (client/llm views)
 ctx.session.getJournal()
 ctx.session.setMetadata()
 
 // User scope (always available in Phase 1)
 ctx.user.state             // Readonly<TUserState>
-ctx.user.resources         // ResourceRegistry
 
 // Org scope (optional)
-ctx.org?.state         // Readonly<TOrgState>
-ctx.org?.resources     // ResourceRegistry
+ctx.org?.state             // Readonly<TOrgState>
+
+// Flat resource registry (every declared resource, any scope)
+ctx.resources              // ResourceRegistry — keyed by accessor, routed by resource.scope
 ```
 
 ### Partial State Schemas

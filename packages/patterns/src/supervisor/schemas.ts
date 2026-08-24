@@ -3,8 +3,7 @@
  *
  * Outer state is minimal — task storage lives on the request-scoped
  * TaskCollection, not here. Per-task review verdicts conform to
- * `reviewerVerdictSchema`; the legacy aggregate `reviewOutputSchema`
- * is kept as an export for pre-migration consumers.
+ * `reviewerVerdictSchema`.
  */
 import { z } from "zod";
 
@@ -109,20 +108,4 @@ export const executableTaskSchema = z.object({
 
 export type ExecutableTask = z.infer<typeof executableTaskSchema>;
 
-/** Legacy aggregate review output. Preserved for back-compat imports only. */
-export const reviewOutputSchema = z.object({
-  assessments: z.array(
-    z.object({
-      taskId: z.string(),
-      verdict: z.enum(["accepted", "needs-revision", "escalate"]),
-      feedback: z.string(),
-      score: z.number().min(0).max(1),
-    }),
-  ),
-  needsReplanning: z.boolean(),
-  overallAssessment: z.string(),
-});
-
-export type ReviewOutput = z.infer<typeof reviewOutputSchema>;
-
-export type SubTaskErrorStrategy = "skip" | "fail" | "retry";
+export type SubTaskErrorStrategy = "skip" | "fail";

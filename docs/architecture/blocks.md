@@ -31,10 +31,11 @@ Every block receives a `BlockContext` providing access to scopes, emission, and 
 ```ts
 interface BlockContext {
   request: RequestScopeHandle;
-  session?: SessionScopeHandle;
+  session: SessionScopeHandle;
   user: UserScopeHandle;
-  project?: ProjectScopeHandle;
+  org?: OrgScopeHandle;
   sequencer?: StateRef;
+  resources: ResourceRegistry;
 
   response: ResponseEmitterHandle;
   signal: AbortSignal;
@@ -76,7 +77,7 @@ If multiple ancestors match and precedence cannot resolve, runtime throws `Ambig
 
 ### Sequencer state schema bubbling
 
-Handler, generator, and router blocks can declare `sequencerStateSchema`. This follows the same bubbling contract as request/session/user/project schemas:
+Handler, generator, and router blocks can declare `sequencerStateSchema`. This follows the same bubbling contract as request/session/user/org schemas:
 
 - block-level `sequencerStateSchema` declares what state shape a block requires
 - when composed inside a sequencer, that schema bubbles up to the enclosing sequencer's instance-state contract
@@ -95,7 +96,7 @@ const research = sequencer({
   name: "research",
   stateSchema: z.object({ progress: z.number().default(0) }),
   defaultState: { progress: 0 },
-}).step(updateProgress);
+}).tap(updateProgress);
 ```
 
 When sequencer state mutates, runtime emits a `state_change` item with `scope: "block_instance"` and the sequencer `blockInstanceId` in item provenance for client routing.
@@ -110,12 +111,10 @@ const validate = handler({
   targetStateSchemas: {
     research: z.object({ progress: z.number() })
   },
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     await ctx.targets.research?.patchState({ progress: 50 });
 
-    // Dynamic fallback remains available
-    const anyTarget = ctx.getTarget("research");
-    return input;
+    // Dynamic fallback remains available: ctx.getTarget("research")
   }
 });
 ```
@@ -124,33 +123,33 @@ const validate = handler({
 
 ### Block resource declarations
 
-Blocks can declare their resource dependencies using `sessionResources`, `userResources`, and `projectResources` config properties. These accept `defineResource()` values and surface on `BlockDefinition.declaredResources`:
+Blocks declare resource dependencies with a flat `resources` map. Each entry is a `defineResource()` (or collection) value; the resource's own `scope` routes storage. Declarations surface on `BlockDefinition.declaredResources`:
 
 ```ts
 import { defineResource, handler } from "@flow-state-dev/core";
 
 const planResource = defineResource({
+  scope: "session",
   stateSchema: z.object({ steps: z.array(z.string()).default([]) }),
   writable: true,
 });
 
 const planManager = handler({
   name: "plan-manager",
-  sessionResources: { plan: planResource },
-  execute: async (input, ctx) => {
-    await ctx.session.resources.plan.patchState({ steps: ["step1"] });
-    return input;
+  resources: { plan: planResource },
+  execute: async (_input, ctx) => {
+    await ctx.resources.plan.patchState({ steps: ["step1"] });
   },
 });
 
-// planManager.declaredResources === { session: { plan: planResource } }
+// planManager.declaredResources === { plan: planResource }
 ```
 
-Resource declarations are supported on all block kinds: handler, generator, and router. Sequencers automatically collect declared resources from all child blocks in the DSL chain. `defineFlow` merges block-declared resources into the flow's scope configs — see [Resources and Client Data](./resources-and-client-data.md) for the full collection and merge model.
+Resource declarations are supported on all block kinds: handler, generator, and router. Sequencers automatically collect declared resources from all child blocks in the DSL chain. `defineFlow` merges block-declared resources into the flow's `resources` map — see [Resources and Client Data](./resources-and-client-data.md) for the full collection and merge model.
 
 ## Handler
 
-The simplest block. Takes input, runs synchronous or async logic, returns output.
+The simplest block. Takes input, runs synchronous or async logic, returns output — unless it only mutates state, in which case it returns nothing, declares no `outputSchema`, and is chained with `.tap()` rather than `.step()` (BP-012, BP-014). The counter below is that shape.
 
 ```ts
 import { handler } from "@flow-state-dev/core";
@@ -159,12 +158,10 @@ import { z } from "zod";
 const incrementCounter = handler({
   name: "increment-counter",
   inputSchema: z.string(),
-  outputSchema: z.string(),
   sessionStateSchema: z.object({ messageCount: z.number().default(0) }),
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     const count = ctx.session.state.messageCount ?? 0;
     await ctx.session.patchState({ messageCount: count + 1 });
-    return input;
   },
 });
 ```
@@ -299,7 +296,7 @@ import { sequencer } from "@flow-state-dev/core";
 
 const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema: chatInputSchema })
   .step(chatGenerator)
-  .step(incrementCounter);
+  .tap(incrementCounter);
 ```
 
 ### DSL Methods (20 total)
@@ -353,7 +350,7 @@ pipeline
   .step(handler, {
     name: "validate",
     outputSchema: z.string(),
-    execute: async (input, ctx) => { /* ... */ return input; }
+    execute: async (input, ctx) => { /* ... */ return input.trim(); }
   });
 ```
 

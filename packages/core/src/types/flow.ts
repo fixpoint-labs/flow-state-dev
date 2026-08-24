@@ -115,7 +115,6 @@ export type ToolLifecycleEvent = {
 export type ToolsConfig = {
   defaults?: {
     timeoutMs?: number;
-    concurrency?: "parallel" | "serial";
     retry?: RetryPolicy;
   };
   onToolStarted?: HookHandler<ToolLifecycleEvent> | BlockDefinition<any, any>;
@@ -309,12 +308,6 @@ export type SessionConfig = {
    * projections appear in `clientData.session`.
    */
   client?: ScopeClientConfig<JsonObject>;
-  /**
-   * @deprecated Use `client.derived` instead. `clientData` keeps working
-   * with a one-time deprecation warning per scope per process; removal
-   * lands in a future minor.
-   */
-  clientData?: Record<string, ClientDataComputeFn<JsonObject>>;
   /** Retention policy that bounds session item log size. */
   retention?: RetentionPolicy;
   /**
@@ -373,9 +366,14 @@ export type RequestConfig = {
    * with `ScopeMutationTimeoutError` instead of hanging the request
    * indefinitely. Default 30000 (30s). Set to `Infinity` to disable.
    *
-   * Does not apply to external-store scopes (filesystem / sqlite /
-   * postgres adapters) — those use the optimistic CAS retry path and
-   * surface contention as `ConcurrentModificationError`.
+   * Does not apply to any scope that persists. `session` / `user` / `org`
+   * go through the optimistic CAS retry path, which owns its own retry
+   * semantics and surfaces contention as `ConcurrentModificationError`.
+   * `request` serializes its writes and runs that same retry path beneath
+   * the lock, and is left off this budget too: the timeout rejects the caller
+   * without cancelling the mutation, so a durable write that outran it
+   * would still reach the store afterwards — on top of a record the
+   * runtime may already have written as terminal.
    */
   mutationTimeoutMs?: number;
   /**
@@ -392,8 +390,6 @@ export type UserConfig = {
   cas?: CASOptions;
   /** See `SessionConfig.client`. */
   client?: ScopeClientConfig<JsonObject>;
-  /** @deprecated Use `client.derived` instead. See `SessionConfig.clientData`. */
-  clientData?: Record<string, ClientDataComputeFn<JsonObject>>;
 };
 
 export type OrgConfig = {
@@ -401,8 +397,6 @@ export type OrgConfig = {
   cas?: CASOptions;
   /** See `SessionConfig.client`. */
   client?: ScopeClientConfig<JsonObject>;
-  /** @deprecated Use `client.derived` instead. See `SessionConfig.clientData`. */
-  clientData?: Record<string, ClientDataComputeFn<JsonObject>>;
 };
 
 export type FlowDefinition<
@@ -495,8 +489,6 @@ export type FlowDefinition<
 
   /** Org-scope equivalent of `isolateUserState`. Default: false. */
   isolateOrgState?: boolean;
-
-  defaultBlockRenderer?: unknown | false;
 };
 
 export type FlowInstanceOptions<

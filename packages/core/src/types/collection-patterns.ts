@@ -189,9 +189,6 @@ export function resolveCollectionKey(
   return resolved;
 }
 
-/** @deprecated Use resolveCollectionKey instead. */
-export const resolveNamespaceKey = resolveCollectionKey;
-
 // ---------------------------------------------------------------------------
 // Key validation & normalization
 // ---------------------------------------------------------------------------

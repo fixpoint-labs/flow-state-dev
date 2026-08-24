@@ -24,7 +24,7 @@ goal
   → [replanner]             (only when replan + no inline tasks)            │
   → [applyReplan]           (add new tasks to the collection)               │
   → loopBack(when: decision !== "complete") ────────────────────────────────┘
-  → synthesize              (build legacy plan output, then run synthesizer)
+  → synthesize              (build plan output, then run synthesizer)
 ```
 
 Plan tasks live on a request-scoped `TaskCollection` so the same collection survives across multiple `board.drain` re-entries inside the replan loop. The outer sequencer state is minimal — `{ goal, status?, iteration }` — with the substrate's `task-change` and `task-board-meta` items as the source of truth for per-task progress.
@@ -73,7 +73,7 @@ import { planAndExecuteInputSchema } from "@flow-state-dev/patterns";
 
 ## Task lifecycle
 
-The pattern's public output preserves the legacy P&E status vocabulary so existing consumers keep working:
+Task status in the pattern's output:
 
 | Output status | Meaning | Substrate equivalent |
 |--------|---------|---------|
@@ -239,10 +239,8 @@ planAndExecute({
   // Appended to the default synthesizer's system prompt.
   synthesizeInstructions?: string;
 
-  // Resources to declare on the outer sequencer.
-  sessionResources?: Record<string, any>;
-  userResources?: Record<string, any>;
-  orgResources?: Record<string, any>;
+  // Resources to declare on the default executor.
+  resources?: Record<string, any>;
 
   // Visibility for the internal planner generator. Default: { client: true, history: false }.
   // The default planner is a utility decomposer that does not currently
@@ -268,7 +266,6 @@ import {
   planAndExecuteStateSchema,
   PlanSchema,
   PlanTaskSchema,
-  PlanStepSchema,   // backward-compat alias for PlanTaskSchema
   iterationOutputSchema,
 } from "@flow-state-dev/patterns";
 
@@ -278,7 +275,6 @@ import type {
   PlanAndExecuteState,
   Plan,
   PlanTask,
-  PlanStep,         // backward-compat alias for PlanTask
   IterationOutput,
 } from "@flow-state-dev/patterns";
 ```
@@ -294,11 +290,12 @@ import {
   createLLMEvaluator,           // LLM-based evaluator
   createCaptureAndPlan,         // entry sequencer (set state, plan, seed collection)
   createApplyReplan,            // adds replanner output to the collection
-  createCascadeSkipDependents,  // cancels pendings blocked on errored deps
-  createSynthesize,             // builds the legacy plan output + optional synthesizer
-  createBuildPlanOutput,        // just the substrate→legacy translation
-  normalizeOutputStatus,        // substrate status → legacy status helper
+  createSynthesize,             // builds the plan output + optional synthesizer
+  createBuildPlanOutput,        // just the substrate→plan-output translation
+  normalizeOutputStatus,        // substrate status → output status helper
 } from "@flow-state-dev/patterns";
+
+import { createCascadeSkipDependents } from "@flow-state-dev/orchestration/task-board";
 ```
 
 Use these when you want the core task-tracking machinery but with custom orchestration around it.
@@ -422,8 +419,6 @@ The pattern emits two component-item streams renderers can subscribe to:
 
 - `task-change` — one item per task transition, emitted by the substrate `TaskCollection`. Carries the post-mutation `Task` snapshot, minus the fields the substrate keeps server-side such as `claimedBy`, and is keyed `${collectionId}/${taskId}` so the latest change for a task replaces the previous one. The `<TaskPlan />` renderer groups rows by `data.taskId`.
 - `task-board-meta` — board-level status, keyed by `data.collectionId`. The substrate emits `active` and `completed`; this pattern adds `planning`, `replanning`, and `synthesizing` at the corresponding phase boundaries so the renderer can show a status header.
-
-Pre-migration the pattern emitted `plan-meta` and `plan-task` items. Those have been removed — the substrate items above carry strictly more information and are keyed identically.
 
 ## See also
 

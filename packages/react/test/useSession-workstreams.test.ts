@@ -60,7 +60,6 @@ vi.mock("@flow-state-dev/client", async (importOriginal) => {
 });
 
 import { useSession } from "../src/hooks/useSession";
-import { setFlowContext } from "../src/context/FlowContext";
 
 function snapshot() {
   return {
@@ -103,7 +102,6 @@ async function mountSession(options?: Record<string, unknown>) {
 
 describe("useSession workstreams axis (FIX-1012)", () => {
   beforeEach(() => {
-    setFlowContext({});
     vi.resetAllMocks();
     sessionClientMock.getSession.mockResolvedValue({
       id: "sess1",
@@ -120,7 +118,6 @@ describe("useSession workstreams axis (FIX-1012)", () => {
 
   afterEach(() => {
     cleanup();
-    setFlowContext({});
   });
 
   it("costs one read on mount and yields an empty axis for a session with no background work", async () => {
@@ -494,7 +491,6 @@ describe("useSession workstreams — every interaction path is classified (FIX-1
   };
 
   beforeEach(() => {
-    setFlowContext({});
     vi.resetAllMocks();
     sessionClientMock.getSession.mockResolvedValue({
       id: "sess1",
@@ -514,7 +510,6 @@ describe("useSession workstreams — every interaction path is classified (FIX-1
 
   afterEach(() => {
     cleanup();
-    setFlowContext({});
   });
 
   it("classifies every callable on the returned view", async () => {

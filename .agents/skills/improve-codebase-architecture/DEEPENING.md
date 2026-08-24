@@ -22,7 +22,7 @@ Dependencies that have local test stand-ins. Deepenable if the stand-in exists. 
 
 Your own services across a network boundary. Define a **port** (interface) at the seam. The deep module owns the logic; the transport is injected as an **adapter**. Tests use an in-memory adapter. Production uses an HTTP/SSE/queue adapter.
 
-**FSD examples:** the server↔client streaming seam. The wire format (item/content/state_change events) is documented in `docs/architecture/streaming.md`; today's adapter is SSE; alternative transports would be additional adapters at the same port. When suggesting deepening here, frame the proposal as "the port is the item/content event stream — what new adapter does this enable?"
+**FSD examples:** the engine↔client streaming seam. The wire format (item/content/state_change events) is documented in `docs/architecture/streaming.md`; today's adapter is SSE; alternative transports would be additional adapters at the same port. When suggesting deepening here, frame the proposal as "the port is the item/content event stream — what new adapter does this enable?"
 
 Recommendation shape: *"Define a port at the seam, implement the SSE adapter for production and an in-memory adapter for testing, so the logic sits in one deep module even though it's deployed across a network."*
 

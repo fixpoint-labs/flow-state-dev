@@ -41,7 +41,7 @@ the block-instance-id helpers, and the suspension leaf types.
 
 ## Who depends on it
 
-`core`, `client`, `react`, and `server` all depend on `contracts`. **`core`
+`core`, `client`, `react`, and `ui` all depend on `contracts`. **`core`
 re-exports every symbol from its original path** (`@flow-state-dev/core`,
 `@flow-state-dev/core/items`, `@flow-state-dev/core/items/internal`, the leaf
 types), so importing these from `core` is unchanged for end users — the

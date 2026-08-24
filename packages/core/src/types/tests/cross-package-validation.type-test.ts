@@ -125,8 +125,10 @@ const flow = defineFlow({
         })
       }
     },
-    clientData: {
-      activeMode: (ctx) => ctx.state.mode
+    client: {
+      derived: {
+        activeMode: (ctx) => ctx.state.mode
+      }
     }
   }
 });

@@ -1878,6 +1878,88 @@ miss). Non-US tickers have no EDGAR CIK and fall through to Yahoo. The legacy
 Yahoo `*History` quoteSummary modules were dropped: they returned zero-filled
 statements in current Yahoo responses.
 
+**Every statement describes ONE completed financial year, and says which.** Each
+of the three payloads carries a `periodEnd` — the single year-end date every
+figure in it was read at. The desk picks that year first (the most recent annual
+period end any core figure reports — never the most recent year where the core
+set is COMPLETE, which walks a messy filer's whole report back a year) and then
+reads every field AT it. A figure the chosen year does not carry is `null`, the
+same as any other unobserved figure; it is never filled in from a neighbouring
+year. One absent figure never blanks the rest of its statement. `periodEnd` is
+empty only on a statement with no figures at all — the `unavailable` path, which
+has no period to declare. `asOf` keeps its older request-date fallback for
+legacy readers and is NOT the period; read `periodEnd`. Two dates describe the
+same period when they are within about a month of each other, not when they fall
+in the same calendar year: the filings source and the market-data source date
+the same fiscal year days apart, and a 52/53-week filer's year-end crosses
+January. Anything comparing two periods (year-over-year growth, the change-based
+quality criteria) goes through one accessor that refuses a non-adjacent pair, so
+a gap-year filer gets no growth figure rather than a two-year change labelled as
+one year's.
+
+**When the three statements cannot be placed at one period, the desk DETECTS it
+and WITHHOLDS — it does not assemble a coherent set.** Each statement resolves
+through its own provider ladder, concurrently, so one can come from the filings
+source while another falls through to market data. After all three return, the
+set is checked once (`lib/statement-set-period.ts`). Two things make it
+incoherent: any statement that settled for an older period than one its own
+resolution actually observed, or three returned periods that are not mutually
+compatible. The first half is not optional — without it the check reduces to "do
+the periods match", which passes three statements that ALL fell back to the same
+older year. One route is outside the guarantee by construction: a provider that
+answers completely short-circuits before the next provider is fetched, so a
+newer period nobody looked for is never observed.
+
+On an incoherent set, every deterministic output that reads more than one
+statement is withheld — the spanning multiples, the expected return, and
+everything downstream of it including fair value, the cash-flow model,
+triangulation, the setup score and the **rating envelope** — and the spine reads
+`thin`, so the always-on evidence gate caps new exposure. A figure inside ONE
+statement (an operating margin is income over income) is computed as normal;
+"withhold" must never be implemented as "blank the spine".
+
+**The rating still publishes.** Read this before assuming a mismatch suppresses
+it. The envelope only CLAMPS a rating the portfolio manager emits on its own as
+a required field, and the clamp sits inside a conditional on the envelope's
+presence — so withholding the envelope removes the BOUND, not the rating, and
+what publishes is the model's own value with nothing constraining it. Absence is
+permission here, not suppression. The desk therefore marks that rating
+`ratingUnanchored` and records the three periods on the memo and the decision
+snapshot, and the same flag reaches the `RunSummary`, where it is the marker
+that makes "how often does this fire" an answerable machine-readable number.
+It also reaches every surface a person reads the rating on, but not all three
+the same way — a surface that cannot access the disclosure must not describe
+its cause, and the two surfaces below split exactly on that line. The Summary
+decision header and the PM's detailed memo both render the full
+`RatingUnanchoredNotice` (`components/summary/rating-unanchored-notice.tsx`),
+naming which periods and why. The Past Reports list row does NOT render that
+component — a list row is a compact chip, not a card — but it carries the same
+`periodDisclosure` (mirrored onto the reports-index metadata alongside the
+`ratingUnanchored` boolean) and reads a reason-specific sentence off its
+tooltip via the SAME `ratingUnanchoredReason`/`disclosurePrintShape`
+classifier (`components/reports/report-row.tsx`), rather than a hand-written
+tooltip that describes one specific cause as if it explained every reachable
+shape. **Any future guard that reaches the envelope should start here: check
+what the ABSENCE of the thing you are withholding actually causes** — and
+verify each surface's rendering against the code, not against what an earlier
+commit's message says it does, before repeating a claim about the SET of
+surfaces.
+
+The fundamentals analyst is a SECOND valuation site and needs the same treatment
+separately — it computes and publishes its own valuation from its own tool
+payloads before the spine exists, so a guard on the spine is structurally
+invisible to it. Both call the same predicate, and both read the same
+observations: the analyst's own tool fan-out writes each `*PeriodObservation`
+field onto the same session-scoped `financialsData` resource the spine reads,
+and is awaited (`.parallel`, before the generator step) ahead of the analyst's
+own computation — so its deterministic half is gated IDENTICALLY, catching
+uniform staleness as well as outright disagreement, not only the latter. The
+other half is **advisory only**: the analyst is handed the three raw statements
+and asked to divide one by another, so on a mismatch its context states the
+periods and instructs it not to combine them. A model can ignore an
+instruction, so a memo can still carry a figure the spine withheld. Assert what
+the analyst was told, never what it concluded.
+
 ## The data-honesty contract
 
 **A figure the desk did not observe is recorded as `null`, never as `0`** — in

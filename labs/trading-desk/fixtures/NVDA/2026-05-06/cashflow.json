@@ -1,6 +1,7 @@
 {
   "ticker": "NVDA",
   "asOf": "2026-01-26",
+  "periodEnd": "2026-01-26",
   "operating": 70.5,
   "investing": -22.0,
   "financing": -19.4,

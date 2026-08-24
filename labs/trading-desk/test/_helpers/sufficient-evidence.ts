@@ -55,6 +55,7 @@ export const SUFFICIENT_SPINE: ValuationSpineState = {
   },
   valuationMethod: "ev-multiples",
   evidenceBasis: "sufficient",
+  periodDisclosure: null,
 };
 
 /** A reward-to-risk figure with `evidenceBasis: "sufficient"`. */

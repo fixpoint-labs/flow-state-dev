@@ -53,6 +53,7 @@ function bundle(sessionId: string): RunArtifactsBundle {
       capturePath: null,
       ranAt: "2026-06-25T00:00:00.000Z",
       finalRating: "Overweight",
+      ratingUnanchored: false,
       decisionConfidence: 0.7,
       targetWeightPct: 3,
       direction: "long",

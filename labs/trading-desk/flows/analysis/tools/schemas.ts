@@ -85,10 +85,27 @@ const periodInput = z.object({
 // (e.g. a missing operatingIncome must not read as a real zero). Extends the
 // nullable-PE discipline (FIX-692) to the statements after live runs showed
 // Yahoo's legacy modules returning zero-filled statements (FIX-705 follow-up).
+//
+// `periodEnd` (FIX-1113) is the ONE date every figure in the statement was read
+// at — the enforcement half of "read every figure at one chosen year-end". Two
+// rules on it:
+//   - EMPTY ONLY WHEN THE STATEMENT CARRIES NO FIGURES. The `unavailable` path
+//     has no period to declare, and the only values available to fill one in
+//     (the request date, a guess) would fabricate a year-end. So `null` is
+//     legal exactly there, and `asOf` is NOT a substitute — `asOf` still falls
+//     back to the request date for legacy readers.
+//   - `.default(null)` IS LOAD-BEARING, NOT DECORATION (BP-030). These payloads
+//     are persisted resource state re-parsed on every read. The value fields
+//     are nullable but NOT optional, so a stored record written before this key
+//     existed fails to parse without the default while an explicit `null`
+//     succeeds. The shape that matters in test is the MISSING key, not the null
+//     one. It stays required in the OUTPUT type, so a producer that cannot
+//     state its period fails to build.
 export const balanceSheetSchema = z.object({
   source: sourceTag,
   ticker: z.string(),
   asOf: z.string(),
+  periodEnd: z.string().nullable().default(null),
   totalAssets: z.number().nullable(),
   totalLiabilities: z.number().nullable(),
   totalEquity: z.number().nullable(),
@@ -101,6 +118,7 @@ export const incomeStatementSchema = z.object({
   source: sourceTag,
   ticker: z.string(),
   asOf: z.string(),
+  periodEnd: z.string().nullable().default(null),
   revenue: z.number().nullable(),
   grossProfit: z.number().nullable(),
   operatingIncome: z.number().nullable(),
@@ -113,11 +131,25 @@ export const cashflowSchema = z.object({
   source: sourceTag,
   ticker: z.string(),
   asOf: z.string(),
+  periodEnd: z.string().nullable().default(null),
   operating: z.number().nullable(),
   investing: z.number().nullable(),
   financing: z.number().nullable(),
   freeCashFlow: z.number().nullable(),
   unit: z.string().default("USD billions"),
+});
+
+/**
+ * What one statement's provider-ladder resolution observed, and what it settled
+ * on (FIX-1113). Written per statement by `loadStatementWithRecovery`.
+ *
+ * `observedNewest` covers ONLY the payloads that resolution actually fetched —
+ * a provider the ladder short-circuited past is deliberately not represented,
+ * because claiming otherwise would assert a period nobody looked for.
+ */
+export const periodObservationSchema = z.object({
+  observedNewest: z.string().nullable(),
+  returned: z.string().nullable(),
 });
 
 /**
