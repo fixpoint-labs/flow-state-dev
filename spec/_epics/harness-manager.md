@@ -302,6 +302,27 @@ down an altitude; push it into the issue spec that will write it.*
    was wrong three times in three days, every time in a way only the source could catch. This
    document names the constraint; the issue spec that will write the interface names the clauses.
 
+8. **Starting a run and continuing a parked one are the *same* workstream core, not two verbs.**
+   Owner constraint on [#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362):
+   *"Do not design `taskStart`/`taskUnpark` as two workstream actions — one `flow.workstream` core,
+   reuse-or-mint the harness session id inside it."* **The tell that this has been broken: a caller
+   choosing between two entry points**, or a pair of workstream actions whose names distinguish
+   *fresh* from *resumed*.
+   **The reason, so nobody re-derives it the other way:** two verbs put the reuse-or-mint decision in
+   the **caller**, which is exactly where it cannot live — the caller does not know whether a session
+   already exists for that task. The core does. It also matches FIX-1246's premise — *"the task is
+   already associated to the coding session"* — so if the association lives on the task, a
+   caller-side fork is redundant at best and divergent at worst.
+   **This constrains a seam that already exists; this epic does not build it.** `flow.workstream` is
+   today the single `ActionCore` a `source: "workstream"` dispatch resolves to
+   (`packages/core/src/flow/workstream-core.ts`, *"the one workstream core a detached dispatch
+   resolves"*; the resolve site is `engine/src/execution/resolve-action-core.ts`). So the constraint
+   is about **not growing two verbs beside it**, not about standing one up. **LAB-138 enters it to
+   start a run and LAB-139 re-enters it after a wait — the same core both times.**
+   **The mechanism is the issue specs', with the source open** — how the session id is reused or
+   minted, where the association is read, and what the core's shape is are all theirs, not this
+   document's (§2's altitude rule).
+
 ## 4. Running index
 
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
@@ -939,3 +960,18 @@ rename. Whether that gap ever changes this epic's shape is the **owner's**, live
   treatment membership got — a reader has to be able to see what was asked, or the next round
   re-opens it believing nobody considered it. **Boundaries held:** no wake, no resume and no rename
   is designed here; the only scope change to LAB-139 is the status returning to its buildable list.
+- **Constraint fold — one `flow.workstream` core, not a `taskStart`/`taskUnpark` pair.** Trigger: an
+  owner design constraint on [#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362) —
+  *"Do not design `taskStart`/`taskUnpark` as two workstream actions — one `flow.workstream` core,
+  reuse-or-mint the harness session id inside it."* Added as **theme 8**, because it binds both
+  issues: LAB-138 enters the core to start a run and LAB-139 re-enters it after a wait, and the
+  constraint says those are the same core. **§2 goes from seven themes to eight**; the addition is an
+  obligation with a tell, not clause-level detail, which is the line the consolidation fold drew.
+  **Checked before writing rather than assumed:** `flow.workstream` **already exists** as the single
+  `ActionCore` a `source: "workstream"` dispatch resolves to
+  (`packages/core/src/flow/workstream-core.ts` — *"the one workstream core a detached dispatch
+  resolves"*). So the theme is worded as constraining a seam that is already there and **not** as
+  this epic building one. **No mechanism is stated** — how the session id is reused or minted, and
+  where the task's association to it is read, are the issue specs' with the source open, and one line
+  in each of LAB-138's and LAB-139's implementer notes points at the constraint. **Nothing else
+  moved:** D-1 stays closed, the consumed set stays four, `parked` stays the status.
