@@ -179,11 +179,12 @@ down an altitude; push it into the issue spec that will write it.*
    - **Ask** over **Relay**. The question leaves the run through the relay channel, not by
      suspending the request in place. Conductor **consumes** that channel and does not build it —
      Relay is its own epic (FIX-1197), and §1's limits price the dependency rather than hide it.
-   - **Wait** as a **task status**, not as a suspended request. A row waiting on a person carries a
-     human-wait status, and that status is **distinct from blocked-on-dependency** — the point of it
-     is that a board can show which rows are waiting on a *human* rather than on other work. **The
-     status name is the owner's call and is still open** (§5): `awaiting_feedback` ·
-     `awaiting_review` · `blocked` + reason.
+   - **Wait** in **`needs_input`**, not as a suspended request. A row waiting on a person carries
+     the `needs_input` status; **dependencies stay `blocked`**. The distinct name *is* the decision
+     rather than a synonym — a board must be able to show which rows are waiting on a **person**
+     rather than on other work. *(Owner call on D-1. `needs_input` is the **product name**; the
+     shipped verbs `awaitReview` and `resumeFromReview` are unchanged — this decision renamed no API.
+     How the name lands in the shipped status enum is a separate open question, §5.)*
    - **Settle** only after checking the run handle's status: a terminal SDK error subtype returns
      normally as `status: "errored"`, so settling on a normal return alone reports a failed run as
      completed. `buildDetachedRunner`'s body is unconditionally `.step(worker).tap(recordSuccess)`,
@@ -259,7 +260,7 @@ down an altitude; push it into the issue spec that will write it.*
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
 | [LAB-138](https://linear.app/fixpoint-labs/issue/LAB-138/the-harness-manager-a-task-row-becomes-a-watched-settled-coding-run) | The manager loop — a task row becomes a watched, settled coding run. Provisions the run's working directory and owns the **per-run `cwd` seam** that makes handing it down possible (theme 4). Settles on a **handle-status check**, not on a normal return (theme 5). **Defines the runner contract**, which must not encode any one harness's shape (theme 7) — the clause-level detail (the bound, the result shape, token usage, permission posture) is in this issue's implementer notes, deliberately not in the epic-spec. Adds the per-run `cwd` to the **SDK path** — the only surface that can host a watched run (theme 4) | spec | — | — | Needs spec |
-| [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof** (FIX-1166). Blocked by LAB-138. Builds theme 5's ask-and-wait as decided by **D-1** — the question travels **Relay**, and the row carries a **human-wait status distinct from blocked-on-dependency** (status name still the owner's, §5). Owns the **inbox row and its replay-safe write**. *(Rescoped by D-1: the `ctx.suspend` park, the in-process resume action, the `suspensionId` projection seam and the configured lease window are all withdrawn.)* **Cannot run the round trip until Relay's channel lands** — everything on its own side can be built and goal-checked before that (§1) | spec | — | — | Needs spec |
+| [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof** (FIX-1166). Blocked by LAB-138. Builds theme 5's ask-and-wait as decided by **D-1** — the question travels **Relay**, and the row carries the **`needs_input`** status (dependencies stay **`blocked`**; product name, shipped verbs unchanged — how it lands in the status enum is open, §5). Owns the **inbox row and its replay-safe write**. *(Rescoped by D-1: the `ctx.suspend` park, the in-process resume action, the `suspensionId` projection seam and the configured lease window are all withdrawn.)* **Cannot run the round trip until Relay's channel lands** — everything on its own side can be built and goal-checked before that (§1) | spec | — | — | Needs spec |
 | [FIX-150](https://linear.app/fixpoint-labs/issue/FIX-150/workspaces-if-validated-workspacerunner-block-and-virtual-filesystem) | Workspaces — the file-projection component. Large, three PRs (a component · b shell-tool migration · c coding-agent path). Subsumes FIX-998. **Own track — carries no dependency edge into the Proof** (theme 4) | spec | [#1345](https://github.com/fixpoint-labs/flow-state-dev/pull/1345) — **approved** | — | Needs implementation |
 
 *FIX-150 is on team **flow-state**, not Labs; it is a sub-issue of LAB-140 across teams. Its
@@ -333,9 +334,19 @@ waits on it (theme 4).*
   question: *"do not treat this comment as closing D-1."* These stay open on
   [#1429](https://github.com/fixpoint-labs/flow-state-dev/issues/1429) / FIX-1241, and **this
   document records them rather than picking any of them.** Three of them reach the Proof.
-  - **The status name** — `awaiting_feedback` · `awaiting_review` · `blocked` + reason. *(They lean
-    `awaiting_feedback`.)* Theme 5 names the obligation — a human wait is a status distinct from
-    blocked-on-dependency — and leaves the spelling here.
+  - **The status name — CLOSED**, see the decided entry below. What remains open from it is only
+    how the name lands in the shipped enum.
+  - **How `needs_input` relates to the shipped status enum.**
+    `packages/orchestration/src/tasks/schema/task-status.ts` ships
+    `["pending","in_progress","blocked","awaiting_review","completed","errored","cancelled"]` —
+    `needs_input` is **not** in it, `awaiting_review` **is**, and `awaiting_review` carries its own
+    `ALLOWED_TRANSITIONS` (`in_progress → awaiting_review`; `awaiting_review → pending | completed |
+    cancelled | errored`). Meanwhile **FIX-1234 (In Review) states the opposite of a new status**:
+    *"The gap is the **exit predicate**, not a new status — `awaitReview` and `resumeFromReview` are
+    not being redesigned."* Three readings, and **this document picks none**: `needs_input`
+    **renames** the enum member · **joins** it as a second status · or is the **product/display
+    name** over the existing `awaiting_review`. A rename carries **BP-030** — persisted rows already
+    hold `awaiting_review` — plus the state-machine and exhaustiveness surface. **With the owner.**
   - **Who wakes a parked-and-exited board.** **FIX-1234 will not build it.** On the Proof's critical
     path; carried as §1's largest open risk, and no wake is proposed in this document.
   - **Whether FIX-1234 / Relay issue 5 stays in Relay** now that recapture has died.
@@ -344,6 +355,15 @@ waits on it (theme 4).*
   - **FIX-1200's sequencing**; whether *"answered"* means continuing the coding agent's own
     conversation (FIX-1179); BullMQ/serverless this release; and whether `onIdle: complete` HITL
     boards are in or out — **they cannot take park-exit.**
+
+- **~~What is the human-wait status called?~~** *Decided: **`needs_input`**.* Owner call on D-1
+  (#1429). **Dependencies stay `blocked`**; neither `awaiting_review` nor `awaiting_feedback` is the
+  product name. The reasoning is the point of the status: a board must be able to show which rows
+  are waiting on a **person** rather than on other work, so a **distinct name is the decision, not a
+  synonym of `blocked`.** **`needs_input` is a product name — the shipped verbs `awaitReview` and
+  `resumeFromReview` are unchanged**, and this decision renamed no API. How the name lands in the
+  shipped status enum is open, above. *(This comment settled the name only; every other D-1 open
+  item stays open.)*
 
 - **Where conductor's own code lives.** Both LAB-138 and LAB-139 write into the same place and
   neither can settle it alone, so it is the epic's to answer. Raised at epic drafting. **Blocks
@@ -712,3 +732,13 @@ waits on it (theme 4).*
   **Why this is not a retreat, in the architect's words on #1429: there is no single primitive, and
   the split is allowed** — an in-request `suspend`, a board wait-status and a Relay send are three
   different things.
+- **Owner decision fold — D-1 addendum: the human-wait status is `needs_input`.** Trigger: the
+  product owner's follow-up on #1429. What changed: theme 5's *Wait* obligation, LAB-139's index row,
+  and §5 — the status name moves from the open list to a decided entry. **Dependencies stay
+  `blocked`**; a distinct name is the decision rather than a synonym, because a board must be able to
+  show which rows wait on a **person** rather than on other work. **`needs_input` is the product
+  name; the shipped verbs `awaitReview` and `resumeFromReview` are unchanged.** Recorded as a **new
+  open item, deliberately unpicked**: how `needs_input` relates to the shipped status enum — which
+  has `awaiting_review` and not `needs_input`, while FIX-1234 (In Review) says the gap is *"the exit
+  predicate, not a new status"* — rename · join · product-layer name, with BP-030 on persisted rows
+  if it is a rename. **Every other D-1 open item stays open; this settled the name only.**
