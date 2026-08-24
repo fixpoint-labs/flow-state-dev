@@ -305,6 +305,7 @@ export type {
   RelayMessageBinding
 } from "./types/relay";
 export { defineRelayBinding, validateRelayConfig } from "./types/relay";
+export type { SendMessageRefusal, SendMessageResult } from "./types/relay-results";
 export type {
   TokenCounter,
 } from "./types/tokens";
