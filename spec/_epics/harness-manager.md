@@ -765,15 +765,24 @@ waits on it (theme 4).*
   open item, deliberately unpicked**: how `needs_input` relates to the shipped status enum — which
   has `awaiting_review` and not `needs_input`, while FIX-1234 (In Review) says the gap is *"the exit
   predicate, not a new status"* — rename · two statuses · product-layer name. **Every other D-1 open item stays open; this settled the name only.**
-- **Reversal fold — the enum landing was closed and reopened, and the churn is the record.** The
-  sequence, written out because a reader six weeks from now should see that this question moved
-  twice rather than find a silent flip: the owner called `needs_input` a **rename of the shipped
-  enum member at 16:34:14Z**; **pulled it back at 16:36:15Z** — *"leave the enum-landing question
-  open. D-1 still has a confirm (rename of shipped `awaiting_review` vs two statuses). Don't pick it
-  in this spec until that returns."*; the close had already been pushed as **`3a51956`** before the
-  reversal reached this agent; it was **reverted in `8d1bf43`** and the open state rewritten here.
-  The owner then reaffirmed on the PR: *"Decision Manager will not close that on my rec. Jake has
-  not answered it."*
+- **Reversal fold — the enum landing was closed on a recommendation, not on a decision, and is
+  reopened.** The sequence, written out because a reader six weeks from now should see that this
+  question moved twice rather than find a silent flip — **and because the error in it was an
+  attribution error**: at **16:34:14Z** the **Architect recommended** that `needs_input` **rename**
+  the shipped enum member; that recommendation **reached this document as though the owner had
+  decided it**, and was written in and pushed as **`3a51956`**. At **16:36:15Z the owner held the
+  question open** — *"leave the enum-landing question open. D-1 still has a confirm (rename of
+  shipped `awaiting_review` vs two statuses). Don't pick it in this spec until that returns."* The
+  close was **reverted in `8d1bf43`** and the open state rewritten here. The owner then reaffirmed
+  on the PR: *"Decision Manager will not close that on my rec. Jake has not answered it."*
+  **To be exact about who decided what: the Architect recommended the rename; the owner has not
+  picked between rename and two statuses.** The **name** `needs_input` is the owner's call and is
+  decided; the **landing** is not.
+  **The lesson, and §5 is precisely where it has to hold: a decision arriving through a channel is
+  not the same as a decision made by the person that channel speaks for.** A recommendation is input
+  to a decision. Every *Decided* entry in §5 carries weight only because it means **the owner
+  decided** — so a relayed recommendation recorded as an owner call does not just mis-credit
+  someone, it forges the one signal this section exists to carry.
   **What the reverted close wrongly carried, now removed:** the BP-030 dual-read as **this epic's
   decided path** (it is a consequence of the rename reading only, so asserting it presumed the
   answer — it now appears as that option's price, inside the option), a deprecation/sweep path this
