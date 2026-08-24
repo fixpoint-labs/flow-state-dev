@@ -210,6 +210,42 @@ invisible to the drain while the lease is live and visible again once it lapses,
 until some claim takes it back. The wake test reads the same lease, so a worker
 stirs into an exit check that no longer calls the board drained.
 
+### Two exclusions, and why only one is lease-gated
+
+The routing exclusion above is not the only way a row drops out of the board's
+in-flight count. A board declaring `onReview: "exit"` also excuses rows sitting
+in `awaiting_review`, and the two live side by side in `countWaitable` as
+separate predicates rather than one widened predicate. They answer different
+questions:
+
+| | routing exclusion (`runsElsewhere`) | park exclusion (`onReview: "exit"`) |
+|---|---|---|
+| Asks | where does this row's work belong? | is this row waiting on a *human*? |
+| Derived from | the board's detached declarations | the row's status |
+| Applies to | `in_progress` rows only | `awaiting_review` rows only |
+| Applies on | boards with a detached worker | any board, however it dispatches |
+| Liveness conjunct | **yes** — the lease | **no** |
+
+**The missing liveness conjunct on the park exclusion is deliberate, not an
+oversight.** The routing exclusion needs one because a routed row can be
+abandoned by a claimant that died while the row still says the work belongs
+elsewhere — the paragraph above is that case. A parked row cannot be in that
+state. Parking moves it off `in_progress`, and the lease deliberately stops
+governing a row there so that a slow human cannot have the task reclaimed out
+from under them (`ticketForClaim`'s status fence, and the lease short-circuit for
+any status other than `in_progress`). A lease conjunct on the park exclusion
+would therefore either exclude nothing or reintroduce exactly the reclaim the
+substrate prevents on purpose.
+
+The practical consequence for a board that declares both: a detached row that
+parks stops being excused by *routing* — it is no longer `in_progress` — and
+starts being excused by the *park* exclusion instead, if and only if the board
+asked for that. On the default `onReview: "hold"` it is excused by neither and
+holds the drain open. Note that this is not the same as saying a detached board
+needs park-exit for its launching request to end: the hand-off already released
+that request before the park, and the parent's collection mirror cannot observe
+a write the child made in a separate concurrent request.
+
 **The request record** depends on how far the child got. Four endings; only the
 third leaves a row mid-flight, and the fourth leaves no row at all:
 
