@@ -26,7 +26,7 @@
  *
  * FIX-1021 generalizes this predicate; it does not replace it.
  */
-import { WEBHOOK_SOURCE, WORKSTREAM_SOURCE } from "../execution/transport-sources";
+import { RELAY_SOURCE, WEBHOOK_SOURCE, WORKSTREAM_SOURCE } from "../execution/transport-sources";
 
 /**
  * Sources that arrived on a caller-facing transport and may be re-entered.
@@ -43,6 +43,9 @@ import { WEBHOOK_SOURCE, WORKSTREAM_SOURCE } from "../execution/transport-source
  *   routes already refused it.
  * - `workstream` — a detached dispatch started by the injection seam. It has no
  *   caller-facing entry at all, so it must have no caller-facing re-entry.
+ * - `relay` — a session-to-session delivery, stamped by the relay send seam.
+ *   Same criterion as `workstream`, applied rather than reasoned by analogy: no
+ *   caller-facing entry, therefore no caller-facing re-entry.
  */
 const PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
   "http",
@@ -54,8 +57,8 @@ const PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
 /**
  * Sources a host may never declare, whatever it passes.
  *
- * Both are stamped by the framework itself, not by a deployment's transport, so
- * neither is a deployment's to re-open — and the reason each is excluded is a
+ * All are stamped by the framework itself, not by a deployment's transport, so
+ * none is a deployment's to re-open — and the reason each is excluded is a
  * property of the framework rather than of the deployment. `webhook`'s handler
  * is reachable only behind signature verification; `workstream` has no
  * caller-facing entry at all by construction. Re-admitting either hands an HTTP
@@ -67,7 +70,8 @@ const PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
  */
 const NEVER_PUBLIC_REENTRY_SOURCES: ReadonlySet<string> = new Set([
   WEBHOOK_SOURCE,
-  WORKSTREAM_SOURCE
+  WORKSTREAM_SOURCE,
+  RELAY_SOURCE
 ]);
 
 /**
@@ -113,8 +117,8 @@ export function assertPublicReentrySources(sources: readonly string[] | undefine
   throw new Error(
     `publicReentrySources cannot include ${refused.map((s) => `"${s}"`).join(", ")}: ` +
       "these sources are stamped by the framework and have no caller-facing entry " +
-      "(a webhook handler is reachable only behind signature verification, and a " +
-      "detached dispatch is not caller-addressed at all), so re-entering one from a " +
-      "public route would run it with caller-supplied input."
+      "(a webhook handler is reachable only behind signature verification, and neither a " +
+      "detached dispatch nor a relay delivery is caller-addressed at all), so re-entering " +
+      "one from a public route would run it with caller-supplied input."
   );
 }

@@ -32,3 +32,26 @@ export const SCHEDULED_SOURCE = "scheduled";
  * resumed from a public surface.
  */
 export const WORKSTREAM_SOURCE = "workstream";
+
+/**
+ * Stamped by the relay send seam on a session-to-session delivery — a request
+ * created because another session in this same system addressed this one.
+ *
+ * It is the whole of relay's authorization story, and everything downstream
+ * depends on that: `metadata.relay` carries the correlation coordinate, the
+ * sending session and the recipient incarnation, and **none of that is
+ * authority** — `metadata` is the caller's own bag, spread verbatim by the HTTP
+ * action route. A caller who could set this source could present a forged
+ * delivery; a caller who cannot may write whatever it likes into `metadata` and
+ * still be refused. Every relay guard therefore reads `source === RELAY_SOURCE`
+ * first (BP-031).
+ *
+ * Like {@link WORKSTREAM_SOURCE} it is **never publicly re-enterable**, and for
+ * the same stated reason rather than by analogy: a relay delivery has no
+ * caller-facing entry at all, so it must have no caller-facing re-entry. It is
+ * on the never-list rather than merely absent from the allow-list, so a
+ * deployment cannot opt into it through `publicReentrySources` — retry's
+ * `inputOverride` would otherwise hand a caller control of the input to a
+ * request nobody outside the system originated.
+ */
+export const RELAY_SOURCE = "relay";

@@ -26,8 +26,8 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { createFlowApiRouter, createFlowRegistry, createInMemoryStores } from "../src";
-import { isPublicReentryAllowed } from "../src/routes/public-reentry";
-import { WORKSTREAM_SOURCE } from "../src/execution/transport-sources";
+import { assertPublicReentrySources, isPublicReentryAllowed } from "../src/routes/public-reentry";
+import { RELAY_SOURCE, WORKSTREAM_SOURCE } from "../src/execution/transport-sources";
 import type { StoreRegistry } from "../src/stores/types";
 
 /** The source an out-of-tree `InboundTransportAdapter` stamps on its requests. */
@@ -156,5 +156,30 @@ describe("createFlowApiRouter — publicReentrySources", () => {
         publicReentrySources: ["webhook", CUSTOM_SOURCE]
       })
     ).toThrow(/webhook/);
+  });
+});
+
+describe("relay is never publicly re-enterable (FIX-1230)", () => {
+  it("refuses a relay request by default", () => {
+    expect(isPublicReentryAllowed(RELAY_SOURCE)).toBe(false);
+  });
+
+  // The half a default-configuration test cannot reach: relay is on the NEVER
+  // list, not merely absent from the allow-list, so a deployment cannot opt in.
+  // Retry's `inputOverride` feeds handler input, so opting in would hand a
+  // caller control of the input to a request nobody outside the system
+  // originated, which is the bypass the allow-list exists to close.
+  it("stays refused even when a deployment names it in publicReentrySources", () => {
+    expect(isPublicReentryAllowed(RELAY_SOURCE, [RELAY_SOURCE])).toBe(false);
+  });
+
+  it("refuses such a host at construction rather than silently dropping it", () => {
+    expect(() => assertPublicReentrySources([RELAY_SOURCE])).toThrow(/relay/);
+  });
+
+  // Guards against blanket-deny: an ordinary caller-facing source must still be
+  // re-enterable, or these tests would pass with the predicate broken.
+  it("still admits an ordinary caller-facing source", () => {
+    expect(isPublicReentryAllowed("http")).toBe(true);
   });
 });
