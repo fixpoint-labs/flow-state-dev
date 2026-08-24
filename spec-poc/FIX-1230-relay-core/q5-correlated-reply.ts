@@ -15,6 +15,7 @@
  */
 import { boot, concludeOrFail, fromOutside, show } from "./harness";
 import { itemToLLMMessages } from "../../packages/engine/src/context/history";
+import { resolveItemVisibility } from "../../packages/contracts/src/items/resolve-visibility";
 
 async function main(): Promise<void> {
   // `obs` is this host's own observation sink — the harness no longer keeps a
@@ -132,8 +133,23 @@ async function main(): Promise<void> {
     messagesMentioningTheReply: replyTextInHistory.length
   });
 
+  // THE OTHER AXIS, and it is here because the POC got it WRONG: this carrier was
+  // stamped `client: true` and the README called that load-bearing, so the runnable
+  // artifact contradicted the contract it exists to support. Asserted as ABSENCE FROM
+  // THE CLIENT PROJECTION rather than as the flag's value — the flag is the mechanism,
+  // "a UI never renders the internal correlation envelope" is the promise, and only the
+  // second one fails if someone changes how the projection is computed.
+  const clientVisibleReplies = persistedReplies.filter(
+    (i) => resolveItemVisibility(i as never).client !== false
+  );
+  show("reply carrier's contribution to the client projection", {
+    persistedReplies: persistedReplies.length,
+    clientVisibleReplies: clientVisibleReplies.length
+  });
+
   Object.assign(verdict, {
-    replyIsAbsentFromReconstructedLLMHistory: replyTextInHistory.length === 0
+    replyIsAbsentFromReconstructedLLMHistory: replyTextInHistory.length === 0,
+    replyIsAbsentFromClientProjection: clientVisibleReplies.length === 0
   });
 
   concludeOrFail("VERDICT", verdict);

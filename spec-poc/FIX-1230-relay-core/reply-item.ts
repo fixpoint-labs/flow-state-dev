@@ -26,16 +26,30 @@ import type { MessageItem } from "@flow-state-dev/core/items";
 /**
  * Build the item a relay reply rides on.
  *
- * `itemVisibility` is explicit and load-bearing. `message` is a *conversational*
- * type, so an absent stamp resolves to `{ client: true, history: true }`
- * (`contracts/src/items/resolve-visibility.ts:23-26`, `:36`, `:43-45`) — and the
- * serialized correlation envelope would then be replayed into a later generator
- * turn as a fake USER utterance. The sender would see its own answer twice: once
- * as the tool result it awaited, once as invented history.
+ * `itemVisibility` is explicit and load-bearing on BOTH axes, and it is
+ * `{ client: false, history: false }` — the contract the spec states (§7's
+ * visibility grid). `message` is a *conversational* type, so an absent stamp
+ * resolves to `{ client: true, history: true }`
+ * (`contracts/src/items/resolve-visibility.ts:23-26`, `:36`, `:43-45`).
  *
- * A structural carrier would get `history: false` by default and need no stamp,
- * which is what the spec asks the real implementation to prefer; this POC keeps
- * `message` and stamps it so the failure mode stays visible in one place.
+ * `history: false` because the serialized correlation envelope would otherwise
+ * be replayed into a later generator turn as a fake USER utterance — the sender
+ * reading its own answer twice, once as the tool result it awaited and once as
+ * invented history.
+ *
+ * `client: false` because this is an internal correlation envelope and not
+ * something a UI should render; the same payload reaches the caller through the
+ * normal tool result. **An earlier version of this file stamped `client: true`
+ * and the README called that setting load-bearing** — so the executable evidence
+ * reviewers are pointed at contradicted the contract it exists to support, and
+ * an implementer following the runnable thing would have built the opposite.
+ * That is this POC's own recurring lesson arriving as a defect: cite an artifact
+ * only for the assertion it was built to make, and keep the artifact honest
+ * about the rest.
+ *
+ * A structural carrier would get both defaults right and need no stamp, which is
+ * what the spec asks the real implementation to prefer; this POC keeps `message`
+ * and stamps it so the failure mode stays visible in one place.
  */
 export function buildReplyItem(args: {
   correlationId: string;
@@ -55,7 +69,7 @@ export function buildReplyItem(args: {
       phase: "main"
     },
     ts: Date.now(),
-    itemVisibility: { client: true, history: false },
+    itemVisibility: { client: false, history: false },
     role: "user",
     content: [
       {

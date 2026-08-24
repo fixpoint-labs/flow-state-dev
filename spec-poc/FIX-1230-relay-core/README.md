@@ -27,6 +27,7 @@ refuted experiment for a confirmed one. Verified in the direction that matters:
 | Q5's carrier stamped `history: true` | exit **1**, `replyIsAbsentFromReconstructedLLMHistory` named |
 | Q6's rule using the *resolved* key instead of the *held* one | exit **1**, two conditions named, including the case-7 trap |
 | Q6's case-2 pin replaced by `inherit` (the rescue removed) | exit **1**, `pinning rescues key:user` named — **which it was not, until the observation sinks were isolated** |
+| Q5's carrier stamped `client: true` (the defect a reviewer found here) | exit **1**, `replyIsAbsentFromClientProjection` named |
 | all restored | exit **0** |
 
 The second row is the round-5 defect itself: had the scripts asserted from the start, that
@@ -134,7 +135,13 @@ a required field fails with *"Property 'ts' is missing … but required in type
 reported green — the first version of that check resolved the import to `any` and reported
 clean while catching nothing (tenet 7).
 
-`itemVisibility: { client: true, history: false }` on it is load-bearing, not tidiness.
+`itemVisibility: { client: false, history: false }` on it is load-bearing on **both** axes,
+not tidiness — and this file previously said `client: true`, which was the contract's opposite.
+A reviewer caught it: the POC is the executable evidence, the README called the wrong setting
+load-bearing, and an implementer following the runnable artifact would have shipped a client
+projection carrying an internal correlation envelope. Fixed on both, and the assertion below is
+now on the **absence from the client projection** rather than on the flag — the flag is the
+mechanism, the absence is the promise.
 `message` is a conversational type, so an unstamped carrier resolves to `history: true`
 (`contracts/src/items/resolve-visibility.ts:43-45`) and the serialized correlation envelope
 is replayed into a later generator turn **as a fake user utterance** — the sender reading its
