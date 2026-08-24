@@ -18,64 +18,43 @@ designed against that case, not against the happy one.
 > **[FIX-1166](https://linear.app/fixpoint-labs/issue/FIX-1166)**, *CLAUDE.md says skills live in
 > `agents/skills/` and the real path is `.agents/skills/`* — driven from a conductor task row to
 > an open PR, where the run posted a question to the inbox, the answer went back in, and the run
-> finished on it. Readable off the run's own `runs/*` row (which carries the
-> `{requestId, suspensionId}` pair the resume action addresses — theme 5), the inbox row, and the
-> PR. One file, one line, zero blast radius, and outside every package this epic touches: a join
+> finished on it. Readable off the run's own `runs/*` row, the inbox row carrying the question and
+> its answer, and the PR. One file, one line, zero blast radius, and outside every package this epic touches: a join
 > proof wants a fix small enough that nothing about the fix can explain a failure. *(It replaces
 > FIX-1177, which is stale — that describes a defect on PR #1297's branch, which closed unmerged;
 > `packages/claude-code/src/sdk/headless.ts` does not exist and `maxTurns` is forwarded straight
 > into the query options at `agent.ts:443`.)*
 >
-> **What the Proof does not show** — four limits, all deliberate, stated so it is not oversold:
+> **What the Proof does not show** — three limits, stated so it is not oversold:
 > - **The ask is forced, not spontaneous.** LAB-139's implement prompt *requires* the run to
 >   confirm one named decision through the inbox before it opens the PR. That is a chosen
 >   experimental design: it isolates the variable under test — the channel, not the model's
 >   judgment about when to reach for it. Whether a run asks unprompted is the *next* epic's
 >   evidence, not this one's. FIX-1166 makes this weigh **more**, not less: the fix is one line,
 >   so almost none of this run's value is the fix — the ask *is* the experiment, and it is staged.
-> - **The question stays open only as long as the board's lease allows — and that is now a window
->   we configure.** Parking's *record* is durable: the `SuspensionRecord` survives a restart.
->   The task's *ownership* is not. Suspending **stops lease renewal by design**
->   (`task-board/index.ts:958-965` states the consequence outright), so on the 120 s default
->   (`DEFAULT_LEASE_DURATION_MS`, `tasks/collection/internal.ts:640`) the row lapses and becomes
->   claimable — the next drain on that board then recovers it, and the resumed worker's own
->   write-back is refused by the fence. Two minutes is shorter than any real human answer, so as
->   previously written this epic promised something it could not do. **LAB-139 therefore configures
->   an answer window** (§5, decided) — five lines of Conductor's own code, not a framework change:
->   `TaskBoardConfig.dispatcher` already accepts a `TaskDispatcher` instance, and a dispatcher's
->   whole job is to call `collection.claim(workerId, opts)`, which already takes `leaseDurationMs`.
-> - **A lapsed lease costs a duplicate attempt — and can silently discard the operator's answer.**
->   The honest cost of the fix above, and it is *not* that the row strands. Lease expiry **invokes**
->   no claim by itself — `boardQuiescence` returns `"drained"` the moment nothing is in flight and
->   counts a row handed to a Workstream as drained (`task-board/quiescence.ts:95-110`), so this
->   set's launching drain has already exited before the lease lapses — but **the next drain on that
->   board reclaims the row and runs the work again from scratch**, and conductor drains on every
->   wake, so that is the ordinary course rather than an edge. Settled on already-passing committed
->   tests, not by argument: `packages/orchestration/test/task-board/lease-recovery.test.ts` parks a
->   worker on a `SuspensionError`, lets the lease lapse, drains a *separately constructed* board
->   over the same live collection, and the row completes with `attempts 2 · abandonments 1` after a
->   genuinely **new** worker ran it. A row is stranded only if no further drain ever runs on that
->   board.
-> - **The sharper cost lands when the answer finally arrives.** The resumed original still carries
->   its **original claim ticket** across the suspend; the reclaim bumped the row's attempt, so its
->   settle is refused — `{outcome: "declined", reason: "lost-claim", status: "in_progress"}`
->   (`packages/orchestration/test/collection/lease-fence.test.ts`). **So the human's answer is
->   delivered into a run whose write-back is discarded, and whatever the reclaimed second attempt
->   produced is what lands on the row.** Nothing throws and nothing reports the divergence. That is
->   why the lease *value* is load-bearing rather than a nicety, and it is the precise sense in which
->   this design is **not unattended-safe**: the only control is a window chosen before the question
->   is asked, and choosing it too short fails **silently**, not loudly. **It does not touch the
->   Proof** — one issue with an operator present, who would see the duplicate run or the wrong PR.
->   What still goes untested is a *long*-open question end to end: a green Proof is not evidence
->   that an overnight question survives. *(Parking also costs no board worker slot — an earlier
->   claim, checked in source and withdrawn; §5. The cost is the task row and its lease.)*
+> - **The Proof now depends on work outside this epic.** The ask/answer channel is **Relay's**, and
+>   Relay ([FIX-1197](https://linear.app/fixpoint-labs/issue/FIX-1197)) is a separate epic on its own
+>   schedule — this epic **consumes** that channel, it does not build it. The board half is closer in:
+>   **FIX-1234, the park-exit, is In Review**, so that piece is real work in flight rather than a
+>   hypothesis. Priced the way FIX-150 is priced (theme 4) — named rather than hidden, and **the
+>   epic's schedule is not quietly made Relay's schedule.** Before the channel lands, LAB-139 can
+>   build and goal-check everything on its own side: the phase record, the question's inbox row and
+>   its replay-safe write, the human-wait status on the row, and settlement. What it **cannot** do is
+>   run the round trip — and the round trip is the Proof.
+> - **Nothing yet owns waking a parked-and-exited board, and that is this epic's largest open risk.**
+>   It sits on the Proof's critical path, because *"the answer went back in and the run finished on
+>   it"* is half of what the Proof claims. It is **#1429's own open item**, and **FIX-1234 will not
+>   build it.** Recorded as a risk, not designed here: **this document proposes no wake**, and an
+>   issue that finds itself inventing one has hit this limit and should raise it on the epic PR
+>   rather than solve it locally. *(Under the previous suspend-based design the same gap read as
+>   "nothing projects the `suspensionId` where a waker could read it." D-1 moved the gap; it did not
+>   close it.)*
 >
 > **Lead measure** — the set's goal-proven issues, named: FIX-150 · LAB-138 · LAB-139.
 >
-> **Not doing** — the mail/relay layer (FIX-1197 owns it; questions ride the hot path here, a run
-> parking itself and being woken in-process, theme 5 — **the relay is not on this round trip's
-> critical path**, and stays out of scope for its own reasons rather than as a blocker) · the
-> parked-task cold path (`pending feedback` + a settle-time watch) · resume-with-continuity for a
+> **Not doing** — **building** Relay (FIX-1197 is its own epic; this epic consumes the channel and
+> does not build it — the dependency is priced in the limits above, not hidden here) ·
+> resume-with-continuity for a
 > steered run (FIX-1179 — a steer restarts the coding agent with a re-stated prompt, and that is
 > accepted) · the spec and review phase records and the durable approval gate between phases · the
 > coordinator's classify-and-route generator (an answer names its inbox row explicitly) · the
@@ -191,53 +170,50 @@ down an altitude; push it into the issue spec that will write it.*
    evaluate an option that cannot work.)* Left unstated, the Proof run edits the conductor's own
    checkout instead of the run's workspace.
 
-5. **A normal return always settles the task `completed` — so park by suspending, hold the claim
-   with a configured lease, wake through a transaction, and check the handle before settling.**
-   `buildDetachedRunner`'s body is unconditionally `.step(worker).tap(recordSuccess)`, so any
-   successful return calls `collection.complete()`. Four obligations follow, each settled against
-   the real path rather than argued (§5), and every issue here builds against all four. **This
-   theme states what must hold; LAB-138 and LAB-139 write the mechanism with the code open, and
-   their implementer notes carry the step-level detail.** That split is not stylistic — three
-   consecutive rounds found defects in this document's attempt to specify this transaction, and
-   none of them were defects in the design.
+5. **The ask travels Relay, a human wait is a task *status*, and a normal return always settles the
+   task `completed`.** *(Owner decision **D-1** — GitHub issue
+   [#1429](https://github.com/fixpoint-labs/flow-state-dev/issues/1429), mirrored as FIX-1241.
+   **Conductor does not use `ctx.suspend` for ask/HITL.**)* Three obligations; this theme states
+   what must hold, and LAB-138 and LAB-139 write the mechanism with the code open.
 
-   - **Park** with `ctx.suspend({ reason: "human_input", … })` **alone** — never combined with
-     `awaitReview`, which strands the attempt permanently (FIX-1200). `SuspensionError` propagates
-     past the `.tap()`, `recordSuccess` never runs, the row stays `in_progress`, and the
-     `SuspensionRecord` is durable.
-   - **Hold** the claim for a human-scale window by configuring the board's **dispatcher** — five
-     lines in Conductor's own code, no framework change (§1, §5). At the 120 s default the next drain reclaims the row and re-runs
-     the work, and the answered original's write-back is then refused, so **the operator's answer is
-     discarded silently and the second attempt's output is what lands.** The lease value is the only
-     control over that (§1).
-   - **Wake** with a purpose-built **server-side** action that addresses the run's open gate. Never
-     the public resume route — theme 6 says why, and it stands. **The obligation: waking is a single
-     resolution transaction — correctly ordered, replay-safe and idempotent — not a call.**
-     `packages/engine/src/routes/resume-routes.ts` is the reference implementation to mirror, in
-     full and including its rollback. `continueRequest()` on its own is replay without the guards,
-     and every way of getting the transaction wrong fails **silently**: concurrent replays of one
-     request, a gate that stays open forever, an answer marked resolved whose run never began, or an
-     answer attached to a stale inbox row. **Addressing the gate is itself unsolved framework work
-     inside LAB-139** — `ctx.suspend()` mints the `suspensionId` internally and throws, returning
-     nothing, so nothing projects it anywhere the waker can read.
+   - **Ask** over **Relay**. The question leaves the run through the relay channel, not by
+     suspending the request in place. Conductor **consumes** that channel and does not build it —
+     Relay is its own epic (FIX-1197), and §1's limits price the dependency rather than hide it.
+   - **Wait** as a **task status**, not as a suspended request. A row waiting on a person carries a
+     human-wait status, and that status is **distinct from blocked-on-dependency** — the point of it
+     is that a board can show which rows are waiting on a *human* rather than on other work. **The
+     status name is the owner's call and is still open** (§5): `awaiting_feedback` ·
+     `awaiting_review` · `blocked` + reason.
    - **Settle** only after checking the run handle's status: a terminal SDK error subtype returns
-     normally as `status: "errored"`, so settling on a normal return alone reports a failed run
-     as completed.
+     normally as `status: "errored"`, so settling on a normal return alone reports a failed run as
+     completed. `buildDetachedRunner`'s body is unconditionally `.step(worker).tap(recordSuccess)`,
+     so any successful return calls `collection.complete()`. **Untouched by D-1** — this is a
+     property of the runner, not of the park.
 
-   **Durable replay is the property behind three of those, and it generalises past conductor.** A
-   step with no committed output **re-executes on every re-entry, including the resume of its own
-   suspended dispatch.** That is why the runner's pre-worker `.tap()` gate is unsafe ahead of a
-   suspend point — it asserts `status === "in_progress"` unconditionally
-   (`detached-runner.ts:361-366`) and throws on the resume it also sees, after which `recordError`'s
-   write is declined too, so nothing writes at all. Filed as
-   [FIX-1200](https://linear.app/fixpoint-labs/issue/FIX-1200) (Orchestration Primitives); nothing
-   in this set waits on it, because the four obligations above avoid it. The same property binds the
-   inbox write that precedes a suspend, which is LAB-139's to make replay-safe.
+   **The inbox row still carries the question, and writing it must still be replay-safe.** A step
+   with no committed output re-executes on re-entry, so an unguarded write can recreate or reset the
+   row and attach an answer to a stale one. LAB-139 owns that obligation; D-1 changed the channel the
+   question travels, not the row it is written to.
 
-   **The three ways to park a detached worker, all measured — this table is the space, don't
-   re-derive it:**
+   **No single primitive covers all of this, and the split is deliberate.** Worth stating because it
+   is why this is not a retreat (the architect's note on #1429): an **in-request `suspend`**, a
+   **board wait-status**, and a **Relay send** are three different things. The design uses the right
+   one at each point instead of forcing one primitive to serve all three.
 
-   | Park via | Result |
+   **A caution, no longer a reason: do not combine `awaitReview` with `ctx.suspend` on today's
+   detached runner.** That combination strands the attempt permanently while the outer request still
+   resolves `error: undefined` — [FIX-1200](https://linear.app/fixpoint-labs/issue/FIX-1200), still
+   true as a fact about the runner. **It is not an argument for choosing suspend.** The reasoning
+   this document previously ran — *"`awaiting_review` is unusable, therefore suspend is the only
+   option"* — is superseded by D-1, and FIX-1200's sequencing is open (§5).
+
+   **Evidence, superseded as the plan — kept because it is why D-1 is well-founded.** The three ways
+   to park a detached worker, all measured on the real path with real `taskBoard()`, a durable
+   collection and real SQLite. **None of these is the design any more.** Read the table as the
+   measurement that ruled out parking-by-request and pointed at a board-level wait status — not as a
+   menu to choose from.
+
+   | Park via | Measured result |
    |---|---|
    | `awaitReview` + normal return | row stomped to `completed` in the same request — the question is lost |
    | `ctx.suspend` **alone** | parks correctly, but lease renewal stops (120 s default), so the next drain reclaims → duplicate run, and the answered original's write-back is then refused `lost-claim` |
@@ -256,7 +232,10 @@ down an altitude; push it into the issue spec that will write it.*
    route would run it with caller-supplied input — BP-031, exactly. An implementer meets this as a
    **404** from `/api/flows/:kind/requests/:id/resume` on a request that is provably live and
    resumable in-process. That 404 is the guard doing its job. **An issue that reaches for the
-   allow-list has hit this theme, not a bug** — theme 5's in-process resume action is the route.
+   allow-list has hit this theme, not a bug** — the answer's route in is theme 5's, over Relay.
+   **D-1 makes this theme easier to honour, not harder:** the answer no longer needs to re-enter a
+   suspended request at all, so nothing in the chosen design has a reason to go near the
+   allow-list.
 
 7. **The runner contract must not encode any one harness's shape.** The Atlas frames Conductor as
    a *meta-harness* whose harness is swappable, and the runner is the seam where that lives, so a
@@ -280,7 +259,7 @@ down an altitude; push it into the issue spec that will write it.*
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
 | [LAB-138](https://linear.app/fixpoint-labs/issue/LAB-138/the-harness-manager-a-task-row-becomes-a-watched-settled-coding-run) | The manager loop — a task row becomes a watched, settled coding run. Provisions the run's working directory and owns the **per-run `cwd` seam** that makes handing it down possible (theme 4). Settles on a **handle-status check**, not on a normal return (theme 5). **Defines the runner contract**, which must not encode any one harness's shape (theme 7) — the clause-level detail (the bound, the result shape, token usage, permission posture) is in this issue's implementer notes, deliberately not in the epic-spec. Adds the per-run `cwd` to the **SDK path** — the only surface that can host a watched run (theme 4) | spec | — | — | Needs spec |
-| [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof** (FIX-1166). Blocked by LAB-138. Builds theme 5's park-and-wake — `ctx.suspend()` plus an in-process resume action, including the **`suspensionId` projection seam** that makes the gate addressable at all (`ctx.suspend()` mints the id internally and returns nothing) and a **replay-safe inbox write** — and the **answer window** that lets a parked run keep its claim (a configured dispatcher in Conductor's own code — no framework change; §5) — load-bearing, not a comfort: at the default the next wake's drain reclaims the row, and the answered original's write-back is then refused `lost-claim`, so the operator's answer is silently discarded | spec | — | — | Needs spec |
+| [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof** (FIX-1166). Blocked by LAB-138. Builds theme 5's ask-and-wait as decided by **D-1** — the question travels **Relay**, and the row carries a **human-wait status distinct from blocked-on-dependency** (status name still the owner's, §5). Owns the **inbox row and its replay-safe write**. *(Rescoped by D-1: the `ctx.suspend` park, the in-process resume action, the `suspensionId` projection seam and the configured lease window are all withdrawn.)* **Cannot run the round trip until Relay's channel lands** — everything on its own side can be built and goal-checked before that (§1) | spec | — | — | Needs spec |
 | [FIX-150](https://linear.app/fixpoint-labs/issue/FIX-150/workspaces-if-validated-workspacerunner-block-and-virtual-filesystem) | Workspaces — the file-projection component. Large, three PRs (a component · b shell-tool migration · c coding-agent path). Subsumes FIX-998. **Own track — carries no dependency edge into the Proof** (theme 4) | spec | [#1345](https://github.com/fixpoint-labs/flow-state-dev/pull/1345) — **approved** | — | Needs implementation |
 
 *FIX-150 is on team **flow-state**, not Labs; it is a sub-issue of LAB-140 across teams. Its
@@ -291,7 +270,12 @@ waits on it (theme 4).*
 ## 5. Open cross-cutting questions
 
 - **~~Can a detached worker's task be parked in `awaiting_review` and continued by a later
-  request?~~** *Resolved: **no**, in every combination — and there is a path that works.* Raised
+  request?~~** *Resolved: **no**, in every combination **on today's detached runner** — and the
+  conclusion once drawn from that is superseded.* **Read this entry as measurement, not as
+  direction.** Its findings stand; what does not is the inference that followed them — *"parking the
+  task is unusable, therefore suspend"*. Owner decision **D-1** (#1429 / FIX-1241) chose a **board
+  wait-status plus Relay** instead, so `awaitReview`'s behaviour on today's runner is now a
+  **caution about combining primitives**, not a reason to park the request. Raised
   by review on this PR (#1362), settled by three POCs on the real path — real `taskBoard()`,
   durable user-scoped collection, real SQLite, the real HTTP surface, asserting on observable
   behaviour only — rather than by a third round of argument. **Theme 5 carries the settled table
@@ -312,64 +296,54 @@ waits on it (theme 4).*
   - **The shipped public resume route refuses it, and that guard stays** (theme 6). The same
     requestId that 404s is proven live and resumable via `continueRequest()`, so the 404 is the
     guard, not a missing record. `continueRequest` carries no source gating — the check lives only
-    in the HTTP handler, so an in-process action can wake the run. **So does the rest of the
-    resolution transaction**, which the in-process action must therefore perform itself rather
-    than inherit (theme 5).
-  - **The lease, not the task status, is the real limit on how long a question can stay open.**
-    Routed to LAB-139 by the round-3 fold; now decided in the entry below.
-  - **What changed:** themes 5 and 6, the hot-path entry below, LAB-138's and LAB-139's index
-    rows, and §1. **The objective did not.** A mechanism was replaced, not an outcome, so this
-    does not return to the gate.
+    in the HTTP handler. *(That observation was once the basis for an in-process resume action as
+    the HITL wake. D-1 removed that path; theme 6's guard is what survives here, and it is
+    unaffected.)*
+  - **"The lease, not the task status, is the real limit on how long a question can stay open"** —
+    this document's conclusion for three folds, and **D-1 reverses it.** The task status is the
+    limit; the lease was an artefact of parking the request. See the entry below.
 
-- **~~How long can a question stay open before the board takes the row back?~~** *Decided: as
-  long as the board is configured to allow — and configuring it is new scope inside LAB-139.*
-  Suspending stops lease renewal by design (`task-board/index.ts:958-965`), so on the 120 s
-  default (`DEFAULT_LEASE_DURATION_MS`, `tasks/collection/internal.ts:640`) a parked run's row
-  becomes claimable about two minutes in: the lease lapses, the next drain on that board recovers
-  the task and re-runs it, and the resumed worker's write-back is then refused by the fence. Two
-  minutes is shorter than any real human answer, so without this the Proof's round trip is a race
-  it loses to the very next wake.
-  **And the window needs no framework change — the seam is already public.**
-  `TaskBoardConfig.dispatcher` accepts a `TaskDispatcher` instance
-  (`TaskBoardDispatcherInput = TaskDispatcher | "fifo" | "topological" | "priority"`,
-  `task-board/shared.ts:27-31`), `TaskDispatcher` is exported from
-  `@flow-state-dev/orchestration/tasks` (`tasks/index.ts:137`), and a dispatcher's whole job is to
-  call `collection.claim(workerId, opts)` — which already takes and validates `leaseDurationMs`
-  between `MIN_LEASE_DURATION_MS = 1_000` and `MAX_LEASE_DURATION_MS` (~74 days)
-  (`tasks/collection/internal.ts:649,660`). **It also holds across renewals**, which is the half
-  worth checking: `startLeaseRenewal` derives its span from the claimed row rather than a constant
-  (`span = claimedTask.leaseUntil - claimedTask.updatedAt`; `tasks/lease-renewal.ts:203-205,
-  234-238`), so a dispatcher-set duration is the duration for the row's whole life.
-  **Scope:** LAB-139 configures the board's dispatcher with an answer window — **five lines in
-  Conductor's own code, not a public-surface expansion.** *(Revised: this was carried as framework
-  work on `taskBoard` and it is not. **The outcome the owner signed off on is unchanged** — the
-  answer window is closed and the parked row is held; only the mechanism got cheaper, so this is
-  not scope being quietly dropped.)* It is **not** symmetric with LAB-138's per-run `cwd` seam,
-  which is genuinely a missing capability (theme 4). **Sequencing, so it isn't read as a new
-  edge:** LAB-138 stands the board up and LAB-139 sets its window — the existing land-order (theme
-  4), not an additional dependency, and LAB-138 is correct at the default until it does. The
-  recipe and its one caveat are in the implementer notes.
-  **The cost, named beside the limit it replaces (§1) — settled on evidence, not argued.** A
-  genuinely *dead* worker's task is not claimable for the configured window instead of for two
-  minutes. Beyond the window it **is** reclaimed and the work re-runs from scratch; conductor
-  drains on every wake, so that is the ordinary course. Settled from **tests already committed and
-  passing on `main`** rather than a new POC — `test/task-board/lease-recovery.test.ts` (park ·
-  lapse · a separately constructed board drains → `attempts 2 · abandonments 1`, a genuinely new
-  worker having run it), corroborated by FIX-982's detached-child-death scenario and by
-  `claim-task.ts`'s own *"a lease reclaim deliberately hands an abandoned task to a second
-  worker"*.
-  **This is what makes the window load-bearing rather than a comfort.** Left at the default, a
-  human-length pause lapses the lease before the answer arrives and the next wake's drain starts a
-  real duplicate run — and worse, when the answer finally resumes the original, that run's settle
-  is refused because its claim ticket no longer names the row's current attempt
-  (`test/collection/lease-fence.test.ts`). **The operator's answer is delivered into a run whose
-  write-back is discarded, and the second attempt's output is what lands.** Nothing throws; nothing
-  names it a divergence. The lease value is the only thing standing between an answer and a
-  silently different outcome. The window is the trade a board hosting human pauses should make, and
-  it is **per-board**, so nothing else inherits it. *(The product owner's call, which the evidence
-  confirms.)* **The mechanism is settled: LAB-139 configures the board's existing `dispatcher`, and
-  no option is added to `taskBoard`.** The five-line recipe and its one caveat are in LAB-139's
-  implementer notes.
+- **~~How long can a question stay open before the board takes the row back?~~** *Answered
+  differently by **D-1**: the row is not held by a lease at all, because the run does not park the
+  request. **Superseded as the plan; kept as the evidence that produced it.*** Whether a pre-chosen
+  lease is an acceptable product control at all is now one of the owner's open questions below
+  (**they lean no**, given the Relay path). The measurements in this entry are why the question was
+  worth asking, and they remain accurate about the board.
+  *(What follows is the measurement, with the superseded scope removed.)*
+  Suspending stops lease renewal by design (`task-board/index.ts:958-965`), so on the 120 s default
+  (`DEFAULT_LEASE_DURATION_MS`, `tasks/collection/internal.ts:640`) a parked run's row becomes
+  claimable about two minutes in — and it **is** then reclaimed: the next drain on that board takes
+  the task and re-runs the work from scratch. Settled from **tests already committed and passing on
+  `main`** rather than by argument — `test/task-board/lease-recovery.test.ts` (park · lapse · a
+  separately constructed board drains → `attempts 2 · abandonments 1`, a genuinely new worker having
+  run it), corroborated by FIX-982's detached-child-death scenario and by `claim-task.ts`'s own *"a
+  lease reclaim deliberately hands an abandoned task to a second worker"*. And when the answer
+  arrives afterwards, the resumed original's settle is **declined `lost-claim`**, because its claim
+  ticket no longer names the row's current attempt (`test/collection/lease-fence.test.ts`) — the
+  answer lands in a run whose write-back is discarded, silently.
+  **That last fact is the one that outlived the design, and it is why D-1 is well-founded.** Holding
+  a human answer against a *lease* means the whole round trip rests on a duration chosen before the
+  question is asked, and choosing it too short fails without a sound. A **board wait-status** does
+  not have that property: waiting is a state of the row, not a countdown. *(An earlier fold priced
+  the window as five lines of dispatcher configuration in Conductor's own code, which was true and
+  is now moot — there is no window to configure, because the run does not park the request.)*
+
+- **D-1's own open items — the owner's, and deliberately unanswered here.** Decision D-1 settled the
+  *path* (Relay + a board wait-status, not `ctx.suspend`) and explicitly did **not** close the
+  question: *"do not treat this comment as closing D-1."* These stay open on
+  [#1429](https://github.com/fixpoint-labs/flow-state-dev/issues/1429) / FIX-1241, and **this
+  document records them rather than picking any of them.** Three of them reach the Proof.
+  - **The status name** — `awaiting_feedback` · `awaiting_review` · `blocked` + reason. *(They lean
+    `awaiting_feedback`.)* Theme 5 names the obligation — a human wait is a status distinct from
+    blocked-on-dependency — and leaves the spelling here.
+  - **Who wakes a parked-and-exited board.** **FIX-1234 will not build it.** On the Proof's critical
+    path; carried as §1's largest open risk, and no wake is proposed in this document.
+  - **Whether FIX-1234 / Relay issue 5 stays in Relay** now that recapture has died.
+  - **Whether a pre-chosen lease is an acceptable product control at all** — *likely no*, given the
+    Relay path.
+  - **FIX-1200's sequencing**; whether *"answered"* means continuing the coding agent's own
+    conversation (FIX-1179); BullMQ/serverless this release; and whether `onIdle: complete` HITL
+    boards are in or out — **they cannot take park-exit.**
 
 - **Where conductor's own code lives.** Both LAB-138 and LAB-139 write into the same place and
   neither can settle it alone, so it is the epic's to answer. Raised at epic drafting. **Blocks
@@ -386,41 +360,25 @@ waits on it (theme 4).*
   product owner ruled against**, because §1's necessity check already interrogates the split and
   names a concrete reconsideration trigger. That trigger is the only route back to this.
 
-- **~~Do questions ride the hot path, or wait for the relay layer?~~** *Decided: the hot path* —
-  but by **parking the run**, not by holding its task in `awaiting_review`; the premise that
-  phrasing rested on was refuted (entry above) and the replacement is theme 5. **The cost is one
-  thing, not two: the task row and its long lease.** A parked run holds **no board worker slot** —
-  a claim this document carried through three rounds, now checked in source and withdrawn. The
-  suspended request *settles and lets go*: on `SuspensionError`,
-  `packages/engine/src/execution/runAction.ts:1503-1520` patches the record to `suspended`,
-  deregisters the abort controller and the registry entry, clears its intervals and returns. And
-  the launching board never counted the row anyway — `countWaitable` skips every row where
-  `isHandedOff` is true (`packages/orchestration/src/task-board/shared.ts:184-198`, predicate at
-  `111-119`). So the only cost is the one the lease entry above already prices: the task row and
-  its lease.
-  **The interlock this document previously claimed here is inert — but the conclusion drawn from
-  that, that nothing recovers a parked row, went too far and is withdrawn.** `isHandedOff` does
-  require `!leaseLapsed`, so the predicate flips at lease expiry — but `countWaitable` decides
-  anything only **while a drain is running**, and `boardQuiescence` returns `"drained"` as soon as
-  `inFlightCount === 0`, counting a row handed to a Workstream as drained
-  (`task-board/quiescence.ts:95-110`). In this set's one-task flow the launching drain has
-  therefore exited long before the lease lapses, and the row does not re-enter *that* drain's wait
-  count. **What does not follow is that the row is stranded.** Expiry invokes no claim, but the
-  **next** drain reclaims the row and re-runs the work — settled on committed, already-passing
-  tests (`test/task-board/lease-recovery.test.ts`; FIX-982's detached-child-death scenario;
-  `claim-task.ts`'s own *"a lease reclaim deliberately hands an abandoned task to a second
-  worker"*) — and conductor drains on every wake. So the real exposure is a **duplicate attempt**,
-  and beyond it the fenced write-back that discards the operator's answer. §1's limits and the
-  lease entry above carry both in full. A row is stranded only in the narrow case where no further
-  drain ever runs on that board.
-  **FIX-1197's relay is therefore justified differently than this document said before.** There is
-  no held slot for it to free. What it would buy is a durable ask channel that does not depend on
-  suspension at all — and therefore no long lease on a task row, and no window whose expiry can
-  fork the answer from the outcome. That is the whole claim; it should not be stated as more, and
-  **it is not credited with anything nobody has checked** — whether a relay changes what happens to
-  an already-parked row is not something this document has verified, and unchecked benefits are how
-  the claims corrected in these folds got in. It is adopted when it lands and is **not required for
-  this round trip**; no issue here builds a cold path.
+- **~~Do questions ride the hot path, or wait for the relay layer?~~** *Reversed by **D-1**: the
+  questions ride **Relay**.* This document carried "the hot path, by parking the run" for four
+  folds. Owner decision D-1 (#1429 / FIX-1241) chose Relay plus a board wait-status instead, so the
+  answer here is the one this entry previously argued against. **The reversal is the owner's and is
+  not re-litigated in this document.**
+  **What the entry established that is still true and still useful:** a parked run holds **no board
+  worker slot** — the suspended request settles and lets go
+  (`packages/engine/src/execution/runAction.ts:1503-1520`) and the launching board never counted the
+  row (`countWaitable` skips handed-off rows, `task-board/shared.ts:184-198`). Both were claims this
+  document asserted for three rounds before checking, and both were withdrawn on checking. They no
+  longer price anything here, because nothing in the chosen design parks a request.
+  **What it got wrong, recorded because the class recurs:** it claimed the lease and the board's
+  wait count interlock. True of the predicate, inert in the running system — `countWaitable` decides
+  anything only while a drain is running, and this set's launching drain has already exited
+  (`task-board/quiescence.ts:95-110`). The correction to *that* correction is in the lease entry
+  above: expiry invokes no claim, but the next drain reclaims the row and re-runs the work.
+  **FIX-1197's relay is no longer a thing this epic declines — it is the channel.** §1's limits
+  price the dependency: Relay is its own epic, this one consumes it, and the epic's schedule is not
+  silently made Relay's.
 
 - **~~Does a steer resume the coding agent, or restart it?~~** *Decided: it restarts it.* Nothing
   can hand a prior SDK session id into a detached run today (FIX-1179), so an answer re-states
@@ -680,9 +638,10 @@ waits on it (theme 4).*
   `ctx.suspend()` accepts no id and returns nothing, so it reaches the suspension record and the
   stream item but never the run row. Until LAB-139 builds an idempotent projection or lookup seam,
   the wake path cannot address the gate at all. Both are named in theme 5 as obligations and
-  specified in LAB-139's notes. *(§1's Proof reads the `{requestId, suspensionId}` pair off the
-  run's row; that describes the proven end state and is true once LAB-139 builds the seam — it is
-  not a claim about today's inventory.)*
+  specified in LAB-139's notes. *(Superseded by D-1: the `suspensionId` projection seam is withdrawn
+  along with the suspend park, and §1's Proof no longer names the pair. The **wake** half of this
+  finding did not go away — it moved, and it is now §1's largest open risk. The **replay-safe inbox
+  write** obligation survives D-1 unchanged.)*
   **The durable lesson, and it is the one worth keeping past this epic:** an epic-spec that names
   a call sequence has taken on a verification burden it cannot discharge, because verifying a call
   sequence means reading the file, and reading the file is the issue spec's job. §2's altitude rule
@@ -729,3 +688,27 @@ waits on it (theme 4).*
   for the same reason — a claim about a public surface asserted without the surface open. The
   generalisation that covers both: *before scoping framework work, grep the exported type.*
   **§1's five gated lines — Outcome, Proof, Lead measure, Not doing, Kill line — are unchanged.**
+- **Owner decision fold — D-1: the HITL path is Relay plus a board wait-status, not `ctx.suspend`.**
+  Trigger: the product owner's decision on GitHub issue
+  [#1429](https://github.com/fixpoint-labs/flow-state-dev/issues/1429) (*"D-1: HITL path — Relay +
+  `awaiting_feedback` vs suspend"*), mirrored as FIX-1241. **Not a review round and not a
+  correction — a decision that changes the design.** What changed: theme 5 now states three
+  obligations (ask over Relay · wait as a task status distinct from blocked-on-dependency · settle
+  on the handle check) in place of the four-move suspend park; §1's limits drop the answer window
+  and the silent lost-claim and gain the two consequences the decision creates; §5's
+  `awaiting_review`, lease and hot-path entries are marked superseded as *plans* and kept as
+  *evidence*; D-1's own open items are recorded unanswered; LAB-139's index row and implementer note
+  are rescoped. Withdrawn: the `ctx.suspend` park, the configured dispatcher lease window, the
+  in-process resume-as-HITL action and its `resume-routes.ts` transaction, and the `suspensionId`
+  projection seam. **FIX-1200 survives as a caution** — *do not combine `awaitReview` with
+  `ctx.suspend` on today's detached runner* — and no longer as a reason to choose suspend; that
+  inference is exactly what D-1 killed. **Unchanged:** the Outcome, the Proof's substance (a real
+  issue to an open PR with one decision asked and answered without a terminal), theme 6, theme 7,
+  LAB-138, the inbox row as the question's carrier, and the replay-safety obligation on writing it.
+  **Two gated lines did change**, which no previous fold has done and which is called out rather
+  than buried: the **Proof** line no longer names the `{requestId, suspensionId}` pair it read off
+  `runs/*`, and **Not doing** no longer scopes out the relay layer — Relay is the channel now, so
+  what this epic is not doing is *building* it. Neither edit touches what the Outcome promises.
+  **Why this is not a retreat, in the architect's words on #1429: there is no single primitive, and
+  the split is allowed** — an in-request `suspend`, a board wait-status and a Relay send are three
+  different things.
