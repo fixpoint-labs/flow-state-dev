@@ -11,6 +11,60 @@
 
 ---
 
+## Status — 2026-08-24
+
+**Two tracks, one name.** The epic was widened by owner call on 2026-08-24 from *"every
+write path reports what it actually did"* to **Honest task substrate**. That original
+sentence is still a true description of the first track; it is no longer the whole epic.
+**Decision 1 is not reopened by the widening**, and no second epic is created.
+
+**This document is the source of truth for epic status.** Where the FIX-980 Linear issue
+body disagrees — it still reads as though Decision 1 were open — the issue body is stale.
+
+### Track 1 — the original honesty set (write path / drain report)
+
+Decision 1 **DECIDED, Option A** (2026-07-29) and **shipped**: `TaskWriteOutcome` and the
+per-operation `setAssignee` guard are on `main`.
+
+| Issue | State | Where it stands |
+|---|---|---|
+| FIX-951 | **Done** | The completed anchor. *OQ-A is closed — it asked whether FIX-951 was still in flight.* |
+| FIX-976 | **Done** | Decision 1's one bound issue. Shipped in [#1004](https://github.com/fixpoint-labs/flow-state-dev/pull/1004). |
+| FIX-948 | **Done** | Shipped as `maxTotalRetries` in [#1031](https://github.com/fixpoint-labs/flow-state-dev/pull/1031). *OQ-C is closed by shipment.* |
+| FIX-963 | Backlog | **Still live — re-verified in code 2026-08-24.** Now unblocked: FIX-989 shipped the detection primitive it was waiting on. |
+| FIX-964 | Backlog | **Partly closed by FIX-976's shipped widening.** Residual is narrow — see below. |
+| FIX-978 | Backlog | **Likely subsumed by shipped work (FIX-1005).** Subsumption check owed before it specs — OQ-E. |
+
+Three further issues joined this track after the epic opened and have **shipped**:
+FIX-989 (durable write provenance, [#1128](https://github.com/fixpoint-labs/flow-state-dev/pull/1128)),
+FIX-992 (`ResourceStateStore` compare-and-swap) and FIX-995 (`updateState` callback outcome).
+FIX-989 in particular is the objective landing squarely — a caller can now ask whether its
+own write committed after a call that threw.
+
+The three open spec PRs ([#990](https://github.com/fixpoint-labs/flow-state-dev/pull/990),
+[#992](https://github.com/fixpoint-labs/flow-state-dev/pull/992),
+[#994](https://github.com/fixpoint-labs/flow-state-dev/pull/994)) have not moved since
+2026-07-30 and none has cleared its approval gate, so `cross-spec-review` still has not run.
+Two of the three are now questionable on staleness grounds rather than on review grounds,
+which is a different problem from the one Decision 2 anticipated.
+
+### Track 2 — the human-wait board pair (owner widening, 2026-08-24)
+
+| Issue | State | Where it stands |
+|---|---|---|
+| FIX-1234 | **In Review** | Park/exit mode. Impl PR [#1422](https://github.com/fixpoint-labs/flow-state-dev/pull/1422) — CI green, one approving review, review rounds in progress. |
+| FIX-1238 | Backlog | The park-exit verdict's carrier depends on step adjacency, and a break is silent. |
+| FIX-1244 | Backlog | Unblock-with-input. **Blocked by FIX-1234.** A *new* request carrying a payload — not `continueRequest`, not `ctx.suspend`. D-1: FIX-1241 / [#1429](https://github.com/fixpoint-labs/flow-state-dev/pull/1429). |
+
+**Related to Relay ([FIX-1197](https://linear.app/fixpoint-labs/issue/FIX-1197)), not parented
+under it or LAB-140.**
+
+**Explicitly out of this epic:** coordinator UX · Conductor-specific flow (LAB-139 consumes
+it) · FIX-1231 · FIX-765 (a second pause model) · the `awaiting_review` → `needs_input`
+rename (still a D-1 checkbox).
+
+---
+
 ## 1. Purpose & objective
 
 ### The objective (the gated statement)
@@ -27,26 +81,44 @@ and taking down every sibling on the board. Reverting that is not an option, and
 framed as "no more silent failures" would walk straight into it. What this epic is actually
 after is that a caller can tell which kind of quiet it is looking at.
 
+**One clause added by the 2026-08-24 widening, at the same altitude.** A drain that left
+because **a human is owed something** must say so — not success, not `blocked-by-failures`,
+not an abandoned wait — and there is a framework primitive to unblock that row **with an
+input**, as a new request. Same honesty shape, new verb: the first track is about a write
+reporting what it did, this is about an *exit* reporting why it happened and being
+answerable. It is **not** folded into Decision 1 and does not reopen it — Decision 1 is
+about the return type of a write, and a park exit is neither a write nor a decline.
+
 ### Membership — the sets this document counts by
 
 Defined once here; every count elsewhere in this doc uses these labels rather than a raw
-number.
+number. **Refreshed 2026-08-24** against live Linear state.
 
 | Set | Size | Members |
 |---|---|---|
-| **Sub-issues** — parented under FIX-980 | 6 | FIX-978, FIX-976, FIX-964, FIX-963, FIX-951, FIX-948 |
-| **Completed anchor** — shipped, no lifecycle | 1 | FIX-951 (*Done*, merged) |
-| **Active set** — each gets an `issue-lifecycle` | 5 | FIX-978, FIX-976, FIX-964, FIX-963, FIX-948 |
-| ├ **Decision-1-bound** | **1** | FIX-976 |
-| └ **Decision-1-independent** | **4** | FIX-978, FIX-948, FIX-963, FIX-964 |
+| **Track 1 — original honesty set** | 6 | FIX-951 ✅, FIX-976 ✅, FIX-948 ✅, FIX-963, FIX-964, FIX-978 |
+| ├ **Shipped** | 3 | FIX-951 (anchor), FIX-976, FIX-948 |
+| └ **Open** | 3 | FIX-963, FIX-964, FIX-978 |
+| **Track 1 — joined and shipped after the epic opened** | 3 | FIX-989 ✅, FIX-992 ✅, FIX-995 ✅ |
+| **Track 2 — human-wait board pair** *(added 2026-08-24)* | 3 | FIX-1234, FIX-1238, FIX-1244 |
+| **Decision-1-bound** | **1** | FIX-976 *(shipped — the decision is spent)* |
 | **Project siblings** — off-objective, direct-fix, *not* parented | 2 | FIX-972 (PR #984), FIX-962 (PR #985) |
 | **Discovered work** — same defect family, filed separately, *not* parented | 1 | FIX-985 |
-| **Indexed rows** (§3) = sub-issues + project siblings + discovered | 9 | — |
+| **Carried, off-objective** — parented but not this epic's work; see §3.5 | 9 | FIX-1000, FIX-1002, FIX-1030, FIX-1034, FIX-1035, FIX-1036, FIX-1037, FIX-1038, FIX-1156 |
 
-**The bound set has shrunk twice.** It was three (FIX-976, FIX-963, FIX-964), then two when round 2
-moved FIX-963 out, and is now **one** — round 3 moved FIX-964 out as well, on the argument its own
-spec (PR #994) makes. Decision 1 therefore rests entirely on FIX-976; §2 states the cost arithmetic
-that follows from that.
+**Track 2's members are not in the Decision-1-bound set and the arithmetic is not
+recounted.** Decision 1 was decided, spent and shipped on FIX-976 before the widening;
+nothing added on 2026-08-24 changes what it cost or what it bought.
+
+**Decision 4 (a guarantee is observable at a persisted surface) and Decision 5 (FIX-951's
+containment is a non-negotiable regression bar) apply to Track 2 as written.** Stated once,
+here. Decision 2's `cross-spec-review` scoping covers the **original** set only; Track 2 does
+not wait on FIX-948 or on anything in Track 1.
+
+**The bound set shrank twice and is now spent.** It was three (FIX-976, FIX-963, FIX-964),
+then two when round 2 moved FIX-963 out, then **one** when round 3 moved FIX-964 out on the
+argument its own spec (PR #994) makes — and that one has shipped. §2 keeps the cost
+arithmetic on record; it is history now, not a live cost.
 
 ### Why this is one body of work
 
@@ -170,6 +242,11 @@ Not "no silent failures." Specifically:
 5. Nothing this epic ships makes a *legitimate* terminal-task write fail. Labelling a settled
    task is a real use (post-drain failure-category audit); the new honesty applies to
    assignment, not to the whole patch surface. See Decision 1 → A1.
+6. A drain that exited because a task is parked waiting on a human **reports that** — not
+   success, not `blocked-by-failures`, and not an abandoned wait that looks like either.
+7. Unblocking a parked task with an input either **resumed the row on a new request**, or
+   **reported that it didn't**. The same standard as (1), on a verb the substrate did not
+   have when this epic opened.
 
 ---
 
@@ -492,7 +569,31 @@ This decision used to say "the Decision-1-bound three wait." Three things retire
   helper-level guard behind for the others to inherit. That subset is a *constraint-sharing* group,
   and naming it here is **not** a scoping rule for `cross-spec-review` — see the bullet above.
 
+> **Note, 2026-08-24 — the set this decision scopes has shrunk under it.** FIX-976 and FIX-948
+> have **shipped**, so neither is in a spec set any more; the A1 constraint they shared is
+> settled in merged code rather than pending between specs. What `cross-spec-review` would
+> actually run over now is **FIX-963 and FIX-964** — and only after OQ-E decides whether
+> FIX-978 exists at all. Two specs is thin for a coherence pass; if OQ-E closes FIX-978 and
+> FIX-964 is descoped, the pass has one spec and should be skipped rather than performed on a
+> set of one. The decision's *rule* (the set is every open spec, never a file-colliding
+> subset) stands unchanged — only its membership moved.
+
 ### Decision 3 — an expired lease is not evidence of abandonment; no issue in this set may assume otherwise
+
+> **Note, 2026-08-24 — two stale pointers, folded late.** These were flagged on the epic PR on
+> 2026-07-29 and never folded before the epic went dormant.
+>
+> 1. The parenthetical claiming FIX-957 has no spec document is **wrong** — `docs/specs/FIX-957.md`
+>    exists on `origin/spec/FIX-957` (PR [#954](https://github.com/fixpoint-labs/flow-state-dev/pull/954)).
+>    It is not on `main` because spec PRs never merge.
+> 2. **FIX-957 is no longer the adjacent work to check.** It factored the durable board out to
+>    FIX-939, taking lease reclamation with it, and now covers `block` and `request` lifetimes
+>    only. The owner of the recovery half was FIX-939 milestone 2 — **and FIX-939 is now `Done`**,
+>    which is exactly what OQ-E in §4 is about.
+>
+> **The decision itself held up and needs no change.** It is the constraint that ruled out the two
+> obvious fixes, and nothing in this epic infers abandonment from an expired lease. Only the
+> pointers were stale.
 
 Recorded here rather than left in FIX-978 because it is the kind of thing that gets
 independently re-derived and independently got wrong. Nothing renews a lease during
@@ -538,30 +639,39 @@ running — must hold after each of these issues lands. Two constraints follow:
 
 ## 3. Running index
 
-Durable audit log of every PR under this epic. Refreshed from the coordinator's status
-table each time this doc is updated. Empty columns mean not yet reached.
+Durable audit log of every PR under this epic. **Refreshed 2026-08-24** against live Linear
+state. Empty columns mean not yet reached.
 
-**Epic PR:** [#983](https://github.com/fixpoint-labs/flow-state-dev/pull/983) · never merged, open for the life of the epic.
+**Epic PR:** [#983](https://github.com/fixpoint-labs/flow-state-dev/pull/983) · never merged, open for the life of the epic. *(Closed 2026-08-16 while the epic was dormant; reopened 2026-08-24 on revival.)*
 
-**Active set** — parented under FIX-980, each runs an `issue-lifecycle`:
+**Track 1 — shipped:**
 
-| Issue | Title (short) | Decision 1 | Linear state | Spec PR | Impl PR |
-|---|---|---|---|---|---|
-| **FIX-978** | Stranded `in_progress` lease hangs a later drain ~14h | independent | In Review | [#990](https://github.com/fixpoint-labs/flow-state-dev/pull/990) · *spec review* | — |
-| **FIX-976** | `assignTask` rewrites a terminal task; `cancelTask` no-ops; both `ok: true` | **bound** *(the only one)* · owns A-i | In Review | [#995](https://github.com/fixpoint-labs/flow-state-dev/pull/995) · *spec review* | — |
-| **FIX-963** | Recorder failure after a task commits is swallowed | independent *(round 2)* | In Review | [#992](https://github.com/fixpoint-labs/flow-state-dev/pull/992) · *spec review* | — |
-| **FIX-964** | Custom `TaskCollectionRef`s silently skip FIX-951's guards | independent *(round 3)* | In Review | [#994](https://github.com/fixpoint-labs/flow-state-dev/pull/994) · *spec review* | — |
-| **FIX-948** | `maxAttempts` retry storms invisible to `maxTotalTasks`/`maxEnqueuedTasks` | independent · blocked on OQ-C | Backlog | — | — |
-
-All four open specs are **at spec review** — none has cleared its own approval gate, so
-`cross-spec-review` has not run and cannot yet (Decision 2: it runs over the full set, and FIX-948
-has not specced).
-
-**Completed anchor** — parented under FIX-980, shipped before the epic opened, no lifecycle:
-
-| Issue | Title (short) | Linear state | Spec PR | Impl PR |
+| Issue | Title (short) | Linear | Spec PR | Impl PR |
 |---|---|---|---|---|
-| **FIX-951** | Drain containment breaks when a worker fails after its task settled | **Done** | #941 | #953 **merged** `41a5655` |
+| **FIX-951** | Drain containment breaks when a worker fails after its task settled | **Done** | [#941](https://github.com/fixpoint-labs/flow-state-dev/pull/941) | [#953](https://github.com/fixpoint-labs/flow-state-dev/pull/953) **merged** `41a5655` |
+| **FIX-976** | `assignTask` rewrites a terminal task; `cancelTask` no-ops; both `ok: true` | **Done** | [#995](https://github.com/fixpoint-labs/flow-state-dev/pull/995) | [#1004](https://github.com/fixpoint-labs/flow-state-dev/pull/1004) **merged** |
+| **FIX-948** | `maxAttempts` retry storms invisible to the task caps | **Done** | [#1011](https://github.com/fixpoint-labs/flow-state-dev/pull/1011) | [#1031](https://github.com/fixpoint-labs/flow-state-dev/pull/1031) **merged** |
+| **FIX-989** | Durable write provenance — tell a committed write from one that never landed | **Done** | [#1005](https://github.com/fixpoint-labs/flow-state-dev/pull/1005) | [#1128](https://github.com/fixpoint-labs/flow-state-dev/pull/1128) **merged** |
+| **FIX-992** | `ResourceStateStore.set` had no `expectedVersion` | **Done** | [#1010](https://github.com/fixpoint-labs/flow-state-dev/pull/1010) | [#1035](https://github.com/fixpoint-labs/flow-state-dev/pull/1035), [#1036](https://github.com/fixpoint-labs/flow-state-dev/pull/1036), [#1039](https://github.com/fixpoint-labs/flow-state-dev/pull/1039) **merged** |
+| **FIX-995** | `updateState` callbacks report work that never committed | **Done** | [#1022](https://github.com/fixpoint-labs/flow-state-dev/pull/1022) | [#1023](https://github.com/fixpoint-labs/flow-state-dev/pull/1023) **merged** |
+
+**Track 1 — open, and each one needs a staleness check before it specs.** These three spec
+PRs have not moved since 2026-07-30. Substantial adjacent work shipped in the interval, so
+the question for each is no longer *"is the spec right"* but *"is the defect still there":*
+
+| Issue | Title (short) | Linear | Spec PR | Verdict 2026-08-24 |
+|---|---|---|---|---|
+| **FIX-963** | Recorder failure after a task commits is swallowed | Backlog · P3 | [#992](https://github.com/fixpoint-labs/flow-state-dev/pull/992) · *spec review* | **Still live**, re-verified in `record-result.ts`. Now *implementable* — FIX-989 shipped `didWriteLand`, the primitive it lacked. **Keep.** |
+| **FIX-964** | Custom `TaskCollectionRef`s silently skip FIX-951's guards | Backlog · P3 | [#994](https://github.com/fixpoint-labs/flow-state-dev/pull/994) · *spec review* | **Partly closed.** FIX-976 shipped the widened return types, so the compile-time signal §5 confirmed now exists. Residual is the two known gaps plus the `dispatchAndExecute` direct-ref path. **Narrow — candidate to descope.** |
+| **FIX-978** | Stranded `in_progress` lease hangs a later drain ~14h | Backlog · P2 | [#990](https://github.com/fixpoint-labs/flow-state-dev/pull/990) · *on hold* | **Likely subsumed.** FIX-1005 made a lapsed lease claimable (`leaseLapsed` → `isClaimable`), so the next claim reclaims a stranded row — the hang this issue names. See **OQ-E**. |
+
+**Track 2 — the human-wait board pair** *(added by owner call 2026-08-24)*:
+
+| Issue | Title (short) | Linear | Spec PR | Impl PR |
+|---|---|---|---|---|
+| **FIX-1234** | Exit/park mode so `awaiting_review` doesn't hold the launching request open | **In Review** | [#1419](https://github.com/fixpoint-labs/flow-state-dev/pull/1419) *approved* | [#1422](https://github.com/fixpoint-labs/flow-state-dev/pull/1422) · CI green, 1 approve, in review rounds |
+| **FIX-1238** | The park-exit verdict's carrier depends on step adjacency; a break is silent | Backlog | — | — |
+| **FIX-1244** | Unblock a parked task with an input, starting a new request | Backlog · *blocked by FIX-1234* | — | — |
 
 **Project siblings** — *off-objective · direct-fix*, **not** parented under FIX-980, listed
 for audit continuity only. Neither shapes any cross-cutting decision here:
@@ -572,30 +682,77 @@ for audit continuity only. Neither shapes any cross-cutting decision here:
 | **FIX-962** | Goal criterion E's salt guard isn't bound to the open request | Done | [#985](https://github.com/fixpoint-labs/flow-state-dev/pull/985) **merged** |
 
 **Discovered work** — surfaced *by* this epic's investigation, **same defect family**, filed
-separately and **not** parented under FIX-980. Carried here so the epic's audit trail shows where it
-went, not because the epic owns it:
+separately and **not** parented under FIX-980:
 
 | Issue | Title (short) | Linear state | PR |
 |---|---|---|---|
-| **FIX-985** | `cascade-skip-dependents.ts:73` treats a declined `cancel()` as success | Triage | — |
+| **FIX-985** | `cascade-skip-dependents.ts:73` treats a declined `cancel()` as success | Todo | — |
 
 FIX-985 is flavour (a) exactly — `await collection.cancel(task.id, ...)` is followed unconditionally
 by `addLabel(task.id, "skipped")` and `cascading.add(task.id)`, so a declined cancel is recorded as a
 completed skip and cascades further. **It is deliberately not in the epic:** it is a caller-side
 misread of today's silent contract, fixable on its own, and adding it would grow the set without
 changing any cross-cutting decision. It is also **evidence for Decision 1** — an independent
-first-party caller that the current `void` return already misled.
+first-party caller that the current `void` return already misled. *(Now that Decision 1 has shipped,
+FIX-985 is also the first caller that should adopt `TaskWriteOutcome`.)*
+
+## 3.5 Carried, off-objective — proposed to leave the epic
+
+While the epic was dormant, **nine issues were parented under FIX-980 that this epic's
+objective does not cover.** They are honesty-shaped, which is presumably how they got here,
+but they are honest-*request-record* problems in `@flow-state-dev/engine`, not
+honest-*task-substrate* problems in `@flow-state-dev/orchestration`. Different package,
+different caller, different lifecycle. Keeping them makes the epic unfinishable and hides
+its actual remaining surface.
+
+**None of them is dropped — the proposal is to unparent, not to close.** They keep their
+project, priority and relations.
+
+| Issue | Linear | Why it isn't this epic |
+|---|---|---|
+| **FIX-1002** | Todo · **P1 Urgent** | Execution context reads resource state before its `in_progress` request record persists. Engine request-record liveness. **The only Urgent item under the epic — needs a home, not a hold.** |
+| **FIX-1156** | Backlog | An abort accepted between the post-drain re-read and the terminal patch still loses. From FIX-1001's investigation. |
+| **FIX-1036** | Backlog | `isTerminalRequestStatus` conflates "the stream ended" with "nothing can still write". Same. |
+| **FIX-1035** | Backlog | A failed terminal patch strands the request record. Same. |
+| **FIX-1034** | Backlog | Lifecycle observers and TTS chains outlive the terminal request record. Same. |
+| **FIX-1037** | Backlog · P4 | A surviving branch's late `.work()` is invisible to the request work pool's quiescence drain. Same. |
+| **FIX-1000** | Backlog | Fence the scope generation against a create racing session deletion. Session/scope storage. |
+| **FIX-1030** | **Canceled** | Dead row. |
+| **FIX-1038** | **Duplicate** | Dead row. |
+
+**FIX-993** (*Replan output can stamp an unvalidated `maxAttempts` onto a task*, Ready to
+Spec, **P2 High**) is the one genuine judgment call. It **is** in the task substrate and it
+**is** a silent-acceptance defect, so it fits the shape; but it is a *validation* gap rather
+than a *reporting* gap, and it is the last thing standing between this epic and a wrap.
+**Recommendation: keep it in and spec it**, because it is High, unblocked, and small — not
+because the objective demands it.
 
 ---
 
 ## 4. Open cross-cutting questions
 
-**OQ-C — What does FIX-933 actually bound, and does it subsume FIX-948?** FIX-948's own
-description raises it: a cost/budget ceiling bounds a retry storm by spend rather than
-attempt count. **FIX-933 is `Done`** (under epic FIX-930), so this is answerable against
-shipped behavior — read what its cap counts and when it is evaluated, then decide whether
-FIX-948 is still a gap or is already covered. Routed as a **precondition to speccing
-FIX-948**, assigned to whoever picks it up. Not a human blocker.
+**OQ-C — does FIX-933 subsume FIX-948? — CLOSED by shipment (2026-08-24).** The question
+was whether a cost/budget ceiling already bounded a retry storm by spend, making FIX-948
+redundant. It was answered in the doing: FIX-948 shipped `maxTotalRetries`
+([#1031](https://github.com/fixpoint-labs/flow-state-dev/pull/1031)) and is `Done`. Whatever
+FIX-933 bounds, it did not cover this.
+
+**OQ-E — is FIX-978 subsumed by FIX-1005? *(new 2026-08-24; precondition to speccing
+FIX-978, not a human blocker.)*** FIX-978 says a stranded `in_progress` lease has **no
+reclaim path**, so a later drain rides out ~14h at production defaults before reporting
+`blocked` — a verdict naming the wrong cause. Since then FIX-1005 shipped `leaseLapsed`, and
+`isClaimable` now admits a lapsed `in_progress` row, so **the next claim reclaims a stranded
+row rather than waiting it out**; `hasClaimableTask` reads the same lease on the exit side,
+and `transitionDeclineReason`'s fence gives the third half FIX-978's spec asked for (never
+writing to a row you no longer own). On the evidence in
+`packages/orchestration/src/tasks/collection/internal.ts` and `task-board/shared.ts`, the
+hang looks closed and the honest-verdict half looks largely closed with it.
+
+**What is owed:** read FIX-1005, FIX-981 and FIX-990 against FIX-978's three claims and
+either close FIX-978 as subsumed or restate the residue. **Do not spec FIX-978 against PR
+[#990](https://github.com/fixpoint-labs/flow-state-dev/pull/990) as written** — that spec
+predates all three and is on hold for a reason. Its own author already routed the
+*reclamation* half to FIX-939 milestone 2, and FIX-939 is now `Done`.
 
 **OQ-D — is `TaskCollectionRef` the wrong shape for an extension point? *(follow-up beyond this
 epic — explicitly not this epic's work.)*** Recorded in round 3 from FIX-964's spec (PR #994), which
@@ -618,8 +775,10 @@ epic** — no issue in this set should start on it, and no issue in this set is 
 > reasoning it depends on lives. Duplicating it is how two copies drift apart.
 >
 > - **A-i — what `updateTask` reports when it patches several fields and settles mid-sequence.**
->   A *design* question inside the already-decided Option A, not a fork. Owned by whoever specs
->   FIX-976. See §2 Decision 1 → A-i.
+>   A *design* question inside the already-decided Option A, not a fork. It was routed to
+>   FIX-976, and **FIX-976 has shipped** ([#1004](https://github.com/fixpoint-labs/flow-state-dev/pull/1004)) —
+>   so whatever that PR does is the answer. Recorded as closed-by-implementation; read the
+>   merged code, not this note. See §2 Decision 1 → A-i for the original framing.
 >
 > Three items that used to live here are now closed. The **Decision-1 fork** (A / B / C) is
 > decided — Option A, approved by the repo owner; the rejected options and their reasons stay
@@ -822,3 +981,27 @@ removing the `?`, and nobody should retry it.
   further review pass is expected. Remaining questions are issue-level (A-i to FIX-976; OQ-C to
   FIX-948) or beyond the epic (OQ-D, needs a human). Further edits should be driven by what
   implementation discovers.
+- **Dormant, 2026-07-30 → 2026-08-24.** The coordinating session ended. The three open spec
+  PRs (#990, #992, #994) stopped moving, the epic PR was closed unmerged on 2026-08-16, and
+  nine unrelated issues were parented under FIX-980 in the interval. Meanwhile the objective
+  kept being served by work filed *outside* the epic's index: FIX-989, FIX-992 and FIX-995 all
+  shipped, and FIX-976 and FIX-948 — two of the five active issues — shipped without this doc
+  recording it. **The lesson is in the gap:** an epic-spec that is only refreshed by its own
+  coordinator goes stale silently, and the staler it gets the more it argues about a codebase
+  that no longer exists.
+- **Revived 2026-08-24 — widened, re-verified, and pruned.** Epic PR reopened. Three changes:
+  1. **Widened to two tracks** on the owner's call. The original honesty set keeps its frame;
+     a **human-wait board pair** (FIX-1234 / FIX-1238 / FIX-1244) joins it under the same
+     objective, with one clause added to §1 — *a drain that left because a human is owed must
+     say so, and there is a primitive to unblock that row with an input.* Decisions 4 and 5
+     apply to it; **Decision 1 is not reopened** and its arithmetic is not recounted.
+  2. **Every open Track-1 row re-verified against `main` rather than against its own spec.**
+     FIX-963 is still live (and now implementable — FIX-989 shipped the primitive it lacked).
+     FIX-964 is partly closed by FIX-976's shipped widening, leaving a narrow residue.
+     FIX-978 looks **subsumed** by FIX-1005's `leaseLapsed` → `isClaimable` change; raised as
+     **OQ-E**, and its spec PR #990 must not be built from as written. Three specs at review
+     for four weeks are now a staleness problem, not a review problem.
+  3. **Nine off-objective issues proposed to leave the epic** (§3.5) — engine request-record
+     and session-scope defects that are honesty-shaped but sit in a different package with a
+     different caller. Unparent, not close. FIX-993 flagged as the one judgment call and
+     recommended to stay.
