@@ -99,10 +99,15 @@ designed against that case, not against the happy one.
 >   POC is [FIX-1246](https://linear.app/fixpoint-labs/issue/FIX-1246) under
 >   [FIX-1179](https://linear.app/fixpoint-labs/issue/FIX-1179), **Backlog**, in its own words:
 >   *"the task is already associated to the coding session, so resume from a second request should be
->   possible… This is a POC, not Proof. Restart is not the POC passing."* **This epic consumes it and
->   does not build the resume.** *(What this replaces: "a steer restarts the coding agent — correct
->   and expensive; accepted, and not to be worked around." That was wrong, not merely open, and it is
->   struck wherever it appeared.)*
+>   possible… This is a POC, not Proof. Restart is not the POC passing."*
+>   **The division of labour, with the subject spelled out because this sentence has been misread
+>   once already: *this epic* builds no resume machinery — *FIX-1246 builds it*, and this epic
+>   consumes what it produces.** In FIX-1246's own words, *"Substrate owns the resume; Conductor
+>   consumes it."* **"POC" there describes how the substrate is de-risking the work, not that the
+>   output is throwaway** — §4's session-resume entry carries the substrate's own outcome line, and
+>   **the risk block below names what happens if that reading turns out wrong.** *(What this replaces: "a steer restarts the coding
+>   agent — correct and expensive; accepted, and not to be worked around." That was wrong, not merely
+>   open, and it is struck wherever it appeared.)*
 >
 > **Decided — the shipped same-session resume, and what `detached: true` actually is.** *(Owner call
 > on [#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362), **2026-08-24**. This replaces
@@ -143,15 +148,43 @@ designed against that case, not against the happy one.
 > this placement needs no per-seam guard"*). Resuming into a caller-supplied session id is an
 > **identity decision made from caller-controllable input** — the BP-031 line theme 6 already binds
 > and never widens. **No field is designed and no shape is named here**, it is an implementer note on
-> FIX-1179, and **no scope is added to LAB-139**. **The consumed set is unchanged — FIX-1230,
-> FIX-1234, FIX-1244, FIX-1246 — and FIX-1179 is not in it.**
+> FIX-1179, and **no scope is added to LAB-139**.
+> **This constrains the resume association only — it does not constrain bookkeeping.** Owner,
+> 2026-08-24: *"LAB-138 storing an id on `runs/*` is bookkeeping, not that path — typed Task field
+> remains 1179."* So **LAB-138 writing a run's id onto its own `runs/*` row is legitimate and nothing
+> here forbids it**; what belongs in a typed top-level field on the task is the **resume
+> association**, and **that field is FIX-1179's to add**, not this epic's.
+> **The consumed set is unchanged — FIX-1230, FIX-1234, FIX-1244, FIX-1246 — and FIX-1179 is not in
+> it.**
+>
+> **Risk on the Proof's critical path — the residual that matters, named here and designed nowhere.**
+> **If [FIX-1246](https://linear.app/fixpoint-labs/issue/FIX-1246) lands as a throwaway harness
+> rather than a path LAB-139 can call, the Proof stalls — and that answer is
+> [FIX-1179](https://linear.app/fixpoint-labs/issue/FIX-1179)'s, not this epic's.** The ambiguity is
+> in the words, across three documents: *"POC"* and *"shippable capability"* are used
+> interchangeably, and **nobody has confirmed FIX-1246 lands as something LAB-139 can call.** Its
+> outcome line reads like a capability — *"Substrate owns the resume; Conductor consumes it"*,
+> *"resumed from a second request onto the **same** session… not a cold start"* — and its in-scope
+> line reads like an experiment — *"POC that the association already on the task is enough to resume
+> the same session from a new request"*, with *"full FIX-1179 rewrite if the POC is narrower"*
+> explicitly out. **Both readings are live in the substrate's own text, and the Proof survives only
+> one of them.**
+> **What this is not.** It is **not** a change to the consumed set — that stays exactly **FIX-1230 ·
+> FIX-1234 · FIX-1244 · FIX-1246**, the owner's structure of 2026-08-24, and **FIX-1179 is not in
+> it** — and it is **not** a re-scoping of FIX-1179's shipped milestone from here. **This epic
+> consumes; it does not re-scope.** Endorsed by the owner on
+> [#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362), 2026-08-24: *"The watch item is
+> the residual that matters: if FIX-1246 lands as a throwaway harness rather than a path LAB-139 can
+> call, the Proof stalls and that answer is FIX-1179's."* §4's session-resume entry carries the
+> substrate's wording in full.
 >
 > **Lead measure** — the set's goal-proven issues, named: FIX-150 · LAB-138 · LAB-139.
 >
 > **Not doing** — **building** Relay (FIX-1197 is its own epic; this epic consumes the channel and
 > does not build it — the dependency is priced in the limits above, not hidden here) ·
-> **building** the session resume itself (FIX-1179 / the FIX-1246 POC — this epic consumes it; the
-> Proof now *requires* continuation, so this is a scope-out of the building, never of the outcome) · the spec and review phase records and the durable approval gate between phases · the
+> **building** the session resume itself — **FIX-1246 builds it, under FIX-1179**, and *this epic*
+> consumes what it produces; the Proof now *requires* continuation, so this is a scope-out of the
+> building, never of the outcome · the spec and review phase records and the durable approval gate between phases · the
 > coordinator's classify-and-route generator (an answer names its inbox row explicitly) · the
 > manager and architect roles · more than one issue on the board at a time · any inbox UI ·
 > the measurement instrument · the workforce-layer question.
@@ -410,7 +443,21 @@ four and owns none.
 - **The wake** — [FIX-1244](https://linear.app/fixpoint-labs/issue/FIX-1244) (Backlog), under
   FIX-980; LAB-139 is its **first consumer, not its owner**.
 - **Session resume** — [FIX-1246](https://linear.app/fixpoint-labs/issue/FIX-1246) (Backlog), a POC
-  under FIX-1179. **New, and a Proof blocker: restart is not Proof** (§1).
+  under FIX-1179. **New, and a Proof blocker: restart is not Proof** (§1). **"POC" describes how the
+  substrate is de-risking the work, not a throwaway**, and the substrate says so in its own words:
+  *"Substrate owns the resume; Conductor consumes it"*, with the desired outcome
+  *"A coding session parked for input is resumed from a second request onto the **same** session.
+  Observable: same session id / harness thread, not a cold start."* That is a consumable capability,
+  not a demo. **And FIX-1179 itself names the Proof's dependency as this POC** — *"Conductor Proof
+  (LAB-139) now depends on that POC"* — which is why the consumed set names **FIX-1246** and not
+  FIX-1179's shipped milestone.
+  - **The residual risk this entry's own wording carries is named in §1**, at the same altitude as
+    the limits, because it sits on the Proof's critical path: **if FIX-1246 lands as a throwaway
+    harness rather than a path LAB-139 can call, the Proof stalls, and that answer is FIX-1179's.**
+    The evidence is the gap between the two lines above and its in-scope line — *"POC that the
+    association already on the task is enough to resume the same session from a new request"*, with
+    *"full FIX-1179 rewrite if the POC is narrower"* explicitly out. **Not a change to the consumed
+    set, and not a re-scoping of FIX-1179's milestone from here.**
 
 *(Also consumed, not owned, and not Proof blockers: **FIX-1245**, the `awaiting_review → parked`
 rename under FIX-980; and **FIX-1247**, the fence making `ctx.suspend` error inside a workstream,
@@ -511,8 +558,9 @@ PR ([#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362)).
     Backlog), carried in §1's limits — and **this document still proposes no wake.**
   - **~~Does "answered" mean continuing the coding agent's own conversation?~~ — ANSWERED: yes, and
     it is a Proof blocker.** **Restart is not Proof.** The POC is
-    [FIX-1246](https://linear.app/fixpoint-labs/issue/FIX-1246) under FIX-1179 (Backlog); this epic
-    **consumes it and does not build the resume**. §1 carries it as a limit. *(This reverses this
+    [FIX-1246](https://linear.app/fixpoint-labs/issue/FIX-1246) under FIX-1179 (Backlog); **this
+    epic builds no resume machinery — FIX-1246 does**, and this epic consumes what it produces
+    (*"Substrate owns the resume; Conductor consumes it"*). §1 carries it as a limit. *(This reverses this
     document's oldest decided entry — see the struck entry below.)*
   - **~~FIX-1200's sequencing~~ — ANSWERED, and narrower than the question assumed.** The scoped
     piece is a **fence**: `ctx.suspend` must **error** if called inside a workstream —
@@ -592,7 +640,8 @@ PR ([#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362)).
   [FIX-1179](https://linear.app/fixpoint-labs/issue/FIX-1179), **Backlog**, and it says the same in
   its own words: *"the task is already associated to the coding session, so resume from a second
   request should be possible… This is a POC, not Proof. Restart is not the POC passing."*
-  **This epic consumes it and does not build the resume** — that boundary is the one part of the old
+  **This epic builds no resume machinery — FIX-1246 does, and this epic consumes what it produces**
+  (*"Substrate owns the resume; Conductor consumes it"*) — that boundary is the one part of the old
   entry that survives. §1 carries it as a limit and as the fourth consumed dependency.
   *(Entry history, because this one moved twice: decided *restart* at drafting; re-grounded twice on
   premises that kept moving; held open when D-1 listed it; now answered the other way.)*
@@ -1148,3 +1197,35 @@ on, and they stay there rather than being restated here.
   hypothetical). **Nothing else moved:** **the consumed set is still exactly four** — FIX-1230 ·
   FIX-1234 · FIX-1244 · FIX-1246 — **FIX-1179 is not in it**, no scope was added to LAB-139, and the
   epic PR's description is the coordinator's surface.
+- **Clarity fold — "this epic does not build the resume" was ambiguous about its subject, and the
+  ambiguity was ours.** Trigger: a Codex **P1** on `6e3da81d` reading FIX-1246 as *"a POC that does
+  not build resume"* and proposing that FIX-1179's shipped milestone be wired in as a blocker.
+  **The finding's mechanism is wrong and its proposed remedy is declined** — it re-scopes another
+  team's issue — **but the misreading is the sentence's fault**: *"This epic consumes it and does not
+  build the resume"* puts **the epic** in the subject slot, and it was read as **FIX-1246**. Second
+  round on the same claim, so it is fixed rather than argued. **Every instance of that construction
+  now names the subject** — *this epic builds no resume machinery; FIX-1246 builds it* — in §1's
+  continuity limit, §1's "Not doing", §5's D-1 sub-entry and §5's continuity entry. **Verified in the
+  substrate's own text, not taken on report:** FIX-1246 — *"Substrate owns the resume; Conductor
+  consumes it"*, desired outcome *"resumed from a second request onto the **same** session…
+  same session id / harness thread, not a cold start"*; FIX-1179 — *"Conductor Proof (LAB-139) now
+  depends on that POC."* **So the substrate itself names the Proof's dependency as the POC**, which
+  is why the consumed set names FIX-1246 and not FIX-1179's shipped milestone. §4's session-resume
+  entry now carries both quotes, so "POC" cannot be read as "throwaway" from this page alone.
+  **What Codex's worry lands on is real, and the owner raised its weight mid-fold.** *"POC"* and
+  *"shippable capability"* are used interchangeably across three documents, and **nobody has
+  confirmed FIX-1246 lands as a path LAB-139 can call** rather than a scratch harness — its in-scope
+  line is the POC, and it scopes out *"full FIX-1179 rewrite if the POC is narrower."* **If it lands
+  throwaway and no shipped path follows, the Proof stalls, and that answer is FIX-1179's.** The owner
+  on #1362 (2026-08-24T21:19:45Z): *"The watch item is the residual that matters… **Don't bury that
+  as color.**"* So it is **named in §1 at limit altitude**, legible to someone reading only §1, and
+  §4's appendix entry points at it rather than carrying it alone — it was drafted as an appendix
+  sub-bullet first, which is exactly the burial the owner ruled out.
+  **One fact from the same comment, folded so nothing here forbids it:** *"LAB-138 storing an id on
+  `runs/*` is bookkeeping, not that path — typed Task field remains 1179."* §1's placement constraint
+  now says it constrains the **resume association** only — LAB-138's own `runs/*` bookkeeping is
+  legitimate.
+  **Nothing else moved:** the consumed set is still exactly four — FIX-1230 · FIX-1234 · FIX-1244 ·
+  FIX-1246 — **FIX-1179 is still not in it**, the resume decision, the package call and D-1 are not
+  re-opened, no scope was added to LAB-138 or LAB-139, no mechanism was written, and the epic PR's
+  description and threads are the coordinator's surface.
