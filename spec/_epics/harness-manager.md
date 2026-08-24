@@ -55,8 +55,8 @@ designed against that case, not against the happy one.
 > **Not doing** — **building** Relay (FIX-1197 is its own epic; this epic consumes the channel and
 > does not build it — the dependency is priced in the limits above, not hidden here) ·
 > resume-with-continuity for a
-> steered run (FIX-1179 — a steer restarts the coding agent with a re-stated prompt, and that is
-> accepted) · the spec and review phase records and the durable approval gate between phases · the
+> steered run (FIX-1179 — nothing in this set builds continuity machinery; whether an answer
+> *should* continue the agent's conversation is D-1's open item, §5) · the spec and review phase records and the durable approval gate between phases · the
 > coordinator's classify-and-route generator (an answer names its inbox row explicitly) · the
 > manager and architect roles · more than one issue on the board at a time · any inbox UI ·
 > the measurement instrument · the workforce-layer question.
@@ -179,12 +179,17 @@ down an altitude; push it into the issue spec that will write it.*
    - **Ask** over **Relay**. The question leaves the run through the relay channel, not by
      suspending the request in place. Conductor **consumes** that channel and does not build it —
      Relay is its own epic (FIX-1197), and §1's limits price the dependency rather than hide it.
-   - **Wait** in **`needs_input`**, not as a suspended request. A row waiting on a person carries
-     the `needs_input` status; **dependencies stay `blocked`**. The distinct name *is* the decision
-     rather than a synonym — a board must be able to show which rows are waiting on a **person**
-     rather than on other work. *(Owner call on D-1. `needs_input` is the **product name**; the
-     shipped verbs `awaitReview` and `resumeFromReview` are unchanged — this decision renamed no API.
-     How the name lands in the shipped status enum is a separate open question, §5.)*
+   - **Wait** as a **task status distinct from `blocked`**, not as a suspended request. A row
+     waiting on a person must be distinguishable from a row waiting on other work — that is the
+     obligation, and it is settled. **The product name for that state is `needs_input`** (owner call
+     on D-1). **How it is represented on the row is D-1's open confirm and this document does not
+     pick it** (§5): a rename of the shipped `awaiting_review`, or two statuses side by side.
+     **This is a named gate, not a contradiction to work around.** `TaskStatus` today accepts
+     `awaiting_review` and not `needs_input`, so **LAB-139's spec is blocked at the point where it
+     has to name the field** — and only there. Everything else in that spec proceeds. Do not invent
+     a persisted-schema decision to get past this; raise it and let the confirm return.
+     *(Neutral fact, unchanged by any of this: the shipped verbs `awaitReview` and
+     `resumeFromReview` are not renamed by anything in D-1.)*
    - **Settle** only after checking the run handle's status: a terminal SDK error subtype returns
      normally as `status: "errored"`, so settling on a normal return alone reports a failed run as
      completed. `buildDetachedRunner`'s body is unconditionally `.step(worker).tap(recordSuccess)`,
@@ -262,7 +267,7 @@ down an altitude; push it into the issue spec that will write it.*
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
 | [LAB-138](https://linear.app/fixpoint-labs/issue/LAB-138/the-harness-manager-a-task-row-becomes-a-watched-settled-coding-run) | The manager loop — a task row becomes a watched, settled coding run. Provisions the run's working directory and owns the **per-run `cwd` seam** that makes handing it down possible (theme 4). Settles on a **handle-status check**, not on a normal return (theme 5). **Defines the runner contract**, which must not encode any one harness's shape (theme 7) — the clause-level detail (the bound, the result shape, token usage, permission posture) is in this issue's implementer notes, deliberately not in the epic-spec. Adds the per-run `cwd` to the **SDK path** — the only surface that can host a watched run (theme 4) | spec | — | — | Needs spec |
-| [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof** (FIX-1166). Blocked by LAB-138. Builds theme 5's ask-and-wait as decided by **D-1** — the question travels **Relay**, and the row carries the **`needs_input`** status (dependencies stay **`blocked`**; product name, shipped verbs unchanged — how it lands in the status enum is open, §5). Owns the **inbox row and its replay-safe write**. *(Rescoped by D-1: the `ctx.suspend` park, the in-process resume action, the `suspensionId` projection seam and the configured lease window are all withdrawn.)* **Cannot run the round trip until Relay's channel lands** — everything on its own side can be built and goal-checked before that (§1) | spec | — | — | Needs spec |
+| [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof** (FIX-1166). Blocked by LAB-138. Builds theme 5's ask-and-wait as decided by **D-1** — the question travels **Relay**, and the row carries the **`needs_input`** status (dependencies stay **`blocked`**; product name, shipped verbs unchanged — **how it is represented on the row is D-1's open confirm**, §5, and it **blocks this spec only where it must name the field**). Owns the **inbox row and its replay-safe write**. *(Rescoped by D-1: the `ctx.suspend` park, the in-process resume action, the `suspensionId` projection seam and the configured lease window are all withdrawn.)* **Cannot run the round trip until Relay's channel lands** — everything on its own side can be built and goal-checked before that (§1) | spec | — | — | Needs spec |
 | [FIX-150](https://linear.app/fixpoint-labs/issue/FIX-150/workspaces-if-validated-workspacerunner-block-and-virtual-filesystem) | Workspaces — the file-projection component. Large, three PRs (a component · b shell-tool migration · c coding-agent path). Subsumes FIX-998. **Own track — carries no dependency edge into the Proof** (theme 4) | spec | [#1345](https://github.com/fixpoint-labs/flow-state-dev/pull/1345) — **approved** | — | Needs implementation |
 
 *FIX-150 is on team **flow-state**, not Labs; it is a sub-issue of LAB-140 across teams. Its
@@ -336,19 +341,20 @@ waits on it (theme 4).*
   question: *"do not treat this comment as closing D-1."* These stay open on
   [#1429](https://github.com/fixpoint-labs/flow-state-dev/issues/1429) / FIX-1241, and **this
   document records them rather than picking any of them.** Three of them reach the Proof.
-  - **The status name — CLOSED**, see the decided entry below. What remains open from it is only
-    how the name lands in the shipped enum.
-  - **How `needs_input` relates to the shipped status enum.**
+  - **The status *name* — CLOSED**, see the decided entry below. What stays open is how that state
+    is **represented on the row**.
+  - **How `needs_input` is represented — a rename of the shipped `awaiting_review`, or two statuses.**
+    **Open, and pending a confirm on D-1.** *(The owner briefly called this as a rename and then
+    pulled it back within two minutes — "leave the enum-landing question open … don't pick it in
+    this spec until that returns." This document holds it open.)*
     `packages/orchestration/src/tasks/schema/task-status.ts` ships
     `["pending","in_progress","blocked","awaiting_review","completed","errored","cancelled"]` —
     `needs_input` is **not** in it, `awaiting_review` **is**, and `awaiting_review` carries its own
     `ALLOWED_TRANSITIONS` (`in_progress → awaiting_review`; `awaiting_review → pending | completed |
-    cancelled | errored`). Meanwhile **FIX-1234 (In Review) states the opposite of a new status**:
-    *"The gap is the **exit predicate**, not a new status — `awaitReview` and `resumeFromReview` are
-    not being redesigned."* Three readings, and **this document picks none**: `needs_input`
-    **renames** the enum member · **joins** it as a second status · or is the **product/display
-    name** over the existing `awaiting_review`. A rename carries **BP-030** — persisted rows already
-    hold `awaiting_review` — plus the state-machine and exhaustiveness surface. **With the owner.**
+    cancelled | errored`). **FIX-1234 (In Review) is unaffected either way** — its own scope says
+    *"the gap is the exit predicate, not a new status"*, and it lands on the shipped status
+    regardless of how this confirm returns. **This blocks LAB-139's spec only where that spec must
+    name the field** (theme 5). **With the owner.**
   - **Who wakes a parked-and-exited board.** **FIX-1234 will not build it.** On the Proof's critical
     path; carried as §1's largest open risk, and no wake is proposed in this document.
   - **Whether FIX-1234 / Relay issue 5 stays in Relay** now that recapture has died.
@@ -402,15 +408,17 @@ waits on it (theme 4).*
   price the dependency: Relay is its own epic, this one consumes it, and the epic's schedule is not
   silently made Relay's.
 
-- **~~Does a steer resume the coding agent, or restart it?~~** *Decided: it restarts it.* Nothing
-  can hand a prior SDK session id into a detached run today (FIX-1179), so an answer re-states
-  the prompt and pays again for context already read. Expensive and accepted — an issue building
-  continuity machinery has left scope. **D-1 does not soften this, and it is not what re-entry
-  looks like that matters** — re-entering the work after an answer starts the coding agent over
-  regardless of *how* the board is re-entered, because the session id is what nothing can hand back.
-  *(This entry previously justified itself with `continueRequest` resuming the FSD request while the
-  agent inside it started over. True of the framework, but that path is withdrawn — the decision
-  never rested on it.)*
+- **Does an answer continue the coding-agent conversation, or restart it?** **Re-opened by D-1**,
+  which carries *"does 'answered' mean continue the coding-agent conversation? (FIX-1179)"* as an
+  open item. **This document previously declared it decided — restarts — and that no longer stands.**
+  **What is still true, independent of the answer path:** nothing today can hand a prior SDK session
+  id into a detached run (FIX-1179), so **as things stand** an answer re-states the prompt and pays
+  again for context already read. **What this document can no longer declare** is that this is the
+  settled shape. The old reasoning ran through the withdrawn park — the request resumed, the agent
+  inside it started over — and **Relay now owns the answer path, whose lifecycle has not been
+  designed**, so what happens to the coding-agent session is not this document's to call. **Nothing
+  in this set builds continuity machinery** either way; that boundary is unchanged. *(Twice
+  re-grounded on a premise that kept moving. Held open now rather than re-grounded a third time.)*
 
 - **~~Is the inbox a new framework capability?~~** *Decided: no — a plain user-scoped resource
   collection.* FIX-1075 asks the right scoping question and the answer here is *nothing this
@@ -748,3 +756,23 @@ waits on it (theme 4).*
   has `awaiting_review` and not `needs_input`, while FIX-1234 (In Review) says the gap is *"the exit
   predicate, not a new status"* — rename · join · product-layer name, with BP-030 on persisted rows
   if it is a rename. **Every other D-1 open item stays open; this settled the name only.**
+- **Reversal fold — the enum landing goes back to open, and two decided entries were resting on
+  moved premises.** Trigger: the owner's own reversal on D-1 (#1429) two minutes after the call —
+  *"leave the enum-landing question open … don't pick it in this spec until that returns"* — plus two
+  Codex P1s on `98eb2d1`. **Reverted:** the `needs_input`-renames-the-enum-member decision and
+  everything it carried (the BP-030 acceptance condition, the FIX-1234 boundary as a *decided*
+  consequence, the deprecation-path language). The open question is recorded with the owner's
+  **widened** framing — rename the shipped member **vs two statuses** — pending a confirm.
+  **Folded (P1):** theme 5 required persisting `needs_input` while §5 deliberately left the
+  representation open, so an implementer had to invent a persisted-schema decision to satisfy the
+  theme. It now states the **obligation** — a status distinct from `blocked` — names `needs_input` as
+  the product name for that state, and says the representation is D-1's open confirm that **blocks
+  LAB-139's spec only where it must name the field.** A named gate instead of a contradiction.
+  **Folded (P1):** the steer entry stood as *decided: it restarts* while D-1 carries *"does 'answered'
+  mean continue the coding-agent conversation?"* as open. Re-opened, narrowed to what survives — **as
+  things stand** nothing can hand a prior SDK session id into a detached run (FIX-1179) — with the
+  declaration withdrawn, because Relay now owns the answer path and its lifecycle is undesigned. The
+  no-continuity-machinery boundary is unchanged. **The lesson, and it is about this document's
+  reflexes:** that entry was re-grounded twice on premises that kept moving, and the honest move the
+  second time was to hold it open rather than find it a new justification. **Kept as neutral fact:**
+  the shipped verbs `awaitReview` / `resumeFromReview` are not renamed by anything in D-1.
