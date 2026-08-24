@@ -182,9 +182,9 @@ down an altitude; push it into the issue spec that will write it.*
    - **Wait** in **`needs_input`**, not as a suspended request. A row waiting on a person carries
      the `needs_input` status; **dependencies stay `blocked`**. The distinct name *is* the decision
      rather than a synonym — a board must be able to show which rows are waiting on a **person**
-     rather than on other work. *(Owner call on D-1. `needs_input` is the **product name**; the
-     shipped verbs `awaitReview` and `resumeFromReview` are unchanged — this decision renamed no API.
-     How the name lands in the shipped status enum is a separate open question, §5.)*
+     rather than on other work. *(Owner call on D-1. **`needs_input` renames the status enum
+     member** — it is not display copy over `awaiting_review` (§5, decided). The shipped **verbs**
+     `awaitReview` and `resumeFromReview` are **not** renamed with it.)*
    - **Settle** only after checking the run handle's status: a terminal SDK error subtype returns
      normally as `status: "errored"`, so settling on a normal return alone reports a failed run as
      completed. `buildDetachedRunner`'s body is unconditionally `.step(worker).tap(recordSuccess)`,
@@ -262,7 +262,7 @@ down an altitude; push it into the issue spec that will write it.*
 | Issue | What it delivers | Route | Spec PR | Impl PR | State |
 |---|---|---|---|---|---|
 | [LAB-138](https://linear.app/fixpoint-labs/issue/LAB-138/the-harness-manager-a-task-row-becomes-a-watched-settled-coding-run) | The manager loop — a task row becomes a watched, settled coding run. Provisions the run's working directory and owns the **per-run `cwd` seam** that makes handing it down possible (theme 4). Settles on a **handle-status check**, not on a normal return (theme 5). **Defines the runner contract**, which must not encode any one harness's shape (theme 7) — the clause-level detail (the bound, the result shape, token usage, permission posture) is in this issue's implementer notes, deliberately not in the epic-spec. Adds the per-run `cwd` to the **SDK path** — the only surface that can host a watched run (theme 4) | spec | — | — | Needs spec |
-| [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof** (FIX-1166). Blocked by LAB-138. Builds theme 5's ask-and-wait as decided by **D-1** — the question travels **Relay**, and the row carries the **`needs_input`** status (dependencies stay **`blocked`**; product name, shipped verbs unchanged — how it lands in the status enum is open, §5). Owns the **inbox row and its replay-safe write**. *(Rescoped by D-1: the `ctx.suspend` park, the in-process resume action, the `suspensionId` projection seam and the configured lease window are all withdrawn.)* **Cannot run the round trip until Relay's channel lands** — everything on its own side can be built and goal-checked before that (§1) | spec | — | — | Needs spec |
+| [LAB-139](https://linear.app/fixpoint-labs/issue/LAB-139/a-run-that-needs-a-decision-can-ask-for-one-and-be-answered) | A run that needs a decision can ask for one, and be answered. **Carries the epic's Proof** (FIX-1166). Blocked by LAB-138. Builds theme 5's ask-and-wait as decided by **D-1** — the question travels **Relay**, and the row carries the **`needs_input`** status (dependencies stay **`blocked`**; `needs_input` **renames the enum member** — §5, decided — while the shipped verbs `awaitReview`/`resumeFromReview` do not change, and the rename itself is a **follow-up issue**, not this epic's). Owns the **inbox row and its replay-safe write**. *(Rescoped by D-1: the `ctx.suspend` park, the in-process resume action, the `suspensionId` projection seam and the configured lease window are all withdrawn.)* **Cannot run the round trip until Relay's channel lands** — everything on its own side can be built and goal-checked before that (§1) | spec | — | — | Needs spec |
 | [FIX-150](https://linear.app/fixpoint-labs/issue/FIX-150/workspaces-if-validated-workspacerunner-block-and-virtual-filesystem) | Workspaces — the file-projection component. Large, three PRs (a component · b shell-tool migration · c coding-agent path). Subsumes FIX-998. **Own track — carries no dependency edge into the Proof** (theme 4) | spec | [#1345](https://github.com/fixpoint-labs/flow-state-dev/pull/1345) — **approved** | — | Needs implementation |
 
 *FIX-150 is on team **flow-state**, not Labs; it is a sub-issue of LAB-140 across teams. Its
@@ -336,19 +336,7 @@ waits on it (theme 4).*
   question: *"do not treat this comment as closing D-1."* These stay open on
   [#1429](https://github.com/fixpoint-labs/flow-state-dev/issues/1429) / FIX-1241, and **this
   document records them rather than picking any of them.** Three of them reach the Proof.
-  - **The status name — CLOSED**, see the decided entry below. What remains open from it is only
-    how the name lands in the shipped enum.
-  - **How `needs_input` relates to the shipped status enum.**
-    `packages/orchestration/src/tasks/schema/task-status.ts` ships
-    `["pending","in_progress","blocked","awaiting_review","completed","errored","cancelled"]` —
-    `needs_input` is **not** in it, `awaiting_review` **is**, and `awaiting_review` carries its own
-    `ALLOWED_TRANSITIONS` (`in_progress → awaiting_review`; `awaiting_review → pending | completed |
-    cancelled | errored`). Meanwhile **FIX-1234 (In Review) states the opposite of a new status**:
-    *"The gap is the **exit predicate**, not a new status — `awaitReview` and `resumeFromReview` are
-    not being redesigned."* Three readings, and **this document picks none**: `needs_input`
-    **renames** the enum member · **joins** it as a second status · or is the **product/display
-    name** over the existing `awaiting_review`. A rename carries **BP-030** — persisted rows already
-    hold `awaiting_review` — plus the state-machine and exhaustiveness surface. **With the owner.**
+  - **The status name and how it lands in the enum — both CLOSED**, see the decided entry below.
   - **Who wakes a parked-and-exited board.** **FIX-1234 will not build it.** On the Proof's critical
     path; carried as §1's largest open risk, and no wake is proposed in this document.
   - **Whether FIX-1234 / Relay issue 5 stays in Relay** now that recapture has died.
@@ -359,13 +347,29 @@ waits on it (theme 4).*
     boards are in or out — **they cannot take park-exit.**
 
 - **~~What is the human-wait status called?~~** *Decided: **`needs_input`**.* Owner call on D-1
-  (#1429). **Dependencies stay `blocked`**; neither `awaiting_review` nor `awaiting_feedback` is the
-  product name. The reasoning is the point of the status: a board must be able to show which rows
+  (#1429). **Dependencies stay `blocked`**; the status is neither `awaiting_review` nor
+  `awaiting_feedback`. The reasoning is the point of the status: a board must be able to show which rows
   are waiting on a **person** rather than on other work, so a **distinct name is the decision, not a
-  synonym of `blocked`.** **`needs_input` is a product name — the shipped verbs `awaitReview` and
-  `resumeFromReview` are unchanged**, and this decision renamed no API. How the name lands in the
-  shipped status enum is open, above. *(This comment settled the name only; every other D-1 open
-  item stays open.)*
+  synonym of `blocked`.**
+  **And it lands as a rename of the enum member** — the owner's second call, closing the question
+  this document had left open with three readings. `needs_input` **renames** `awaiting_review` in
+  `packages/orchestration/src/tasks/schema/task-status.ts`; it is **not** a display name over the
+  shipped enum, and `awaiting_review` is **not** kept as the status name with `needs_input` as UI
+  copy. **The reasoning is the whole point, and it is not a naming preference:**
+  *"`awaiting_review` sounds like the task is **done** and waiting for review. `needs_input` means it
+  **cannot proceed** until a person answers."* Those are different states, so the shipped word was
+  describing the wrong one.
+  **What the rename obliges. BP-030 applies:** persisted rows already hold `awaiting_review`, so it
+  carries a **dual-read** obligation, plus the state machine (`ALLOWED_TRANSITIONS` —
+  `in_progress → awaiting_review`; `awaiting_review → pending | completed | cancelled | errored`) and
+  **every exhaustiveness site**. Named here, not designed here.
+  **Two boundaries the owner set, and they bind as hard as the decision.** First, **FIX-1234 / #1422
+  lands on today's shipped status** — the rename is **its own follow-up issue** and is **not a reason
+  to hold that PR**; nothing in this epic blocks an in-review issue. Second, **the deprecation path
+  and any sweep belong to that follow-up**, not to this epic: no migration plan is written here.
+  **The shipped verbs `awaitReview` and `resumeFromReview` are still not renamed** — the status moved,
+  the API did not. *(These two calls settled the name and its landing; every other D-1 open item
+  stays open.)*
 
 - **Where conductor's own code lives.** Both LAB-138 and LAB-139 write into the same place and
   neither can settle it alone, so it is the epic's to answer. Raised at epic drafting. **Blocks
@@ -748,3 +752,17 @@ waits on it (theme 4).*
   has `awaiting_review` and not `needs_input`, while FIX-1234 (In Review) says the gap is *"the exit
   predicate, not a new status"* — rename · join · product-layer name, with BP-030 on persisted rows
   if it is a rename. **Every other D-1 open item stays open; this settled the name only.**
+- **Owner decision fold — `needs_input` renames the status enum member.** Trigger: the product
+  owner's call on D-1 (#1429), closing the enum-landing question §5 had left open with three
+  readings. What changed: §5's open item moves to the decided status-name entry, and theme 5's
+  parenthetical drops both stale halves — `needs_input` is no longer described as a *product name*,
+  and its landing is no longer *open*. **The reasoning, carried because it is the decision:**
+  *"`awaiting_review` sounds like the task is done and waiting for review; `needs_input` means it
+  cannot proceed until a person answers"* — different states, not a naming preference. **BP-030 is
+  named**: persisted rows hold `awaiting_review`, so the rename owes a dual-read, plus
+  `ALLOWED_TRANSITIONS` and every exhaustiveness site
+  (`packages/orchestration/src/tasks/schema/task-status.ts`). **Two boundaries recorded rather than
+  designed:** FIX-1234 / #1422 lands on today's shipped status and the rename is its own follow-up,
+  **not a reason to hold that PR**; and the deprecation path and any sweep belong to that follow-up,
+  so no migration plan is written here. The shipped **verbs** `awaitReview` / `resumeFromReview` are
+  still unrenamed. **Every other D-1 open item stays open.**
