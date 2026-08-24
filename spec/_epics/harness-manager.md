@@ -275,6 +275,15 @@ spec gate is already passed (`spec approved` on #1345), so it enters at implemen
 member of this set because the manager will adopt its projection — not because anything here
 waits on it (theme 4).*
 
+**What this index does not contain.** Nothing here owns **whatever wakes a parked-and-exited board
+once Relay delivers an answer.** It is #1429's open item; **FIX-1234 will not build it**; and
+FIX-1231 — the only issue shaped like it — is **Backlog and marked conditional**. So **every issue
+in this index can close while the Proof's round trip is still unrunnable.** Said here because the
+table otherwise reads as the whole set. **This is visibility, not a plan** — no issue is proposed,
+no scope is added to LAB-139, and this document designs no wake. Whether the gap becomes a blocking
+issue, LAB-139's scope, or a narrowing of the Proof to *"asked"* is the **owner's**, live on the
+epic PR ([#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362)).
+
 ## 5. Open cross-cutting questions
 
 - **~~Can a detached worker's task be parked in `awaiting_review` and continued by a later
