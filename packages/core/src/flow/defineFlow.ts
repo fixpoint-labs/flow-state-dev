@@ -39,6 +39,7 @@ import { validateSchedulesConfig, type ScheduleConfig, type SchedulesConfig } fr
 import { validateConcurrencyConfig } from "../types/concurrency";
 import { validateChatConfig, type ChatConfig, type ChatEventBinding } from "../types/chat";
 import { validateWebhookConfig, type WebhookConfig, type WebhookEventBinding } from "../types/webhooks";
+import { validateRelayConfig, type RelayConfig } from "../types/relay";
 import { introspectStateKeys } from "../helpers/zod-introspect";
 
 type ScopeKind = "session" | "user" | "org";
@@ -172,7 +173,7 @@ function rejectRemovedClientData(value: object | undefined, flowKind: string, sc
 }
 
 /** The definition-only options {@link rejectDefinitionOnlyOptions} refuses. */
-const DEFINITION_ONLY_INSTANCE_OPTIONS = ["webhooks", "chat", "schedules", "mcp"] as const;
+const DEFINITION_ONLY_INSTANCE_OPTIONS = ["webhooks", "chat", "schedules", "mcp", "relay"] as const;
 
 /**
  * Reject transport configs that are declared on the flow DEFINITION only.
@@ -975,6 +976,7 @@ function createFlowInstance(
   // `rejectDefinitionOnlyOptions`.
   validateChatConfig(kind, definition.chat);
   validateWebhookConfig(kind, definition.webhooks);
+  validateRelayConfig(definition.relay, kind);
   validateSchedulesConfig(kind, definition.schedules);
 
   // Apply flow-level `tools` to each event handler block the same way
@@ -982,6 +984,7 @@ function createFlowInstance(
   // identically to its caller-action twin. Runs after validation (which
   // guarantees a real `block`); a no-op when the flow declares no tools.
   const webhooks = withFlowToolsWebhooks(definition.webhooks, tools);
+  const relay = definition.relay;
   const chat = withFlowToolsChat(definition.chat, tools);
   const schedules = withFlowToolsSchedules(definition.schedules, tools);
 
@@ -1109,6 +1112,7 @@ function createFlowInstance(
     mcp,
     chat,
     webhooks,
+    relay,
     schedules,
     tokenCounter: options?.tokenCounter ?? definition.tokenCounter,
     costEstimator: options?.costEstimator ?? definition.costEstimator,
@@ -1168,6 +1172,7 @@ export function defineFlow<
     mcp: baseInstance.mcp,
     chat: baseInstance.chat,
     webhooks: baseInstance.webhooks,
+    relay: baseInstance.relay,
     schedules: baseInstance.schedules,
     tokenCounter: baseInstance.tokenCounter,
     costEstimator: baseInstance.costEstimator,

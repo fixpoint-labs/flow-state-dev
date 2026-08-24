@@ -300,6 +300,12 @@ export type {
 } from "./types/webhooks";
 export { defineWebhookBinding, validateWebhookConfig } from "./types/webhooks";
 export type {
+  RelayConfig,
+  RelayInboundMessage,
+  RelayMessageBinding
+} from "./types/relay";
+export { defineRelayBinding, validateRelayConfig } from "./types/relay";
+export type {
   TokenCounter,
 } from "./types/tokens";
 export type {

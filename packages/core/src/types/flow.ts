@@ -17,6 +17,7 @@ import type { SchedulesConfig } from "./schedules";
 import type { ConcurrencyConfig } from "./concurrency";
 import type { ChatConfig } from "./chat";
 import type { WebhookConfig } from "./webhooks";
+import type { RelayConfig } from "./relay";
 import type { WorkstreamBindings } from "./workstream";
 import type { CASOptions } from "./state";
 import type { TokenCounter } from "./tokens";
@@ -463,6 +464,15 @@ export type FlowDefinition<
   webhooks?: WebhookConfig;
 
   /**
+   * Per-flow relay message bindings (FIX-1230). When set, a message sent from
+   * another session in this system with a matching `kind` is dispatched to the
+   * named handler. The flow declares its inside-world surface here; the sender
+   * never names an action, and a kind with no binding is refused rather than
+   * falling through silently. Definition-only, like its transport siblings.
+   */
+  relay?: RelayConfig;
+
+  /**
    * Per-flow scheduled-action config. When set, the
    * `@flow-state-dev/scheduled` adapter mounts
    * `POST /api/flows/:kind/schedules/:scheduleId/dispatch` for this flow.
@@ -511,8 +521,8 @@ export type FlowInstanceOptions<
   resources?: TResources;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
-  // `mcp`, `chat`, `webhooks` and `schedules` are deliberately ABSENT — they are
-  // definition-only; see `rejectDefinitionOnlyOptions` in `flow/defineFlow.ts` (FIX-1048).
+  // `mcp`, `chat`, `webhooks`, `relay` and `schedules` are deliberately ABSENT — they
+  // are definition-only; see `rejectDefinitionOnlyOptions` in `flow/defineFlow.ts` (FIX-1048).
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
   isolateUserState?: boolean;
@@ -583,6 +593,7 @@ export type FlowInstance<
   mcp?: McpConfig;
   chat?: ChatConfig;
   webhooks?: WebhookConfig;
+  relay?: RelayConfig;
   schedules?: SchedulesConfig;
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
@@ -638,6 +649,7 @@ export type FlowType<
   mcp?: McpConfig;
   chat?: ChatConfig;
   webhooks?: WebhookConfig;
+  relay?: RelayConfig;
   schedules?: SchedulesConfig;
   isolateUserState: boolean;
   isolateOrgState: boolean;
