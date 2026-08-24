@@ -32,23 +32,41 @@ designed against that case, not against the happy one.
 >   judgment about when to reach for it. Whether a run asks unprompted is the *next* epic's
 >   evidence, not this one's. FIX-1166 makes this weigh **more**, not less: the fix is one line,
 >   so almost none of this run's value is the fix — the ask *is* the experiment, and it is staged.
-> - **The Proof now depends on work outside this epic.** The ask/answer channel is **Relay's**, and
->   Relay ([FIX-1197](https://linear.app/fixpoint-labs/issue/FIX-1197)) is a separate epic on its own
->   schedule — this epic **consumes** that channel, it does not build it. The board half is closer in:
->   **FIX-1234, the park-exit, is In Review**, so that piece is real work in flight rather than a
->   hypothesis. Priced the way FIX-150 is priced (theme 4) — named rather than hidden, and **the
->   epic's schedule is not quietly made Relay's schedule.** Before the channel lands, LAB-139 can
->   build and goal-check everything on its own side: the phase record, the question's inbox row and
->   its replay-safe write, the human-wait status on the row, and settlement. What it **cannot** do is
->   run the round trip — and the round trip is the Proof.
-> - **Nothing yet owns waking a parked-and-exited board, and that is this epic's largest open risk.**
->   It sits on the Proof's critical path, because *"the answer went back in and the run finished on
->   it"* is half of what the Proof claims. It is **#1429's own open item**, and **FIX-1234 will not
->   build it.** Recorded as a risk, not designed here: **this document proposes no wake**, and an
->   issue that finds itself inventing one has hit this limit and should raise it on the epic PR
->   rather than solve it locally. *(Under the previous suspend-based design the same gap read as
->   "nothing projects the `suspensionId` where a waker could read it." D-1 moved the gap; it did not
->   close it.)*
+> - **The Proof depends on two named pieces of work outside this epic, and they are not the same
+>   dependency.** *(Corrected: this document previously priced them as one "Relay" dependency, and
+>   put park-exit under Relay. It is not.)*
+>   - **The ask** is **Relay's** — [FIX-1230](https://linear.app/fixpoint-labs/issue/FIX-1230)
+>     (address a session, send it a message), **In Development**, under
+>     [FIX-1197](https://linear.app/fixpoint-labs/issue/FIX-1197).
+>   - **The park and the wake** are the **honest task substrate's** —
+>     [FIX-980](https://linear.app/fixpoint-labs/issue/FIX-980), *related to* Relay but **not
+>     parented under it**: park-exit [FIX-1234](https://linear.app/fixpoint-labs/issue/FIX-1234)
+>     (**In Review**), its verdict carrier
+>     [FIX-1238](https://linear.app/fixpoint-labs/issue/FIX-1238) (Backlog), and unblock-with-input
+>     [FIX-1244](https://linear.app/fixpoint-labs/issue/FIX-1244) (**Backlog**).
+>
+>   **This epic consumes all of it and owns none of it** (owner decision on
+>   [#1429](https://github.com/fixpoint-labs/flow-state-dev/issues/1429); D-1 membership closed).
+>   Priced the way FIX-150 is priced (theme 4) — named rather than hidden, and **the epic's schedule
+>   is not quietly made anyone else's.** Before these land, LAB-139 can build and goal-check
+>   everything on its own side: the phase record, the question's inbox row and its replay-safe write,
+>   the human-wait status, and settlement. What it **cannot** do is run the round trip — and the
+>   round trip is the Proof.
+> - **The wake has an owner and does not have an implementation, and the second half is the risk.**
+>   **[FIX-1244](https://linear.app/fixpoint-labs/issue/FIX-1244) — unblock-with-input, under
+>   FIX-980 — owns it**, and says so itself: park-exit lets a drain *leave* while a row sits parked,
+>   *"that is half the pair"*, and no framework primitive yet **resumes that row with a payload as a
+>   new workstream request** — *"without this verb, an honest park-exit is a dead letter."*
+>   **LAB-139 is its first consumer, never its owner.** *(Corrected: this document called the wake
+>   unowned. That is false and the distinction matters — it is a **schedule** dependency, not an
+>   **ownership** gap.)*
+>   **The schedule point stands undiminished: FIX-1244 is Backlog, so the verb the Proof's round trip
+>   needs is not built.** It sits on the Proof's critical path, because *"the answer went back in and
+>   the run finished on it"* is half of what the Proof claims. **This document proposes no wake** —
+>   reaffirmed by the owner — and an issue that finds itself inventing one has hit this limit and
+>   should raise it on the epic PR rather than solve it locally. *(FIX-1244 independently reaches this
+>   epic's own finding from the other side: `resumeFromReview`/`continueRequest` are the wrong shape
+>   after park-exit, because they assume the launching request is still open.)*
 >
 > **Lead measure** — the set's goal-proven issues, named: FIX-150 · LAB-138 · LAB-139.
 >
@@ -275,14 +293,22 @@ spec gate is already passed (`spec approved` on #1345), so it enters at implemen
 member of this set because the manager will adopt its projection — not because anything here
 waits on it (theme 4).*
 
-**What this index does not contain.** Nothing here owns **whatever wakes a parked-and-exited board
-once Relay delivers an answer.** It is #1429's open item; **FIX-1234 will not build it**; and
-FIX-1231 — the only issue shaped like it — is **Backlog and marked conditional**. So **every issue
-in this index can close while the Proof's round trip is still unrunnable.** Said here because the
-table otherwise reads as the whole set. **This is visibility, not a plan** — no issue is proposed,
-no scope is added to LAB-139, and this document designs no wake. Whether the gap becomes a blocking
-issue, LAB-139's scope, or a narrowing of the Proof to *"asked"* is the **owner's**, live on the
-epic PR ([#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362)).
+**What this index does not contain — and why that is correct.** The pieces that carry the Proof's
+question *out* and the answer *back in* are not in this table, because they are **not this epic's to
+build**. The ask is Relay's ([FIX-1230](https://linear.app/fixpoint-labs/issue/FIX-1230), In
+Development). The park and the wake belong to the honest task substrate,
+[FIX-980](https://linear.app/fixpoint-labs/issue/FIX-980) — park-exit
+[FIX-1234](https://linear.app/fixpoint-labs/issue/FIX-1234) (In Review) and **unblock-with-input
+[FIX-1244](https://linear.app/fixpoint-labs/issue/FIX-1244) (Backlog)**, which **owns the wake**;
+LAB-139 is its **first consumer, not its owner**. *(Corrected: this note previously said nobody
+owned the wake. FIX-1244 does — it is a schedule dependency, not an ownership gap.)*
+
+**The visibility point is unchanged and still worth stating: every issue in this index can close
+while the Proof's round trip is still unrunnable**, because FIX-1244 is Backlog. Said here because
+the table otherwise reads as the whole set. **This is visibility, not a plan** — no issue is
+proposed, no scope is added to LAB-139, and this document designs no wake. Whether that gap ever
+changes this epic's shape — a narrowing of the Proof to *"asked"*, or waiting — is the **owner's**,
+live on the epic PR ([#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362)).
 
 ## 5. Open cross-cutting questions
 
@@ -349,7 +375,9 @@ epic PR ([#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362)).
   *path* (Relay + a board wait-status, not `ctx.suspend`) and explicitly did **not** close the
   question: *"do not treat this comment as closing D-1."* These stay open on
   [#1429](https://github.com/fixpoint-labs/flow-state-dev/issues/1429) / FIX-1241, and **this
-  document records them rather than picking any of them.** Three of them reach the Proof.
+  document records them rather than picking any of them.** *(One item — **membership**: who owns the
+  wake and where park-exit lives — was **closed** by the owner on #1429 and is recorded as closed
+  below rather than dropped.)*
   - **The human-wait status: what is DECIDED and what is OPEN.** This has been mis-recorded twice,
     in both directions, so the split is stated before anything else.
     **DECIDED, and not reopened by any of this:** **`needs_input` is the product name for the
@@ -374,9 +402,13 @@ epic PR ([#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362)).
     cancelled | errored`). **Park-exit #1422 / FIX-1234 is unblocked either way** — the owner
     reaffirmed this, and its own scope says *"the gap is the exit predicate, not a new status"*.
     **This gates LAB-139's spec only where that spec must name the field** (theme 5), not the issue.
-  - **Who wakes a parked-and-exited board.** **FIX-1234 will not build it.** On the Proof's critical
-    path; carried as §1's largest open risk, and no wake is proposed in this document.
-  - **Whether FIX-1234 / Relay issue 5 stays in Relay** now that recapture has died.
+  - **~~Who wakes a parked-and-exited board, and where park-exit lives~~ — CLOSED by the owner on
+    #1429 (D-1 membership).** The wake is **FIX-1244** (unblock-with-input) and park-exit is
+    **FIX-1234**, both under **[FIX-980](https://linear.app/fixpoint-labs/issue/FIX-980)**, the
+    honest task substrate — **related to Relay, not parented under it, and not under LAB-140.**
+    **This epic consumes them and owns neither**; LAB-139 is FIX-1244's first consumer. What remains
+    is a **schedule** dependency (FIX-1244 is Backlog), carried in §1's limits — not an open
+    question, and **this document still proposes no wake.**
   - **Whether a pre-chosen lease is an acceptable product control at all** — *likely no*, given the
     Relay path.
   - **FIX-1200's sequencing**; whether *"answered"* means continuing the coding agent's own
@@ -693,8 +725,9 @@ epic PR ([#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362)).
   the wake path cannot address the gate at all. Both are named in theme 5 as obligations and
   specified in LAB-139's notes. *(Superseded by D-1: the `suspensionId` projection seam is withdrawn
   along with the suspend park, and §1's Proof no longer names the pair. The **wake** half of this
-  finding did not go away — it moved, and it is now §1's largest open risk. The **replay-safe inbox
-  write** obligation survives D-1 unchanged.)*
+  finding did not go away — it moved. **It has since been located: FIX-1244 under FIX-980 owns the
+  wake, and this epic consumes it** (owner, #1429). The **replay-safe inbox write** obligation
+  survives D-1 unchanged.)*
   **The durable lesson, and it is the one worth keeping past this epic:** an epic-spec that names
   a call sequence has taken on a verification burden it cannot discharge, because verifying a call
   sequence means reading the file, and reading the file is the issue spec's job. §2's altitude rule
@@ -813,3 +846,28 @@ epic PR ([#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362)).
   anything in D-1. **The lesson about this document's reflexes:** two entries here were re-grounded
   on premises that kept moving, and both times the honest move was to hold the question open rather
   than find the old answer a new justification.
+- **Membership fold — D-1 membership closed, and the "unowned wake" claim was false.** Trigger: the
+  owner's decision on [#1362](https://github.com/fixpoint-labs/flow-state-dev/pull/1362) —
+  *"D-1 membership closed. Park-exit is not this epic and is not Relay. The human-wait board pair
+  lives under FIX-980 (honest task substrate). Unblock-with-input is FIX-1244 … This epic **consumes**
+  park-exit + FIX-1244; it does not own them. Still propose no wake locally."*
+  **The correction that matters: this document said nobody owned the wake, and that is now wrong.**
+  **FIX-1244 owns it** and states the gap in its own words — park-exit lets a drain *leave* while a
+  row sits parked, *"that is half the pair"*, and no primitive yet resumes that row with a payload as
+  a new workstream request, so *"an honest park-exit is a dead letter."* It also names LAB-139 as
+  **first consumer, not owner**, and independently reaches this epic's own finding from the other
+  side: `resumeFromReview`/`continueRequest` are the wrong shape after park-exit because they assume
+  the launching request is still open. **The wake is a schedule dependency now, not an ownership
+  gap** — a distinction §1 and §4 both state rather than blur, because **FIX-1244 is Backlog** and the
+  Proof's round trip still needs a verb nobody has built.
+  **Second correction, and it was this document's error to inherit: park-exit was priced under
+  Relay.** It is not. **One dependency was really two:** the **ask** is Relay's (FIX-1230, In
+  Development, under FIX-1197); the **park and the wake** are the honest task substrate's (FIX-980 —
+  FIX-1234 In Review, FIX-1238 Backlog, FIX-1244 Backlog), **related to Relay but not parented under
+  it, and not under LAB-140.** §1's limits now carry both, named separately.
+  **Changed:** §1's dependency and wake limits, §4's index note (still visibility, still not a plan),
+  §5 — where membership moves from the open list to a **closed** item rather than being dropped, so
+  the record shows it was answered. **Unchanged and deliberately so:** no wake is designed here, no
+  scope is added to LAB-139, and no issue is created or implied. **The remaining D-1 opens are
+  untouched:** rename vs two statuses · FIX-1200 sequencing · continuity (FIX-1179) ·
+  BullMQ/serverless · `onIdle: complete` boards.
