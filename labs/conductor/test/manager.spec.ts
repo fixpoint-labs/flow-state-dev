@@ -11,8 +11,9 @@
  * trusted either would certify nothing.
  */
 import { describe, expect, it, afterEach } from "vitest";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { acquireCheckout, conductorTaskId, encodeSegment } from "../src/workspace";
 import {
@@ -23,6 +24,7 @@ import {
   sdkResult,
   throwingAgent,
   type ConductorHarness,
+  seedRepo,
 } from "./harness";
 
 type StatusRow = {
@@ -60,6 +62,26 @@ afterEach(() => {
   live?.dispose();
   live = undefined;
 });
+
+/**
+ * A real repository for the flows built below.
+ *
+ * `conductorFlow` refuses a `sourceRepo` that is not a git repository, and
+ * refuses one that IS the dispatcher's own — the guard the env door has always
+ * applied, now applied at the programmatic door too. Before that, these specs
+ * built flows against paths like `/tmp/x` that no repository ever occupied, and
+ * nothing objected. One repo for the file rather than one per test: the checks
+ * are the thing under test elsewhere, and here it just has to be real.
+ */
+let sharedRepoPath: string | undefined;
+function sharedRepo(): string {
+  if (sharedRepoPath === undefined) {
+    const dir = mkdtempSync(join(tmpdir(), "conductor-flow-repo-"));
+    seedRepo(dir);
+    sharedRepoPath = dir;
+  }
+  return sharedRepoPath;
+}
 
 async function readStatus(h: ConductorHarness): Promise<StatusRow> {
   const { rows } = await h.call<{ rows: StatusRow[] }>("status", { issue: ISSUE });
@@ -669,6 +691,58 @@ describe("a failed attempt releases the tree", () => {
   });
 });
 
+describe("the git inputs are validated at the programmatic door too", () => {
+  // The door was already identified — the block above re-checks every NUMERIC
+  // option here for exactly the reason stated there. What did not happen is
+  // asking which OTHER rules use the same door. Two did, and the repository
+  // guard is the one that matters: `fsdev.config.ts` and the goal runner both
+  // refuse a `sourceRepo` that is the dispatcher's own repository, and a caller
+  // reaching `conductorFlow` directly passed through neither.
+  //
+  // That is not a hardening nicety. It is obligation A — a run drives ANOTHER
+  // repository rather than editing the thing that dispatched it — and this was
+  // the last door open on it.
+  const base = { epic: "git-inputs-epic", workspace: { root: "/tmp/g", baseRef: "main" } };
+
+  it("refuses the repository this process is itself running from", async () => {
+    const { conductorFlow } = await import("../src/flow");
+    // `process.cwd()` during the suite IS the dispatcher's repository, which is
+    // what makes this the real case rather than a staged one.
+    expect(() =>
+      conductorFlow({ ...base, workspace: { ...base.workspace, sourceRepo: process.cwd() } }),
+    ).toThrow(/is the repository this process is itself running from/);
+  });
+
+  it("refuses a source repo that is not a git repository at all", async () => {
+    const { conductorFlow } = await import("../src/flow");
+    const empty = mkdtempSync(join(tmpdir(), "conductor-not-repo-"));
+    expect(() =>
+      conductorFlow({ ...base, workspace: { ...base.workspace, sourceRepo: empty } }),
+    ).toThrow(/not a git repository/);
+  });
+
+  it("refuses a base ref the repository does not have, naming the option", async () => {
+    const { conductorFlow } = await import("../src/flow");
+    // The message must name `workspace.baseRef`, not `CONDUCTOR_BASE_REF`: a
+    // caller who never set an environment variable would go looking in the
+    // wrong place, which is the two-thirds-of-a-rule failure this file keeps
+    // finding.
+    expect(() =>
+      conductorFlow({
+        ...base,
+        workspace: { ...base.workspace, sourceRepo: sharedRepo(), baseRef: "no-such-ref" },
+      }),
+    ).toThrow(/workspace\.baseRef "no-such-ref" does not resolve/);
+  });
+
+  it("still builds on a repository and ref that are real", async () => {
+    const { conductorFlow } = await import("../src/flow");
+    expect(() =>
+      conductorFlow({ ...base, workspace: { ...base.workspace, sourceRepo: sharedRepo() } }),
+    ).not.toThrow();
+  });
+});
+
 describe("numeric options are validated at the programmatic door too", () => {
   // The env door got this two rounds ago. `conductorFlow` is EXPORTED, so a
   // host reaches the same values without passing through `positiveIntFromEnv` —
@@ -681,7 +755,7 @@ describe("numeric options are validated at the programmatic door too", () => {
   // is the class this branch kept repeating; this pins both shut.
   const base = {
     epic: "numeric-epic",
-    workspace: { root: "/tmp/n", sourceRepo: "/tmp/n-repo", baseRef: "main" },
+    workspace: { root: "/tmp/n", sourceRepo: sharedRepo(), baseRef: "main" },
   };
 
   it("refuses every numeric option a timer would reject later", async () => {
@@ -735,7 +809,7 @@ describe("the drain budget covers the whole worker", () => {
       epic: "budget-epic",
       workspace: {
         root: "/tmp/conductor-budget",
-        sourceRepo: "/tmp/conductor-budget-repo",
+        sourceRepo: sharedRepo(),
         baseRef: "main",
         ...(workspace ?? {}),
       },
@@ -956,7 +1030,7 @@ describe("the ledger is partitioned by tenant", () => {
   // status and retry accounting shared.
   const base = {
     epic: "shared-epic",
-    workspace: { root: "/tmp/conductor-tenants", sourceRepo: "/tmp/x", baseRef: "main" },
+    workspace: { root: "/tmp/conductor-tenants", sourceRepo: sharedRepo(), baseRef: "main" },
     runTimeoutMs: 30_000,
   };
 

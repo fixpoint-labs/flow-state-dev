@@ -879,7 +879,12 @@ export async function acquireCheckout(
           `ordinary reclaim resolves well inside this bound.`,
       );
     }
-    await sleep(bounds.pollMs, signal);
+    // **Never sleep past the deadline this loop advertises.** `waitMs` is the
+    // bound the caller was given and the drain budget is sized from, and a poll
+    // interval larger than what is left of it overshoots by the difference —
+    // measured at 203ms for `{ waitMs: 30, pollMs: 200 }`. The abort fix above
+    // covers cancellation; ordinary expiry needs the clock, not the signal.
+    await sleep(Math.min(bounds.pollMs, deadline - now()), signal);
     stopIfCancelled();
   }
 }

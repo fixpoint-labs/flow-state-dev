@@ -146,8 +146,18 @@ export function requireSourceRepo(variable = "CONDUCTOR_REPO"): string {
  *
  * Verified with `rev-parse --verify`, the same call `branchExists` uses, so the
  * check and the thing it predicts cannot disagree.
+ *
+ * `variable` names the setting in the message, for the same reason
+ * `requireSourceRepo` takes one: the whole rule has to travel to a second door,
+ * not two thirds of it. Reached programmatically the failing thing is
+ * `workspace.baseRef`, and an error naming an environment variable the caller
+ * never set sends them looking in the wrong place.
  */
-export function assertBaseRefExists(repo: string, baseRef: string): void {
+export function assertBaseRefExists(
+  repo: string,
+  baseRef: string,
+  variable = "CONDUCTOR_BASE_REF",
+): void {
   try {
     execFileSync("git", ["rev-parse", "--verify", "--quiet", `${baseRef}^{commit}`], {
       cwd: repo,
@@ -156,7 +166,7 @@ export function assertBaseRefExists(repo: string, baseRef: string): void {
     });
   } catch {
     throw new Error(
-      `[conductor] CONDUCTOR_BASE_REF "${baseRef}" does not resolve to a commit in ${repo}. ` +
+      `[conductor] ${variable} "${baseRef}" does not resolve to a commit in ${repo}. ` +
         "A fresh checkout is cut from it with `git worktree add`, so every attempt would " +
         "fail there and spend the row's whole retry budget on a name no retry can fix.",
     );

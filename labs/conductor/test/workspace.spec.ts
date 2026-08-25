@@ -286,6 +286,41 @@ describe("a cancelled attempt stops waiting for the tree", () => {
     expect(existsSync(`${checkout}.lock`)).toBe(false);
   });
 
+  it("honours waitMs even when the poll interval is larger than it", async () => {
+    // The bound in the error message, and the one the drain budget is sized
+    // from, is `waitMs`. The loop checked the deadline and THEN slept a whole
+    // `pollMs`, so a poll interval larger than what remained overshot by the
+    // difference — and disposal, which accounts only for `waitMs`, could expire
+    // while acquisition was still sleeping.
+    //
+    // Cancellation is a different exit and is covered above; this is ordinary
+    // expiry, which needs the clock rather than the signal.
+    const dir = mkdtempSync(join(tmpdir(), "conductor-overshoot-"));
+    dirs.push(dir);
+    const checkout = join(dir, "tree");
+    const held = await acquireCheckout(checkout, "the holder", {
+      waitMs: 1_000,
+      pollMs: 10,
+      staleAfterMs: 600_000,
+    });
+
+    const startedAt = Date.now();
+    await expect(
+      acquireCheckout(checkout, "the waiter", {
+        waitMs: 30,
+        pollMs: 2_000,
+        staleAfterMs: 600_000,
+      }),
+    ).rejects.toThrow(/waited 30ms/);
+    const elapsed = Date.now() - startedAt;
+
+    // Generous against a slow runner, and still far inside the 2s the
+    // uncapped sleep would have taken.
+    expect(elapsed).toBeLessThan(1_000);
+
+    held.release();
+  });
+
   it("observes the signal without waiting out the poll interval", async () => {
     // The two tests above both run at `pollMs: 10`, so they pass whether or not
     // the sleep itself is abortable — ten milliseconds of lag is invisible. That

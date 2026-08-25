@@ -64,7 +64,11 @@ import {
   type PhaseSpec,
 } from "./manager";
 import { implementPhase } from "./implement";
-import { assertPositiveInt } from "./config-env";
+import {
+  assertBaseRefExists,
+  assertDistinctRepository,
+  assertPositiveInt,
+} from "./config-env";
 import {
   assertSafeSegment,
   conductorTaskId,
@@ -145,6 +149,28 @@ export function conductorFlow(options: ConductorFlowOptions) {
   for (const [key, value] of Object.entries(ownership ?? {})) {
     if (value !== undefined) assertPositiveInt(`ownership.${key}`, value as number);
   }
+
+  // **And the git inputs at this door too, which numbers alone were not.**
+  //
+  // The block above already argued why an exported builder has to re-check what
+  // the env door checks. That argument was then applied to the numbers and
+  // stopped there, which is the same rule-versus-instance failure this branch
+  // has now hit four times: the door was correctly identified, and only one of
+  // the rules that use it was carried through it.
+  //
+  // The repository guard is the one that matters. `fsdev.config.ts` and the goal
+  // runner both refuse a `sourceRepo` that IS the dispatcher's own repository —
+  // by repository identity, so a different path inside it, a sibling worktree or
+  // a symlink is caught too. Reached through `conductorFlow` none of that ran,
+  // and a seeded task would point a real coding agent at the repository that
+  // dispatched it. That is obligation A, and this was the one door left open on
+  // it.
+  //
+  // `baseRef` and the repository's existence are the cheaper half: permanent
+  // configuration errors that `provisionCheckout` would otherwise discover after
+  // the row is claimed, once per retry, until the budget is gone.
+  assertDistinctRepository("workspace.sourceRepo", workspace.sourceRepo);
+  assertBaseRefExists(workspace.sourceRepo, workspace.baseRef, "workspace.baseRef");
 
   // `tenantSegment`, not `encodeSegment(tenant ?? something)`. The board and
   // the checkout MUST agree on what a tenant is, and the way they stopped
