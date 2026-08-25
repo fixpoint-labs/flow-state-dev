@@ -16,7 +16,7 @@
  * So this script runs exactly that shape and prints what it observes. It does not
  * assert a hoped-for answer — the output is the finding.
  *
- * Six measurements, in one run:
+ * Ten measurements, in one run:
  *   M1  does a detached worker's own `awaitReview` survive the runner's fenced
  *       write-back, or is the row settled `completed` on the normal return?
  *   M2  what does a later drain do while the row sits parked, with `onReview: "exit"`?
@@ -26,6 +26,14 @@
  *   M6  does `resumeFromReview(id)` with no feedback CLEAR a previous failure's
  *       feedback, or leave it to leak into the resumed attempt's prompt?
  *   M7  control: the same round trip on a board that left `onReview` at its default.
+ *   M8  a task cancelled while its question was open, answered with the verb called
+ *       BARE — does it decline, or something else?
+ *   M9  a SECOND answer arriving after the first already re-queued the row.
+ *   M10 the same cancelled row as M8, answered with `ifAllowed: true` — does the
+ *       guard the substrate already ships turn M8's outcome into a decline?
+ *
+ * M8, M9 and M10 are evidence for a decision the product owner reserved. Nothing in
+ * the spec's design was changed on the strength of them.
  *
  * ## Shape
  *
@@ -147,12 +155,20 @@ function buildFlow(options: { kind: string; onReview: "hold" | "exit" }) {
   /** The operator's answer. No claim ticket — a coordinator never claimed the row. */
   const answer = handler({
     name: `${options.kind}-answer`,
-    inputSchema: z.object({ feedback: z.string().optional() }),
+    inputSchema: z.object({ feedback: z.string().optional(), ifAllowed: z.boolean().optional() }),
     outputSchema: z.object({ outcome: z.string(), reason: z.string().nullable() }),
     uses: [board.capability],
-    execute: async (input: { feedback?: string }, ctx) => {
+    // `ifAllowed` here is a MEASUREMENT KNOB, not a proposal. M8 calls this verb
+    // bare, the way the spec's sketch does; M10 calls it with the guard the
+    // substrate already ships, to find out whether the same cancelled row
+    // declines instead of throwing. Nothing in the design adopts it.
+    execute: async (input: { feedback?: string; ifAllowed?: boolean }, ctx) => {
       const tasks: TaskCollectionRef = await ctx.cap[`${options.kind}-board`].tasks();
-      const verdict = await tasks.resumeFromReview("issue-1", input.feedback);
+      const verdict = await tasks.resumeFromReview(
+        "issue-1",
+        input.feedback,
+        input.ifAllowed === true ? { ifAllowed: true } : undefined
+      );
       return {
         outcome: verdict.outcome,
         reason: verdict.outcome === "declined" ? verdict.reason : null,
@@ -436,6 +452,36 @@ async function declines() {
       note:
         "resumeFromReview was called with NO options. Without `ifAllowed: true` an " +
         "illegal transition THROWS rather than declining — cancelled -> pending is illegal",
+    });
+  }
+
+  // M10: the SAME cancelled row as M8, but calling the verb with the guard the
+  // substrate already ships. `transitionDeclineReason` consults its terminal arm
+  // only when `ifAllowed` is passed (`tasks/collection/internal.ts:464`), so the
+  // question is whether M8's throw becomes an ordinary decline.
+  {
+    const stores = createInMemoryStores();
+    const { flow, LEDGER_ID } = buildFlow({ kind: "lab139cancelguard", onReview: "exit" });
+    const dispatched: RecordedDispatch[] = [];
+    await runOne(flow, stores, "drain", {}, { sessionId: COORDINATOR_SESSION, dispatched });
+    await replay(flow, stores, dispatched[0]!);
+    await runOne(flow, stores, "cancel", {}, { sessionId: COORDINATOR_SESSION });
+    const guarded = await runOne(
+      flow,
+      stores,
+      "answer",
+      { feedback: "ANSWER: too late", ifAllowed: true },
+      { sessionId: COORDINATOR_SESSION }
+    );
+    const out = guarded.output as { outcome?: string; reason?: string | null } | undefined;
+    say("M10 answer a cancelled task WITH ifAllowed", {
+      verdict: guarded.output ?? "(no output)",
+      requestError: guarded.error === undefined ? "none" : String(guarded.error),
+      rowStatusAfter: (await row(stores, LEDGER_ID))?.status,
+      readsAs:
+        guarded.error !== undefined
+          ? "STILL THREW — ifAllowed does not close M8"
+          : `${out?.outcome ?? "?"} / reason=${out?.reason ?? "none"}`,
     });
   }
 

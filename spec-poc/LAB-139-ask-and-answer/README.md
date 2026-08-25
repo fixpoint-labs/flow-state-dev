@@ -61,6 +61,7 @@ fold, the two-channel separation, and the three decide arms are green-field.
 | **M5 the budget** | `attempts` 1 → 2 against `maxAttempts: 3`, no abandonments |
 | **M7 control** | same board without `onReview: "exit"` → `terminationReason: "blocked-by-failures"` after 3.5s on a board with **no failures** |
 | **M8 a cancelled task** | a bare `resumeFromReview` **threw** — *"illegal status transition for task 'issue-1': cancelled → pending"*. It did not decline: the terminal guard is only consulted when `ifAllowed` is passed |
+| **M10 the same cancelled task, `ifAllowed: true`** | **`{outcome: "declined", reason: "terminal"}`** — no throw, row untouched. The guard the substrate already ships turns M8's throw into an ordinary decline |
 | **M9 a second answer** | over an already re-queued (`pending`) row → **`{outcome: "recorded"}`**, and the row's feedback was **overwritten**. `pending → pending` is legal, so the board does not fence a duplicate answer |
 
 **M1 is the headline: the park survived.** The epic's table row is stale on `main`, so
@@ -74,11 +75,27 @@ board that has none. A caller reading that verdict is told something false.
 `shouldRetryOnFail` discounts only abandonments, so an answered resume spends a retry the
 same way a failure does. That is spec decision 2.
 
-**M8 and M9 are the decline arms, and they are with the product owner.** Park-exit made
-`resumeFromReview` work *after the launching request ended*; it did not make the verb
-*parked-only* or *atomic*, and those are different properties. The spec records both
-measurements in §12 and deliberately changes nothing on the strength of them while that
-decision is open.
+**M8, M9 and M10 are the decline arms, and they are with the product owner — but they are
+NOT the same finding, and reporting them as one would mislead the decision.**
+
+- **M8 + M10: one has a shipped answer.** Called bare, the verb throws on a cancelled row.
+  Called with `ifAllowed: true` — an argument the substrate already ships — the same row
+  declines `terminal`. The terminal arm is simply gated on that flag
+  (`tasks/collection/internal.ts:464`), so this arm is a one-argument fix, not a missing
+  capability.
+- **M9: no shipped option closes it.** `resumeFromReview` passes no `requireFrom`, and
+  `pending → pending` is a legal transition, so neither the `requireFrom` arm (`:466-472`)
+  nor the general legality arm (`:473`) ever fires. `ifAllowed` buys nothing here. A duplicate
+  answer is recorded and overwrites the feedback, and nothing shipped prevents it — this is
+  the arm that genuinely needs the parked-only primitive FIX-1244 owns.
+
+Park-exit made `resumeFromReview` work *after the launching request ended*, which is what the
+cross-request claim rests on and is unaffected by any of this. It did not make the verb
+*parked-only* or *atomic*; those are different properties, and only one of the two gaps has a
+shipped answer today.
+
+**Nothing here was adopted into the design.** The spec's §9 rows and §7's wake composition are
+unchanged; `ifAllowed` appears in this script as a measurement knob and nowhere else.
 
 ## inbox-write.mts — the inbox half
 
