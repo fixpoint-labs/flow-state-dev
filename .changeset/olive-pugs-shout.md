@@ -2,7 +2,9 @@
 "@flow-state-dev/claude-code": minor
 ---
 
-Give a Claude Code SDK run its own working directory.
+Give a Claude Code SDK run its own working directory, so a coding agent works on
+the repository you point it at rather than on whatever directory your server
+happens to be running in (LAB-138).
 
 `claudeCodeAgent({ cwd })` takes a resolver called once per run, so one flow
 build can point each run at a different directory. The run's file tools address
