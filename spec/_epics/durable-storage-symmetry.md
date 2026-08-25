@@ -106,9 +106,21 @@ two that have nowhere else to live are recorded below the themes, and labelled a
    versions, and an observer holding a pre-delete version can match the record that replaced
    it. `stores/types.ts:537-540` states exactly that and declines to defend it — *"this store's
    versions are not a substitute for identity"* — and `handleDeleteSession` is a live caller
-   (`routes/session-routes.ts:231`). Scope identity lives in the per-record `lineageId`, minted
-   fresh on recreate (`session-routes.ts:181-184`), not in the version. So the divergence is
-   **tombstoned generations versus hard-deleted, recreatable records.**
+   (`routes/session-routes.ts:231`). **Nothing on the scope write path supplies that identity
+   either.** `checkScopeWriteVersion` (`stores/scope-write-predicate.ts`) compares the stored
+   version against `expectedVersion` and reads nothing else — and its numeric branch reads an
+   **absent record as version `0`**, deliberately, because `set(id, record, 0)` is how every new
+   scope record is created. So a stale writer holding a freshly-created record's version `0` is
+   admitted against the slot after a hard delete, without even needing a reused version. So the
+   divergence is **tombstoned generations versus hard-deleted, recreatable records.**
+
+   **`lineageId` is not the missing discriminator** — the epic said so and was wrong. It is the
+   inherited **storage address** for `sharedToWorkstream` session-scoped resources (FIX-1068,
+   `resources/lineage-scope.ts`): it decides *where* such a resource stores, so a background
+   session and its parent address the same rows. No file on the scope write path references it,
+   and scope CAS never compares it. Recording it here because the opposite reading — that a
+   fresh lineage on recreate protects a stale scope write — is the natural misreading of
+   `session-routes.ts:181-184`, and this document made it.
 
    **What that correction moved.** The *conclusion* is unchanged and slightly stronger: the
    drivers stay separate, and no issue in this set may propose unifying them. It gets stronger
@@ -126,10 +138,22 @@ two that have nowhere else to live are recorded below the themes, and labelled a
    (`resource-cas.ts:219-220`), and `checkWriteVersion` accepts `0` against a tombstone as
    create-if-absent (`resource-state-predicate.ts:147-149`) — so a write from a context that
    **never observed** the resource revives it after a delete. The product bet is unchanged —
-   deleted stays deleted — it is simply not enforced on that one path. It ships on `main`
-   today through `updateState`, none of FIX-1154's new verbs cause it, and **FIX-1258** owns
-   closing it — a child carried **outside the active set** (§1), so this epic can wrap before
-   it lands.
+   deleted stays deleted — it is simply not enforced on that one path.
+
+   **FIX-1154's new verbs inherit the hole; they do not introduce it, and they are not blocked
+   on it.** Both halves matter. They don't introduce it: `updateState` does exactly this on
+   `main` today, with no new verb involved. But `incState` and `pushState` route through the
+   same `runResourceCAS` read-modify-write at held version `0`, so they **are new entry points
+   to it** — the epic previously said the verbs don't cause the hole, which read as if they
+   were unaffected. FIX-1258 is **not a prerequisite**: the verbs add no capability
+   `updateState` lacks, and the limitation is *pinned at the child* rather than left implicit —
+   FIX-1154's characterization POC carries a row named *"CURRENT BEHAVIOUR (defect, FIX-1258):
+   a version-0 context REVIVES a tombstone"*
+   (`spec-poc/FIX-1154-resource-mutation-verbs/policy-rows.poc.test.ts`, PR
+   [#1445](https://github.com/fixpoint-labs/flow-state-dev/pull/1445)) that asserts today's
+   wrong behaviour and **fails when the fix lands** — which is the intended signal.
+   **FIX-1258** owns closing it, and is carried **outside the active set** (§1), so this epic
+   can wrap before it lands.
 
    **Constrains:** FIX-1154's "shared driver seam" question resolves to *state the divergence
    once*, not *reconcile the drivers*; no issue in this set may propose unifying them. **The
@@ -255,7 +279,7 @@ asymmetries remain deliberate and where each one is written down.**
 | Resource-only surface — content, `client`, `reactTo`, `edges`, collections | **Survives — not an asymmetry.** No state analogue exists to be symmetric with | FIX-1154's scope boundaries |
 | Mutation surfaces differ in several ways — verbs one primitive lacks, and differences in shape among the verbs they nominally share | **Increment and append close** (**FIX-1154**, Tier 1). The remainder is **mapped, not closed** — each difference recorded as closed, as deliberate asymmetry with a reason, or as deferred | **FIX-1154's spec.** The epic states the shape of the answer; the inventory is the child's deliverable |
 | Return contract — `Promise<boolean>` vs `Promise<void>` | **Survives — deliberate.** Scope state's `boolean` exists because its `state_change` notification gate needs it; resources gate `resource_change` on an internally verified no-op. FIX-1154 closes the **increment/append** gap only | Settled at epic altitude — §5, resolved |
-| Adapter delta verbs reachable from scope state only | **Tier 1 closed** by **FIX-1154** — `incState` / `pushState` on the existing resource CAS path. **Tier 2 deferred:** store-native `incField` / `pushToArray` on `ResourceStateStore` is **not required for wrap**. `patchField` and `deleteField` scoped out with a reason (resources already have depth-1 `patchState`; removing a record is a lifecycle op, not a state mutation — theme 1) | Theme 2 + the adapter conformance suite |
+| Adapter delta verbs reachable from scope state only | **Survives — deferred (D-6).** Tier 1 does **not** close this row: `incState` / `pushState` write through `runResourceCAS` → `ResourceStateStore.set`, never the adapter delta verbs. What closes is **caller-visible increment and append parity**, recorded in the mutation-surface row above. Store-native `incField` / `pushToArray` on `ResourceStateStore` stay **deferred, not dropped**, and are **not required for wrap**. `patchField` and `deleteField` scoped out with a reason (resources already have depth-1 `patchState`; removing a record is a lifecycle op, not a state mutation — theme 1) | Theme 2 + the adapter conformance suite |
 | Cross-flow schema validation covers state but not resources | **Closed** by **FIX-1158**, keyed by `(scope, ref, flowIsolation)`. *Unintended* — the doc already promises symmetry here | `state-and-scopes.md` → the cross-flow conflict table, which the fix makes true |
 | Request-scope CAS vs block-scope mutex | **Still open at wrap** unless FIX-1155 ramps — it is at Backlog and out of the active set. If it ramps, store-level CAS is **retained** | `state-and-scopes.md` still describes request scope as keeping `runWithCAS` |
 
@@ -342,11 +366,18 @@ only on the epic PR — the PR closes when the epic wraps; this document outlive
   epic-spec at authoring; blocks nothing today — the active children proceed either way — but
   it decides what "wrapped" means (§3, last table row).*
 
-  **Plain terms.** FIX-1155 fixes a failure users hit today: a fan-out wider than about four
-  concurrent writers over a request-backed task board throws `ConcurrentModificationError`
-  with no application-level cause. By default that is `planAndExecute`, `supervisor`,
-  `blackboard` and `goalSeekLoop`. It is a child of this epic but sits at Backlog, outside the
-  active set.
+  **Plain terms.** FIX-1155 fixes a real failure: a fan-out wider than about four concurrent
+  writers over a **request-backed** task board throws `ConcurrentModificationError` with no
+  application-level cause. **No shipped pattern reaches it on its defaults** — this fork
+  previously said four of them did, and that was wrong. `planAndExecute` defaults to
+  `maxConcurrency: 1` (`patterns/src/plan-and-execute/index.ts:614`) and `supervisor` to `3`
+  (`patterns/src/supervisor/index.ts:280`), so each needs a caller to raise it past four.
+  `blackboard` no longer exists — it is now `routedSpecialists`, whose collection is
+  **sequencer-backed** (`backing: "sequencer"`, `patterns/src/routedSpecialists/index.ts:202`)
+  and so never touches request-scope CAS at all. `goalSeekLoop` takes a **caller-supplied**
+  board (`orchestration/src/task-board/goal-seek-loop.ts:102`) and reaches this only when that
+  board is request-backed and driven wide. So the crash takes a deliberate configuration, not a
+  default. It is a child of this epic but sits at Backlog, outside the active set.
 
   **The trade-off.** Including it means the epic delivers a user-visible reliability fix, at
   the cost of a third workstream and a file-collision risk with FIX-1154. Leaving it out means
@@ -356,10 +387,13 @@ only on the epic PR — the PR closes when the epic wraps; this document outlive
   **My recommendation: leave it out, and schedule it as its own issue soon.** It is an
   asymmetry *inside* scope state, completing FIX-492 for the scope it deferred — it would read
   identically if resources did not exist. Carrying it here makes the epic's boundary
-  "concurrency things we noticed", which is how a set stops being a set.
+  "concurrency things we noticed", which is how a set stops being a set. **The corrected
+  exposure above strengthens this**, and you should know it cuts that way: when the fork was
+  written it claimed four shipped patterns hit this by default, and none of them do.
 
-  **What would change my mind:** if the fan-out crash is being hit by a real user or a shipped
-  pattern now. Then it is a reliability fix that should not wait on scheduling.
+  **What would change my mind:** if a real app is hitting it — which now means one that has
+  raised `maxConcurrency` past four over a request-backed board, not merely one using these
+  patterns. Then it is a reliability fix that should not wait on scheduling.
 
   **What being wrong costs: low and reversible either way** — a delay until it is scheduled,
   or one workstream of coordination overhead.
@@ -456,6 +490,28 @@ only on the epic PR — the PR closes when the epic wraps; this document outlive
   the "only genuinely missing capability" narrowing, FIX-1155's FIFO-mutex framing, and this
   one. A claim about code the set will not touch gets no implementation pass to catch it, so
   this document is the only place it can be checked.
+- **Four review corrections, one of which voided a decision (2026-08-25)** —
+  **(1) `lineageId` is not a scope-generation discriminator.** This document said scope identity
+  lives there, pointing identity away from versions. It does not: `checkScopeWriteVersion`
+  (`stores/scope-write-predicate.ts`) compares the stored version against `expectedVersion` and
+  reads nothing else, and no file on the scope write path references `lineageId` at all — it is
+  the inherited storage address for `sharedToWorkstream` resources (FIX-1068). Worse for the
+  reading it replaces: that predicate reads an **absent record as version `0`** by design, so a
+  stale writer holding a new record's version `0` is admitted against a hard-deleted slot
+  without any version reuse. **This voided the reasoning behind a decision not to file the
+  scope-side gap, which is re-opened.**
+  **(2)** FIX-1154's new verbs **inherit** the version-`0` hole rather than being unaffected —
+  new entry points, not a new defect — and the limitation is pinned by a named POC row instead
+  of making FIX-1258 a prerequisite.
+  **(3)** §3's adapter-delta-verb row claimed "Tier 1 closed" when Tier 1 never touches adapter
+  delta verbs; it now reads **survives — deferred (D-6)**, with caller-visible parity recorded
+  in the row that actually delivers it.
+  **(4)** The FIX-1155 fork claimed four shipped patterns hit the fan-out crash by default.
+  **None do** — two need `maxConcurrency` raised, one is sequencer-backed, one needs a
+  caller-supplied board. That fact was load-bearing for an owner decision, so it is corrected in
+  the fork itself.
+  Corrections **1** and **4** are again claims about code this set is not changing; that class
+  now stands at **six**.
 - **Convergence rule narrowed, same date** — "further feedback routes to the children as
   implementer notes" was too blanket: an owner's fork resolution or a post-convergence
   epic-level correction would have been routed downward and lost, on a page that now says it
