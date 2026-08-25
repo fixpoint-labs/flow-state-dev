@@ -26,6 +26,14 @@ command -v jq  >/dev/null || { echo "mailbox-poll: needs jq" >&2; exit 2; }
 # Fail at arm time rather than polling forever against an expired token: a dead poll
 # and a quiet mailbox are indistinguishable from the outside.
 gh auth status >/dev/null 2>&1 || { echo "mailbox-poll: gh is not authenticated" >&2; exit 2; }
+# Reject identities the watermark path can't represent, rather than folding them into it.
+# Sanitising instead would alias distinct labels (`lane/a` and `lane_a` collapse to one
+# file), and two sessions sharing a watermark lose each other's mail silently.
+for arg in "$ME" "$MYSESSION"; do
+  case $arg in
+    *[!A-Za-z0-9._-]*|'') echo "mailbox-poll: from/session must match [A-Za-z0-9._-]+ (got '$arg')" >&2; exit 2 ;;
+  esac
+done
 
 REPO=${MAILBOX_REPO:-fixpoint-labs/agent-mailbox}
 INTERVAL=${MAILBOX_INTERVAL:-60}
@@ -40,7 +48,7 @@ FAIL_ALERT=${MAILBOX_FAIL_ALERT:-5}
 # can share one checkout and one handle under different from/session pairs, and a
 # shared watermark would let the first poller advance past a message addressed to
 # the second — silently, since that message never passes the first one's filter.
-ns=$(printf '%s-%s-%s' "$REPO" "$ME" "$MYSESSION" | tr -c 'A-Za-z0-9._-' '_')
+ns="$(printf '%s' "$REPO" | tr '/' '_')-$ME-$MYSESSION"
 
 while true; do
   for pr in ${PRS//,/ }; do

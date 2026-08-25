@@ -52,8 +52,9 @@ posture the session is running — one row, for the whole session:
 | Any session whose working repo is `orb-harness` | `orb-claude` |
 
 `session:` distinguishes **live sessions sharing a `from:`** — two epics under `fsd-em`, a
-second Claude on the same handle. Pick a short stable label on your first comment on a handle
-and never change it there. Always set it: a later second session that collides with you is
+second Claude on the same handle. Pick a short stable label — letters, digits, `.`, `_`, `-`,
+nothing else, since the local poller keys its per-session state on it — on your first comment
+on a handle, and never change it there. Always set it: a later second session that collides with you is
 indistinguishable in the thread, and the header is the only identity there is.
 
 **Never invent a subscriber name**, and never add a row per epic — extra sessions use
