@@ -559,6 +559,26 @@ See [Per-generator binding](https://flow-state.dev/docs/skills/binding) for the
 `active` / `allowed` / `activeState` surface and
 [Delegation](https://flow-state.dev/docs/skills/delegation) for the `agents:` shape.
 
+### resolveCatalogTools
+
+```ts
+import { resolveCatalogTools } from "@flow-state-dev/orchestration";
+```
+
+`resolveCatalogTools(agentKey, toolKeys, catalog, logPrefix)` resolves an
+agent's `tools:` list against a tool catalog and returns `GeneratorTool[]`.
+`agentKey` is the agent name quoted in the warning text; `toolKeys` is the
+agent's declared `tools:` list (`readonly string[] | undefined`); `catalog` is
+the available tools keyed by name (`Record<string, GeneratorTool>`); and
+`logPrefix` is the bracket tag the warning carries (`"skills"`,
+`"workforce"`). An empty or absent `toolKeys` returns `[]`. An unknown key
+warns (`[skills] agent "x": unknown tool "y" — skipped`) and is dropped rather
+than throwing, so one bad key in a user-authored `SKILL.md` does not take down
+the agent; only own properties count, so a key like `constructor` misses. It
+lives on the package root because the skills worker-materializer and
+`@flow-state-dev/workforce` both need this lookup and the miss path has to stay
+identical between them.
+
 ## Documentation
 
 - [Authoring a delegating skill](https://flow-state.dev/guides/agents-command-the-board)

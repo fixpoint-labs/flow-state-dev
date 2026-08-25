@@ -14,6 +14,7 @@
  */
 
 import type { CachingConfig } from "../types/model";
+import { asRecord } from "./as-record";
 
 export type { CachingConfig, CachingTtl, CachingBreakpointMode } from "../types/model";
 
@@ -182,11 +183,4 @@ function contentCharLength(content: unknown): number {
     if (typeof record?.text === "string") sum += record.text.length;
   }
   return sum;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return undefined;
-  }
-  return value as Record<string, unknown>;
 }

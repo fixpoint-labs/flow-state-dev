@@ -2,6 +2,7 @@ import { z, type ZodTypeAny } from "zod";
 import type { GeneratorConfig } from "../blocks";
 import type { ItemVisibility } from "../items/types";
 import { generator } from "../blocks";
+import { toUserContent } from "./to-user-content";
 
 export const memoryExtractorTypeSchema = z.enum([
   "fact",
@@ -34,14 +35,6 @@ export interface MemoryExtractorConfig<
    * extraction itself should be visible to the user.
    */
   itemVisibility?: ItemVisibility;
-}
-
-function toUserContent(input: unknown): string {
-  if (typeof input === "string") {
-    return input;
-  }
-
-  return JSON.stringify(input, null, 2);
 }
 
 /**

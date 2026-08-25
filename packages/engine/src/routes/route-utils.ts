@@ -25,6 +25,7 @@ import { ValidationError, FlowError } from "../errors/flow-error";
 import type { RequestRecord, SessionRecord, SessionStore } from "../stores/types";
 import { resolveSessionStorageKey, tenantMatches } from "../stores/scope-keys";
 import { isJsonObject } from "../utils/json-helpers";
+import { isCollectionConfig } from "../resources/is-collection-config";
 import { resourceStorageKeys } from "../resources/storage-keys";
 import { normalizeResourceState } from "../resources/normalize-resource-state";
 import { sortItemsChronologically } from "../utils/sort";
@@ -224,15 +225,6 @@ export function isResourceConfig(value: unknown): value is ResourceConfig {
     typeof candidate.stateSchema === "object" &&
     candidate.stateSchema !== null &&
     typeof candidate.stateSchema.safeParse === "function"
-  );
-}
-
-function isCollectionConfig(value: unknown): value is ResourceCollectionConfig {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "pattern" in value &&
-    typeof (value as ResourceCollectionConfig).pattern === "string"
   );
 }
 

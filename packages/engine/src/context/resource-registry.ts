@@ -47,6 +47,7 @@ import type {
   VersionedResourceState
 } from "../stores/types";
 import type { ResourceCASIntent } from "../stores/resource-cas";
+import { isCollectionConfig } from "../resources/is-collection-config";
 import {
   ConcurrentModificationError,
   ResourceAlreadyExistsError,
@@ -190,15 +191,6 @@ export function normalizeStateDefault(
   }
 
   return {};
-}
-
-export function isCollectionConfig(config: unknown): config is ResourceCollectionConfig {
-  return (
-    typeof config === "object" &&
-    config !== null &&
-    "pattern" in config &&
-    typeof (config as ResourceCollectionConfig).pattern === "string"
-  );
 }
 
 export function normalizeScopeResources(

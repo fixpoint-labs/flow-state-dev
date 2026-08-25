@@ -5,7 +5,15 @@
  * safe to share a storage key, it reports incompatible — Wave 1 accepts
  * false-positive conflicts (asks the developer to reconcile or isolate)
  * over false negatives (silent data loss).
+ *
+ * Zod `_def` reads go through `@flow-state-dev/core/helpers` so a
+ * Zod-internals change stays a single-site fix.
  */
+import {
+  getZodInnerType,
+  getZodObjectShape,
+  getZodTypeName,
+} from "@flow-state-dev/core/helpers";
 import type { ZodTypeAny } from "zod";
 
 export type CompatibilityResult =
@@ -44,8 +52,8 @@ export function compareZodSchemas(a: ZodTypeAny, b: ZodTypeAny): CompatibilityRe
     return compareZodSchemas(unwrappedA, unwrappedB);
   }
 
-  const nameA = typeName(a);
-  const nameB = typeName(b);
+  const nameA = getZodTypeName(a) ?? "Unknown";
+  const nameB = getZodTypeName(b) ?? "Unknown";
   if (nameA !== nameB) {
     return { kind: "incompatible", reason: "incompatible-types", detail: `${nameA} vs ${nameB}` };
   }
@@ -59,32 +67,19 @@ export function compareZodSchemas(a: ZodTypeAny, b: ZodTypeAny): CompatibilityRe
   return { kind: "compatible", warnings: [] };
 }
 
-function typeName(schema: ZodTypeAny): string {
-  return (schema as { _def?: { typeName?: string } })._def?.typeName ?? "Unknown";
-}
-
 function unwrap(schema: ZodTypeAny): ZodTypeAny {
-  if (!WRAPPER_TYPE_NAMES.has(typeName(schema))) {
+  if (!WRAPPER_TYPE_NAMES.has(getZodTypeName(schema) ?? "Unknown")) {
     return schema;
   }
-  const def = (schema as { _def?: { innerType?: ZodTypeAny; schema?: ZodTypeAny } })._def;
-  return def?.innerType ?? def?.schema ?? schema;
+  return getZodInnerType(schema) ?? schema;
 }
 
 function getShape(schema: ZodTypeAny): Record<string, ZodTypeAny> | undefined {
-  const direct = (schema as { shape?: unknown }).shape;
-  if (direct && typeof direct === "object") {
-    return direct as Record<string, ZodTypeAny>;
+  try {
+    return getZodObjectShape(schema);
+  } catch {
+    return undefined;
   }
-  const shapeFn = (schema as { _def?: { shape?: () => Record<string, ZodTypeAny> } })._def?.shape;
-  if (typeof shapeFn === "function") {
-    try {
-      return shapeFn();
-    } catch {
-      return undefined;
-    }
-  }
-  return undefined;
 }
 
 function compareObjectShapes(a: ZodTypeAny, b: ZodTypeAny): CompatibilityResult {

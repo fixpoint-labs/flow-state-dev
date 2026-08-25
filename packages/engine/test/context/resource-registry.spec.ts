@@ -15,9 +15,9 @@ import {
   normalizeScopeResourceContent,
   resolveStringContentTemplates,
   filterFlowLevelEager,
-  isCollectionConfig,
   normalizeStateDefault
 } from "../../src/context/resource-registry";
+import { isCollectionConfig } from "../../src/resources/is-collection-config";
 import { runResourceCAS, type ResourceCASIntent } from "../../src/stores/resource-cas";
 import { createStateContainer } from "../../src/stores/state-container";
 import { ResourceDeletedError } from "../../src/errors/flow-error";
