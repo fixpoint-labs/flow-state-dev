@@ -100,17 +100,21 @@ export function assertDistinctRepository(
  * so the check passed and the harm was unchanged. The rule is *the same
  * repository*, and only git can answer that.
  */
-export function requireSourceRepo(): string {
-  const repo = process.env.CONDUCTOR_REPO;
+export function requireSourceRepo(variable = "CONDUCTOR_REPO"): string {
+  // The variable NAME is a parameter so the whole rule travels, not two thirds
+  // of it. The goal runner reads a differently-named variable and was therefore
+  // reusing only `assertDistinctRepository`, keeping its own copy of the
+  // absent-check — which is how the last three defects on this branch started.
+  const repo = process.env[variable];
   if (repo === undefined || repo === "") {
     throw new Error(
-      "[conductor] CONDUCTOR_REPO is not set. It names the repository the coding agent " +
+      `[conductor] ${variable} is not set. It names the repository the coding agent ` +
         "works on, and there is no safe default: falling back to this process's directory " +
         "would point the agent at the dispatcher's own repository.",
     );
   }
 
-  assertDistinctRepository("CONDUCTOR_REPO", repo);
+  assertDistinctRepository(variable, repo);
   return repo;
 }
 

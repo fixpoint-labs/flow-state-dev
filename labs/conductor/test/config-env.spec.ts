@@ -29,6 +29,12 @@ afterEach(() => {
   delete process.env.CONDUCTOR_TEST_MS;
 });
 
+function nested(dir: string): string {
+  const inner = join(dir, "packages", "thing");
+  execFileSync("mkdir", ["-p", inner]);
+  return inner;
+}
+
 function repo(): string {
   const dir = mkdtempSync(join(tmpdir(), "conductor-cfg-"));
   dirs.push(dir);
@@ -102,6 +108,31 @@ describe("CONDUCTOR_REPO — the same REPOSITORY, not the same path", () => {
     process.env.CONDUCTOR_REPO = theirs;
 
     expect(requireSourceRepo()).toBe(theirs);
+  });
+
+  it("carries the whole rule to a differently-named variable", () => {
+    // The goal runner reads `GOAL_CONDUCTOR_REPO`, so it could only reuse
+    // `assertDistinctRepository` and kept its own copy of the absent-check.
+    // Parameterising the NAME is what lets it reuse both — which is the fix for
+    // the class, not for the two rules that were missed.
+    const dir = repo();
+    process.chdir(nested(dir));
+    process.env.GOAL_CONDUCTOR_REPO = dir;
+
+    // Same repository, reached through the other variable: still refused, and
+    // the message names the variable the operator actually set.
+    expect(() => requireSourceRepo("GOAL_CONDUCTOR_REPO")).toThrow(
+      /GOAL_CONDUCTOR_REPO.*same repository/s,
+    );
+
+    delete process.env.GOAL_CONDUCTOR_REPO;
+    expect(() => requireSourceRepo("GOAL_CONDUCTOR_REPO")).toThrow(
+      /GOAL_CONDUCTOR_REPO is not set/,
+    );
+
+    // And the default is unchanged, so the dispatcher's call site still works.
+    process.env.CONDUCTOR_REPO = dir;
+    expect(() => requireSourceRepo()).toThrow(/CONDUCTOR_REPO.*same repository/s);
   });
 
   it("refuses an absent one rather than defaulting", () => {

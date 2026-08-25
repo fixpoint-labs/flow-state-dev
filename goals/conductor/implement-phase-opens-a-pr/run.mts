@@ -39,10 +39,13 @@ import { join, resolve } from "node:path";
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "../../../labs/conductor/src/flow.ts";
 import { implementPhase } from "../../../labs/conductor/src/implement.ts";
 import {
-  assertDistinctRepository,
   positiveIntFromEnv,
+  requireSourceRepo,
 } from "../../../labs/conductor/src/config-env.ts";
-import { NETWORK_CALL_TIMEOUT_MS } from "../../../labs/conductor/src/exec.ts";
+import {
+  GIT_TIMEOUT_MS,
+  NETWORK_CALL_TIMEOUT_MS,
+} from "../../../labs/conductor/src/exec.ts";
 import { loadFixture, runGoal, silentLogger } from "../../lib/index.mts";
 
 
@@ -83,26 +86,19 @@ await runGoal(async () => {
   const fixture = loadFixture<Fixture>(import.meta.url);
   const failures: string[] = [];
 
-  // The repository the checkout is cut from. Named by env rather than derived,
-  // so this check never cuts a worktree out of a repository nobody chose.
-  const sourceRepo = process.env.GOAL_CONDUCTOR_REPO;
-  if (sourceRepo === undefined || sourceRepo === "") {
-    return {
-      failures: [
-        "GOAL_CONDUCTOR_REPO is not set — point it at a clone this check may cut " +
-          "worktrees from. It must not be the directory this process runs in.",
-      ],
-      evidence: "",
-    };
-  }
-  // **The dispatcher's guard, not a second copy of it.** This runner kept path
-  // equality after `fsdev.config.ts` moved to repository identity, so a
-  // subdirectory, a sibling worktree or a symlinked spelling walked past it —
-  // and this is the site that launches a REAL coding agent, so the one left on
-  // the weaker rule had the larger blast radius. Importing the function is what
-  // makes "adopt the rule" mean every site (BP-034).
+  // **The dispatcher's whole repository rule, not a local copy of part of it.**
+  // This runner kept path equality after `fsdev.config.ts` moved to repository
+  // identity, so a subdirectory, a sibling worktree or a symlinked spelling all
+  // walked past it — and this is the site that launches a REAL coding agent, so
+  // the one on the weaker rule had the larger blast radius.
+  //
+  // The variable name is a parameter, which is what lets this reuse the
+  // absent-check too rather than keeping its own. Three rules on this branch
+  // were adopted in `labs/conductor/src` and missed here; importing the whole
+  // function is what stops a fourth.
+  let sourceRepo: string;
   try {
-    assertDistinctRepository("GOAL_CONDUCTOR_REPO", sourceRepo);
+    sourceRepo = requireSourceRepo("GOAL_CONDUCTOR_REPO");
   } catch (err) {
     return {
       failures: [
@@ -121,9 +117,14 @@ await runGoal(async () => {
   const { runAction } = await import("@flow-state-dev/engine");
   const { sqliteStores } = await import("@flow-state-dev/store-sqlite");
 
+  // Bounded like every other child process this lab spawns. Local git is fast
+  // until it is not — an NFS stall or an index lock hangs it, and an unbounded
+  // hang here never reaches `finally`, so the runtime is never disposed and the
+  // scratch tree is never removed. Same rule, same reason as the `gh` probe.
   const baseRef = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
     cwd: sourceRepo,
     encoding: "utf8",
+    timeout: GIT_TIMEOUT_MS,
   }).trim();
 
   const built = conductorFlow({
@@ -284,6 +285,7 @@ await runGoal(async () => {
             );
           }
           const head = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+            timeout: GIT_TIMEOUT_MS,
             cwd: checkout,
             encoding: "utf8",
           }).trim();
