@@ -130,6 +130,16 @@ const system = eventActors({
 // Use system.emit in a sequencer to write entries with fan-out
 ```
 
+`createAppendEntry` returns a state-only block: it appends the entry to the workspace resource and emits its `rb-entry` component, and produces no output. When you remix the emit pipeline yourself, compose it with `.tap()`:
+
+```typescript
+sequencer({ name: "my-emit", inputSchema: entrySchema })
+  .tap(createAppendEntry("my-emit", rb.workspace))   // entry is recorded, the entry flows on
+  .step(myCustomDispatch)
+```
+
+As a `.step()` it hands `undefined` to the next step. Earlier releases echoed the entry back, so `.step()` appeared to work.
+
 **Key exports:** `eventActors`, `actor`, `createEventActorsWorkspace`, `matchTopic`, `compilePattern`, `createAppendEntry`, `normalizeToEntries`
 
 ### Task Board

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { handler } from "@flow-state-dev/core";
+import { handler, sequencer } from "@flow-state-dev/core";
 import { testBlock, testItems } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
@@ -194,18 +194,45 @@ describe("eventActors", () => {
     });
 
     const a = actor({ name: "a", watch: ["request:**"], block: rec });
-    const { emit } = buildEventActors({ name: "test-dup", actors: [a] });
+    const { emit, workspace } = buildEventActors({ name: "test-dup", actors: [a] });
 
-    const seed = { type: "request", topic: "query", body: "hi" };
-    const result = await testBlock(emit, {
-      input: seed,
-      // Pre-seeded with the same (type, topic), so `-append` takes its
-      // duplicate-skip early return. That path echoed the entry too, so it
-      // needs its own assertion — the success path above cannot cover it.
-      session: { resources: { eventedActors: { entries: [seed] } } },
+    // Reads the workspace back once the pattern has run. `testBlock` surfaces
+    // items and scope state, not resource state, so the count the duplicate
+    // skip is supposed to hold flat is only observable from inside a block
+    // that shares the run's resource registry.
+    const readEntryCount = handler({
+      name: "read-entry-count",
+      inputSchema: z.any(),
+      outputSchema: z.object({ entryCount: z.number() }),
+      resources: { eventedActors: workspace },
+      execute: (_input, ctx) => ({
+        entryCount: (
+          (ctx.resources as Record<string, any>).eventedActors.state
+            .entries as unknown[]
+        ).length,
+      }),
     });
 
+    const seed = { type: "request", topic: "query", body: "hi" };
+    const result = await testBlock(
+      sequencer({ name: "test-dup-probe", inputSchema: z.any() })
+        .step(emit)
+        .step(readEntryCount),
+      {
+        input: seed,
+        // Pre-seeded with the same (type, topic), so `-append` takes its
+        // duplicate-skip early return. That path also returns nothing, so it
+        // needs its own assertion — the success path above cannot cover it.
+        session: { resources: { eventedActors: { entries: [seed] } } },
+      }
+    );
+
     expect(result.error).toBeNull();
+
+    // The skip is a skip, not just a silent trace: the workspace still holds
+    // the single seeded entry. Without this, an `-append` that wrote the
+    // duplicate and returned nothing would still pass the assertions below.
+    expect(result.output).toEqual({ entryCount: 1 });
 
     const traces = testItems(result.items)
       .blockOutputs()

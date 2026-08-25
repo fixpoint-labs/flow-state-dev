@@ -7,10 +7,6 @@
  * when multiple actors emit entries with identical topics; treating
  * (type, topic) as the dedupe key matches the original pattern's
  * behavior.
- *
- * State-only: the block writes the workspace resource and emits, and returns
- * nothing. Compose it with `.tap()` — as a `.step()` it hands `undefined` to
- * the next step.
  */
 import { handler } from "@flow-state-dev/core";
 import type { DefinedResource } from "@flow-state-dev/core/types";
@@ -20,6 +16,11 @@ import {
   type EventActorsWorkspaceState,
 } from "../schemas";
 
+/**
+ * State-only: writes the workspace resource and emits, returns nothing.
+ * @remarks Compose with `.tap(createAppendEntry(...))`, never `.step()` —
+ * it returns nothing, so `.step()` hands `undefined` to the next step.
+ */
 export function createAppendEntry(
   name: string,
   workspaceResource: DefinedResource,
