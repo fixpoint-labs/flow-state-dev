@@ -1618,7 +1618,7 @@ type PhaseLogic = {
       <tbody>
         <tr><td>How do two concurrent runs stay apart?</td><td>Different <code>topic</code>, or different <code>assignee</code>. Same both means the same child session</td></tr>
         <tr><td>How does the parent find them?</td><td>It re-reads the durable task rows. That is the handle</td></tr>
-        <tr><td>Can it enumerate live runs?</td><td>No. There is no "list my workstreams" API and no registry</td></tr>
+        <tr><td>Can it enumerate live runs?</td><td>Enumerate, yes &#8212; <code>GET /api/flows/sessions/:sessionId/workstreams</code> lists a session's children, each with a derived status <span class="tag t-real">exists</span>. Live, no &#8212; a derived status is not proof a run is alive; liveness is the next row. The durable rows stay the handle</td></tr>
         <tr><td>Can it tell whether one is alive?</td><td><code>ctx.requestHost.livenessOf(requestIds)</code> &#8212; an <em>optional</em> method, absent when the liveness gate refuses. Design for it being missing</td></tr>
         <tr><td>What settles a row?</td><td>The workstream, through the runner's fenced recorders. Never the parent</td></tr>
         <tr><td>What does the operator see?</td><td><code>task-change</code> items plus a transient board-meta component carrying <code>{ status, terminationReason, counts }</code>, both already emitted</td></tr>
