@@ -32,7 +32,7 @@ per-operation `setAssignee` guard are on `main`.
 | FIX-976 | **Done** | Decision 1's one bound issue. Shipped in [#1004](https://github.com/fixpoint-labs/flow-state-dev/pull/1004). |
 | FIX-948 | **Done** | Shipped as `maxTotalRetries` in [#1031](https://github.com/fixpoint-labs/flow-state-dev/pull/1031). *OQ-C is closed by shipment.* |
 | FIX-963 | Backlog | **Still live — re-verified in code 2026-08-24.** Now unblocked: FIX-989 shipped the detection primitive it was waiting on. |
-| FIX-964 | Backlog | **Partly closed by FIX-976's shipped widening.** Residual is narrow — see below. |
+| FIX-964 | ~~Backlog~~ | **DESCOPED 2026-08-24, owner call.** FIX-976's shipped widening closed most of it; the residue is narrow. Unparented, not closed — see §3.5. |
 | FIX-978 | Backlog | **Likely subsumed by shipped work (FIX-1005).** Subsumption check owed before it specs — OQ-E. |
 
 Three further issues joined this track after the epic opened and have **shipped**:
@@ -102,9 +102,9 @@ number. **Refreshed 2026-08-24** against live Linear state.
 
 | Set | Size | Members |
 |---|---|---|
-| **Track 1 — original honesty set** | 6 | FIX-951 ✅, FIX-976 ✅, FIX-948 ✅, FIX-963, FIX-964, FIX-978 |
+| **Track 1 — original honesty set** | 5 | FIX-951 ✅, FIX-976 ✅, FIX-948 ✅, FIX-963, FIX-978 *(FIX-964 descoped)* |
 | ├ **Shipped** | 3 | FIX-951 (anchor), FIX-976, FIX-948 |
-| └ **Open** | 3 | FIX-963, FIX-964, FIX-978 |
+| └ **Open** | 2 | FIX-963, FIX-978 *(and FIX-978 is pending OQ-E)* |
 | **Track 1 — joined and shipped after the epic opened** | 3 | FIX-989 ✅, FIX-992 ✅, FIX-995 ✅ |
 | **Track 2 — human-wait board pair** *(added 2026-08-24)* | 4 | FIX-1234, FIX-1238, FIX-1244, FIX-1245 |
 | **Decision-1-bound** | **1** | FIX-976 *(shipped — the decision is spent)* |
@@ -576,13 +576,12 @@ This decision used to say "the Decision-1-bound three wait." Three things retire
   and naming it here is **not** a scoping rule for `cross-spec-review` — see the bullet above.
 
 > **Note, 2026-08-24 — the set this decision scopes has shrunk under it.** FIX-976 and FIX-948
-> have **shipped**, so neither is in a spec set any more; the A1 constraint they shared is
-> settled in merged code rather than pending between specs. What `cross-spec-review` would
-> actually run over now is **FIX-963 and FIX-964** — and only after OQ-E decides whether
-> FIX-978 exists at all. Two specs is thin for a coherence pass; if OQ-E closes FIX-978 and
-> FIX-964 is descoped, the pass has one spec and should be skipped rather than performed on a
-> set of one. The decision's *rule* (the set is every open spec, never a file-colliding
-> subset) stands unchanged — only its membership moved.
+> have **shipped**, and **FIX-964 has been descoped**, so none of the three is in a spec set any
+> more; the A1 constraint they shared is settled in merged code rather than pending between
+> specs. What `cross-spec-review` would actually run over now is **FIX-963 alone** — and OQ-E may
+> yet remove FIX-978 as well. **A coherence pass over a set of one is not a pass; skip it** and
+> review FIX-963's spec on its own merits. The decision's *rule* (the set is every open spec,
+> never a file-colliding subset) stands unchanged — only its membership moved.
 
 ### Decision 3 — an expired lease is not evidence of abandonment; no issue in this set may assume otherwise
 
@@ -661,14 +660,13 @@ state. Empty columns mean not yet reached.
 | **FIX-992** | `ResourceStateStore.set` had no `expectedVersion` | **Done** | [#1010](https://github.com/fixpoint-labs/flow-state-dev/pull/1010) | [#1035](https://github.com/fixpoint-labs/flow-state-dev/pull/1035), [#1036](https://github.com/fixpoint-labs/flow-state-dev/pull/1036), [#1039](https://github.com/fixpoint-labs/flow-state-dev/pull/1039) **merged** |
 | **FIX-995** | `updateState` callbacks report work that never committed | **Done** | [#1022](https://github.com/fixpoint-labs/flow-state-dev/pull/1022) | [#1023](https://github.com/fixpoint-labs/flow-state-dev/pull/1023) **merged** |
 
-**Track 1 — open, and each one needs a staleness check before it specs.** These three spec
-PRs have not moved since 2026-07-30. Substantial adjacent work shipped in the interval, so
-the question for each is no longer *"is the spec right"* but *"is the defect still there":*
+**Track 1 — open, and each one needs a staleness check before it specs.** These spec PRs have
+not moved since 2026-07-30. Substantial adjacent work shipped in the interval, so the question
+for each is no longer *"is the spec right"* but *"is the defect still there":*
 
 | Issue | Title (short) | Linear | Spec PR | Verdict 2026-08-24 |
 |---|---|---|---|---|
 | **FIX-963** | Recorder failure after a task commits is swallowed | Backlog · P3 | [#992](https://github.com/fixpoint-labs/flow-state-dev/pull/992) · *spec review* | **Still live**, re-verified in `record-result.ts`. Now *implementable* — FIX-989 shipped `didWriteLand`, the primitive it lacked. **Keep.** |
-| **FIX-964** | Custom `TaskCollectionRef`s silently skip FIX-951's guards | Backlog · P3 | [#994](https://github.com/fixpoint-labs/flow-state-dev/pull/994) · *spec review* | **Partly closed.** FIX-976 shipped the widened return types, so the compile-time signal §5 confirmed now exists. Residual is the two known gaps plus the `dispatchAndExecute` direct-ref path. **Narrow — candidate to descope.** |
 | **FIX-978** | Stranded `in_progress` lease hangs a later drain ~14h | Backlog · P2 | [#990](https://github.com/fixpoint-labs/flow-state-dev/pull/990) · *on hold* | **Likely subsumed.** FIX-1005 made a lapsed lease claimable (`leaseLapsed` → `isClaimable`), so the next claim reclaims a stranded row — the hang this issue names. See **OQ-E**. |
 
 **Track 2 — the human-wait board pair** *(added by owner call 2026-08-24)*:
@@ -716,6 +714,9 @@ actual remaining surface.
 labels and relations; only the epic link is gone. Re-parenting any of them is one field
 change if this call was wrong. Listed here so the epic's audit trail shows where they went.
 
+**FIX-964 joins them by a different route** — it was genuinely on-objective, and left because
+the objective caught up with it rather than because it never belonged. Its row says why.
+
 | Issue | Linear | Why it isn't this epic |
 |---|---|---|
 | **FIX-1002** | Todo · **P1 Urgent** | Execution context reads resource state before its `in_progress` request record persists. Engine request-record liveness. **The only Urgent item under the epic — needs a home, not a hold.** |
@@ -727,6 +728,7 @@ change if this call was wrong. Listed here so the epic's audit trail shows where
 | **FIX-1000** | Backlog | Fence the scope generation against a create racing session deletion. Session/scope storage. |
 | **FIX-1030** | **Canceled** | Dead row. |
 | **FIX-1038** | **Duplicate** | Dead row. |
+| **FIX-964** | Backlog · P3 · spec PR [#994](https://github.com/fixpoint-labs/flow-state-dev/pull/994) *on hold* | **Descoped by owner call, 2026-08-24** — the one removal that *was* on-objective. FIX-976's shipped widening rejects a legacy two-arg ref at declaration time, which is most of what this issue was for. What is left is the options-parameter gap, the `as unknown as` bypass, and `dispatchAndExecuteBlock`'s direct-ref path (exported, no first-party caller) — a thin containment hole on a path nothing currently uses. Reopen as epic work if a real custom-store user hits it. The deeper cause stays as **OQ-D**. |
 
 **FIX-1001** (*Background work pool is not drained on the abort/disconnect/error paths*,
 **Done**) is the parent investigation the five request-record rows came out of, and it stays
@@ -784,6 +786,7 @@ FIX-964 ships the behavioral decline-classification fix; this is the deeper caus
 is captured here so it is **not lost when FIX-964 closes**, which is the specific failure mode of a
 non-goal noted only inside one issue's spec. **Needs a human to decide whether it becomes its own
 epic** — no issue in this set should start on it, and no issue in this set is blocked by it.
+*(OQ-D outlived FIX-964's descope on 2026-08-24, which is exactly what recording it here was for.)*
 
 > **One open item lives in §2, not here, deliberately** — stated once, where the
 > reasoning it depends on lives. Duplicating it is how two copies drift apart.
@@ -846,6 +849,10 @@ FIX-964 claim of "custom refs now get a signal" states what it does about casts.
 > mechanism **because** the widening is incomplete, i.e. that its scope is defined by this residue.
 > FIX-964's spec (PR #994) rejected the entire family this framing assumed. Its fix does not depend
 > on the widening at all — see the next claim.
+>
+> **Update 2026-08-24:** the widening **shipped** with FIX-976, so the confirmed signal is now live
+> on `main`. That is what reduced FIX-964 to its two gaps plus the direct-ref path, and what made
+> the owner's descope call available. The evidence here is the reason the descope is safe.
 
 ### Is FIX-964's fix reachable by certifying the store? — **REFUTED (code-derived, round 3)**
 
@@ -1023,3 +1030,11 @@ removing the `?`, and nobody should retry it.
      comment that had listed the `awaiting_review` → `needs_input` rename as out of scope.
      It is now in, at High, and it gates the close of Track 2. Recorded here because the
      comment and the ticket disagree and the ticket is later.
+- **FIX-964 descoped, 2026-08-24 (owner call).** Unparented from FIX-980; spec PR #994 stays
+  open, marked *on hold*. The reasoning is the epic working as intended: FIX-976 shipped the
+  widened return types, which delivered the compile-time signal §5 had confirmed, and the
+  residue — the options-parameter gap, the cast bypass, and `dispatchAndExecuteBlock`'s
+  factory-less ref path — is thinner than the issue that was filed. It is a containment hole
+  on a path with no first-party caller, not the defect the objective promised to close.
+  **Track 1's open set is now FIX-963, plus FIX-978 pending OQ-E**, which also collapses
+  `cross-spec-review` to a set of one — see the note on Decision 2.
