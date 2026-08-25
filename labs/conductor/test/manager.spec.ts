@@ -1001,6 +1001,32 @@ describe("the flow — one board, one phase", () => {
     expect(seen.prompts).toHaveLength(1);
     expect(after.feedback).toMatch(/configured for "implement"/);
   });
+
+});
+
+describe("status finds the row seeding would have reused", () => {
+  it("matches an issue filter that differs only in case", async () => {
+    // Identity derivation folds case, so `seed({ issue: "fix-1219" })` returns
+    // the SAME row as `seed({ issue: "FIX-1219" })` — deliberately, because the
+    // filesystem cannot tell those two apart either. The status filter compared
+    // raw strings, so the row seeding kept reusing was invisible to a status
+    // call spelled the other way: an empty listing for a task that exists and
+    // is running, which is the silent partial answer this lab exists to remove.
+    const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
+    });
+    await seedAndDrain(live);
+
+    const asSeeded = (await live.call("status", { issue: ISSUE })) as { rows: unknown[] };
+    const otherCase = (await live.call("status", {
+      issue: ISSUE.toLowerCase(),
+    })) as { rows: unknown[] };
+
+    expect(asSeeded.rows).toHaveLength(1);
+    // The property: the two spellings are one row, exactly as seeding treats them.
+    expect(otherCase.rows).toHaveLength(asSeeded.rows.length);
+  });
 });
 
 describe("the run record — readable from any coordinator session", () => {

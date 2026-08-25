@@ -53,6 +53,7 @@ import {
   type RunRowWrite,
 } from "./run-record";
 import {
+  conductorTaskId,
   acquireCheckout,
   branchFor,
   checkoutPathFor,
@@ -568,6 +569,27 @@ export function harnessManager(options: ManagerOptions) {
           `[conductor] task ${input.taskId} is a "${phaseName}" row on a manager ` +
             `configured for "${phase.phase}". Refusing rather than running ` +
             `${phase.phase}'s prompt and completion check against it.`,
+        );
+      }
+
+      // **And the row's ID must be the one its payload derives**, for the same
+      // reason and by the same route. The board capability this flow returns
+      // lets a sibling or outer block add a row with an ID of its choosing, and
+      // every partition below — checkout, branch, run topic — is built from the
+      // PAYLOAD. Two rows carrying one `{ issue, phase }` under two different
+      // IDs therefore both pass every guard here and land on one tree, one
+      // branch and one run record: duplicate paid model work on a single
+      // artifact, one run's record overwritten by the other, and either run's
+      // pull request satisfying the other's completion check. "Separate trees
+      // pushing one ref is not isolation" is the rule `branchFor` states; this
+      // is the same collapse reached through the row id instead.
+      const canonicalId = conductorTaskId(issue, phaseName);
+      if (input.taskId !== canonicalId) {
+        throw new ConductorAttemptFailed(
+          `[conductor] task ${input.taskId} carries the payload for ${canonicalId}. ` +
+            `Refusing: the checkout, the branch and the run record are all derived from ` +
+            `that payload, so a second row under a different id would run the same work ` +
+            `in the same tree.`,
         );
       }
 

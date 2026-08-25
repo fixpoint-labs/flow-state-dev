@@ -70,6 +70,7 @@ import {
   assertPositiveInt,
 } from "./config-env";
 import {
+  canonicalSegment,
   assertSafeSegment,
   conductorTaskId,
   joinIdentity,
@@ -473,7 +474,24 @@ export function conductorFlow(options: ConductorFlowOptions) {
         const payload = conductorTaskInputSchema.safeParse(task.input);
         const issue = payload.success ? payload.data.issue : null;
         const phaseName = payload.success ? payload.data.phase : null;
-        if (input.issue !== undefined && issue !== input.issue) continue;
+        // **Compare the canonical form on both sides.** Identity derivation folds
+        // case (`assertSafeSegment`), so seeding `FIX-1` and seeding `fix-1`
+        // resolve the same row — but a raw comparison here then hid that row
+        // from `status({ issue: "fix-1" })` while `seed` kept returning it. One
+        // surface folding and the other not is a silent partial answer: the
+        // caller sees an empty listing for a task that exists and is running.
+        // **Compare the canonical form on both sides.** Identity derivation folds
+        // case (`assertSafeSegment`), so seeding `FIX-1` and seeding `fix-1`
+        // resolve the same row — but a raw comparison here then hid that row
+        // from `status({ issue: "fix-1" })` while `seed` kept returning it. One
+        // surface folding and the other not is a silent partial answer: an
+        // empty listing for a task that exists and is running.
+        if (
+          input.issue !== undefined &&
+          (issue === null || canonicalSegment(issue) !== canonicalSegment(input.issue))
+        ) {
+          continue;
+        }
 
         const record =
           issue !== null && phaseName !== null

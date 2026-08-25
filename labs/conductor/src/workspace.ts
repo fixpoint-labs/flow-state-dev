@@ -169,7 +169,7 @@ export function assertSafeSegment(label: string, value: string): string {
         `of a directory, and nothing long enough to overflow a filesystem component.`,
     );
   }
-  return value.toLowerCase();
+  return canonicalSegment(value);
 }
 
 /**
@@ -211,6 +211,23 @@ export function assertDerivedIdentity(label: string, value: string): string {
         `end in "." or ".lock"), and nothing that could climb out of a directory.`,
     );
   }
+  return canonicalSegment(value);
+}
+
+/**
+ * The canonical form of an owned segment — the fold, without the grammar check.
+ *
+ * Both validators above return this, so anything comparing against a derived
+ * identity has to apply the same fold or the two quietly disagree. It is a
+ * function rather than a `.toLowerCase()` at each site for the usual reason:
+ * a rule in a function gets imported, a rule at a call site gets copied — and
+ * this one was already spelled out twice here before a third caller needed it.
+ *
+ * Separate from the validators because a caller-supplied FILTER is not an
+ * identity. A filter that could never be a valid segment simply matches nothing,
+ * and throwing on it would turn a query into an error.
+ */
+export function canonicalSegment(value: string): string {
   return value.toLowerCase();
 }
 
