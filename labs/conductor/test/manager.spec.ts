@@ -760,6 +760,35 @@ describe("the git inputs are validated at the programmatic door too", () => {
     ).not.toThrow();
   });
 
+  it("refuses a relative workspace root, which one task can resolve two ways", async () => {
+    // `checkoutPathFor` resolves the root against `process.cwd()`. Relative, the
+    // checkout for one DURABLE task therefore depends on where the process is
+    // standing when the attempt runs — so a long-lived host that changes
+    // directory between attempts sends the retry to a different, empty tree,
+    // while the uncommitted work the retry prompt tells it to continue from sits
+    // in the first one. Nothing errors; the derivation is stable per directory
+    // and stably wrong across two.
+    //
+    // The file used to ask for an absolute root in a comment and call this case
+    // unguarded. An unenforced convention is what every other guard at this door
+    // replaced.
+    const { conductorFlow } = await import("../src/flow");
+    expect(() =>
+      conductorFlow({
+        ...base,
+        workspace: { ...base.workspace, root: "checkouts", sourceRepo: sharedRepo() },
+      }),
+    ).toThrow(/workspace\.root is relative/);
+
+    // `./` is the same mistake wearing a prefix that looks deliberate.
+    expect(() =>
+      conductorFlow({
+        ...base,
+        workspace: { ...base.workspace, root: "./checkouts", sourceRepo: sharedRepo() },
+      }),
+    ).toThrow(/workspace\.root is relative/);
+  });
+
   it("still builds on a repository and ref that are real", async () => {
     const { conductorFlow } = await import("../src/flow");
     expect(() =>

@@ -412,9 +412,17 @@ export function checkoutPathFor(config: WorkspaceConfig, location: RunLocation):
   // retry recovers, because the derivation is stable and stably wrong.
   //
   // Resolved here rather than at each call because this is the one derivation
-  // every consumer goes through. A host should still pass an absolute root:
-  // `resolve` reads `process.cwd()`, so a process that changes directory
-  // mid-flight would move the checkout, and that is not a case this guards.
+  // every consumer goes through.
+  //
+  // The root must be absolute, and that is now REFUSED at `conductorFlow`
+  // rather than asked for here. `resolve` reads `process.cwd()`, so a relative
+  // root makes this derivation a function of where the process happens to be
+  // standing: a long-lived host that changes directory between attempts derives
+  // a second checkout for the same durable task, and the retry inherits an empty
+  // tree instead of the uncommitted work its own prompt tells it to continue
+  // from. This comment used to say a host "should" pass an absolute one and call
+  // the rest unguarded — which is the unenforced convention every other guard at
+  // that door exists to replace.
   return resolve(config.root, ...locationSegments(location), issuePhaseSegment(location));
 }
 

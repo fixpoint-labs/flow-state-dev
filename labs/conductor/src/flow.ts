@@ -42,6 +42,7 @@
  * authority on completion; the run record never is.**
  */
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
+import { isAbsolute } from "node:path";
 import { z } from "zod";
 import { defineTaskCollection } from "@flow-state-dev/orchestration/tasks";
 import { taskBoard } from "@flow-state-dev/orchestration/task-board";
@@ -172,6 +173,27 @@ export function conductorFlow(options: ConductorFlowOptions) {
   // the row is claimed, once per retry, until the budget is gone.
   assertDistinctRepository("workspace.sourceRepo", workspace.sourceRepo);
   assertBaseRefExists(workspace.sourceRepo, workspace.baseRef, "workspace.baseRef");
+
+  // **A convention this file relied on, now a guarantee.** `checkoutPathFor`
+  // resolves the root, and said in a comment that a host "should still pass an
+  // absolute" one — an unenforced rule, which is the shape every other guard at
+  // this door exists to replace. A relative root is resolved against
+  // `process.cwd()` on EVERY attempt, so a long-lived host that changes
+  // directory between attempts derives a different checkout for the same durable
+  // task: the retry lands in an empty tree, and the uncommitted work its own
+  // prompt tells it to continue from is in the old one. Silent, and the retry
+  // budget is spent re-deriving the same wrong answer.
+  //
+  // Refused rather than snapshotted here, because `checkoutPathFor` is exported
+  // and the goal runner and tests call it directly — a value captured inside
+  // this builder would leave every other caller reading `cwd` exactly as before.
+  if (!isAbsolute(workspace.root)) {
+    throw new Error(
+      `[conductor] workspace.root is relative (${workspace.root}). Pass an absolute path: a ` +
+        `relative one is resolved against the process's working directory on every attempt, so ` +
+        `one durable task can derive two different checkouts.`,
+    );
+  }
 
   if (tenant === "") {
     throw new Error(

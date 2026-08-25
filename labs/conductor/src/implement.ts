@@ -125,7 +125,12 @@ export interface RemoteRepo {
 export function repoSlugFromRemote(url: string): RemoteRepo | undefined {
   const trimmed = url.trim().replace(/\.git$/, "");
   // `scheme://[user@]host/owner/name`
-  const viaUrl = /^[A-Za-z][A-Za-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/.exec(trimmed);
+  // The port is part of the HOST, captured with it. Matching it and throwing it
+  // away sent an Enterprise checkout on `:8443` to the same hostname on 443 — a
+  // different server, quietly, which is the one outcome this function's own
+  // doc says must never happen. It was matched only so it could not be mistaken
+  // for the first path segment; dropping it was the bug.
+  const viaUrl = /^[A-Za-z][A-Za-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+(?::\d+)?)\/(.+)$/.exec(trimmed);
   // `[user@]host:owner/name` — scp-like, and NOT a path (`/tmp/x:y` has a slash
   // before the colon, so it is excluded by the host pattern).
   const viaScp = /^(?:[^@/]+@)?([A-Za-z0-9._-]+):(?!\/)(.+)$/.exec(trimmed);

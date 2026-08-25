@@ -79,9 +79,18 @@ describe("the done-condition — which pull requests count", () => {
       "github.com/fixpoint-labs/flow-state-dev",
     );
     expect(repoSlugFromRemote("git@ghe.acme:owner/repo.git")?.selector).toBe("ghe.acme/owner/repo");
+
+    // **The port is part of the host.** This assertion previously demanded
+    // `ghe.acme/owner/repo` for a `:8443` remote — a test pinning the defect,
+    // written while I was thinking about whether the port could be mistaken for
+    // a path segment and not about where the query would land. Dropping it
+    // points `gh -R` at the same hostname on 443, which is a different server.
     expect(repoSlugFromRemote("https://ghe.acme:8443/owner/repo")?.selector).toBe(
-      "ghe.acme/owner/repo",
+      "ghe.acme:8443/owner/repo",
     );
+    // And the port belongs ONLY to the selector: a pull request row's head
+    // identity is `owner/name`, with no host and no port to compare against.
+    expect(repoSlugFromRemote("https://ghe.acme:8443/owner/repo")?.ownerRepo).toBe("owner/repo");
   });
 
   it("hands the selector and the attribution to their own callers", () => {
