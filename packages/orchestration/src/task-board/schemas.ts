@@ -136,10 +136,30 @@ export const taskWorkerInputSchema = z.object({
   deps: z.record(z.unknown()).optional(),
 });
 
-/** Output of `checkBoard` — drives the worker's `loopBack` predicate. */
+/**
+ * Output of `checkBoard` — drives the worker's `loopBack` predicate, and
+ * carries the exit decision's causal verdict out to the board's completion
+ * item.
+ *
+ * `excusedParked` (FIX-1234) is present, and `true`, only on the iteration
+ * where this worker stopped *because* rows parked for a human were excused
+ * from the board's waitable count. It is the exit reason's carrier, and it
+ * rides the worker's own output for one reason: the value flows from the exit
+ * decision to the completion item through the drain's own dataflow — the
+ * worker loop's final value becomes an element of the `forEach` result, which
+ * is what the completion tap receives — so it is scoped to this drain
+ * *invocation* by construction rather than by a policy someone has to keep.
+ * Two drains of one board, even inside one request, cannot see each other's.
+ *
+ * Optional rather than defaulted so a board on the default `onReview` emits
+ * exactly the output shape it always did (BP-030), and so a worker-state
+ * checkpoint written under the old shape reads as "nothing was excused"
+ * instead of failing validation.
+ */
 export const checkBoardOutputSchema = z.object({
   shouldContinue: z.boolean(),
   reason: z.enum(["drained", "exit", "claimed", "idle", "blocked"]),
+  excusedParked: z.boolean().optional(),
 });
 
 export type CheckBoardOutput = z.infer<typeof checkBoardOutputSchema>;

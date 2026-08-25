@@ -130,6 +130,16 @@ const system = eventActors({
 // Use system.emit in a sequencer to write entries with fan-out
 ```
 
+`createAppendEntry` returns a state-only block: it appends the entry to the workspace resource and emits its `rb-entry` component, and produces no output. When you remix the emit pipeline yourself, compose it with `.tap()`:
+
+```typescript
+sequencer({ name: "my-emit", inputSchema: entrySchema })
+  .tap(createAppendEntry("my-emit", rb.workspace))   // entry is recorded, the entry flows on
+  .step(myCustomDispatch)
+```
+
+As a `.step()` it hands `undefined` to the next step. Earlier releases echoed the entry back, so `.step()` appeared to work.
+
 **Key exports:** `eventActors`, `actor`, `createEventActorsWorkspace`, `matchTopic`, `compilePattern`, `createAppendEntry`, `normalizeToEntries`
 
 ### Task Board
@@ -142,7 +152,9 @@ Concurrent drain over a `TaskCollection` with dependency gating and per-task wor
 - `"complete"`: exit only when no `pending`, `in_progress`, or `awaiting_review` tasks remain. Use when a pending task with a non-completed dep is a transient state an external pump will resolve.
 - `"wait"`: never auto-exit; defer to a user-supplied `shouldExit` predicate. For long-running session-scoped boards.
 
-The final `task-board-meta` item carries a `terminationReason: "all-completed" | "blocked-by-failures" | "retry-budget-exhausted" | "handed-off"` field so callers can tell a clean drain from a dep-blocked exit, from one the board's retry budget stopped, or from one whose remaining work is running in a Workstream — without inspecting `counts`.
+**Waiting on a person (`onReview`)**: `"hold"` (default) keeps a task parked with `awaitReview` in the in-flight counts, so the drain stays open until someone moves it out. `"exit"` excuses parked tasks from those counts: the drain returns while the task stays parked and durable, and a later `resumeFromReview` re-queues it for whatever drains the board next. It needs a `defineTaskCollection` collection, the default `onIdle`, and an explicit `id` on every `initialTasks` entry; anything else is refused when the board is built.
+
+The final `task-board-meta` item carries a `terminationReason: "all-completed" | "blocked-by-failures" | "retry-budget-exhausted" | "handed-off" | "parked-for-review"` field so callers can tell a clean drain from a dep-blocked exit, from one the board's retry budget stopped, from one whose remaining work is running in a Workstream, and from one whose remaining work is waiting on a person — without inspecting `counts`.
 
 ```typescript
 import { taskBoard, taskBoardStateSchema } from "@flow-state-dev/orchestration/task-board";
@@ -181,9 +193,9 @@ const board = taskBoard({
 });
 ```
 
-The board API is identical across backings — request-state exposes the same atomic-state surface — so the mutation calls, retries, and `task-change` emission all work the same. Contention safety is now the same too: both are compare-and-swap with retry, the resource backing writing at the version its execution context read, so a task write built on a stale read is refused and re-applied rather than overwriting the writer that won. The filesystem store is the one exception — it compares within a single process, so a board fanned across replicas wants SQLite or Postgres underneath. For single-invocation, per-call storage, opt into `{ backing: "sequencer", collectionId }`. For a board whose tasks outlive the request, declare a durable collection with `defineTaskCollection({ id, scope, stateSchema })` and pass it as `collection`.
+The board API is identical across backings — request-state exposes the same atomic-state surface — so the mutation calls, retries, and `task-change` emission all work the same. Contention safety is the same too. Both are compare-and-swap with retry, the resource backing writing at the version its execution context read, so a task write built on a stale read is refused and re-applied rather than overwriting the writer that won. The filesystem store is the one exception — it compares within a single process, so a board fanned across replicas wants SQLite or Postgres underneath. For single-invocation, per-call storage, opt into `{ backing: "sequencer", collectionId }`. For a board whose tasks outlive the request, declare a durable collection with `defineTaskCollection({ id, scope, stateSchema })` and pass it as `collection`.
 
-`awaiting_review` is fully supported: standard dispatchers skip it, and the loop counts it as in-flight (resume from `awaiting_review` wakes the loop on the next idle poll). `reviewPolicy`, review UI, and the `tasks.review.requested` topic ship in Wave 2.
+`awaiting_review` is fully supported: standard dispatchers skip it, the loop counts it as in-flight, and a resume from `awaiting_review` wakes the loop on the next idle poll. `onReview: "exit"` counts it the other way — see the termination modes above for the option and its requirements, and [Waiting on a person](https://flow-state.dev/docs/orchestration/task-board#waiting-on-a-person-onreview) for the full contract.
 
 Workers are first-class block compositions, not callbacks. The pattern composes them via `.step(workerStep)` inside the worker's sequencer, with `.tap(recordSuccess)` and `.rescue([{ block: recordError }])` handling write-back — no handler wrapping the worker (BP-011). For registries, an internal `utility.keyedRouter` selects per `task.assignee`; each worker is pre-connected with the `Task → TaskWorkerInput` adapter so the router stays a pure key-keyed dispatch (BP-013).
 

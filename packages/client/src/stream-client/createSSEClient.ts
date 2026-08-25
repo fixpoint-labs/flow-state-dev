@@ -1,6 +1,7 @@
 /**
  * SSE stream clients for request and optional user stream consumption.
  */
+import { toError } from "@flow-state-dev/contracts/helpers";
 import type {
   RequestStreamEvent,
   UserStreamEvent
@@ -139,7 +140,7 @@ export function createSSEClientFromResponse(
         dispatchRequestEvent(parsed, options);
       } catch (error) {
         errored = true;
-        options.onError?.(normalizeError(error));
+        options.onError?.(toError(error, "Unknown SSE client error"));
       }
     },
     onError: (error) => {
@@ -229,7 +230,7 @@ export function createSSEClient(options: CreateSSEClientOptions): RequestStreamH
 
         dispatchRequestEvent(parsed, options);
       } catch (error) {
-        options.onError?.(normalizeError(error));
+        options.onError?.(toError(error, "Unknown SSE client error"));
       }
     },
     onError: (error) => {
@@ -312,7 +313,7 @@ export function createUserSSEClient(
 
         dispatchUserEvent(parsed, options);
       } catch (error) {
-        options.onError?.(normalizeError(error));
+        options.onError?.(toError(error, "Unknown SSE client error"));
       }
     },
     onError: (error) => {
@@ -403,7 +404,7 @@ async function consumeSSEResponse(options: {
     await readSSEBody(options);
   } catch (error) {
     if (isAbortError(error)) return;
-    options.onError(normalizeError(error));
+    options.onError(toError(error, "Unknown SSE client error"));
   }
 }
 
@@ -439,7 +440,7 @@ async function consumeSSE(options: {
       return;
     }
 
-    options.onError(normalizeError(error));
+    options.onError(toError(error, "Unknown SSE client error"));
   }
 }
 
@@ -622,16 +623,4 @@ function isAbortError(value: unknown): boolean {
   return (
     value instanceof DOMException && value.name === "AbortError"
   ) || (value instanceof Error && value.name === "AbortError");
-}
-
-function normalizeError(value: unknown): Error {
-  if (value instanceof Error) {
-    return value;
-  }
-
-  if (typeof value === "string" && value.length > 0) {
-    return new Error(value);
-  }
-
-  return new Error("Unknown SSE client error");
 }
