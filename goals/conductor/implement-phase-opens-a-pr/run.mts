@@ -39,6 +39,7 @@ import { join, resolve } from "node:path";
 import { conductorFlow, CONDUCTOR_FLOW_KIND } from "../../../labs/conductor/src/flow.ts";
 import {
   hasCompletingPr,
+  repoSlugFromRemote,
   implementPhase,
 } from "../../../labs/conductor/src/implement.ts";
 import {
@@ -315,24 +316,47 @@ await runGoal(async () => {
           // check that is supposed to catch it. `state` has to be REQUESTED for
           // the rule to have anything to read, which is why asking for `number`
           // alone made the goal structurally unable to apply it.
-          const prs = execFileSync(
-            "gh",
-            [
-              "pr",
-              "list",
-              "--head",
-              row.run.branch,
-              "--state",
-              "all",
-              "--json",
-              "number,state",
-            ],
-            { cwd: checkout, encoding: "utf8", timeout: NETWORK_CALL_TIMEOUT_MS },
-          );
-          if (!hasCompletingPr(prs)) {
+          // **The repository is pinned here too, and read from git.** `--head`
+          // matches a branch NAME, so a fork carrying this branch's name shows
+          // up in the listing; and `GH_REPO` redirects any `gh` command that
+          // would otherwise work from the checkout, so asking `gh` where it is
+          // and then asking `gh` what is there lets one override move both
+          // halves of the answer. Reading the remote with `git` puts it outside
+          // that environment. Imported rather than restated — this is the
+          // fourth rule on this branch that lived in `src` and was missed here.
+          const remote = execFileSync("git", ["remote", "get-url", "origin"], {
+            cwd: checkout,
+            encoding: "utf8",
+            timeout: NETWORK_CALL_TIMEOUT_MS,
+          });
+          const repo = repoSlugFromRemote(remote);
+          if (repo === undefined) {
             failures.push(
-              `no open or merged pull request exists for branch "${row.run.branch}"`,
+              `could not name the repository behind ${checkout}, so the pull-request ` +
+                `check could not be pinned to it`,
             );
+          } else {
+            const prs = execFileSync(
+              "gh",
+              [
+                "pr",
+                "list",
+                "--head",
+                row.run.branch,
+                "--state",
+                "all",
+                "--json",
+                "number,state,headRepository,headRepositoryOwner",
+                "-R",
+                repo,
+              ],
+              { cwd: checkout, encoding: "utf8", timeout: NETWORK_CALL_TIMEOUT_MS },
+            );
+            if (!hasCompletingPr(prs, repo.split("/").slice(-2).join("/"))) {
+              failures.push(
+                `no open or merged pull request exists for branch "${row.run.branch}"`,
+              );
+            }
           }
         }
       }

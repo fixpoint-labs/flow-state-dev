@@ -77,18 +77,40 @@ export function hasCompletingPr(stdout: string, inRepo?: string): boolean {
 }
 
 /**
- * `owner/name` from a git remote URL, or `undefined` if it is not GitHub-shaped.
+ * `host/owner/name` from a git remote URL, in the form `gh -R` accepts.
  *
- * Handles the two spellings a checkout can carry — `https://host/owner/name.git`
- * and `git@host:owner/name.git`. **Undefined is a refusal, not a fallback**: a
- * remote we cannot name is a repository we cannot pin the listing to, and the
- * whole point of reading it here is to stop the comparison drifting.
+ * **The host is part of the answer, not decoration.** Reducing
+ * `git@ghe.acme:owner/repo.git` to `owner/repo` sends the listing to
+ * github.com (or wherever `GH_HOST` points) instead of the Enterprise host the
+ * checkout actually came from — so a real pull request is missed, or a
+ * same-named one on another host settles the task. `gh` documents `-R` as
+ * `[HOST/]OWNER/REPO` precisely so this can be said.
+ *
+ * Handles the two spellings a checkout carries: `scheme://host/owner/name` and
+ * `user@host:owner/name`, with or without `.git`.
+ *
+ * **Undefined is a refusal, not a fallback.** A remote with no host — a local
+ * path, a relative clone — is not a repository `gh` can be pointed at, and a
+ * remote we cannot name is one we cannot pin the listing to. A host `gh` does
+ * not serve is left to fail loudly at the call rather than being guessed at
+ * here; what must never happen is silently querying a DIFFERENT host.
  */
 export function repoSlugFromRemote(url: string): string | undefined {
   const trimmed = url.trim().replace(/\.git$/, "");
-  const match = /(?:[:/])([^/:]+)\/([^/]+)$/.exec(trimmed);
-  if (match === null) return undefined;
-  return `${match[1]}/${match[2]}`;
+  // `scheme://[user@]host/owner/name`
+  const viaUrl = /^[A-Za-z][A-Za-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/.exec(trimmed);
+  // `[user@]host:owner/name` — scp-like, and NOT a path (`/tmp/x:y` has a slash
+  // before the colon, so it is excluded by the host pattern).
+  const viaScp = /^(?:[^@/]+@)?([A-Za-z0-9._-]+):(?!\/)(.+)$/.exec(trimmed);
+  const parsed = viaUrl ?? viaScp;
+  if (parsed === null) return undefined;
+  const [, host, rest] = parsed;
+  const segments = rest.split("/").filter((part) => part.length > 0);
+  if (segments.length < 2) return undefined;
+  // The last two are owner and name; anything before is a path prefix some
+  // hosts allow and `gh` does not, so it is refused rather than dropped.
+  if (segments.length > 2) return undefined;
+  return `${host}/${segments[0]}/${segments[1]}`;
 }
 
 /**

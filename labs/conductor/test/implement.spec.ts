@@ -67,30 +67,33 @@ describe("the done-condition — which pull requests count", () => {
     expect(hasCompletingPr(fromMine, mine)).toBe(true);
   });
 
-  it("names the repository from the checkout's own remote, in either spelling", () => {
-    // Taken from `git`, not from `gh`, and then passed back as `-R`. `GH_REPO`
-    // in the host's environment redirects every `gh` command that would
-    // otherwise work from the local checkout — so asking `gh` which repository
-    // this is and then asking `gh` for its pull requests lets one override
-    // redirect both halves of the comparison, which then agree with each other
-    // about the wrong repository.
+  it("keeps the host, because `-R` without one goes to the wrong server", () => {
+    // Reducing an Enterprise remote to `owner/repo` sends the listing to
+    // github.com (or `GH_HOST`) instead of the host the checkout came from — a
+    // real PR missed, or a same-named one elsewhere settling the task. `gh`
+    // documents `-R` as `[HOST/]OWNER/REPO` so this can be said explicitly.
     expect(repoSlugFromRemote("https://github.com/fixpoint-labs/flow-state-dev.git")).toBe(
-      "fixpoint-labs/flow-state-dev",
+      "github.com/fixpoint-labs/flow-state-dev",
     );
     expect(repoSlugFromRemote("git@github.com:fixpoint-labs/flow-state-dev.git")).toBe(
-      "fixpoint-labs/flow-state-dev",
+      "github.com/fixpoint-labs/flow-state-dev",
     );
-    expect(repoSlugFromRemote("https://github.com/fixpoint-labs/flow-state-dev")).toBe(
-      "fixpoint-labs/flow-state-dev",
-    );
+    expect(repoSlugFromRemote("git@ghe.acme:owner/repo.git")).toBe("ghe.acme/owner/repo");
+    expect(repoSlugFromRemote("https://ghe.acme:8443/owner/repo")).toBe("ghe.acme/owner/repo");
   });
 
-  it("refuses to name a remote it cannot parse", () => {
+  it("refuses a remote it cannot name, rather than guessing one", () => {
     // Undefined is a refusal, not a fallback: a remote we cannot name is a
     // repository we cannot pin the listing to, and an unpinned listing is the
     // thing this reading exists to prevent.
     expect(repoSlugFromRemote("")).toBeUndefined();
     expect(repoSlugFromRemote("not-a-url")).toBeUndefined();
+    // A local path is not a repository `gh` can be pointed at.
+    expect(repoSlugFromRemote("/srv/git/repo")).toBeUndefined();
+    expect(repoSlugFromRemote("../sibling")).toBeUndefined();
+    // A deeper path is a shape `gh -R` does not accept; refused rather than
+    // silently trimmed to its last two segments.
+    expect(repoSlugFromRemote("https://gitlab.com/group/sub/repo")).toBeUndefined();
   });
 
   it("refuses a row it cannot attribute to a repository", () => {
