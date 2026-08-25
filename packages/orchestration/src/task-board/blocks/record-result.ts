@@ -43,6 +43,10 @@ import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { type TaskCollectionRef } from "../../tasks";
+import {
+  advisoryComplete,
+  advisoryFail,
+} from "../../tasks/collection/advisory-write-back";
 import { currentLeaseRenewal } from "../../tasks/lease-renewal-scope";
 import { taskBoardWorkerBodyStateSchema } from "../schemas";
 
@@ -181,7 +185,7 @@ export function createRecordSuccess(options: RecordSuccessOptions) {
         await ctx.sequencer!.patchState({ currentClaim: undefined });
         return;
       }
-      await collection.complete(claim.taskId, output, {
+      await advisoryComplete(collection, claim.taskId, output, {
         ifAllowed: true,
         claim,
         // The guarantee. The status read above can be raced by a park; this
@@ -255,7 +259,7 @@ export function createRecordError(options: RecordErrorOptions) {
           // The error is not swallowed by this: it still reaches `onError`
           // below, which rethrows on `"fail"` and reports it on `"skip"`.
           if (!workerParkedItForReview(collection, claim.taskId)) {
-            await collection.fail(claim.taskId, message, {
+            await advisoryFail(collection, claim.taskId, message, {
               ifAllowed: true,
               claim,
               refuseWhenParked: true,

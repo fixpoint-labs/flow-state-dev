@@ -33,6 +33,10 @@ import {
   type TaskStatus,
 } from "../../src/tasks";
 import { transitionDeclineReason } from "../../src/tasks/collection/internal";
+import {
+  advisoryComplete,
+  advisoryFail,
+} from "../../src/tasks/collection/advisory-write-back";
 import type { Task } from "../../src/tasks";
 import {
   createCapturedChanges,
@@ -1113,5 +1117,372 @@ describe("retry budget — a declined stale failure records nothing (FIX-948)", 
       granted: 1,
       deniedByBudget: false,
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The seam that contains a non-conforming store's throw (FIX-964)
+// ---------------------------------------------------------------------------
+
+/**
+ * A store that takes `(id, output)` and so never sees the options object —
+ * the documented `taskBoard({ collection })` extension point implemented the
+ * way the interface reads, before FIX-951's prose around it.
+ *
+ * Written as a delegating wrapper rather than a from-scratch fake on purpose:
+ * everything about it except the dropped argument is a real, conforming
+ * backing, so a test that goes green here has exercised the substrate's own
+ * write path rather than a mock's idea of it.
+ */
+function dropsTheGuards(inner: TaskCollectionRef): TaskCollectionRef {
+  return {
+    ...inner,
+    complete: (id, output) => inner.complete(id, output),
+    fail: (id, error) => inner.fail(id, error),
+  };
+}
+
+/** A store that is simply down. Nothing to do with the guards. */
+function unreachable(inner: TaskCollectionRef, message: string): TaskCollectionRef {
+  return {
+    ...inner,
+    complete: () => Promise.reject(new Error(message)),
+    fail: () => Promise.reject(new Error(message)),
+  };
+}
+
+/**
+ * A store whose write COMMITS and then throws on the way out — the shape both
+ * built-in backings already have, where `emit` runs after the commit and
+ * outside the write's `try`, so a failing `onChange` rejects `complete()` with
+ * the task already durably terminal.
+ *
+ * This is FIX-963's case, not this seam's, and telling it apart from "someone
+ * else had already settled it" is the whole reason the snapshot is taken before
+ * the write instead of inferred after it.
+ */
+function commitsThenThrows(inner: TaskCollectionRef, message: string): TaskCollectionRef {
+  return {
+    ...inner,
+    complete: async (id, output, options) => {
+      await inner.complete(id, output, options);
+      throw new Error(message);
+    },
+  };
+}
+
+describe.each([
+  ["sequencer-backed", sequencerBacking()],
+  ["resource-backed", resourceBacking()],
+])("the advisory write-back seam, FIX-964 (%s)", (_label, factory) => {
+  let inner: TaskCollectionRef;
+  let events: TaskChangeEvent[];
+
+  beforeEach(async () => {
+    const setup = await factory();
+    inner = setup.collection;
+    events = setup.events;
+  });
+
+  /** Add + claim, returning the ticket the substrate mints for that claim. */
+  async function claimTicket(init: { id: string; maxAttempts?: number }) {
+    await inner.addTask({ goal: init.id, ...init });
+    const task = await inner.claim("worker-1", { eligibility: (t) => t.id === init.id });
+    if (task === null) throw new Error("fixture failed to claim");
+    return { task, ticket: ticketForClaim(inner.collectionId, task) };
+  }
+
+  const guarded = (claim: TaskClaimTicket) => ({ ifAllowed: true, claim }) as const;
+
+  describe("contains what a conforming store would have declined", () => {
+    it("does not throw when complete lands on a task somebody else cancelled", async () => {
+      const { ticket } = await claimTicket({ id: "t" });
+      await inner.cancel("t", "coordinator changed its mind");
+      events.length = 0;
+
+      // Unguarded, this is `cancelled → completed` and the store throws — the
+      // throw that escapes the board's per-worker rescue and abandons every
+      // sibling task. The seam attributes it to a decline the store should have
+      // made before committing anything.
+      await expect(
+        advisoryComplete(dropsTheGuards(inner), "t", "late output", guarded(ticket))
+      ).resolves.toMatchObject({ outcome: "declined", reason: "terminal" });
+
+      // Containment is not equivalence: the cancel still stands, untouched.
+      expect(inner.get("t")?.status).toBe("cancelled");
+      expect(inner.get("t")?.output).toBeUndefined();
+      expect(events).toHaveLength(0);
+    });
+
+    it("does not throw when fail lands on a task somebody else cancelled", async () => {
+      const { ticket } = await claimTicket({ id: "t" });
+      await inner.cancel("t", "coordinator changed its mind");
+      events.length = 0;
+
+      await expect(
+        advisoryFail(dropsTheGuards(inner), "t", "worker blew up", guarded(ticket))
+      ).resolves.toMatchObject({ outcome: "declined", reason: "terminal" });
+
+      expect(inner.get("t")?.status).toBe("cancelled");
+      expect(inner.get("t")?.error).toBe("coordinator changed its mind");
+      expect(events).toHaveLength(0);
+    });
+
+    it("resolves the fail target through the retry route, not just the terminal one", async () => {
+      // `fail` on a task with attempts left targets `pending`, not `errored`.
+      // A seam that assumed the terminal target would ask the predicate the
+      // wrong question here and pass every case above.
+      const { ticket } = await claimTicket({ id: "t", maxAttempts: 3 });
+      await inner.cancel("t", "coordinator changed its mind");
+      events.length = 0;
+
+      await expect(
+        advisoryFail(dropsTheGuards(inner), "t", "worker blew up", guarded(ticket))
+      ).resolves.toMatchObject({ outcome: "declined" });
+
+      expect(inner.get("t")?.status).toBe("cancelled");
+      expect(inner.get("t")?.feedback).toBeUndefined();
+    });
+
+    it("does not throw when the attempt was displaced rather than settled", async () => {
+      // Nobody settled the task — a lease reclaim handed it back to the queue —
+      // so the terminal arm never fires and a different one has to catch it.
+      const { ticket } = await claimTicket({ id: "t" });
+      await inner.reclaim(Number.MAX_SAFE_INTEGER);
+      events.length = 0;
+
+      await expect(
+        advisoryComplete(dropsTheGuards(inner), "t", "late output", guarded(ticket))
+      ).resolves.toMatchObject({ outcome: "declined" });
+
+      expect(inner.get("t")?.status).toBe("pending");
+      expect(inner.get("t")?.output).toBeUndefined();
+      expect(events).toHaveLength(0);
+    });
+  });
+
+  describe("the limit — the seam fires on a throw, and only on a throw", () => {
+    it("does NOT stop a non-conforming store clobbering another worker's task", async () => {
+      // Stated plainly because it is the honest scope of this fix, and because
+      // a reader who has just seen the tests above will otherwise assume more.
+      //
+      // Reclaimed AND re-claimed, so the row is `in_progress` again under a
+      // second attempt. The stale worker's `complete()` is now a perfectly
+      // legal `in_progress → completed`, so a store that ignores the ownership
+      // guard simply commits it and never throws. There is nothing for the seam
+      // to catch: it contains a throw, it does not reproduce FIX-951's
+      // semantics on the store's behalf, and it cannot — the decision belongs
+      // inside the store's atomic section.
+      //
+      // What the board still gets is the property the bug was filed for: this
+      // corrupts ONE task rather than abandoning every other worker.
+      const { ticket } = await claimTicket({ id: "t" });
+      await inner.reclaim(Number.MAX_SAFE_INTEGER);
+      await inner.claim("worker-2", { eligibility: (t) => t.id === "t" });
+
+      await expect(
+        advisoryComplete(dropsTheGuards(inner), "t", "stale output", guarded(ticket))
+      ).resolves.toMatchObject({ outcome: "recorded" });
+
+      expect(inner.get("t")?.status).toBe("completed");
+      expect(inner.get("t")?.output).toBe("stale output");
+    });
+
+    it("a conforming store still declines exactly that write", async () => {
+      // The comparison that makes the limit above legible: same fixture, real
+      // guards, and the ownership arm refuses it. The gap is the store's, not
+      // the substrate's.
+      const { ticket } = await claimTicket({ id: "t" });
+      await inner.reclaim(Number.MAX_SAFE_INTEGER);
+      await inner.claim("worker-2", { eligibility: (t) => t.id === "t" });
+
+      await expect(
+        advisoryComplete(inner, "t", "stale output", guarded(ticket))
+      ).resolves.toMatchObject({ outcome: "declined", reason: "lost-claim" });
+
+      expect(inner.get("t")?.status).toBe("in_progress");
+    });
+  });
+
+  describe("rethrows everything it cannot attribute to a pre-commit decline", () => {
+    // BP-035: this is the load-bearing branch. A seam that contains too much is
+    // worse than the bug it fixes — it turns lost results and dead stores into
+    // silence.
+    it("propagates a store failure on a task the caller still holds", async () => {
+      const { ticket } = await claimTicket({ id: "t" });
+
+      await expect(
+        advisoryComplete(
+          unreachable(inner, "store unreachable"),
+          "t",
+          "output",
+          guarded(ticket)
+        )
+      ).rejects.toThrow("store unreachable");
+    });
+
+    it("propagates it with the original error, not a substituted one", async () => {
+      // The message is what an operator debugs from. A seam that rethrew its
+      // own error, or the error from its post-mortem read, would pass a
+      // `rejects.toThrow()` with no argument.
+      const { ticket } = await claimTicket({ id: "t" });
+      const original = new Error("ECONNREFUSED 127.0.0.1:5432");
+
+      await expect(
+        advisoryFail(
+          { ...inner, fail: () => Promise.reject(original) },
+          "t",
+          "worker blew up",
+          guarded(ticket)
+        )
+      ).rejects.toBe(original);
+    });
+
+    it("propagates a write that COMMITTED and then threw — FIX-963's signal", async () => {
+      // The composition contract with FIX-963, and the one regression this
+      // suite exists to catch. An earlier design of this seam read the task
+      // only after the error, where "I settled it and the emit then threw" and
+      // "someone else had already settled it" are the same picture — and
+      // contained both, silently eating the case FIX-963 exists to raise.
+      const { ticket } = await claimTicket({ id: "t" });
+
+      await expect(
+        advisoryComplete(
+          commitsThenThrows(inner, "onChange rejected after the commit"),
+          "t",
+          "output",
+          guarded(ticket)
+        )
+      ).rejects.toThrow("onChange rejected after the commit");
+
+      // And it really had committed — which is what makes the throw
+      // post-commit rather than a decline the seam should have absorbed.
+      expect(inner.get("t")?.status).toBe("completed");
+      expect(inner.get("t")?.output).toBe("output");
+    });
+
+    it("propagates a missing task, which is not an advisory decline at all", async () => {
+      const { ticket } = await claimTicket({ id: "t" });
+      await expect(
+        advisoryComplete(dropsTheGuards(inner), "absent", "output", guarded(ticket))
+      ).rejects.toThrow(/not found/);
+    });
+
+    it("propagates the write's error, not the read's, when get() throws too", async () => {
+      // Both clauses need a task to reason about. With neither read available
+      // the seam has nothing to attribute the throw to — and the error the
+      // caller must see is the write's, never the bookkeeping read's.
+      const { ticket } = await claimTicket({ id: "t" });
+      const blind: TaskCollectionRef = {
+        ...inner,
+        get: () => {
+          throw new Error("read path is down too");
+        },
+        complete: () => Promise.reject(new Error("write path is down")),
+      };
+
+      await expect(
+        advisoryComplete(blind, "t", "output", guarded(ticket))
+      ).rejects.toThrow("write path is down");
+    });
+  });
+
+  describe("changes nothing for a store that was already correct", () => {
+    it("passes a successful write through untouched", async () => {
+      const { ticket } = await claimTicket({ id: "t" });
+
+      await expect(
+        advisoryComplete(inner, "t", "output", guarded(ticket))
+      ).resolves.toEqual({ outcome: "recorded" });
+      expect(inner.get("t")?.status).toBe("completed");
+      expect(inner.get("t")?.output).toBe("output");
+      expect(events.filter((e) => e.kind === "completed")).toHaveLength(1);
+    });
+
+    it("passes a legitimate soft-fail retry through untouched", async () => {
+      // The retry route must stay a retry. A seam that read a re-pended task as
+      // "settled elsewhere" would turn every recoverable failure into a decline
+      // and quietly stop the board retrying anything.
+      const { ticket } = await claimTicket({ id: "t", maxAttempts: 3 });
+      events.length = 0;
+
+      await expect(
+        advisoryFail(dropsTheGuards(inner), "t", "transient", guarded(ticket))
+      ).resolves.toEqual({ outcome: "recorded" });
+
+      const task = inner.get("t");
+      expect(task?.status).toBe("pending");
+      expect(task?.feedback).toBe("transient");
+      expect(events.map((e) => e.kind)).toEqual(["retried"]);
+    });
+
+    it("reports a conforming store's decline exactly as the store reported it", async () => {
+      const { ticket } = await claimTicket({ id: "t" });
+      await inner.cancel("t", "coordinator changed its mind");
+      events.length = 0;
+
+      const direct = await inner.complete("t", "late output", guarded(ticket));
+      const throughSeam = await advisoryComplete(inner, "t", "late output", guarded(ticket));
+
+      expect(throughSeam).toEqual(direct);
+      expect(events).toHaveLength(0);
+    });
+  });
+});
+
+/**
+ * The seam runs against refs the substrate did not write, so a ref missing a
+ * field the interface has since grown is its normal case rather than an exotic
+ * one. Kept out of the parameterized suite above because it is about the seam's
+ * own inputs, not about either backing.
+ */
+describe("the seam against a ref that predates part of the interface (FIX-964)", () => {
+  it("contains the throw even when the ref exposes no clock", async () => {
+    // `now` arrived with leases. A store written before them has none, so
+    // reaching for it blindly would throw *inside* the attribution and replace
+    // the caller's error with a TypeError — losing containment for precisely
+    // the oldest refs, the ones most likely to be missing the guards too.
+    const { collection } = await sequencerBacking()();
+    await collection.addTask({ id: "t", goal: "t" });
+    const task = await collection.claim("worker-1");
+    if (task === null) throw new Error("fixture failed to claim");
+    const claim = ticketForClaim(collection.collectionId, task);
+    await collection.cancel("t", "coordinator changed its mind");
+
+    const clockless = {
+      ...collection,
+      now: undefined,
+      complete: (id: string, output: unknown) => collection.complete(id, output),
+    } as unknown as TaskCollectionRef;
+
+    await expect(
+      advisoryComplete(clockless, "t", "late output", { ifAllowed: true, claim })
+    ).resolves.toMatchObject({ outcome: "declined", reason: "terminal" });
+    expect(collection.get("t")?.status).toBe("cancelled");
+  });
+
+  it("still propagates the write's error when the ref cannot be reasoned about at all", async () => {
+    // The other side of the same guard. Evidence-gathering that fails means the
+    // same thing as evidence that shows nothing: the throw is the caller's.
+    const { collection } = await sequencerBacking()();
+    await collection.addTask({ id: "t", goal: "t" });
+    const task = await collection.claim("worker-1");
+    if (task === null) throw new Error("fixture failed to claim");
+    const claim = ticketForClaim(collection.collectionId, task);
+
+    const hostile = {
+      ...collection,
+      get: () => {
+        throw new Error("read path is down");
+      },
+      list: () => {
+        throw new Error("read path is down");
+      },
+      fail: () => Promise.reject(new Error("write path is down")),
+    } as unknown as TaskCollectionRef;
+
+    await expect(
+      advisoryFail(hostile, "t", "worker blew up", { ifAllowed: true, claim })
+    ).rejects.toThrow("write path is down");
   });
 });

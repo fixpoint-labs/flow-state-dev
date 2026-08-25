@@ -24,6 +24,10 @@
  *   2. the worker settles its own task and then RETURNS NORMALLY —
  *      cancelling a task does not stop the worker already running it, so a
  *      healthy worker finishing its work is the ordinary case
+ *
+ * FIX-964 extends the same scenario to the case the guards do not reach: a
+ * board running on a CUSTOM store that ignores them. See the second describe
+ * block for why that is a different failure with the same symptom.
  */
 import { describe, expect, it } from "vitest";
 import { defineFlow, handler, sequencer } from "@flow-state-dev/core";
@@ -32,7 +36,10 @@ import {
   taskBoardStateSchema,
   taskWorkerInputSchema,
 } from "@flow-state-dev/orchestration/task-board";
-import { getOrCreateTaskCollection } from "@flow-state-dev/orchestration";
+import {
+  getOrCreateTaskCollection,
+  type TaskCollectionRef,
+} from "@flow-state-dev/orchestration";
 import { testFlow } from "@flow-state-dev/testing";
 import { z } from "zod";
 import { itemsByType } from "../helpers/assertions";
@@ -104,11 +111,14 @@ function buildFlow(poisonBehaviour: "throw" | "return", onError: "skip" | "fail"
  * rather than off the drain's return value — a board that never ran its
  * siblings would still return something.
  */
-function finalStatuses(items: readonly unknown[]): Record<string, string> {
+function finalStatuses(
+  items: readonly unknown[],
+  collectionId: string = COLLECTION_ID
+): Record<string, string> {
   const statuses: Record<string, string> = {};
   for (const item of itemsByType(items as never, "component")) {
     const data = (item as { data?: Record<string, unknown> }).data;
-    if (data?.collectionId !== COLLECTION_ID) continue;
+    if (data?.collectionId !== collectionId) continue;
     const task = data.task as { id?: string; status?: string } | undefined;
     if (task?.id === undefined || task.status === undefined) continue;
     statuses[task.id] = task.status;
@@ -243,5 +253,155 @@ describe("FIX-951: task-board drain containment on a settled task", () => {
     expect(result.error).toBeDefined();
     expect(String(result.error)).toContain("worker blew up");
     expect(String(result.error)).not.toContain("illegal status transition");
+  });
+});
+
+const LEGACY_COLLECTION_ID = "legacy-store-board";
+
+/**
+ * A custom store written against the interface without the advisory guards —
+ * the documented `(ctx) => TaskCollectionRef` extension point, implemented the
+ * way it reads.
+ *
+ * `complete` and `fail` take two parameters, so JavaScript discards the options
+ * object in silence and the guards are never evaluated. Nothing about that is
+ * detectable: it typechecks (fewer parameters are assignable), it runs, and on
+ * every board where no result ever arrives late it is indistinguishable from a
+ * correct store.
+ *
+ * `misbehaviour` picks which of the two failures the store exhibits:
+ *
+ * - `"ignores-guards"` — it delegates to a real backing, which throws on the
+ *   illegal transition the guards existed to decline. The filed defect.
+ * - `"unreachable"` — it throws on every write, on a task nobody else has
+ *   touched. The store is simply down, and that must still reach the caller.
+ */
+function customStore(
+  inner: TaskCollectionRef,
+  misbehaviour: "ignores-guards" | "unreachable"
+): TaskCollectionRef {
+  if (misbehaviour === "unreachable") {
+    return {
+      ...inner,
+      complete: () => Promise.reject(new Error("legacy store unreachable")),
+      fail: () => Promise.reject(new Error("legacy store unreachable")),
+    };
+  }
+  return {
+    ...inner,
+    complete: (id, output) => inner.complete(id, output),
+    fail: (id, error) => inner.fail(id, error),
+  };
+}
+
+function buildLegacyStoreFlow(misbehaviour: "ignores-guards" | "unreachable") {
+  const worker = handler({
+    name: "legacy-store-worker",
+    inputSchema: taskWorkerInputSchema,
+    outputSchema: z.object({ ok: z.string() }),
+    execute: async (input, ctx) => {
+      if (input.goal !== "poison") {
+        return { ok: `${input.goal}:${SALT}` };
+      }
+      // The coordinator's handle on the same tasks — the real ref, not the
+      // custom one. A cancel travelling a path the custom store never sees is
+      // the ordinary case: the store is where the board writes results, not
+      // where every decision is made.
+      const collection = await getOrCreateTaskCollection({
+        ctx,
+        backing: "request",
+        collectionId: LEGACY_COLLECTION_ID,
+      });
+      await collection.cancel(input.taskId, "settled mid-flight");
+      return { ok: `poison:${SALT}` };
+    },
+  }) as Parameters<typeof taskBoard>[0]["workers"];
+
+  const board = taskBoard({
+    name: LEGACY_COLLECTION_ID,
+    collection: async (ctx) =>
+      customStore(
+        await getOrCreateTaskCollection({
+          ctx,
+          backing: "request",
+          collectionId: LEGACY_COLLECTION_ID,
+        }),
+        misbehaviour
+      ),
+    concurrency: 2,
+    workers: worker,
+    initialTasks: [
+      { id: "poison", goal: "poison" },
+      { id: "sibling-a", goal: "sibling-a" },
+      { id: "sibling-b", goal: "sibling-b" },
+    ],
+    onError: "skip",
+    onIdle: "complete",
+    maxIterations: 50,
+  });
+
+  return defineFlow({
+    kind: "fix964-custom-store-containment",
+    actions: {
+      run: {
+        block: sequencer({
+          name: "legacy-store-root",
+          inputSchema: z.unknown(),
+          stateSchema: taskBoardStateSchema,
+        }).step(board.drain),
+      },
+    },
+  })({ id: "default" });
+}
+
+describe("FIX-964: task-board drain containment on a custom store", () => {
+  it("drains the siblings when the store ignores the advisory guards", async () => {
+    const result = await testFlow({
+      flow: buildLegacyStoreFlow("ignores-guards"),
+      action: "run",
+      userId: "u",
+      input: undefined,
+      unmockedGeneratorPolicy: "error",
+    });
+
+    // Before the fix: the store's throw escapes the per-worker rescue, the
+    // `forEach` rejects on it, and `sibling-a` / `sibling-b` are left `pending`
+    // forever. FIX-951's guards cannot help here — they were never evaluated.
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe("completed");
+
+    const statuses = finalStatuses(result.items, LEGACY_COLLECTION_ID);
+    expect(statuses["sibling-a"]).toBe("completed");
+    expect(statuses["sibling-b"]).toBe("completed");
+    // Containment is not equivalence: the store still did the wrong thing, and
+    // the cancel it failed to honour still stands.
+    expect(statuses["poison"]).toBe("cancelled");
+
+    // Anti-hollow-pass, as above: prove the siblings' workers actually ran
+    // rather than trusting a status the board could report either way.
+    const outputs = itemsByType(result.items, "component")
+      .map((i) => (i as { data?: Record<string, unknown> }).data)
+      .filter((d) => d?.collectionId === LEGACY_COLLECTION_ID)
+      .map((d) => (d?.task as { output?: { ok?: string } } | undefined)?.output?.ok)
+      .filter((v): v is string => typeof v === "string");
+    expect(outputs).toContain(`sibling-a:${SALT}`);
+    expect(outputs).toContain(`sibling-b:${SALT}`);
+  });
+
+  it("still fails the board when the store is down on a task the worker holds", async () => {
+    // The load-bearing negative (BP-035). Containment is scoped to a throw a
+    // conforming store would have turned into a decline; a store that is simply
+    // unreachable has nothing to do with the guards, and turning that into a
+    // quiet decline would lose every result the board ever produced.
+    const result = await testFlow({
+      flow: buildLegacyStoreFlow("unreachable"),
+      action: "run",
+      userId: "u",
+      input: undefined,
+      unmockedGeneratorPolicy: "error",
+    });
+
+    expect(result.error).toBeDefined();
+    expect(String(result.error)).toContain("legacy store unreachable");
   });
 });

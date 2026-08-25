@@ -31,6 +31,7 @@ import { ticketForClaim } from "../claim-ticket";
 import { startLeaseRenewal } from "../lease-renewal";
 import type { Task } from "../schema/task";
 import type { TaskCollectionRef } from "../collection/types";
+import { advisoryComplete, advisoryFail } from "../collection/advisory-write-back";
 import type { TaskDispatcher } from "../dispatchers/types";
 import type { TaskWorker, TaskWorkerInput, TaskWorkerRegistry } from "../workers/types";
 
@@ -311,14 +312,14 @@ export function dispatchAndExecuteBlock<TOut = unknown>(
         )) as TOut;
         // Advisory write-back (FIX-951): the task may have been settled or
         // handed to another worker while this one ran.
-        await options.collection.complete(claimed.id, output, {
+        await advisoryComplete(options.collection, claimed.id, output, {
           ifAllowed: true,
           claim,
         });
         return { claimed: true, taskId: claimed.id, output };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        await options.collection.fail(claimed.id, message, {
+        await advisoryFail(options.collection, claimed.id, message, {
           ifAllowed: true,
           claim,
         });
