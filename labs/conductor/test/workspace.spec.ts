@@ -141,6 +141,44 @@ describe("provisioning", () => {
     );
     expect(existsSync(join(checkout.path, "wip.txt"))).toBe(true);
   });
+
+  it("does not report a deleted branch when the probe itself failed", async () => {
+    // The branch check was a blanket `catch { return false }`, so a probe that
+    // timed out, could not spawn git, or met an unreadable repository answered
+    // the same as a ref that is genuinely gone.
+    //
+    // Both readings of that `false` are wrong. Here on the reuse path the caller
+    // announces a branch someone deleted, sending whoever reads it after a
+    // deletion that never happened; on the fresh path it takes `worktree add -b`
+    // and collides with the branch that does exist. Either way the attempt is
+    // charged for an infrastructure failure — the category error the ownership
+    // wait goes out of its way to refuse, arriving through a `catch`.
+    //
+    // The branch here is NOT deleted. Only the probe is broken: the source repo
+    // is pointed at a directory git cannot read as a repository, which is one of
+    // the real shapes (exit 128, unkilled) rather than a hand-made error object.
+    const config = workspace();
+    const checkout = await provisionCheckout(config, at("FIX-1219", "implement"));
+    writeFileSync(join(checkout.path, "wip.txt"), "half done");
+
+    const notARepo = mkdtempSync(join(tmpdir(), "conductor-not-a-repo-"));
+    dirs.push(notARepo);
+    const broken = { ...config, sourceRepo: notARepo };
+
+    const failure = await provisionCheckout(broken, at("FIX-1219", "implement")).then(
+      () => undefined,
+      (err: unknown) => err as Error,
+    );
+
+    expect(failure).toBeDefined();
+    expect(failure?.message).toMatch(/could not determine whether branch/);
+    // The load-bearing half: it must NOT claim a deletion. A wrong cause here is
+    // worse than a bare failure, because it reads as actionable.
+    expect(failure?.message).not.toMatch(/no longer exists/);
+    // The real reason survives rather than being flattened into the verdict.
+    expect(failure?.cause).toBeDefined();
+    expect(existsSync(join(checkout.path, "wip.txt"))).toBe(true);
+  });
 });
 
 const bounds = { waitMs: 2_000, pollMs: 10, staleAfterMs: 60_000 };

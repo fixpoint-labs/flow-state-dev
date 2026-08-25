@@ -490,9 +490,39 @@ async function branchExists(
       timeoutMs,
     );
     return true;
-  } catch {
-    return false;
+  } catch (err) {
+    if (isRefAbsent(err)) return false;
+    throw new Error(
+      `[conductor] could not determine whether branch "${branch}" exists in ` +
+        `${config.sourceRepo}: the probe failed for a reason other than the ref being ` +
+        `absent. Not reporting that as a deleted branch — see the cause below.`,
+      { cause: err },
+    );
   }
+}
+
+/**
+ * Did the ref probe fail **because the ref is not there**, or because the probe
+ * itself did not work?
+ *
+ * A blanket `catch` cannot tell those apart, and answering `false` for both is
+ * wrong twice over. On the reuse path the caller reports a branch someone
+ * deleted, so whoever reads the message goes looking for a deletion that never
+ * happened. On the fresh path the caller takes `worktree add -b`, which then
+ * fails against the branch that does exist. Either way the attempt is charged
+ * for an infrastructure failure — the same category error the ownership wait
+ * refuses to make, arriving through a `catch` instead of through a lock.
+ *
+ * **The discriminator is measured, not assumed.** `git rev-parse --verify
+ * --quiet` exits 1 with no signal when the ref is absent. Every other failure
+ * looks different: a timeout comes back `killed: true` (with `code` 128 and
+ * `signal` null, so `killed` is the witness and `signal` is not), a repository
+ * git cannot read exits 128 unkilled, and a git that cannot be spawned carries
+ * a string `code` such as `ENOENT`. Only the first is an answer.
+ */
+function isRefAbsent(err: unknown): boolean {
+  const { code, killed } = (err ?? {}) as { code?: unknown; killed?: unknown };
+  return killed !== true && code === 1;
 }
 
 /**
