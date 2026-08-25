@@ -154,21 +154,18 @@ edges are**:
 ```ts
 import { isAbsolute, join, relative } from "node:path";
 
-const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-
-function safeSegment(value: string): string {
-  // Rejected, never stripped: stripping maps two distinct values onto one
-  // directory, which silently gives two runs the same checkout.
-  if (!SAFE_SEGMENT.test(value)) throw new Error(`unusable path segment: ${value}`);
-  return value;
+function segment(value: string): string {
+  // Encode, don't validate. A grammar is a list of things to remember —
+  // separators, `..`, trailing dots, reserved device names, case folding — and
+  // the list is never finished. Hex is one segment, injective, and contains
+  // nothing any filesystem treats specially.
+  return Buffer.from(value, "utf8").toString("hex");
 }
 
 function checkoutFor(tenantId: string | undefined, key: string): string {
-  // A separate segment each. Concatenating them re-creates the ambiguity the
-  // tenant is here to remove.
-  const dir = join(CHECKOUT_ROOT, safeSegment(tenantId ?? "default"), safeSegment(key));
-  // `relative`, not a string prefix: `join` uses the platform separator, so a
-  // check against a literal "/" rejects every valid value on Windows.
+  const dir = join(CHECKOUT_ROOT, segment(tenantId ?? "default"), segment(key));
+  // Belt and braces. Encoding already makes escape impossible; this costs a
+  // line and fails loudly if the encoding is ever swapped for something weaker.
   const rel = relative(CHECKOUT_ROOT, dir);
   if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
     throw new Error(`refusing a checkout outside ${CHECKOUT_ROOT}`);
@@ -177,22 +174,27 @@ function checkoutFor(tenantId: string | undefined, key: string): string {
 }
 ```
 
-Three rules, and each of them exists because of a way this goes wrong:
+Encoding rather than validating is the whole point, and it is worth being
+explicit about why. A validating grammar has to enumerate every way a string can
+misbehave as a path, and that list is longer than it looks: separators and `..`
+are the obvious two, but Windows also strips trailing dots (so `acme` and `acme.`
+are one directory), reserves `CON`, `PRN`, `AUX`, `NUL`, `COM1`…`LPT9` as device
+names that cannot be directories at all, and folds case. Every one of those is a
+value two different tenants could hold.
 
-- **Validate every part as a single path segment.** Session ids and request ids
-  both arrive from the caller, so a value like `../../server-repo` would send the
-  run somewhere you did not choose (BP-031).
-- **Include the tenant when you have one.** Two tenants can hold the same session
-  id — the framework namespaces its own session storage by tenant for exactly
-  that reason — so a path built from the session alone puts two tenants in one
-  directory.
-- **Confirm the result is still inside your root**, with `relative` rather than a
-  string comparison.
+An encoded segment sidesteps the whole list. It is **injective** — two distinct
+ids never collide, which is what stops two runs sharing a checkout — and its
+output alphabet contains nothing any filesystem treats specially.
 
-Prefer a key you control over one that arrives with the request. The safest
-version of this is a value your own code assigned — a job id from your queue, a
-row id from your database — with the guards above as the backstop rather than
-the only defence.
+Give each value its own segment; concatenating them into one string brings back
+the ambiguity the tenant is there to remove.
+
+If your key is already something you control and know to be safe — a numeric job
+id, a UUID — the encoding is close to a no-op and you can skip it. Encode by
+default anyway: the moment the key starts coming from somewhere else, the rules
+you would have to remember are a list nobody finishes.
+
+Prefer a key your own code assigned over one that arrived with the request.
 
 Full behaviour, including what an empty or symlinked directory does, is on the
 `cwd` option's own docs in `src/sdk/agent.ts` and in the

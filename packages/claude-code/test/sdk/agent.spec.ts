@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative, resolve as resolvePath, win32 } from "node:path";
+import { isAbsolute, join, relative, win32 } from "node:path";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
 import { normalizeResourcePath } from "@flow-state-dev/core/types";
 import {
@@ -1400,15 +1400,13 @@ describe("claudeCodeAgent — recordWork", () => {
 describe("claudeCodeAgent — the documented cwd examples", () => {
   // ── the "reusing a directory across runs" helper, verbatim ─────────────────
   const CHECKOUT_ROOT = "/var/agent-checkouts";
-  const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
-  function safeSegment(value: string): string {
-    if (!SAFE_SEGMENT.test(value)) throw new Error(`unusable path segment: ${value}`);
-    return value;
+  function segment(value: string): string {
+    return Buffer.from(value, "utf8").toString("hex");
   }
 
   function checkoutFor(tenantId: string | undefined, key: string): string {
-    const dir = join(CHECKOUT_ROOT, safeSegment(tenantId ?? "default"), safeSegment(key));
+    const dir = join(CHECKOUT_ROOT, segment(tenantId ?? "default"), segment(key));
     const rel = relative(CHECKOUT_ROOT, dir);
     if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
       throw new Error(`refusing a checkout outside ${CHECKOUT_ROOT}`);
@@ -1417,10 +1415,35 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
   }
   // ── end snippet ────────────────────────────────────────────────────────────
 
+  /**
+   * **These assert PROPERTIES, not a grammar**, and that is the point of the
+   * change they cover.
+   *
+   * Four security findings landed on the validating version of this example —
+   * traversal, Windows containment, tenant collision, Windows-aliased segments —
+   * because a grammar is a list of things to remember and each round found the
+   * next item on it. Encoding removes the list. So the tests name what must be
+   * true of any encoding rather than what this one happens to emit: a
+   * grammar-shaped test would have had to grow an arm per finding too.
+   */
+  const HOSTILE = [
+    "../../server-repo",
+    "../../../etc",
+    "a/b",
+    "",
+    ".",
+    "..",
+    "CON",
+    "PRN",
+    "NUL",
+    "COM1",
+    "acme.",
+    "acme..",
+    "Acme",
+    "\\\\server\\share",
+  ];
+
   it("runs the throwaway-directory example the docs lead with", async () => {
-    // The first thing a reader copies. It takes no caller input at all, which is
-    // why it leads: the guarded derivation below is the harder case and is
-    // presented as one.
     const spy = vi.fn();
     const root = mkdtempSync(join(tmpdir(), "cwd-docs-"));
     const agent = claudeCodeAgent({
@@ -1443,57 +1466,77 @@ describe("claudeCodeAgent — the documented cwd examples", () => {
     });
 
     // `testBlock` pins the session to "test-session", so the expectation is a
-    // LITERAL rather than the expression the resolver computes — an expectation
-    // derived from the implementation agrees with it whatever it does.
+    // LITERAL — an expectation derived from the implementation agrees with it
+    // whatever it does.
     const { error } = await testBlock(agent, { input: { prompt: "go" } });
 
     expect(error).toBeNull();
     expect(spy.mock.calls[0][0].options?.cwd).toBe(
-      "/var/agent-checkouts/default/test-session",
+      "/var/agent-checkouts/64656661756c74/746573742d73657373696f6e",
     );
   });
 
-  it("keeps the run inside the root when a segment is a traversal", () => {
-    // Session ids and request ids BOTH arrive from the caller — the action route
-    // reads `body.sessionId`, and `sendOptions.requestId` rides the body into
-    // `ctx.request.identity.id`. So every part of a derived path is untrusted
-    // (BP-031), and an unguarded `join` sends the run wherever the caller likes.
-    for (const hostile of ["../../server-repo", "../../../etc", "a/b", "", "."]) {
-      expect(() => checkoutFor(undefined, hostile)).toThrow();
-      expect(() => checkoutFor(hostile, "run-1")).toThrow();
+  it("stays inside the root for every hostile value", () => {
+    // Traversal, absolute paths, UNC prefixes, empty and dot-only values. The
+    // encoded form cannot express any of them, so this holds by construction
+    // rather than by a rule that has to anticipate each one.
+    for (const hostile of HOSTILE) {
+      const dir = checkoutFor(undefined, hostile);
+      expect(relative(CHECKOUT_ROOT, dir).startsWith("..")).toBe(false);
+      expect(checkoutFor(hostile, "run-1").startsWith(`${CHECKOUT_ROOT}/`)).toBe(true);
     }
+  });
+
+  it("is injective — no two distinct values share a directory", () => {
+    // The property "reject, don't strip" was protecting. Injectivity gives it
+    // outright: two runs can never share a checkout by accident.
+    const values = [...HOSTILE, "alice", "bob", "tenant", "tenant.", "a", "a."];
+    const dirs = values.map((v) => checkoutFor(undefined, v));
+    expect(new Set(dirs).size).toBe(values.length);
   });
 
   it("keeps two tenants sharing one session id apart", () => {
     // The framework namespaces its own session storage by tenant precisely
-    // because two tenants can hold the same session id, while exposing the BARE
-    // id on `ctx.session.identity.id`. A path built from the session alone puts
-    // both tenants in one directory, where their runs read and edit each other's
-    // work.
+    // because two tenants can hold the same session id, while exposing the bare
+    // id. A path built from the session alone puts both in one directory.
     expect(checkoutFor("tenant-a", "sess_1")).not.toBe(checkoutFor("tenant-b", "sess_1"));
   });
 
   it("does not let a tenant and a key run together into one path", () => {
-    // Separate segments, never concatenated: `a` + `b/c` and `a/b` + `c` must
-    // not collapse onto the same directory. The segment grammar forbids the
-    // separator outright, which is what makes that impossible rather than
-    // merely unlikely.
-    expect(() => checkoutFor("a", "b/c")).toThrow();
-    expect(() => checkoutFor("a/b", "c")).toThrow();
+    // `a` + `b/c` and `a/b` + `c` must not collapse onto one directory.
+    expect(checkoutFor("a", "b/c")).not.toBe(checkoutFor("a/b", "c"));
+  });
+
+  it("emits segments Windows keeps distinct and can actually create", () => {
+    // The finding that ended the grammar. Win32 strips trailing dots, so `acme`
+    // and `acme.` are ONE directory; and `CON`/`PRN`/`NUL`/`COM1` are reserved
+    // device names that cannot be directories at all. Both passed the old
+    // grammar. The encoded alphabet contains no dot and no letter outside
+    // [0-9a-f], so neither is expressible.
+    const RESERVED = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i;
+    for (const value of HOSTILE) {
+      const seg = segment(value);
+      expect(seg.endsWith(".")).toBe(false);
+      expect(RESERVED.test(seg)).toBe(false);
+      expect(seg).toMatch(/^[0-9a-f]*$/);
+    }
+    // And the two that aliased are distinct, under Win32 semantics specifically.
+    expect(win32.join("C:\\root", segment("acme"))).not.toBe(
+      win32.join("C:\\root", segment("acme.")),
+    );
   });
 
   it("accepts a valid derivation under Windows path semantics too", () => {
-    // The containment check this replaced compared `join(...)` against a prefix
-    // ending in a literal "/". `join` uses the PLATFORM separator, so on Windows
-    // a valid value failed the prefix test and the documented setup could not
-    // run at all — a guard failing closed on the happy path.
+    // The containment check is separator-independent: `join` uses the platform
+    // separator, so a literal "/" comparison rejected every valid value on
+    // Windows — a guard failing closed on the happy path.
     const winContains = (id: string): boolean => {
-      const dir = win32.join(CHECKOUT_ROOT, "default", id);
+      const dir = win32.join(CHECKOUT_ROOT, "default", segment(id));
       const rel = win32.relative(CHECKOUT_ROOT, dir);
       return !(rel === "" || rel.startsWith("..") || win32.isAbsolute(rel));
     };
 
     expect(winContains("sess_normal_123")).toBe(true);
-    expect(winContains("../../server-repo")).toBe(false);
+    expect(winContains("../../server-repo")).toBe(true);
   });
 });
