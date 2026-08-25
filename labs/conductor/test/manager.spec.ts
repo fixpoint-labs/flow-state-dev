@@ -458,3 +458,131 @@ describe("the manager — the phase surface", () => {
     ).not.toThrow();
   });
 });
+
+describe("the flow — seeding twice", () => {
+  it("returns the existing row rather than minting a second run", async () => {
+    // Two rows for one issue-phase derive the same checkout, the same branch and
+    // the same run record — so a duplicated seed charges two full coding runs
+    // whose independently valid claims overwrite one shared record, and `status`
+    // answers with two rows carrying the last writer's metadata.
+    const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
+    live = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
+      isDone: () => true,
+    });
+
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    await settle(live);
+    await live.call("seed", { issue: ISSUE, phase: PHASE });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    // Asserted on the BOARD and on the harness, never on a return value: one
+    // row and one run are the properties that matter, and `status` answering
+    // with two rows carrying the last writer's metadata is the observable harm.
+    const { rows } = await live.call<{ rows: StatusRow[] }>("status", { issue: ISSUE });
+    expect(rows).toHaveLength(1);
+    expect(seen.prompts).toHaveLength(1);
+  });
+});
+
+describe("the flow — how much it runs at once", () => {
+  it("does NOT bound simultaneous coding runs, and that is measured not assumed", async () => {
+    // A characterization test, pinning a surprising truth so nobody re-assumes
+    // the comfortable one.
+    //
+    // The board's `concurrency` is now 1 rather than the substrate's default of
+    // 4 — worth setting, because it bounds how many rows one drain hands off at
+    // a time. But it does NOT bound how many coding runs are alive: a detached
+    // dispatch hands off and returns, releasing the drain's slot long before the
+    // run it started finishes. Two seeded issues therefore produce two live runs
+    // whatever `concurrency` is.
+    //
+    // So "one issue at a time" is a property of how you seed, not something the
+    // board enforces, and the README says exactly that. If a future change makes
+    // the board gate detached runs, this test goes red and the README needs
+    // rewriting with it — which is the point of pinning it.
+    let running = 0;
+    let peak = 0;
+    const release: Array<() => void> = [];
+    live = createConductorHarness({
+      resolveClaudeAgent: () => ({
+        query: async function* () {
+          running += 1;
+          peak = Math.max(peak, running);
+          await new Promise<void>((r) => release.push(r));
+          running -= 1;
+          yield sdkResult("success") as never;
+        },
+      }),
+      isDone: () => true,
+    });
+
+    await live.call("seed", { issue: "FIX-1001", phase: PHASE });
+    await live.call("seed", { issue: "FIX-1002", phase: PHASE });
+    await live.call("wake", {});
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    expect(peak).toBe(2);
+    for (const done of release) done();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  });
+});
+
+describe("the manager — the stale window is refused at construction", () => {
+  it("refuses a stale window inside the run's own deadline", () => {
+    // A stale window shorter than the deadline means a live attempt's lock ages
+    // past "stale" while it is still working, so a replacement clears it and two
+    // agents mutate one checkout — obligation B violated by configuration.
+    // There is no runtime moment at which that announces itself, so it is
+    // refused where it can still be seen.
+    const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
+    expect(() =>
+      createConductorHarness({
+        resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
+        runTimeoutMs: 60_000,
+        ownership: { staleAfterMs: 30_000 },
+      }),
+    ).toThrow(/must exceed/);
+  });
+
+  it("accepts a stale window past the deadline", () => {
+    const seen = { prompts: [] as string[], cwds: [] as (string | undefined)[] };
+    const h = createConductorHarness({
+      resolveClaudeAgent: scriptedAgent([sdkResult("success")], seen),
+      runTimeoutMs: 30_000,
+      ownership: { staleAfterMs: 90_000 },
+    });
+    h.dispose();
+  });
+});
+
+describe("PROBE — concurrency under detached dispatch", () => {
+  it("counts simultaneously-live runs from one drain", async () => {
+    let live_ = 0;
+    let peak = 0;
+    const gate: Array<() => void> = [];
+    live = createConductorHarness({
+      resolveClaudeAgent: () => ({
+        query: async function* () {
+          live_ += 1;
+          peak = Math.max(peak, live_);
+          await new Promise<void>((r) => gate.push(r));
+          live_ -= 1;
+          yield sdkResult("success") as never;
+        },
+      }),
+      isDone: () => true,
+    });
+
+    await live.call("seed", { issue: "FIX-1001", phase: PHASE });
+    await live.call("seed", { issue: "FIX-1002", phase: PHASE });
+    await live.call("wake", {});
+
+    // Let anything that started get going.
+    await new Promise((r) => setTimeout(r, 400));
+    // eslint-disable-next-line no-console
+    console.log("PEAK SIMULTANEOUS RUNS:", peak, "STILL LIVE:", live_);
+    for (const release of gate) release();
+    await new Promise((r) => setTimeout(r, 300));
+  });
+});

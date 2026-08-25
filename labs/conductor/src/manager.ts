@@ -221,6 +221,22 @@ export function harnessManager(options: ManagerOptions) {
     staleAfterMs: options.ownership?.staleAfterMs ?? runTimeoutMs + 300_000,
   };
 
+  // The default satisfies this by construction; an override can break it, and
+  // the breakage is silent and severe. A stale window INSIDE the run's own
+  // deadline means a live attempt's lock ages past "stale" while it is still
+  // working, so a replacement clears it and two coding agents mutate one
+  // checkout — obligation B violated by configuration rather than by a race.
+  // Refused at construction because there is no runtime moment at which the
+  // mistake announces itself.
+  if (ownership.staleAfterMs <= runTimeoutMs) {
+    throw new Error(
+      `[conductor] ownership.staleAfterMs (${ownership.staleAfterMs}ms) must exceed ` +
+        `runTimeoutMs (${runTimeoutMs}ms): a lock may only be declared stale once no ` +
+        `live attempt could still be holding it. Raise the stale window above the run's ` +
+        `own deadline, or lower the deadline.`,
+    );
+  }
+
   /** Every collection the manager or its phase touches, by accessor key. */
   const resources: Record<string, DeclaredResourceEntry> = {
     [RUNS]: runRecordCollection,
@@ -397,7 +413,7 @@ export function harnessManager(options: ManagerOptions) {
    */
   const recordFailure = handler({
     name: "conductor-record-failure",
-    inputSchema: z.any(),
+    inputSchema: z.unknown(),
     outputSchema: z.never(),
     resources,
     execute: async (error: unknown, ctx): Promise<never> => {

@@ -117,7 +117,8 @@ export interface ConductorHarness {
   workspaceRoot: string;
   sourceRepo: string;
   sessionId: string;
-  call<T = unknown>(action: string, input: unknown): Promise<T>;
+  /** `asSession` drives the action from a DIFFERENT coordinator session. */
+  call<T = unknown>(action: string, input: unknown, asSession?: string): Promise<T>;
   dispose(): void;
 }
 
@@ -192,7 +193,7 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
     workspaceRoot,
     sourceRepo,
     sessionId,
-    async call<T>(action: string, input: unknown): Promise<T> {
+    async call<T>(action: string, input: unknown, asSession?: string): Promise<T> {
       // The RESOLVED runtime, not the FlowState handle: `stores` on the handle
       // is the unresolved slot config, and `runAction` reaches straight for
       // `stores.activeRequests`.
@@ -205,7 +206,7 @@ export function createConductorHarness(options: HarnessOptions): ConductorHarnes
         actionName: action as never,
         input: input as never,
         userId: USER_ID,
-        sessionId,
+        sessionId: asSession ?? sessionId,
         stores: runtime.stores as never,
         // Spread, as `fsdev run` does: the detached start operation reaches a
         // request only because a spread copies the `requestHost` REFERENCE.

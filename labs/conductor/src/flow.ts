@@ -55,7 +55,7 @@ import {
 } from "./run-record";
 import { conductorTaskInputSchema, harnessManager, type PhaseSpec } from "./manager";
 import { implementPhase } from "./implement";
-import type { WorkspaceConfig } from "./workspace";
+import { conductorTaskId, type WorkspaceConfig } from "./workspace";
 
 /** The one assignee this board routes to. */
 export const ASSIGNEE = "harness" as const;
@@ -119,6 +119,12 @@ export function conductorFlow(options: ConductorFlowOptions) {
     name: boardId,
     boardId,
     collection: tasks,
+    // ONE issue at a time, stated rather than inherited. The substrate's default
+    // is 4, so a single drain would launch four detached coding runs at once —
+    // contradicting this lab's own deployment contract and multiplying model
+    // spend by four. The manager holds a worker slot for its run's whole
+    // duration, so this is also what keeps that cost legible.
+    concurrency: 1,
     workers: {
       [ASSIGNEE]: { worker: manager, dispatch: { mode: "detached" } },
     },
@@ -126,14 +132,36 @@ export function conductorFlow(options: ConductorFlowOptions) {
 
   const seedInput = conductorTaskInputSchema;
 
-  /** File one issue-phase as a durable row, with its retry budget on it. */
+  /**
+   * File one issue-phase as a durable row, with its retry budget on it.
+   *
+   * **Idempotent per issue-phase**, because everything downstream already is.
+   * Two rows for one issue-phase derive the same checkout, the same branch and
+   * the same `runs/<issue>/<phase>` record — so a duplicated `seed` charges two
+   * full coding runs whose independently valid claims overwrite one shared run
+   * record, and `status` then answers with two board rows carrying the last
+   * writer's metadata. The task id is therefore the issue-phase itself rather
+   * than a fresh mint, and a second `seed` returns the existing row.
+   *
+   * The id is built from the same validated segments the checkout path is, so
+   * it cannot carry a separator or a traversal into the ledger's key space.
+   */
   const seedTask = handler({
     name: "conductor-seed-task",
     inputSchema: seedInput,
     outputSchema: z.object({ taskId: z.string() }),
     uses: [board.capability],
     execute: async (input, ctx) => {
+      const taskId = conductorTaskId(input.issue, input.phase);
+      const existing = await ctx.cap[boardId].getTask(taskId);
+      if (existing !== undefined) {
+        // Already filed. `wake` is what re-drains it — re-seeding must not mint
+        // a second run, and must not reset the retry budget of the first.
+        return { taskId: existing.id };
+      }
+
       const task = await ctx.cap[boardId].addTask({
+        id: taskId,
         goal: `Drive ${input.issue} through its ${input.phase} phase.`,
         assignee: ASSIGNEE,
         // The typed payload. NEVER `metadata`: that is model-patchable through

@@ -58,6 +58,28 @@ Anything else is a **failed attempt**. The row goes back to `pending` with the r
 feedback, or to `errored` once the retry budget is spent. A retry re-runs the agent from the
 beginning, in the checkout the last one left behind, and is told why the last one stopped.
 
+### Reading it back from a new session
+
+**Drive every action from one named session.** On the CLI that means `-s`:
+
+```bash
+pnpm fsdev run conductor seed   -s conductor -i '{"issue":"FIX-1219","phase":"implement"}'
+pnpm fsdev run conductor wake   -s conductor -i '{}'
+pnpm fsdev run conductor status -s conductor -i '{"issue":"FIX-1219"}'
+```
+
+The board row is `user`-scoped and visible from anywhere. The **run record is
+not**: it is session-scoped, shared across a session's own lineage, so a *new*
+coordinator session resolves a different lineage root and sees nothing. Ask for
+`status` from a fresh session and you get the board row with `run: null` — the
+failure reason, the harness session id, the cost and the checkout path all
+missing, with the board row still reading correctly beside them.
+
+The CLI mints a fresh session per invocation unless you pass `-s`, so this is
+reachable through ordinary use rather than being an edge case. Naming the
+session avoids it. Making the run record readable from any session is a real
+gap, not a decision — it is not designed around here.
+
 ### Where the checkout lives
 
 Derived from the durable task — `<root>/<issue>--<phase>`, on `conductor/<issue>-<phase>` — never

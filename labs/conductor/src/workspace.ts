@@ -93,6 +93,17 @@ export function checkoutPathFor(config: WorkspaceConfig, issue: string, phase: s
   );
 }
 
+/**
+ * This issue-phase's board task id — stable, so `seed` is idempotent.
+ *
+ * Built from the same validated segments the checkout path and branch are, for
+ * the same reason: the value lands in the ledger's key space, and a separator or
+ * a traversal there is the identical class of problem it would be in a path.
+ */
+export function conductorTaskId(issue: string, phase: string): string {
+  return `${assertSafeSegment("issue", issue)}--${assertSafeSegment("phase", phase)}`;
+}
+
 /** This issue-phase's branch. Derived alongside the path, from the same inputs. */
 export function branchFor(issue: string, phase: string): string {
   return `conductor/${assertSafeSegment("issue", issue)}-${assertSafeSegment("phase", phase)}`;
@@ -244,9 +255,32 @@ export async function acquireCheckout(
 
     // A holder older than any live attempt could be is a process that died.
     // Steal it rather than waiting out a bound nobody is going to release.
+    //
+    // **The removal is conditioned on the identity of the file that was
+    // judged**, and that is the whole correctness of this branch.
+    // Remove-then-create is the obvious shape and it is broken: two waiters both
+    // stat one stale lock, both decide it is stale, A removes it and creates its
+    // replacement, and B then executes its already-authorised removal against
+    // *A's new lock* and creates its own. Both hold leases and two agents mutate
+    // one checkout — the precise harm obligation B exists to prevent, arriving
+    // through the mechanism meant to prevent it.
+    //
+    // So the victim is identified before it is judged (inode plus the bytes it
+    // carries), re-identified immediately before the unlink, and the steal is
+    // abandoned if anything moved. A successful steal only CLEARS the path — it
+    // never acquires. Acquisition is always the atomic `wx` create at the top of
+    // this loop, so a stealer competes fairly with every other waiter afterwards.
     try {
-      if (now() - statSync(lock).mtimeMs > bounds.staleAfterMs) {
-        rmSync(lock, { force: true });
+      const victim = statSync(lock);
+      const held = readFileSync(lock, "utf8");
+      if (now() - victim.mtimeMs > bounds.staleAfterMs) {
+        // Re-read rather than trusting the reads above: between judging the lock
+        // and unlinking it, the holder may have released and a live attempt
+        // taken the path.
+        const current = statSync(lock);
+        if (current.ino === victim.ino && readFileSync(lock, "utf8") === held) {
+          rmSync(lock, { force: true });
+        }
         continue;
       }
     } catch {
