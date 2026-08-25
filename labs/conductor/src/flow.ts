@@ -276,6 +276,21 @@ export function conductorFlow(options: ConductorFlowOptions) {
   assertDistinctRepository("workspace.sourceRepo", workspace.sourceRepo);
   assertBaseRefExists(workspace.sourceRepo, workspace.baseRef, "workspace.baseRef");
 
+  // **The phase NAME is an identity segment, and `epic` was the only one being
+  // validated here.** Both feed `conductorTaskId`, the checkout path and the
+  // branch; `epic` is checked where the board id is built and the phase was
+  // checked nowhere, so a conductor configured with `review.v2` or `""`
+  // constructed without complaint and then threw from every `seed`. Worse
+  // through the other door: a matching row written straight to the shared board
+  // is CLAIMED and charged before the manager reaches the same failure — a
+  // permanent configuration error paid for once per retry, which is what every
+  // guard at this door exists to stop.
+  //
+  // The return value is deliberately discarded. What is wanted here is the
+  // refusal; the canonical form is derived where it is used, and callers compare
+  // through `sameSegment` so nothing depends on this call folding anything.
+  assertSafeSegment("phase", phase.phase);
+
   // The phase's own preconditions, at the same door and for the same reason —
   // see `PhaseSpec.validate`. Last, because a phase's requirements are stated in
   // terms of a repository the checks above have already established is real.

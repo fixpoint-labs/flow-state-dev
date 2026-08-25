@@ -1886,3 +1886,36 @@ describe("status attribution does not depend on the retry policy", () => {
     expect(mine?.run?.sessionId).toBe("sess_stub");
   }, 20_000);
 });
+
+describe("the phase name is an identity segment, refused at construction", () => {
+  it("refuses a phase name that cannot become a task id, path or branch", async () => {
+    // `epic` was validated where the board id is built; the phase name was
+    // validated nowhere. Both feed `conductorTaskId`, the checkout path and the
+    // branch — so a conductor configured with `review.v2` constructed without
+    // complaint and then threw from every `seed`.
+    //
+    // The expensive door is the other one: a matching row written straight to
+    // the shared board is CLAIMED and charged before the manager reaches the
+    // same failure. A permanent configuration error, paid once per retry.
+    const { conductorFlow } = await import("../src/flow");
+    const { implementPhase } = await import("../src/implement");
+    const base = implementPhase({ prExists: () => true });
+    const workspace = { root: "/tmp/phase-name", sourceRepo: sharedRepo(), baseRef: "main" };
+
+    for (const bad of ["review.v2", "", "a/b", "..", "with space", "ends-in.lock"]) {
+      expect(() =>
+        conductorFlow({ epic: "phase-name-epic", workspace, phase: { ...base, phase: bad } }),
+      ).toThrow(/not a usable identity segment/);
+    }
+
+    // And a legal one still builds — the guard must not become an outage, and
+    // case is folded rather than refused (see the casing test above).
+    expect(() =>
+      conductorFlow({
+        epic: "phase-name-epic",
+        workspace,
+        phase: { ...base, phase: "REVIEW_v2" },
+      }),
+    ).not.toThrow();
+  });
+});
