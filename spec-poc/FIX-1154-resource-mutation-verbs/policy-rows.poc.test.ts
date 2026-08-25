@@ -40,6 +40,7 @@ import {
   ResourceDeletedError,
   type StoreRegistry
 } from "../../packages/engine/src";
+import { createInternalResponseEmitter } from "../../packages/engine/src/streaming/response-emitter";
 
 /** Local stand-in for the framework's `JsonObject` — the POC never leaves this file. */
 type PocState = Record<string, unknown>;
@@ -51,7 +52,11 @@ const counter = defineResource({
     n: z.number().default(0),
     log: z.array(z.string()).default([])
   }),
-  default: { n: 0, log: [] }
+  default: { n: 0, log: [] },
+  // `live` is what makes this resource's change seam fire at all — a non-live,
+  // non-reactive single stays silent regardless, so without it the "no event on
+  // a no-op" assertions below would pass vacuously.
+  client: { live: true, expose: ["n", "log"] }
 });
 
 const tasks = defineResourceCollection({
@@ -86,6 +91,37 @@ function makeCtx(stores: StoreRegistry, requestId: string) {
     userId: "user_1",
     stores
   });
+}
+
+/**
+ * Same, but wired to a real response emitter so `resource_change` items are
+ * capturable. The `committed: false` invariant exists *because* the change
+ * notification is gated on it, so comparing stored state and version only tests
+ * half of it — these rows test the half that matters.
+ */
+async function makeCtxWithEmitter(stores: StoreRegistry, requestId: string) {
+  const items: Array<{ type: string; [k: string]: unknown }> = [];
+  const response = createInternalResponseEmitter({ requestId, internalSeams: undefined });
+  response.subscribeToItems((item: { type: string }) => items.push(item as never));
+  const ctx = await createExecutionContext({
+    flow: makeFlow(),
+    actionName: "run",
+    requestId,
+    sessionId: "sess_1",
+    userId: "user_1",
+    stores,
+    response
+  });
+  // Deduped by item id: this emitter delivers each item to a subscriber more
+  // than once (same `id`, same `itemIndex`), which is a property of the test
+  // harness and not of the write path — it happens identically for the existing
+  // `patchState`. Counting distinct change items is what these rows are about.
+  const changes = (): string[] => [
+    ...new Set(
+      items.filter((i) => i.type === "resource_change").map((i) => i.id as string)
+    )
+  ];
+  return { ctx, changes };
 }
 
 function readRow(stores: StoreRegistry, key: string) {
@@ -219,6 +255,38 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
 
     // Nothing written, nothing claimed deleted.
     expect((await readRow(stores, "counter"))?.state).toBeUndefined();
+  });
+
+  it("row: verified no-op emits NO resource_change — live single handle", async () => {
+    const stores = createInMemoryStores();
+    const { ctx, changes } = await makeCtxWithEmitter(stores, "req_a");
+    const ref = ctx.resources.counter as unknown as MutableRef;
+
+    // Negative control FIRST. If the emitter were not wired, or this resource
+    // were not live, every assertion below would pass for the wrong reason.
+    await incState(ref, { n: 5 });
+    expect(changes()).toHaveLength(1);
+
+    await incState(ref, { n: 0 });
+    expect(changes()).toHaveLength(1); // still 1 — the no-op notified nothing
+  });
+
+  it("row: verified no-op emits NO resource_change — collection-instance handle", async () => {
+    // The second ref builder. The two handles duplicate their write ops, and a
+    // collection notifies UNCONDITIONALLY on commit (no live/reactTo gate), so
+    // a no-op that wrongly reported `committed: true` would be visible here and
+    // invisible on a non-live single.
+    const stores = createInMemoryStores();
+    const { ctx, changes } = await makeCtxWithEmitter(stores, "req_a");
+    await (ctx.resources.tasks as any).create("t1", { n: 0 });
+    const instance = await (ctx.resources.tasks as any).get("t1");
+
+    const afterCreate = changes().length;
+    await incState(instance, { n: 3 });
+    expect(changes().length).toBe(afterCreate + 1); // negative control
+
+    await incState(instance, { n: 0 });
+    expect(changes().length).toBe(afterCreate + 1); // no-op stayed silent
   });
 
   it("row: never-persisted key — a real increment creates it at create-if-absent", async () => {
