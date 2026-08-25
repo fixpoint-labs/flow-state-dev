@@ -159,9 +159,24 @@ work on a checkout that is not the one the server lives in.
 import { join } from "node:path";
 
 const CHECKOUT_ROOT = "/var/agent-checkouts";
+const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+function checkoutFor(sessionId: string): string {
+  // A session id can come from the caller, so it is untrusted input on its way
+  // to becoming a filesystem path. Rejected rather than stripped: stripping
+  // would map two different sessions onto one checkout.
+  if (!SAFE_SEGMENT.test(sessionId)) {
+    throw new Error(`unusable session id: ${sessionId}`);
+  }
+  const dir = join(CHECKOUT_ROOT, sessionId);
+  if (!dir.startsWith(`${CHECKOUT_ROOT}/`)) {
+    throw new Error(`refusing a checkout outside ${CHECKOUT_ROOT}`);
+  }
+  return dir;
+}
 
 const agent = claudeCodeAgent({
-  cwd: (_input, ctx) => join(CHECKOUT_ROOT, ctx.session.identity.id),
+  cwd: (_input, ctx) => checkoutFor(ctx.session.identity.id),
 });
 ```
 
@@ -170,9 +185,18 @@ serves many runs, so a fixed directory would be the wrong shape — this resolve
 per run, just before the agent starts. Return a promise if the directory has to
 be looked up or created first.
 
-What you key it on is yours. The session id above gives each conversation its
-own checkout; a background job that already knows which repository it is working
-on would key it on that instead.
+### Validate whatever you key it on
+
+The check above is the part worth copying. A working directory decides where a
+coding agent writes, so an identifier that reached it from a request body would
+let whoever sent that request redirect the run — a session id of
+`../../server-repo` resolves outside the root and lands the agent somewhere you
+did not choose. Validate the value as a single path segment, then confirm the
+joined path is still inside your root.
+
+What you key it on is otherwise yours. The session id gives each conversation
+its own checkout; a background job that already knows which repository it is
+working on would key it on that instead. The rule is the same either way.
 
 Two things follow the directory. The run's file tools address relative paths
 inside it. And the record of what the run touched, if you have `recordWork` on

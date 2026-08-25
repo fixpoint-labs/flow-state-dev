@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve as resolvePath } from "node:path";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
 import { normalizeResourcePath } from "@flow-state-dev/core/types";
 import {
@@ -1382,17 +1382,29 @@ describe("claudeCodeAgent — recordWork", () => {
  * edit to pass, they need the same edit.
  */
 describe("claudeCodeAgent — the documented cwd example", () => {
-  it("runs exactly as written in the README, the guide and the option's JSDoc", async () => {
-    // ── the snippet ──────────────────────────────────────────────────────────
-    const CHECKOUT_ROOT = "/var/agent-checkouts";
+  // ── the snippet, verbatim ──────────────────────────────────────────────────
+  const CHECKOUT_ROOT = "/var/agent-checkouts";
+  const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
+  function checkoutFor(sessionId: string): string {
+    if (!SAFE_SEGMENT.test(sessionId)) {
+      throw new Error(`unusable session id: ${sessionId}`);
+    }
+    const dir = join(CHECKOUT_ROOT, sessionId);
+    if (!dir.startsWith(`${CHECKOUT_ROOT}/`)) {
+      throw new Error(`refusing a checkout outside ${CHECKOUT_ROOT}`);
+    }
+    return dir;
+  }
+  // ── end snippet ────────────────────────────────────────────────────────────
+
+  it("runs exactly as written in the README, the guide and the option's JSDoc", async () => {
     const spy = vi.fn();
     const agent = claudeCodeAgent({
-      cwd: (_input, ctx) => join(CHECKOUT_ROOT, ctx.session.identity.id),
+      cwd: (_input, ctx) => checkoutFor(ctx.session.identity.id),
       // Not part of the snippet — the SDK seam, so this runs without a model.
       resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
     });
-    // ── end snippet ──────────────────────────────────────────────────────────
 
     const runtime = await createTestContext({});
     await agent.config.execute?.({ prompt: "go" }, runtime.ctx as never);
@@ -1400,5 +1412,26 @@ describe("claudeCodeAgent — the documented cwd example", () => {
     const sessionId = runtime.ctx.session.identity.id;
     expect(sessionId).toBeTruthy();
     expect(spy.mock.calls[0][0].options?.cwd).toBe(`${CHECKOUT_ROOT}/${sessionId}`);
+  });
+
+  it("keeps the run inside the root when the session id is a traversal", () => {
+    // A session id is CALLER-SUPPLIED over HTTP — `action-routes.ts` reads it
+    // straight off the request body — so this is untrusted input on its way to
+    // becoming the directory a coding agent writes in (BP-031). The first draft
+    // of this example passed it to `join` unguarded, where `../../server-repo`
+    // resolves to `/server-repo` and redirects the run into another checkout.
+    //
+    // Published documentation gets copied, so the guard has to copy with it.
+    for (const hostile of ["../../server-repo", "../../../etc", "a/b", "", "."]) {
+      expect(() => checkoutFor(hostile)).toThrow();
+    }
+  });
+
+  it("never resolves outside the root for any id it accepts", () => {
+    // The containment half, asserted independently of the grammar: whatever the
+    // pattern lets through must still land under the root.
+    for (const id of ["sess_normal_123", "a.b", "A-1_2", "x"]) {
+      expect(resolvePath(checkoutFor(id)).startsWith(`${CHECKOUT_ROOT}/`)).toBe(true);
+    }
   });
 });

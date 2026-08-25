@@ -196,11 +196,32 @@ export interface ClaudeCodeAgentOptions {
    * import { join } from "node:path";
    *
    * const CHECKOUT_ROOT = "/var/agent-checkouts";
+   * const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+   *
+   * function checkoutFor(sessionId: string): string {
+   *   // Session ids arrive from the caller over HTTP, so this is untrusted
+   *   // input on its way to becoming a filesystem path (BP-031). Rejected
+   *   // rather than stripped: stripping maps two sessions onto one checkout.
+   *   if (!SAFE_SEGMENT.test(sessionId)) {
+   *     throw new Error(`unusable session id: ${sessionId}`);
+   *   }
+   *   const dir = join(CHECKOUT_ROOT, sessionId);
+   *   if (!dir.startsWith(`${CHECKOUT_ROOT}/`)) {
+   *     throw new Error(`refusing a checkout outside ${CHECKOUT_ROOT}`);
+   *   }
+   *   return dir;
+   * }
    *
    * claudeCodeAgent({
-   *   cwd: (_input, ctx) => join(CHECKOUT_ROOT, ctx.session.identity.id),
+   *   cwd: (_input, ctx) => checkoutFor(ctx.session.identity.id),
    * })
    * ```
+   *
+   * **Whatever you key the directory on, validate it before it becomes a
+   * path.** A working directory decides where a coding agent writes, so an
+   * identifier that reached it from a request body would let a caller redirect
+   * the run — which is why the guard is part of the example rather than a note
+   * beside it.
    *
    * The resolver may be async, for a directory that has to be looked up or
    * provisioned first.
