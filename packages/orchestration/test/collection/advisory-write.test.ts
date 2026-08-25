@@ -1569,3 +1569,59 @@ describe("the seam judges the call by what was true WHEN IT RAN (FIX-964)", () =
     expect(collection.get("t")?.status).toBe("completed");
   });
 });
+
+/**
+ * The window the snapshot opens: a displacement that lands *between* the
+ * snapshot and the write. Clause (a) sees a task that was ours and writable, so
+ * only the re-read can catch it — and only if the re-read is allowed to notice
+ * a NON-terminal displacement, not just a settlement.
+ */
+describe("a displacement inside the snapshot→write window (FIX-964)", () => {
+  it("contains a reclaim that lands after the snapshot", async () => {
+    // Found by review. A lease reclaim re-pends the task while the legacy write
+    // is in flight. The store then attempts `pending → errored`, which the state
+    // machine refuses — so it throws, on a task that was perfectly ours when the
+    // call began. A conforming store would have declined this (`disallowed`), so
+    // it is the seam's to contain; letting it through abandons the siblings,
+    // which is the very defect this change exists to fix, reached through the
+    // one window the snapshot cannot see across.
+    const { collection } = await sequencerBacking()();
+    await collection.addTask({ id: "t", goal: "t" });
+    const task = await collection.claim("worker-1");
+    if (task === null) throw new Error("fixture failed to claim");
+    const claim = ticketForClaim(collection.collectionId, task);
+
+    const reclaimedMidWrite: TaskCollectionRef = {
+      ...collection,
+      fail: async (id: string, error: string) => {
+        await collection.reclaim(Number.MAX_SAFE_INTEGER);
+        return collection.fail(id, error);
+      },
+    };
+
+    await expect(
+      advisoryFail(reclaimedMidWrite, "t", "worker blew up", { ifAllowed: true, claim })
+    ).resolves.toMatchObject({ outcome: "declined" });
+    expect(collection.get("t")?.status).toBe("pending");
+  });
+
+  it("still propagates an outage on a task that never moved", async () => {
+    // The negative that keeps the widened clause honest: nothing displaced the
+    // task, so the re-read shows it exactly as we left it and the predicate
+    // declines nothing. A store that is merely down must still reach the caller.
+    const { collection } = await sequencerBacking()();
+    await collection.addTask({ id: "t", goal: "t" });
+    const task = await collection.claim("worker-1");
+    if (task === null) throw new Error("fixture failed to claim");
+    const claim = ticketForClaim(collection.collectionId, task);
+
+    await expect(
+      advisoryFail(
+        { ...collection, fail: () => Promise.reject(new Error("store unreachable")) },
+        "t",
+        "worker blew up",
+        { ifAllowed: true, claim }
+      )
+    ).rejects.toThrow("store unreachable");
+  });
+});

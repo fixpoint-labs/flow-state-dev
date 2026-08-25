@@ -127,7 +127,8 @@ throw on an illegal transition.
 
 A `TaskCollectionRef` you write yourself is a supported extension point, and a ref
 that drops the options argument — a two-parameter `complete(id, output)` satisfies
-the interface structurally — no longer takes a board down with it. The substrate's
+the interface structurally — no longer takes a board down with an advisory
+write-back conflict. The substrate's
 own write-backs contain a throw they can attribute to a decline a conforming store
 would have made before committing: the late result is dropped and the drain
 continues. The guarantee is board survival, not equivalence. It fires on a throw,

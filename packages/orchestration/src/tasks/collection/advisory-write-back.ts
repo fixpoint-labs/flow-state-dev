@@ -24,7 +24,7 @@
  * where the framework constructs the store through a boundary it owns, and
  * `dispatchAndExecuteBlock` is handed a ref directly as a plain option. So
  * containment moves here instead, to the two places the substrate actually asks
- * for an advisory write, where it can be held whatever the store does.
+ * for an advisory write, where it can be held without the store's cooperation.
  *
  * ## The rule
  *
@@ -35,10 +35,10 @@
  * - **(a)** {@link transitionDeclineReason} was already true of the snapshot —
  *   the task was settled or displaced before this call ever ran, so a
  *   conforming store would have declined it. A throw means it did not.
- * - **(b)** a re-read shows a state this call could not have produced: terminal
- *   at a status other than the one it was attempting, or terminal under a
- *   different attempt. That is a third party settling the task inside the
- *   snapshot→write window.
+ * - **(b)** a re-read shows a state this call could not have produced, and the
+ *   predicate declines the write against it. Something moved the task inside
+ *   the snapshot→write window — settled it, or merely displaced it, which is
+ *   why this is not restricted to terminal states.
  *
  * Contain either. **Rethrow everything else, unchanged.**
  *
@@ -97,7 +97,6 @@
  */
 import type { TaskChangeKind } from "./change-event";
 import type { Task, TaskStatus } from "../schema/task";
-import { isTerminalStatus } from "../schema/task-status";
 import { routeFailure, sumGrantedRetries, transitionDeclineReason } from "./internal";
 import type {
   TaskCollectionRef,
@@ -329,27 +328,45 @@ function attribute(
     }
   }
 
-  // (b) Someone settled the task inside the snapshot→write window, to a state
-  //     this call could not have produced. Terminal at OUR target under OUR
-  //     attempt is deliberately excluded: that is consistent with our own write
-  //     having committed, which makes the throw a post-commit failure and
-  //     FIX-963's to report.
-  if (current !== undefined && isTerminalStatus(current.status)) {
-    const couldNotBeOurs =
-      current.status !== target.status ||
-      (options.claim !== undefined && current.attempts !== options.claim.attempt);
-    if (couldNotBeOurs) {
-      const reason =
-        transitionDeclineReason(
-          current,
-          target.status,
-          options,
-          ref.collectionId,
-          before.at,
-          undefined,
-          target.kind
-        ) ?? "terminal";
-      return { outcome: "declined", reason, status: current.status };
+  // (b) Something moved the task inside the snapshot→write window, leaving it in
+  //     a state this call could not have produced — and a conforming store would
+  //     have declined the write against it.
+  //
+  // Two questions, in this order, and the split is what makes the clause safe.
+  // "Could this be our own write?" is only a GATE: it excludes the state our
+  // write would have left behind, because that is a post-commit failure and
+  // FIX-963's to report rather than ours to swallow. What actually decides
+  // containment is the predicate, asked against the state the store saw.
+  //
+  // Leaning on the gate alone would be wrong in the other direction: a store
+  // that is simply down leaves the task exactly where we found it, which is
+  // *also* "not what our write would have produced". The predicate is what tells
+  // those apart — it declines a displaced task and says nothing about a healthy
+  // one — so an outage still reaches the caller.
+  //
+  // Deliberately NOT restricted to terminal states. Review found the gap: a
+  // lease reclaim re-pends the task mid-write, the legacy store then attempts
+  // `pending → errored`, and the state machine refuses it. Nothing settled the
+  // task, so a terminal-only test never fires, and a throw a conforming store
+  // would have declined escapes and abandons the siblings — this change's own
+  // defect, reached through its own seam.
+  if (current !== undefined) {
+    const couldBeOurs =
+      current.status === target.status &&
+      (options.claim === undefined || current.attempts === options.claim.attempt);
+    if (!couldBeOurs) {
+      const reason = transitionDeclineReason(
+        current,
+        target.status,
+        options,
+        ref.collectionId,
+        before.at,
+        undefined,
+        target.kind
+      );
+      if (reason !== undefined) {
+        return { outcome: "declined", reason, status: current.status };
+      }
     }
   }
 

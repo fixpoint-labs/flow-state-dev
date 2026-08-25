@@ -365,12 +365,17 @@ export type TaskHandle<TInput = unknown, TOutput = unknown> = Task<TInput, TOutp
  *
  * ### What the substrate guarantees, and what you still owe
  *
- * **Guaranteed, whatever your ref does:** the board survives it. The substrate's
- * advisory write-backs contain a throw they can attribute to a decline a
- * conforming store would have made before committing anything — the late result
- * is dropped and the drain finishes its other tasks. A ref that ignores the
- * options no longer abandons every sibling task on the board the first time a
- * worker's result arrives late.
+ * **Guaranteed — for one class of throw, not for every failure.** The
+ * substrate's advisory write-backs contain a throw they can attribute to a
+ * decline a conforming store would have made before committing anything: the
+ * late result is dropped and the drain finishes its other tasks. So a ref that
+ * ignores the options no longer abandons every sibling task the first time a
+ * worker's result arrives late — the write-back *conflict* is contained.
+ *
+ * That is the whole of it. A store that is unreachable, or that commits and then
+ * fails on the way out, still throws through to the caller and can still fail
+ * the drain, because neither is a task-state conflict and silencing them would
+ * lose real failures. Don't read this as fault isolation from your store.
  *
  * **Still yours:** the write's correctness. Containment fires on a *throw*, and
  * plenty of wrong writes don't throw. A worker reporting success on a task
