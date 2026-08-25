@@ -22,7 +22,7 @@ Don't invent an epic to wrap an unrelated batch; a coordination artifact nobody 
 bloat (tenets 2/3).
 
 > **Read [`docs/contributing/orchestration.md`](../../../docs/contributing/orchestration.md)
-> first.** The epic-spec, its conventions, the gates, the two coordination stores, worktree
+> first.** The epic-spec, its conventions, the gates, the coordination stores, worktree
 > branching, and the spec-review bar are defined there. This file is the coordinator's
 > *operating procedure* and does not restate them.
 

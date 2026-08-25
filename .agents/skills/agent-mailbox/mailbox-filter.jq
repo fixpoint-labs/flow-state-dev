@@ -36,7 +36,13 @@ def strip_header:
   # silently-truncated `decision` or handoff would be acted on as if complete.
   | if length > 240 then .[0:240] + " […]" else . end;
 
-map(
+# Header values come out of `field` downcased, so the identity we compare them against
+# must be too — otherwise `mailbox-poll.sh fsd-em A ...` fails BOTH ways: our own posts
+# stop matching and are emitted as peer mail, and mail actually addressed to us fails
+# the `to:` test and is dropped.
+($me | ascii_downcase) as $me_n
+| ($mysession | ascii_downcase) as $mysession_n
+| map(
   select((.id // 0) > ($since | tonumber))
   | select(((.user.login // "") | endswith("[bot]")) | not)
   | select((hdrblock[0] // "") | test("^[ \t]*from[ \t]*:"; "i"))
@@ -46,7 +52,7 @@ map(
       text: strip_header }
   | select(.from != null)
   # our own post, echoed back — `from:` alone is not enough, a peer session shares it
-  | select(.from != $me or .session != $mysession)
+  | select(.from != $me_n or .session != $mysession_n)
   # addressed to someone else; no `to:` is a broadcast and always qualifies
-  | select(.to == null or .to == $me)
+  | select(.to == null or .to == $me_n)
 )

@@ -101,17 +101,24 @@ flowchart TD
   EA -->|creates / attaches spec| EPIC
 ```
 
-## The two coordination stores (we keep both — they are not duplicates)
+## The coordination stores (we keep all three — they are not duplicates)
 
 | Store | What it is | Lifetime | Home |
 |---|---|---|---|
 | **Coordinator status table** | The coordinator's **internal working memory** — one row per issue (phase, spec PR#, impl PR#, gate-pending, worktree). Updated constantly. | Session-only | `.orchestration/` (**gitignored — never committed**) |
 | **Epic-spec running index** | A **durable, exposed audit log** — links to every issue PR (spec + impl) under the epic, for humans and issue agents to navigate from one place. *Are we winning* is not here; it is in the epic report, where live state is. | Life of the epic | The epic-spec (branch + Linear Epic-issue doc) |
+| **Mailbox handle brief** | A **durable, exposed handoff** for agents *outside* this repo, who can see neither Linear nor our PRs — the epic's objective and gate state, per-issue rows, blockers, what's next. Refreshed from the table when state changes. | Life of the epic | `handles/<slug>.md` on the epic's mailbox handle |
 
-They overlap in *content* (both know the PR numbers) but differ in *purpose and
-audience*: the table is private and ephemeral; the index is public and durable. The
-index is refreshed from the table's handles — it is a projection, not a second live
-source.
+They overlap in *content* (all three know the PR numbers) but differ in *purpose and
+audience*: the table is private and ephemeral; the index is public and durable, for
+readers inside this repo; the brief is public and durable, for agents who cannot see
+inside it at all.
+
+**Only the table is a live source.** The index and the brief are both **projections**
+refreshed *from* it, and neither is ever read back as current state — a cold-resumed
+coordinator rebuilds its table from Linear and the PRs, then rewrites both. That
+direction is what keeps a stale brief from being mistaken for live state: it is a
+bulletin the epic publishes, not a store the epic reads.
 
 ## Worktree branching (base every issue branch on fresh `origin/main`)
 
@@ -1294,9 +1301,9 @@ it's here:
 - `.orchestration/` reads and writes (the status table, the epic record, handle caches).
 - PR subscriptions (`subscribe_pr_activity`) and, locally, the `watch-pr` Monitors.
 - The epic's mailbox handle, whole: registering it, subscribing, keeping `handles/<slug>.md`
-  current, retiring it at wrap, and replying from the table it already holds. The brief is
-  that status table serialized, so this is the same act as an `.orchestration/` write — not
-  an edit to dispatch. What it may *say* there is still bounded by the table above.
+  current, retiring it at wrap, and replying from the table it already holds. Writing the
+  brief is the same act as refreshing the epic-spec index — projecting the table it already
+  holds — not an edit to dispatch. What it may *say* there is still bounded by the table above.
 - The Linear status mirror.
 - Surfacing gates, blockers and status; recording your answers to them.
 - Resolving the set and confirming it with you.
