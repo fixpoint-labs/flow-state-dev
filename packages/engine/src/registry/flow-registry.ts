@@ -389,6 +389,17 @@ function collectScopeDeclaration(
     : (scopeConfig as { stateSchema?: ZodTypeAny } | undefined)?.stateSchema;
 
   const resourceSchemas = emptySchemaMap<ResourceDeclaration>();
+  // Same-flow cell occupancy, keyed by `(effective isolation, ref)`. Separate
+  // from `resourceSchemas` — and checked BEFORE the isolation filter below —
+  // because a same-flow collision is not a cross-flow question. Isolation
+  // moves both declarations into the one `${id}:${flowKind}` bucket together;
+  // it never separates them from each other, so filtering first would let two
+  // isolated declarations overwrite one cell unchecked.
+  //
+  // Isolation is part of the key rather than ignored, because it DOES separate
+  // a shared declaration from an isolated one: those land in different buckets
+  // and genuinely do not collide.
+  const cellsInFlow = new Map<string, ResourceDeclaration>();
   const storageKeys = resourceStorageKeys(flow.resources);
   for (const [accessor, entry] of Object.entries(flow.resources ?? {})) {
     if (entry === undefined || entry.scope !== scope) continue;
@@ -398,13 +409,17 @@ function collectScopeDeclaration(
     // Their config admits neither `ref` nor `flowIsolation`, so treating them
     // as shared storage would reject a valid app with no way to opt out.
     if (isExternalResourceCollection(entry)) continue;
-    if (resolveResourceIsolation(entry.flowIsolation, flow, scope)) continue;
     const schema = entry.stateSchema;
     if (schema === undefined) continue;
 
+    const isolated = resolveResourceIsolation(entry.flowIsolation, flow, scope);
     const ref = storageRef(entry, accessor, storageKeys);
     const collection = isCollectionConfig(entry);
-    const prior = resourceSchemas[ref];
+
+    // JSON-encoded so the two fields cannot concatenate ambiguously, matching
+    // `tupleKey` in core's `flow/defineFlow.ts`.
+    const cellKey = JSON.stringify([isolated, ref]);
+    const prior = cellsInFlow.get(cellKey);
     if (prior !== undefined) {
       // Two of THIS flow's declarations resolve to one durable cell. Aliases
       // of a single definition land here harmlessly (same schema object, so
@@ -413,12 +428,16 @@ function collectScopeDeclaration(
       // build-time check keys them apart on an incidental `ref`.
       //
       // Comparing rather than overwriting is the point: last-write-wins drops
-      // the earlier schema from the shared view, so a third flow compatible
-      // with only the survivor would register clean while sharing cells with
-      // the one that was dropped.
+      // the earlier schema, so a third flow compatible with only the survivor
+      // would register clean while sharing cells with the one that was dropped.
       checkPair(scope, `resources.${ref}`, flow.kind, flow.kind, prior.schema, schema, prior.collection || collection);
       continue;
     }
+    cellsInFlow.set(cellKey, { schema, collection });
+
+    // Cross-flow view: isolated declarations are flow-namespaced, so they
+    // cannot collide with another flow's and do not participate.
+    if (isolated) continue;
     resourceSchemas[ref] = { schema, collection };
   }
 

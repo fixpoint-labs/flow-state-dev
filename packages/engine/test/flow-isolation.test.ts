@@ -564,6 +564,16 @@ describe("cross-flow resource schema validation", () => {
         ref,
       } as never);
 
+    /** Same collection, opted into per-resource isolation. */
+    const isoColl = (schema: z.ZodTypeAny, ref: string) =>
+      defineResourceCollection({
+        scope: "user",
+        pattern: "files/*",
+        stateSchema: schema,
+        ref,
+        flowIsolation: true,
+      } as never);
+
     it("rejects incompatible same-pattern collections in a single flow", () => {
       const registry = createFlowRegistry();
       const error = captureConflict(() =>
@@ -613,6 +623,100 @@ describe("cross-flow resource schema validation", () => {
             kind: "flow-a",
             rawResources: { alpha: coll(z.object({ body: z.string() }), "alpha"), other },
           })
+        )
+      ).not.toThrow();
+    });
+
+    it("rejects incompatible same-pattern collections that are both isolated", () => {
+      // Isolation moves both declarations into the one `${id}:${flowKind}`
+      // bucket together — it never separates them from each other. So the
+      // same-flow comparison has to run BEFORE isolated declarations are
+      // filtered out of the cross-flow view, or this pair overwrites one cell
+      // unchecked.
+      const registry = createFlowRegistry();
+      const error = captureConflict(() =>
+        registry.register(
+          makeFlow({
+            kind: "flow-a",
+            rawResources: {
+              alpha: isoColl(z.object({ body: z.string() }), "alpha"),
+              beta: isoColl(z.object({ body: z.number() }), "beta"),
+            },
+          })
+        )
+      );
+      expect(error.field).toBe("resources.files/*");
+      expect(error.message).toContain("distinct pattern");
+      expect(error.message).not.toContain("flowIsolation");
+    });
+
+    it("rejects the same pair when isolation comes from the flow-level flag", () => {
+      // The guard has two ways in; the flow-level flag is the other.
+      const registry = createFlowRegistry();
+      const error = captureConflict(() =>
+        registry.register(
+          makeFlow({
+            kind: "flow-a",
+            isolateUserState: true,
+            rawResources: {
+              alpha: coll(z.object({ body: z.string() }), "alpha"),
+              beta: coll(z.object({ body: z.number() }), "beta"),
+            },
+          })
+        )
+      );
+      expect(error.field).toBe("resources.files/*");
+    });
+
+    it("accepts compatible same-pattern collections that are both isolated", () => {
+      const registry = createFlowRegistry();
+      expect(() =>
+        registry.register(
+          makeFlow({
+            kind: "flow-a",
+            rawResources: {
+              alpha: isoColl(z.object({ body: z.string() }), "alpha"),
+              beta: isoColl(z.object({ body: z.string() }), "beta"),
+            },
+          })
+        )
+      ).not.toThrow();
+    });
+
+    it("leaves a shared and an isolated declaration at one pattern alone", () => {
+      // The over-firing direction for the hoist: isolation is part of the cell
+      // key, not ignored. These two land in different buckets — bare `{id}` and
+      // `{id}:{flowKind}` — so incompatible schemas are not a conflict.
+      const registry = createFlowRegistry();
+      expect(() =>
+        registry.register(
+          makeFlow({
+            kind: "flow-a",
+            rawResources: {
+              alpha: isoColl(z.object({ body: z.string() }), "alpha"),
+              beta: defineResourceCollection({
+                scope: "user",
+                pattern: "files/*",
+                stateSchema: z.object({ body: z.number() }),
+                ref: "beta",
+                flowIsolation: false,
+              } as never),
+            },
+          })
+        )
+      ).not.toThrow();
+    });
+
+    it("does not compare isolated declarations across two flows", () => {
+      // The hoist is per-flow: two flows each isolating the same pattern are
+      // in distinct `flowKind` buckets and must stay uncompared.
+      const registry = createFlowRegistry();
+      registry.register(
+        makeFlow({ kind: "flow-a", rawResources: { files: isoColl(z.object({ body: z.string() }), "x") } })
+      );
+      expect(() =>
+        registry.register(
+          makeFlow({ kind: "flow-b", rawResources: { files: isoColl(z.object({ body: z.number() }), "y") } })
         )
       ).not.toThrow();
     });
