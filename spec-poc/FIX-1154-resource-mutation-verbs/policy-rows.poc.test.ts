@@ -62,7 +62,14 @@ const counter = defineResource({
 const tasks = defineResourceCollection({
   scope: "session",
   pattern: "tasks/**",
-  stateSchema: z.object({}).passthrough()
+  // CLOSED, not `.passthrough()`. The verbs are specified for reflectable
+  // object schemas (§7), and an open schema cannot recover a key's type or tell
+  // a typo from a dynamic key. A fixture that used passthrough would be
+  // demonstrating on a shape the spec does not support.
+  stateSchema: z.object({
+    n: z.number().default(0),
+    log: z.array(z.string()).default([])
+  })
 });
 
 function makeFlow() {
@@ -307,6 +314,37 @@ describe("FIX-1154 POC — the policy rows under increment/append mutators", () 
     // B's increment computes {n:5} — identical to what B holds — so it takes
     // the no-op path, not the persist path.
     await expect(incState(instance, { n: 0 })).rejects.toBeInstanceOf(ResourceDeletedError);
+  });
+
+  it("CURRENT BEHAVIOUR (defect, FIX-1258): a version-0 context REVIVES a tombstone", async () => {
+    // This row asserts what the shipped driver does TODAY, not what it should
+    // do. It is a live defect — reachable through shipped APIs, and NOT caused
+    // by the two new verbs: `updateState` does exactly this on `main`.
+    //
+    // FIX-1154 deliberately does not fix it; FIX-1258 owns it. **This row will
+    // fail when FIX-1258 lands, and that failure is the intended signal.**
+    const stores = createInMemoryStores();
+    // B's context exists BEFORE the key is ever written, so it holds container
+    // version 0 for "counter" — it never observed a live row.
+    const ctxB = await makeCtx(stores, "req_b");
+    const ctxA = await makeCtx(stores, "req_a");
+
+    await incState(ctxA.resources.counter as unknown as MutableRef, { n: 5 });
+    expect((await readRow(stores, "counter"))?.state).toMatchObject({ n: 5 });
+
+    // Tombstone it through the store — the same call the session-delete route
+    // makes via `deleteAll` (`routes/session-routes.ts:228-229`), and the same
+    // one collection eviction and `collection.delete()` reach per key.
+    await stores.resourceState.delete("session", "sess_1", "counter", "any");
+    expect(await readRow(stores, "counter")).toBeUndefined();
+
+    // B now makes a real change, writing at expectedVersion 0 — create-if-absent,
+    // which a tombstone satisfies (`resource-state-predicate.ts:147-149`).
+    await incState(ctxB.resources.counter as unknown as MutableRef, { n: 1 });
+
+    // The deleted resource is live again, holding B's default-derived value.
+    // A's data is gone and the delete has been undone, with no error raised.
+    expect((await readRow(stores, "counter"))?.state).toMatchObject({ n: 1 });
   });
 
   it("row: never-persisted key — a real increment creates it at create-if-absent", async () => {
