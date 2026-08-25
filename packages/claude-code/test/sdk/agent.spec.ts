@@ -1397,16 +1397,18 @@ describe("claudeCodeAgent — recordWork", () => {
  * **Keep this a copy-paste match for the three prose copies.** If it needs an
  * edit to pass, they need the same edit.
  */
-describe("claudeCodeAgent — the documented cwd example", () => {
-  // ── the snippet, verbatim ──────────────────────────────────────────────────
+describe("claudeCodeAgent — the documented cwd examples", () => {
+  // ── the "reusing a directory across runs" helper, verbatim ─────────────────
   const CHECKOUT_ROOT = "/var/agent-checkouts";
   const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
-  function checkoutFor(sessionId: string): string {
-    if (!SAFE_SEGMENT.test(sessionId)) {
-      throw new Error(`unusable session id: ${sessionId}`);
-    }
-    const dir = join(CHECKOUT_ROOT, sessionId);
+  function safeSegment(value: string): string {
+    if (!SAFE_SEGMENT.test(value)) throw new Error(`unusable path segment: ${value}`);
+    return value;
+  }
+
+  function checkoutFor(tenantId: string | undefined, key: string): string {
+    const dir = join(CHECKOUT_ROOT, safeSegment(tenantId ?? "default"), safeSegment(key));
     const rel = relative(CHECKOUT_ROOT, dir);
     if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
       throw new Error(`refusing a checkout outside ${CHECKOUT_ROOT}`);
@@ -1415,66 +1417,83 @@ describe("claudeCodeAgent — the documented cwd example", () => {
   }
   // ── end snippet ────────────────────────────────────────────────────────────
 
-  it("runs exactly as written in the README, the guide and the option's JSDoc", async () => {
+  it("runs the throwaway-directory example the docs lead with", async () => {
+    // The first thing a reader copies. It takes no caller input at all, which is
+    // why it leads: the guarded derivation below is the harder case and is
+    // presented as one.
     const spy = vi.fn();
+    const root = mkdtempSync(join(tmpdir(), "cwd-docs-"));
     const agent = claudeCodeAgent({
-      cwd: (_input, ctx) => checkoutFor(ctx.session.identity.id),
-      // Not part of the snippet — the SDK seam, so this runs without a model.
+      cwd: () => mkdtempSync(join(root, "run-")),
       resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
     });
 
-    // Through `testBlock`, not `agent.config.execute`: the private callback
-    // bypasses the dispatch the documented configuration actually runs under,
-    // so driving it would show the resolver returned a string rather than that
-    // the string reaches a run.
     const { error } = await testBlock(agent, { input: { prompt: "go" } });
 
-    // `testBlock` pins the session to "test-session", so the expected checkout
-    // is a LITERAL rather than the same expression the resolver computes — the
-    // recorder tests' discipline, for the same reason: an expectation derived
-    // from the implementation agrees with it whatever it does.
     expect(error).toBeNull();
-    expect(spy.mock.calls[0][0].options?.cwd).toBe("/var/agent-checkouts/test-session");
+    expect(spy.mock.calls[0][0].options?.cwd).toMatch(/\/run-[^/]+$/);
+    rmSync(root, { recursive: true, force: true });
   });
 
-  it("keeps the run inside the root when the session id is a traversal", () => {
-    // A session id is CALLER-SUPPLIED over HTTP — `action-routes.ts` reads it
-    // straight off the request body — so this is untrusted input on its way to
-    // becoming the directory a coding agent writes in (BP-031). The first draft
-    // of this example passed it to `join` unguarded, where `../../server-repo`
-    // resolves to `/server-repo` and redirects the run into another checkout.
-    //
-    // Published documentation gets copied, so the guard has to copy with it.
+  it("reaches a run through the documented derivation", async () => {
+    const spy = vi.fn();
+    const agent = claudeCodeAgent({
+      cwd: (_input, ctx) => checkoutFor(undefined, ctx.session.identity.id),
+      resolveClaudeAgent: scriptedQuery([RESULT_OK], spy),
+    });
+
+    // `testBlock` pins the session to "test-session", so the expectation is a
+    // LITERAL rather than the expression the resolver computes — an expectation
+    // derived from the implementation agrees with it whatever it does.
+    const { error } = await testBlock(agent, { input: { prompt: "go" } });
+
+    expect(error).toBeNull();
+    expect(spy.mock.calls[0][0].options?.cwd).toBe(
+      "/var/agent-checkouts/default/test-session",
+    );
+  });
+
+  it("keeps the run inside the root when a segment is a traversal", () => {
+    // Session ids and request ids BOTH arrive from the caller — the action route
+    // reads `body.sessionId`, and `sendOptions.requestId` rides the body into
+    // `ctx.request.identity.id`. So every part of a derived path is untrusted
+    // (BP-031), and an unguarded `join` sends the run wherever the caller likes.
     for (const hostile of ["../../server-repo", "../../../etc", "a/b", "", "."]) {
-      expect(() => checkoutFor(hostile)).toThrow();
+      expect(() => checkoutFor(undefined, hostile)).toThrow();
+      expect(() => checkoutFor(hostile, "run-1")).toThrow();
     }
   });
 
-  it("accepts a valid id under Windows path semantics too", () => {
+  it("keeps two tenants sharing one session id apart", () => {
+    // The framework namespaces its own session storage by tenant precisely
+    // because two tenants can hold the same session id, while exposing the BARE
+    // id on `ctx.session.identity.id`. A path built from the session alone puts
+    // both tenants in one directory, where their runs read and edit each other's
+    // work.
+    expect(checkoutFor("tenant-a", "sess_1")).not.toBe(checkoutFor("tenant-b", "sess_1"));
+  });
+
+  it("does not let a tenant and a key run together into one path", () => {
+    // Separate segments, never concatenated: `a` + `b/c` and `a/b` + `c` must
+    // not collapse onto the same directory. The segment grammar forbids the
+    // separator outright, which is what makes that impossible rather than
+    // merely unlikely.
+    expect(() => checkoutFor("a", "b/c")).toThrow();
+    expect(() => checkoutFor("a/b", "c")).toThrow();
+  });
+
+  it("accepts a valid derivation under Windows path semantics too", () => {
     // The containment check this replaced compared `join(...)` against a prefix
     // ending in a literal "/". `join` uses the PLATFORM separator, so on Windows
-    // a perfectly valid id produced `\\var\\agent-checkouts\\sess_x`, failed the
-    // prefix test, and the documented setup could not run at all — a guard that
-    // fails closed on the happy path.
-    //
-    // Asserted against `path.win32` directly so it holds on this POSIX runner.
+    // a valid value failed the prefix test and the documented setup could not
+    // run at all — a guard failing closed on the happy path.
     const winContains = (id: string): boolean => {
-      const dir = win32.join(CHECKOUT_ROOT, id);
+      const dir = win32.join(CHECKOUT_ROOT, "default", id);
       const rel = win32.relative(CHECKOUT_ROOT, dir);
       return !(rel === "" || rel.startsWith("..") || win32.isAbsolute(rel));
     };
 
     expect(winContains("sess_normal_123")).toBe(true);
-    // …and it still rejects on the same platform, which is the half a
-    // separator-blind fix could quietly lose.
     expect(winContains("../../server-repo")).toBe(false);
-  });
-
-  it("never resolves outside the root for any id it accepts", () => {
-    // The containment half, asserted independently of the grammar: whatever the
-    // pattern lets through must still land under the root.
-    for (const id of ["sess_normal_123", "a.b", "A-1_2", "x"]) {
-      expect(resolvePath(checkoutFor(id)).startsWith(`${CHECKOUT_ROOT}/`)).toBe(true);
-    }
   });
 });

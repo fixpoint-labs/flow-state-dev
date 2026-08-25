@@ -156,50 +156,19 @@ work on a checkout that is not the one the server lives in.
 `cwd` gives a run its own directory:
 
 ```ts
-import { isAbsolute, join, relative } from "node:path";
+import { mkdtemp } from "node:fs/promises";
+import { join } from "node:path";
 
 const CHECKOUT_ROOT = "/var/agent-checkouts";
-const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-
-function checkoutFor(sessionId: string): string {
-  // A session id can come from the caller, so it is untrusted input on its way
-  // to becoming a filesystem path. Rejected rather than stripped: stripping
-  // would map two different sessions onto one checkout.
-  if (!SAFE_SEGMENT.test(sessionId)) {
-    throw new Error(`unusable session id: ${sessionId}`);
-  }
-  const dir = join(CHECKOUT_ROOT, sessionId);
-  // `relative`, not a string prefix: `join` uses the platform separator, so a
-  // check against a literal "/" rejects every valid id on Windows.
-  const rel = relative(CHECKOUT_ROOT, dir);
-  if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
-    throw new Error(`refusing a checkout outside ${CHECKOUT_ROOT}`);
-  }
-  return dir;
-}
 
 const agent = claudeCodeAgent({
-  cwd: (_input, ctx) => checkoutFor(ctx.session.identity.id),
+  cwd: () => mkdtemp(join(CHECKOUT_ROOT, "run-")),
 });
 ```
 
 It is a function rather than a string on purpose. A flow is built once and then
 serves many runs, so a fixed directory would be the wrong shape — this resolves
-per run, just before the agent starts. Return a promise if the directory has to
-be looked up or created first.
-
-### Validate whatever you key it on
-
-The check above is the part worth copying. A working directory decides where a
-coding agent writes, so an identifier that reached it from a request body would
-let whoever sent that request redirect the run — a session id of
-`../../server-repo` resolves outside the root and lands the agent somewhere you
-did not choose. Validate the value as a single path segment, then confirm the
-joined path is still inside your root.
-
-What you key it on is otherwise yours. The session id gives each conversation
-its own checkout; a background job that already knows which repository it is
-working on would key it on that instead. The rule is the same either way.
+per run, just before the agent starts, and can return a promise as it does here.
 
 Two things follow the directory. The run's file tools address relative paths
 inside it. And the record of what the run touched, if you have `recordWork` on
@@ -211,8 +180,55 @@ outside it, and that operation is recorded at the path it actually reached. The
 file record is a log of what the run's tools did, not a fence around where they
 may go.
 
-Leave `cwd` out and nothing changes — the run and its record both use the
-server's directory.
+### Reusing a directory across runs
+
+The example above throws its directory away. Sometimes you want the opposite —
+runs that belong together sharing a checkout, so a second attempt picks up where
+the first stopped. That means building the path out of a value, and it is worth
+being careful about which value and how.
+
+```ts
+import { isAbsolute, join, relative } from "node:path";
+
+const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+function safeSegment(value: string): string {
+  if (!SAFE_SEGMENT.test(value)) throw new Error(`unusable path segment: ${value}`);
+  return value;
+}
+
+function checkoutFor(tenantId: string | undefined, key: string): string {
+  const dir = join(CHECKOUT_ROOT, safeSegment(tenantId ?? "default"), safeSegment(key));
+  const rel = relative(CHECKOUT_ROOT, dir);
+  if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
+    throw new Error(`refusing a checkout outside ${CHECKOUT_ROOT}`);
+  }
+  return dir;
+}
+```
+
+Three rules, each of which exists because of a specific way this goes wrong.
+
+**Validate every part as a single path segment.** Session ids and request ids
+both arrive from the caller, so a key of `../../server-repo` would send the run
+somewhere you did not choose. Reject rather than strip — stripping maps two
+distinct values onto one directory, which quietly gives two runs the same
+checkout.
+
+**Include the tenant when you have one.** Two tenants can hold the same session
+id. The framework namespaces its own session storage by tenant for exactly that
+reason, and hands you the bare id, so a path built from the session alone puts
+two tenants in one directory where their runs edit each other's work. Give each
+value its own segment; concatenating them into one string brings the ambiguity
+straight back.
+
+**Confirm the result is still inside your root**, using `relative` rather than a
+string comparison. `join` uses the platform separator, so a check against a
+literal `"/"` passes on Linux and rejects everything on Windows.
+
+Prefer a key your own code assigned — a job id from your queue, a row id from
+your database — over one that arrived with the request. The guards above are
+worth keeping either way, as the backstop rather than the only defence.
 
 ## Recording what the run did
 

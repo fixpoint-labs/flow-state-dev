@@ -193,38 +193,35 @@ export interface ClaudeCodeAgentOptions {
    * called once per invocation, before `query`.
    *
    * ```ts
-   * import { isAbsolute, join, relative } from "node:path";
+   * import { mkdtemp } from "node:fs/promises";
+   * import { join } from "node:path";
    *
    * const CHECKOUT_ROOT = "/var/agent-checkouts";
-   * const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-   *
-   * function checkoutFor(sessionId: string): string {
-   *   // Session ids arrive from the caller over HTTP, so this is untrusted
-   *   // input on its way to becoming a filesystem path (BP-031). Rejected
-   *   // rather than stripped: stripping maps two sessions onto one checkout.
-   *   if (!SAFE_SEGMENT.test(sessionId)) {
-   *     throw new Error(`unusable session id: ${sessionId}`);
-   *   }
-   *   const dir = join(CHECKOUT_ROOT, sessionId);
-   *   // `relative`, not a string prefix: `join` uses the platform separator,
-   *   // so comparing against a literal "/" rejects every valid id on Windows.
-   *   const rel = relative(CHECKOUT_ROOT, dir);
-   *   if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
-   *     throw new Error(`refusing a checkout outside ${CHECKOUT_ROOT}`);
-   *   }
-   *   return dir;
-   * }
    *
    * claudeCodeAgent({
-   *   cwd: (_input, ctx) => checkoutFor(ctx.session.identity.id),
+   *   // A fresh directory per run, created by the server. No caller input
+   *   // reaches the path.
+   *   cwd: () => mkdtemp(join(CHECKOUT_ROOT, "run-")),
    * })
    * ```
    *
-   * **Whatever you key the directory on, validate it before it becomes a
-   * path.** A working directory decides where a coding agent writes, so an
-   * identifier that reached it from a request body would let a caller redirect
-   * the run — which is why the guard is part of the example rather than a note
-   * beside it.
+   * **Reusing a directory across runs is the harder case**, and it is where the
+   * sharp edges are. Deriving the path from something stable means deriving it
+   * from a value, and three rules apply, each because of a way it goes wrong:
+   *
+   * - **Validate every part as a single path segment**, rejecting rather than
+   *   stripping — stripping maps two values onto one directory. Session ids and
+   *   request ids both arrive from the caller, so an unvalidated one sends the
+   *   run wherever the caller likes (BP-031).
+   * - **Include the tenant when there is one.** Two tenants can hold the same
+   *   session id; the framework namespaces its own session storage by tenant for
+   *   exactly that reason. Separate segments, never concatenated into one.
+   * - **Confirm the result is inside the root** with `path.relative`, not a
+   *   string prefix — `join` uses the platform separator, so a literal `"/"`
+   *   comparison rejects every valid value on Windows.
+   *
+   * Prefer a key the server assigned over one that arrived with the request.
+   * The package README carries the worked version.
    *
    * The resolver may be async, for a directory that has to be looked up or
    * provisioned first.
