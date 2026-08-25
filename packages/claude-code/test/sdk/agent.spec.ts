@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve as resolvePath } from "node:path";
+import { isAbsolute, join, relative, resolve as resolvePath, win32 } from "node:path";
 import { testBlock, createTestContext } from "@flow-state-dev/testing";
 import { normalizeResourcePath } from "@flow-state-dev/core/types";
 import {
@@ -1391,7 +1391,8 @@ describe("claudeCodeAgent — the documented cwd example", () => {
       throw new Error(`unusable session id: ${sessionId}`);
     }
     const dir = join(CHECKOUT_ROOT, sessionId);
-    if (!dir.startsWith(`${CHECKOUT_ROOT}/`)) {
+    const rel = relative(CHECKOUT_ROOT, dir);
+    if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
       throw new Error(`refusing a checkout outside ${CHECKOUT_ROOT}`);
     }
     return dir;
@@ -1425,6 +1426,26 @@ describe("claudeCodeAgent — the documented cwd example", () => {
     for (const hostile of ["../../server-repo", "../../../etc", "a/b", "", "."]) {
       expect(() => checkoutFor(hostile)).toThrow();
     }
+  });
+
+  it("accepts a valid id under Windows path semantics too", () => {
+    // The containment check this replaced compared `join(...)` against a prefix
+    // ending in a literal "/". `join` uses the PLATFORM separator, so on Windows
+    // a perfectly valid id produced `\\var\\agent-checkouts\\sess_x`, failed the
+    // prefix test, and the documented setup could not run at all — a guard that
+    // fails closed on the happy path.
+    //
+    // Asserted against `path.win32` directly so it holds on this POSIX runner.
+    const winContains = (id: string): boolean => {
+      const dir = win32.join(CHECKOUT_ROOT, id);
+      const rel = win32.relative(CHECKOUT_ROOT, dir);
+      return !(rel === "" || rel.startsWith("..") || win32.isAbsolute(rel));
+    };
+
+    expect(winContains("sess_normal_123")).toBe(true);
+    // …and it still rejects on the same platform, which is the half a
+    // separator-blind fix could quietly lose.
+    expect(winContains("../../server-repo")).toBe(false);
   });
 
   it("never resolves outside the root for any id it accepts", () => {

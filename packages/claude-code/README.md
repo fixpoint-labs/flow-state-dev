@@ -124,7 +124,7 @@ By default a run works in whatever directory the server process is running in.
 Pass `cwd` to point it somewhere else:
 
 ```ts
-import { join } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 
 const CHECKOUT_ROOT = "/var/agent-checkouts";
 const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -137,7 +137,10 @@ function checkoutFor(sessionId: string): string {
     throw new Error(`unusable session id: ${sessionId}`);
   }
   const dir = join(CHECKOUT_ROOT, sessionId);
-  if (!dir.startsWith(`${CHECKOUT_ROOT}/`)) {
+  // `relative`, not a string prefix: `join` uses the platform separator, so
+  // comparing against a literal "/" rejects every valid id on Windows.
+  const rel = relative(CHECKOUT_ROOT, dir);
+  if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
     throw new Error(`refusing a checkout outside ${CHECKOUT_ROOT}`);
   }
   return dir;
