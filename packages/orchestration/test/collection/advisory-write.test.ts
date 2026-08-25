@@ -1555,7 +1555,7 @@ describe("the seam judges the call by what was true WHEN IT RAN (FIX-964)", () =
       ...collection,
       get: (id: string) => (id === "t" ? (live as never) : collection.get(id)),
       complete: async (id, output, options) => {
-        const outcome = await collection.complete(id, output, options);
+        await collection.complete(id, output, options);
         // The commit lands, the store updates the object it already handed out,
         // and only then does something after the write fail.
         live.status = "completed";
