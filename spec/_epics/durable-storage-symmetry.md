@@ -68,8 +68,8 @@ the honest description of it.**
 carried in §4 so the record is complete; **wrap does not wait for any of them.**
 
 Whether one substantive issue plus a lodger is an epic at all — rather than one issue and a
-standalone bug — is the second live fork in §5. It is the product owner's call, not this
-document's.
+standalone bug — was asked twice by review and is **decided: it stays an epic** (§5, resolved).
+An engineering call, not the owner's, because both outcomes are cheap and reversible.
 
 **Not doing:** merging the two primitives; deleting or deprecating either one at any scope;
 re-attempting the org-state removal; cross-record atomicity (FIX-854); and resource-specific
@@ -94,8 +94,10 @@ two that have nowhere else to live are recorded below the themes, and labelled a
    resource driver suppresses a no-op against a **re-read** version where the scope one decides
    before `persist`; and only the resource driver takes an `AbortSignal`. `resource-cas.ts`'s
    module header carries an eight-row policy table naming the failure a shared driver would
-   produce in each case — resurrecting a tombstoned resource, overwriting a create-if-absent
-   winner, persisting after cancellation, silently dropping a deliberate write as a no-op.
+   produce in each case — overwriting a create-if-absent winner, persisting after cancellation,
+   silently dropping a deliberate write as a no-op, and, against a tombstone, **retrying until
+   the budget is exhausted and throwing a generic `ConcurrentModificationError`** where the
+   resource driver fails immediately with a distinct `ResourceDeletedError`.
 
    **The root is that the two stores model *deletion* differently — not that only one of them
    has a lifecycle.** Both delete, and both have create-if-absent: resources encode it as
@@ -130,6 +132,20 @@ two that have nowhere else to live are recorded below the themes, and labelled a
    and scope CAS never compares it. Recording it here because the opposite reading — that a
    fresh lineage on recreate protects a stale scope write — is the natural misreading of
    `session-routes.ts:181-184`, and this document made it.
+
+   **The header's tombstone row names the wrong outcome, and FIX-1154 fixes it in place.** That
+   row says a shared driver's retry lands because *"the tombstone's version matches"*. A version
+   match is necessary, not sufficient: `checkWriteVersion` requires `isLive && row.version ===
+   expectedVersion` for **every positive** expected version (`resource-state-predicate.ts:145-156`),
+   and a tombstone is not live. So `runWithCAS` refreshes to the tombstone's retained version
+   (`cas.ts:170-171`), conflicts again on every attempt, and exhausts its budget into
+   `ConcurrentModificationError`. **Nothing is resurrected on a positive version** — that outcome
+   belongs only to version `0` (next paragraph), and the two were conflated. The rationale is
+   untouched and still good: a distinct terminal error beats a retry storm ending in a generic
+   one. **This correction is FIX-1154's to land, not this branch's** — the header is shipped code
+   and the epic PR is docs-only and never merges, so it rides the re-citation pass above or it
+   does not ship at all. The neighbouring rows were checked while here: create-if-absent
+   overwrite, persist-after-cancellation and the dropped no-op all hold.
 
    **What that correction moved.** The *conclusion* is unchanged and slightly stronger: the
    drivers stay separate, and no issue in this set may propose unifying them. It gets stronger
@@ -301,33 +317,8 @@ here has no way to know the framing was tried.*
 
 ## 5. Open cross-cutting questions
 
-Both live forks below are the **owner's call**, and both are stated in full here rather than
-only on the epic PR — the PR closes when the epic wraps; this document outlives it.
-
-- **Is this an epic, or one issue and a standalone bug?** *Raised independently by two
-  reviewers on this PR, and correct on the reasoning — the shared-doc argument that used to
-  answer it is withdrawn (§1). Blocks nothing: both active children proceed either way.*
-
-  **Plain terms.** An epic costs a gate, a PR that stays open for its whole life, and a
-  coordination doc somebody maintains. It buys one signed-off home for decisions that outlive
-  any single ticket. FIX-1154 *is* the objective; FIX-1158 would ship standalone.
-
-  **The trade-off.** Keeping it holds the cross-cutting calls — the CAS divergence, never
-  `"any"` on the resource path, the return-contract asymmetry — in one place the next person
-  finds. Dissolving it saves the overhead but scatters those calls into one issue's spec,
-  where a future third consumer will not look.
-
-  **My recommendation: keep it, with FIX-1158 named a lodger rather than dressed up as a
-  member.** These are exactly the decisions that get re-derived expensively, and this epic has
-  already paid once for re-deriving one (#1291, closed unmerged). Three themes plus a
-  rejected-framings block is cheap insurance against paying that twice.
-
-  **What would change my mind:** if you would rather not carry an open gate on work this
-  small, or if FIX-1158 gets picked up and merged before FIX-1154 is even specced — that would
-  show the set was never a set.
-
-  **What being wrong costs: low both ways.** Wrong toward keeping costs coordination overhead
-  on two issues. Wrong toward dissolving costs one re-derivation later.
+**One live fork remains, and it is the owner's.** It is stated in full here rather than only on
+the epic PR — the PR closes when the epic wraps; this document outlives it.
 
 - **Does this epic finish with the task-board fan-out crash still live?** *Raised by this
   epic-spec at authoring; blocks nothing today — the active children proceed either way — but
@@ -365,6 +356,17 @@ only on the epic PR — the PR closes when the epic wraps; this document outlive
   **What being wrong costs: low and reversible either way** — a delay until it is scheduled,
   or one workstream of coordination overhead.
 
+- **~~Is this an epic, or one issue and a standalone bug?~~** *Resolved: it stays an epic, with
+  FIX-1158 named an honest lodger rather than dressed up as a member.* Raised independently by
+  two reviewers, and correct that the shared-doc argument for membership was process coupling —
+  which is why it is withdrawn (§1) rather than defended. **Decided as an engineering call, not
+  put to the owner:** both outcomes are cheap and reversible, which is precisely the shape a
+  reader of `asking-for-decisions.md` should not be spending attention on. Kept because the
+  cross-cutting calls — the CAS divergence, never `"any"` on the resource path, the
+  return-contract asymmetry, and three separate corrections to theme 1's justification — are
+  exactly what gets re-derived expensively, and this epic has already paid once for re-deriving
+  one (#1291, closed unmerged). An epic's real cost here is a coordination doc somebody
+  maintains; its return is that those calls have one home a future third consumer can find.
 - **~~Do resources grow a committed `boolean`, or is the `Promise<boolean>` vs
   `Promise<void>` split deliberate?~~** *Resolved: deliberate, and only the increment/append gap
   closes.*
@@ -413,6 +415,14 @@ only on the epic PR — the PR closes when the epic wraps; this document outlive
 - **Width sweep (2026-08-25)** — every rule and mapping re-checked against its actual width:
   **one wrong** (scope `0` admits absence), **seven held**, because the recurring defect here is
   not a wrong rule but a rule stated at the wrong width.
+- **Theme 1's failure mode corrected (2026-08-25)** — a shared driver does not resurrect a
+  tombstone on a positive version; it retries into `ConcurrentModificationError`, because
+  `checkWriteVersion` requires a *live* row for every positive expected version and a version
+  match alone is not enough — the **third** supporting claim of theme 1 to be wrong while its
+  conclusion held.
+- **Epic-classification fork decided (2026-08-25)** — it stays an epic with FIX-1158 an honest
+  lodger, taken as an engineering call rather than left on the owner, because both outcomes are
+  cheap and reversible and the fork's own trigger had expired once FIX-1154 entered spec review.
 - **§3 removed; this log compressed (2026-08-25)** — *Shape of the whole* is omitted per the
   template (no end-state POC was built) with its two orphaned pieces moved into themes 1 and 2,
   because a second carrier for decisions the themes already own is a drift generator — that
